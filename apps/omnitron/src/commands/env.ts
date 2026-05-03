@@ -4,18 +4,25 @@
 
 import { log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { emitJson, emitError, isJsonMode } from './output.js';
 
 export async function envCommand(appName: string): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+    if (isJsonMode()) emitError('Daemon is not running');
+    else log.warn('Daemon is not running');
     await client.disconnect();
     return;
   }
 
   try {
     const envVars = await client.getEnv({ name: appName });
+
+    if (emitJson({ app: appName, env: envVars })) {
+      await client.disconnect();
+      return;
+    }
 
     if (Object.keys(envVars).length === 0) {
       log.info(`No custom environment variables for ${appName}`);
@@ -26,7 +33,7 @@ export async function envCommand(appName: string): Promise<void> {
       }
     }
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message, { app: appName });
   }
 
   await client.disconnect();

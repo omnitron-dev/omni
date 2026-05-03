@@ -15,8 +15,18 @@ import {
   formatPort,
 } from '../shared/format.js';
 import { formatMemory } from '../shared/format.js';
+import { isJsonMode, emitError } from './output.js';
 
 export async function monitCommand(): Promise<void> {
+  // Live TUI dashboards do not have a meaningful JSON representation —
+  // streaming structured frames would compete with `omnitron --json status`
+  // on a polling loop. Refuse explicitly so users get a clear pointer.
+  if (isJsonMode()) {
+    emitError('monit is an interactive TUI dashboard and does not support --json. Use `omnitron --json status` (or `list`) on a poll loop instead.');
+    process.exitCode = 1;
+    return;
+  }
+
   const client = createDaemonClient();
 
   if (!(await client.isReachable())) {

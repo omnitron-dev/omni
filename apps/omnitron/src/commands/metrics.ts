@@ -7,18 +7,25 @@
 import { table, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { formatMemoryColored, formatCpu, formatMemory } from '../shared/format.js';
+import { emitJson, emitError, isJsonMode } from './output.js';
 
 export async function metricsCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+    if (isJsonMode()) emitError('Daemon is not running');
+    else log.warn('Daemon is not running');
     await client.disconnect();
     return;
   }
 
   try {
     const metrics = await client.getMetrics(appName ? { name: appName } : {});
+
+    if (emitJson({ totals: metrics.totals, apps: metrics.apps })) {
+      await client.disconnect();
+      return;
+    }
 
     const data = Object.entries(metrics.apps).map(([name, m]) => ({
       name,
@@ -48,7 +55,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
     console.log();
     log.info(`Totals: CPU ${formatCpu(metrics.totals.cpu)}, Memory ${formatMemory(metrics.totals.memory)}`);
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message, appName ? { app: appName } : undefined);
   }
 
   await client.disconnect();

@@ -7,18 +7,25 @@
 import { box, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { formatUptime, formatBytes } from '../shared/format.js';
+import { emitJson, emitError, isJsonMode } from './output.js';
 
 export async function inspectCommand(appName: string): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+    if (isJsonMode()) emitError('Daemon is not running');
+    else log.warn('Daemon is not running');
     await client.disconnect();
     return;
   }
 
   try {
     const diag = await client.inspect({ name: appName });
+
+    if (emitJson(diag)) {
+      await client.disconnect();
+      return;
+    }
 
     const statusColor =
       diag.status === 'online'
@@ -80,7 +87,7 @@ export async function inspectCommand(appName: string): Promise<void> {
 
     box(lines.join('\n'), `Inspect: ${appName}`);
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message, { app: appName });
   }
 
   await client.disconnect();

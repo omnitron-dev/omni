@@ -409,6 +409,8 @@ export interface IServiceHealthCheck {
   jsonrpc?: {
     port: string;
     method: string;
+    /** URL path for JSON-RPC endpoint. Default '/json_rpc' (Monero). Set '' for root '/' (some daemons). */
+    path?: string;
     auth?: { user: string; password: string; type?: 'digest' | 'basic' };
   };
 }

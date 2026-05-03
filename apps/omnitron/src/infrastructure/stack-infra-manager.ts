@@ -6,7 +6,7 @@
  * (dev, test, prod) can run simultaneously without conflicts.
  *
  * Container naming: omnitron-{project}-{stack}-{service}
- *   e.g., omnitron-daos-dev-postgres, omnitron-daos-test-redis
+ *   e.g., omnitron-myproj-dev-postgres, omnitron-myproj-test-redis
  *
  * Port allocation: base port + stack offset
  *   dev:  postgres:5432, redis:6379, minio:9000

@@ -20,7 +20,7 @@ import type {
 
 /**
  * Container naming: {project}-{stack}-{service}
- * Examples: omni-dev-postgres, omni-dev-redis, daos-test-minio
+ * Examples: myproj-dev-postgres, myproj-dev-redis, myproj-test-minio
  * Omnitron's own containers: omnitron-pg, omnitron-nginx (no project/stack prefix)
  *
  * Docker labels for stack grouping (Docker Desktop groups containers visually):

@@ -62,6 +62,17 @@ export class PresetRegistry {
     } else if (preset.name === 'minio') {
       dockerEnv['MINIO_ROOT_USER'] = mergedSecrets['accessKey'] ?? 'minioadmin';
       dockerEnv['MINIO_ROOT_PASSWORD'] = mergedSecrets['secretKey'] ?? 'minioadmin';
+    } else if (preset.name === 'tor') {
+      // Tor preset reads its hidden-service map from a single JSON env var —
+      // simpler than parametrising arbitrary numbers of HiddenServiceDir/Port
+      // pairs through individual variables. The torrc generator (see
+      // tor.ts ENTRYPOINT_SHELL) iterates over this list with `jq`.
+      const torCfg = (config.config ?? {}) as { hiddenServices?: unknown[]; extraTorrc?: string[] };
+      const hsArr = Array.isArray(torCfg.hiddenServices) ? torCfg.hiddenServices : [];
+      dockerEnv['OMNITRON_TOR_HIDDEN_SERVICES_JSON'] = JSON.stringify(hsArr);
+      if (Array.isArray(torCfg.extraTorrc) && torCfg.extraTorrc.length > 0) {
+        dockerEnv['OMNITRON_TOR_EXTRA_TORRC'] = torCfg.extraTorrc.join('\n');
+      }
     }
     if (config.docker?.environment) {
       Object.assign(dockerEnv, config.docker.environment);

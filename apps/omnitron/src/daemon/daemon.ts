@@ -670,7 +670,24 @@ export class OmnitronDaemon {
         } satisfies InfraFailedEvent);
 
         logger.error({ error: reason }, 'Failed to provision app infrastructure');
-        logger.warn('Apps with infrastructure requirements may fail to start');
+
+        // Fail-fast unless explicitly opted out via `--no-infra` (handled
+        // earlier by skipping this branch). Re-throw so daemon startup
+        // surfaces the actual cause to the operator instead of leaving the
+        // daemon "running" with a half-broken state.
+        const allowDegraded = (config as { allowDegradedInfra?: boolean }).allowDegradedInfra === true;
+        if (!allowDegraded) {
+          const throwable = new Error(
+            `Daemon infrastructure provisioning failed: ${reason}\n` +
+            `Stack apps will not start until this is resolved.\n` +
+            `Fix the underlying issue (Docker socket, image pull, port, …) and run 'omnitron up' again.\n` +
+            `To deliberately run with no managed infra (external services), pass --no-infra to 'omnitron up'.`
+          );
+          (throwable as any).code = 'DAEMON_INFRA_PROVISIONING_FAILED';
+          (throwable as any).cause = err;
+          throw throwable;
+        }
+        logger.warn('allowDegradedInfra=true — apps with infrastructure requirements may fail to start');
       }
     } else {
       // No infrastructure declared — mark gate as ready with empty state
@@ -1093,11 +1110,20 @@ export class OmnitronDaemon {
         dbUrl: 'postgresql://omnitron:omnitron@localhost:5480/omnitron',
       };
 
-      // Get worker process path — .ts when running via tsx, .js when compiled
+      // Get worker process path. The naive heuristic of "tsx in execArgv → .ts"
+      // is wrong: the daemon binary itself is loaded with `--import tsx/esm`
+      // (so transpilation works for any .ts in the tree), but the *daemon
+      // entry* may still be the compiled .js. We must check what physically
+      // exists alongside the running daemon, not what's in execArgv.
       const thisDir = nodePath.dirname(fileURLToPath(import.meta.url));
-      const isTsx = process.execArgv.some((a) => a.includes('tsx'));
-      const ext = isTsx ? '.ts' : '.js';
-      const workerPath = nodePath.resolve(thisDir, '..', 'workers', `health-monitor-process${ext}`);
+      const workersDir = nodePath.resolve(thisDir, '..', 'workers');
+      const tsPath = nodePath.join(workersDir, 'health-monitor-process.ts');
+      const jsPath = nodePath.join(workersDir, 'health-monitor-process.js');
+      const workerPath = (await import('node:fs')).existsSync(jsPath)
+        ? jsPath
+        : (await import('node:fs')).existsSync(tsPath)
+          ? tsPath
+          : jsPath; // fall through to .js — error will be clear if missing
 
       // Convert nodes to check targets
       const nodesJson = JSON.stringify(await this.nodeManagerService.getNodeCheckTargets());

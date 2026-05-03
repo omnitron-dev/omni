@@ -7,7 +7,7 @@
  */
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
-import { Pool } from 'pg';
+import { Pool, types as pgTypes } from 'pg';
 import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
@@ -120,6 +120,13 @@ interface RetryConfig {
 
 @Injectable()
 export class DatabaseManager implements IDatabaseManager {
+  /**
+   * Tracks whether the BIGINT (int8/OID 20) → JS number parser has been
+   * installed. `pg.types.setTypeParser` is process-global, so we install
+   * it exactly once across all postgres connections.
+   */
+  private static _bigintParserInstalled = false;
+
   private connections: Map<string, ConnectionInfo> = new Map();
   private circuitBreakers: Map<string, CircuitBreaker> = new Map();
   private connectionSchemas: Map<string, string> = new Map();
@@ -586,6 +593,28 @@ export class DatabaseManager implements IDatabaseManager {
         const pgConfig = { ...connectionConfig } as Record<string, unknown>;
         if (pgConfig['ssl'] === false) {
           delete pgConfig['ssl'];
+        }
+
+        // pg returns int8 (BIGINT, OID 20) as string by default to preserve
+        // precision for values > 2^53. For most apps that store sequence
+        // numbers, counters, or row IDs in BIGINT this footgun manifests
+        // as `Number.isFinite("5") === false` or arithmetic NaN. We make the
+        // safer default opt-out: coerce to JS number, but **only** for
+        // values that fit losslessly in a double (Number.MAX_SAFE_INTEGER).
+        // Out-of-range values fall back to BigInt so precision is preserved.
+        // Apps can disable this entirely via config.coerceBigint = false.
+        const coerceBigint = (config as { coerceBigint?: boolean }).coerceBigint !== false;
+        if (coerceBigint && !DatabaseManager._bigintParserInstalled) {
+          // Install once per process — pg.types is global per the pg client.
+          pgTypes.setTypeParser(20 /* INT8 / BIGINT */, (val: string) => {
+            if (val === null) return null as unknown as number;
+            const n = Number(val);
+            // If the value can be represented exactly as a JS number, return
+            // it; otherwise fall back to BigInt to avoid silent precision loss.
+            if (Number.isSafeInteger(n)) return n as unknown as number;
+            return BigInt(val) as unknown as number;
+          });
+          DatabaseManager._bigintParserInstalled = true;
         }
 
         const pool = new Pool({

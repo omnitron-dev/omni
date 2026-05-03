@@ -925,9 +925,44 @@ export class ProjectService extends EventEmitter {
         );
         state.infraService = infraService;
       } catch (err) {
+        const reason = (err as Error).message;
         this.logger.error(
-          { project: projectName, stack: stackName, error: (err as Error).message },
-          'Failed to provision stack infrastructure — apps may fail to start'
+          { project: projectName, stack: stackName, error: reason },
+          'Failed to provision stack infrastructure'
+        );
+
+        // Fail-fast by default: apps almost always depend on the
+        // stack-provisioned infrastructure (postgres, redis, …) and starting
+        // them on top of broken infra produces cascading misleading errors
+        // ("Redis client connection timed out", "Container not found", …).
+        // Bail out with a clear, structured error so the operator sees the
+        // real cause first.
+        //
+        // Edge case: stacks that intentionally talk to *external* infra and
+        // declare nothing in their `infrastructure` section never reach this
+        // branch (`effectiveInfra` is falsy). For deliberate degraded-mode
+        // operation the stack settings can opt in via
+        // `settings.allowDegradedInfra: true` (the field is namespaced under
+        // settings to remain forward-compatible with stack schema).
+        const allowDegraded =
+          (stackConfig.settings as Record<string, unknown> | undefined)?.['allowDegradedInfra'] === true;
+        if (!allowDegraded) {
+          const cleanMsg =
+            `Stack '${projectName}/${stackName}' infrastructure provisioning failed:\n` +
+            `  ${reason}\n\n` +
+            `Apps were not started. Fix the underlying infrastructure issue (Docker socket, ` +
+            `image pull, port conflict, …) and rerun 'omnitron stack start ${projectName} ${stackName}'.\n` +
+            `\nIf you intentionally run apps against external infrastructure, set ` +
+            `'settings.allowDegradedInfra: true' in your stack config.`;
+          const throwable = new Error(cleanMsg);
+          (throwable as any).code = 'INFRA_PROVISIONING_FAILED';
+          (throwable as any).cause = err;
+          throw throwable;
+        }
+
+        this.logger.warn(
+          { project: projectName, stack: stackName },
+          'allowDegradedInfra=true — proceeding with app start despite infra failure'
         );
       }
     }
@@ -1192,6 +1227,14 @@ export class ProjectService extends EventEmitter {
     const user = pgConfig.user ?? 'postgres';
     const password = typeof pgConfig.password === 'string' ? pgConfig.password : 'postgres';
 
+    // Wait for postgres to actually accept connections before running ANY migrations.
+    // Containers can be reported "running" by Docker before pg_isready would
+    // pass, especially right after a fresh provision. Without this we hit
+    // ECONNREFUSED on first migration and fail-fast bubbles into the user's
+    // face. The probe is cheap (a short TCP connect + readiness query) and
+    // bounded.
+    await this.waitForPostgres('localhost', port, user, password, 60_000);
+
     for (const [dbName, dbConfig] of Object.entries(pgConfig.databases)) {
       // Only run if migrate flag is set AND a matching app exists
       if (!dbConfig || typeof dbConfig !== 'object' || !(dbConfig as any).migrate) continue;
@@ -1213,36 +1256,115 @@ export class ProjectService extends EventEmitter {
         'Running database migrations',
       );
 
-      try {
-        const { execFileSync } = await import('node:child_process');
-        execFileSync(
-          process.execPath,
-          ['--import', 'tsx/esm', migrateScript],
-          {
-            cwd: path.join(projectPath, 'apps', dbName),
-            env: {
-              ...process.env,
-              DATABASE_URL: `postgresql://${user}:${password}@localhost:${port}/${dbName}`,
-              // App-specific env vars (various naming conventions)
-              [`${dbName.toUpperCase()}__DATABASE__HOST`]: 'localhost',
-              [`${dbName.toUpperCase()}__DATABASE__PORT`]: String(port),
-              [`${dbName.toUpperCase()}__DATABASE__DATABASE`]: dbName,
-              [`${dbName.toUpperCase()}__DATABASE__USER`]: user,
-              [`${dbName.toUpperCase()}__DATABASE__PASSWORD`]: password,
+      // Retry policy: up to 5 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s).
+      // Migration tools are typically idempotent, so retrying after a transient
+      // ECONNREFUSED / role-creation race is safe.
+      const maxAttempts = 5;
+      let attempt = 0;
+      let lastErr: Error | null = null;
+      while (attempt < maxAttempts) {
+        attempt++;
+        try {
+          const { execFileSync } = await import('node:child_process');
+          execFileSync(
+            process.execPath,
+            ['--import', 'tsx/esm', migrateScript],
+            {
+              cwd: path.join(projectPath, 'apps', dbName),
+              env: {
+                ...process.env,
+                DATABASE_URL: `postgresql://${user}:${password}@localhost:${port}/${dbName}`,
+                // App-specific env vars (various naming conventions)
+                [`${dbName.toUpperCase()}__DATABASE__HOST`]: 'localhost',
+                [`${dbName.toUpperCase()}__DATABASE__PORT`]: String(port),
+                [`${dbName.toUpperCase()}__DATABASE__DATABASE`]: dbName,
+                [`${dbName.toUpperCase()}__DATABASE__USER`]: user,
+                [`${dbName.toUpperCase()}__DATABASE__PASSWORD`]: password,
+              },
+              timeout: 60_000,
+              stdio: ['ignore', 'pipe', 'pipe'],
             },
-            timeout: 60_000,
-            stdio: ['ignore', 'pipe', 'pipe'],
-          },
-        );
-        this.logger.info({ database: dbName }, 'Migrations applied');
-      } catch (err: any) {
-        const stderr = err.stderr?.toString?.()?.trim?.() ?? '';
-        this.logger.error(
-          { database: dbName, error: err.message, stderr },
-          'Migration failed — app may fail to start',
-        );
+          );
+          this.logger.info({ database: dbName, attempts: attempt }, 'Migrations applied');
+          lastErr = null;
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const stderr = err.stderr?.toString?.()?.trim?.() ?? '';
+          // Only retry on transient connection errors. Schema / SQL errors
+          // are deterministic and won't go away by trying again.
+          const transient = /ECONNREFUSED|ECONNRESET|ENOTCONN|terminat(ing|ed)|server closing|kysely.*Connection/i.test(stderr) ||
+            /ECONNREFUSED|ECONNRESET/i.test(err.message ?? '');
+          if (!transient || attempt >= maxAttempts) {
+            this.logger.error(
+              { database: dbName, attempt, error: err.message, stderr },
+              'Migration failed — app may fail to start',
+            );
+            break;
+          }
+          const delayMs = Math.min(1000 * 2 ** (attempt - 1), 16_000);
+          this.logger.warn(
+            { database: dbName, attempt, nextRetryInMs: delayMs, error: err.message },
+            'Migration transient failure — retrying',
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
+      if (lastErr) {
+        // Already logged above; intentionally do NOT throw here so other
+        // databases can still attempt their migrations.
       }
     }
+  }
+
+  /**
+   * Block until a postgres instance accepts connections, with bounded retries.
+   * Used before running migrations to avoid ECONNREFUSED on freshly-provisioned
+   * containers.
+   */
+  private async waitForPostgres(
+    host: string,
+    port: number,
+    user: string,
+    password: string,
+    timeoutMs: number,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const { Client } = await import('pg').catch(() => ({ Client: null as any }));
+    if (!Client) {
+      // pg not available in this build — fall back to a TCP connect probe.
+      const net = await import('node:net');
+      while (Date.now() < deadline) {
+        const ok = await new Promise<boolean>((resolve) => {
+          const sock = net.createConnection({ host, port }, () => {
+            sock.end();
+            resolve(true);
+          });
+          sock.once('error', () => resolve(false));
+          sock.setTimeout(2_000, () => {
+            sock.destroy();
+            resolve(false);
+          });
+        });
+        if (ok) return;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      throw new Error(`Postgres at ${host}:${port} not reachable after ${timeoutMs}ms`);
+    }
+
+    while (Date.now() < deadline) {
+      const client = new Client({ host, port, user, password, database: 'postgres', connectionTimeoutMillis: 2_000 });
+      try {
+        await client.connect();
+        await client.query('SELECT 1');
+        await client.end().catch(() => {});
+        return;
+      } catch {
+        await client.end().catch(() => {});
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    throw new Error(`Postgres at ${host}:${port} did not become ready within ${timeoutMs}ms`);
   }
 
   /**

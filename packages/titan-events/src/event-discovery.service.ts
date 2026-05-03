@@ -6,7 +6,7 @@
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Container } from '@omnitron-dev/titan/nexus';
-import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 
 import { EventMetadataService } from './event-metadata.service.js';
 import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
@@ -32,7 +32,11 @@ export class EventDiscoveryService {
   private logger: any = null;
 
   constructor(
-    @Inject(Container) private readonly container: Container,
+    // Container is marked @Optional() so the events module can still
+    // initialize when the DI Container token isn't in scope (test harnesses
+    // or unusual spawn configurations). Discovery degrades to a no-op when
+    // absent — listeners registered manually via EventBus still work.
+    @Optional() @Inject(Container) private readonly container: Container | null,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
   ) {}

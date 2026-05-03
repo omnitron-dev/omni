@@ -133,6 +133,25 @@ class BootstrapProcess {
     // fall back to resolving from bootstrap directory (tsx or dist/)
     const modulePath = bundledModulePath ?? path.resolve(path.dirname(bootstrapPath), this.entry.module);
     const moduleFile = await import(modulePath);
+
+    // ────────────────────────────────────────────────────────────────────
+    // Container identity guard.
+    //
+    // Daemon imports `@omnitron-dev/titan` from its own pnpm peer-dep tree.
+    // App's bundled module imports `@omnitron-dev/titan-scheduler` etc. that
+    // transitively import `@omnitron-dev/titan/nexus` from the **app's**
+    // pnpm tree. If those resolve to different physical files (e.g. demon
+    // running from local omni source while app uses npm-published 0.1.3),
+    // the `Container` class identity differs → `Inject(Container)` cannot
+    // find the auto-registered token and module init fails with the cryptic
+    // "Dependency 'Container' not found".
+    //
+    // Detect this BEFORE Application.create() to surface a clear, actionable
+    // error instead of letting Application.start() blow up on every module
+    // that injects Container.
+    // ────────────────────────────────────────────────────────────────────
+    const moduleResolveDir = path.dirname(modulePath);
+    await this.assertContainerIdentity(moduleResolveDir);
     // Resolve module class: prefer default export, then first named export (class),
     // then the module namespace itself (for compatibility with non-standard modules).
     let ModuleClass = moduleFile.default;
@@ -373,6 +392,101 @@ class BootstrapProcess {
         this.app!.container.register(token, { useValue: errorProxy } as any);
       }
     }
+  }
+
+  /**
+   * Verify that `Container` class imported by Titan modules in the app's
+   * dependency tree (titan-scheduler, titan-events, etc.) has the same
+   * physical identity as the daemon's `Container` class.
+   *
+   * The daemon resolves `@omnitron-dev/titan` from its own pnpm tree and
+   * uses that to construct `Application` (which auto-registers itself as
+   * the `Container` token). The app's bundled module imports titan-scheduler
+   * (etc.), which transitively imports `@omnitron-dev/titan/nexus`. If those
+   * two paths resolve to different physical files (e.g. monorepo dev vs
+   * published version), `Container` becomes two distinct classes —
+   * `Inject(Container)` then cannot find the auto-registered token and
+   * every consumer fails with the misleading "Dependency 'Container' not
+   * found" during module initialization.
+   *
+   * We detect this **before** Application.create() by resolving titan from
+   * both contexts (daemon-side via static import, app-side via dynamic
+   * import using the module's directory as the resolution base) and
+   * comparing the realpath. On mismatch we throw a self-explanatory error.
+   *
+   * Resolution is best-effort: if the app does not depend on titan
+   * transitively (rare for a Titan @Module bundle), we skip silently.
+   */
+  private async assertContainerIdentity(moduleResolveDir: string): Promise<void> {
+    const { realpathSync } = await import('node:fs');
+    const { createRequire } = await import('node:module');
+
+    // Daemon-side titan path — resolved at omnitron's pnpm peer-dep level.
+    let daemonTitanPath: string;
+    try {
+      const titan = await import('@omnitron-dev/titan/nexus');
+      // The Container class file URL → physical path. Container is exported
+      // from packages/titan/dist/nexus/index.js which re-exports from
+      // ./container.js — both share the same titan dist directory.
+      daemonTitanPath = realpathSync(new URL(import.meta.url).pathname);
+      // Walk up from bootstrap-process.js to find titan's installed location.
+      void titan; // ensure module is loaded
+      // Resolve titan/package.json from this file's perspective.
+      const daemonRequire = createRequire(import.meta.url);
+      daemonTitanPath = realpathSync(daemonRequire.resolve('@omnitron-dev/titan/package.json'));
+    } catch {
+      // Daemon must have titan to even reach this code path; if not, abort guard.
+      return;
+    }
+
+    // App-side titan path — resolved relative to the app's module bundle.
+    // We use a require constructor anchored to the module's directory to
+    // simulate Node's resolution as if from inside the app's dist.
+    let appTitanPath: string | null = null;
+    try {
+      const moduleRequire = createRequire(`${moduleResolveDir}/`);
+      appTitanPath = realpathSync(moduleRequire.resolve('@omnitron-dev/titan/package.json'));
+    } catch {
+      // App may not declare titan as a direct dependency (uses titan-scheduler/etc).
+      // Try resolving via a known transitive: titan-scheduler → titan.
+      try {
+        const moduleRequire = createRequire(`${moduleResolveDir}/`);
+        const schedPkg = moduleRequire.resolve('@omnitron-dev/titan-scheduler/package.json');
+        const schedDir = realpathSync(schedPkg).replace(/[/\\]package\.json$/, '');
+        const schedRequire = createRequire(`${schedDir}/`);
+        appTitanPath = realpathSync(schedRequire.resolve('@omnitron-dev/titan/package.json'));
+      } catch {
+        // App truly does not depend on titan — nothing to compare.
+        return;
+      }
+    }
+
+    if (!appTitanPath || appTitanPath === daemonTitanPath) {
+      return; // identities match (or could not be determined safely)
+    }
+
+    // Mismatch — produce a high-signal error.
+    const msg =
+      `Titan package identity mismatch detected between omnitron daemon and app '${this.definition?.name ?? '<unknown>'}'.\n\n` +
+      `  Daemon resolves @omnitron-dev/titan from:\n    ${daemonTitanPath}\n\n` +
+      `  App   resolves @omnitron-dev/titan from:\n    ${appTitanPath}\n\n` +
+      `These are different physical installations, so the 'Container' class identity differs.\n` +
+      `Provider injections like @Inject(Container) (used internally by titan-scheduler, titan-events,\n` +
+      `etc.) will fail with the cryptic message "Dependency 'Container' not found".\n\n` +
+      `How to fix:\n` +
+      `  1. Ensure the daemon and the app are using the SAME @omnitron-dev/titan installation.\n` +
+      `  2. If you are running omnitron from a local monorepo while the app installs published\n` +
+      `     versions, add pnpm overrides in the app project's package.json:\n\n` +
+      `       "pnpm": {\n` +
+      `         "overrides": {\n` +
+      `           "@omnitron-dev/titan": "link:<path-to-omni>/packages/titan",\n` +
+      `           "@omnitron-dev/omnitron": "link:<path-to-omni>/apps/omnitron",\n` +
+      `           "@omnitron-dev/titan-scheduler": "link:<path-to-omni>/packages/titan-scheduler",\n` +
+      `           ...other @omnitron-dev/* packages used by the app\n` +
+      `         }\n` +
+      `       }\n\n` +
+      `  3. After updating overrides run 'pnpm install' in the app project.`;
+    throw new Error(msg);
   }
 }
 

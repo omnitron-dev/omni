@@ -748,23 +748,70 @@ export class ProcessSpawner implements IProcessSpawner {
     timeout: number = 5000
   ): Promise<{ serviceName?: string; serviceVersion?: string }> {
     return new Promise((resolve, reject) => {
-      // Capture stderr output for diagnostics on timeout
-      const stderrChunks: string[] = [];
+      // Capture full stderr/stdout for diagnostics — bounded by total bytes
+      // (not lines) so a single long traceback survives intact.
+      // 64 KiB is enough for typical Node stack traces + module-resolution
+      // errors and stays cheap memory-wise.
+      const STDERR_CAP_BYTES = 64 * 1024;
+      const stderrBuf: string[] = [];
+      const stdoutBuf: string[] = [];
+      let stderrBytes = 0;
+      let stdoutBytes = 0;
+
+      const appendBounded = (
+        target: string[],
+        bytesRef: { v: number },
+        chunk: string,
+      ) => {
+        target.push(chunk);
+        bytesRef.v += chunk.length;
+        // Drop oldest chunks until under cap — never drop the chunk just added.
+        while (bytesRef.v > STDERR_CAP_BYTES && target.length > 1) {
+          const dropped = target.shift()!;
+          bytesRef.v -= dropped.length;
+        }
+      };
+
+      const stderrRef = { v: stderrBytes };
+      const stdoutRef = { v: stdoutBytes };
+
       if (!isWorkerThread) {
         const child = worker as ChildProcess;
         child.stderr?.on('data', (chunk: Buffer) => {
-          const line = chunk.toString().trim();
-          if (line) stderrChunks.push(line);
-          // Keep only last 20 lines to bound memory
-          if (stderrChunks.length > 20) stderrChunks.shift();
+          appendBounded(stderrBuf, stderrRef, chunk.toString());
+        });
+        child.stdout?.on('data', (chunk: Buffer) => {
+          appendBounded(stdoutBuf, stdoutRef, chunk.toString());
         });
       }
+
+      // Build a context object with full stderr/stdout — passed in error
+      // details so callers (e.g. supervisor → daemon log) get the actual
+      // failure cause, not just "timed out after 30s".
+      const buildDiagnostics = () => {
+        const stderr = stderrBuf.join('').trimEnd();
+        const stdout = stdoutBuf.join('').trimEnd();
+        return {
+          stderr: stderr || undefined,
+          stdout: stdout || undefined,
+          stderrBytes: stderrRef.v,
+          stdoutBytes: stdoutRef.v,
+        };
+      };
 
       const timer = setTimeout(() => {
         const pid = !isWorkerThread ? (worker as ChildProcess).pid : undefined;
         const pidHint = pid ? ` (pid: ${pid})` : '';
-        const stderrHint = stderrChunks.length > 0 ? `. Last stderr: ${stderrChunks.slice(-3).join(' | ')}` : '';
-        reject(Errors.timeout(`Worker startup${pidHint}${stderrHint}`, timeout));
+        const diag = buildDiagnostics();
+        // Inline a compact stderr tail in the message so single-line log
+        // viewers still get a clue, but the FULL output rides in details.
+        const stderrTail = diag.stderr
+          ? '\n--- last child stderr ---\n' + diag.stderr.split('\n').slice(-15).join('\n')
+          : '';
+        const err = Errors.timeout(`Worker startup${pidHint}${stderrTail}`, timeout);
+        // Attach full stderr/stdout for structured logging / diagnostics.
+        (err as any).details = { ...((err as any).details ?? {}), ...diag };
+        reject(err);
       }, timeout);
 
       const cleanup = () => {
@@ -788,15 +835,23 @@ export class ProcessSpawner implements IProcessSpawner {
           } else if (data.type === 'error') {
             cleanup();
             const errMsg = data.error?.message || data.message || 'Worker initialization failed';
-            reject(new Error(errMsg));
+            const err = new Error(errMsg);
+            (err as any).details = buildDiagnostics();
+            if (data.error?.stack) (err as any).childStack = data.error.stack;
+            reject(err);
           }
         }
       };
 
       const exitHandler = (code: number | null) => {
         cleanup();
-        const stderrHint = stderrChunks.length > 0 ? `. Last stderr: ${stderrChunks.slice(-3).join(' | ')}` : '';
-        reject(new Error(`Worker exited during startup with code ${code}${stderrHint}`));
+        const diag = buildDiagnostics();
+        const stderrTail = diag.stderr
+          ? '\n--- last child stderr ---\n' + diag.stderr.split('\n').slice(-20).join('\n')
+          : '';
+        const err = new Error(`Worker exited during startup with code ${code}${stderrTail}`);
+        (err as any).details = diag;
+        reject(err);
       };
 
       if (isWorkerThread) {

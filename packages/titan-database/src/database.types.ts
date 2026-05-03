@@ -70,6 +70,14 @@ export interface DatabaseConnection {
   plugins?: string[];
   migrationsPath?: string;
   seedsPath?: string;
+  /**
+   * Postgres only. When true (default), `BIGINT` columns (PostgreSQL OID 20)
+   * are parsed as JS numbers if they fit losslessly in `Number.MAX_SAFE_INTEGER`,
+   * otherwise as `BigInt`. When false, leaves the pg default behavior of
+   * returning bigints as strings (which is a frequent source of subtle bugs:
+   * `Number.isFinite("5") === false`). Has no effect on other dialects.
+   */
+  coerceBigint?: boolean;
 }
 
 /**

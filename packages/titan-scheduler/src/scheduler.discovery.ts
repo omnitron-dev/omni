@@ -21,7 +21,12 @@ export class SchedulerDiscovery {
   private discoveredProviders = new Set<any>();
 
   constructor(
-    @Inject(Container) private readonly container: Container,
+    // Container is marked @Optional() so the scheduler module can still
+    // initialize in environments where the DI Container token is not in
+    // scope (e.g. some test harnesses or misconfigured spawn contexts).
+    // When absent, discover() degrades gracefully into a no-op instead of
+    // crashing the whole module init chain.
+    @Optional() @Inject(Container) private readonly container: Container | null,
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
   ) {}
@@ -32,6 +37,11 @@ export class SchedulerDiscovery {
    * resolves them (triggering @PostConstruct), and registers their scheduled methods.
    */
   async discover(): Promise<IScheduledJob[]> {
+    if (!this.container) {
+      // Container unavailable — auto-discovery is impossible. Decorator-
+      // based jobs registered manually via SchedulerService still work.
+      return [];
+    }
     const jobs: IScheduledJob[] = [];
 
     // Resolve all providers with scheduled job metadata (async to support async deps)
@@ -112,25 +122,27 @@ export class SchedulerDiscovery {
    */
   async discoverModule(module: any): Promise<IScheduledJob[]> {
     const jobs: IScheduledJob[] = [];
+    if (!this.container) return jobs;
 
     // Get module metadata
     const moduleMetadata = Reflect.getMetadata('nexus:module', module) || {};
     const providers = moduleMetadata.providers || [];
 
+    const container = this.container;
     for (const provider of providers) {
       let instance: any;
 
       // Resolve provider instance
       if (typeof provider === 'function') {
         try {
-          instance = this.container.resolve(provider);
+          instance = container.resolve(provider);
         } catch {
           // Failed to resolve provider
           continue;
         }
       } else if (provider.useClass) {
         try {
-          instance = this.container.resolve(provider.useClass);
+          instance = container.resolve(provider.useClass);
         } catch {
           // Failed to resolve provider
           continue;
@@ -153,6 +165,7 @@ export class SchedulerDiscovery {
    */
   private getAllProviders(): any[] {
     const providers: any[] = [];
+    if (!this.container) return providers;
 
     // Access container's internal registrations map
     type ProviderRegistration = { provider?: unknown };
@@ -219,6 +232,7 @@ export class SchedulerDiscovery {
    */
   private async resolveSchedulableProviders(): Promise<any[]> {
     const providers: any[] = [];
+    if (!this.container) return providers;
 
     // Access container internals to scan registrations
     // This mirrors the pattern used by Application.exposeServicesToNetron()

@@ -14,6 +14,17 @@ const program = new Command();
 
 program.name('omnitron').description('Production-grade Titan application supervisor').version(CLI_VERSION);
 
+// Global --json flag toggles structured machine-readable output and
+// suppresses spinners / styled prose. Also honors `OMNITRON_OUTPUT=json`
+// for environments where flag plumbing is awkward (CI templates, hooks).
+program.option('--json', 'Emit machine-readable JSON output (no spinners, no styling)');
+program.hook('preAction', (cmd) => {
+  const opts = cmd.opts();
+  if (opts['json'] || process.env['OMNITRON_OUTPUT'] === 'json') {
+    process.env['OMNITRON_OUTPUT'] = 'json';
+  }
+});
+
 // ============================================================================
 // Daemon Lifecycle
 // ============================================================================

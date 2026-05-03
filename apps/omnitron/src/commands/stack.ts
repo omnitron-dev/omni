@@ -7,6 +7,7 @@
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IProjectRpcService } from '../shared/dto/services.js';
+import { emitJson, emitError, emitStep, emitSuccess, emitInfo } from './output.js';
 
 // =============================================================================
 // Helpers
@@ -177,20 +178,32 @@ export async function stackStartCommand(projectName: string, stackName: string):
   const client = createDaemonClient();
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
-    log.step(`Starting stack ${projectName}/${stackName}...`);
+    emitStep(`Starting stack ${projectName}/${stackName}...`);
 
     const stack = await svc.startStack({ project: projectName, stack: stackName });
     const online = stack.apps.filter((a) => a.status === 'online').length;
-    log.success(`Stack ${projectName}/${stackName} started — ${online}/${stack.apps.length} apps online`);
+
+    if (emitJson({
+      project: projectName,
+      stack: stackName,
+      action: 'started',
+      apps: stack.apps,
+      online,
+      total: stack.apps.length,
+      infrastructure: stack.infrastructure,
+    })) return;
+
+    emitSuccess(`Stack ${projectName}/${stackName} started — ${online}/${stack.apps.length} apps online`);
 
     if (stack.infrastructure.ready) {
       const svcNames = Object.keys(stack.infrastructure.services);
       if (svcNames.length > 0) {
-        log.info(`Infrastructure: ${svcNames.join(', ')}`);
+        emitInfo(`Infrastructure: ${svcNames.join(', ')}`);
       }
     }
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(`Failed: ${(err as Error).message}`, { project: projectName, stack: stackName });
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }
@@ -200,11 +213,13 @@ export async function stackStopCommand(projectName: string, stackName: string): 
   const client = createDaemonClient();
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
-    log.step(`Stopping stack ${projectName}/${stackName}...`);
+    emitStep(`Stopping stack ${projectName}/${stackName}...`);
     await svc.stopStack({ project: projectName, stack: stackName });
-    log.success(`Stack ${projectName}/${stackName} stopped`);
+    if (emitJson({ project: projectName, stack: stackName, action: 'stopped' })) return;
+    emitSuccess(`Stack ${projectName}/${stackName} stopped`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(`Failed: ${(err as Error).message}`, { project: projectName, stack: stackName });
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }

@@ -54,6 +54,24 @@ export async function statusCommand(): Promise<void> {
     const onlineApps = status.apps.filter((a: any) => a.status === 'online');
     const erroredApps = status.apps.filter((a: any) => a.status === 'errored' || a.status === 'crashed');
 
+    // JSON mode — emit structured snapshot and skip TUI rendering.
+    {
+      const { emitJson } = await import('./output.js');
+      if (emitJson({
+        version: status.version,
+        pid: status.pid,
+        uptime: status.uptime,
+        memoryBytes: status.totalMemory,
+        appsTotal: status.apps.length,
+        appsOnline: onlineApps.length,
+        errors: erroredApps.map((a: any) => a.name),
+        apps: status.apps,
+      })) {
+        await client.disconnect();
+        return;
+      }
+    }
+
     // Daemon status only — no app table (use `omnitron list` for apps)
     const headerLines = [
       `Version:    ${prism.bold(status.version)}`,

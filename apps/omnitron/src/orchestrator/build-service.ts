@@ -18,6 +18,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import type { IAppDefinition } from '../config/types.js';
 
 // =============================================================================
@@ -41,18 +42,60 @@ interface WatchHandle {
 // =============================================================================
 
 /**
- * esbuild plugin that marks all non-relative, non-absolute imports as external.
- * Workspace packages (@omnitron-dev/*) and npm deps stay as runtime imports.
- * Only relative imports within the app are bundled (TS→JS transpilation).
+ * esbuild plugin that marks non-relative imports as external — with one
+ * important refinement: if a non-relative specifier resolves to a workspace
+ * package whose `main`/`exports` points at a TypeScript source file (no
+ * compiled `dist/` yet), we BUNDLE it instead of leaving it external.
+ *
+ * Without this fallback, `await import('@my-org/foo')` at runtime tries to
+ * load `foo/src/index.ts` directly, which Node cannot execute (no transpiler
+ * in the spawned child) → confusing ERR_UNKNOWN_FILE_EXTENSION at runtime.
+ * Bundling untranspiled sources transparently produces a working artifact
+ * while keeping all genuine npm deps external (so they get installed
+ * normally and benefit from native deduplication).
+ *
+ * The check is conservative: only specifiers that resolve to `.ts`, `.tsx`,
+ * or `.mts` files get bundled. Anything resolving to compiled `.js`/`.cjs`/
+ * `.mjs` stays external as before.
  */
 function externalizeNonRelativePlugin() {
+  // Cache resolution results across onResolve invocations within a single
+  // build to keep watch-mode rebuilds snappy.
+  const decisionCache = new Map<string, { external: boolean; resolvedPath?: string }>();
+
   return {
     name: 'externalize-non-relative',
     setup(build: any) {
-      build.onResolve({ filter: /^[^./]/ }, (args: any) => ({
-        path: args.path,
-        external: true,
-      }));
+      build.onResolve({ filter: /^[^./]/ }, (args: any) => {
+        // Cache key combines specifier + resolveDir to handle the (rare)
+        // case where the same specifier resolves to different files in
+        // different parts of the dep tree.
+        const cacheKey = `${args.resolveDir}::${args.path}`;
+        const cached = decisionCache.get(cacheKey);
+        if (cached) {
+          return cached.external
+            ? { path: args.path, external: true }
+            : { path: cached.resolvedPath };
+        }
+
+        // Try to resolve from disk as if Node would.
+        try {
+          const req = createRequire(args.resolveDir + path.sep);
+          const resolved = req.resolve(args.path);
+          const ext = path.extname(resolved).toLowerCase();
+          const isUntranspiledSource = ext === '.ts' || ext === '.tsx' || ext === '.mts';
+          if (isUntranspiledSource) {
+            decisionCache.set(cacheKey, { external: false, resolvedPath: resolved });
+            return { path: resolved };
+          }
+        } catch {
+          // Resolution failed → assume genuine npm dep that will be present
+          // in the runtime environment.
+        }
+
+        decisionCache.set(cacheKey, { external: true });
+        return { path: args.path, external: true };
+      });
     },
   };
 }

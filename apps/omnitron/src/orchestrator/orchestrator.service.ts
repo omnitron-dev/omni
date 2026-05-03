@@ -106,6 +106,16 @@ export class OrchestratorService extends EventEmitter {
   /** Daemon Unix socket path for child-to-daemon Netron connections */
   private daemonSocketPath: string | null = null;
 
+  /**
+   * Promise that resolves once the daemon's Netron is wired up. Apps that
+   * declare topology cannot launch until this is ready — instead of failing
+   * with "daemon Netron not available" the launcher awaits this promise
+   * (with a generous timeout) so transient startup-order interleavings
+   * resolve themselves instead of becoming user-visible errors.
+   */
+  private daemonNetronReady: Promise<void>;
+  private resolveDaemonNetronReady: () => void = () => undefined;
+
   constructor(
     private readonly logger: ILogger,
     private readonly pm: ProcessManager,
@@ -114,6 +124,9 @@ export class OrchestratorService extends EventEmitter {
   ) {
     super();
     this.cwd = cwd ?? process.cwd();
+    this.daemonNetronReady = new Promise<void>((resolve) => {
+      this.resolveDaemonNetronReady = resolve;
+    });
   }
 
   /**
@@ -123,7 +136,24 @@ export class OrchestratorService extends EventEmitter {
   setDaemonNetron(netron: Netron, socketPath: string): void {
     this.daemonNetron = netron;
     this.daemonSocketPath = socketPath;
+    this.resolveDaemonNetronReady();
     this.logger.info({ socketPath }, 'Daemon Netron set for native topology routing');
+  }
+
+  /**
+   * Wait until the daemon Netron is available, with a hard ceiling so we
+   * never hang forever if `setDaemonNetron()` was never wired in.
+   */
+  private async ensureDaemonNetronReady(timeoutMs = 30_000): Promise<void> {
+    if (this.daemonNetron && this.daemonSocketPath) return;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Daemon Netron not initialized within ${timeoutMs}ms — wiring bug?`)),
+        timeoutMs,
+      );
+      timer.unref?.();
+    });
+    await Promise.race([this.daemonNetronReady, timeout]);
   }
 
   // ============================================================================
@@ -425,7 +455,13 @@ export class OrchestratorService extends EventEmitter {
   }
 
   getHandle(name: string): AppHandle | undefined {
-    return this.handles.get(name);
+    // Match getAppStatus / getLogs name-resolution semantics — accept either
+    // a fully namespaced handle key ('project/stack/app') or the bare app
+    // name and resolve to the right handle. Without this, CLI commands like
+    // `omnitron env main` fail with "Unknown app: main" even though the
+    // app exists as `omni/dev/main`.
+    const resolved = this.resolveAppName(name);
+    return this.handles.get(resolved ?? name);
   }
 
   /**
@@ -574,8 +610,13 @@ export class OrchestratorService extends EventEmitter {
 
   getLogs(name?: string, lines = 100): Array<{ app: string; lines: string[] }> {
     const result: Array<{ app: string; lines: string[] }> = [];
+    // Stack-mode handles are keyed as `<project>/<stack>/<app>` while CLI
+    // users typically pass just the bare app name. Resolve via the same
+    // matcher used by getAppStatus() so `omnitron logs main` works in
+    // both single-app and stack modes.
+    const resolved = name ? this.resolveAppName(name) ?? name : undefined;
     for (const [appName, handle] of this.handles) {
-      if (name && appName !== name) continue;
+      if (resolved && appName !== resolved) continue;
       result.push({ app: appName, lines: handle.getLogs(lines) });
     }
     return result;
@@ -765,15 +806,14 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     const policy = buildRestartPolicy(entry, config);
 
-    if (!this.daemonNetron || !this.daemonSocketPath) {
-      throw new Error(
-        `Cannot launch topology for '${entry.name}': daemon Netron not available. ` +
-        'Ensure setDaemonNetron() is called before starting apps.'
-      );
-    }
+    // Wait for daemon Netron to be wired up. Cheap no-op if already ready;
+    // otherwise blocks (with timeout) instead of immediately failing — the
+    // race between daemon startup and stack auto-resume is benign and just
+    // needs a single rendezvous.
+    await this.ensureDaemonNetronReady();
 
-    const serviceRouter = new ServiceRouter(this.daemonNetron, this.logger);
-    const daemonSocketUrl = `unix://${this.daemonSocketPath}`;
+    const serviceRouter = new ServiceRouter(this.daemonNetron!, this.logger);
+    const daemonSocketUrl = `unix://${this.daemonSocketPath!}`;
 
     // Topology startup order: providers (topology.expose) before consumers (topology.access).
     // Providers register their @Service on daemon Netron via ServiceRouter.

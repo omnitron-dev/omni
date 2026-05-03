@@ -18,7 +18,7 @@ import type {
 export interface IProjectInfo {
   /** Registry name (directory-based, e.g. 'omni') */
   name: string;
-  /** Display name from omnitron.config.ts `project` field (e.g. 'downstream') */
+  /** Display name from omnitron.config.ts `project` field (e.g. 'myproj') */
   displayName: string;
   /** Absolute path to monorepo root */
   path: string;

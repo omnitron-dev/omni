@@ -84,7 +84,9 @@ export function Optional() {
 }
 
 /**
- * Inject all instances of a multi-provider
+ * Inject all instances of a multi-provider.
+ *
+ * Works for both constructor parameters and properties.
  */
 export function InjectAll<T>(token: InjectionToken<T>) {
   return function injectAllDecorator(target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) {
@@ -92,12 +94,19 @@ export function InjectAll<T>(token: InjectionToken<T>) {
       const existing = Reflect.getMetadata(METADATA_KEYS.INJECT_ALL, target) || [];
       existing[parameterIndex] = token;
       Reflect.defineMetadata(METADATA_KEYS.INJECT_ALL, existing, target);
+    } else if (propertyKey !== undefined && parameterIndex === undefined) {
+      const existing = Reflect.getMetadata('titan:inject:property:all', target) || {};
+      existing[propertyKey] = token;
+      Reflect.defineMetadata('titan:inject:property:all', existing, target);
     }
   };
 }
 
 /**
- * Inject a value from configuration by path
+ * Inject a value from a container-level configuration store, by dot path.
+ *
+ * Works for both constructor parameters and properties. Provide `defaultValue`
+ * to fall back when the path is missing.
  */
 export function Value(path: string, defaultValue?: any) {
   return function valueDecorator(target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) {
@@ -105,6 +114,10 @@ export function Value(path: string, defaultValue?: any) {
       const existingValues = Reflect.getMetadata(DECORATOR_METADATA.VALUES, target) || [];
       existingValues[parameterIndex] = { path, defaultValue };
       Reflect.defineMetadata(DECORATOR_METADATA.VALUES, existingValues, target);
+    } else if (propertyKey !== undefined && parameterIndex === undefined) {
+      const existing = Reflect.getMetadata('titan:inject:property:values', target) || {};
+      existing[propertyKey] = { path, defaultValue };
+      Reflect.defineMetadata('titan:inject:property:values', existing, target);
     }
   };
 }
@@ -184,6 +197,10 @@ export function InjectEnv(key: string, defaultValue?: any) {
       const existing = Reflect.getMetadata(DECORATOR_METADATA.ENV, target) || [];
       existing[parameterIndex] = { key, defaultValue };
       Reflect.defineMetadata(DECORATOR_METADATA.ENV, existing, target);
+    } else if (propertyKey !== undefined && parameterIndex === undefined) {
+      const existing = Reflect.getMetadata('titan:inject:property:env', target) || {};
+      existing[propertyKey] = { key, defaultValue };
+      Reflect.defineMetadata('titan:inject:property:env', existing, target);
     }
   };
 }
@@ -224,6 +241,10 @@ export function InjectConfig(path: string) {
       const existing = Reflect.getMetadata(DECORATOR_METADATA.CONFIG, target) || [];
       existing[parameterIndex] = path;
       Reflect.defineMetadata(DECORATOR_METADATA.CONFIG, existing, target);
+    } else if (propertyKey !== undefined && parameterIndex === undefined) {
+      const existing = Reflect.getMetadata('titan:inject:property:config', target) || {};
+      existing[propertyKey] = path;
+      Reflect.defineMetadata('titan:inject:property:config', existing, target);
     }
   };
 }
@@ -278,6 +299,10 @@ export function ConditionalInject<T>(token: InjectionToken<T>, condition: () => 
       const existing = Reflect.getMetadata(DECORATOR_METADATA.CONDITIONAL, target) || [];
       existing[parameterIndex] = { token, condition, fallback };
       Reflect.defineMetadata(DECORATOR_METADATA.CONDITIONAL, existing, target);
+    } else if (propertyKey !== undefined && parameterIndex === undefined) {
+      const existing = Reflect.getMetadata('titan:inject:property:conditional', target) || {};
+      existing[propertyKey] = { token, condition, fallback };
+      Reflect.defineMetadata('titan:inject:property:conditional', existing, target);
     }
   };
 }

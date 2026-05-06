@@ -21,6 +21,7 @@ import {
   Constructor,
 } from '../types.js';
 import type { Registration } from './types.js';
+import { buildInjectionPlan } from './injection-plan.js';
 
 /**
  * RegistrationService handles all provider registration logic
@@ -131,45 +132,39 @@ export class RegistrationService {
   }
 
   /**
-   * Extract dependencies from class metadata
+   * Extract dependencies from class metadata.
+   *
+   * Walks the unified injection plan so every supported decorator (@Inject,
+   * @InjectAll, @Value, @InjectConfig, @InjectEnv, @ConditionalInject) is
+   * surfaced. Plain @Inject(token) entries are emitted as bare tokens
+   * (or `{ token, optional }` for @Optional) for backward compatibility with
+   * the rest of the resolution pipeline; richer decorator descriptors are
+   * wrapped in `{ __dep: ... }` markers that `ResolutionService` knows how
+   * to interpret.
    */
-  private extractClassDependencies(classConstructor: Constructor | undefined): InjectionToken<any>[] | undefined {
+  private extractClassDependencies(classConstructor: Constructor | undefined): any[] | undefined {
     if (!classConstructor) return undefined;
 
-    const METADATA_KEYS = {
-      INJECT: 'nexus:inject',
-      INJECT_PARAMS: 'nexus:inject:params',
-      CONSTRUCTOR_PARAMS: 'nexus:constructor-params',
-      OPTIONAL: 'nexus:optional',
-      PROPERTY_INJECTIONS: 'nexus:property:injections',
-    };
-
-    // First try the new decorator metadata (from @Inject decorator)
-    const constructorParams = Reflect.getMetadata(METADATA_KEYS.CONSTRUCTOR_PARAMS, classConstructor);
-    const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
-
-    if (constructorParams && constructorParams.length > 0) {
-      // Use constructor params from @Inject decorator
-      return constructorParams.map((dep: any, index: number) => {
-        if (optionalMetadata[index]) {
-          return { token: dep, optional: true };
+    const plan = buildInjectionPlan(classConstructor);
+    if (plan.constructorParams.length > 0) {
+      return plan.constructorParams.map((dep) => {
+        if (!dep) return undefined;
+        if (dep.kind === 'token') {
+          return dep.optional ? { token: dep.token, optional: true } : dep.token;
         }
-        return dep;
+        return { __dep: dep };
       });
     }
 
-    // Fall back to legacy metadata format
-    const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
-    if (injectedDependencies) {
-      // Transform dependencies to include optional flag
-      return injectedDependencies.map((dep: any, index: number) => {
-        if (optionalMetadata[index]) {
-          return { token: dep, optional: true };
-        }
-        return dep;
-      });
+    // Final legacy fallback: classes that registered via the older
+    // `nexus:inject` array directly.
+    const legacy = Reflect.getMetadata('nexus:inject', classConstructor);
+    const optionalMetadata = Reflect.getMetadata('nexus:optional', classConstructor) || {};
+    if (legacy) {
+      return legacy.map((dep: any, index: number) =>
+        optionalMetadata[index] ? { token: dep, optional: true } : dep
+      );
     }
-
     return undefined;
   }
 

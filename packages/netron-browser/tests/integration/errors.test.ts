@@ -27,7 +27,10 @@ describe('Error Serialization (WebSocket)', () => {
       url: server.wsUrl,
       reconnect: false,
       timeout: 60000, // Increase timeout to 60s for slower environments
-      serviceDefinitions: server.serviceDefinitions,
+      // Discovery is opt-in. Asking for it here exercises the
+      // query_interface round-trip end-to-end; serviceDefinitions stays
+      // unset on purpose to prove the client can resolve defIds itself.
+      enableServiceDiscovery: true,
     });
 
     await client.connect();
@@ -511,7 +514,10 @@ describe('Error Edge Cases', () => {
       url: server.wsUrl,
       reconnect: false,
       timeout: 60000, // Increase timeout to 60s for slower environments
-      serviceDefinitions: server.serviceDefinitions,
+      // Discovery is opt-in. Asking for it here exercises the
+      // query_interface round-trip end-to-end; serviceDefinitions stays
+      // unset on purpose to prove the client can resolve defIds itself.
+      enableServiceDiscovery: true,
     });
 
     await client.connect();

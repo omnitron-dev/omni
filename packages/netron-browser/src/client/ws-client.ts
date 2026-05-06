@@ -68,10 +68,34 @@ export interface WebSocketClientOptions {
   middleware?: IMiddlewareManager;
 
   /**
-   * Service definitions map (serviceName -> definitionId)
-   * Used to resolve service names to definition IDs for RPC calls
+   * Pre-populated `serviceName -> definitionId` map.
+   *
+   * Use this when the caller already knows the server's defIds for the
+   * services it intends to invoke — for example, ahead-of-time deployments
+   * with a fixed service catalog or tests that mint defIds via a shared
+   * fixture. Entries here always take precedence over discovery, even
+   * when `enableServiceDiscovery` is on.
    */
   serviceDefinitions?: Map<string, string>;
+
+  /**
+   * Enable transparent service discovery via the server's `query_interface`
+   * core-task.
+   *
+   * Off by default. When off, `invoke('foo@1.0.0', ...)` sends the bare
+   * qualified service name as the wire defId; this only works against
+   * peers that match by qualified name. With auto-discovery off,
+   * applications either provide an explicit `serviceDefinitions` map or
+   * call {@link WebSocketClient.discoverService} ahead of time.
+   *
+   * Why opt-in: probing the catalog of an arbitrary remote endpoint is a
+   * deliberate trust decision. Browser clients in particular often want
+   * to talk only to a curated set of known services and never query for
+   * others — leaving this off makes that the default.
+   *
+   * @default false
+   */
+  enableServiceDiscovery?: boolean;
 }
 
 /**
@@ -106,6 +130,18 @@ export class WebSocketClient extends EventEmitter {
   private auth?: AuthenticationClient;
   private middleware: IMiddlewareManager;
   private serviceDefinitions?: Map<string, string>;
+  private enableServiceDiscovery: boolean;
+  /**
+   * Cache of `serviceName -> definitionId` populated from the server's
+   * `query_interface` core-task. Cleared on every (re)connect since defIds
+   * are rebuilt on the server side.
+   */
+  private discoveredDefinitions = new Map<string, string>();
+  /**
+   * Coalesces concurrent `invoke()` calls for the same service so we issue
+   * exactly one `query_interface` round-trip per service per connection.
+   */
+  private pendingDiscoveries = new Map<string, Promise<string>>();
   private state: ConnectionState = 'disconnected' as ConnectionState;
   private pendingRequests = new Map<string, PendingRequest>();
   private connectedAt?: number;
@@ -136,6 +172,7 @@ export class WebSocketClient extends EventEmitter {
     this.auth = options.auth;
     this.middleware = options.middleware || new MiddlewarePipeline();
     this.serviceDefinitions = options.serviceDefinitions;
+    this.enableServiceDiscovery = options.enableServiceDiscovery === true;
     this.clientId = crypto.randomUUID?.() || `browser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
@@ -159,6 +196,11 @@ export class WebSocketClient extends EventEmitter {
         this.isManualDisconnect = false;
         this.handshakeComplete = false;
         this.serverId = null;
+        // defIds are minted per-server-process. Always start a fresh
+        // discovery cache for each (re)connection so a server restart
+        // can't leave stale ids in the map.
+        this.discoveredDefinitions.clear();
+        this.pendingDiscoveries.clear();
         this.state = 'connecting' as ConnectionState;
 
         // Generate a fresh client ID for each connection attempt.
@@ -425,34 +467,81 @@ export class WebSocketClient extends EventEmitter {
         };
       }
 
-      // Resolve service name to definition ID if serviceDefinitions provided
-      const defId = this.serviceDefinitions?.get(service) || service;
+      // Resolve service name → definition id. Discovery is the default
+      // (transparent query_interface round-trip on first use, cached
+      // thereafter); explicit serviceDefinitions or
+      // disableServiceDiscovery suppress it for advanced callers.
+      let defId = await this.resolveDefinitionId(service);
 
-      // Create request packet
-      const packet = new Packet(packetId);
-      packet.setType(TYPE_CALL);
-      packet.setImpulse(1); // Request
-      // Server expects: [defId, method, ...args]
-      packet.data = [defId, method, ...args];
+      const sendCallWithDefId = async (currentDefId: string): Promise<unknown> => {
+        const packet = new Packet(packetId);
+        packet.setType(TYPE_CALL);
+        packet.setImpulse(1); // Request
+        // Server expects: [defId, method, ...args]
+        packet.data = [currentDefId, method, ...args];
 
-      // Send packet
-      this.sendPacket(packet);
-      this.metrics.requestsSent++;
+        this.sendPacket(packet);
+        this.metrics.requestsSent++;
 
-      // Wait for response
-      const data = await new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          this.pendingRequests.delete(String(packetId));
-          this.metrics.errors++;
-          reject(new TimeoutError(`Request timeout after ${timeout}ms`));
-        }, timeout) as unknown as number;
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            this.pendingRequests.delete(String(packetId));
+            this.metrics.errors++;
+            reject(new TimeoutError(`Request timeout after ${timeout}ms`));
+          }, timeout) as unknown as number;
 
-        this.pendingRequests.set(String(packetId), {
-          resolve,
-          reject,
-          timeout: timeoutId,
+          this.pendingRequests.set(String(packetId), {
+            resolve,
+            reject,
+            timeout: timeoutId,
+          });
         });
-      });
+      };
+
+      let data: unknown;
+      try {
+        data = await sendCallWithDefId(defId);
+      } catch (err: any) {
+        // Stale-defId recovery: if the cached id no longer maps to a
+        // definition (e.g. the server was restarted, or the service was
+        // re-exposed), evict the cache entry and retry once with a fresh
+        // discovery. We do not retry when the caller pre-populated the
+        // serviceDefinitions map — that is treated as authoritative.
+        const looksLikeStaleDef =
+          this.enableServiceDiscovery &&
+          this.discoveredDefinitions.get(service) === defId &&
+          isLikelyDefinitionNotFoundError(err) &&
+          !this.serviceDefinitions?.has(service);
+
+        if (!looksLikeStaleDef) {
+          throw err;
+        }
+        this.discoveredDefinitions.delete(service);
+        // Re-resolve and re-send under a fresh packet id.
+        defId = await this.resolveDefinitionId(service);
+        const retryId = Packet.nextId();
+        const packet = new Packet(retryId);
+        packet.setType(TYPE_CALL);
+        packet.setImpulse(1);
+        packet.data = [defId, method, ...args];
+
+        data = await new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            this.pendingRequests.delete(String(retryId));
+            this.metrics.errors++;
+            reject(new TimeoutError(`Request timeout after ${timeout}ms`));
+          }, timeout) as unknown as number;
+
+          this.pendingRequests.set(String(retryId), {
+            resolve,
+            reject,
+            timeout: timeoutId,
+          });
+
+          this.sendPacket(packet);
+          this.metrics.requestsSent++;
+        });
+      }
 
       // Store response in context
       ctx.response = {
@@ -492,6 +581,152 @@ export class WebSocketClient extends EventEmitter {
     // Encode packet to MessagePack binary format
     const encoded = encodePacket(packet);
     this.ws.send(encoded);
+  }
+
+  /**
+   * Invoke a Netron core-task on the connected server.
+   *
+   * Core-tasks are out-of-band RPCs that operate on the server's Netron
+   * instance itself (service catalog, authentication, cache invalidation,
+   * pub/sub subscription, etc.) — they don't target any user-defined
+   * service. The server dispatches by task name through its
+   * {@link import('@omnitron-dev/titan/netron').TaskManager TaskManager}.
+   *
+   * Used internally for transparent service discovery, but exposed because
+   * the same primitive is genuinely useful for client code (`authenticate`,
+   * `invalidate_cache`, `subscribe`).
+   *
+   * @param name - Registered task name on the server.
+   * @param args - Positional arguments forwarded to the task handler.
+   * @returns The decoded task result.
+   */
+  async runTask<T = unknown>(name: string, ...args: any[]): Promise<T> {
+    if (!this.isConnected()) {
+      throw new ConnectionError('WebSocket is not connected');
+    }
+    const packetId = Packet.nextId();
+    const packet = new Packet(packetId);
+    packet.setType(TYPE_TASK);
+    packet.setImpulse(1); // request
+    packet.data = [name, ...args];
+
+    return new Promise<T>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(String(packetId));
+        reject(new TimeoutError(`runTask('${name}') timed out after ${this.timeout}ms`));
+      }, this.timeout) as unknown as number;
+
+      this.pendingRequests.set(String(packetId), {
+        resolve: resolve as (v: any) => void,
+        reject,
+        timeout: timeoutId,
+      });
+
+      try {
+        this.sendPacket(packet);
+        this.metrics.requestsSent++;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        this.pendingRequests.delete(String(packetId));
+        reject(err as Error);
+      }
+    });
+  }
+
+  /**
+   * Look up the wire-level definition id for a service.
+   *
+   * Resolution order (the first hit wins):
+   *   1. Caller-supplied `serviceDefinitions` map — always authoritative.
+   *   2. Local discovery cache populated from previous lookups.
+   *   3. The server's `query_interface` core-task, *only* when
+   *      `enableServiceDiscovery` is on. Concurrent lookups for the same
+   *      service share one in-flight promise so the round-trip happens
+   *      once per (service, connection) pair.
+   *
+   * When discovery is off and the service is not in the explicit map, we
+   * fall back to passing the bare qualified name as the defId — that is
+   * the no-discovery path and matches peers that route by service name.
+   */
+  private resolveDefinitionId(service: string): Promise<string> {
+    const explicit = this.serviceDefinitions?.get(service);
+    if (explicit) return Promise.resolve(explicit);
+
+    const cached = this.discoveredDefinitions.get(service);
+    if (cached) return Promise.resolve(cached);
+
+    if (!this.enableServiceDiscovery) return Promise.resolve(service);
+
+    const inFlight = this.pendingDiscoveries.get(service);
+    if (inFlight) return inFlight;
+
+    const promise = (async () => {
+      // The server-side query_interface task returns a Definition (decoded
+      // by the registered msgpack handler on the netron-browser serializer).
+      const def = (await this.runTask<{ id?: string } | null>('query_interface', service)) ?? null;
+      if (!def || typeof def.id !== 'string') {
+        throw new ConnectionError(
+          `query_interface('${service}') returned an unexpected payload — server did not yield a definition id.`
+        );
+      }
+      this.discoveredDefinitions.set(service, def.id);
+      return def.id;
+    })().finally(() => {
+      this.pendingDiscoveries.delete(service);
+    });
+
+    this.pendingDiscoveries.set(service, promise);
+    return promise;
+  }
+
+  /**
+   * Eagerly resolve and cache one or more services via `query_interface`.
+   *
+   * Useful when discovery is enabled but the caller wants the round-trip
+   * to happen up front (e.g. during app boot) rather than lazily on the
+   * first `invoke()`. Also usable when `enableServiceDiscovery` is off —
+   * in that case this is the explicit way to populate the discovery
+   * cache without making auto-probing the default.
+   *
+   * @returns A map of every service that was resolved.
+   */
+  async discoverServices(serviceNames: string[]): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    await Promise.all(
+      serviceNames.map(async (name) => {
+        if (this.serviceDefinitions?.has(name)) {
+          resolved.set(name, this.serviceDefinitions.get(name)!);
+          return;
+        }
+        const cached = this.discoveredDefinitions.get(name);
+        if (cached) {
+          resolved.set(name, cached);
+          return;
+        }
+        const def = (await this.runTask<{ id?: string } | null>('query_interface', name)) ?? null;
+        if (!def || typeof def.id !== 'string') {
+          throw new ConnectionError(
+            `query_interface('${name}') returned an unexpected payload — server did not yield a definition id.`
+          );
+        }
+        this.discoveredDefinitions.set(name, def.id);
+        resolved.set(name, def.id);
+      })
+    );
+    return resolved;
+  }
+
+  /**
+   * Drop every cached `serviceName -> defId` entry so the next `invoke()`
+   * for each service re-issues a `query_interface` round-trip.
+   *
+   * Useful when the server has been restarted out-of-band, or when the
+   * application knows that exposed services have changed shape (and the
+   * old defIds therefore no longer point at the same code).
+   */
+  clearDiscoveryCache(): void {
+    this.discoveredDefinitions.clear();
+    this.pendingDiscoveries.clear();
   }
 
   /**
@@ -634,4 +869,28 @@ export class WebSocketClient extends EventEmitter {
     this.middleware.use(middleware, config, stage);
     return this;
   }
+}
+
+/**
+ * Heuristic: did this error come from the server failing to find the
+ * definition id we sent? Used to decide whether to evict our discovery
+ * cache entry and retry once.
+ *
+ * The server reports such failures through several shapes depending on the
+ * codepath (Errors.notFound builds a TitanError, the bare RPC layer can
+ * also send a plain string). We look for the canonical payload first,
+ * then fall back to substring matching as a last resort — better to retry
+ * than to fail on a false negative when discovery is the recovery path.
+ */
+function isLikelyDefinitionNotFoundError(err: unknown): boolean {
+  if (!err) return false;
+  const code = (err as any).code;
+  const message = ((err as any).message ?? String(err)) as string;
+  if (typeof code === 'string') {
+    if (code === 'NOT_FOUND' || code === 'DEFINITION_NOT_FOUND') return true;
+  }
+  if (typeof message === 'string' && message.length > 0) {
+    return /Definition.*not\s*found/i.test(message) || /Service.*not\s*found/i.test(message);
+  }
+  return false;
 }

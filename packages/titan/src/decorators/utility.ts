@@ -53,7 +53,7 @@ export const Retryable = createMethodInterceptor<{
   maxDelay?: number;
   backoff?: number;
   retryOn?: (error: any) => boolean;
-}>('Retryable', async (originalMethod, args, context) => {
+}>('Retryable', async (originalMethod, args, context, instance) => {
   const { attempts = 3, delay = 1000, maxDelay = 30000, backoff = 2, retryOn } = context.options || {};
 
   let lastError: any;
@@ -78,7 +78,7 @@ export const Retryable = createMethodInterceptor<{
         currentDelay = Math.min(currentDelay * backoff, maxDelay);
 
         // Log retry attempt if logger available
-        const logger = getInstanceLogger(context.target);
+        const logger = getInstanceLogger(instance);
         logger?.warn(
           {
             attempt,
@@ -105,8 +105,8 @@ export const Log = createMethodInterceptor<{
   includeArgs?: boolean;
   includeResult?: boolean;
   message?: string;
-}>('Log', async (originalMethod, args, context) => {
-  const logger = getInstanceLogger(context.target);
+}>('Log', async (originalMethod, args, context, instance) => {
+  const logger = getInstanceLogger(instance);
 
   // Skip logging if no logger available
   if (!logger) {
@@ -158,8 +158,8 @@ export const Monitor = createMethodInterceptor<{
   sampleRate?: number;
   includeArgs?: boolean;
   includeResult?: boolean;
-}>('Monitor', async (originalMethod, args, context) => {
-  const logger = getInstanceLogger(context.target);
+}>('Monitor', async (originalMethod, args, context, instance) => {
+  const logger = getInstanceLogger(instance);
   const sampleRate = context.options?.sampleRate ?? 1.0;
 
   // Skip monitoring based on sample rate or if no logger

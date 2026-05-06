@@ -160,23 +160,6 @@ describe('Container - Comprehensive Tests', () => {
       expect(service.opt).toBeUndefined();
     });
 
-    it.skip('should resolve property injection', () => {
-      // Property injection not yet implemented
-      const depToken = createToken<string>('Dependency');
-
-      @Injectable()
-      class ServiceWithProperty {
-        @Inject(depToken)
-        public dep!: string;
-      }
-
-      container.register(depToken, { useValue: 'property-value' });
-      container.register(ServiceWithProperty);
-
-      const service = container.resolve(ServiceWithProperty);
-      expect(service.dep).toBe('property-value');
-    });
-
     it('should throw DependencyNotFoundError for unregistered token', () => {
       const unknownToken = createToken<any>('Unknown');
 
@@ -813,19 +796,6 @@ describe('Container - Comprehensive Tests', () => {
       expect(value).toBe('lazy-value');
     });
 
-    it.skip('should create async lazy proxy', async () => {
-      // resolveLazyAsync not yet implemented
-      const token = createToken<{ getValue: () => string }>('AsyncLazy');
-
-      container.register(token, {
-        useFactory: async () => ({ getValue: () => 'async-lazy-value' }),
-      });
-
-      const proxy = await container.resolveLazyAsync(token);
-      const value = await proxy.getValue();
-
-      expect(value).toBe('async-lazy-value');
-    });
   });
 
   describe('Stream Providers', () => {

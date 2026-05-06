@@ -564,14 +564,19 @@ export function createParameterizedDecorator<TOptions>(
  */
 export function createMethodInterceptor<TOptions = any>(
   name: string,
-  interceptor: (originalMethod: (...args: any[]) => any, args: any[], context: DecoratorContext<TOptions>) => any
+  interceptor: (
+    originalMethod: (...args: any[]) => any,
+    args: any[],
+    context: DecoratorContext<TOptions>,
+    instance: any
+  ) => any
 ): (options?: TOptions) => MethodDecorator {
   return createDecorator<TOptions>()
     .withName(name)
     .forMethod((context) => {
       const originalMethod = context.descriptor!.value;
       context.descriptor!.value = function interceptorMethod(...args: any[]) {
-        return interceptor.call(this, originalMethod.bind(this), args, context);
+        return interceptor.call(this, originalMethod.bind(this), args, context, this);
       };
       return context.descriptor;
     })

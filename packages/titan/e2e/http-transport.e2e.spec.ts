@@ -168,34 +168,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
     });
   });
 
-  // Discovery & Metadata endpoints (/netron/discovery, /netron/query-interface)
-  // were removed from the HTTP transport server. Service discovery now happens
-  // through the queryInterface RPC mechanism, not dedicated HTTP endpoints.
-  describe.skip('Discovery & Metadata (endpoints removed)', () => {
-    test('should discover available services', async () => {
-      const response = await fetch(`${BASE_URL}/netron/discovery`);
-      expect(response.ok).toBe(true);
-    });
-
-    test('should query interface metadata', async () => {
-      const response = await fetch(`${BASE_URL}/netron/query-interface`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: 'test-query-1',
-          serviceName: 'TestService',
-        }),
-      });
-      expect(response.ok).toBe(true);
-    });
-
-    test('should list server capabilities', async () => {
-      const response = await fetch(`${BASE_URL}/netron/discovery`);
-      const discovery = await response.json();
-      expect(discovery.server).toBeDefined();
-    });
-  });
-
   describe('Batch Operations', () => {
     test('should execute batch request with multiple methods', async () => {
       const response = await fetch(`${BASE_URL}/netron/batch`, {

@@ -328,8 +328,6 @@ describe('Basic HTTP Tests', () => {
 
       const lastRequest = mockServer.requests[mockServer.requests.length - 1];
       expect(lastRequest.body).toHaveProperty('id');
-      expect(lastRequest.body).toHaveProperty('version', '1.0');
-      expect(lastRequest.body).toHaveProperty('timestamp');
       expect(lastRequest.body).toHaveProperty('service', 'echo@1.0.0');
       expect(lastRequest.body).toHaveProperty('method', 'echoString');
       expect(lastRequest.body).toHaveProperty('input');

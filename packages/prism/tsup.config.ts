@@ -17,6 +17,14 @@ export default defineConfig([
       'forms/index': 'src/forms/index.ts',
       'accessibility/index': 'src/accessibility/index.ts',
       'http/index': 'src/http/index.ts',
+      // Component subpath entries — kept tight on purpose. The
+      // `./components/*` glob in package.json makes every component
+      // directory addressable, but we only ship the ones a downstream
+      // app actually imports as a separate entry, since each one bloats
+      // the build matrix. Add entries here when a downstream file
+      // uses `from '@omnitron-dev/prism/components/<name>'`.
+      'components/index': 'src/components/index.ts',
+      'components/editor/index': 'src/components/editor/index.ts',
     },
     format: ['esm'],
     dts: true,

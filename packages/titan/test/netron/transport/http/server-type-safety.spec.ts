@@ -64,8 +64,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'ctx-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'echo',
           input: { message: 'Hello Type Safety!' },
@@ -99,8 +97,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         },
         body: JSON.stringify({
           id: 'req-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'echo',
           input: { message: 'test' },
@@ -124,8 +120,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'meta-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'echo',
           input: { message: 'test' },
@@ -158,8 +152,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'error-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
           input: {},
@@ -186,8 +178,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'error-test-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
           input: {},
@@ -213,8 +203,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'error-test-3',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
           input: {},
@@ -246,8 +234,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'error-test-4',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
           input: {},
@@ -282,8 +268,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'req-1',
@@ -327,8 +311,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-test-2',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'req-1',
@@ -360,8 +342,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'meta-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'echo',
           input: { message: 'test' },
@@ -388,8 +368,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'validation-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'validate',
           input: { value: 150 }, // Out of range (max 100)
@@ -415,8 +393,6 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'validation-test-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'validate',
           input: { value: 50 }, // Valid (0-100)

@@ -26,7 +26,6 @@ export function createHttpErrorResponse(
   });
 
   const headers = new Headers({
-    'X-Netron-Version': '1.0',
     'Content-Type': 'application/json',
   });
 
@@ -54,7 +53,6 @@ export function handleError(error: unknown, request: Request, corsOptions?: Tran
 
   // Build headers with CORS support
   const headers = new Headers({
-    'X-Netron-Version': '1.0',
     'Content-Type': 'application/json',
   });
 
@@ -73,7 +71,6 @@ export function handleError(error: unknown, request: Request, corsOptions?: Tran
       error: true,
       message: titanError.message,
       code: String(httpError.status),
-      timestamp: Date.now(),
     }),
     { status: httpError.status, headers }
   );
@@ -103,7 +100,7 @@ export function handleCorsPreflightRequest(request: Request, corsOptions?: Trans
   if (origin) {
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     headers.set('Access-Control-Max-Age', '86400');
 
     if (corsOptions && (corsOptions as { credentials?: boolean }).credentials) {

@@ -214,7 +214,6 @@ export class HttpClient {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        'X-Netron-Version': '1.0',
         ...this.headers,
         ...customHeaders, // Middleware can override headers
       };
@@ -247,8 +246,6 @@ export class HttpClient {
           this.metrics.errors++;
           return {
             id: message.id,
-            version: '2.0',
-            timestamp: Date.now(),
             success: false,
             error: {
               code: 'HTTP_ERROR',
@@ -273,8 +270,6 @@ export class HttpClient {
       if (error.name === 'AbortError') {
         return {
           id: message.id,
-          version: '2.0',
-          timestamp: Date.now(),
           success: false,
           error: {
             code: 'TIMEOUT',
@@ -285,8 +280,6 @@ export class HttpClient {
 
       return {
         id: message.id,
-        version: '2.0',
-        timestamp: Date.now(),
         success: false,
         error: {
           code: 'NETWORK_ERROR',

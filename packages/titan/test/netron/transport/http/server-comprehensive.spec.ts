@@ -540,8 +540,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'val-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'ValidationService',
           method: 'validateInput',
           input: {
@@ -565,8 +563,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'val-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'ValidationService',
           method: 'validateInput',
           input: {
@@ -593,8 +589,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'val-3',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'ValidationService',
           method: 'withDefaults',
           input: {}, // Empty input, should get defaults
@@ -659,8 +653,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'stream-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'StreamService',
           method: 'streamNumbers',
           input: {},
@@ -682,8 +674,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'stream-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'StreamService',
           method: 'streamWithError',
           input: {},
@@ -759,8 +749,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         },
         body: JSON.stringify({
           id: 'cors-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'CorsService',
           method: 'test',
           input: {},
@@ -833,29 +821,21 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'b1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 1 },
             },
             {
               id: 'b2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 2 },
             },
             {
               id: 'b3',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 3 },
@@ -884,24 +864,18 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-2',
-          version: '1.0',
-          timestamp: Date.now(),
           options: {
             parallel: false,
           },
           requests: [
             {
               id: 'b1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 1 },
             },
             {
               id: 'b2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 2 },
@@ -925,8 +899,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-3',
-          version: '1.0',
-          timestamp: Date.now(),
           options: {
             parallel: false,
             stopOnError: true,
@@ -934,24 +906,18 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
           requests: [
             {
               id: 'b1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 1 },
             },
             {
               id: 'b2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 999 }, // Will error
             },
             {
               id: 'b3',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 3 },
@@ -976,29 +942,21 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-4',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'b1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 1 },
             },
             {
               id: 'b2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 999 }, // Error
             },
             {
               id: 'b3',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'BatchService',
               method: 'batchMethod',
               input: { value: 3 },
@@ -1117,8 +1075,6 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'err-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'NonExistent',
           method: 'test',
           input: {},

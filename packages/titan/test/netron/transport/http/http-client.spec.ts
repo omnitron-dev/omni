@@ -205,7 +205,6 @@ describe('HttpConnection (v1.0 Native Protocol)', () => {
         },
         json: vi.fn().mockResolvedValue({
           id: 'msg-1',
-          version: '1.0',
           success: true,
           data: 'processed',
         }),
@@ -214,8 +213,6 @@ describe('HttpConnection (v1.0 Native Protocol)', () => {
       const message = Buffer.from(
         JSON.stringify({
           id: 'msg-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
           input: {},
@@ -236,7 +233,6 @@ describe('HttpConnection (v1.0 Native Protocol)', () => {
         },
         json: vi.fn().mockResolvedValue({
           id: 'msg-1',
-          version: '1.0',
           success: true,
           data: 'processed',
         }),
@@ -245,8 +241,6 @@ describe('HttpConnection (v1.0 Native Protocol)', () => {
       const buffer = new TextEncoder().encode(
         JSON.stringify({
           id: 'msg-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
           input: {},
@@ -340,7 +334,6 @@ describe('HttpConnection (v1.0 Native Protocol)', () => {
         headers: { get: vi.fn() },
         json: vi.fn().mockResolvedValue({
           id: 'msg-1',
-          version: '1.0',
           success: true,
           data: 42,
         }),

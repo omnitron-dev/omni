@@ -21,13 +21,11 @@ describe('HTTP Message Types', () => {
       const message = createRequestMessage('UserService', 'getUser', { id: '123' });
 
       expect(message).toMatchObject({
-        version: '1.0',
         service: 'UserService',
         method: 'getUser',
         input: { id: '123' },
       });
       expect(message.id).toBeDefined();
-      expect(message.timestamp).toBeDefined();
     });
 
     it('should create a request message with context and hints', () => {
@@ -55,11 +53,9 @@ describe('HTTP Message Types', () => {
 
       expect(response).toMatchObject({
         id: 'req-123',
-        version: '1.0',
         success: true,
         data: { name: 'John', age: 30 },
       });
-      expect(response.timestamp).toBeDefined();
     });
 
     it('should create an error response', () => {
@@ -70,14 +66,12 @@ describe('HTTP Message Types', () => {
 
       expect(response).toMatchObject({
         id: 'req-123',
-        version: '1.0',
         success: false,
         error: {
           code: 'NOT_FOUND',
           message: 'User not found',
         },
       });
-      expect(response.timestamp).toBeDefined();
     });
 
     it('should create response with hints', () => {
@@ -126,9 +120,7 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpRequestMessage({
             id: '123',
-            version: '0.9', // wrong version
-            timestamp: Date.now(),
-            service: 'Service',
+            // missing service
             method: 'method',
             input: {},
           })
@@ -136,11 +128,9 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpRequestMessage({
             id: '123',
-            version: '1.0',
-            timestamp: Date.now(),
-            // missing service
+            service: 'Service',
             method: 'method',
-            input: {},
+            // missing input
           })
         ).toBe(false);
       });
@@ -167,16 +157,12 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpResponseMessage({
             id: '123',
-            version: '1.0',
-            timestamp: Date.now(),
             // missing success field
           })
         ).toBe(false);
         expect(
           isHttpResponseMessage({
             id: '123',
-            version: '1.0',
-            timestamp: Date.now(),
             success: true,
             // success response must have data
           })
@@ -184,8 +170,6 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpResponseMessage({
             id: '123',
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             // error response must have error
           })
@@ -197,8 +181,6 @@ describe('HTTP Message Types', () => {
       it('should validate a valid batch request', () => {
         const batch: HttpBatchRequest = {
           id: 'batch-123',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             { id: 'req-1', service: 'Service1', method: 'method1', input: {} },
             { id: 'req-2', service: 'Service2', method: 'method2', input: { data: true } },
@@ -213,16 +195,12 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpBatchRequest({
             id: 'batch-123',
-            version: '1.0',
-            timestamp: Date.now(),
             requests: 'not-an-array', // must be array
           })
         ).toBe(false);
         expect(
           isHttpBatchRequest({
             id: 'batch-123',
-            version: '1.0',
-            timestamp: Date.now(),
             requests: [
               { id: 'req-1' }, // missing required fields
             ],
@@ -235,8 +213,6 @@ describe('HTTP Message Types', () => {
       it('should validate a valid batch response', () => {
         const batch: HttpBatchResponse = {
           id: 'batch-123',
-          version: '1.0',
-          timestamp: Date.now(),
           responses: [
             { id: 'req-1', success: true, data: { result: 'ok' } },
             { id: 'req-2', success: false, error: { code: 'ERROR', message: 'Failed' } },
@@ -251,16 +227,12 @@ describe('HTTP Message Types', () => {
         expect(
           isHttpBatchResponse({
             id: 'batch-123',
-            version: '1.0',
-            timestamp: Date.now(),
             responses: 'not-an-array',
           })
         ).toBe(false);
         expect(
           isHttpBatchResponse({
             id: 'batch-123',
-            version: '1.0',
-            timestamp: Date.now(),
             responses: [
               { id: 'req-1' }, // missing success field
             ],
@@ -406,8 +378,6 @@ describe('HTTP Message Types', () => {
     it('should create batch request with options', () => {
       const batch: HttpBatchRequest = {
         id: 'batch-123',
-        version: '1.0',
-        timestamp: Date.now(),
         requests: [
           { id: 'req-1', service: 'Service1', method: 'method1', input: {} },
           { id: 'req-2', service: 'Service2', method: 'method2', input: {} },
@@ -428,8 +398,6 @@ describe('HTTP Message Types', () => {
     it('should create batch response with metrics', () => {
       const batch: HttpBatchResponse = {
         id: 'batch-123',
-        version: '1.0',
-        timestamp: Date.now(),
         responses: [
           { id: 'req-1', success: true, data: { result: 'ok' } },
           { id: 'req-2', success: false, error: { code: 'ERROR', message: 'Failed' } },

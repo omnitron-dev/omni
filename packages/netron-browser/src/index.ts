@@ -183,9 +183,6 @@ export {
 
 export type { LRUCacheOptions, LRUCacheStats } from './utils/index.js';
 
-// Constants
-export { NETRON_VERSION } from './types/index.js';
-
 // Utilities
 export { uuid } from './utils/uuid.js';
 export { Uid } from './utils/uid.js';

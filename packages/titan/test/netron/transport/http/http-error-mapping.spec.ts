@@ -117,8 +117,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -142,8 +140,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwUnauthorized',
           input: [],
@@ -164,8 +160,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-3',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwValidationError',
           input: [],
@@ -189,8 +183,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-4',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwRateLimitError',
           input: [],
@@ -211,8 +203,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-5',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwInternalError',
           input: [],
@@ -232,8 +222,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-6',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwPlainError',
           input: [],
@@ -255,8 +243,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-7',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -273,8 +259,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-8',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -291,8 +275,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-9',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -309,8 +291,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-10',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -327,8 +307,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-11',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
           input: [],
@@ -340,7 +318,6 @@ describe('HTTP Error Mapping with TitanError', () => {
       expect(response.headers.get('X-Correlation-ID')).toBe('corr-67890');
       expect(response.headers.get('X-Trace-ID')).toBe('trace-abcde');
       expect(response.headers.get('X-Span-ID')).toBe('span-fghij');
-      expect(response.headers.get('X-Netron-Version')).toBe('1.0');
     });
   });
 
@@ -356,8 +333,6 @@ describe('HTTP Error Mapping with TitanError', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: 'test-12',
-            version: '1.0',
-            timestamp: Date.now(),
             service: 'errortest',
             method: 'throwNotFound',
             input: [],
@@ -388,8 +363,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-13',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'errortest',
           method: 'throwValidationError',
           input: [],
@@ -403,23 +376,6 @@ describe('HTTP Error Mapping with TitanError', () => {
       expect(response.headers.get('X-Correlation-ID')).toBeNull();
       expect(response.headers.get('X-Trace-ID')).toBeNull();
       expect(response.headers.get('X-Span-ID')).toBeNull();
-    });
-
-    it('should always include X-Netron-Version header', async () => {
-      const response = await fetch(`${baseUrl}/netron/invoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: 'test-14',
-          version: '1.0',
-          timestamp: Date.now(),
-          service: 'errortest',
-          method: 'throwInternalError',
-          input: [],
-        }),
-      });
-
-      expect(response.headers.get('X-Netron-Version')).toBe('1.0');
     });
 
     it('should use httpStatus property directly from TitanError', async () => {
@@ -445,8 +401,6 @@ describe('HTTP Error Mapping with TitanError', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-15',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'customerrortest',
           method: 'throwCustomError',
           input: [],

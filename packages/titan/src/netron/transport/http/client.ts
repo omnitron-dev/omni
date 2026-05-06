@@ -146,7 +146,6 @@ export class HttpTransportClient {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'X-Netron-Version': '1.0',
           ...this.options?.headers,
         },
         body: JSON.stringify(message),
@@ -168,8 +167,6 @@ export class HttpTransportClient {
 
           return {
             id: message.id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: {
               code: getErrorName(titanError.code),
@@ -189,8 +186,6 @@ export class HttpTransportClient {
 
           return {
             id: message.id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: {
               code: getErrorName(titanError.code),
@@ -207,8 +202,6 @@ export class HttpTransportClient {
       if (error instanceof Error && error.name === 'AbortError') {
         return {
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: {
             code: getErrorName(ErrorCode.REQUEST_TIMEOUT),
@@ -219,8 +212,6 @@ export class HttpTransportClient {
 
       return {
         id: message.id,
-        version: '1.0',
-        timestamp: Date.now(),
         success: false,
         error: {
           code: getErrorName(ErrorCode.INTERNAL_ERROR),

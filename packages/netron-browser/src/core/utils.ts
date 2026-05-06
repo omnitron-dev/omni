@@ -90,7 +90,6 @@ export interface CommonHeaders {
   traceId?: string | null;
   correlationId?: string | null;
   spanId?: string | null;
-  netronVersion?: string | null;
 }
 
 /**
@@ -107,6 +106,5 @@ export function parseCommonHeaders(source: Headers | Request): CommonHeaders {
     traceId: headers.get('X-Trace-ID'),
     correlationId: headers.get('X-Correlation-ID'),
     spanId: headers.get('X-Span-ID'),
-    netronVersion: headers.get('X-Netron-Version'),
   };
 }

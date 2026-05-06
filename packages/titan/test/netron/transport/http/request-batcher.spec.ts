@@ -18,8 +18,6 @@ describe('RequestBatcher', () => {
   // Helper to create a test request
   const createRequest = (id: string, service: string, method: string): HttpRequestMessage => ({
     id,
-    version: '1.0',
-    timestamp: Date.now(),
     service,
     method,
     input: { test: 'data' },
@@ -28,13 +26,9 @@ describe('RequestBatcher', () => {
   // Helper to create a successful batch response
   const createBatchResponse = (requestIds: string[]): HttpBatchResponse => ({
     id: 'batch-1',
-    version: '1.0',
-    timestamp: Date.now(),
     success: true,
     responses: requestIds.map((id) => ({
       id,
-      version: '1.0',
-      timestamp: Date.now(),
       success: true,
       data: { result: `success-${id}` },
     })),
@@ -230,7 +224,6 @@ describe('RequestBatcher', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-Netron-Version': '1.0',
           }),
         })
       );
@@ -335,14 +328,10 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: {
                 code: 'SERVICE_ERROR',
@@ -389,14 +378,10 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: {
                 code: 'ERROR',
@@ -449,14 +434,10 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'TEMP_ERROR', message: 'Temporary failure' },
             },
@@ -485,14 +466,10 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'ERROR', message: 'Failed' },
             },
@@ -519,14 +496,10 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'ERROR', message: 'Persistent failure' },
             },
@@ -594,21 +567,15 @@ describe('RequestBatcher', () => {
         ok: true,
         json: async () => ({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           responses: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { result: 'success' },
             },
             {
               id: 'req-2',
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'ERROR', message: 'Failed' },
             },

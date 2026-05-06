@@ -128,8 +128,6 @@ describe('HTTP Transport Integration (v1.0)', () => {
         },
         body: JSON.stringify({
           id: 'test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
           input: {},
@@ -182,7 +180,6 @@ describe('HTTP Transport Integration (v1.0)', () => {
         },
         json: vi.fn().mockResolvedValue({
           id: 'msg-1',
-          version: '1.0',
           success: true,
           data: 'ok',
         }),
@@ -191,8 +188,6 @@ describe('HTTP Transport Integration (v1.0)', () => {
       const message = Buffer.from(
         JSON.stringify({
           id: 'msg-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
           input: {},
@@ -215,53 +210,6 @@ describe('HTTP Transport Integration (v1.0)', () => {
       // HTTP connections are stateless and don't verify server on connect
       const connection = await transport.connect('http://localhost:9999');
       expect(connection).toBeDefined();
-    });
-  });
-
-  describe('Protocol Version', () => {
-    beforeEach(() => {
-      server = new HttpServer({ port: testPort });
-    });
-
-    it('should include protocol version in responses', async () => {
-      const mockStub = {
-        definition: {
-          meta: {
-            name: 'Test@1.0.0',
-            version: '1.0.0',
-            methods: {
-              test: { name: 'test' },
-            },
-          },
-        },
-        call: vi.fn().mockResolvedValue(42),
-      };
-
-      (server as any).setPeer({
-        stubs: new Map([['stub-1', mockStub]]),
-      });
-
-      const request = new Request(`${baseUrl}/netron/invoke`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Netron-Version': '1.0',
-        },
-        body: JSON.stringify({
-          id: 'test-1',
-          version: '1.0',
-          timestamp: Date.now(),
-          service: 'Test@1.0.0',
-          method: 'test',
-          input: {},
-        }),
-      });
-
-      const response = await server.handleRequest(request);
-      const data = (await response.json()) as any;
-
-      expect(data.version).toBe('1.0');
-      expect(response.headers.get('X-Netron-Version')).toBe('1.0');
     });
   });
 
@@ -295,21 +243,15 @@ describe('HTTP Transport Integration (v1.0)', () => {
         },
         body: JSON.stringify({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'req-1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 1, b: 2 },
             },
             {
               id: 'req-2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 3, b: 4 },

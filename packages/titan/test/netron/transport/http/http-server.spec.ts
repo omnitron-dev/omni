@@ -128,12 +128,9 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '1.0',
         },
         body: JSON.stringify({
           id: 'test-req-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'add',
           input: { a: 2, b: 3 },
@@ -160,8 +157,6 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         },
         body: JSON.stringify({
           id: 'test-req-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'NonExistent@1.0.0',
           method: 'test',
           input: {},
@@ -184,8 +179,6 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         },
         body: JSON.stringify({
           id: 'test-req-3',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'nonExistentMethod',
           input: {},
@@ -211,8 +204,6 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         },
         body: JSON.stringify({
           id: 'test-req-4',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'add',
           input: {},
@@ -240,21 +231,15 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         },
         body: JSON.stringify({
           id: 'batch-test-1',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'batch-1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 2, b: 3 },
             },
             {
               id: 'batch-2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 4, b: 6 },
@@ -285,21 +270,15 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
         },
         body: JSON.stringify({
           id: 'batch-test-2',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'batch-1',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 2, b: 3 },
             },
             {
               id: 'batch-2',
-              version: '1.0',
-              timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
               input: { a: 4, b: 6 },
@@ -405,19 +384,6 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
       expect(metrics.totalRequests).toBeGreaterThan(0);
     });
 
-    it('should track protocol versions', async () => {
-      const request = new Request('http://localhost:3456/netron/discovery', {
-        method: 'GET',
-        headers: {
-          'X-Netron-Version': '1.0',
-        },
-      });
-
-      await server.handleRequest(request);
-
-      const metrics = (server as any).metrics;
-      expect(metrics.protocolVersions.get('1.0')).toBeGreaterThan(0);
-    });
   });
 
   describe('Broadcast', () => {

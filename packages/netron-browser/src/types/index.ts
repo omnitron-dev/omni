@@ -3,11 +3,6 @@
  */
 
 /**
- * Netron protocol version
- */
-export const NETRON_VERSION = '1.0';
-
-/**
  * Transport type
  */
 export type TransportType = 'http' | 'websocket';
@@ -167,16 +162,6 @@ export interface HttpRequestMessage {
   id: string;
 
   /**
-   * Protocol version
-   */
-  version: string;
-
-  /**
-   * Timestamp
-   */
-  timestamp: number;
-
-  /**
    * Service name
    */
   service: string;
@@ -210,16 +195,6 @@ export interface HttpResponseMessage {
    * Message ID (matches request ID)
    */
   id: string;
-
-  /**
-   * Protocol version
-   */
-  version: string;
-
-  /**
-   * Timestamp
-   */
-  timestamp: number;
 
   /**
    * Success flag

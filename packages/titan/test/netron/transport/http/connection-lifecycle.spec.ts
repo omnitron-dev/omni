@@ -38,8 +38,6 @@ describe('HttpConnection - Lifecycle and Communication', () => {
       Promise.resolve(
         createMockResponse({
           id: '1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: { result: 'success' },
         })
@@ -68,8 +66,6 @@ describe('HttpConnection - Lifecycle and Communication', () => {
           return Promise.resolve(
             createMockResponse({
               id: '1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { result: 'ok' },
             })
@@ -106,8 +102,6 @@ describe('HttpConnection - Lifecycle and Communication', () => {
           return Promise.resolve(
             createMockResponse({
               id: '1',
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { result: 'packet-response' },
             })

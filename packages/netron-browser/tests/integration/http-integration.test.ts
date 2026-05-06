@@ -111,7 +111,7 @@ function createNetronHandler(
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     // Handle OPTIONS preflight
     if (req.method === 'OPTIONS') {
@@ -126,8 +126,6 @@ function createNetronHandler(
       res.end(
         JSON.stringify({
           id: body?.id || 'unknown',
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'NOT_FOUND', message: `Endpoint not found: ${req.method} ${req.url}` },
         })
@@ -141,8 +139,6 @@ function createNetronHandler(
       res.end(
         JSON.stringify({
           id: body?.id || 'unknown',
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'INVALID_REQUEST', message: 'Invalid request format' },
         })
@@ -159,8 +155,6 @@ function createNetronHandler(
       res.end(
         JSON.stringify({
           id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'SERVICE_NOT_FOUND', message: `Service not found: ${service}` },
         })
@@ -174,8 +168,6 @@ function createNetronHandler(
       res.end(
         JSON.stringify({
           id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'METHOD_NOT_FOUND', message: `Method not found: ${method}` },
         })
@@ -196,8 +188,6 @@ function createNetronHandler(
             res.end(
               JSON.stringify({
                 id,
-                version: '1.0',
-                timestamp: Date.now(),
                 success: true,
                 data,
               })
@@ -208,8 +198,6 @@ function createNetronHandler(
             res.end(
               JSON.stringify({
                 id,
-                version: '1.0',
-                timestamp: Date.now(),
                 success: false,
                 error: { code: 'INTERNAL_ERROR', message: error.message },
               })
@@ -220,8 +208,6 @@ function createNetronHandler(
         res.end(
           JSON.stringify({
             id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: true,
             data: result,
           })
@@ -232,8 +218,6 @@ function createNetronHandler(
       res.end(
         JSON.stringify({
           id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'INTERNAL_ERROR', message: error.message },
         })
@@ -365,13 +349,6 @@ describe('Basic HTTP Tests', () => {
 
       const lastRequest = mockServer.requests[mockServer.requests.length - 1];
       expect(lastRequest.headers['accept']).toBe('application/json');
-    });
-
-    it('should send X-Netron-Version header', async () => {
-      await client.invoke('calculator@1.0.0', 'add', [1, 2]);
-
-      const lastRequest = mockServer.requests[mockServer.requests.length - 1];
-      expect(lastRequest.headers['x-netron-version']).toBe('1.0');
     });
 
     it('should send custom headers when configured', async () => {
@@ -597,7 +574,7 @@ describe('Caching Tests', () => {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version, If-None-Match');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, If-None-Match');
       res.setHeader('Access-Control-Expose-Headers', 'ETag, Cache-Control');
 
       if (req.method === 'OPTIONS') {
@@ -651,8 +628,6 @@ describe('Caching Tests', () => {
       res.end(
         JSON.stringify({
           id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data,
         })
@@ -750,7 +725,7 @@ describe('Authentication Tests', () => {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -775,8 +750,6 @@ describe('Authentication Tests', () => {
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
             })
@@ -791,8 +764,6 @@ describe('Authentication Tests', () => {
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'TOKEN_EXPIRED', message: 'Token has expired' },
             })
@@ -805,8 +776,6 @@ describe('Authentication Tests', () => {
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'INVALID_TOKEN', message: 'Invalid token' },
             })
@@ -820,8 +789,6 @@ describe('Authentication Tests', () => {
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { secret: 'protected-value', user: 'authenticated-user' },
             })
@@ -836,8 +803,6 @@ describe('Authentication Tests', () => {
         res.end(
           JSON.stringify({
             id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: true,
             data: { public: true, value: input[0] },
           })
@@ -855,8 +820,6 @@ describe('Authentication Tests', () => {
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { token: validToken, expiresIn: 3600 },
             })
@@ -869,8 +832,6 @@ describe('Authentication Tests', () => {
       res.end(
         JSON.stringify({
           id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'NOT_FOUND', message: 'Not found' },
         })
@@ -1034,8 +995,6 @@ describe('Error Handling Tests', () => {
         res.end(
           JSON.stringify({
             id: body?.id || 'unknown',
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
           })
@@ -1078,8 +1037,6 @@ describe('Error Handling Tests', () => {
         res.end(
           JSON.stringify({
             id: body?.id || 'unknown',
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'BAD_GATEWAY', message: 'Bad Gateway' },
           })
@@ -1103,8 +1060,6 @@ describe('Error Handling Tests', () => {
         res.end(
           JSON.stringify({
             id: body?.id || 'unknown',
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'SERVICE_UNAVAILABLE', message: 'Service temporarily unavailable' },
           })
@@ -1128,8 +1083,6 @@ describe('Error Handling Tests', () => {
         res.end(
           JSON.stringify({
             id: body?.id || 'unknown',
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'GATEWAY_TIMEOUT', message: 'Gateway timeout' },
           })
@@ -1235,8 +1188,6 @@ describe('Error Handling Tests', () => {
           res.end(
             JSON.stringify({
               id: body?.id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: false,
               error: { code: 'TRANSIENT_ERROR', message: 'Transient error' },
             })
@@ -1247,8 +1198,6 @@ describe('Error Handling Tests', () => {
           res.end(
             JSON.stringify({
               id: body?.id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: { value: 'recovered' },
             })
@@ -1305,8 +1254,6 @@ describe('Retry Tests', () => {
       res.end(
         JSON.stringify({
           id: body?.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: { requestNumber: requestCount },
         })
@@ -1338,8 +1285,6 @@ describe('Retry Tests', () => {
       res.end(
         JSON.stringify({
           id: body?.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: false,
           error: { code: 'APP_ERROR', message: 'Application error' },
         })
@@ -1368,8 +1313,6 @@ describe('Retry Tests', () => {
       res.end(
         JSON.stringify({
           id: body?.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: { value: 'success' },
         })

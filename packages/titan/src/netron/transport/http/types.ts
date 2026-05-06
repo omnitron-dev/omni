@@ -1,5 +1,5 @@
 /**
- * Native HTTP Message Format for Netron v1.0
+ * Native HTTP Message Format for Netron
  *
  * This defines the message format for HTTP transport that replaces
  * the binary packet protocol with native JSON messages.
@@ -59,15 +59,11 @@ export interface HttpRequestHints {
 }
 
 /**
- * HTTP request message format for Netron v1.0
+ * HTTP request message format
  */
 export interface HttpRequestMessage {
   /** Request ID for correlation */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Client timestamp */
-  timestamp: number;
 
   /** Service invocation */
   service: string;
@@ -141,15 +137,11 @@ export interface HttpResponseError {
 }
 
 /**
- * HTTP response message format for Netron v1.0
+ * HTTP response message format
  */
 export interface HttpResponseMessage {
   /** Matching request ID */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Server timestamp */
-  timestamp: number;
 
   /** Response status */
   success: boolean;
@@ -168,10 +160,6 @@ export interface HttpResponseMessage {
 export interface HttpBatchRequest {
   /** Batch ID */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Client timestamp */
-  timestamp: number;
 
   /** Individual requests */
   requests: Array<{
@@ -209,10 +197,6 @@ export interface HttpBatchRequest {
 export interface HttpBatchResponse {
   /** Matching batch ID */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Server timestamp */
-  timestamp: number;
 
   /** Individual responses */
   responses: Array<{
@@ -267,8 +251,6 @@ export interface HttpDiscoveryResponse {
   server?: {
     /** Server version */
     version: string;
-    /** Protocol version */
-    protocol: '1.0';
     /** Supported features */
     features?: string[];
     /** Server metadata */
@@ -285,10 +267,6 @@ export interface HttpDiscoveryResponse {
 export interface HttpSubscriptionRequest {
   /** Request ID */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Client timestamp */
-  timestamp: number;
 
   /** Subscription type */
   type: 'subscribe' | 'unsubscribe';
@@ -316,10 +294,6 @@ export interface HttpSubscriptionRequest {
 export interface HttpSubscriptionResponse {
   /** Matching request ID */
   id: string;
-  /** Protocol version */
-  version: '1.0';
-  /** Server timestamp */
-  timestamp: number;
 
   /** Subscription status */
   success: boolean;
@@ -349,8 +323,6 @@ export function isHttpRequestMessage(value: any): value is HttpRequestMessage {
 
   return (
     typeof value.id === 'string' &&
-    value.version === '1.0' &&
-    typeof value.timestamp === 'number' &&
     typeof value.service === 'string' &&
     typeof value.method === 'string' &&
     'input' in value
@@ -367,8 +339,6 @@ export function isHttpResponseMessage(value: any): value is HttpResponseMessage 
 
   return (
     typeof value.id === 'string' &&
-    value.version === '1.0' &&
-    typeof value.timestamp === 'number' &&
     typeof value.success === 'boolean' &&
     (value.success ? 'data' in value : 'error' in value)
   );
@@ -384,8 +354,6 @@ export function isHttpBatchRequest(value: any): value is HttpBatchRequest {
 
   return (
     typeof value.id === 'string' &&
-    value.version === '1.0' &&
-    typeof value.timestamp === 'number' &&
     Array.isArray(value.requests) &&
     value.requests.every(
       (r: any) =>
@@ -404,8 +372,6 @@ export function isHttpBatchResponse(value: any): value is HttpBatchResponse {
 
   return (
     typeof value.id === 'string' &&
-    value.version === '1.0' &&
-    typeof value.timestamp === 'number' &&
     Array.isArray(value.responses) &&
     value.responses.every(
       (r: any) => typeof r.id === 'string' && typeof r.success === 'boolean' && (r.success ? 'data' in r : 'error' in r)
@@ -435,8 +401,6 @@ export function createRequestMessage(
 ): HttpRequestMessage {
   return {
     id: options?.id || generateRequestId(),
-    version: '1.0',
-    timestamp: Date.now(),
     service,
     method,
     input,
@@ -451,8 +415,6 @@ export function createRequestMessage(
 export function createSuccessResponse(requestId: string, data: any, hints?: HttpResponseHints): HttpResponseMessage {
   return {
     id: requestId,
-    version: '1.0',
-    timestamp: Date.now(),
     success: true,
     data,
     hints,
@@ -469,8 +431,6 @@ export function createErrorResponse(
 ): HttpResponseMessage {
   return {
     id: requestId,
-    version: '1.0',
-    timestamp: Date.now(),
     success: false,
     error,
     hints,

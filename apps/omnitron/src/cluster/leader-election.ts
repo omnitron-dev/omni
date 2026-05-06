@@ -261,8 +261,6 @@ export class LeaderElection extends EventEmitter {
           method,
           input: [data],
           id: crypto.randomUUID(),
-          version: '1.0',
-          timestamp: Date.now(),
         }),
         signal: AbortSignal.timeout(5000),
       });

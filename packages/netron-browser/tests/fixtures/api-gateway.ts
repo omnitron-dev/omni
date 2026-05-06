@@ -230,7 +230,7 @@ export async function createApiGateway(config: GatewayConfig): Promise<ApiGatewa
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version, X-Request-ID');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
 
     // Handle OPTIONS preflight
     if (req.method === 'OPTIONS') {
@@ -534,7 +534,7 @@ export async function createMockBackend(
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
       // Handle OPTIONS
       if (req.method === 'OPTIONS') {
@@ -581,8 +581,6 @@ export async function createMockBackend(
         res.end(
           JSON.stringify({
             id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'SERVICE_NOT_FOUND', message: `Service not found: ${service}` },
           })
@@ -597,8 +595,6 @@ export async function createMockBackend(
         res.end(
           JSON.stringify({
             id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'METHOD_NOT_FOUND', message: `Method not found: ${method}` },
           })
@@ -619,8 +615,6 @@ export async function createMockBackend(
               res.end(
                 JSON.stringify({
                   id,
-                  version: '1.0',
-                  timestamp: Date.now(),
                   success: true,
                   data,
                 })
@@ -631,8 +625,6 @@ export async function createMockBackend(
               res.end(
                 JSON.stringify({
                   id,
-                  version: '1.0',
-                  timestamp: Date.now(),
                   success: false,
                   error: { code: 'INTERNAL_ERROR', message: error.message },
                 })
@@ -643,8 +635,6 @@ export async function createMockBackend(
           res.end(
             JSON.stringify({
               id,
-              version: '1.0',
-              timestamp: Date.now(),
               success: true,
               data: result,
             })
@@ -655,8 +645,6 @@ export async function createMockBackend(
         res.end(
           JSON.stringify({
             id,
-            version: '1.0',
-            timestamp: Date.now(),
             success: false,
             error: { code: 'INTERNAL_ERROR', message: error.message },
           })

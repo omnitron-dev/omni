@@ -30,19 +30,19 @@
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "handlebars": "^4.7.8",
-    "ioredis": "^5.8.2",
-    "minimatch": "^10.1.1",
-    "msgpackr": "^1.11.5"
+    "handlebars": "^4.7.9",
+    "ioredis": "^5.10.1",
+    "minimatch": "^10.2.5",
+    "msgpackr": "^2.0.1"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*",
     "@omnitron-dev/titan-events": "workspace:*",
     "@omnitron-dev/titan-redis": "workspace:*",
-    "nodemailer": ">=6.0.0",
-    "twilio": ">=4.0.0",
+    "amqplib": ">=0.10.0",
     "firebase-admin": ">=12.0.0",
-    "amqplib": ">=0.10.0"
+    "nodemailer": ">=6.0.0",
+    "twilio": ">=4.0.0"
   },
   "peerDependenciesMeta": {
     "nodemailer": {
@@ -59,9 +59,9 @@
     }
   },
   "devDependencies": {
-    "@types/node": "25.0.3",
+    "@types/node": "25.6.0",
     "reflect-metadata": "^0.2.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.5"
   }
 }

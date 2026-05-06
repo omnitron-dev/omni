@@ -495,17 +495,16 @@ describe('Security Validation Tests', () => {
     it('should handle circular references safely', () => {
       const schema = z.object({
         name: z.string(),
-        data: z.any(),
+        data: z.any().optional(),
       });
 
       const validator = engine.compile(schema);
 
-      // Create circular reference
-      const circular: any = { name: 'test' };
-      circular.self = circular;
+      // Create circular reference inside an `any`-typed field — Zod
+      // intentionally does not traverse `any` so this must not throw.
+      const circular: any = { name: 'test', data: {} };
+      circular.data.self = circular;
 
-      // Zod will handle this as-is since data is z.any()
-      // The validation won't traverse into circular structures
       expect(() => {
         validator.validate(circular);
       }).not.toThrow();

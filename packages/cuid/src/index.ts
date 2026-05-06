@@ -1,4 +1,4 @@
-import { sha3_512 as sha3 } from '@noble/hashes/sha3';
+import { sha3_512 as sha3 } from '@noble/hashes/sha3.js';
 
 // Pre-computed constants - using const for V8 optimization
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';

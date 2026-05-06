@@ -25,16 +25,16 @@
   },
   "dependencies": {
     "@omnitron-dev/eventemitter": "workspace:*",
-    "ioredis": "^5.8.2"
+    "ioredis": "^5.10.1"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*",
     "@omnitron-dev/titan-redis": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "25.0.3",
+    "@types/node": "25.6.0",
     "reflect-metadata": "^0.2.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.5"
   }
 }

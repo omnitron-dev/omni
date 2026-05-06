@@ -18,9 +18,9 @@
     "test:all": "./scripts/test-all-runtimes.sh"
   },
   "devDependencies": {
-    "@types/node": "24.6.2",
+    "@types/node": "25.6.0",
     "typescript": "5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.5"
   },
   "dependencies": {
     "@omnitron-dev/common": "workspace:*"

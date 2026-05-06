@@ -20,9 +20,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "25.0.1",
-    "vitest": "^4.1.0",
-    "typescript": "5.9.3"
+    "@types/node": "25.6.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.5"
   },
   "keywords": [
     "utils",

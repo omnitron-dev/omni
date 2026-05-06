@@ -133,7 +133,7 @@ describe('Advanced Coercion Edge Cases', () => {
   describe('CRITICAL: Refinement Preservation with Coercion', () => {
     // KNOWN LIMITATION: Refinements are lost during coercion (validation-engine.ts:319-325)
     // These tests document expected behavior once the limitation is fixed
-    it.skip('should preserve number refinements when coercion is applied', () => {
+    it('should preserve number refinements when coercion is applied', () => {
       const schema = z
         .number()
         .refine((n) => n > 0, { message: 'Must be positive' })
@@ -152,8 +152,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
       }
 
       try {
@@ -161,8 +161,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
       }
 
       // Invalid - too large (refinement should work)
@@ -171,8 +171,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be less than 100'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be less than 100'))).toBe(true);
       }
 
       try {
@@ -180,12 +180,12 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be less than 100'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be less than 100'))).toBe(true);
       }
     });
 
-    it.skip('should preserve string refinements with transforms', () => {
+    it('should preserve string refinements with transforms', () => {
       const schema = z
         .string()
         .email()
@@ -202,15 +202,15 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Blocked domain'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Blocked domain'))).toBe(true);
       }
 
       // Invalid - not an email
       expect(() => validator.validate('not-an-email')).toThrow();
     });
 
-    it.skip('should preserve object refinements', () => {
+    it('should preserve object refinements', () => {
       const schema = z
         .object({
           password: z.string(),
@@ -240,8 +240,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Passwords must match'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Passwords must match'))).toBe(true);
       }
     });
   });
@@ -341,7 +341,7 @@ describe('Advanced Coercion Edge Cases', () => {
     // Lines 393-396 in validation-engine.ts ATTEMPT to preserve checks but Zod v4
     // doesn't support check preservation when using z.coerce.date()
     // The checks array is copied but z.coerce.date() doesn't accept min/max chains
-    it.skip('should preserve date constraints with coercion', () => {
+    it('should preserve date constraints with coercion', () => {
       const minDate = new Date('2020-01-01');
       const maxDate = new Date('2025-12-31');
 
@@ -411,7 +411,7 @@ describe('Advanced Coercion Edge Cases', () => {
     });
 
     // KNOWN LIMITATION: Refinements are lost during coercion
-    it.skip('should handle bigint with validation', () => {
+    it('should handle bigint with validation', () => {
       const schema = z.bigint().refine((n) => n > 0n, { message: 'Must be positive' });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -426,8 +426,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
       }
 
       try {
@@ -435,8 +435,8 @@ describe('Advanced Coercion Edge Cases', () => {
         fail('Should have thrown');
       } catch (error: any) {
         expect(error.name).toBe('ValidationError');
-        expect(error.validationErrors).toBeDefined();
-        expect(error.validationErrors.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
+        expect(error.zodError.issues).toBeDefined();
+        expect(error.zodError.issues.some((e: any) => e.message.includes('Must be positive'))).toBe(true);
       }
     });
   });

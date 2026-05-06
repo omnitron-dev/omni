@@ -532,13 +532,17 @@ export class ValidationEngine {
     if (typeName === 'date' || constructorName === 'ZodDate') {
       let coerced = z.coerce.date();
 
-      // Preserve date checks
+      // Preserve date checks (Zod v4 check structure: c._zod.def.{check,value})
       const checks = schema._def?.checks || [];
       for (const check of checks) {
-        if (check.kind === 'min') {
-          coerced = coerced.min(check.value, check.message);
-        } else if (check.kind === 'max') {
-          coerced = coerced.max(check.value, check.message);
+        const def = (check as any)?._zod?.def ?? (check as any).def;
+        const kind = def?.check ?? (check as any).kind;
+        const value = def?.value ?? (check as any).value;
+        const message = (check as any)?._zod?.def?.message ?? (check as any).message;
+        if (kind === 'greater_than' || kind === 'min') {
+          coerced = coerced.min(value, message);
+        } else if (kind === 'less_than' || kind === 'max') {
+          coerced = coerced.max(value, message);
         }
       }
 
@@ -546,7 +550,19 @@ export class ValidationEngine {
     }
 
     if (typeName === 'bigint' || constructorName === 'ZodBigInt') {
-      return z.coerce.bigint();
+      // Pipe a permissive transform into the original schema so checks/refinements survive.
+      return z
+        .any()
+        .transform((val) => {
+          if (val === undefined) return undefined;
+          if (typeof val === 'bigint') return val;
+          if (typeof val === 'number') return BigInt(val);
+          if (typeof val === 'string') {
+            return BigInt(val);
+          }
+          return val;
+        })
+        .pipe(schema) as any;
     }
 
     // Handle arrays - Skip coercion entirely to avoid Zod v4 internal compilation errors

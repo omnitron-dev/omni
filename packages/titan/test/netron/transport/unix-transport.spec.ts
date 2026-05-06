@@ -708,7 +708,12 @@ describe('Unix Domain Socket Transport', () => {
 
   // Windows NamedPipeTransport tests
   describe('NamedPipeTransport', () => {
-    const skipOnUnix = process.platform === 'win32' ? it : it.skip;
+    const isWin = process.platform === 'win32';
+    // Tests that need a real running named pipe only execute on Windows; on
+    // Unix/macOS they are simply omitted from the suite (no skip noise).
+    const winOnly = (name: string, fn: () => any | Promise<any>) => {
+      if (isWin) it(name, fn);
+    };
 
     // These tests can run on any platform (don't require Windows)
     it('should create named pipe transport', () => {
@@ -756,13 +761,13 @@ describe('Unix Domain Socket Transport', () => {
     });
 
     // Connection tests need Windows
-    skipOnUnix('should reject invalid protocol in connect', async () => {
+    winOnly('should reject invalid protocol in connect', async () => {
       const pipeTransport = new NamedPipeTransport();
 
       await expect(pipeTransport.connect('tcp://localhost:8080')).rejects.toThrow(/Invalid named pipe address/);
     });
 
-    skipOnUnix('should connect to named pipe', async () => {
+    winOnly('should connect to named pipe', async () => {
       const pipeTransport = new NamedPipeTransport();
       const pipeName = `test-pipe-${Date.now()}`;
 
@@ -782,7 +787,7 @@ describe('Unix Domain Socket Transport', () => {
       await server.close();
     });
 
-    skipOnUnix('should create named pipe server with options', async () => {
+    winOnly('should create named pipe server with options', async () => {
       const pipeTransport = new NamedPipeTransport();
       const pipeName = `test-pipe-${Date.now()}`;
 
@@ -796,7 +801,7 @@ describe('Unix Domain Socket Transport', () => {
       await server.close();
     });
 
-    skipOnUnix('should throw error when creating server without name', async () => {
+    winOnly('should throw error when creating server without name', async () => {
       const pipeTransport = new NamedPipeTransport();
 
       await expect(pipeTransport.createServer()).rejects.toThrow('requires a name');
@@ -804,7 +809,7 @@ describe('Unix Domain Socket Transport', () => {
       await expect(pipeTransport.createServer({} as any)).rejects.toThrow('requires a name');
     });
 
-    skipOnUnix('should handle connection timeout', async () => {
+    winOnly('should handle connection timeout', async () => {
       const pipeTransport = new NamedPipeTransport();
       const nonExistentPipe = `nonexistent-pipe-${Date.now()}`;
 
@@ -815,7 +820,7 @@ describe('Unix Domain Socket Transport', () => {
       ).rejects.toThrow();
     });
 
-    skipOnUnix('should send and receive data via named pipe', async () => {
+    winOnly('should send and receive data via named pipe', async () => {
       const pipeTransport = new NamedPipeTransport();
       const pipeName = `test-pipe-${Date.now()}`;
 

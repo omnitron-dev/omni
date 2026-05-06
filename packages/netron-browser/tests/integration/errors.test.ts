@@ -11,13 +11,7 @@ import { TitanError, serializeError, deserializeError, parseHttpError, ErrorCode
 import { serializer } from '../../src/packet/serializer.js';
 import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 
-// FIXME: WebSocket tests are currently skipped due to protocol mismatch
-// The WebSocket client sends service names like "calculator@1.0.0" but the Titan server
-// expects UUID defIds in binary packets. This requires implementing service discovery
-// or updating the packet format to match HTTP transport expectations.
-// See: isValidDefId in titan/src/netron/remote-peer.ts
-// Related commit: 2f8bf1be "feat(netron-browser): comprehensive upgrade to match Titan capabilities"
-describe.skip('Error Serialization (WebSocket)', () => {
+describe('Error Serialization (WebSocket)', () => {
   let server: TitanServerFixture;
   let client: WebSocketClient;
 
@@ -33,6 +27,7 @@ describe.skip('Error Serialization (WebSocket)', () => {
       url: server.wsUrl,
       reconnect: false,
       timeout: 60000, // Increase timeout to 60s for slower environments
+      serviceDefinitions: server.serviceDefinitions,
     });
 
     await client.connect();
@@ -500,9 +495,7 @@ describe('TitanError Serialization', () => {
   });
 });
 
-// FIXME: WebSocket tests are currently skipped due to protocol mismatch
-// See comment at the top of this file for details
-describe.skip('Error Edge Cases', () => {
+describe('Error Edge Cases', () => {
   let server: TitanServerFixture;
   let client: WebSocketClient;
 
@@ -518,6 +511,7 @@ describe.skip('Error Edge Cases', () => {
       url: server.wsUrl,
       reconnect: false,
       timeout: 60000, // Increase timeout to 60s for slower environments
+      serviceDefinitions: server.serviceDefinitions,
     });
 
     await client.connect();

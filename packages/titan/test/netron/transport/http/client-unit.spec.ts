@@ -119,8 +119,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -136,7 +134,6 @@ describe('HttpTransportClient - Unit Tests', () => {
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            'X-Netron-Version': '1.0',
           }),
           body: JSON.stringify(message),
         })
@@ -159,8 +156,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -216,8 +211,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -236,8 +229,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -252,8 +243,6 @@ describe('HttpTransportClient - Unit Tests', () => {
       const message = createRequestMessage('TestService', 'testMethod', [{}]);
       const expectedResponse: HttpResponseMessage = {
         id: message.id,
-        version: '1.0',
-        timestamp: Date.now(),
         success: true,
         data: { result: 'test-data', count: 42 },
       };
@@ -315,7 +304,6 @@ describe('HttpTransportClient - Unit Tests', () => {
       expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(result.error?.message).toBe('Internal Server Error');
       expect(result.id).toBe(message.id);
-      expect(result.version).toBe('1.0');
     });
 
     it('should handle HTTP 404 error', async () => {
@@ -356,7 +344,6 @@ describe('HttpTransportClient - Unit Tests', () => {
       expect(result.error?.code).toBe('REQUEST_TIMEOUT');
       expect(result.error?.message).toContain('Request timeout after 100ms');
       expect(result.id).toBe(message.id);
-      expect(result.version).toBe('1.0');
     });
 
     it('should handle network error', async () => {
@@ -372,7 +359,6 @@ describe('HttpTransportClient - Unit Tests', () => {
       expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(result.error?.message).toBe('Network connection failed');
       expect(result.id).toBe(message.id);
-      expect(result.version).toBe('1.0');
     });
 
     it('should handle DNS resolution error', async () => {
@@ -414,8 +400,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -496,8 +480,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -522,8 +504,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),
@@ -556,8 +536,6 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: message.id,
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: 'result',
         }),

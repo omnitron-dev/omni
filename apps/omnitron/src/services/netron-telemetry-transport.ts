@@ -53,8 +53,6 @@ export class NetronTelemetryTransport implements TelemetryTransport {
         method: 'pushBatch',
         input: [{ nodeId: this.nodeId, entries }],
         id: crypto.randomUUID(),
-        version: '1.0',
-        timestamp: Date.now(),
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -89,8 +87,6 @@ export class NetronTelemetryTransport implements TelemetryTransport {
           method: 'ping',
           input: [],
           id: crypto.randomUUID(),
-          version: '1.0',
-          timestamp: Date.now(),
         }),
         signal: AbortSignal.timeout(10_000),
       });

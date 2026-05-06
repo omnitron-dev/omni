@@ -38,8 +38,6 @@ describe('HttpConnection - Basic Functionality', () => {
       Promise.resolve(
         createMockResponse({
           id: '1',
-          version: '1.0',
-          timestamp: Date.now(),
           success: true,
           data: { result: 'success' },
         })

@@ -91,8 +91,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: `test-${Date.now()}`,
-        version: '1.0',
-        timestamp: Date.now(),
         service,
         method,
         input: Array.isArray(input) ? input : [input],
@@ -185,8 +183,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-query-1',
-          version: '1.0',
-          timestamp: Date.now(),
           serviceName: 'TestService',
         }),
       });
@@ -207,8 +203,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-1',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'req-1',
@@ -254,8 +248,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-2',
-          version: '1.0',
-          timestamp: Date.now(),
           requests: [
             {
               id: 'req-1',
@@ -302,8 +294,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'batch-order',
-          version: '1.0',
-          timestamp: Date.now(),
           requests,
         }),
       });
@@ -325,8 +315,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'err-1',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'NonExistentService',
           method: 'someMethod',
           input: [],
@@ -345,8 +333,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'err-2',
-          version: '1.0',
-          timestamp: Date.now(),
           service: 'TestService',
           method: 'nonExistentMethod',
           input: [],
@@ -398,8 +384,6 @@ describeOrSkip('Netron HTTP Transport E2E', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'perf-batch',
-          version: '1.0',
-          timestamp: Date.now(),
           requests,
         }),
       });

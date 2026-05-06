@@ -119,7 +119,6 @@ export class RequestBatcher extends EventEmitter {
     this.batchEndpoint = options.batchEndpoint || '/netron/batch';
     this.headers = {
       'Content-Type': 'application/json',
-      'X-Netron-Version': '1.0',
       ...options.headers,
     };
 
@@ -228,8 +227,6 @@ export class RequestBatcher extends EventEmitter {
       // Create batch request
       const batchRequest: HttpBatchRequest = {
         id: batchId,
-        version: '1.0',
-        timestamp: Date.now(),
         requests: batch.map((entry) => ({
           id: entry.request.id,
           service: entry.request.service,

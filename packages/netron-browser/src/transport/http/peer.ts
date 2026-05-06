@@ -478,7 +478,6 @@ export class HttpRemotePeer extends AbstractPeer {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'X-Netron-Version': '1.0',
       ...this.defaultOptions.headers,
     };
 

@@ -70,6 +70,5 @@ export interface HttpServerMetrics {
   responseTimes: number[];
   statusCounts: Map<number, number>;
   methodCounts: Map<string, number>;
-  protocolVersions: Map<string, number>;
   startTime: number;
 }

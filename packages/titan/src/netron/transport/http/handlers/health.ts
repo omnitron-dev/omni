@@ -74,7 +74,6 @@ export function handleMetricsRequest(
         avgResponseTime: metrics.avgResponseTime,
       },
       services: Array.from(services.keys()), // OK for authenticated users
-      protocolVersions: Object.fromEntries(metrics.protocolVersions),
       middleware: globalPipeline.getMetrics(),
     }),
     {

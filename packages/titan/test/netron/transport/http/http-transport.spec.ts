@@ -90,7 +90,6 @@ describe('HttpTransport', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          version: '1.0',
           services: {},
           contracts: {},
         }),
@@ -107,7 +106,6 @@ describe('HttpTransport', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          version: '1.0',
           services: {},
           contracts: {},
         }),

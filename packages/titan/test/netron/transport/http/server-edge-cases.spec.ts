@@ -139,7 +139,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should use fast-path for simple requests without auth/cors/middleware', async () => {
       const requestBody: HttpRequestMessage = {
         id: '1',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -157,7 +156,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
 
       expect(response.status).toBe(201); // Custom status from contract
       expect(response.headers.get('X-Custom-Header')).toBe('test-value');
-      expect(response.headers.get('X-Netron-Version')).toBe('1.0');
 
       const data = await response.json();
       expect(data).toMatchObject({
@@ -175,7 +173,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should include cache hints in fast-path response for cacheable methods', async () => {
       const requestBody: HttpRequestMessage = {
         id: '2',
-        version: '1.0',
         service: 'TestService',
         method: 'cacheableMethod',
         input: {},
@@ -205,7 +202,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should bypass fast-path when Authorization header is present', async () => {
       const requestBody: HttpRequestMessage = {
         id: '3',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -232,7 +228,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should bypass fast-path when Origin header is present with CORS enabled', async () => {
       const requestBody: HttpRequestMessage = {
         id: '4',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -262,7 +257,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 404 error when service not found in fast-path', async () => {
       const requestBody: HttpRequestMessage = {
         id: '5',
-        version: '1.0',
         service: 'NonExistentService@1.0.0',
         method: 'someMethod',
         input: {},
@@ -288,7 +282,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 404 error when method not found in fast-path', async () => {
       const requestBody: HttpRequestMessage = {
         id: '6',
-        version: '1.0',
         service: 'TestService',
         method: 'nonExistentMethod',
         input: {},
@@ -314,7 +307,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 404 error when service not found in middleware pipeline', async () => {
       const requestBody: HttpRequestMessage = {
         id: '7',
-        version: '1.0',
         service: 'NonExistentService@1.0.0',
         method: 'someMethod',
         input: {},
@@ -342,7 +334,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 404 error when method not found in middleware pipeline', async () => {
       const requestBody: HttpRequestMessage = {
         id: '8',
-        version: '1.0',
         service: 'TestService',
         method: 'nonExistentMethod',
         input: {},
@@ -372,7 +363,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for validation failure in fast-path', async () => {
       const requestBody: HttpRequestMessage = {
         id: '9',
-        version: '1.0',
         service: 'TestService',
         method: 'validatedMethod',
         input: { value: 150 }, // Invalid: exceeds max of 100
@@ -399,7 +389,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for validation failure in middleware pipeline', async () => {
       const requestBody: HttpRequestMessage = {
         id: '10',
-        version: '1.0',
         service: 'TestService',
         method: 'validatedMethod',
         input: { value: -5 }, // Invalid: below min of 0
@@ -428,7 +417,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for missing required fields', async () => {
       const requestBody: HttpRequestMessage = {
         id: '11',
-        version: '1.0',
         service: 'TestService',
         method: 'validatedMethod',
         input: {}, // Missing required 'value' field
@@ -471,7 +459,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for invalid request format - missing service', async () => {
       const invalidRequest = {
         id: '12',
-        version: '1.0',
         // Missing 'service' field
         method: 'someMethod',
         input: {},
@@ -495,7 +482,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for invalid request format - missing method', async () => {
       const invalidRequest = {
         id: '13',
-        version: '1.0',
         service: 'TestService',
         // Missing 'method' field
         input: {},
@@ -519,7 +505,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should return 400 error for invalid request format - missing id', async () => {
       const invalidRequest = {
         // Missing 'id' field
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
@@ -560,7 +545,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should include CORS headers in response when Origin header present', async () => {
       const requestBody: HttpRequestMessage = {
         id: '14',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
@@ -589,7 +573,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should extract Bearer token from Authorization header', async () => {
       const requestBody: HttpRequestMessage = {
         id: '15',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -617,7 +600,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should handle malformed Authorization header gracefully', async () => {
       const requestBody: HttpRequestMessage = {
         id: '16',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -648,7 +630,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should handle errors thrown by method handler', async () => {
       const requestBody: HttpRequestMessage = {
         id: '17',
-        version: '1.0',
         service: 'TestService',
         method: 'errorMethod',
         input: {},
@@ -673,31 +654,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
   });
 
   describe('Response Headers and Metadata', () => {
-    it('should include X-Netron-Version header in all responses', async () => {
-      const requestBody: HttpRequestMessage = {
-        id: '18',
-        version: '1.0',
-        service: 'TestService',
-        method: 'simpleMethod',
-        input: {},
-        timestamp: Date.now(),
-      };
-
-      const response = await fetch(`${baseUrl}/netron/invoke`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      expect(response.headers.get('X-Netron-Version')).toBe('1.0');
-    });
-
     it('should include custom response headers from contract', async () => {
       const requestBody: HttpRequestMessage = {
         id: '19',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
@@ -718,7 +677,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should include serverTime metric in response hints', async () => {
       const requestBody: HttpRequestMessage = {
         id: '20',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
@@ -744,7 +702,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should handle requests with context metadata', async () => {
       const requestBody: HttpRequestMessage = {
         id: '21',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
@@ -771,7 +728,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should handle requests with hints', async () => {
       const requestBody: HttpRequestMessage = {
         id: '22',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
@@ -798,7 +754,6 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     it('should handle requests with tracing headers', async () => {
       const requestBody: HttpRequestMessage = {
         id: '23',
-        version: '1.0',
         service: 'TestService',
         method: 'simpleMethod',
         input: {},

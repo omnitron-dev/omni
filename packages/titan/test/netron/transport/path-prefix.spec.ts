@@ -150,7 +150,6 @@ describe('Path Prefix Support', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'test-1',
-          version: '1.0',
           service: 'test',
           method: 'test',
           input: [],

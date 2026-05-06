@@ -43,8 +43,6 @@ export function createRequestMessage(
 ): HttpRequestMessage {
   return {
     id: generateRequestId(),
-    version: '1.0', // Match Titan server protocol version
-    timestamp: Date.now(),
     service,
     method,
     input: args, // Server expects 'input' not 'args'

@@ -123,7 +123,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     responseTimeAlpha: 0.1, // Smoothing factor for EMA
     statusCounts: new Map<number, number>(),
     methodCounts: new Map<string, number>(),
-    protocolVersions: new Map<string, number>(),
     startTime: Date.now(),
   };
 
@@ -648,10 +647,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Normalize pathname by stripping pathPrefix for endpoint matching
     const pathname = this.normalizePath(url.pathname);
 
-    // Track protocol version
-    const version = request.headers.get('X-Netron-Version') || '1.0';
-    this.metrics.protocolVersions.set(version, (this.metrics.protocolVersions.get(version) || 0) + 1);
-
     // SECURITY: Check rate limits before processing
     const rateLimitResult = this.rateLimiter.check(request);
     if (!rateLimitResult.allowed) {
@@ -730,7 +725,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       traceId: request.headers.get('X-Trace-ID'),
       correlationId: request.headers.get('X-Correlation-ID'),
       spanId: request.headers.get('X-Span-ID'),
-      netronVersion: request.headers.get('X-Netron-Version'),
     };
   }
 
@@ -819,7 +813,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Minimal headers
       const responseHeaders = new Headers({
         'Content-Type': method.contract?.http?.contentType || 'application/json',
-        'X-Netron-Version': '1.0',
       });
 
       // OPTIMIZATION: Add proper caching headers for fast-path responses
@@ -873,7 +866,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
 
       const errorHeaders = new Headers({
-        'X-Netron-Version': '1.0',
         'Content-Type': 'application/json',
       });
 
@@ -995,8 +987,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     metadata.set('requestId', message.id);
     metadata.set('serviceName', message.service);
     metadata.set('methodName', message.method);
-    metadata.set('timestamp', message.timestamp);
-    metadata.set('hints', message.hints);
 
     // Add HTTP headers to metadata for HTTP middleware (e.g., CORS)
     request.headers.forEach((value, key) => {
@@ -1110,7 +1100,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Apply response headers from contract
       const responseHeaders = new Headers({
         'Content-Type': method.contract?.http?.contentType || 'application/json',
-        'X-Netron-Version': '1.0',
       });
 
       // OPTIMIZATION: Add proper caching headers for cacheable responses
@@ -1201,7 +1190,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Build response headers with context information
       const errorHeaders = new Headers({
-        'X-Netron-Version': '1.0',
         'Content-Type': 'application/json',
       });
 
@@ -1280,8 +1268,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     const batchResponse: HttpBatchResponse = {
       id: batchRequest.id,
-      version: '1.0',
-      timestamp: Date.now(),
       responses: [],
       hints: batchHints,
     };
@@ -1398,7 +1384,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'X-Netron-Version': '1.0',
       },
     });
   }
@@ -1453,13 +1438,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         JSON.stringify({
           id: body.id || generateUuidV7(),
           result,
-          timestamp: Date.now(),
         }),
         {
           status: 200,
           headers: {
             'Content-Type': 'application/json',
-            'X-Netron-Version': '1.0',
           },
         }
       );
@@ -1544,7 +1527,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           avgResponseTime: this.metrics.avgResponseTime,
         },
         services: Array.from(this.services.keys()), // OK for authenticated users
-        protocolVersions: Object.fromEntries(this.metrics.protocolVersions),
         middleware: this.globalPipeline.getMetrics(),
         rateLimit: this.rateLimiter.getStats(),
       }),
@@ -1802,7 +1784,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (origin) {
       headers.set('Access-Control-Allow-Origin', origin);
       headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Netron-Version');
+      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       headers.set('Access-Control-Max-Age', '86400');
 
       if (this.options.cors && (this.options.cors as any).credentials) {
@@ -1832,7 +1814,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     });
 
     const headers = new Headers({
-      'X-Netron-Version': '1.0',
       'Content-Type': 'application/json',
     });
 
@@ -1857,7 +1838,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     const headers = new Headers({
       'Content-Type': 'application/json',
-      'X-Netron-Version': '1.0',
     });
 
     // Add rate limit headers
@@ -1871,8 +1851,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     const response = {
       id: requestId,
-      version: '1.0',
-      timestamp: Date.now(),
       success: false,
       error: {
         code: '429',
@@ -1912,7 +1890,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     // Build headers with CORS support
     const headers = new Headers({
-      'X-Netron-Version': '1.0',
       'Content-Type': 'application/json',
     });
 
@@ -2077,7 +2054,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       errorRate,
       avgResponseTime: this.metrics.avgResponseTime,
       statusCounts: Object.fromEntries(this.metrics.statusCounts),
-      protocolVersions: Object.fromEntries(this.metrics.protocolVersions),
       // Rate limiter stats
       rateLimit: this.rateLimiter.getStats(),
     };

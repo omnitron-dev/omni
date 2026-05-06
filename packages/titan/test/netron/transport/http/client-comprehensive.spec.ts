@@ -447,7 +447,7 @@ describeOrSkip('HttpTransportClient - Comprehensive Coverage', () => {
         ok: true,
         status: 200,
         headers: new Headers(),
-        json: () => Promise.resolve({ id: '1', version: '1.0', timestamp: Date.now(), success: true, data: null }),
+        json: () => Promise.resolve({ id: '1', success: true, data: null }),
       } as any);
 
       const result = await client.invoke('Test', 'method', [{}]);
@@ -529,7 +529,6 @@ describeOrSkip('HttpTransportClient - Comprehensive Coverage', () => {
 
       expect(capturedHeaders['Content-Type']).toBe('application/json');
       expect(capturedHeaders['Accept']).toBe('application/json');
-      expect(capturedHeaders['X-Netron-Version']).toBe('1.0');
 
       global.fetch = originalFetch;
     });

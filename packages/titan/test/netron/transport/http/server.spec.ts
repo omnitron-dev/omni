@@ -176,8 +176,6 @@ describe('HttpServer (Legacy Tests)', () => {
     it('should handle service invocation', async () => {
       const request: HttpRequestMessage = {
         id: 'test-123',
-        version: '1.0',
-        timestamp: Date.now(),
         service: 'MathService',
         method: 'add',
         input: { a: 5, b: 3 },
@@ -187,7 +185,6 @@ describe('HttpServer (Legacy Tests)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '1.0',
         },
         body: JSON.stringify(request),
       });
@@ -198,14 +195,11 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBe(8);
       expect(result.id).toBe('test-123');
-      expect(result.version).toBe('1.0');
     });
 
     it('should handle batch requests', async () => {
       const batchRequest: HttpBatchRequest = {
         id: 'batch-123',
-        version: '1.0',
-        timestamp: Date.now(),
         requests: [
           {
             id: 'req-1',
@@ -226,7 +220,6 @@ describe('HttpServer (Legacy Tests)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '1.0',
         },
         body: JSON.stringify(batchRequest),
       });
@@ -362,8 +355,6 @@ describe('HttpServer (Legacy Tests)', () => {
     it('should handle service errors', async () => {
       const request: HttpRequestMessage = {
         id: 'error-test',
-        version: '1.0',
-        timestamp: Date.now(),
         service: 'ErrorService',
         method: 'throwError',
         input: {},
@@ -404,8 +395,6 @@ describe('HttpServer (Legacy Tests)', () => {
     it('should handle service not found', async () => {
       const request: HttpRequestMessage = {
         id: 'not-found',
-        version: '1.0',
-        timestamp: Date.now(),
         service: 'NonExistentService',
         method: 'someMethod',
         input: {},

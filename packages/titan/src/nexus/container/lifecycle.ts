@@ -95,61 +95,93 @@ export class LifecycleService {
   }
 
   /**
-   * Get @PostConstruct method name from instance's prototype
-   * Returns the method name if decorated, undefined otherwise
+   * Walks the prototype chain (innermost class first) and returns the
+   * concatenated, declaration-order list of methods stored under either
+   * metadata key. `Reflect.getOwnMetadata` is used at each level to avoid
+   * picking up inherited entries twice.
    */
-  getPostConstructMethod(instance: any): string | undefined {
-    if (!instance || !instance.constructor) return undefined;
+  private collectLifecycleMethods(
+    instance: any,
+    primaryKey: string,
+    altKey: string
+  ): string[] {
+    if (!instance || typeof instance !== 'object') return [];
 
-    const prototype = Object.getPrototypeOf(instance);
-    if (!prototype) return undefined;
-
-    // Check both metadata keys (the decorator sets both)
-    const methodName =
-      Reflect.getMetadata(LIFECYCLE_METADATA_KEYS.POST_CONSTRUCT, prototype) ||
-      Reflect.getMetadata(LIFECYCLE_METADATA_KEYS.POST_CONSTRUCT_ALT, prototype);
-
-    if (methodName && typeof instance[methodName] === 'function') {
-      return methodName;
+    // Walk subclass-first so a child's hooks fire before a parent's.
+    const out: string[] = [];
+    const seen = new Set<string>();
+    let proto: any = Object.getPrototypeOf(instance);
+    while (proto && proto !== Object.prototype) {
+      const list: string[] =
+        (Reflect.getOwnMetadata(primaryKey, proto) as string[] | undefined) ??
+        (Reflect.getOwnMetadata(altKey, proto) as string[] | undefined) ??
+        [];
+      for (const name of list) {
+        if (!seen.has(name) && typeof instance[name] === 'function') {
+          seen.add(name);
+          out.push(name);
+        }
+      }
+      proto = Object.getPrototypeOf(proto);
     }
-
-    return undefined;
+    return out;
   }
 
   /**
-   * Get @PreDestroy method name from instance's prototype
-   * Returns the method name if decorated, undefined otherwise
+   * Names of every @PostConstruct-decorated method on the instance.
+   *
+   * Returned in declaration order (subclass first when overriding); each name
+   * is guaranteed to resolve to a function on the instance.
+   */
+  getPostConstructMethods(instance: any): string[] {
+    return this.collectLifecycleMethods(
+      instance,
+      LIFECYCLE_METADATA_KEYS.POST_CONSTRUCT,
+      LIFECYCLE_METADATA_KEYS.POST_CONSTRUCT_ALT
+    );
+  }
+
+  /**
+   * Names of every @PreDestroy-decorated method on the instance.
+   */
+  getPreDestroyMethods(instance: any): string[] {
+    return this.collectLifecycleMethods(
+      instance,
+      LIFECYCLE_METADATA_KEYS.PRE_DESTROY,
+      LIFECYCLE_METADATA_KEYS.PRE_DESTROY_ALT
+    );
+  }
+
+  /**
+   * Get @PostConstruct method name from instance's prototype.
+   *
+   * Backward-compatible alias for `getPostConstructMethods()[0]`.
+   */
+  getPostConstructMethod(instance: any): string | undefined {
+    return this.getPostConstructMethods(instance)[0];
+  }
+
+  /**
+   * Get @PreDestroy method name from instance's prototype.
+   *
+   * Backward-compatible alias for `getPreDestroyMethods()[0]`.
    */
   getPreDestroyMethod(instance: any): string | undefined {
-    if (!instance || !instance.constructor) return undefined;
-
-    const prototype = Object.getPrototypeOf(instance);
-    if (!prototype) return undefined;
-
-    // Check both metadata keys (the decorator sets both)
-    const methodName =
-      Reflect.getMetadata(LIFECYCLE_METADATA_KEYS.PRE_DESTROY, prototype) ||
-      Reflect.getMetadata(LIFECYCLE_METADATA_KEYS.PRE_DESTROY_ALT, prototype);
-
-    if (methodName && typeof instance[methodName] === 'function') {
-      return methodName;
-    }
-
-    return undefined;
+    return this.getPreDestroyMethods(instance)[0];
   }
 
   /**
    * Check if instance has @PostConstruct decorator
    */
   hasPostConstruct(instance: any): boolean {
-    return this.getPostConstructMethod(instance) !== undefined;
+    return this.getPostConstructMethods(instance).length > 0;
   }
 
   /**
    * Check if instance has @PreDestroy decorator
    */
   hasPreDestroy(instance: any): boolean {
-    return this.getPreDestroyMethod(instance) !== undefined;
+    return this.getPreDestroyMethods(instance).length > 0;
   }
 
   /**
@@ -211,17 +243,17 @@ export class LifecycleService {
     // Mark as disposed before calling lifecycle methods
     this.disposedInstances.add(instance);
 
-    // First, call @PreDestroy method if decorated
-    const preDestroyMethod = this.getPreDestroyMethod(instance);
-    if (preDestroyMethod) {
+    // First, call every @PreDestroy method in declaration order
+    const preDestroyMethods = this.getPreDestroyMethods(instance);
+    for (const method of preDestroyMethods) {
       try {
-        const result = instance[preDestroyMethod]();
+        const result = instance[method]();
         if (result instanceof Promise) {
           await result;
         }
       } catch (error: any) {
         this.logger?.error(
-          { err: error, token: getTokenName(token), method: preDestroyMethod, scoped },
+          { err: error, token: getTokenName(token), method, scoped },
           'Failed to call @PreDestroy'
         );
       }
@@ -229,7 +261,7 @@ export class LifecycleService {
 
     // Then call onDestroy lifecycle hook (but only if no dispose method, since dispose often calls onDestroy)
     // Uses prototype-based check to avoid JS Proxy false positives.
-    if (this.hasRealMethod(instance, 'onDestroy') && preDestroyMethod !== 'onDestroy' && !this.isDisposable(instance)) {
+    if (this.hasRealMethod(instance, 'onDestroy') && !preDestroyMethods.includes('onDestroy') && !this.isDisposable(instance)) {
       try {
         const result = instance.onDestroy();
         if (result instanceof Promise) {
@@ -283,21 +315,22 @@ export class LifecycleService {
     const initPromises: Promise<void>[] = [];
 
     for (const instance of initializableInstances) {
-      // First, call @PostConstruct method if decorated
-      const postConstructMethod = this.getPostConstructMethod(instance);
-      if (postConstructMethod) {
-        try {
-          const result = instance[postConstructMethod]();
-          if (result instanceof Promise) {
-            // Wrap in a promise that catches errors gracefully
-            initPromises.push(
-              result.catch((error: any) => {
-                this.logger?.error({ err: error, method: postConstructMethod }, 'Failed to call @PostConstruct');
-              })
-            );
+      // First, call every @PostConstruct-decorated method in declaration order
+      const postConstructMethods = this.getPostConstructMethods(instance);
+      if (postConstructMethods.length > 0) {
+        for (const method of postConstructMethods) {
+          try {
+            const result = instance[method]();
+            if (result instanceof Promise) {
+              initPromises.push(
+                result.catch((error: any) => {
+                  this.logger?.error({ err: error, method }, 'Failed to call @PostConstruct');
+                })
+              );
+            }
+          } catch (error: any) {
+            this.logger?.error({ err: error, method }, 'Failed to call @PostConstruct');
           }
-        } catch (error: any) {
-          this.logger?.error({ err: error, method: postConstructMethod }, 'Failed to call @PostConstruct');
         }
       }
       // Then call onInit() if present (and different from @PostConstruct method)
@@ -325,18 +358,17 @@ export class LifecycleService {
   }
 
   /**
-   * Call @PreDestroy method on an instance if decorated
+   * Call every @PreDestroy method on an instance, in declaration order.
    */
   async callPreDestroy(instance: any): Promise<void> {
-    const preDestroyMethod = this.getPreDestroyMethod(instance);
-    if (preDestroyMethod) {
+    for (const method of this.getPreDestroyMethods(instance)) {
       try {
-        const result = instance[preDestroyMethod]();
+        const result = instance[method]();
         if (result instanceof Promise) {
           await result;
         }
       } catch (error: any) {
-        this.logger?.error({ err: error, method: preDestroyMethod }, 'Failed to call @PreDestroy');
+        this.logger?.error({ err: error, method }, 'Failed to call @PreDestroy');
       }
     }
   }

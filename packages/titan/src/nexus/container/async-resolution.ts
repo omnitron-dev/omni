@@ -11,6 +11,7 @@
 import { CircularDependencyError } from '../errors.js';
 import { Errors, toTitanError } from '../../errors/factories.js';
 import { InjectionToken, ResolutionContext, ResolutionContextInternal } from '../types.js';
+import type { Dependency } from './injection-plan.js';
 
 /**
  * Dependency resolution task with metadata for parallel processing
@@ -45,7 +46,13 @@ export class AsyncResolutionService {
     hasTokenFn: (token: InjectionToken<any>) => boolean,
     getTokenModuleInfoFn?: (
       tokenKey: string
-    ) => { moduleName: string; isGlobal: boolean; isExported: boolean } | undefined
+    ) => { moduleName: string; isGlobal: boolean; isExported: boolean } | undefined,
+    /**
+     * Resolver for descriptor-shaped dependencies emitted by
+     * extractClassDependencies (@InjectAll/@Value/@Env/@Config/@Conditional).
+     * Result may be a value or a Promise; both are awaited.
+     */
+    resolveRichDependencyFn?: (dep: Dependency) => unknown | Promise<unknown>
   ): Promise<any[]> {
     if (!registration.dependencies || registration.dependencies.length === 0) {
       return [];
@@ -76,7 +83,26 @@ export class AsyncResolutionService {
     const tasks: ResolutionTask[] = [];
     const pendingTasks: Array<{ index: number; promise: Promise<any> }> = [];
 
+    // Pre-pass: resolve rich descriptors (@Value/@Env/etc.). Their results
+    // are placed directly in the output array; we record their indices so the
+    // sequential loop below skips them.
+    const richIndices = new Set<number>();
+    const richResults: Array<{ index: number; valueOrPromise: unknown | Promise<unknown> }> = [];
+    if (resolveRichDependencyFn) {
+      for (let i = 0; i < registration.dependencies.length; i++) {
+        const dep = registration.dependencies[i];
+        if (dep && typeof dep === 'object' && '__dep' in (dep as any)) {
+          richIndices.add(i);
+          richResults.push({
+            index: i,
+            valueOrPromise: resolveRichDependencyFn((dep as any).__dep as Dependency),
+          });
+        }
+      }
+    }
+
     for (let i = 0; i < registration.dependencies.length; i++) {
+      if (richIndices.has(i)) continue;
       const dep = registration.dependencies[i];
       if (dep === undefined) continue; // Skip undefined dependencies
       let depToken: InjectionToken<any> = dep;
@@ -150,6 +176,11 @@ export class AsyncResolutionService {
     // Fill in pending results first
     for (const [index, result] of pendingResults) {
       resolvedDeps[index] = result;
+    }
+
+    // Resolve descriptor-shaped dependencies (may be sync or async).
+    for (const r of richResults) {
+      resolvedDeps[r.index] = await r.valueOrPromise;
     }
 
     // Resolve tasks sequentially

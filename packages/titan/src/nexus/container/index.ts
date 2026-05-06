@@ -25,3 +25,11 @@ export { ScopingService } from './scoping.js';
 export { AsyncResolutionService } from './async-resolution.js';
 export { ModuleLoaderService } from './module-loader.js';
 export { LifecycleService } from './lifecycle.js';
+export {
+  buildInjectionPlan,
+  getPath,
+  PROPERTY_DECORATOR_KEYS,
+  type Dependency,
+  type InjectionPlan,
+  type PropertyInjection,
+} from './injection-plan.js';

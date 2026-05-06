@@ -11,6 +11,7 @@ import { getTokenName } from '../token.js';
 import { Errors } from '../../errors/factories.js';
 import { InjectionToken, ResolutionContext, ResolutionContextInternal } from '../types.js';
 import type { Registration, ModuleProviderInfo } from './types.js';
+import type { Dependency } from './injection-plan.js';
 import { generateResolutionId } from '../../utils/id.js';
 
 // Re-export for backward compatibility
@@ -32,7 +33,15 @@ export class ResolutionService {
     resolveOptionalFn: <T>(token: InjectionToken<T>) => T | undefined,
     getTokenModuleInfoFn?: (
       tokenKey: string
-    ) => { moduleName: string; isGlobal: boolean; isExported: boolean } | undefined
+    ) => { moduleName: string; isGlobal: boolean; isExported: boolean } | undefined,
+    /**
+     * Optional callback used for descriptor-shaped dependencies emitted by
+     * {@link RegistrationService.extractClassDependencies} (e.g. `@Value`,
+     * `@InjectAll`, `@InjectEnv`, `@InjectConfig`, `@ConditionalInject`).
+     * The container provides this so resolution stays a pure data-driven
+     * operation here.
+     */
+    resolveRichDependencyFn?: (dep: Dependency) => unknown
   ): any[] {
     if (!registration.dependencies || registration.dependencies.length === 0) {
       return [];
@@ -57,6 +66,17 @@ export class ResolutionService {
     }
 
     return registration.dependencies.map((dep) => {
+      // Rich descriptor emitted by extractClassDependencies for
+      // @InjectAll / @Value / @InjectConfig / @InjectEnv / @ConditionalInject
+      if (typeof dep === 'object' && dep !== null && '__dep' in (dep as any)) {
+        if (!resolveRichDependencyFn) {
+          throw Errors.badRequest(
+            'Rich injection descriptor encountered without a resolver. This indicates an internal misconfiguration.'
+          );
+        }
+        return resolveRichDependencyFn((dep as any).__dep as Dependency);
+      }
+
       // Handle optional dependencies and context injection
       if (typeof dep === 'object' && dep !== null && 'token' in dep) {
         const depObj = dep as any;

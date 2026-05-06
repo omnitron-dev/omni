@@ -62,6 +62,10 @@ import {
   ModuleLoaderService,
   LifecycleService,
   generateResolutionId,
+  buildInjectionPlan,
+  getPath,
+  type Dependency,
+  type InjectionPlan,
 } from './container/index.js';
 
 import type { ILogger } from '../types/logger.js';
@@ -114,6 +118,10 @@ export class Container implements IContainer {
   private asyncResolutionService: AsyncResolutionService;
   private moduleLoaderService: ModuleLoaderService;
   private lifecycleService: LifecycleService;
+
+  // Configuration store backing @Value / @InjectConfig decorators.
+  // A simple POJO is sufficient — paths are resolved with getPath().
+  private config: Record<string, unknown> = {};
 
   // Optional logger (can be set after construction when DI is ready)
   private logger?: ILogger;
@@ -512,7 +520,8 @@ export class Container implements IContainer {
         (t) => this.getTokenKey(t),
         (t) => this.resolve(t),
         (t) => this.resolveOptional(t),
-        (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey)
+        (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
+        (dep) => this.resolveDependency(dep)
       );
 
       // Create instance
@@ -603,31 +612,131 @@ export class Container implements IContainer {
   }
 
   /**
-   * Apply property injections to an instance
+   * Resolve a single decorator-derived dependency.
+   *
+   * Centralized so constructor-param resolution and property resolution share
+   * a single path, and adding a new decorator means adding one branch here.
+   */
+  private resolveDependency(dep: Dependency): unknown {
+    switch (dep.kind) {
+      case 'token':
+        return dep.optional ? this.resolveOptional(dep.token) : this.resolve(dep.token);
+      case 'all':
+        return this.resolveAll(dep.token);
+      case 'value':
+        return getPath(this.config, dep.path, dep.defaultValue);
+      case 'config':
+        return getPath(this.config, dep.path);
+      case 'env': {
+        const raw = process.env[dep.key];
+        return raw === undefined ? dep.defaultValue : raw;
+      }
+      case 'conditional': {
+        let pass = false;
+        try {
+          pass = !!dep.condition();
+        } catch {
+          pass = false;
+        }
+        if (pass) return this.resolve(dep.token);
+        return typeof dep.fallback === 'function' ? (dep.fallback as () => unknown)() : dep.fallback;
+      }
+    }
+  }
+
+  /**
+   * Apply decorator-driven property injections to an instance.
+   *
+   * Reads the merged plan produced by {@link buildInjectionPlan} so every
+   * decorator (@Inject, @InjectAll, @Value, @InjectConfig, @InjectEnv,
+   * @ConditionalInject) is honored uniformly. Inheritance is supported by
+   * walking the prototype chain.
+   *
+   * Also stores a back-reference to this container under the well-known
+   * `titan:inject:container` metadata key so @Lazy can resolve through the
+   * same container its host was created in.
    */
   private applyPropertyInjections(instance: unknown, classConstructor: Constructor | undefined): void {
-    if (!classConstructor) return;
+    if (!classConstructor || !instance || typeof instance !== 'object') return;
 
-    const METADATA_KEYS = {
-      PROPERTY_INJECTIONS: 'nexus:property:injections',
-    };
+    // Container back-reference for @Lazy. Stored on the instance object —
+    // not the prototype — so multiple containers can host instances of the
+    // same class without colliding.
+    Reflect.defineMetadata('titan:inject:container', this, instance as object);
 
-    const propertyInjections = Reflect.getMetadata(METADATA_KEYS.PROPERTY_INJECTIONS, classConstructor);
+    const plan = buildInjectionPlan(classConstructor);
+    if (plan.properties.length === 0) return;
 
-    if (propertyInjections) {
-      type InstanceWithIndex = { [key: string]: unknown };
-      const instanceWithIndex = instance as InstanceWithIndex;
-      for (const [propertyKey, token] of Object.entries(propertyInjections)) {
-        try {
-          instanceWithIndex[propertyKey] = this.resolve(token as InjectionToken<unknown>);
-        } catch (error) {
-          // Ignore optional property injection errors
-          if (!(error instanceof DependencyNotFoundError)) {
-            throw error;
-          }
+    type InstanceWithIndex = { [key: string]: unknown; [key: symbol]: unknown };
+    const target = instance as InstanceWithIndex;
+
+    for (const prop of plan.properties) {
+      try {
+        target[prop.property as any] = this.resolveDependency(prop.dependency);
+      } catch (error) {
+        // Optional token dependencies that fail to resolve are silently
+        // skipped (matches Optional() semantics elsewhere in the container).
+        if (!(error instanceof DependencyNotFoundError) || prop.dependency.kind !== 'token' || !prop.dependency.optional) {
+          throw error;
         }
       }
     }
+  }
+
+  /**
+   * Build the full constructor-parameter dependency list from decorator
+   * metadata. Returns `undefined` when nothing is decorated, so the existing
+   * `extractClassDependencies` path can stay as the legacy fallback.
+   */
+  private extractEnrichedConstructorParams(ctor: Constructor): Array<unknown> | undefined {
+    const plan = buildInjectionPlan(ctor);
+    if (plan.constructorParams.length === 0) return undefined;
+    // Anything beyond plain @Inject(token) needs the descriptor preserved so
+    // resolveDependencies / createInstance can interpret it. Plain tokens
+    // remain as bare InjectionToken values for backward compatibility with
+    // the existing resolution path.
+    return plan.constructorParams.map((dep) => {
+      if (!dep) return undefined;
+      if (dep.kind === 'token' && !dep.optional) return dep.token;
+      return { __dep: dep };
+    });
+  }
+
+  /**
+   * Update the configuration store backing @Value / @InjectConfig.
+   *
+   * Call this before resolving services that depend on configuration. The
+   * supplied object replaces any existing configuration; use
+   * {@link mergeConfig} to extend it instead.
+   */
+  setConfig(config: Record<string, unknown>): this {
+    this.config = config ?? {};
+    return this;
+  }
+
+  /**
+   * Deep-merge a partial configuration into the existing store.
+   *
+   * Plain objects are merged recursively; arrays and primitives replace.
+   */
+  mergeConfig(partial: Record<string, unknown>): this {
+    this.config = mergeDeep(this.config, partial);
+    return this;
+  }
+
+  /**
+   * Read a value from the configuration store by dot path. Returns
+   * `defaultValue` when missing.
+   */
+  getConfigValue<T = unknown>(path: string, defaultValue?: T): T | undefined {
+    return getPath(this.config, path, defaultValue) as T | undefined;
+  }
+
+  /**
+   * Snapshot of the current configuration store.
+   */
+  getConfig(): Readonly<Record<string, unknown>> {
+    return this.config;
   }
 
   /**
@@ -860,7 +969,8 @@ export class Container implements IContainer {
       (t) => this.getRegistration(t),
       (t) => this.resolveAsyncInternal(t),
       (t) => this.parent?.has(t) ?? false,
-      (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey)
+      (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
+      (dep) => this.resolveDependency(dep)
     );
 
     // Create instance with timeout and retry support
@@ -886,7 +996,8 @@ export class Container implements IContainer {
               (t) => this.getRegistration(t),
               (t) => this.resolveAsyncInternal(t),
               (t) => this.parent?.has(t) ?? false,
-              (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey)
+              (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
+              (dep) => this.resolveDependency(dep)
             );
             let result = registration.factory!(...freshDependencies);
 
@@ -917,6 +1028,12 @@ export class Container implements IContainer {
         // Synchronous factory
         instance = registration.factory!(...dependencies);
       }
+
+      // Apply property injections to async-built class instances. Mirrors
+      // the sync path in createInstance().
+      if (instance && registration.provider && 'useClass' in registration.provider) {
+        this.applyPropertyInjections(instance, registration.provider.useClass as Constructor);
+      }
     } catch (error: unknown) {
       const tokenName = getTokenName(token);
       const depNames = registration.dependencies?.map((d) => getTokenName(d)).join(', ');
@@ -940,31 +1057,33 @@ export class Container implements IContainer {
     // - Class instances (useClass): lifecycle methods detected and called correctly
     // - useValue with real class instances (e.g., ConfigService): lifecycle methods called
     // - useValue with JS Proxy (e.g., TopologyProxy): safely skipped (no real methods)
-    const postConstructMethod = this.lifecycleService.getPostConstructMethod(instance);
-    if (postConstructMethod) {
-      try {
-        type InstanceWithMethod = { [key: string]: (() => unknown) | undefined };
-        const instanceWithMethod = instance as InstanceWithMethod;
-        const method = instanceWithMethod[postConstructMethod];
-        if (typeof method === 'function') {
-          const result = method.call(instance);
-          if (result instanceof Promise) {
-            await result;
+    const postConstructMethods = this.lifecycleService.getPostConstructMethods(instance);
+    if (postConstructMethods.length > 0) {
+      type InstanceWithMethod = { [key: string]: (() => unknown) | undefined };
+      const instanceWithMethod = instance as InstanceWithMethod;
+      for (const methodName of postConstructMethods) {
+        try {
+          const method = instanceWithMethod[methodName];
+          if (typeof method === 'function') {
+            const result = method.call(instance);
+            if (result instanceof Promise) {
+              await result;
+            }
           }
+        } catch (error: unknown) {
+          const wrappedError = new AsyncResolutionError(token);
+          type ErrorWithCauseAndMessage = Error & { cause?: unknown };
+          const extendedError = wrappedError as ErrorWithCauseAndMessage;
+          extendedError.cause = error;
+          extendedError.message =
+            "Failed to call @PostConstruct '" +
+            methodName +
+            "' on '" +
+            getTokenName(token) +
+            "': " +
+            (error instanceof Error ? error.message : String(error));
+          throw wrappedError;
         }
-      } catch (error: unknown) {
-        const wrappedError = new AsyncResolutionError(token);
-        type ErrorWithCauseAndMessage = Error & { cause?: unknown };
-        const extendedError = wrappedError as ErrorWithCauseAndMessage;
-        extendedError.cause = error;
-        extendedError.message =
-          "Failed to call @PostConstruct '" +
-          postConstructMethod +
-          "' on '" +
-          getTokenName(token) +
-          "': " +
-          (error instanceof Error ? error.message : String(error));
-        throw wrappedError;
       }
     } else if (this.lifecycleService.isAsyncInitializable(instance)) {
       try {
@@ -985,7 +1104,7 @@ export class Container implements IContainer {
 
     // Initialize if needed (sync initialization)
     // Skip if @PostConstruct already called the same method (e.g., @PostConstruct on initialize())
-    if (this.lifecycleService.isInitializable(instance) && postConstructMethod !== 'initialize') {
+    if (this.lifecycleService.isInitializable(instance) && !postConstructMethods.includes('initialize')) {
       await instance.initialize();
     }
 
@@ -2173,4 +2292,31 @@ export class Container implements IContainer {
 
     return this;
   }
+}
+
+/**
+ * Recursive merge for plain object trees. Arrays and primitives are replaced
+ * (not concatenated). Used by `Container.mergeConfig`.
+ */
+function mergeDeep(
+  base: Record<string, unknown>,
+  partial: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const key of Object.keys(partial)) {
+    const next = partial[key];
+    const cur = out[key];
+    if (isPlainObject(cur) && isPlainObject(next)) {
+      out[key] = mergeDeep(cur, next);
+    } else {
+      out[key] = next;
+    }
+  }
+  return out;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== 'object') return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
 }

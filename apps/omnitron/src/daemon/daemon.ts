@@ -129,6 +129,7 @@ export class OmnitronDaemon {
   private leaderElection: any = null;
   private configSyncService: any = null;
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
+  private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
   private dc: IDaemonConfig = DEFAULT_DAEMON_CONFIG;
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
@@ -213,6 +214,7 @@ export class OmnitronDaemon {
         const metricsService = await this.app.container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
         const bridge = new MetricsBridge(metricsService, logger);
         orchestrator.setMetricsBridge(bridge);
+        this.metricsBridge = bridge;
         const metricsPort = (this.dc.httpPort ?? 9800) + 3;
         const metricsServer = new MetricsServer({
           port: metricsPort,
@@ -1437,6 +1439,29 @@ export class OmnitronDaemon {
         reason,
         signal: details?.signal,
       });
+    });
+
+    // D13: Application now drives shutdown via LifecycleController, which
+    // emits per-phase events via ApplicationEvent.LifecyclePhaseEvent.
+    // Forward `phase-finish` durations into the metrics bridge so the
+    // `lifecycle_shutdown_phase_duration_seconds` histogram and the
+    // `lifecycle_shutdown_phase_timeouts_total` counter populate.
+    app.on(ApplicationEvent.LifecyclePhaseEvent, (event: any) => {
+      const bridge = this.metricsBridge;
+      if (!bridge) return;
+      const phase = event?.phase;
+      const kind = event?.kind;
+      const durationMs = typeof event?.durationMs === 'number' ? event.durationMs : 0;
+      if (!phase) return;
+      try {
+        if (kind === 'phase-finish') {
+          bridge.recordLifecyclePhase(String(phase), durationMs, 'finish');
+        } else if (kind === 'phase-timeout') {
+          bridge.recordLifecyclePhase(String(phase), durationMs, 'timeout');
+        }
+      } catch {
+        // Metrics are best-effort; never fail shutdown over telemetry.
+      }
     });
 
     // --- Priority: First (0) — Immediate cleanup ---

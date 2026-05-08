@@ -261,6 +261,13 @@ export {
 // Virtual List
 export { VirtualList, type VirtualListProps } from './virtual-list/index.js';
 
+// Command Palette
+export {
+  CommandPalette,
+  type CommandPaletteProps,
+  type CommandAction,
+} from './command-palette/index.js';
+
 // Tabs
 export {
   Tabs,

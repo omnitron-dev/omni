@@ -37,6 +37,18 @@ export interface ProcessJanitorOptions {
   readonly intervalMs?: number;
   /** Grace period after SIGTERM before SIGKILL. Default 3s. */
   readonly gracefulMs?: number;
+  /**
+   * Minimum age (seconds) before a process can be classified as
+   * orphan. Protects newly-spawned fork-workers from being reaped
+   * during their startup window — supervisor.getChildNames() doesn't
+   * report a child until `supervisor.start()` resolves, and that can
+   * take 5–30s for apps that connect to DB/Redis/blockchain RPCs.
+   * Without this guard, the janitor would race and kill perfectly
+   * legitimate workers.
+   *
+   * Default 60s — safe envelope for slow init paths.
+   */
+  readonly minProcessAgeSeconds?: number;
   /** Logger for diagnostics. */
   readonly logger?: ILogger;
   /**
@@ -66,6 +78,8 @@ export interface PsRow {
   readonly pid: number;
   readonly ppid: number;
   readonly command: string;
+  /** Seconds since process started (etimes from ps). 0 if unknown. */
+  readonly elapsedSeconds: number;
 }
 
 export interface JanitorSweepMetrics {
@@ -80,6 +94,7 @@ export interface JanitorSweepMetrics {
 export class ProcessJanitor {
   private readonly intervalMs: number;
   private readonly gracefulMs: number;
+  private readonly minProcessAgeSeconds: number;
   private readonly logger: ILogger | undefined;
   private readonly onMetrics: ((m: JanitorSweepMetrics) => void) | undefined;
   private readonly getOwnedPids: () => ReadonlySet<number>;
@@ -92,6 +107,7 @@ export class ProcessJanitor {
   constructor(options: ProcessJanitorOptions) {
     this.intervalMs = options.intervalMs ?? 30_000;
     this.gracefulMs = options.gracefulMs ?? 3_000;
+    this.minProcessAgeSeconds = options.minProcessAgeSeconds ?? 60;
     this.logger = options.logger;
     this.onMetrics = options.onMetrics;
     this.getOwnedPids = options.getOwnedPids;
@@ -161,6 +177,11 @@ export class ProcessJanitor {
     const orphans = all.filter((row) => {
       // Owned by the orchestrator → not an orphan.
       if (owned.has(row.pid)) return false;
+      // Newly-spawned workers that haven't yet finished startup are
+      // NOT yet in supervisor.getChildNames() — guard them with a
+      // minimum-age threshold so the janitor doesn't kill them in
+      // mid-init.
+      if (row.elapsedSeconds < this.minProcessAgeSeconds) return false;
       // Process whose parent is THIS daemon, but the daemon doesn't
       // claim it → orphan from a partial restart.
       if (row.ppid === myPid) return true;
@@ -239,15 +260,24 @@ export class ProcessJanitor {
 // ---------------------------------------------------------------------------
 
 /**
- * Walk `ps -eo pid,ppid,args` and pick rows whose command path
- * contains `titan-pm/dist/fork-worker.js`. We match on the path
+ * Walk `ps -eo pid,ppid,etime,args` and pick rows whose command
+ * path contains `titan-pm/dist/fork-worker.js`. We match on the path
  * substring rather than the basename so we don't catch unrelated
  * `fork-worker.js` files belonging to other tools.
+ *
+ * `etime` is the formatted elapsed-time field, available on both
+ * Linux and macOS (unlike `etimes` which is Linux-only). Format:
+ *   `MM:SS`            — under an hour
+ *   `HH:MM:SS`         — under a day
+ *   `DD-HH:MM:SS`      — multi-day
+ * Parsed to seconds in `parseEtime` below — used to protect newly-
+ * spawned workers from the orphan reaper while their
+ * supervisor.getChildNames() is still empty.
  */
 function listForkWorkersFromPs(logger?: ILogger): PsRow[] {
   let raw: string;
   try {
-    raw = execSync('ps -eo pid,ppid,args', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    raw = execSync('ps -eo pid,ppid,etime,args', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   } catch (err) {
     logger?.warn?.({ err }, 'janitor: ps failed');
     return [];
@@ -256,17 +286,44 @@ function listForkWorkersFromPs(logger?: ILogger): PsRow[] {
   for (const line of raw.split('\n')) {
     if (!line.includes('titan-pm/dist/fork-worker.js')) continue;
     const trimmed = line.trim();
-    const match = /^(\d+)\s+(\d+)\s+(.*)$/.exec(trimmed);
+    // pid, ppid, etime (no whitespace), then args
+    const match = /^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(trimmed);
     if (!match) continue;
     const pid = Number(match[1]);
     const ppid = Number(match[2]);
-    const command = match[3] ?? '';
+    const elapsedSeconds = parseEtime(match[3] ?? '0');
+    const command = match[4] ?? '';
     if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
     // Don't include the daemon itself if it somehow matched.
     if (pid === process.pid) continue;
-    rows.push({ pid, ppid, command });
+    rows.push({ pid, ppid, command, elapsedSeconds });
   }
   return rows;
+}
+
+/**
+ * Parse ps's `etime` format → seconds.
+ * Supported shapes:
+ *   `SS`          — seconds (rare; some ps variants emit on first second)
+ *   `MM:SS`       — minutes + seconds
+ *   `HH:MM:SS`    — hours + minutes + seconds
+ *   `DD-HH:MM:SS` — days + hours + minutes + seconds
+ */
+function parseEtime(raw: string): number {
+  if (!raw) return 0;
+  let days = 0;
+  let rest = raw;
+  const dashIdx = rest.indexOf('-');
+  if (dashIdx >= 0) {
+    days = Number(rest.slice(0, dashIdx)) || 0;
+    rest = rest.slice(dashIdx + 1);
+  }
+  const parts = rest.split(':').map((p) => Number(p) || 0);
+  let total = days * 86400;
+  if (parts.length === 1) total += parts[0]!;
+  else if (parts.length === 2) total += parts[0]! * 60 + parts[1]!;
+  else if (parts.length === 3) total += parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  return total;
 }
 
 function defaultIsAlive(pid: number): boolean {
@@ -284,4 +341,4 @@ function defaultIsAlive(pid: number): boolean {
 }
 
 // Re-exported for tests — same logic without the spawning side effects.
-export const __test__ = { listForkWorkersFromPs, defaultIsAlive };
+export const __test__ = { listForkWorkersFromPs, defaultIsAlive, parseEtime };

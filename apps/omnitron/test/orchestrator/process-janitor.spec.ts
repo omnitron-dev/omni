@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ProcessJanitor, type PsRow } from '../../src/orchestrator/process-janitor.js';
+import { ProcessJanitor, __test__, type PsRow } from '../../src/orchestrator/process-janitor.js';
 
 type KillSig = string | number;
 
@@ -48,9 +48,12 @@ describe('ProcessJanitor', () => {
     killSpy.mockRestore();
   });
 
-  function makeListProcesses(rows: PsRow[]) {
-    for (const r of rows) alivePids.add(r.pid);
-    return () => rows;
+  function makeListProcesses(rows: Array<Omit<PsRow, 'elapsedSeconds'> & { elapsedSeconds?: number }>) {
+    // Default to 600s (10 min) so existing tests don't accidentally hit the
+    // new minProcessAgeSeconds guard.
+    const filled: PsRow[] = rows.map((r) => ({ ...r, elapsedSeconds: r.elapsedSeconds ?? 600 }));
+    for (const r of filled) alivePids.add(r.pid);
+    return () => filled;
   }
 
   function isAlive(pid: number) {
@@ -167,6 +170,37 @@ describe('ProcessJanitor', () => {
     // Both signals threw EPERM — net successful kills are 0; killErrors
     // is the gap (the metric records this without crashing).
     expect(m.killErrors).toBeGreaterThanOrEqual(0);
+  });
+
+  it('does NOT reap a young (under minProcessAge) process even if not in owned set', async () => {
+    // Newly-spawned worker — supervisor hasn't yet registered its
+    // childName, so getOwnedPids() doesn't include this PID. Without
+    // the grace period, the janitor would kill it during its DB/Redis
+    // init phase.
+    const list = makeListProcesses([
+      { pid: 700, ppid: process.pid, command: 'fork-worker', elapsedSeconds: 5 },
+    ]);
+    const janitor = new ProcessJanitor({
+      gracefulMs: 1,
+      minProcessAgeSeconds: 60,
+      getOwnedPids: () => new Set(),
+      listProcesses: list,
+      isAlive,
+    });
+    const m = await janitor.runSweep();
+    expect(m.orphansFound).toBe(0);
+    expect(killCalls).toHaveLength(0);
+  });
+
+  it('parseEtime handles SS / MM:SS / HH:MM:SS / DD-HH:MM:SS', () => {
+    const { parseEtime } = __test__;
+    expect(parseEtime('0')).toBe(0);
+    expect(parseEtime('45')).toBe(45);
+    expect(parseEtime('01:30')).toBe(90);
+    expect(parseEtime('02:00:00')).toBe(7200);
+    expect(parseEtime('1-00:00:00')).toBe(86400);
+    expect(parseEtime('2-12:30:15')).toBe(2 * 86400 + 12 * 3600 + 30 * 60 + 15);
+    expect(parseEtime('')).toBe(0);
   });
 
   it('start/stop are idempotent', () => {

@@ -11,6 +11,7 @@ import { getHeapStatistics } from 'v8';
 import pino, { Logger as PinoLogger } from 'pino';
 import { Netron } from '@omnitron-dev/titan/netron';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { LifecycleController } from '@omnitron-dev/titan/lifecycle';
 import type { ILogger, LogLevel } from '@omnitron-dev/titan/module/logger';
 import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
@@ -670,52 +671,35 @@ async function initialize() {
       }
     });
 
-    // Handle process termination.
+    // Process termination is owned by Titan's LifecycleController.
+    // It guarantees process.exit() in every code path (clean / hung /
+    // critical-error) with hard per-phase deadlines — fixing the
+    // zombie-fork-worker leak that previously held DB connections
+    // open after shutdown silently hung.
     //
-    // The previous handler awaited serviceWrapper.__shutdown() but
-    // never called process.exit() — if shutdown hung (in-flight RPC
-    // retry loops, a stuck DB pool, an unresolved netron promise),
-    // the process stayed alive forever, holding sockets and DB
-    // connections. The omnitron daemon would then spawn replacement
-    // workers, accumulating zombies that hold their share of the
-    // limited postgres connection pool until eventually no backend
-    // can connect.
-    //
-    // Behaviour now:
-    //   1. Run __shutdown with a hard ceiling (5s default).
-    //   2. process.exit(0) when shutdown resolves OR the timeout fires,
-    //      whichever comes first. Either way the OS reclaims FDs.
-    //   3. process.exit(1) on shutdown error so the parent sees a
-    //      non-zero exit code and can decide whether to restart.
-    const shutdownAndExit = async (signal: 'SIGTERM' | 'SIGINT') => {
-      const TIMEOUT_MS = Number(process.env['TITAN_SHUTDOWN_TIMEOUT_MS']) || 5_000;
-      let exited = false;
-      const forceExit = setTimeout(() => {
-        if (exited) return;
-        logger?.warn({ signal, timeoutMs: TIMEOUT_MS }, 'Shutdown timeout — forcing exit');
-        exited = true;
-        process.exit(0);
-      }, TIMEOUT_MS);
-      forceExit.unref();
-      try {
-        await serviceWrapper.__shutdown();
-        if (!exited) {
-          exited = true;
-          clearTimeout(forceExit);
-          process.exit(0);
-        }
-      } catch (err) {
-        if (!exited) {
-          exited = true;
-          clearTimeout(forceExit);
-          logger?.error({ err, signal }, 'Shutdown error — exiting with code 1');
-          process.exit(1);
-        }
-      }
-    };
-
-    process.on('SIGTERM', () => void shutdownAndExit('SIGTERM'));
-    process.on('SIGINT', () => void shutdownAndExit('SIGINT'));
+    // The runtime registers ONE dispose-phase hook delegating to the
+    // service wrapper's __shutdown; the controller owns signal wiring,
+    // timeouts, and exit. Signals: SIGTERM/SIGINT/SIGHUP all funnel
+    // through it.
+    const shutdownTimeoutMs = Number(process.env['TITAN_SHUTDOWN_TIMEOUT_MS']) || 5_000;
+    const lifecycle = new LifecycleController({
+      // Single-task worker — give __shutdown the full window minus a
+      // small safety buffer so we exit before the parent's SIGKILL
+      // ladder fires.
+      defaultTaskTimeoutMs: Math.max(1000, shutdownTimeoutMs - 500),
+      bucketTimeoutMs: shutdownTimeoutMs,
+      totalTimeoutMs: shutdownTimeoutMs + 1000,
+      forceKillBufferMs: 500,
+      logger,
+    });
+    lifecycle.register({
+      name: 'service-wrapper-shutdown',
+      // Last-phase priority — fires after any future hooks the wrapped
+      // service may register internally.
+      priority: 90,
+      handler: () => serviceWrapper.__shutdown(),
+    });
+    lifecycle.installSignalHandlers();
 
     // Log successful initialization
     logger?.info({ processId: config.processId, serviceName, serviceVersion, transportUrl }, 'Process initialized');

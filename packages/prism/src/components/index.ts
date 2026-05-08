@@ -250,10 +250,12 @@ export {
   LinearProgress,
   CircularProgress,
   ProgressBar,
+  CountdownRing,
   type ProgressColor,
   type LinearProgressProps,
   type CircularProgressProps,
   type ProgressBarProps,
+  type CountdownRingProps,
 } from './progress/index.js';
 
 // Tabs

@@ -26,6 +26,7 @@ import { fallbackLog } from '../utils/fallback-log.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN, CONFIG_OPTIONS_TOKEN } from '../modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN, LOGGER_OPTIONS_TOKEN } from '../modules/logger/index.js';
+import { LifecycleController, type LifecyclePhaseEvent } from '../lifecycle/index.js';
 // Well-known token for optional scheduler integration (uses Symbol.for for cross-package identity)
 const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
 import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
@@ -2543,69 +2544,146 @@ export class Application implements IApplication {
   }
 
   /**
-   * Execute shutdown tasks
+   * Execute shutdown tasks via the unified `LifecycleController`.
+   *
+   * Public contract preserved verbatim — this method is private and
+   * only called from `shutdown()`. Behaviour the test suite asserts on:
+   *
+   *   - Tasks run in (priority asc, id asc) order. Within a priority
+   *     bucket the controller runs them sequentially because we
+   *     register every user task with `parallel: false`.
+   *   - On `task.critical === true` failure: shutdown aborts and the
+   *     remaining tasks (including DI-stop and cleanup) are skipped.
+   *   - On non-critical failure: log+event and continue with the next
+   *     task. Same `ShutdownTaskComplete` / `ShutdownTaskError` events
+   *     fire from the controller's `onPhaseEvent` hook so external
+   *     listeners (and test assertions) keep working unchanged.
+   *   - After all user tasks: `this.stop()` (DI shutdown), then
+   *     `runCleanupHandlers()`. We register them as internal high-
+   *     priority tasks (priority 1000, 1001) so they fall in the
+   *     `dispose` phase after every user task.
+   *
+   * The controller adds:
+   *   - per-phase telemetry (LifecyclePhaseEvent) — re-emitted to
+   *     consumers that listen for `application:lifecycle-phase`, used
+   *     by the omnitron metrics-bridge for the
+   *     `lifecycle_shutdown_phase_duration_seconds` histogram.
+   *   - hard force-exit safety net (separate timer) layered on top of
+   *     the existing outer-promise timeout race in `shutdown()`.
+   *
+   * `exitOverride: () => false` keeps process.exit under Application's
+   * control — the outer `shutdown()` already owns that responsibility
+   * and the test suite's `_disableProcessExit` flag must remain
+   * effective.
    */
   private async executeShutdown(reason: ShutdownReason, details?: unknown): Promise<void> {
-    // Get all tasks and ensure priority is a number
-    const tasksArray = Array.from(this._shutdownTasks.values()).map((task) => ({
-      ...task,
-      priority: Number(task.priority ?? 50),
-    }));
-
-    // Sort tasks by priority (lower numbers first), then by ID for stable sorting
-    const sortedTasks = tasksArray.sort((a, b) => {
-      // Ensure priorities are numbers
-      const aPriority = Number(a.priority ?? 50);
-      const bPriority = Number(b.priority ?? 50);
-
-      // Compare priorities
-      if (aPriority < bPriority) return -1;
-      if (aPriority > bPriority) return 1;
-
-      // If priorities are equal, sort by ID to ensure stable order
-      return (a.id || '').localeCompare(b.id || '');
+    const controller = new LifecycleController({
+      bucketTimeoutMs: this._shutdownTimeout,
+      totalTimeoutMs: this._shutdownTimeout,
+      forceKillBufferMs: 1_000,
+      defaultTaskTimeoutMs: this._shutdownTimeout,
+      logger: this.adaptLifecycleLogger(),
+      onPhaseEvent: (e) => this.handleLifecyclePhaseEvent(e),
+      // Application owns process.exit (outer `shutdown()` already does
+      // it). Suppressing here prevents the controller from racing with
+      // the existing exit path.
+      exitOverride: () => false,
     });
 
-    // Execute tasks in priority order
-    for (const task of sortedTasks) {
-      try {
-        this._logger?.debug({ taskName: task.name }, 'Executing shutdown task');
-
-        // Create task promise with optional timeout
-        let taskPromise = Promise.resolve(task.handler(reason, details));
-
-        if (task.timeout) {
-          const timeoutPromise = new Promise<void>((_, reject) => {
-            setTimeout(() => reject(Errors.timeout(`Task ${task.name}`, task.timeout!)), task.timeout);
-          });
-          taskPromise = Promise.race([taskPromise, timeoutPromise]);
-        }
-
-        await taskPromise;
-
-        this._logger?.debug({ taskName: task.name }, 'Shutdown task completed');
-        this.emit(ApplicationEvent.ShutdownTaskComplete, { task: task.name });
-      } catch (error) {
-        this._logger?.error({ error, taskName: task.name }, 'Shutdown task failed');
-        this.emit(ApplicationEvent.ShutdownTaskError, { task: task.name, error });
-
-        // Continue with other tasks even if one fails
-        if (task.critical) {
-          // Critical task failed, abort shutdown
-          throw Errors.internal(`Critical shutdown task failed: ${task.name}`);
-        }
-      }
+    // Register every user-registered task. `parallel: false` preserves
+    // the strict-sequential semantics the existing implementation
+    // (and 1k+ lines of tests) depend on.
+    for (const task of this._shutdownTasks.values()) {
+      controller.register({
+        ...task,
+        parallel: false,
+      });
     }
 
-    // Stop the application
+    // Internal terminal tasks. priority 1000+ falls in the `dispose`
+    // bucket so they run after every user task. They are NOT critical
+    // — failure here logs and is swallowed, matching the existing
+    // best-effort behaviour of `this.stop()` and the cleanup handler
+    // loop in `runCleanupHandlers`.
     const detailsWithSignal = details as { signal?: NodeJS.Signals } | undefined;
-    await this.stop({
-      timeout: this._shutdownTimeout,
-      signal: detailsWithSignal?.signal,
+    controller.register({
+      id: '__app_di_stop',
+      name: '__app_di_stop',
+      priority: 1000,
+      parallel: false,
+      handler: async () => {
+        await this.stop({
+          timeout: this._shutdownTimeout,
+          signal: detailsWithSignal?.signal,
+        });
+      },
+    });
+    controller.register({
+      id: '__app_cleanup',
+      name: '__app_cleanup',
+      priority: 1001,
+      parallel: false,
+      handler: () => this.runCleanupHandlers(),
     });
 
-    // Run cleanup handlers
-    await this.runCleanupHandlers();
+    await controller.shutdown(reason, details);
+  }
+
+  /**
+   * Translate `LifecyclePhaseEvent` into the legacy
+   * `ShutdownTaskComplete` / `ShutdownTaskError` events that the test
+   * suite and consumer code already subscribe to. Internal terminal
+   * tasks (`__app_di_stop`, `__app_cleanup`) are silenced — they were
+   * never user-visible in the previous implementation.
+   */
+  private handleLifecyclePhaseEvent(event: LifecyclePhaseEvent): void {
+    if (event.kind === 'task-finish' && event.taskName) {
+      if (this.isInternalShutdownTask(event.taskName)) return;
+      this._logger?.debug({ taskName: event.taskName }, 'Shutdown task completed');
+      this.emit(ApplicationEvent.ShutdownTaskComplete, { task: event.taskName });
+      return;
+    }
+    if (event.kind === 'task-error' && event.taskName) {
+      if (this.isInternalShutdownTask(event.taskName)) return;
+      this._logger?.error(
+        { error: event.error, taskName: event.taskName },
+        'Shutdown task failed',
+      );
+      this.emit(ApplicationEvent.ShutdownTaskError, {
+        task: event.taskName,
+        error: event.error,
+      });
+    }
+    // Phase-level events (phase-start/finish/timeout) propagate via
+    // a dedicated event so observability code can consume them
+    // without parsing the per-task stream.
+    if (
+      event.kind === 'phase-start' ||
+      event.kind === 'phase-finish' ||
+      event.kind === 'phase-timeout'
+    ) {
+      this.emit(ApplicationEvent.LifecyclePhaseEvent, event);
+    }
+  }
+
+  private isInternalShutdownTask(name: string): boolean {
+    return name === '__app_di_stop' || name === '__app_cleanup';
+  }
+
+  /**
+   * Adapter so the controller's structured logger calls land on the
+   * Application's pino-style logger. Returns undefined if no logger is
+   * attached so the controller's own console fallback is used.
+   */
+  private adaptLifecycleLogger() {
+    const logger = this._logger;
+    if (!logger) return undefined;
+    return {
+      debug: (payload: unknown, msg?: string) => logger.debug(payload as object, msg ?? ''),
+      info: (payload: unknown, msg?: string) => logger.info(payload as object, msg ?? ''),
+      warn: (payload: unknown, msg?: string) => logger.warn(payload as object, msg ?? ''),
+      error: (payload: unknown, msg?: string) => logger.error(payload as object, msg ?? ''),
+    };
   }
 
   /**

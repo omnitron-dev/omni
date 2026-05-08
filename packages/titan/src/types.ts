@@ -58,6 +58,13 @@ export enum ApplicationEvent {
   ShutdownError = 'shutdown:error',
   ShutdownTaskComplete = 'shutdown:task:complete',
   ShutdownTaskError = 'shutdown:task:error',
+  /**
+   * Lifecycle phase event from the underlying `LifecycleController`.
+   * Payload shape: `LifecyclePhaseEvent` from `lifecycle/index.ts`.
+   * Consumers (metrics exporters, structured loggers) subscribe to
+   * this to populate phase-duration histograms and timeout counters.
+   */
+  LifecyclePhaseEvent = 'lifecycle:phase',
   ProcessExit = 'process:exit',
   Custom = 'custom',
 }

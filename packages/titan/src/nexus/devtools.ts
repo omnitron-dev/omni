@@ -988,3 +988,62 @@ export function exportToMermaid(graph: DependencyGraph): string {
 
   return lines.join('\n');
 }
+
+/**
+ * Serialise a DependencyGraph to compact JSON. Used by the CLI's
+ * `--format=json` mode and by failed-init telemetry that wants a
+ * machine-readable snapshot of the graph at the moment of failure.
+ */
+export function exportToJson(graph: DependencyGraph, options: { pretty?: boolean } = {}): string {
+  return options.pretty ? JSON.stringify(graph, null, 2) : JSON.stringify(graph);
+}
+
+/**
+ * Filter the graph down to a focus node and its closure. `directions`
+ * controls which side(s) of the focus to keep:
+ *   - `'ancestors'` — everything that depends on the focus, recursively
+ *     (the "things that break when this provider fails to init").
+ *   - `'descendants'` — everything the focus depends on, recursively
+ *     (the "things this provider needs to start").
+ *   - `'both'` (default) — union of the two.
+ *
+ * Edges between nodes outside the kept set are dropped. Useful for
+ * diagnostics: instead of dumping the whole module graph, we render
+ * only the failing token's transitive closure.
+ */
+export function focusGraph(
+  graph: DependencyGraph,
+  focusId: string,
+  directions: 'ancestors' | 'descendants' | 'both' = 'both',
+): DependencyGraph {
+  const adjFwd = new Map<string, Set<string>>();
+  const adjRev = new Map<string, Set<string>>();
+  for (const e of graph.edges) {
+    if (!adjFwd.has(e.from)) adjFwd.set(e.from, new Set());
+    if (!adjRev.has(e.to)) adjRev.set(e.to, new Set());
+    adjFwd.get(e.from)!.add(e.to);
+    adjRev.get(e.to)!.add(e.from);
+  }
+  const keep = new Set<string>([focusId]);
+  const visit = (start: string, adj: Map<string, Set<string>>): void => {
+    const stack = [start];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      const nbrs = adj.get(cur);
+      if (!nbrs) continue;
+      for (const n of nbrs) {
+        if (!keep.has(n)) {
+          keep.add(n);
+          stack.push(n);
+        }
+      }
+    }
+  };
+  if (directions === 'descendants' || directions === 'both') visit(focusId, adjFwd);
+  if (directions === 'ancestors' || directions === 'both') visit(focusId, adjRev);
+
+  return {
+    nodes: graph.nodes.filter((n) => keep.has(n.id)),
+    edges: graph.edges.filter((e) => keep.has(e.from) && keep.has(e.to)),
+  };
+}

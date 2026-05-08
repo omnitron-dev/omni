@@ -230,6 +230,19 @@ export class DaemonRpcService implements IDaemonService {
   // Diagnostics (inspect is viewer, exec is admin)
   // ============================================================================
 
+  /**
+   * Live DI graph for a single app — used by `omnitron inspect <app> --graph`.
+   * Returns null if the app isn't running or doesn't expose
+   * `getDependencyGraph` (legacy bootstraps).
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getDependencyGraph(data: { name: string }): Promise<{
+    nodes: Array<{ id: string; label?: string; type?: string }>;
+    edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
+  } | null> {
+    return this.orchestrator.getDependencyGraph(data.name);
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async inspect(data: { name: string }): Promise<AppDiagnosticsDto> {
     const handle = this.orchestrator.getHandle(data.name);

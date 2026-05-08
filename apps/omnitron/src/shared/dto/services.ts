@@ -58,6 +58,16 @@ export interface IDaemonService {
 
   // --- Diagnostics ---
   inspect(data: { name: string }): Promise<AppDiagnosticsDto>;
+  /**
+   * Live DI dependency graph for the app — used by
+   * `omnitron inspect <app> --graph`. Returns null if the app
+   * isn't running or doesn't expose `getDependencyGraph` (legacy
+   * bootstrap workers).
+   */
+  getDependencyGraph(data: { name: string }): Promise<{
+    nodes: Array<{ id: string; label?: string; type?: string }>;
+    edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
+  } | null>;
   exec(data: { name: string; service: string; method: string; args: unknown[] }): Promise<unknown>;
   getEnv(data: { name: string }): Promise<Record<string, string>>;
 

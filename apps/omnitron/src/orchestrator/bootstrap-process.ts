@@ -348,6 +348,31 @@ class BootstrapProcess {
   }
 
   /**
+   * Returns the DI dependency graph of the running Application's
+   * container — nodes per registered token, edges per declared
+   * dependency. Used by `omnitron inspect <app> --graph`.
+   *
+   * The graph is computed lazily from the live container state so it
+   * reflects whatever was actually wired up (post-`@Module`-imports,
+   * post-`registerProviders`). It does NOT include the parent
+   * container's registrations by default — the local module surface
+   * is what triage cares about.
+   */
+  getDependencyGraph(options: { includeParent?: boolean } = {}): {
+    nodes: Array<{ id: string; label?: string; type?: string }>;
+    edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
+  } {
+    if (!this.app) {
+      return { nodes: [], edges: [] };
+    }
+    const container = this.app.container as { exportGraph?: (o: unknown) => unknown };
+    if (typeof container.exportGraph !== 'function') {
+      return { nodes: [], edges: [] };
+    }
+    return container.exportGraph(options) as ReturnType<BootstrapProcess['getDependencyGraph']>;
+  }
+
+  /**
    * Connect to daemon's Netron and queryInterface() for sibling services.
    *
    * Uses the Application's own Netron instance (this.app.netron) to connect

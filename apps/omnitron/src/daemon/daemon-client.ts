@@ -173,6 +173,14 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.inspect(data);
   }
 
+  async getDependencyGraph(data: { name: string }): Promise<{
+    nodes: Array<{ id: string; label?: string; type?: string }>;
+    edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
+  } | null> {
+    await this.ensureConnected();
+    return this.proxy!.getDependencyGraph(data);
+  }
+
   async exec(data: { name: string; service: string; method: string; args: unknown[] }): Promise<unknown> {
     await this.ensureConnected();
     return this.proxy!.exec(data);

@@ -258,6 +258,9 @@ export {
   type CountdownRingProps,
 } from './progress/index.js';
 
+// Virtual List
+export { VirtualList, type VirtualListProps } from './virtual-list/index.js';
+
 // Tabs
 export {
   Tabs,

@@ -106,6 +106,7 @@
     "@mui/x-date-pickers": "^8.28.4",
     "@omnitron-dev/netron-browser": "workspace:*",
     "@omnitron-dev/netron-react": "workspace:*",
+    "@tanstack/react-virtual": "^3.13.24",
     "@tiptap/core": "^3.22.5",
     "@tiptap/extension-code-block-lowlight": "^3.22.5",
     "@tiptap/extension-image": "^3.22.5",

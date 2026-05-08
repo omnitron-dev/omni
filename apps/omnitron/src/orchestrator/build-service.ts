@@ -59,6 +59,10 @@ interface WatchHandle {
  * or `.mts` files get bundled. Anything resolving to compiled `.js`/`.cjs`/
  * `.mjs` stays external as before.
  */
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function externalizeNonRelativePlugin() {
   // Cache resolution results across onResolve invocations within a single
   // build to keep watch-mode rebuilds snappy.
@@ -109,10 +113,18 @@ function externalizeNonRelativePlugin() {
  * `require('../../package.json')` from `src/config/`) are flattened into one bundle.
  * `import.meta.url` now points to `.omnitron-build/foo.js`, breaking all relative paths.
  *
- * Fix: Find all `require("RELATIVE_PATH/package.json")` patterns in the output and
- * replace them with `require("ABSOLUTE_PATH/package.json")`, resolved from the
- * entry source's app root. Also replace `createRequire(import.meta.url)` with
- * `createRequire(import.meta.url)` (left as-is since require args are now absolute).
+ * Earlier the patcher rewrote those calls to ABSOLUTE paths
+ * (`require("/Users/me/.../package.json")`). The bundles ran on the
+ * developer's machine but were non-portable: shipping the artifact to
+ * staging/CI surfaced cryptic ENOENT errors against a path that never
+ * existed there.
+ *
+ * Fix (C12): inline the parsed package.json content directly into the
+ * bundle. After patching, the runtime never touches the filesystem to
+ * read package.json — it reads a JS object literal that captures the
+ * fields at build time. The bundle becomes environment-independent and
+ * a downstream `verify-bundle-portability.sh` CI gate can refuse to
+ * ship anything still containing `/Users/`, `/home/`, or `C:\\`.
  */
 function patchCreateRequireInOutput(outPath: string, entrySourcePath: string): void {
   let content: string;
@@ -135,13 +147,62 @@ function patchCreateRequireInOutput(outPath: string, entrySourcePath: string): v
   }
 
   const pkgJsonPath = path.join(appRoot, 'package.json');
+  let pkgInline: string;
+  try {
+    // Inlining the FULL package.json would bake workspace `link:` paths
+    // into the bundle (`"@omnitron-dev/foo":"link:/Users/me/..."`), which
+    // is exactly the dev-path leakage C12 set out to fix. We project a
+    // small allowlist of public-facing string fields — these are what
+    // application code actually reads from package.json (version checks,
+    // service identification, license/author display). Anything else
+    // (dependencies, scripts, exports, devDependencies) is config that
+    // belongs in the build environment, not the runtime bundle.
+    const parsed = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8')) as Record<string, unknown>;
+    const safeFields: ReadonlyArray<keyof typeof parsed> = [
+      'name',
+      'version',
+      'description',
+      'keywords',
+      'author',
+      'license',
+      'homepage',
+      'bugs',
+      'repository',
+    ];
+    const projection: Record<string, unknown> = {};
+    for (const k of safeFields) {
+      if (k in parsed) projection[k as string] = parsed[k];
+    }
+    pkgInline = `(${JSON.stringify(projection)})`;
+  } catch {
+    // If we can't read package.json (deleted? unreadable?), skip
+    // patching — better to leave the relative require in place and
+    // let it fail at runtime with a recognizable error than to bake
+    // a malformed literal into the bundle.
+    return;
+  }
 
-  // Replace all relative require calls to package.json with absolute paths.
-  // Matches: require2("../package.json"), require3('../../package.json'), etc.
-  // Preserves the variable name (e.g., require2) since esbuild renames `require`.
-  const patched = content.replace(
-    /(require\d*)\(["'](\.\.\/)+package\.json["']\)/g,
-    `$1("${pkgJsonPath}")`
+  // Replace every relative require to package.json with the inlined
+  // object literal. esbuild renames `require` → `require2`/`require3`
+  // (digit suffix) AND `createRequire(import.meta.url)` results are
+  // commonly assigned to `_require`, `__require`, etc. We must match
+  // the WHOLE identifier so the replacement consumes it entirely —
+  // otherwise leftover prefix characters end up referencing an
+  // undefined identifier (`_({"name": …})` blows up at runtime with
+  // `ReferenceError: _ is not defined`).
+  //
+  // Pattern: identifier ([A-Za-z_$][\w$]*) at a non-identifier
+  // boundary, immediately followed by the call.
+  let patched = content.replace(
+    /(?<![A-Za-z0-9_$])[A-Za-z_$][\w$]*\(["'](?:\.\.\/)+package\.json["']\)/g,
+    pkgInline,
+  );
+  patched = patched.replace(
+    new RegExp(
+      `(?<![A-Za-z0-9_$])[A-Za-z_$][\\w$]*\\(["']${escapeForRegex(pkgJsonPath)}["']\\)`,
+      'g',
+    ),
+    pkgInline,
   );
 
   if (patched !== content) {

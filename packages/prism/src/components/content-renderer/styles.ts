@@ -327,6 +327,141 @@ export const ContentRoot = styled('div')(({ theme }) => ({
     },
   },
 
+  // ─── Admonition (callout) ─────────────────────────────────
+  [`& .${contentClasses.admonition}`]: {
+    margin: theme.spacing(2, 0),
+    padding: theme.spacing(1.5, 2),
+    borderRadius: theme.shape.borderRadius,
+    borderLeft: `4px solid ${theme.palette.divider}`,
+    backgroundColor: alpha(theme.palette.text.primary, 0.04),
+    '& > :last-child': { marginBottom: 0 },
+  },
+  [`& .${contentClasses.admonitionTitle}`]: {
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    fontSize: '0.75rem',
+    letterSpacing: '0.05em',
+    marginBottom: theme.spacing(0.75),
+    opacity: 0.85,
+  },
+  [`& .${contentClasses.admonitionContent}`]: {
+    '& p:last-child': { marginBottom: 0 },
+  },
+  [`& .${contentClasses.admonitionNote}`]: {
+    borderLeftColor: theme.palette.text.secondary,
+    backgroundColor: alpha(theme.palette.text.primary, 0.04),
+  },
+  [`& .${contentClasses.admonitionTip}`]: {
+    borderLeftColor: theme.palette.success.main,
+    backgroundColor: alpha(theme.palette.success.main, 0.08),
+  },
+  [`& .${contentClasses.admonitionWarning}`]: {
+    borderLeftColor: theme.palette.warning.main,
+    backgroundColor: alpha(theme.palette.warning.main, 0.08),
+  },
+  [`& .${contentClasses.admonitionDanger}`]: {
+    borderLeftColor: theme.palette.error.main,
+    backgroundColor: alpha(theme.palette.error.main, 0.08),
+  },
+  [`& .${contentClasses.admonitionInfo}`]: {
+    borderLeftColor: theme.palette.info.main,
+    backgroundColor: alpha(theme.palette.info.main, 0.08),
+  },
+  [`& .${contentClasses.admonitionCaution}`]: {
+    borderLeftColor: theme.palette.warning.dark,
+    backgroundColor: alpha(theme.palette.warning.dark, 0.08),
+  },
+
+  // ─── Tabs ───────────────────────────────────────────────────
+  [`& .${contentClasses.tabs}`]: {
+    margin: theme.spacing(2, 0),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.shape.borderRadius,
+    overflow: 'hidden',
+  },
+  [`& .${contentClasses.tabsHeader}`]: {
+    display: 'flex',
+    gap: 0,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    backgroundColor: alpha(theme.palette.text.primary, 0.03),
+  },
+  [`& .${contentClasses.tabsTab}`]: {
+    appearance: 'none',
+    background: 'transparent',
+    border: 'none',
+    padding: theme.spacing(1, 2),
+    fontFamily: 'inherit',
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: theme.palette.text.secondary,
+    cursor: 'pointer',
+    borderBottom: '2px solid transparent',
+    transition: 'all 0.15s ease',
+    '&:hover': { color: theme.palette.text.primary },
+  },
+  [`& .${contentClasses.tabsTabActive}`]: {
+    color: theme.palette.text.primary,
+    borderBottomColor: theme.palette.primary.main,
+  },
+  [`& .${contentClasses.tabsPanel}`]: {
+    padding: theme.spacing(2),
+    '& > :first-of-type': { marginTop: 0 },
+    '& > :last-child': { marginBottom: 0 },
+  },
+
+  // ─── Code block — title + copy button ───────────────────────
+  [`& .${contentClasses.codeBlockTitle}`]: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.75, 1.5),
+    fontSize: '0.75rem',
+    fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+    color: theme.palette.text.secondary,
+    backgroundColor: alpha(theme.palette.text.primary, 0.06),
+    borderTopLeftRadius: theme.shape.borderRadius,
+    borderTopRightRadius: theme.shape.borderRadius,
+  },
+  [`& .${contentClasses.codeBlockCopy}`]: {
+    appearance: 'none',
+    background: 'transparent',
+    border: 'none',
+    color: 'inherit',
+    cursor: 'pointer',
+    padding: theme.spacing(0.25, 0.75),
+    fontSize: '0.875rem',
+    borderRadius: theme.shape.borderRadius,
+    '&:hover': { backgroundColor: alpha(theme.palette.text.primary, 0.08) },
+  },
+
+  // ─── Figure ─────────────────────────────────────────────────
+  [`& .${contentClasses.figure}`]: {
+    margin: theme.spacing(2, 0),
+    textAlign: 'center',
+  },
+  [`& .${contentClasses.figcaption}`]: {
+    fontSize: '0.8125rem',
+    color: theme.palette.text.secondary,
+    marginTop: theme.spacing(0.75),
+  },
+
+  // ─── kbd ────────────────────────────────────────────────────
+  [`& .${contentClasses.kbd}`]: {
+    display: 'inline-block',
+    padding: theme.spacing(0, 0.5),
+    fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+    fontSize: '0.8em',
+    color: theme.palette.text.primary,
+    border: `1px solid ${theme.palette.divider}`,
+    borderBottomWidth: 2,
+    borderRadius: 4,
+    backgroundColor: alpha(theme.palette.text.primary, 0.04),
+    boxShadow: `0 1px 0 ${alpha(theme.palette.text.primary, 0.15)}`,
+    minWidth: '1.5em',
+    textAlign: 'center',
+  },
+
   // ─── Compact mode (chat messages, comments, etc.) ─────────
   [`&.${contentClasses.compact}`]: {
     '> * + *': { marginTop: 0, marginBottom: 2 },

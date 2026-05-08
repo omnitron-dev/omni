@@ -15,11 +15,17 @@ export const postgresPreset: IServicePreset = {
   defaultSecrets: { user: 'postgres', password: 'postgres' },
 
   defaultHealthCheck: {
+    // pg_isready returns 0 the moment the postmaster accepts connections
+    // — but the moment isn't quite app-ready: WAL replay or extension
+    // creation can still be running. Use a real `SELECT 1` against
+    // postgres user (always exists) so we don't mark healthy until the
+    // executor is functional. Higher retry count covers slow boots
+    // (volume create + WAL replay can take 15s+).
     type: 'command',
-    target: 'pg_isready -U postgres',
-    interval: '5s',
+    target: 'sh -c "psql -U postgres -d postgres -h /var/run/postgresql -tAc \\"SELECT 1\\" | grep -q 1"',
+    interval: '3s',
     timeout: '5s',
-    retries: 5,
+    retries: 30,
   },
 
   defaultDocker: {

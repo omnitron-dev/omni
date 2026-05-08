@@ -505,10 +505,40 @@ export function Request() {
  * }
  * ```
  */
-export const Service = (options?: string | ServiceOptions) => (target: any) => {
-  // Normalize options to ensure we always have an object
-  const serviceOptions: ServiceOptions =
-    typeof options === 'string' ? { name: options } : options || { name: target.name };
+/**
+ * @Service decorator overloads:
+ *
+ *   @Service()                                     — fall back to class name
+ *   @Service('Auth')                               — wire name only
+ *   @Service('Auth@1.0.0')                         — wire name + version
+ *   @Service({ name: 'Auth', version: '1.0.0' })   — full options
+ *   @Service(AuthService)                          — typed ServiceDescriptor
+ *
+ * The descriptor form (B6) is preferred — it co-locates the wire
+ * name with the interface in shared DTO modules so renames break
+ * compile on every consumer that drifted.
+ */
+export const Service = (
+  options?: string | ServiceOptions | { readonly name: string; readonly version?: string; readonly qualifiedName?: string },
+) => (target: any) => {
+  // Accept ServiceDescriptor — duck-typed by the qualifiedName field
+  // we set in service-descriptor.ts. Keeps the decorator independent
+  // of the netron module to avoid circular imports.
+  let serviceOptions: ServiceOptions;
+  if (typeof options === 'string') {
+    serviceOptions = { name: options };
+  } else if (
+    options &&
+    typeof options === 'object' &&
+    'qualifiedName' in options &&
+    typeof options.qualifiedName === 'string'
+  ) {
+    serviceOptions = { name: options.qualifiedName };
+  } else if (options) {
+    serviceOptions = options as ServiceOptions;
+  } else {
+    serviceOptions = { name: target.name };
+  }
 
   const qualifiedName = serviceOptions.name || target.name;
   // Parse the qualified name into name and version components

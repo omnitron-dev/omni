@@ -115,6 +115,15 @@ export * from './abstract-peer.js';
 export * from './interface.js';
 
 // ============================================================================
+// ServiceDescriptor — typed link between wire name and TS interface
+// ============================================================================
+export {
+  ServiceDescriptor,
+  isServiceDescriptor,
+  type InterfaceOf,
+} from './service-descriptor.js';
+
+// ============================================================================
 // Peer Classes
 // ============================================================================
 

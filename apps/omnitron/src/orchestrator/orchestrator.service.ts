@@ -56,6 +56,7 @@ import { buildRestartPolicy } from '../supervisor/restart-policy.js';
 import { ServiceRouter } from './service-router.js';
 import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
 import { BuildService, type BuildResult } from './build-service.js';
+import { ProcessJanitor } from './process-janitor.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import type { Netron } from '@omnitron-dev/titan/netron';
@@ -99,6 +100,12 @@ export class OrchestratorService extends EventEmitter {
 
   /** Cached build results per app name */
   private readonly buildResults = new Map<string, BuildResult>();
+
+  /**
+   * Orphan-process reaper. Lazily created on first `startAll` so unit
+   * tests that hit `startApp` directly don't get a periodic timer.
+   */
+  private janitor: ProcessJanitor | null = null;
 
   /** Daemon's Netron instance for native service routing */
   private daemonNetron: Netron | null = null;
@@ -163,6 +170,12 @@ export class OrchestratorService extends EventEmitter {
   async startAll(config: IEcosystemConfig): Promise<void> {
     this.config = config;
 
+    // Reap any fork-workers left over from a previous daemon BEFORE
+    // launching apps. Without this, a hard-killed daemon's children
+    // are still alive (now adopted by init); they hold DB connections
+    // and sockets that the new apps will fight for.
+    await this.ensureJanitor().coldStartSweep();
+
     for (const batch of resolveStartupOrder(config.apps)) {
       const enabled = batch.filter((e) => e.enabled !== false);
       await Promise.all(
@@ -179,8 +192,46 @@ export class OrchestratorService extends EventEmitter {
       );
     }
 
+    // Periodic sweep handles runtime leaks from partially-failed
+    // restart cycles (esbuild-rebuild → spawn-fail → orphan).
+    this.ensureJanitor().start();
+
     this.startMetricsPolling(config.monitoring.metrics.interval);
     this.persistState();
+  }
+
+  /**
+   * Lazily create the orphan-process janitor with the live "owned
+   * pids" snapshot wired to the orchestrator's handle map.
+   */
+  private ensureJanitor(): ProcessJanitor {
+    if (this.janitor) return this.janitor;
+    this.janitor = new ProcessJanitor({
+      logger: this.logger,
+      getOwnedPids: () => this.collectOwnedPids(),
+    });
+    return this.janitor;
+  }
+
+  /**
+   * Walk every live handle's supervisor children and collect the OS
+   * pids the orchestrator currently considers ours. Cheap — called
+   * every janitor sweep.
+   */
+  private collectOwnedPids(): Set<number> {
+    const owned = new Set<number>();
+    for (const handle of this.handles.values()) {
+      const supervisor = handle.supervisor;
+      if (!supervisor) continue;
+      for (const childName of supervisor.getChildNames()) {
+        const processId = supervisor.getChildProcessId(childName);
+        if (!processId) continue;
+        const workerHandle = this.pm.getWorkerHandle(processId);
+        const pid = workerHandle?.pid;
+        if (typeof pid === 'number') owned.add(pid);
+      }
+    }
+    return owned;
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
@@ -255,6 +306,12 @@ export class OrchestratorService extends EventEmitter {
     if (this.metricsTimer) {
       clearInterval(this.metricsTimer);
       this.metricsTimer = null;
+    }
+
+    // Stop the janitor first so it doesn't race the controlled
+    // shutdown by trying to "reap" children that are mid-stop.
+    if (this.janitor) {
+      this.janitor.stop();
     }
 
     let count = 0;

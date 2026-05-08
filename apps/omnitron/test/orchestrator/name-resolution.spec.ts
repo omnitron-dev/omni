@@ -62,6 +62,17 @@ describe('OrchestratorService.resolveAppName', () => {
     expect(orch.resolveAppName('api')).toBeUndefined();
     expect(orch.resolveAppName('billing-api')).toBe('project/stack/billing-api');
   });
+
+  it('throws on ambiguous bare-name resolution (multiple stacks expose the same short name)', () => {
+    const orch = build({
+      'omni/dev/main': { entry: { name: 'omni/dev/main' } },
+      'omni/prod/main': { entry: { name: 'omni/prod/main' } },
+    });
+    expect(() => orch.resolveAppName('main')).toThrow(/ambiguous/i);
+    // Exact match still works.
+    expect(orch.resolveAppName('omni/dev/main')).toBe('omni/dev/main');
+    expect(orch.resolveAppName('omni/prod/main')).toBe('omni/prod/main');
+  });
 });
 
 describe('OrchestratorService.getHandle (LOW-12)', () => {

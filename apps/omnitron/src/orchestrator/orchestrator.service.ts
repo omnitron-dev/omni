@@ -85,6 +85,22 @@ function mapStrategy(strategy: string): SupervisionStrategy {
   }
 }
 
+/**
+ * Strip the `${project}/${stack}/` prefix from a handle key (or
+ * leave a bare name untouched). Used to identify "the same physical
+ * app under any registration form" so duplicate registrations from
+ * stack mode + bare-name RPC paths can be deduplicated.
+ *
+ * Examples:
+ *   effectiveAppName('omni/dev/paysys') === 'paysys'
+ *   effectiveAppName('paysys')           === 'paysys'
+ *   effectiveAppName('a/b/c/paysys')     === 'paysys'  (last segment)
+ */
+function effectiveAppName(key: string): string {
+  const idx = key.lastIndexOf('/');
+  return idx >= 0 ? key.slice(idx + 1) : key;
+}
+
 export class OrchestratorService extends EventEmitter {
   private readonly handles = new Map<string, AppHandle>();
   private config: IEcosystemConfig | null = null;
@@ -243,6 +259,42 @@ export class OrchestratorService extends EventEmitter {
     const cfg = config ?? this.config;
     if (!cfg) throw new Error('Ecosystem config not loaded');
 
+    // Deduplicate by effective app identity. Project-mode registers
+    // apps as `${project}/${stack}/${app}`; non-project paths use the
+    // bare `${app}` short name. They refer to the SAME physical app
+    // and must never coexist as separate handles — the duplicate
+    // would compete for the port and the orphan-reaper's owned-pid
+    // accounting would split between them.
+    //
+    // Policy:
+    //   - exact key already exists, online   → return it (idempotent)
+    //   - exact key already exists, not online → fall through and re-launch
+    //     under the same key
+    //   - DIFFERENT key with the same effective short name → reject:
+    //     operator should restart by canonical name, not register an
+    //     alias.
+    const effective = effectiveAppName(entry.name);
+    for (const [key, h] of this.handles) {
+      if (key === entry.name) continue;
+      if (effectiveAppName(key) !== effective) continue;
+      // Same effective app under a different key.
+      if (h.status === 'online') {
+        this.logger.warn(
+          { existing: key, attempted: entry.name, effective },
+          'App already running under a canonical name — refusing duplicate registration',
+        );
+        return h;
+      }
+      // Existing handle is errored/stopped — replace silently so a
+      // failed previous launch doesn't permanently block the canonical
+      // form.
+      this.logger.info(
+        { stale: key, replacing_with: entry.name, effective },
+        'Replacing stale duplicate handle',
+      );
+      this.handles.delete(key);
+    }
+
     const existing = this.handles.get(entry.name);
     if (existing && existing.status === 'online') {
       this.logger.warn({ app: entry.name }, 'App already running');
@@ -272,7 +324,8 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
-    const handle = this.handles.get(name);
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
     if (!handle || handle.status === 'stopped') return;
 
     handle.markStopping();
@@ -350,8 +403,10 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async restartApp(name: string): Promise<AppHandle> {
-    const handle = this.handles.get(name);
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
+    name = canonical;
     const entry = handle.entry;
 
     // In dev mode, clear bootstrap config cache so topology changes are picked up
@@ -369,16 +424,30 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /**
-   * Resolve raw app name to its handle key.
-   * In stack mode, handles are namespaced (e.g., 'omni/dev/main' for app 'main').
-   * This finds the handle whose key ends with the raw app name.
+   * Resolve a user-supplied name to a canonical handle key.
+   *
+   * Inputs accepted:
+   *   - exact canonical key (`omni/dev/paysys`) → returned as-is
+   *   - bare short name (`paysys`) → returns the canonical key whose
+   *     last `/`-segment matches, IF AND ONLY IF the match is unique.
+   *
+   * Returns `undefined` for no match. Throws on ambiguity (multiple
+   * stacks expose the same short name) so the caller can surface a
+   * clear error to the operator instead of operating on the wrong
+   * app.
    */
   resolveAppName(rawName: string): string | undefined {
     if (this.handles.has(rawName)) return rawName;
+    const effective = effectiveAppName(rawName);
+    const matches: string[] = [];
     for (const key of this.handles.keys()) {
-      if (key.endsWith(`/${rawName}`)) return key;
+      if (effectiveAppName(key) === effective) matches.push(key);
     }
-    return undefined;
+    if (matches.length === 0) return undefined;
+    if (matches.length === 1) return matches[0]!;
+    throw new Error(
+      `App name '${rawName}' is ambiguous — multiple matches: ${matches.join(', ')}. Use the full canonical name.`,
+    );
   }
 
   /**
@@ -392,8 +461,10 @@ export class OrchestratorService extends EventEmitter {
    * zero-downtime is not possible (single-process, no supervisor).
    */
   async reloadApp(name: string): Promise<AppHandle> {
-    const handle = this.handles.get(name);
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
+    name = canonical;
 
     // Classic mode or no supervisor — cannot do zero-downtime, fall back to restart
     if (handle.mode !== 'bootstrap' || !handle.supervisor) {
@@ -475,8 +546,10 @@ export class OrchestratorService extends EventEmitter {
   // ============================================================================
 
   async scaleApp(name: string, instances: number): Promise<AppHandle> {
-    const handle = this.handles.get(name);
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
+    name = canonical;
     if (!this.config) throw new Error('Ecosystem config not loaded');
     if (handle.mode !== 'bootstrap') {
       this.logger.warn({ app: name }, 'Classic mode apps do not support scaling');
@@ -507,7 +580,8 @@ export class OrchestratorService extends EventEmitter {
   }
 
   getApp(name: string): ProcessInfoDto | null {
-    const h = this.handles.get(name);
+    const canonical = this.resolveAppName(name) ?? name;
+    const h = this.handles.get(canonical);
     return h ? this.toProcessInfo(h) : null;
   }
 

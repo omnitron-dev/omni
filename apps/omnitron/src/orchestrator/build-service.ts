@@ -337,9 +337,24 @@ export class BuildService {
     esbuild: any,
     entryPath: string,
     outPath: string,
-    onRebuild: () => void
+    onRebuild: () => void,
   ): Promise<WatchHandle> {
-    const ctx = await esbuild.context({
+    // Self-healing wrapper: when esbuild reports build errors that
+    // reference lines past the current source's EOF, the watch
+    // context's metafile has gone stale (a file was edited+saved
+    // mid-rebuild, or a partial write produced a torn read). Recreating
+    // the context with a fresh metafile fixes it. This is rare in
+    // practice — every error path triggers a recreate, but errors
+    // themselves are operator-typos and equally rare.
+    //
+    // We track the current ctx in a closure so dispose() always hits
+    // the latest one (recreations swap the reference out from under
+    // the caller's handle).
+    let currentCtx: any = null;
+    let consecutiveStaleErrors = 0;
+    let recreating = false;
+
+    const buildOptions = (): unknown => ({
       entryPoints: [entryPath],
       outfile: outPath,
       bundle: true,
@@ -351,23 +366,37 @@ export class BuildService {
         externalizeNonRelativePlugin(),
         {
           name: 'rebuild-notify',
-          setup(build: any) {
-            // Skip the initial build notification — only fire on subsequent rebuilds.
-            // esbuild watch triggers onEnd for the initial build too, which would
-            // cause a premature restart before the app finishes starting.
+          setup: (build: any) => {
             let isInitialBuild = true;
             build.onEnd((result: any) => {
               if (result.errors.length === 0) {
-                // Post-process each rebuild output
                 patchCreateRequireInOutput(outPath, entryPath);
+                consecutiveStaleErrors = 0;
+              } else if (this.looksLikeStaleMetafile(result.errors, entryPath)) {
+                consecutiveStaleErrors += 1;
+                // Schedule context recreation outside the onEnd handler
+                // (don't dispose the context that's currently calling us).
+                if (!recreating && consecutiveStaleErrors >= 1) {
+                  recreating = true;
+                  setImmediate(() => {
+                    void this.recreateWatchContextSafely(
+                      currentCtx,
+                      esbuild,
+                      buildOptions,
+                      (next) => {
+                        currentCtx = next;
+                        recreating = false;
+                        consecutiveStaleErrors = 0;
+                      },
+                    );
+                  });
+                }
               }
               if (isInitialBuild) {
                 isInitialBuild = false;
                 return;
               }
-              if (result.errors.length === 0) {
-                onRebuild();
-              }
+              if (result.errors.length === 0) onRebuild();
             });
           },
         },
@@ -382,14 +411,68 @@ export class BuildService {
       logLevel: 'silent',
     });
 
-    await ctx.watch();
+    currentCtx = await esbuild.context(buildOptions());
+    await currentCtx.watch();
 
     return {
-      ctx,
+      ctx: currentCtx,
       dispose: async () => {
-        await ctx.dispose();
+        // currentCtx swaps when we self-heal; always tear down the
+        // freshest one.
+        if (currentCtx) await currentCtx.dispose();
       },
     };
+  }
+
+  /**
+   * Detect "build error references a source line past the file's
+   * actual length" — the canonical sign that esbuild's metafile is
+   * out of sync with disk. Yesterday's bug surfaced exactly this:
+   * an error at `apps/main/src/database/repositories/index.ts:299:39`
+   * for a file that on disk was 297 lines.
+   */
+  private looksLikeStaleMetafile(errors: readonly any[], entryPath: string): boolean {
+    for (const err of errors) {
+      const loc = err?.location;
+      if (!loc?.file || typeof loc.line !== 'number') continue;
+      try {
+        const fullPath = path.isAbsolute(loc.file) ? loc.file : path.resolve(path.dirname(entryPath), loc.file);
+        if (!fs.existsSync(fullPath)) continue;
+        const fileLines = fs.readFileSync(fullPath, 'utf8').split('\n').length;
+        if (loc.line > fileLines + 1) return true; // +1 forgives off-by-one for trailing newlines
+      } catch {
+        // Ignore — best-effort detection
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Tear down the current watch context and create a fresh one.
+   * Errors during teardown are swallowed — the old ctx is being
+   * discarded anyway.
+   */
+  private async recreateWatchContextSafely(
+    oldCtx: any,
+    esbuild: any,
+    buildOptions: () => unknown,
+    onNewCtx: (ctx: any) => void,
+  ): Promise<void> {
+    try {
+      if (oldCtx) await oldCtx.dispose();
+    } catch {
+      // Ignore — old ctx is dying anyway
+    }
+    try {
+      const fresh = await esbuild.context(buildOptions());
+      await fresh.watch();
+      onNewCtx(fresh);
+    } catch (err) {
+      // Recreate failed — log via this.logger if available; the next
+      // rebuild attempt will retry.
+      console.error('[BuildService] failed to recreate watch context:', (err as Error).message);
+      onNewCtx(null);
+    }
   }
 
   /**

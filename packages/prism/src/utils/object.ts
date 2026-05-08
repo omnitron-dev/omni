@@ -9,6 +9,11 @@
 /**
  * Check if an object has specific keys.
  *
+ * Vacuously true when `keys` is empty, in line with `Array.every`
+ * — "every key in the empty set is present" matches the standard
+ * library and avoids surprising callers that pass a dynamically
+ * derived list of required keys.
+ *
  * @template T - Object type
  * @template K - Key type
  * @param {T | null | undefined} obj - Object to check
@@ -21,11 +26,11 @@
  * hasKeys(user, ['name', 'email']); // true
  * hasKeys(user, ['name', 'age']);   // false
  * hasKeys(null, ['name']);          // false
- * hasKeys(user, []);                // false
+ * hasKeys(user, []);                // true (vacuous)
  * ```
  */
 export function hasKeys<T extends object, K extends keyof T>(obj: T | null | undefined, keys: K[]): boolean {
-  if (!obj || !keys.length || typeof obj !== 'object') {
+  if (!obj || typeof obj !== 'object') {
     return false;
   }
 

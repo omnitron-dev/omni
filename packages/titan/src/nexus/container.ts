@@ -1362,6 +1362,53 @@ export class Container implements IContainer {
   }
 
   /**
+   * Export the DI graph as a list of nodes (one per registered token) and
+   * edges (one per declared dependency).
+   *
+   * Used by `omnitron inspect <app> --graph` and the Prometheus-format
+   * snapshot in metrics-bridge to give operators a topological view of
+   * the container without dragging in the heavyweight DevToolsPlugin.
+   * The shape matches `DependencyGraph` in `./devtools.ts` so the
+   * existing Mermaid/DOT formatters from that module work unchanged.
+   *
+   * Notes:
+   *  - We walk only THIS container's registrations. Parent-container
+   *    tokens are not chased — the graph reflects the local module
+   *    surface, which is what failed-init triage cares about.
+   *  - Multi-bound tokens emit one node per registration (the array
+   *    case). Each share an id but the duplicate node IDs are
+   *    deliberately preserved so consumers can see the multiplicity;
+   *    Mermaid/DOT renderers tolerate duplicate ids by overlaying.
+   */
+  exportGraph(options: { includeParent?: boolean } = {}): import('./devtools.js').DependencyGraph {
+    const seen = new Set<unknown>();
+    const nodes: Array<{ id: string; label?: string; type?: string }> = [];
+    const edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }> = [];
+
+    const walk = (container: Container | undefined): void => {
+      if (!container) return;
+      for (const [token, regOrArr] of container.registrations) {
+        if (seen.has(token)) continue;
+        seen.add(token);
+        const regs = Array.isArray(regOrArr) ? regOrArr : [regOrArr];
+        for (const reg of regs) {
+          const id = labelForToken(reg.token);
+          nodes.push({ id, label: id, type: String(reg.scope) });
+          for (const dep of reg.dependencies ?? []) {
+            edges.push({ from: id, to: labelForToken(dep), type: 'dependency' });
+          }
+        }
+      }
+      if (options.includeParent && container.parent && container.parent !== container) {
+        walk(container.parent as Container);
+      }
+    };
+    walk(this);
+
+    return { nodes, edges };
+  }
+
+  /**
    * Get registration
    */
   private getRegistration(token: InjectionToken<unknown>): Registration | undefined {
@@ -2319,4 +2366,29 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   if (v === null || typeof v !== 'object') return false;
   const proto = Object.getPrototypeOf(v);
   return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Best-effort short label for any InjectionToken form. Used by
+ * `Container.exportGraph()` to produce stable, human-readable node IDs.
+ *
+ *   - Token (object with `name`)        → `token.name`
+ *   - Constructor/function              → `fn.name` or `<anonymous>`
+ *   - String                            → as-is
+ *   - Symbol                            → `Symbol(desc)` form
+ *   - Anything else                     → `String(value)`
+ */
+function labelForToken(t: unknown): string {
+  if (typeof t === 'string') return t;
+  if (typeof t === 'symbol') return t.toString();
+  if (typeof t === 'function') return t.name || '<anonymous-class>';
+  if (t && typeof t === 'object') {
+    const obj = t as Record<string, unknown>;
+    if (typeof obj['name'] === 'string') return obj['name'] as string;
+    if (typeof obj['toString'] === 'function') {
+      const s = obj['toString']();
+      if (typeof s === 'string' && s !== '[object Object]') return s;
+    }
+  }
+  return String(t);
 }

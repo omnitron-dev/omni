@@ -294,7 +294,24 @@ program
 program
   .command('inspect <app>')
   .description('Deep diagnostics for an app')
-  .action(async (app) => {
+  .option('--graph', 'Render the live DI dependency graph instead of memory/services info')
+  .option('--format <format>', 'Graph format: mermaid (default), dot, or json', 'mermaid')
+  .option('--focus <token>', 'Restrict the graph to a token + its closure (use with --graph)')
+  .option(
+    '--direction <dir>',
+    'Closure direction when --focus is set: ancestors, descendants, or both (default)',
+    'both',
+  )
+  .action(async (app, opts) => {
+    if (opts.graph) {
+      const { inspectGraphCommand } = await import('../commands/inspect-graph.js');
+      await inspectGraphCommand(app, {
+        format: opts.format,
+        focus: opts.focus,
+        direction: opts.direction,
+      });
+      return;
+    }
     const { inspectCommand } = await import('../commands/inspect.js');
     await inspectCommand(app);
   });

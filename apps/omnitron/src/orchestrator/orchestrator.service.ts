@@ -654,6 +654,45 @@ export class OrchestratorService extends EventEmitter {
   // Monitoring — async, delegates to PM supervisor for bootstrap mode
   // ============================================================================
 
+  /**
+   * Pull the live DI dependency graph from a running app's first child
+   * worker. Used by the daemon RPC backing `omnitron inspect <app>
+   * --graph`. Returns null if the app isn't running, has no children,
+   * or the worker doesn't expose `getDependencyGraph` (older bootstraps).
+   */
+  async getDependencyGraph(name: string): Promise<{
+    nodes: Array<{ id: string; label?: string; type?: string }>;
+    edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
+  } | null> {
+    const handle = this.getHandle(name);
+    if (!handle || handle.mode !== 'bootstrap' || !handle.supervisor) return null;
+
+    const childNames = handle.supervisor.getChildNames();
+    for (const childName of childNames) {
+      const processId = handle.supervisor.getChildProcessId(childName);
+      if (!processId) continue;
+      const workerHandle = this.pm.getWorkerHandle(processId);
+      const proxy = workerHandle?.proxy as
+        | { getDependencyGraph?: (opts?: unknown) => Promise<unknown> }
+        | undefined;
+      if (!proxy?.getDependencyGraph) continue;
+      try {
+        const graph = await proxy.getDependencyGraph();
+        return graph as ReturnType<OrchestratorService['getDependencyGraph']> extends Promise<
+          infer R | null
+        >
+          ? R
+          : never;
+      } catch (err) {
+        this.logger.warn(
+          { app: name, child: childName, error: (err as Error).message },
+          'getDependencyGraph: child threw — trying next worker',
+        );
+      }
+    }
+    return null;
+  }
+
   async getMetrics(name?: string): Promise<Record<string, IProcessMetrics | null>> {
     const result: Record<string, IProcessMetrics | null> = {};
 

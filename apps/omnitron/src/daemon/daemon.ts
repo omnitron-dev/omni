@@ -128,6 +128,7 @@ export class OmnitronDaemon {
   private systemWorkerManager: import('../workers/system-worker-manager.js').SystemWorkerManager | null = null;
   private leaderElection: any = null;
   private configSyncService: any = null;
+  private metricsServer: import('../observability/index.js').MetricsServer | null = null;
   private dc: IDaemonConfig = DEFAULT_DAEMON_CONFIG;
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
@@ -200,6 +201,32 @@ export class OmnitronDaemon {
       if (this.app.netron) {
         const socketPath = this.dc.socketPath.replace('~', process.env['HOME'] ?? '');
         orchestrator.setDaemonNetron(this.app.netron, socketPath);
+      }
+
+      // 8.6. Wire metrics bridge + start /metrics HTTP endpoint.
+      // Bridge subscribes to orchestrator events (restart/crash/escalation),
+      // janitor sweeps, and esbuild reset/build hooks. The HTTP server
+      // refreshes per-app gauges on each scrape via the bridge before
+      // formatting Prometheus text.
+      try {
+        const { MetricsBridge, MetricsServer } = await import('../observability/index.js');
+        const metricsService = await this.app.container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
+        const bridge = new MetricsBridge(metricsService, logger);
+        orchestrator.setMetricsBridge(bridge);
+        const metricsPort = (this.dc.httpPort ?? 9800) + 3;
+        const metricsServer = new MetricsServer({
+          port: metricsPort,
+          metrics: metricsService,
+          bridge,
+          logger,
+        });
+        await metricsServer.start();
+        this.metricsServer = metricsServer;
+      } catch (err) {
+        logger.warn(
+          { error: (err as Error).message },
+          'metrics endpoint failed to start — /metrics will be unavailable',
+        );
       }
     }
 
@@ -1385,6 +1412,12 @@ export class OmnitronDaemon {
       if (this.eventBroadcaster) {
         this.eventBroadcaster.clear();
         this.eventBroadcaster = null;
+      }
+      if (this.metricsServer) {
+        try {
+          await this.metricsServer.stop();
+        } catch { /* non-critical */ }
+        this.metricsServer = null;
       }
       // Stop webapp nginx container (non-blocking — don't wait if slow)
       try {

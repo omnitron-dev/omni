@@ -197,4 +197,19 @@ export interface IMetricsService {
   flush(): Promise<void>;
   /** Run retention cleanup */
   cleanup(): Promise<void>;
+  /**
+   * Direct access to the in-memory registry — used by consumers that
+   * need to pre-register metric definitions with descriptive HELP text
+   * and explicit label sets, or write counters/gauges/histograms by
+   * name without constructing MetricSample objects.
+   */
+  getRegistry(): IMetricsRegistry;
+}
+
+/** Subset of MetricsRegistry that consumers depend on. */
+export interface IMetricsRegistry {
+  define(def: MetricDefinition): void;
+  counter(name: string, labels?: Record<string, string>, delta?: number): void;
+  gauge(name: string, labels: Record<string, string>, value: number): void;
+  histogram(name: string, labels: Record<string, string>, value: number): void;
 }

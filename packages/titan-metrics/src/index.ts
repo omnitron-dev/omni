@@ -23,6 +23,7 @@ export type {
   MetricsSnapshot,
   IMetricsStorage,
   IMetricsService,
+  IMetricsRegistry,
 } from './types.js';
 
 // Tokens

@@ -669,8 +669,44 @@ export class OmnitronDaemon {
       }
     }
 
-    // Step 2: Provision app infrastructure (postgres, redis, minio) if declared
-    // Slave daemons never provision Docker infrastructure
+    // Step 2: Provision app infrastructure (postgres, redis, minio) if declared.
+    //
+    // Two ownership models share this slot historically:
+    //
+    //   (a) Top-level apps declared directly in the daemon config — the
+    //       daemon owns their infra here, marks the gate ready, and apps
+    //       in the top-level `apps: []` proceed.
+    //
+    //   (b) Project/stack mode — infra is owned by `StackInfrastructureManager`
+    //       per `(project, stack)` and provisioned later by
+    //       `projectService.startStack`. Running both passes can collide
+    //       on the SAME service name with different prefixes (D14): the
+    //       daemon path uses prefix `omnitron-` while the stack path
+    //       sets `${project}-${stack}-`. With a non-trivial top-level
+    //       `infrastructure.services` map the daemon would create a
+    //       parallel set of containers that nobody owns and the stack's
+    //       provision later races them on ports.
+    //
+    // Resolution: if any project has enabled stacks, defer infra entirely
+    // to stack provision and mark the gate ready immediately. Top-level
+    // `infrastructure.services` is informational in this mode (used by
+    // stack auto-detection upstream); the daemon does not provision it
+    // again here.
+    const { ProjectRegistry } = await import('../project/registry.js');
+    const projects = new ProjectRegistry().list();
+    const projectModeActive = projects.some(
+      (p) => Array.isArray(p.enabledStacks) && p.enabledStacks.length > 0,
+    );
+
+    if (projectModeActive) {
+      logger.info(
+        { projects: projects.length },
+        'project mode active — daemon-level infrastructure deferred to stack provision',
+      );
+      gate.markReady({ services: {}, ready: true });
+      return;
+    }
+
     if (config.infrastructure && !isSlave) {
       try {
         this.infraService = new InfrastructureService(logger, config.infrastructure);

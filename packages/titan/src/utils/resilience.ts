@@ -719,6 +719,8 @@ export function isTimeoutError(error: Error): boolean {
  * logging without coupling the handle to a specific telemetry stack.
  */
 export interface ResetInfo {
+  /** Configured handle name — the natural label for metrics partitioning. */
+  readonly name: string;
   /** Reset attempt number (1 for first reset, 2 for second, …). */
   readonly attempt: number;
   /** The error that triggered this reset. */
@@ -892,6 +894,7 @@ export class ResilientHandle<T> {
 
     try {
       this.onResetCb?.({
+        name: this.name,
         attempt: this.resetCount,
         lastError: err,
         at: new Date(),

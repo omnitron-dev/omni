@@ -139,6 +139,15 @@ export class OrchestratorService extends EventEmitter {
   private daemonNetronReady: Promise<void>;
   private resolveDaemonNetronReady: () => void = () => undefined;
 
+  /**
+   * Optional metrics sink. Set by the daemon at boot via
+   * `setMetricsBridge` so the orchestrator can forward janitor sweeps,
+   * esbuild rebuilds, and lifecycle events without coupling itself to
+   * the metrics module. Null means metrics are disabled (tests, slim
+   * bootstraps).
+   */
+  private metricsBridge: import('../observability/metrics-bridge.js').MetricsBridge | null = null;
+
   constructor(
     private readonly logger: ILogger,
     private readonly pm: ProcessManager,
@@ -161,6 +170,37 @@ export class OrchestratorService extends EventEmitter {
     this.daemonSocketPath = socketPath;
     this.resolveDaemonNetronReady();
     this.logger.info({ socketPath }, 'Daemon Netron set for native topology routing');
+  }
+
+  /**
+   * Wire the metrics bridge. Called once during daemon bootstrap.
+   * After this, janitor sweeps, esbuild rebuilds, and orchestrator
+   * lifecycle events are forwarded to Prometheus.
+   */
+  setMetricsBridge(bridge: import('../observability/metrics-bridge.js').MetricsBridge): void {
+    this.metricsBridge = bridge;
+    bridge.attachOrchestrator(this);
+    this.wireOrchestratorTelemetry();
+  }
+
+  /**
+   * Subscribe to our own EventEmitter to forward state-change events to
+   * the metrics bridge. Idempotent so repeated `setMetricsBridge` calls
+   * (mostly tests) don't multiply listeners.
+   */
+  private telemetryWired = false;
+  private wireOrchestratorTelemetry(): void {
+    if (this.telemetryWired) return;
+    this.telemetryWired = true;
+    this.on('app:restart', (app: string, attempt: number) => {
+      this.metricsBridge?.recordAppRestart(app, attempt, 'crash');
+    });
+    this.on('app:crash', (app: string) => {
+      this.metricsBridge?.recordAppCrash(app);
+    });
+    this.on('app:escalated', (app: string) => {
+      this.metricsBridge?.recordAppEscalated(app);
+    });
   }
 
   /**
@@ -225,6 +265,7 @@ export class OrchestratorService extends EventEmitter {
     this.janitor = new ProcessJanitor({
       logger: this.logger,
       getOwnedPids: () => this.collectOwnedPids(),
+      onMetrics: (m) => this.metricsBridge?.recordJanitorSweep(m),
     });
     return this.janitor;
   }
@@ -875,7 +916,11 @@ export class OrchestratorService extends EventEmitter {
     if (definition && this.devMode) {
       try {
         if (!this.buildService) {
-          this.buildService = new BuildService(/* isDev */ true);
+          this.buildService = new BuildService(/* isDev */ true, {
+            onEsbuildReset: (info) => this.metricsBridge?.recordResilientHandleReset(info),
+            onBuildResult: ({ app, kind, durationMs, ok }) =>
+              this.metricsBridge?.recordEsbuildBuild(app, kind, durationMs, ok),
+          });
         }
         const buildResult = await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition);
         this.buildResults.set(entry.name, buildResult);
@@ -888,6 +933,11 @@ export class OrchestratorService extends EventEmitter {
         // On rebuild → restart the app (stop + re-build + re-launch).
         await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
           this.logger.info({ app: entry.name }, 'esbuild rebuild detected — restarting');
+          // We don't have a precise rebuild duration on this callback path
+          // (esbuild's incremental builds run inside the Go sidecar), but
+          // we can at least count rebuilds — the time-spent histogram is
+          // populated by initial buildApp calls.
+          this.metricsBridge?.recordEsbuildBuild(entry.name, 'rebuild', 0, true);
           this.restartApp(entry.name).catch((err) => {
             this.logger.error(
               { app: entry.name, error: (err as Error).message },

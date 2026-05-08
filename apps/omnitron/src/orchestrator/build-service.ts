@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { ResilientHandle } from '@omnitron-dev/titan/utils';
+import { ResilientHandle, type ResetInfo } from '@omnitron-dev/titan/utils';
 import type { IAppDefinition } from '../config/types.js';
 
 // =============================================================================
@@ -153,9 +153,27 @@ function patchCreateRequireInOutput(outPath: string, entrySourcePath: string): v
 // BuildService
 // =============================================================================
 
+export interface BuildServiceTelemetry {
+  /** Forwarded from the internal ResilientHandle whenever esbuild resets. */
+  onEsbuildReset?: (info: ResetInfo) => void;
+  /**
+   * Called once per terminal build attempt (not per recovery retry).
+   * `kind` is `'build'` for the initial bundle and `'rebuild'` for
+   * watch-mode rebuilds. `durationMs` is wall-clock time spent in
+   * esbuild; `ok` reflects whether the build produced output.
+   */
+  onBuildResult?: (info: {
+    app: string;
+    kind: 'build' | 'rebuild';
+    durationMs: number;
+    ok: boolean;
+  }) => void;
+}
+
 export class BuildService {
   private readonly watchHandles = new Map<string, WatchHandle[]>();
   private readonly isDev: boolean;
+  private readonly telemetry: BuildServiceTelemetry;
   /**
    * esbuild's Go sidecar can exit out from under us when the last
    * build/watch context is disposed; subsequent calls through the
@@ -163,26 +181,38 @@ export class BuildService {
    * ResilientHandle (titan utility) drops the cached module on a
    * fatal error, re-imports, and retries the call once.
    */
-  private readonly esbuildHandle = new ResilientHandle<typeof import('esbuild')>({
-    name: 'esbuild',
-    factory: async () => {
-      try {
-        return (await import('esbuild')) as unknown as typeof import('esbuild');
-      } catch {
-        throw new Error(
-          'esbuild is required for the build pipeline. Install it: pnpm add -D esbuild',
-        );
-      }
-    },
-    isFatal: (err) => {
-      const msg = (err as Error)?.message ?? '';
-      return msg.includes('service is no longer running');
-    },
-    resetCooldownMs: 1000,
-  });
+  private readonly esbuildHandle: ResilientHandle<typeof import('esbuild')>;
 
-  constructor(isDev = false) {
+  constructor(isDev = false, telemetry: BuildServiceTelemetry = {}) {
     this.isDev = isDev;
+    this.telemetry = telemetry;
+    this.esbuildHandle = new ResilientHandle<typeof import('esbuild')>({
+      name: 'esbuild',
+      factory: async () => {
+        try {
+          return (await import('esbuild')) as unknown as typeof import('esbuild');
+        } catch {
+          throw new Error(
+            'esbuild is required for the build pipeline. Install it: pnpm add -D esbuild',
+          );
+        }
+      },
+      isFatal: (err) => {
+        const msg = (err as Error)?.message ?? '';
+        return msg.includes('service is no longer running');
+      },
+      resetCooldownMs: 1000,
+      onReset: (info) => this.telemetry.onEsbuildReset?.(info),
+    });
+  }
+
+  /** Emit a build-result telemetry event. */
+  private recordBuildResult(app: string, kind: 'build' | 'rebuild', durationMs: number, ok: boolean): void {
+    try {
+      this.telemetry.onBuildResult?.({ app, kind, durationMs, ok });
+    } catch {
+      // Telemetry must never break the build pipeline.
+    }
   }
 
   /**
@@ -198,32 +228,40 @@ export class BuildService {
     bootstrapAbsPath: string,
     definition: IAppDefinition
   ): Promise<BuildResult> {
-    return this.esbuildHandle.use(async (esbuild) => {
-      const appDir = this.resolveAppDir(bootstrapAbsPath);
-      const outDir = path.join(appDir, '.omnitron-build');
+    const startedAt = Date.now();
+    let ok = false;
+    try {
+      const result = await this.esbuildHandle.use(async (esbuild) => {
+        const appDir = this.resolveAppDir(bootstrapAbsPath);
+        const outDir = path.join(appDir, '.omnitron-build');
 
-      // Ensure output directory exists
-      fs.mkdirSync(outDir, { recursive: true });
+        // Ensure output directory exists
+        fs.mkdirSync(outDir, { recursive: true });
 
-      const modulePaths = new Map<string, string>();
+        const modulePaths = new Map<string, string>();
 
-      // Build bootstrap file (for daemon to import topology config)
-      const bootstrapOutPath = path.join(outDir, 'bootstrap.js');
-      await this.buildEntry(esbuild, bootstrapAbsPath, bootstrapOutPath);
+        // Build bootstrap file (for daemon to import topology config)
+        const bootstrapOutPath = path.join(outDir, 'bootstrap.js');
+        await this.buildEntry(esbuild, bootstrapAbsPath, bootstrapOutPath);
 
-      // Build each process module entry point
-      const buildPromises = definition.processes.map(async (proc) => {
-        const moduleSourcePath = this.resolveModuleSource(bootstrapAbsPath, proc.module);
-        const outPath = path.join(outDir, `${proc.name}.js`);
+        // Build each process module entry point
+        const buildPromises = definition.processes.map(async (proc) => {
+          const moduleSourcePath = this.resolveModuleSource(bootstrapAbsPath, proc.module);
+          const outPath = path.join(outDir, `${proc.name}.js`);
 
-        await this.buildEntry(esbuild, moduleSourcePath, outPath);
-        modulePaths.set(proc.name, outPath);
+          await this.buildEntry(esbuild, moduleSourcePath, outPath);
+          modulePaths.set(proc.name, outPath);
+        });
+
+        await Promise.all(buildPromises);
+
+        return { bootstrapPath: bootstrapOutPath, modulePaths };
       });
-
-      await Promise.all(buildPromises);
-
-      return { bootstrapPath: bootstrapOutPath, modulePaths };
-    });
+      ok = true;
+      return result;
+    } finally {
+      this.recordBuildResult(_appName, 'build', Date.now() - startedAt, ok);
+    }
   }
 
   /**

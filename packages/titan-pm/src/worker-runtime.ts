@@ -670,14 +670,52 @@ async function initialize() {
       }
     });
 
-    // Handle process termination
-    process.on('SIGTERM', async () => {
-      await serviceWrapper.__shutdown();
-    });
+    // Handle process termination.
+    //
+    // The previous handler awaited serviceWrapper.__shutdown() but
+    // never called process.exit() — if shutdown hung (in-flight RPC
+    // retry loops, a stuck DB pool, an unresolved netron promise),
+    // the process stayed alive forever, holding sockets and DB
+    // connections. The omnitron daemon would then spawn replacement
+    // workers, accumulating zombies that hold their share of the
+    // limited postgres connection pool until eventually no backend
+    // can connect.
+    //
+    // Behaviour now:
+    //   1. Run __shutdown with a hard ceiling (5s default).
+    //   2. process.exit(0) when shutdown resolves OR the timeout fires,
+    //      whichever comes first. Either way the OS reclaims FDs.
+    //   3. process.exit(1) on shutdown error so the parent sees a
+    //      non-zero exit code and can decide whether to restart.
+    const shutdownAndExit = async (signal: 'SIGTERM' | 'SIGINT') => {
+      const TIMEOUT_MS = Number(process.env['TITAN_SHUTDOWN_TIMEOUT_MS']) || 5_000;
+      let exited = false;
+      const forceExit = setTimeout(() => {
+        if (exited) return;
+        logger?.warn({ signal, timeoutMs: TIMEOUT_MS }, 'Shutdown timeout — forcing exit');
+        exited = true;
+        process.exit(0);
+      }, TIMEOUT_MS);
+      forceExit.unref();
+      try {
+        await serviceWrapper.__shutdown();
+        if (!exited) {
+          exited = true;
+          clearTimeout(forceExit);
+          process.exit(0);
+        }
+      } catch (err) {
+        if (!exited) {
+          exited = true;
+          clearTimeout(forceExit);
+          logger?.error({ err, signal }, 'Shutdown error — exiting with code 1');
+          process.exit(1);
+        }
+      }
+    };
 
-    process.on('SIGINT', async () => {
-      await serviceWrapper.__shutdown();
-    });
+    process.on('SIGTERM', () => void shutdownAndExit('SIGTERM'));
+    process.on('SIGINT', () => void shutdownAndExit('SIGINT'));
 
     // Log successful initialization
     logger?.info({ processId: config.processId, serviceName, serviceVersion, transportUrl }, 'Process initialized');

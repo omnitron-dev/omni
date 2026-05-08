@@ -299,7 +299,7 @@ export class OrchestratorService extends EventEmitter {
 
     // In dev mode, clear bootstrap config cache so topology changes are picked up
     if (this.devMode && entry.bootstrap) {
-      clearCacheFor(path.resolve(this.cwd, entry.bootstrap));
+      clearCacheFor(path.resolve(entry.cwd ?? this.cwd, entry.bootstrap));
       // Stop esbuild watch and clear stale build result — launchBootstrapMode will rebuild + re-watch
       if (this.buildService) {
         await this.buildService.unwatchApp(name);
@@ -675,7 +675,7 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     handle.markStarting();
 
-    const bootstrapAbsPath = path.resolve(this.cwd, entry.bootstrap!);
+    const bootstrapAbsPath = path.resolve(entry.cwd ?? this.cwd, entry.bootstrap!);
 
     // Load bootstrap definition to check for process topology and requirements
     let topology: IProcessEntry[] | undefined;
@@ -765,9 +765,20 @@ export class OrchestratorService extends EventEmitter {
           });
         });
       } catch (err) {
+        // The "fall back to tsx" wording was misleading — the orchestrator
+        // does not inject a tsx loader into spawned children, so without
+        // a build the bootstrap-process will try to `import` the source
+        // .ts file (referenced as `./app.module.js` in the topology) and
+        // fail with a cryptic "Cannot find module" downstream. Surface
+        // the build error directly so the operator sees the actual
+        // problem on `omnitron start/restart`.
         this.logger.error(
           { app: entry.name, error: (err as Error).message },
-          'esbuild failed — child processes will fall back to tsx'
+          'esbuild build failed — app cannot start without bundled output'
+        );
+        throw new Error(
+          `Cannot launch '${entry.name}' in dev mode: esbuild build failed (${(err as Error).message}). ` +
+          `Fix the build error and retry, or run with bundled output present in apps/${entry.name}/.omnitron-build/.`,
         );
       }
     }

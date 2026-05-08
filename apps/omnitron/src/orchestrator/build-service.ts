@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { ResilientHandle } from '@omnitron-dev/titan/utils';
 import type { IAppDefinition } from '../config/types.js';
 
 // =============================================================================
@@ -154,8 +155,31 @@ function patchCreateRequireInOutput(outPath: string, entrySourcePath: string): v
 
 export class BuildService {
   private readonly watchHandles = new Map<string, WatchHandle[]>();
-  private esbuild: any = null;
   private readonly isDev: boolean;
+  /**
+   * esbuild's Go sidecar can exit out from under us when the last
+   * build/watch context is disposed; subsequent calls through the
+   * cached module fail with "service is no longer running".
+   * ResilientHandle (titan utility) drops the cached module on a
+   * fatal error, re-imports, and retries the call once.
+   */
+  private readonly esbuildHandle = new ResilientHandle<typeof import('esbuild')>({
+    name: 'esbuild',
+    factory: async () => {
+      try {
+        return (await import('esbuild')) as unknown as typeof import('esbuild');
+      } catch {
+        throw new Error(
+          'esbuild is required for the build pipeline. Install it: pnpm add -D esbuild',
+        );
+      }
+    },
+    isFatal: (err) => {
+      const msg = (err as Error)?.message ?? '';
+      return msg.includes('service is no longer running');
+    },
+    resetCooldownMs: 1000,
+  });
 
   constructor(isDev = false) {
     this.isDev = isDev;
@@ -174,7 +198,7 @@ export class BuildService {
     bootstrapAbsPath: string,
     definition: IAppDefinition
   ): Promise<BuildResult> {
-    return this.withEsbuildRecovery(async (esbuild) => {
+    return this.esbuildHandle.use(async (esbuild) => {
       const appDir = this.resolveAppDir(bootstrapAbsPath);
       const outDir = path.join(appDir, '.omnitron-build');
 
@@ -214,7 +238,7 @@ export class BuildService {
     definition: IAppDefinition,
     onChange: () => void
   ): Promise<void> {
-    return this.withEsbuildRecovery(async (esbuild) => {
+    return this.esbuildHandle.use(async (esbuild) => {
       const appDir = this.resolveAppDir(bootstrapAbsPath);
       const outDir = path.join(appDir, '.omnitron-build');
 
@@ -423,46 +447,4 @@ export class BuildService {
     return path.resolve(path.dirname(bootstrapAbsPath), '..');
   }
 
-  private async loadEsbuild(): Promise<any> {
-    if (this.esbuild) return this.esbuild;
-    try {
-      this.esbuild = await import('esbuild');
-      return this.esbuild;
-    } catch {
-      throw new Error(
-        'esbuild is required for the build pipeline. Install it: pnpm add -D esbuild'
-      );
-    }
-  }
-
-  /**
-   * Run an esbuild call and recover from a dead service.
-   *
-   * esbuild ships its compile work out to a sidecar Go process. When
-   * every context it owns is disposed, the sidecar may exit; subsequent
-   * calls through the cached `this.esbuild` reference fail with
-   * `"The service is no longer running"`. The cached module object is
-   * still valid — we just need to drop its internal service handle and
-   * let it spin up a fresh one on the next call.
-   *
-   * Detection: error message string match (esbuild doesn't expose a
-   * machine-readable code for this state). Recovery: invalidate the
-   * cached module so `loadEsbuild` re-imports it, then retry once.
-   */
-  private async withEsbuildRecovery<T>(fn: (esbuild: any) => Promise<T>): Promise<T> {
-    const esbuild = await this.loadEsbuild();
-    try {
-      return await fn(esbuild);
-    } catch (err) {
-      const message = (err as Error)?.message ?? '';
-      if (!message.includes('service is no longer running')) {
-        throw err;
-      }
-      // Esbuild's Go sidecar died. Drop the cached module so the next
-      // import bootstraps a fresh sidecar, and retry once.
-      this.esbuild = null;
-      const fresh = await this.loadEsbuild();
-      return fn(fresh);
-    }
-  }
 }

@@ -708,3 +708,197 @@ export function createTimeoutError(operation: string, timeout: number): Error {
 export function isTimeoutError(error: Error): boolean {
   return error.name === 'TimeoutError' || error.message.includes('timed out');
 }
+
+// ============================================================================
+// ResilientHandle — cached external resource with auto-reset on fatal errors
+// ============================================================================
+
+/**
+ * Information passed to `onReset` when ResilientHandle drops its
+ * cached instance and recreates. Useful for metrics / structured
+ * logging without coupling the handle to a specific telemetry stack.
+ */
+export interface ResetInfo {
+  /** Reset attempt number (1 for first reset, 2 for second, …). */
+  readonly attempt: number;
+  /** The error that triggered this reset. */
+  readonly lastError: unknown;
+  /** Wall-clock timestamp of the reset trigger. */
+  readonly at: Date;
+}
+
+export interface ResilientHandleOptions<T> {
+  /** Human-readable name (used in errors and `onReset` payloads). */
+  readonly name: string;
+  /**
+   * Factory that produces a fresh instance. Invoked lazily on first
+   * `use()` and again after every reset. Synchronous or async.
+   */
+  readonly factory: () => T | Promise<T>;
+  /**
+   * Predicate identifying "the cached instance is dead, recreate it"
+   * errors. Examples: esbuild's "service is no longer running", a
+   * Redis client's "Connection is closed", a gRPC channel's
+   * "UNAVAILABLE: io error".
+   */
+  readonly isFatal: (err: unknown) => boolean;
+  /**
+   * Minimum time between reset attempts. If the factory itself is
+   * failing (network blip, missing dependency), this prevents
+   * tight-loop recreation. Default 1 second.
+   */
+  readonly resetCooldownMs?: number;
+  /** Called once per reset for telemetry. Errors from the hook are swallowed. */
+  readonly onReset?: (info: ResetInfo) => void;
+  /**
+   * Optional explicit teardown for the cached instance before reset.
+   * Typical use: `dispose: (client) => client.disconnect()`. Errors
+   * are caught and ignored (the instance is being discarded anyway).
+   */
+  readonly dispose?: (instance: T) => void | Promise<void>;
+}
+
+/**
+ * Self-healing cached singleton for external resources.
+ *
+ * Use case: any handle to an out-of-process service that can die
+ * underneath us — the esbuild Go sidecar, a Redis client whose
+ * connection drops, a gRPC channel's half-closed state, an HTTP
+ * keep-alive that the server forgot. Without this, such handles
+ * stay cached as the broken reference and every subsequent call
+ * fails with the same misleading error.
+ *
+ * Contract:
+ *   - First `use()` invokes `factory()`; the return is cached.
+ *   - Subsequent `use()` calls reuse the cached instance.
+ *   - If `fn` throws AND `isFatal(err)` matches, the cached instance
+ *     is dropped (after `dispose`, if provided), the factory is
+ *     called again, and `fn` is retried ONCE with the fresh instance.
+ *     A second failure of any kind propagates.
+ *   - Concurrent `use()` calls during a reset all coalesce on the
+ *     same fresh-instance promise — only one factory invocation per
+ *     reset, no thundering herd.
+ *   - `resetCooldownMs` enforces a minimum gap between resets so
+ *     a chronically-broken factory can't burn CPU.
+ *
+ * @example
+ * ```ts
+ * const esbuild = new ResilientHandle({
+ *   name: 'esbuild',
+ *   factory: () => import('esbuild'),
+ *   isFatal: (e) => (e as Error).message.includes('service is no longer running'),
+ *   onReset: (info) => logger.warn({ attempt: info.attempt, err: info.lastError }, 'esbuild reset'),
+ * });
+ *
+ * const result = await esbuild.use((e) => e.build({ entryPoints: [...] }));
+ * ```
+ */
+export class ResilientHandle<T> {
+  private readonly name: string;
+  private readonly factoryFn: () => T | Promise<T>;
+  private readonly isFatalFn: (err: unknown) => boolean;
+  private readonly resetCooldownMs: number;
+  private readonly onResetCb: ((info: ResetInfo) => void) | undefined;
+  private readonly disposeFn: ((instance: T) => void | Promise<void>) | undefined;
+
+  private cached: T | null = null;
+  private creating: Promise<T> | null = null;
+  private lastResetAt = 0;
+  private resetCount = 0;
+
+  constructor(options: ResilientHandleOptions<T>) {
+    this.name = options.name;
+    this.factoryFn = options.factory;
+    this.isFatalFn = options.isFatal;
+    this.resetCooldownMs = options.resetCooldownMs ?? 1000;
+    this.onResetCb = options.onReset;
+    this.disposeFn = options.dispose;
+  }
+
+  /**
+   * Run `fn` against the cached instance, recreating once if `fn`
+   * throws a fatal error.
+   */
+  async use<R>(fn: (instance: T) => R | Promise<R>): Promise<R> {
+    const instance = await this.acquire();
+    try {
+      return await fn(instance);
+    } catch (err) {
+      if (!this.isFatalFn(err)) throw err;
+      const reset = await this.scheduleReset(err);
+      if (!reset) throw err; // cooldown blocked us — don't retry
+      const fresh = await this.acquire();
+      // Retry exactly once. A second failure (fatal or otherwise)
+      // propagates so callers see the real problem.
+      return fn(fresh);
+    }
+  }
+
+  /**
+   * Force a reset on the next `use()`. Useful for tests and operator-
+   * triggered reconnects. Bypasses cooldown.
+   */
+  async reset(): Promise<void> {
+    this.lastResetAt = 0; // bypass cooldown
+    await this.scheduleReset(new Error(`${this.name}: manual reset`));
+  }
+
+  /** Peek the cached instance without creating one. Returns null pre-init. */
+  current(): T | null {
+    return this.cached;
+  }
+
+  /** Total number of resets since construction (exposed for metrics). */
+  get resets(): number {
+    return this.resetCount;
+  }
+
+  // -------------------------------------------------------------------------
+  // Internals
+  // -------------------------------------------------------------------------
+
+  private async acquire(): Promise<T> {
+    if (this.cached) return this.cached;
+    if (this.creating) return this.creating;
+    this.creating = Promise.resolve(this.factoryFn());
+    try {
+      this.cached = await this.creating;
+      return this.cached;
+    } finally {
+      this.creating = null;
+    }
+  }
+
+  /** Returns true if reset proceeded, false if cooldown blocked it. */
+  private async scheduleReset(err: unknown): Promise<boolean> {
+    const now = Date.now();
+    if (now - this.lastResetAt < this.resetCooldownMs) {
+      return false;
+    }
+    this.lastResetAt = now;
+    this.resetCount += 1;
+
+    // Dispose the old instance best-effort.
+    if (this.cached && this.disposeFn) {
+      const stale = this.cached;
+      try {
+        await this.disposeFn(stale);
+      } catch {
+        // Disposal failure is irrelevant — we're discarding the instance.
+      }
+    }
+    this.cached = null;
+    this.creating = null;
+
+    try {
+      this.onResetCb?.({
+        attempt: this.resetCount,
+        lastError: err,
+        at: new Date(),
+      });
+    } catch {
+      // Telemetry must never break the handle.
+    }
+    return true;
+  }
+}

@@ -102,7 +102,7 @@ export const out = fromSourceOnly;
     const svc = new BuildService(false);
     // buildEntry is private; call via reflection. The plugin & post-process
     // run inside it, which is exactly what we want to exercise.
-    const esbuild = await (svc as any).loadEsbuild();
+    const esbuild = (await import('esbuild'));
     await (svc as any).buildEntry(esbuild, entry, outFile);
 
     const bundle = fs.readFileSync(outFile, 'utf8');
@@ -125,7 +125,7 @@ export const out = fromBuilt;
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
     const svc = new BuildService(false);
-    const esbuild = await (svc as any).loadEsbuild();
+    const esbuild = (await import('esbuild'));
     await (svc as any).buildEntry(esbuild, entry, outFile);
 
     const bundle = fs.readFileSync(outFile, 'utf8');
@@ -148,7 +148,7 @@ export const out = something;
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
     const svc = new BuildService(false);
-    const esbuild = await (svc as any).loadEsbuild();
+    const esbuild = (await import('esbuild'));
     await (svc as any).buildEntry(esbuild, entry, outFile);
 
     const bundle = fs.readFileSync(outFile, 'utf8');

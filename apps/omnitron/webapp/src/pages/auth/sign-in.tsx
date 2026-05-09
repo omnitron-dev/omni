@@ -12,11 +12,14 @@ import { EyeIcon } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
+import { classifyRpcError, sanitizeReturnTo } from 'src/utils/errors';
+import { useBackendOnline } from 'src/stores/backend-status.store';
 
 export default function SignInPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const signIn = useAuthStore((s) => s.signIn);
+  const backendOnline = useBackendOnline();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +27,7 @@ export default function SignInPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const returnTo = searchParams.get('returnTo') ?? '/';
+  const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,9 +38,10 @@ export default function SignInPage() {
 
     try {
       await signIn(username, password);
-      navigate(decodeURIComponent(returnTo), { replace: true });
-    } catch (err: any) {
-      setError(err?.message ?? 'Authentication failed');
+      navigate(returnTo, { replace: true });
+    } catch (err: unknown) {
+      setPassword('');
+      setError(classifyRpcError(err));
     } finally {
       setSubmitting(false);
     }
@@ -95,10 +99,10 @@ export default function SignInPage() {
             size="large"
             type="submit"
             variant="contained"
-            disabled={submitting}
+            disabled={submitting || !backendOnline}
             startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : undefined}
           >
-            {submitting ? 'Signing in...' : 'Sign In'}
+            {submitting ? 'Signing in...' : !backendOnline ? 'Daemon offline' : 'Sign In'}
           </Button>
         </Stack>
       </form>

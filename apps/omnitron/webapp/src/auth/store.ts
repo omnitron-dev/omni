@@ -13,6 +13,7 @@ import {
   authRpc,
 } from 'src/netron/client';
 import { sessionManager } from './session-manager';
+import { sanitizeReturnTo } from 'src/utils/errors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,7 +48,8 @@ function handleSessionEvent(event: 'refreshed' | 'expired') {
     useAuthStore.setState({ user: null, sessionId: null });
     // Redirect to sign-in
     if (typeof window !== 'undefined') {
-      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+      const raw = window.location.pathname + window.location.search;
+      const returnTo = encodeURIComponent(sanitizeReturnTo(raw));
       window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
     }
   }

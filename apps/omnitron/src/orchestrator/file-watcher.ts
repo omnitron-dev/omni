@@ -285,49 +285,45 @@ export class FileWatcher {
     app.pendingFiles.clear();
     app.restarting = true;
 
-    const filesDisplay =
-      changedFiles.length <= 3
-        ? changedFiles.join(', ')
-        : `${changedFiles.slice(0, 3).join(', ')} +${changedFiles.length - 3} more`;
-
-    this.logger.info(
-      { app: app.entry.name, files: filesDisplay, count: changedFiles.length },
-      'File change detected — restarting'
-    );
-
-    // Clear bootstrap loader cache so daemon re-reads fresh topology
+    // app.restarting MUST be reset on every exit path — use try-finally from here.
     try {
-      const { clearCompileCache } = await import('./ts-compiler.js');
-      clearCompileCache();
-    } catch {
-      // ts-compiler not available — non-critical
-    }
-    // Note: esbuild rebuilds are handled by BuildService watch mode
-    // or by orchestrator.restartApp() which clears buildResults and rebuilds
+      const filesDisplay =
+        changedFiles.length <= 3
+          ? changedFiles.join(', ')
+          : `${changedFiles.slice(0, 3).join(', ')} +${changedFiles.length - 3} more`;
 
-    // Skip restart if the app hasn't been started yet (initial boot in progress)
-    const appStatus = this.orchestrator.getAppStatus?.(app.entry.name);
-    if (appStatus === 'stopped' || appStatus === 'starting') {
-      this.logger.debug({ app: app.entry.name }, 'Skipping restart — app still starting');
-      return;
-    }
+      // Clear bootstrap loader cache so daemon re-reads fresh topology
+      try {
+        const { clearCompileCache } = await import('./ts-compiler.js');
+        clearCompileCache();
+      } catch {
+        // ts-compiler not available — non-critical
+      }
 
-    this.logger.info({ app: app.entry.name, files: filesDisplay }, 'File change detected — restarting');
+      // Skip restart if the app hasn't been started yet (initial boot in progress)
+      const appStatus = this.orchestrator.getAppStatus?.(app.entry.name);
+      if (appStatus === 'stopped' || appStatus === 'starting') {
+        this.logger.debug({ app: app.entry.name }, 'Skipping restart — app still starting');
+        return;
+      }
 
-    // Resolve actual app handle name — in stack mode it's namespaced (e.g., 'omni/dev/main')
-    const appName = this.orchestrator.resolveAppName?.(app.entry.name) ?? app.entry.name;
+      this.logger.info({ app: app.entry.name, files: filesDisplay, count: changedFiles.length }, 'File change detected — restarting');
 
-    try {
-      await this.orchestrator.restartApp(appName);
-      this.logger.info({ app: appName }, 'Restart complete');
-    } catch (err) {
-      this.logger.error({ app: appName, error: (err as Error).message }, 'Restart failed');
+      // Resolve actual app handle name — in stack mode it's namespaced (e.g., 'omni/dev/main')
+      const appName = this.orchestrator.resolveAppName?.(app.entry.name) ?? app.entry.name;
+
+      try {
+        await this.orchestrator.restartApp(appName);
+        this.logger.info({ app: appName }, 'Restart complete');
+      } catch (err) {
+        this.logger.error({ app: appName, error: (err as Error).message }, 'Restart failed');
+      }
     } finally {
       app.restarting = false;
 
       // If more changes accumulated during restart, trigger again
       if (app.pendingFiles.size > 0) {
-        this.triggerRestart(app);
+        void this.triggerRestart(app);
       }
     }
   }

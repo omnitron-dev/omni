@@ -1098,6 +1098,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     // Remove from map immediately to prevent double-close
     this.connections.delete(name);
+    this.healthCheckFailures.delete(name);
 
     this.logger.info({ name }, 'Closing database connection');
 

@@ -527,7 +527,7 @@ export class NodeManagerService extends EventEmitter {
       }
       if (node.hasPassword) {
         const val = await this.getSecret(node.id, 'password');
-        if (val) target.sshPassphrase = val; // password auth as passphrase for xec
+        if (val) target.sshPassword = val;
       }
       targets.push(target);
     }

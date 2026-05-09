@@ -49,6 +49,8 @@ export { SchedulerModule } from './scheduler.module.js';
 
 export { SchedulerService } from './scheduler.service.js';
 export { SchedulerMetricsService } from './scheduler.metrics.js';
+export { SchedulerHealthIndicator } from './scheduler.health.js';
+export type { SchedulerHealthCheckResult, SchedulerHealthThresholds } from './scheduler.health.js';
 
 // ============================================================================
 // Decorators

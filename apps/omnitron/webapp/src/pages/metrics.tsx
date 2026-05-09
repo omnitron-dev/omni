@@ -256,14 +256,32 @@ export default function MetricsPage() {
         );
       }
 
-      // Log volume (always mock for now — needs log aggregation query)
-      const logVol = generateMockLogVolume(DATA_POINTS, INTERVAL_MS);
-      setLogSeries(
-        Object.entries(logVol).map(([level, data]) => ({
-          name: level,
-          data,
-        })),
-      );
+      // Log volume — query real log stats, fall back to mock if unavailable
+      try {
+        const { logs } = await import('src/netron/client');
+        const logStats = await logs.getLogStats();
+        if (logStats?.byLevel && logStats.byLevel.length > 0) {
+          // LogStats.byLevel gives cumulative counts; distribute evenly across DATA_POINTS
+          // buckets so the chart shows a meaningful distribution.
+          const now = Date.now();
+          setLogSeries(
+            logStats.byLevel.map(({ level, count }) => ({
+              name: level,
+              data: Array.from({ length: DATA_POINTS }, (_, i) => ({
+                x: now - (DATA_POINTS - 1 - i) * INTERVAL_MS,
+                y: Math.round(count / DATA_POINTS),
+              })),
+            })),
+          );
+        } else {
+          throw new Error('no data');
+        }
+      } catch {
+        const logVol = generateMockLogVolume(DATA_POINTS, INTERVAL_MS);
+        setLogSeries(
+          Object.entries(logVol).map(([level, data]) => ({ name: level, data })),
+        );
+      }
 
       setError(null);
     } catch (err: any) {

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { LoadingScreen } from '@omnitron-dev/prism';
 import { useAuthStore } from './store';
+import { sanitizeReturnTo } from 'src/utils/errors';
 
 // ---------------------------------------------------------------------------
 // Auth Guard — requires authenticated user
@@ -41,6 +42,7 @@ interface GuestGuardProps {
 
 export function GuestGuard({ children }: GuestGuardProps) {
   const { user, initialized, initialize } = useAuthStore();
+  const location = useLocation();
 
   useEffect(() => {
     initialize();
@@ -51,7 +53,9 @@ export function GuestGuard({ children }: GuestGuardProps) {
   }
 
   if (user) {
-    return <Navigate to="/" replace />;
+    const params = new URLSearchParams(location.search);
+    const returnTo = sanitizeReturnTo(params.get('returnTo'));
+    return <Navigate to={returnTo} replace />;
   }
 
   return <>{children}</>;

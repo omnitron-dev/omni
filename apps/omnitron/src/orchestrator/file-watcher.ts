@@ -159,7 +159,14 @@ export class FileWatcher {
     try {
       for (const dir of dirs) {
         if (!fs.existsSync(dir)) {
-          this.logger.warn({ app: entry.name, directory: dir }, 'Watch directory does not exist — skipping');
+          // ERROR — not WARN — because a missing watch directory means
+          // dev-mode hot reload is silently broken for this app. Misconfig
+          // (relative path resolved against the wrong base) used to slip
+          // through unnoticed; surface it loudly.
+          this.logger.error(
+            { app: entry.name, directory: dir, base: entry.cwd ?? this.cwd },
+            'Watch directory does not exist — file watching disabled for this path'
+          );
           continue;
         }
 
@@ -169,14 +176,17 @@ export class FileWatcher {
         });
 
         w.on('error', (err) => {
-          this.logger.warn({ app: entry.name, error: (err as Error).message }, 'File watcher error');
+          this.logger.error({ app: entry.name, error: (err as Error).message }, 'File watcher error');
         });
 
         watched.watchers.push(w);
       }
 
       if (watched.watchers.length === 0) {
-        this.logger.warn({ app: entry.name }, 'No valid watch directories — skipping');
+        this.logger.error(
+          { app: entry.name, attempted: dirs },
+          'No valid watch directories — dev-mode hot reload is DISABLED for this app',
+        );
         return;
       }
 
@@ -200,10 +210,17 @@ export class FileWatcher {
   } {
     const watchValue = entry.watch;
 
+    // Resolve relative paths against the entry's PROJECT root, not the
+    // daemon's cwd. The daemon may have been launched from anywhere; only
+    // the entry knows where its config came from. Stamped by the config
+    // loader; falls back to daemon cwd only when the entry pre-dates that
+    // stamping (e.g., synthetic / test configs).
+    const resolveBase = entry.cwd ?? this.cwd;
+
     // Explicit string — single directory
     if (typeof watchValue === 'string') {
       return {
-        dirs: [path.resolve(this.cwd, watchValue)],
+        dirs: [path.resolve(resolveBase, watchValue)],
         extraIgnore: [],
         debounce: this.debounceMs,
       };
@@ -212,10 +229,10 @@ export class FileWatcher {
     // Full IWatchConfig
     if (watchValue && typeof watchValue === 'object') {
       const cfg = watchValue as IWatchConfig;
-      const dirs = [path.resolve(this.cwd, cfg.directory)];
+      const dirs = [path.resolve(resolveBase, cfg.directory)];
       if (cfg.include) {
         for (const inc of cfg.include) {
-          dirs.push(path.resolve(this.cwd, inc));
+          dirs.push(path.resolve(resolveBase, inc));
         }
       }
       return {
@@ -231,7 +248,7 @@ export class FileWatcher {
       return { dirs: [], extraIgnore: [], debounce: this.debounceMs };
     }
 
-    const resolved = this.resolveAppRoot(entryFile);
+    const resolved = this.resolveAppRoot(entryFile, resolveBase);
     return {
       dirs: resolved ? [resolved] : [],
       extraIgnore: [],
@@ -335,8 +352,8 @@ export class FileWatcher {
    * Resolve the app's root directory from its bootstrap/script entry path.
    * Walks up from the entry file until a package.json is found.
    */
-  private resolveAppRoot(entryPath: string): string | null {
-    const absPath = path.resolve(this.cwd, entryPath);
+  private resolveAppRoot(entryPath: string, base: string = this.cwd): string | null {
+    const absPath = path.resolve(base, entryPath);
     let dir = path.dirname(absPath);
     const root = path.parse(dir).root;
 

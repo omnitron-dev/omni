@@ -14,6 +14,7 @@ import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 import { daemonClient } from 'src/netron/client';
 import { Router } from 'src/routes';
 import { CommandPalette } from 'src/components/command-palette';
+import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { useProjectStore } from 'src/stores/project.store';
 
 function AppContent() {
@@ -30,6 +31,7 @@ function AppContent() {
 
   return (
     <>
+      <DaemonOfflineBanner />
       <NavigationProgress pathname={pathname} />
       <ScrollToTop pathname={pathname} />
       <CommandPalette />

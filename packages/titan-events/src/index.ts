@@ -72,6 +72,8 @@ export { EventBusService } from './event-bus.service.js';
 export { EventHistoryService } from './event-history.service.js';
 export { EventSchedulerService } from './event-scheduler.service.js';
 export { EventValidationService } from './event-validation.service.js';
+export { EventsHealthIndicator } from './events.health.js';
+export type { EventsHealthCheckResult, EventsHealthThresholds } from './events.health.js';
 
 // ============================================================================
 // Decorators

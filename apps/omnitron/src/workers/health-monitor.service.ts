@@ -282,7 +282,10 @@ export class HealthMonitorService {
       port: node.sshPort,
       username: node.sshUser,
       ...(node.sshPrivateKey && { privateKey: readKeyContent(node.sshPrivateKey) }),
-      ...(node.sshPassphrase && { passphrase: node.sshPassphrase }),
+      // Key auth: passphrase decrypts the private key
+      ...(node.sshAuthMethod === 'key' && node.sshPassphrase && { passphrase: node.sshPassphrase }),
+      // Password auth: SSH login password
+      ...(node.sshAuthMethod === 'password' && node.sshPassword && { password: node.sshPassword }),
     };
     const ssh = await this.remoteOps.checkSsh(sshTarget, this.config.sshTimeout);
     result.sshConnected = ssh.connected;

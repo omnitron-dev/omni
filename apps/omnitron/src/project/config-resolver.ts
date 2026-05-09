@@ -552,6 +552,22 @@ function resolveStackAddresses(
 ): InfrastructureAddresses {
   const infra = config.infrastructure;
 
+  // Default credentials: prefer explicit infra config, then env vars, then insecure hardcoded defaults.
+  // The env-var fallback means production deployments can override without touching config files.
+  const defaultPgPassword =
+    (typeof infra?.postgres?.password === 'string' ? infra.postgres.password : undefined) ??
+    process.env['POSTGRES_PASSWORD'] ??
+    'postgres';
+  const defaultMinioAccessKey =
+    infra?.minio?.accessKey ?? process.env['MINIO_ACCESS_KEY'] ?? 'minioadmin';
+  const defaultMinioSecretKey =
+    (typeof infra?.minio?.secretKey === 'string' ? infra.minio.secretKey : undefined) ??
+    process.env['MINIO_SECRET_KEY'] ??
+    'minioadmin';
+  const defaultRedisPassword =
+    (typeof infra?.redis?.password === 'string' ? infra.redis.password : undefined) ??
+    process.env['REDIS_PASSWORD'];
+
   if (stackConfig.type === 'local') {
     // Local stack: all services on localhost with port allocation (or defaults).
     // S3/MinIO is always assumed available for local stacks (omnitron auto-provisions
@@ -561,18 +577,18 @@ function resolveStackAddresses(
       postgres: {
         host: 'localhost',
         port: portAllocation?.postgresPort ?? infra?.postgres?.port ?? 5432,
-        user: infra?.postgres?.user ?? 'postgres',
-        password: typeof infra?.postgres?.password === 'string' ? infra.postgres.password : 'postgres',
+        user: infra?.postgres?.user ?? process.env['POSTGRES_USER'] ?? 'postgres',
+        password: defaultPgPassword,
       },
       redis: {
         host: 'localhost',
         port: portAllocation?.redisPort ?? infra?.redis?.port ?? 6379,
-        password: typeof infra?.redis?.password === 'string' ? infra.redis.password : undefined,
+        password: defaultRedisPassword,
       },
       s3: {
         endpoint: `http://localhost:${minioPort}`,
-        accessKey: infra?.minio?.accessKey ?? 'minioadmin',
-        secretKey: typeof infra?.minio?.secretKey === 'string' ? infra.minio.secretKey : 'minioadmin',
+        accessKey: defaultMinioAccessKey,
+        secretKey: defaultMinioSecretKey,
       },
     };
   }
@@ -580,9 +596,18 @@ function resolveStackAddresses(
   if (stackConfig.type === 'remote' && stackConfig.nodes?.length) {
     const node = stackConfig.nodes[0]!;
     return {
-      postgres: { host: node.host, port: 5432, user: 'postgres', password: 'postgres' },
-      redis: { host: node.host, port: 6379 },
-      s3: { endpoint: `http://${node.host}:9000`, accessKey: 'minioadmin', secretKey: 'minioadmin' },
+      postgres: {
+        host: node.host,
+        port: 5432,
+        user: process.env['POSTGRES_USER'] ?? 'postgres',
+        password: defaultPgPassword,
+      },
+      redis: { host: node.host, port: 6379, password: defaultRedisPassword },
+      s3: {
+        endpoint: `http://${node.host}:9000`,
+        accessKey: defaultMinioAccessKey,
+        secretKey: defaultMinioSecretKey,
+      },
     };
   }
 
@@ -595,12 +620,13 @@ function resolveStackAddresses(
       postgres: {
         host: dbNode?.host ?? 'localhost',
         port: dbNode?.port ?? 5432,
-        user: 'postgres',
-        password: 'postgres',
+        user: process.env['POSTGRES_USER'] ?? 'postgres',
+        password: defaultPgPassword,
       },
       redis: {
         host: cacheNode?.host ?? 'localhost',
         port: cacheNode?.port ?? 6379,
+        password: defaultRedisPassword,
       },
       gateway: gwNode ? { host: gwNode.host, port: gwNode.port ?? 8080 } : undefined,
     };
@@ -608,8 +634,13 @@ function resolveStackAddresses(
 
   // Fallback: localhost
   return {
-    postgres: { host: 'localhost', port: 5432, user: 'postgres', password: 'postgres' },
-    redis: { host: 'localhost', port: 6379 },
+    postgres: {
+      host: 'localhost',
+      port: 5432,
+      user: process.env['POSTGRES_USER'] ?? 'postgres',
+      password: defaultPgPassword,
+    },
+    redis: { host: 'localhost', port: 6379, password: defaultRedisPassword },
   };
 }
 

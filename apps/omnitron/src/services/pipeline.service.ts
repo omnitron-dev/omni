@@ -314,17 +314,33 @@ export class PipelineService {
 
   private async executeStep(
     step: PipelineStep,
-    _params: Record<string, unknown> | undefined,
+    params: Record<string, unknown> | undefined,
     _xec: typeof import('@xec-sh/ops') | null,
     signal: AbortSignal
   ): Promise<PipelineRunStepResult> {
     const start = Date.now();
+
+    // Evaluate step condition before running — skip if condition is false
+    if (step.condition) {
+      const conditionMet = this.evaluateCondition(step.condition, params ?? {});
+      if (!conditionMet) {
+        this.logger.debug({ step: step.name, condition: step.condition }, 'Step skipped — condition not met');
+        return { name: step.name, status: 'skipped', duration: 0 };
+      }
+    }
+
     const timeout = step.timeout ?? 300_000; // 5 min default
     const maxRetries = step.retries ?? 0;
 
+    // Interpolate {{param}} placeholders in the command and env values
+    const command = this.interpolateParams(step.run, params ?? {});
+    const env = step.env
+      ? Object.fromEntries(Object.entries(step.env).map(([k, v]) => [k, this.interpolateParams(v, params ?? {})]))
+      : undefined;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const output = await this.runShellCommand(step.run, step.env, timeout, signal);
+        const output = await this.runShellCommand(command, env, timeout, signal);
         return {
           name: step.name,
           status: 'success',
@@ -346,6 +362,45 @@ export class PipelineService {
 
     // Should not reach here
     return { name: step.name, status: 'failed', duration: Date.now() - start, error: 'Exhausted retries' };
+  }
+
+  /**
+   * Substitute {{paramName}} placeholders in a string with values from params.
+   * Unknown placeholders are left as-is so they surface clearly in output.
+   */
+  private interpolateParams(template: string, params: Record<string, unknown>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      const val = params[key];
+      if (val === undefined || val === null) return match;
+      return String(val);
+    });
+  }
+
+  /**
+   * Evaluate a simple step condition expression against pipeline params.
+   *
+   * Supported forms:
+   *   params.key == 'value'   → string equality
+   *   params.key != 'value'   → string inequality
+   *   params.key              → truthy check
+   *   !params.key             → falsy check
+   */
+  private evaluateCondition(condition: string, params: Record<string, unknown>): boolean {
+    const eqMatch = condition.match(/^params\.(\w+)\s*==\s*['"]([^'"]*)['"]\s*$/);
+    if (eqMatch) return String(params[eqMatch[1]!] ?? '') === eqMatch[2];
+
+    const neqMatch = condition.match(/^params\.(\w+)\s*!=\s*['"]([^'"]*)['"]\s*$/);
+    if (neqMatch) return String(params[neqMatch[1]!] ?? '') !== neqMatch[2];
+
+    const notMatch = condition.match(/^!\s*params\.(\w+)\s*$/);
+    if (notMatch) return !params[notMatch[1]!];
+
+    const keyMatch = condition.match(/^params\.(\w+)\s*$/);
+    if (keyMatch) return Boolean(params[keyMatch[1]!]);
+
+    // Unknown syntax — log and allow step to run (fail-open for forward compatibility)
+    this.logger.warn({ condition }, 'Pipeline: unrecognized condition syntax — step will run');
+    return true;
   }
 
   private async runShellCommand(

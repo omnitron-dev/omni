@@ -20,6 +20,14 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Badge from '@mui/material/Badge';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
@@ -62,6 +70,141 @@ const SEVERITY_COLORS: Record<string, 'error' | 'warning' | 'info'> = {
   warning: 'warning',
   info: 'info',
 };
+
+// ---------------------------------------------------------------------------
+// Create Alert Rule Dialog
+// ---------------------------------------------------------------------------
+
+interface CreateAlertRuleDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (rule: AlertRule) => void;
+}
+
+const RULE_TYPES: Array<{ value: AlertRule['type']; label: string }> = [
+  { value: 'threshold', label: 'Threshold' },
+  { value: 'anomaly', label: 'Anomaly' },
+  { value: 'absence', label: 'Absence' },
+  { value: 'composite', label: 'Composite' },
+];
+
+const SEVERITY_OPTIONS: Array<{ value: AlertRule['severity']; label: string }> = [
+  { value: 'critical', label: 'Critical' },
+  { value: 'warning', label: 'Warning' },
+  { value: 'info', label: 'Info' },
+];
+
+function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDialogProps) {
+  const [name, setName] = useState('');
+  const [expression, setExpression] = useState('');
+  const [type, setType] = useState<AlertRule['type']>('threshold');
+  const [severity, setSeverity] = useState<AlertRule['severity']>('warning');
+  const [enabled, setEnabled] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setName('');
+    setExpression('');
+    setType('threshold');
+    setSeverity('warning');
+    setEnabled(true);
+    setError(null);
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !expression.trim()) {
+      setError('Name and expression are required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await alerts.createRule({ name: name.trim(), expression: expression.trim(), type, severity, enabled });
+      onCreated(created as AlertRule);
+      handleClose();
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to create rule');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>New Alert Rule</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <TextField
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            fullWidth
+            required
+            size="small"
+          />
+          <TextField
+            label="Expression"
+            value={expression}
+            onChange={(e) => setExpression(e.target.value)}
+            fullWidth
+            required
+            size="small"
+            multiline
+            rows={3}
+            placeholder="e.g. cpu_percent > 90"
+            helperText="Metric expression that triggers this alert"
+          />
+          <TextField
+            label="Type"
+            value={type}
+            onChange={(e) => setType(e.target.value as AlertRule['type'])}
+            select
+            fullWidth
+            size="small"
+          >
+            {RULE_TYPES.map((t) => (
+              <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Severity"
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value as AlertRule['severity'])}
+            select
+            fullWidth
+            size="small"
+          >
+            {SEVERITY_OPTIONS.map((s) => (
+              <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+            ))}
+          </TextField>
+          <FormControlLabel
+            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
+            label="Enable rule immediately"
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={saving}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={saving}
+          startIcon={saving ? <CircularProgress size={14} /> : undefined}
+        >
+          {saving ? 'Creating…' : 'Create Rule'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Stat Card
@@ -117,6 +260,7 @@ export default function AlertsPage() {
   const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -192,9 +336,7 @@ export default function AlertsPage() {
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
-              onClick={() => {
-                // TODO: Open create alert rule dialog
-              }}
+              onClick={() => setCreateDialogOpen(true)}
             >
               New Rule
             </Button>
@@ -429,6 +571,11 @@ export default function AlertsPage() {
           </Table>
         </TableContainer>
       </Card>
+      <CreateAlertRuleDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onCreated={(rule) => setRules((prev) => [...prev, rule])}
+      />
     </Stack>
   );
 }

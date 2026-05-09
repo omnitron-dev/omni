@@ -559,12 +559,20 @@ export class Application implements IApplication {
 
         // Register module
         if (module.onRegister) {
-          await module.onRegister(this);
+          try {
+            await module.onRegister(this);
+          } catch (error) {
+            throw new Error(`Module "${module.name}" failed during onRegister: ${(error as Error).message}`, { cause: error });
+          }
         }
 
         // Start module
         if (module.onStart) {
-          await module.onStart(this);
+          try {
+            await module.onStart(this);
+          } catch (error) {
+            throw new Error(`Module "${module.name}" failed during onStart: ${(error as Error).message}`, { cause: error });
+          }
         }
 
         this.emit(ApplicationEvent.ModuleStarted, { module: module.name });
@@ -587,16 +595,17 @@ export class Application implements IApplication {
         }
       }
 
-      // Run start hooks
+      // Run start hooks — every hook gets a timeout to prevent silent hangs.
+      // Hooks that declare their own timeout use it; others fall back to 30 s.
+      const DEFAULT_HOOK_TIMEOUT = 30_000;
       for (const hook of this._startHooks) {
         this._logger?.debug({ hook: hook.name }, 'Running start hook');
-
-        const promise = Promise.resolve(hook.handler());
-        if (hook.timeout) {
-          await this.withTimeout(promise, hook.timeout, `Start hook ${hook.name || 'unnamed'} timed out`);
-        } else {
-          await promise;
-        }
+        const timeout = hook.timeout ?? DEFAULT_HOOK_TIMEOUT;
+        await this.withTimeout(
+          Promise.resolve(hook.handler()),
+          timeout,
+          `Start hook "${hook.name || 'unnamed'}" timed out after ${timeout}ms — check for missing await or blocking I/O`
+        );
       }
 
       // Auto-expose services decorated with @Service to Netron

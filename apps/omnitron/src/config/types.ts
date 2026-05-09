@@ -582,6 +582,20 @@ export interface IEcosystemAppEntry {
   instances?: number;
   /** Per-app environment variables */
   env?: Record<string, string>;
+  /**
+   * Working directory for this app — the **base for all relative paths**
+   * (bootstrap, script, watch.directory, watch.include, etc.).
+   *
+   * Stamped automatically by the config loader to the directory of the
+   * `omnitron.config.ts` that declared this app, so relative paths resolve
+   * against the project root instead of the daemon's cwd. Stack
+   * namespacing (project.service.ts) re-stamps it to the project's
+   * registered path. Operators can override per-app, but normally don't.
+   *
+   * Without this, file watching breaks whenever the daemon is launched
+   * from a directory other than the project root.
+   */
+  cwd?: string;
   /** Per-app restart policy override */
   restartPolicy?: IRestartPolicy;
   /** Startup timeout in ms (overrides global resources.timeout). Useful for apps with slow init (e.g. blockchain wallet connections) */

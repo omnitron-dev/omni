@@ -10,6 +10,25 @@ import { defineEcosystem } from './define-ecosystem.js';
 
 const CONFIG_FILE_NAMES = ['omnitron.config.ts', 'omnitron.config.js', 'omnitron.config.mjs'];
 
+/**
+ * Stamp every app entry with the project root that owns this config file.
+ *
+ * This is the SOURCE-OF-TRUTH cwd for relative-path resolution (watch
+ * directories, bootstrap script, env-file lookups). Without it, callers
+ * fall back to `process.cwd()` of the daemon — which is whatever
+ * directory the daemon was launched from and has nothing to do with the
+ * project. That breaks file watching for stacks started from registered
+ * projects whose registered path differs from the daemon's launch cwd.
+ *
+ * Existing `entry.cwd` (e.g. set by stack namespacing in
+ * `project.service.ts`) is respected and not overwritten.
+ */
+function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosystemConfig {
+  if (!config.apps?.length) return config;
+  config.apps = config.apps.map((app) => (app.cwd ? app : { ...app, cwd: projectRoot }));
+  return config;
+}
+
 export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<IEcosystemConfig> {
   for (const name of CONFIG_FILE_NAMES) {
     const configPath = path.resolve(cwd, name);
@@ -36,7 +55,8 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
       }
 
       // Apply defaults — the config file doesn't need to import defineEcosystem
-      return defineEcosystem(raw);
+      const config = defineEcosystem(raw);
+      return stampProjectRoot(config, path.dirname(configPath));
     } catch (err: any) {
       throw new Error(`Failed to load ${name}: ${err.message}`, { cause: err });
     }
@@ -57,20 +77,21 @@ export async function loadEcosystemConfigFile(filePath: string): Promise<IEcosys
   }
   const url = pathToFileURL(filePath).href;
   const mod = await import(`${url}?t=${Date.now()}`);
-  const config = mod.default ?? mod;
+  const raw = mod.default ?? mod;
 
-  if (!config || !Array.isArray(config.apps)) {
+  if (!raw || !Array.isArray(raw.apps)) {
     throw new Error(`Invalid config in ${filePath}: 'apps' must be an array`);
   }
 
-  for (const app of config.apps) {
+  for (const app of raw.apps) {
     if (!app.name) throw new Error(`App entry missing 'name' in ${filePath}`);
     if (!app.bootstrap && !app.script) {
       throw new Error(`App '${app.name}' must have either 'bootstrap' or 'script' path`);
     }
   }
 
-  return defineEcosystem(config);
+  const config = defineEcosystem(raw);
+  return stampProjectRoot(config, path.dirname(path.resolve(filePath)));
 }
 
 export async function loadEcosystemConfigSafe(cwd?: string): Promise<IEcosystemConfig | null> {

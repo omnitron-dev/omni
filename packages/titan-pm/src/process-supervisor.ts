@@ -346,29 +346,39 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   private async getRestartDecision(name: string, childDef: ISupervisorChild, error: Error): Promise<RestartDecision> {
-    const restartCount = this.restartCounts.get(name) || 0;
-    const maxRestarts = this.options.maxRestarts || 3;
-    const window = this.options.window || 60000;
+    const window = this.options.window || 60_000;
 
-    // Check window-based restart limit
-    if (restartCount >= maxRestarts) {
-      const timestamps = this.restartTimestamps.get(name) || [];
-      const recentRestarts = timestamps.filter((t) => Date.now() - t < window);
+    // True sliding window: prune anything older than the window AND persist
+    // the pruned list so timestamps don't grow unbounded. (The previous
+    // logic gated on a lifetime counter that startChild reset to 0 on
+    // every restart — defeating the purpose of the window budget entirely.)
+    const cutoff = Date.now() - window;
+    const recent = (this.restartTimestamps.get(name) ?? []).filter((t) => t > cutoff);
+    this.restartTimestamps.set(name, recent);
 
-      if (recentRestarts.length >= maxRestarts) {
-        return childDef.critical ? RestartDecision.ESCALATE : RestartDecision.IGNORE;
-      }
-    }
-
-    // Config-based custom handler
+    // User-supplied policies take precedence over the framework default.
+    // The window budget below is only the *fallback* for callers that don't
+    // wire a custom crash handler — anyone who has explicitly chosen a
+    // policy (config or decorator) owns the decision and the framework
+    // must consult them on every crash.
     if (this.configCrashHandler) {
       return this.configCrashHandler(childDef, error);
     }
 
-    // Decorator-based custom handler
     const supervisor = new this.SupervisorClass();
     if (typeof supervisor.onChildCrash === 'function') {
       return supervisor.onChildCrash({ ...childDef, name }, error);
+    }
+
+    // Default framework policy: window-based budget. Crash rate exceeded
+    // → escalate (critical) or give up (non-critical).
+    const maxRestarts = this.options.maxRestarts || 3;
+    if (recent.length >= maxRestarts) {
+      this.logger.warn(
+        { child: name, recent: recent.length, maxRestarts, windowMs: window },
+        'Child crash rate exceeded restart budget'
+      );
+      return childDef.critical ? RestartDecision.ESCALATE : RestartDecision.IGNORE;
     }
 
     return RestartDecision.RESTART;
@@ -427,9 +437,49 @@ export class ProcessSupervisor extends EventEmitter {
     }
   }
 
+  /**
+   * A child has exhausted its restart budget. The supervisor's strategy
+   * dictates whether siblings live on or share the failure:
+   *
+   *   ONE_FOR_ONE / SIMPLE_ONE_FOR_ONE — siblings are independent;
+   *     emit and continue.
+   *   ONE_FOR_ALL — children are a unit; if one is dead, the whole
+   *     subtree is dead. Stop everyone (no restart — the whole budget
+   *     is exhausted, restart would just churn).
+   *   REST_FOR_ONE — children form a chain; the failed one and
+   *     everything started after it depend on it being healthy.
+   *     Stop the failed child and every sibling that came after.
+   *
+   * Mirrors OTP supervisor escalation semantics. Without this, the
+   * `strategy` setting silently changed behavior on the *restart* path
+   * but not on the *give-up* path — leaving siblings running in an
+   * inconsistent state when their dependency had been declared dead.
+   */
   private async escalateFailure(name: string, _childDef: ISupervisorChild, error: Error): Promise<void> {
     this.logger.error({ child: name, error }, 'Child failure escalated');
     this.emit('escalate', name, error);
+
+    const strategy = this.options.strategy ?? SupervisionStrategy.ONE_FOR_ONE;
+    if (strategy === SupervisionStrategy.ONE_FOR_ALL) {
+      this.logger.warn({ child: name, strategy }, 'Stopping all siblings per ONE_FOR_ALL escalation');
+      for (const [siblingName] of this.children) {
+        await this.stopChild(siblingName).catch((err) =>
+          this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
+        );
+      }
+    } else if (strategy === SupervisionStrategy.REST_FOR_ONE) {
+      const order = Array.from(this.children.keys());
+      const failedIndex = order.indexOf(name);
+      if (failedIndex === -1) return;
+      const tail = order.slice(failedIndex);
+      this.logger.warn({ child: name, strategy, stopping: tail }, 'Stopping failed + later siblings per REST_FOR_ONE escalation');
+      for (const siblingName of tail) {
+        await this.stopChild(siblingName).catch((err) =>
+          this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
+        );
+      }
+    }
+    // ONE_FOR_ONE / SIMPLE_ONE_FOR_ONE: nothing else to do — emit was enough.
   }
 
   private async shutdownAll(): Promise<void> {

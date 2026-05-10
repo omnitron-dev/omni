@@ -232,19 +232,44 @@ export class OrchestratorService extends EventEmitter {
     // and sockets that the new apps will fight for.
     await this.ensureJanitor().coldStartSweep();
 
+    // Dependency-aware skip: if app A fails to start, every app that
+    // declares A in `dependsOn` (transitively) is skipped instead of
+    // attempted. Without this, a downstream app would launch, fail to
+    // reach its missing dependency, crash, and chew through its restart
+    // budget — masking the real root cause.
+    const failed = new Set<string>();
+    const blocked = new Set<string>();
+
     for (const batch of resolveStartupOrder(config.apps)) {
       const enabled = batch.filter((e) => e.enabled !== false);
       await Promise.all(
         enabled.map(async (e) => {
+          const blockingDep = (e.dependsOn ?? []).find((dep) => failed.has(dep) || blocked.has(dep));
+          if (blockingDep) {
+            blocked.add(e.name);
+            this.logger.warn(
+              { app: e.name, blockedBy: blockingDep },
+              'Skipping app startup — depends on a failed/blocked app'
+            );
+            return;
+          }
           try {
             await this.startApp(e, config);
           } catch (err) {
+            failed.add(e.name);
             this.logger.error(
               { app: e.name, error: (err as Error).message },
               'Failed to start app — continuing with remaining apps'
             );
           }
         })
+      );
+    }
+
+    if (failed.size > 0 || blocked.size > 0) {
+      this.logger.warn(
+        { failed: [...failed], blocked: [...blocked] },
+        'Startup completed with failures — some apps did not launch'
       );
     }
 

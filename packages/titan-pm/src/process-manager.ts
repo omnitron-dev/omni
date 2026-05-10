@@ -11,6 +11,7 @@ import path from 'node:path';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { isOperationalError, createOperationalErrorRecorder } from '@omnitron-dev/titan/utils';
 
 import type {
   IProcessManager,
@@ -693,13 +694,26 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       });
     });
 
+    // Operational errors (network/db disconnects, peer hangups) MUST NOT
+    // crash the process manager — the underlying clients (pg Pool, ioredis,
+    // …) already handle reconnection. Classification is shared with titan's
+    // Application/LifecycleController so the daemon's behavior is uniform.
+    const recordOperational = createOperationalErrorRecorder();
     process.on('uncaughtException', async (error) => {
+      if (isOperationalError(error) && !recordOperational()) {
+        this.logger.warn({ error }, 'Uncaught operational exception — letting client recover');
+        return;
+      }
       this.logger.error({ error }, 'Uncaught exception');
       await this.shutdown({ force: true });
       process.exit(1);
     });
 
     process.on('unhandledRejection', async (reason, promise) => {
+      if (isOperationalError(reason) && !recordOperational()) {
+        this.logger.warn({ reason }, 'Unhandled operational rejection — letting client recover');
+        return;
+      }
       this.logger.error({ reason, promise }, 'Unhandled rejection');
       await this.shutdown({ force: true });
       process.exit(1);

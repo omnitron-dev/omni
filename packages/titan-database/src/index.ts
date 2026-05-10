@@ -20,7 +20,7 @@ export { TitanDatabaseModule, DatabaseModule } from './database.module.js';
 // Core Services
 // ============================================================================
 
-export { DatabaseManager } from './database.manager.js';
+export { DatabaseManager, ResilientPgClient } from './database.manager.js';
 export { DatabaseHealthIndicator } from './database.health.js';
 
 // ============================================================================

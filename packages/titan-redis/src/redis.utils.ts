@@ -31,28 +31,52 @@ export function getClientNamespace(options: { namespace?: string } | undefined |
   return namespace;
 }
 
+/**
+ * Resilience-critical ioredis defaults. These ARE the ioredis defaults
+ * already, but pin them explicitly so the contract is visible at the
+ * call site — the rest of titan relies on these behaviors for self-
+ * healing across reconnects, and a future ioredis version flipping a
+ * default would silently break that contract.
+ *
+ *   - autoResubscribe: re-issue SUBSCRIBE/PSUBSCRIBE for every channel
+ *     and pattern that was active before the disconnect. Without this,
+ *     any pub/sub-based event bus goes silent after the first hiccup.
+ *   - autoResendUnfulfilledCommands: re-send commands that were in
+ *     flight when the connection dropped. Without this, callers see
+ *     spurious failures even though the server eventually came back.
+ *   - enableReadyCheck: emit `'ready'` only after `INFO` confirms the
+ *     server is past loading, not just TCP-connected.
+ *   - maxRetriesPerRequest: bound the per-command retry loop so that
+ *     unreachable Redis surfaces as an error in finite time instead of
+ *     hanging forever.
+ *   - showFriendlyErrorStack: keep the originating call site in error
+ *     stacks (small per-error allocation cost, large debugging win).
+ */
+const RESILIENCE_DEFAULTS = {
+  enableReadyCheck: true,
+  maxRetriesPerRequest: 3,
+  showFriendlyErrorStack: true,
+  autoResubscribe: true,
+  autoResendUnfulfilledCommands: true,
+} as const;
+
 export function createRedisClient(options: InternalRedisClientOptions = {}): InternalRedisClient {
   if (options.cluster) {
     if (!options.cluster.nodes || options.cluster.nodes.length === 0) {
       throw Errors.badRequest('Cluster configuration requires nodes');
     }
     return new Cluster(options.cluster.nodes, {
-      enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
-      showFriendlyErrorStack: true,
+      ...RESILIENCE_DEFAULTS,
       ...options,
       ...options.cluster.options,
       lazyConnect: options.lazyConnect ?? true,
     });
   }
 
-  // Set default options
   const redisOptions = {
     host: options.host || 'localhost',
     port: options.port || 6379,
-    enableReadyCheck: true,
-    maxRetriesPerRequest: 3,
-    showFriendlyErrorStack: true,
+    ...RESILIENCE_DEFAULTS,
     ...options,
     lazyConnect: options.lazyConnect ?? true,
   };

@@ -44,6 +44,7 @@
     "@omnitron-dev/kb": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",
     "@omnitron-dev/titan-auth": "workspace:*",
+    "@omnitron-dev/titan-database": "workspace:*",
     "@omnitron-dev/titan-health": "workspace:*",
     "@omnitron-dev/titan-metrics": "workspace:*",
     "@omnitron-dev/titan-pm": "workspace:*",

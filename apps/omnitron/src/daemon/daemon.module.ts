@@ -415,6 +415,14 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           useFactory: async () => {
             const { Kysely, PostgresDialect } = await import('kysely');
             const pg = await import('pg');
+            const { ResilientPgClient } = await import('@omnitron-dev/titan-database');
+            // Use ResilientPgClient so every pool client has an `'error'`
+            // listener attached at construction — closes the mid-handshake
+            // race where pg.Pool's own listener (attached only AFTER
+            // client.connect resolves) misses errors and they escape to
+            // uncaughtException. Same pattern used by titan-database for
+            // all managed connections — keep the daemon's own state DB
+            // consistent with that contract.
             const pool = new pg.default.Pool({
               host: 'localhost',
               port: 5480,
@@ -422,6 +430,13 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
               user: 'omnitron',
               password: 'omnitron',
               max: 10,
+              Client: ResilientPgClient,
+            });
+            // Pool-level fallback: re-emitted client errors land here so
+            // they're logged and metric'd instead of bubbling further.
+            pool.on('error', (err) => {
+              // eslint-disable-next-line no-console
+              console.error('[omnitron-pg pool error]', (err as { code?: string }).code, err.message);
             });
             return new Kysely<OmnitronDatabase>({
               dialect: new PostgresDialect({ pool }),

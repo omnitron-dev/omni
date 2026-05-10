@@ -39,6 +39,10 @@
       "types": "./dist/netron/index.d.ts",
       "default": "./dist/netron/index.js"
     },
+    "./netron/service-descriptor": {
+      "types": "./dist/netron/service-descriptor.d.ts",
+      "default": "./dist/netron/service-descriptor.js"
+    },
     "./netron/transport/http": {
       "types": "./dist/netron/transport/http/index.d.ts",
       "default": "./dist/netron/transport/http/index.js"

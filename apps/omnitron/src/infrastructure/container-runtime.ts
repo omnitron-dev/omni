@@ -11,7 +11,7 @@
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
 
 // =============================================================================
-// Singleton DockerAdapter (lazy-loaded)
+// Singleton DockerAdapter (lazy-loaded, self-healing)
 // =============================================================================
 
 let _adapter: any = null;
@@ -23,6 +23,39 @@ async function getAdapter(): Promise<any> {
   return _adapter;
 }
 
+/**
+ * Patterns that mean "the docker daemon connection is gone" rather than
+ * "this specific operation failed". When we see one, we invalidate the
+ * cached adapter so the next call gets a fresh instance — without this,
+ * a docker-daemon restart would leave us forever trying to talk to a
+ * dead socket.
+ */
+const ADAPTER_DEAD_PATTERNS = /(?:cannot connect to the docker daemon|docker daemon is not running|connect ENOENT|connect ECONNREFUSED.*docker|EOF$|connection reset)/i;
+
+function isAdapterDeadError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return ADAPTER_DEAD_PATTERNS.test(msg);
+}
+
+/**
+ * Run `op` against the docker adapter. If it fails with an error that
+ * indicates the daemon connection is dead, invalidate the cached adapter
+ * and retry exactly once with a fresh one — recovering automatically
+ * from docker daemon restarts.
+ */
+async function withAdapter<T>(op: (adapter: any) => Promise<T>): Promise<T> {
+  const adapter = await getAdapter();
+  try {
+    return await op(adapter);
+  } catch (err) {
+    if (!isAdapterDeadError(err)) throw err;
+    _adapter = null;
+    const fresh = await getAdapter();
+    return await op(fresh);
+  }
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -32,8 +65,7 @@ async function getAdapter(): Promise<any> {
  */
 export async function isDockerAvailable(): Promise<boolean> {
   try {
-    const adapter = await getAdapter();
-    return adapter.isAvailable();
+    return await withAdapter((adapter) => adapter.isAvailable());
   } catch {
     return false;
   }
@@ -43,31 +75,31 @@ export async function isDockerAvailable(): Promise<boolean> {
  * List all Omnitron-managed containers.
  */
 export async function listManagedContainers(): Promise<ContainerState[]> {
-  const adapter = await getAdapter();
   try {
-    // listContainers returns names; filter by inspecting labels
-    const allNames: string[] = await adapter.listContainers(true);
-    const managed: ContainerState[] = [];
+    return await withAdapter(async (adapter) => {
+      const allNames: string[] = await adapter.listContainers(true);
+      const managed: ContainerState[] = [];
 
-    for (const name of allNames) {
-      try {
-        const info = await adapter.inspectContainer(name);
-        const labels = info?.Config?.Labels ?? {};
-        if (labels['omnitron.managed'] === 'true') {
-          managed.push({
-            name: (info.Name ?? name).replace(/^\//, ''),
-            image: info.Config?.Image ?? '',
-            status: mapInspectStatus(info.State?.Status),
-            containerId: info.Id?.slice(0, 12),
-            health: mapInspectHealth(info.State?.Health?.Status),
-          });
+      for (const name of allNames) {
+        try {
+          const info = await adapter.inspectContainer(name);
+          const labels = info?.Config?.Labels ?? {};
+          if (labels['omnitron.managed'] === 'true') {
+            managed.push({
+              name: (info.Name ?? name).replace(/^\//, ''),
+              image: info.Config?.Image ?? '',
+              status: mapInspectStatus(info.State?.Status),
+              containerId: info.Id?.slice(0, 12),
+              health: mapInspectHealth(info.State?.Health?.Status),
+            });
+          }
+        } catch {
+          // Container may have been removed between list and inspect
         }
-      } catch {
-        // Container may have been removed between list and inspect
       }
-    }
 
-    return managed;
+      return managed;
+    });
   } catch {
     return [];
   }
@@ -77,19 +109,20 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
  * Get state of a specific container by name.
  */
 export async function getContainerState(name: string): Promise<ContainerState | null> {
-  const adapter = await getAdapter();
   try {
-    const exists = await adapter.containerExists(name);
-    if (!exists) return null;
+    return await withAdapter(async (adapter) => {
+      const exists = await adapter.containerExists(name);
+      if (!exists) return null;
 
-    const info = await adapter.inspectContainer(name);
-    return {
-      name: (info.Name ?? name).replace(/^\//, ''),
-      image: info.Config?.Image ?? '',
-      status: mapInspectStatus(info.State?.Status),
-      containerId: info.Id?.slice(0, 12),
-      health: mapInspectHealth(info.State?.Health?.Status),
-    };
+      const info = await adapter.inspectContainer(name);
+      return {
+        name: (info.Name ?? name).replace(/^\//, ''),
+        image: info.Config?.Image ?? '',
+        status: mapInspectStatus(info.State?.Status),
+        containerId: info.Id?.slice(0, 12),
+        health: mapInspectHealth(info.State?.Health?.Status),
+      };
+    });
   } catch {
     return null;
   }

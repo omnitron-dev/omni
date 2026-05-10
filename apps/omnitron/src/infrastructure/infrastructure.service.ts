@@ -38,6 +38,8 @@ import {
 
 const RECONCILE_INTERVAL = 30_000; // 30s health sweep
 const STARTUP_TIMEOUT = 120_000; // 2min max per service
+/** Consecutive 'unhealthy' ticks before recreate. 2 ticks @ 30s = 60s grace. */
+const UNHEALTHY_RESTART_THRESHOLD = 2;
 
 /** Omnitron internal PG connection defaults */
 const OMNITRON_PG_PORT = 5480;
@@ -52,6 +54,16 @@ export class InfrastructureService {
   private healthTimer: NodeJS.Timeout | null = null;
   private readonly state: InfrastructureState = { services: {}, ready: false };
   private readonly normalizedServices: Record<string, import('./types.js').IServiceRequirement>;
+
+  /**
+   * Per-service consecutive-unhealthy counter. Restart only fires after
+   * UNHEALTHY_RESTART_THRESHOLD ticks in a row to avoid flapping during
+   * cold-start / transient health-check timeouts. Reset to 0 on a healthy
+   * observation. Without this, a service that briefly fails one health
+   * probe (network blip, slow query) would be torn down and recreated,
+   * making transient pressure look like outages.
+   */
+  private unhealthyTicks = new Map<string, number>();
 
   constructor(
     private readonly logger: ILogger,
@@ -576,6 +588,7 @@ export class InfrastructureService {
       const actual = await getContainerState(desired.name);
 
       if (!actual || actual.status !== 'running') {
+        this.unhealthyTicks.delete(desired.name);
         this.logger.warn(
           { service: desired.name, status: actual?.status ?? 'not_found' },
           'Service not running — auto-restarting'
@@ -589,19 +602,33 @@ export class InfrastructureService {
           );
         }
       } else if (actual.health === 'unhealthy') {
-        this.logger.warn(
-          { service: desired.name },
-          'Service unhealthy — restarting container'
-        );
-        try {
-          await removeContainer(desired.name);
-          await this.createAndStart(desired);
-        } catch (err) {
-          this.logger.error(
-            { service: desired.name, error: (err as Error).message },
-            'Health restart failed'
+        const ticks = (this.unhealthyTicks.get(desired.name) ?? 0) + 1;
+        this.unhealthyTicks.set(desired.name, ticks);
+
+        if (ticks < UNHEALTHY_RESTART_THRESHOLD) {
+          this.logger.warn(
+            { service: desired.name, consecutiveUnhealthy: ticks, threshold: UNHEALTHY_RESTART_THRESHOLD },
+            'Service unhealthy — waiting for confirmation before restart'
           );
+        } else {
+          this.unhealthyTicks.delete(desired.name);
+          this.logger.warn(
+            { service: desired.name, consecutiveUnhealthy: ticks },
+            'Service unhealthy past threshold — restarting container'
+          );
+          try {
+            await removeContainer(desired.name);
+            await this.createAndStart(desired);
+          } catch (err) {
+            this.logger.error(
+              { service: desired.name, error: (err as Error).message },
+              'Health restart failed'
+            );
+          }
         }
+      } else {
+        // Healthy or starting — clear any accumulated unhealthy ticks
+        this.unhealthyTicks.delete(desired.name);
       }
 
       // Update state

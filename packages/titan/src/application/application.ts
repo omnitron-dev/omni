@@ -29,6 +29,58 @@ import { LoggerModule, LOGGER_SERVICE_TOKEN, LOGGER_OPTIONS_TOKEN } from '../mod
 import { LifecycleController, type LifecyclePhaseEvent } from '../lifecycle/index.js';
 // Well-known token for optional scheduler integration (uses Symbol.for for cross-package identity)
 const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
+
+/**
+ * Postgres SQLSTATE codes that mean the connection (or the server) was
+ * lost — the client owns reconnection, we just must not crash here.
+ *   57P01 admin_shutdown        — the server-side admin terminated the connection
+ *   57P02 crash_shutdown        — the server crashed
+ *   57P03 cannot_connect_now    — startup/shutdown in progress
+ *   08000 connection_exception
+ *   08001 sqlclient_unable_to_establish_sqlconnection
+ *   08003 connection_does_not_exist
+ *   08004 sqlserver_rejected_establishment_of_sqlconnection
+ *   08006 connection_failure
+ *   08007 transaction_resolution_unknown
+ *   53300 too_many_connections
+ *   XX000 internal_error         — pg sometimes wraps disconnects under this
+ */
+const OPERATIONAL_PG_SQLSTATES = new Set([
+  '57P01', '57P02', '57P03',
+  '08000', '08001', '08003', '08004', '08006', '08007',
+  '53300',
+]);
+
+/**
+ * libuv / net errno strings that mean the network or peer dropped under us.
+ * The application stack already retries; we just must not let one drop kill
+ * the daemon.
+ */
+const OPERATIONAL_NET_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED',
+  'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN',
+  'EPIPE', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTDOWN', 'ENOTCONN',
+]);
+
+/**
+ * True if `error` is an *operational* failure (network/db disconnect,
+ * peer hangup) rather than a programming bug. Crashing the daemon for
+ * operational errors prevents legitimate self-healing in the underlying
+ * clients (pg Pool, ioredis, etc.) — they expect transient errors and
+ * will reconnect on the next operation.
+ */
+function isOperationalError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: unknown; errno?: unknown; cause?: unknown };
+  if (typeof e.code === 'string') {
+    if (OPERATIONAL_PG_SQLSTATES.has(e.code)) return true;
+    if (OPERATIONAL_NET_CODES.has(e.code)) return true;
+  }
+  if (typeof e.errno === 'string' && OPERATIONAL_NET_CODES.has(e.errno)) return true;
+  // Errors are often wrapped — check one level of cause
+  if (e.cause && e.cause !== error) return isOperationalError(e.cause);
+  return false;
+}
 import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
 import {
   IModule,
@@ -2324,14 +2376,33 @@ export class Application implements IApplication {
   }
 
   /**
-   * Setup error handlers
+   * Setup error handlers.
+   *
+   * Operational errors (network blips, DB connection drops, peer hangups)
+   * do NOT crash the daemon — the underlying clients (pg Pool, ioredis,
+   * etc.) own reconnection. Only programming errors (TypeError,
+   * ReferenceError, ...) trigger shutdown.
+   *
+   * A circuit breaker still shuts the process down if operational errors
+   * arrive faster than the recovery loops can absorb them — that level of
+   * churn means something deeper is wrong and silent retries would mask it.
    */
   private setupErrorHandlers(): void {
-    // Uncaught exception handler
-    const uncaughtHandler = (error: Error) => {
-      this._logger?.fatal({ error }, 'Uncaught exception');
-      this.emit(ApplicationEvent.UncaughtException, { error });
+    const recordOperationalError = this.makeOperationalErrorRecorder();
 
+    const uncaughtHandler = (error: Error) => {
+      if (isOperationalError(error)) {
+        const tripped = recordOperationalError();
+        if (!tripped) {
+          this._logger?.error({ error }, 'Uncaught operational exception — continuing');
+          this.emit(ApplicationEvent.UncaughtException, { error, recovered: true });
+          return;
+        }
+        this._logger?.fatal({ error }, 'Operational error rate exceeded — shutting down');
+      } else {
+        this._logger?.fatal({ error }, 'Uncaught exception');
+      }
+      this.emit(ApplicationEvent.UncaughtException, { error });
       this.shutdown(ShutdownReason.UncaughtException, { error }).catch((err) => {
         this._logger?.fatal({ error: err }, 'Failed to handle uncaught exception');
         this.exitProcess(1);
@@ -2341,9 +2412,18 @@ export class Application implements IApplication {
     this._signalHandlers.set('uncaughtException', uncaughtHandler);
     process.on('uncaughtException', uncaughtHandler);
 
-    // Unhandled rejection handler
     const rejectionHandler = (reason: unknown, promise: Promise<unknown>) => {
-      this._logger?.error({ reason, promise }, 'Unhandled promise rejection');
+      if (isOperationalError(reason)) {
+        const tripped = recordOperationalError();
+        if (!tripped) {
+          this._logger?.error({ reason }, 'Unhandled operational rejection — continuing');
+          this.emit(ApplicationEvent.UnhandledRejection, { reason, promise, recovered: true });
+          return;
+        }
+        this._logger?.fatal({ reason }, 'Operational rejection rate exceeded — shutting down');
+      } else {
+        this._logger?.error({ reason, promise }, 'Unhandled promise rejection');
+      }
       this.emit(ApplicationEvent.UnhandledRejection, { reason, promise });
 
       // Only shutdown if not in test environment
@@ -2357,6 +2437,22 @@ export class Application implements IApplication {
 
     this._signalHandlers.set('unhandledRejection', rejectionHandler);
     process.on('unhandledRejection', rejectionHandler);
+  }
+
+  /**
+   * Sliding-window counter of operational errors. Returns true once the
+   * count crosses the threshold, signalling the circuit breaker to trip.
+   */
+  private makeOperationalErrorRecorder(): () => boolean {
+    const WINDOW_MS = 60_000;
+    const MAX_ERRORS = 25;
+    const window: number[] = [];
+    return () => {
+      const now = Date.now();
+      window.push(now);
+      while (window.length > 0 && now - window[0]! > WINDOW_MS) window.shift();
+      return window.length > MAX_ERRORS;
+    };
   }
 
   /**

@@ -106,6 +106,16 @@ export class EventBusService {
   /** Pending block resolvers for BLOCK strategy */
   private blockWaiters: Map<string, Array<{ resolve: () => void; reject: (err: Error) => void }>> = new Map();
 
+  /**
+   * Per-target drop-warn rate-limiter. DROP_OLDEST/DROP_NEWEST strategies
+   * are silent message-loss by design — without a periodic WARN, an
+   * overloaded subscriber would silently lose data and only show up via
+   * dashboard scraping. We aggregate drops per target and emit one WARN
+   * every DROP_WARN_INTERVAL_MS so operators see the loss in logs too.
+   */
+  private dropWarnState: Map<string, { lastWarnAt: number; sinceLastWarn: number }> = new Map();
+  private static readonly DROP_WARN_INTERVAL_MS = 30_000;
+
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any,
@@ -1090,12 +1100,34 @@ export class EventBusService {
   }
 
   /**
-   * Track dropped message metrics
+   * Track dropped message metrics + emit a rate-limited WARN so silent
+   * message loss surfaces in operational logs.
    */
   private trackDroppedMessage(target: string): void {
     this.queueMetrics.droppedMessages++;
     const current = this.queueMetrics.droppedByTarget.get(target) || 0;
     this.queueMetrics.droppedByTarget.set(target, current + 1);
+
+    const now = Date.now();
+    const state = this.dropWarnState.get(target) ?? { lastWarnAt: 0, sinceLastWarn: 0 };
+    state.sinceLastWarn += 1;
+
+    if (now - state.lastWarnAt >= EventBusService.DROP_WARN_INTERVAL_MS) {
+      this.logger?.warn(
+        {
+          target,
+          dropsSinceLastWarn: state.sinceLastWarn,
+          totalDrops: current + 1,
+          strategy: this.queueConfig.strategy,
+          windowMs: EventBusService.DROP_WARN_INTERVAL_MS,
+        },
+        'Event-bus dropped messages — subscriber falling behind'
+      );
+      state.lastWarnAt = now;
+      state.sinceLastWarn = 0;
+    }
+
+    this.dropWarnState.set(target, state);
   }
 
   /**

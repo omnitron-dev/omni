@@ -143,11 +143,14 @@ interface RetryConfig {
 @Injectable()
 export class DatabaseManager implements IDatabaseManager {
   /**
-   * Tracks whether the BIGINT (int8/OID 20) → JS number parser has been
-   * installed. `pg.types.setTypeParser` is process-global, so we install
-   * it exactly once across all postgres connections.
+   * Tracks how the BIGINT (int8/OID 20) → JS number parser was installed.
+   * `pg.types.setTypeParser` is process-global, so the parser shape must
+   * be the same across every pool. `null` means uninstalled; `true`/`false`
+   * means installed in coerce / no-coerce mode respectively. A second pool
+   * requesting a *different* mode triggers a warning instead of silently
+   * inheriting the first pool's choice (audit gap #22).
    */
-  private static _bigintParserInstalled = false;
+  private static _bigintParserMode: boolean | null = null;
 
   private connections: Map<string, ConnectionInfo> = new Map();
   private circuitBreakers: Map<string, CircuitBreaker> = new Map();
@@ -626,17 +629,26 @@ export class DatabaseManager implements IDatabaseManager {
         // Out-of-range values fall back to BigInt so precision is preserved.
         // Apps can disable this entirely via config.coerceBigint = false.
         const coerceBigint = (config as { coerceBigint?: boolean }).coerceBigint !== false;
-        if (coerceBigint && !DatabaseManager._bigintParserInstalled) {
-          // Install once per process — pg.types is global per the pg client.
-          pgTypes.setTypeParser(20 /* INT8 / BIGINT */, (val: string) => {
-            if (val === null) return null as unknown as number;
-            const n = Number(val);
-            // If the value can be represented exactly as a JS number, return
-            // it; otherwise fall back to BigInt to avoid silent precision loss.
-            if (Number.isSafeInteger(n)) return n as unknown as number;
-            return BigInt(val) as unknown as number;
-          });
-          DatabaseManager._bigintParserInstalled = true;
+        if (DatabaseManager._bigintParserMode === null) {
+          // First pool to start wins — install once per process. pg.types is
+          // global, so subsequent pools share this parser.
+          if (coerceBigint) {
+            pgTypes.setTypeParser(20 /* INT8 / BIGINT */, (val: string) => {
+              if (val === null) return null as unknown as number;
+              const n = Number(val);
+              if (Number.isSafeInteger(n)) return n as unknown as number;
+              return BigInt(val) as unknown as number;
+            });
+          }
+          DatabaseManager._bigintParserMode = coerceBigint;
+        } else if (DatabaseManager._bigintParserMode !== coerceBigint) {
+          // Second pool wants a different mode — pg.types is process-global,
+          // we can't honor it without breaking the first pool. Warn loudly
+          // so the conflict is visible instead of silently misconfiguring.
+          this.logger.warn(
+            { connection: config.name, requested: coerceBigint, active: DatabaseManager._bigintParserMode },
+            'pg BIGINT parser mode mismatch — pg.types.setTypeParser is process-global; first pool wins'
+          );
         }
 
         const pool = new Pool({
@@ -647,21 +659,35 @@ export class DatabaseManager implements IDatabaseManager {
         });
 
         // Add comprehensive error handlers with metrics collection
+        const connectionName = config.name || DATABASE_DEFAULT_CONNECTION;
         pool.on('error', (err, client) => {
-          // Log the error but don't throw - this handles connection termination errors
-          this.logger.error({ error: err, client: client ? 'present' : 'none' }, 'PostgreSQL pool error');
+          // Surface the actual SQLSTATE / driver code + connection name so
+          // operators can grep / dashboard on it. Without this context the
+          // log line was just "PostgreSQL pool error" — useless when more
+          // than one pool exists.
+          const pgErr = err as Error & { code?: string; severity?: string; routine?: string };
+          this.logger.error(
+            {
+              connection: connectionName,
+              code: pgErr.code,
+              severity: pgErr.severity,
+              routine: pgErr.routine,
+              clientPresent: !!client,
+              processID: (client as { processID?: number } | undefined)?.processID,
+              err,
+            },
+            'PostgreSQL pool error'
+          );
 
-          // Update pool metrics
-          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          const connInfo = this.connections.get(connectionName);
           if (connInfo) {
             connInfo.poolMetrics.errorCount++;
             connInfo.poolMetrics.lastError = err;
           }
 
-          // Emit error event for monitoring
           this.emitEvent({
             type: DATABASE_EVENTS.ERROR as DatabaseEventType,
-            connection: config.name || DATABASE_DEFAULT_CONNECTION,
+            connection: connectionName,
             timestamp: new Date(),
             error: err,
           });
@@ -724,13 +750,24 @@ export class DatabaseManager implements IDatabaseManager {
           delete mysqlConfig['ssl'];
         }
 
-        // MySQL2 uses different pool parameter names than PostgreSQL
-        // Map PostgreSQL-style pool config to MySQL2 format
+        // MySQL2 uses different pool parameter names than PostgreSQL.
+        // Map PostgreSQL-style pool config to MySQL2 format.
+        //
+        // Note on acquire-timeout: mysql2 has no direct equivalent to
+        // node-postgres' acquireTimeoutMillis (a deadline for "wait for a
+        // pool slot"). The closest mitigations are:
+        //   - connectTimeout — bounds each TCP+handshake attempt
+        //   - queueLimit — bounds the *number* of pending acquires; when
+        //     exceeded, new acquires fail fast instead of queueing forever
+        // Default queueLimit to 10× connectionLimit so a sustained query
+        // backlog produces a clear error instead of an unbounded memory
+        // build-up. Callers can override via config.pool.queueLimit.
+        const connectionLimit = config.pool?.max || DEFAULT_POOL_CONFIG.max;
+        const userPool = (config.pool ?? {}) as { queueLimit?: number };
         const mysqlPoolConfig = {
-          connectionLimit: config.pool?.max || DEFAULT_POOL_CONFIG.max,
+          connectionLimit,
           waitForConnections: true,
-          queueLimit: 0,
-          // MySQL2 connection timeout (in milliseconds)
+          queueLimit: userPool.queueLimit ?? connectionLimit * 10,
           connectTimeout: DEFAULT_POOL_CONFIG.acquireTimeoutMillis,
         };
 

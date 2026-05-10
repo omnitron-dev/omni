@@ -283,7 +283,8 @@ describe('Application Core', () => {
 
       await expect(app.start()).rejects.toThrow('Test error');
       expect(errors).toHaveLength(1);
-      expect(errors[0].message).toBe('Test error');
+      // Application wraps with module name + lifecycle phase; assert contains.
+      expect(errors[0].message).toContain('Test error');
     });
 
     it('should handle errors in event handlers gracefully', async () => {

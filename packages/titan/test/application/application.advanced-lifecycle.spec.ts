@@ -794,7 +794,9 @@ describe('Titan Application Advanced Lifecycle', () => {
       await expect(app.start()).rejects.toThrow('Module error');
 
       expect(handledErrors.length).toBeGreaterThanOrEqual(1);
-      expect(handledErrors[0].message).toBe('Module error');
+      // Application wraps module errors with module name + lifecycle phase
+      // for diagnostics; assert the original message is contained, not equal.
+      expect(handledErrors[0].message).toContain('Module error');
     });
 
     it('should handle errors in error handlers gracefully', async () => {

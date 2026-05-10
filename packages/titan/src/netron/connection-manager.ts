@@ -134,6 +134,15 @@ export interface ManagedConnection {
 
   /** Reconnection attempts counter */
   reconnectAttempts: number;
+
+  /**
+   * Optional factory captured at registration time. When present,
+   * `handleConnectionDisconnect` schedules an immediate reconnection
+   * attempt instead of waiting for an external trigger — enabling true
+   * self-healing for callers that opt in. Without it, the connection
+   * is removed and the caller is expected to drive reconnect manually.
+   */
+  connectionFactory?: () => Promise<ITransportConnection>;
 }
 
 /**
@@ -371,9 +380,17 @@ export class ConnectionManager extends EventEmitter {
    *
    * @param peerId - Peer identifier
    * @param connection - Transport connection
+   * @param connectionFactory - Optional factory used for self-healing.
+   *   When provided, an unexpected disconnect immediately schedules a
+   *   reconnect attempt (with exponential backoff) instead of leaving
+   *   the peer disconnected until the caller intervenes.
    * @returns Managed connection or null if limit reached
    */
-  addConnection(peerId: string, connection: ITransportConnection): ManagedConnection | null {
+  addConnection(
+    peerId: string,
+    connection: ITransportConnection,
+    connectionFactory?: () => Promise<ITransportConnection>
+  ): ManagedConnection | null {
     // Check global limit
     if (this.connections.size >= this.config.maxTotalConnections) {
       this.logger.warn(
@@ -407,6 +424,7 @@ export class ConnectionManager extends EventEmitter {
       createdAt: now,
       reuseCount: 0,
       reconnectAttempts: 0,
+      connectionFactory,
     };
 
     // Store connection
@@ -691,7 +709,10 @@ export class ConnectionManager extends EventEmitter {
 
       try {
         const newConnection = await connectionFactory();
-        const managed = this.addConnection(peerId, newConnection);
+        // Pass the factory through so the *new* connection also self-heals
+        // on its next disconnect — without this, auto-recovery only worked
+        // once and then degraded to manual reconnect.
+        const managed = this.addConnection(peerId, newConnection, connectionFactory);
 
         if (managed) {
           managed.reconnectAttempts = maxAttempts + 1;
@@ -751,7 +772,16 @@ export class ConnectionManager extends EventEmitter {
   }
 
   /**
-   * Handle connection disconnect
+   * Handle connection disconnect.
+   *
+   * When the connection was registered with a `connectionFactory`,
+   * reconnection is kicked off *immediately* (not deferred to the next
+   * health-check tick). The factory's exponential-backoff scheduler
+   * still spreads attempts over time — we just stop adding the gap
+   * between "transport vanished" and "we noticed and started healing".
+   *
+   * Connections registered without a factory keep the existing
+   * pull-based behavior: removed and emitted, caller drives recovery.
    */
   private handleConnectionDisconnect(managed: ManagedConnection, reason?: string): void {
     this.logger.info({ connectionId: managed.id, peerId: managed.peerId, reason }, 'Connection disconnected');
@@ -767,6 +797,12 @@ export class ConnectionManager extends EventEmitter {
       if (peerConns.size === 0) {
         this.peerConnections.delete(managed.peerId);
       }
+    }
+
+    // Self-heal: if the connection was registered with a factory and
+    // reconnection is enabled, kick off the recovery loop now.
+    if (managed.connectionFactory && this.config.reconnect.enabled) {
+      this.scheduleReconnect(managed.peerId, managed.connectionFactory);
     }
   }
 
@@ -834,6 +870,20 @@ export class ConnectionManager extends EventEmitter {
           { connectionId: managed.id, missedHeartbeats: managed.missedHeartbeats },
           'Connection marked unhealthy'
         );
+
+        // Self-heal: a connection that missed enough heartbeats to be
+        // unhealthy is effectively dead. If a factory was registered,
+        // tear down the dead connection so handleConnectionDisconnect
+        // schedules a fresh reconnect — instead of leaving the peer
+        // marooned in UNHEALTHY state forever.
+        if (managed.connectionFactory && this.config.reconnect.enabled) {
+          managed.connection.close().catch((closeErr) => {
+            this.logger.debug(
+              { connectionId: managed.id, error: closeErr },
+              'Error closing unhealthy connection — disconnect handler will recover'
+            );
+          });
+        }
       }
     }
   }

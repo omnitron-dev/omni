@@ -142,6 +142,56 @@ export class TransportError extends NetronError {
 }
 
 /**
+ * Transport lost during in-flight RPC.
+ *
+ * Distinct from {@link TransportError.connectionClosed} (clean shutdown):
+ * the transport vanished while a request was awaiting a response, so
+ * the result is *unknown* — the server may or may not have processed
+ * the call. Callers can pattern-match on this class to decide whether
+ * to retry idempotent operations or surface the failure.
+ *
+ * Carries the `peerId` so caller logic can correlate to the affected
+ * connection, and the optional `pendingPacketId` so observability tools
+ * can map the rejection back to the originating packet.
+ */
+export class TransportLostError extends TransportError {
+  public override readonly peerId: string;
+  public readonly pendingPacketId?: number;
+
+  constructor(
+    options: ErrorOptions & {
+      transport?: string;
+      address?: string;
+      peerId: string;
+      pendingPacketId?: number;
+    }
+  ) {
+    super(options);
+    this.name = 'TransportLostError';
+    this.peerId = options.peerId;
+    this.pendingPacketId = options.pendingPacketId;
+  }
+
+  static fromTransport(transport: string, peerId: string, pendingPacketId?: number, reason?: string): TransportLostError {
+    return new TransportLostError({
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      message: reason ?? `Transport lost while RPC was in flight (peer ${peerId}${pendingPacketId !== undefined ? `, packet ${pendingPacketId}` : ''})`,
+      transport,
+      peerId,
+      pendingPacketId,
+    });
+  }
+
+  override toJSON(): any {
+    return {
+      ...super.toJSON(),
+      peerId: this.peerId,
+      pendingPacketId: this.pendingPacketId,
+    };
+  }
+}
+
+/**
  * Peer error
  */
 export class PeerError extends NetronError {

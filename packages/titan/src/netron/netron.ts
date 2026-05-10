@@ -629,6 +629,12 @@ export class Netron extends EventEmitter implements INetron {
             this.peers.delete(peer.id);
           }
 
+          // Reject every in-flight RPC on the lost peer with a typed
+          // TransportLostError so awaiting callers wake up immediately
+          // instead of waiting for the request timeout. HttpRemotePeer
+          // doesn't have this method (stateless), hence the optional call.
+          (peer as RemotePeer).handleTransportLost?.('peer disconnected');
+
           // Clean up services exposed by this peer via exposeRemoteService().
           // Without this, services remain as stale entries in netron.services after
           // the owning peer disconnects — causing memory leaks and ghost service calls.

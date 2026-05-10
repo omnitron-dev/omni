@@ -12,6 +12,7 @@ import {
   ServiceNotFoundError,
   MethodNotFoundError,
   TransportError,
+  TransportLostError,
   PeerError,
   RpcError,
   StreamError,
@@ -222,6 +223,17 @@ export const NetronErrors = {
    */
   connectionClosed(transport: string, reason?: string): TransportError {
     return TransportError.connectionClosed(transport, reason);
+  },
+
+  /**
+   * Transport lost while RPCs were in flight.
+   *
+   * Signals that the request neither succeeded nor explicitly failed —
+   * the underlying connection vanished mid-call. Idempotent operations
+   * may safely retry; non-idempotent ones must surface the failure.
+   */
+  transportLost(transport: string, peerId: string, pendingPacketId?: number, reason?: string): TransportLostError {
+    return TransportLostError.fromTransport(transport, peerId, pendingPacketId, reason);
   },
 
   /**

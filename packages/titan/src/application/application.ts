@@ -30,57 +30,7 @@ import { LifecycleController, type LifecyclePhaseEvent } from '../lifecycle/inde
 // Well-known token for optional scheduler integration (uses Symbol.for for cross-package identity)
 const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
 
-/**
- * Postgres SQLSTATE codes that mean the connection (or the server) was
- * lost — the client owns reconnection, we just must not crash here.
- *   57P01 admin_shutdown        — the server-side admin terminated the connection
- *   57P02 crash_shutdown        — the server crashed
- *   57P03 cannot_connect_now    — startup/shutdown in progress
- *   08000 connection_exception
- *   08001 sqlclient_unable_to_establish_sqlconnection
- *   08003 connection_does_not_exist
- *   08004 sqlserver_rejected_establishment_of_sqlconnection
- *   08006 connection_failure
- *   08007 transaction_resolution_unknown
- *   53300 too_many_connections
- *   XX000 internal_error         — pg sometimes wraps disconnects under this
- */
-const OPERATIONAL_PG_SQLSTATES = new Set([
-  '57P01', '57P02', '57P03',
-  '08000', '08001', '08003', '08004', '08006', '08007',
-  '53300',
-]);
-
-/**
- * libuv / net errno strings that mean the network or peer dropped under us.
- * The application stack already retries; we just must not let one drop kill
- * the daemon.
- */
-const OPERATIONAL_NET_CODES = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED',
-  'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN',
-  'EPIPE', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTDOWN', 'ENOTCONN',
-]);
-
-/**
- * True if `error` is an *operational* failure (network/db disconnect,
- * peer hangup) rather than a programming bug. Crashing the daemon for
- * operational errors prevents legitimate self-healing in the underlying
- * clients (pg Pool, ioredis, etc.) — they expect transient errors and
- * will reconnect on the next operation.
- */
-function isOperationalError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const e = error as { code?: unknown; errno?: unknown; cause?: unknown };
-  if (typeof e.code === 'string') {
-    if (OPERATIONAL_PG_SQLSTATES.has(e.code)) return true;
-    if (OPERATIONAL_NET_CODES.has(e.code)) return true;
-  }
-  if (typeof e.errno === 'string' && OPERATIONAL_NET_CODES.has(e.errno)) return true;
-  // Errors are often wrapped — check one level of cause
-  if (e.cause && e.cause !== error) return isOperationalError(e.cause);
-  return false;
-}
+import { isOperationalError, createOperationalErrorRecorder } from '../utils/error-classification.js';
 import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
 import {
   IModule,
@@ -2388,7 +2338,7 @@ export class Application implements IApplication {
    * churn means something deeper is wrong and silent retries would mask it.
    */
   private setupErrorHandlers(): void {
-    const recordOperationalError = this.makeOperationalErrorRecorder();
+    const recordOperationalError = createOperationalErrorRecorder();
 
     const uncaughtHandler = (error: Error) => {
       if (isOperationalError(error)) {
@@ -2439,21 +2389,6 @@ export class Application implements IApplication {
     process.on('unhandledRejection', rejectionHandler);
   }
 
-  /**
-   * Sliding-window counter of operational errors. Returns true once the
-   * count crosses the threshold, signalling the circuit breaker to trip.
-   */
-  private makeOperationalErrorRecorder(): () => boolean {
-    const WINDOW_MS = 60_000;
-    const MAX_ERRORS = 25;
-    const window: number[] = [];
-    return () => {
-      const now = Date.now();
-      window.push(now);
-      while (window.length > 0 && now - window[0]! > WINDOW_MS) window.shift();
-      return window.length > MAX_ERRORS;
-    };
-  }
 
   /**
    * Handle process signal

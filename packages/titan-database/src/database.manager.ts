@@ -7,7 +7,29 @@
  */
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
-import { Pool, types as pgTypes } from 'pg';
+import { Pool, Client as PgClient, types as pgTypes } from 'pg';
+
+/**
+ * Drop-in pg.Client subclass that attaches a defensive `'error'` listener
+ * at construction time. The default pg.Pool only attaches its own error
+ * listener AFTER `client.connect()` resolves, leaving a race window where
+ * errors during the connect handshake (server admin_shutdown, network
+ * reset during TLS, peer reject) have no subscriber and escape to
+ * `uncaughtException` — historically taking the daemon down with them.
+ *
+ * The listener here is intentionally a no-op: once the Pool finishes
+ * `_connectClient` it attaches its own listener that re-emits errors via
+ * `pool.on('error', …)` for the normal logging / metrics path. Our only
+ * job is to guarantee the client always has *some* subscriber, closing
+ * the race entirely. This is the most fundamental possible fix — every
+ * Pool client is wrapped before any I/O.
+ */
+export class ResilientPgClient extends PgClient {
+  constructor(config?: ConstructorParameters<typeof PgClient>[0]) {
+    super(config as ConstructorParameters<typeof PgClient>[0]);
+    this.on('error', () => { /* re-emitted via pool.on('error') once Pool attaches its own listener */ });
+  }
+}
 import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
@@ -621,6 +643,7 @@ export class DatabaseManager implements IDatabaseManager {
           ...pgConfig,
           ...DEFAULT_POOL_CONFIG,
           ...config.pool,
+          Client: ResilientPgClient,
         });
 
         // Add comprehensive error handlers with metrics collection
@@ -715,6 +738,18 @@ export class DatabaseManager implements IDatabaseManager {
           ...mysqlConfig,
           ...mysqlPoolConfig,
         } as mysql.PoolOptions);
+
+        // Defensive: attach a no-op error listener to each connection as it
+        // joins the pool, mirroring the ResilientPgClient pattern. Without
+        // this, an `'error'` event on a connection between query batches
+        // (server-side timeout, peer reset) would surface as
+        // uncaughtException. The pool's own `'error'` handler below still
+        // receives the error for normal logging/metrics.
+        pool.on('connection', (conn) => {
+          (conn as { on: (ev: string, fn: (err: Error) => void) => void }).on('error', () => {
+            /* re-emitted via pool.on('error') */
+          });
+        });
 
         // Add error handlers for MySQL pool with metrics collection
         pool.on('error', (err) => {

@@ -54,6 +54,7 @@
  */
 
 import type { IShutdownTask, ShutdownReason } from '../types.js';
+import { isOperationalError, createOperationalErrorRecorder } from '../utils/error-classification.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -233,12 +234,25 @@ export class LifecycleController {
       process.on(signal, handler);
     }
 
-    // Uncaught exception / rejection → shutdown with non-zero exit.
+    // Uncaught exception / rejection → shutdown with non-zero exit, EXCEPT
+    // for operational errors (network/db disconnects), which the underlying
+    // clients recover from on their own. Classification is shared with
+    // Application's handler so the daemon's behavior is uniform: every
+    // 'uncaughtException' subscriber agrees on what counts as fatal.
+    const recordOperational = createOperationalErrorRecorder();
     this.uncaughtListener = (err: Error) => {
+      if (isOperationalError(err) && !recordOperational()) {
+        this.opts.logger?.warn?.({ err }, 'uncaughtException (operational) — letting client recover');
+        return;
+      }
       this.opts.logger?.error?.({ err }, 'uncaughtException — shutting down');
       void this.shutdown('uncaughtException' as ShutdownReason, { error: err }, /* exitCode */ 1);
     };
     this.rejectionListener = (reason: unknown) => {
+      if (isOperationalError(reason) && !recordOperational()) {
+        this.opts.logger?.warn?.({ reason }, 'unhandledRejection (operational) — letting client recover');
+        return;
+      }
       this.opts.logger?.error?.({ reason }, 'unhandledRejection — shutting down');
       void this.shutdown('unhandledRejection' as ShutdownReason, { reason }, /* exitCode */ 1);
     };

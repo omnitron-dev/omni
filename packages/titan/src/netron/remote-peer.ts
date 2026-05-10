@@ -491,6 +491,48 @@ export class RemotePeer extends AbstractPeer {
     } else {
       this.logger.warn(`Attempt to close socket in unexpected state: ${readyState}`);
     }
+    this.handleTransportLost('manual disconnect');
+  }
+
+  /**
+   * Mark this peer as having lost its transport.
+   *
+   * Rejects every in-flight response handler with {@link TransportLostError}
+   * so awaiting callers wake up with a typed, retryable error instead of
+   * waiting for the request timeout (which is misleading — the transport
+   * went away, the request didn't time out).
+   *
+   * Idempotent: safe to call from both the manual `disconnect()` path
+   * AND the netron-level "peer disconnected" handler. The second call
+   * iterates an already-empty handler map and clears already-clear
+   * collections.
+   *
+   * @param reason Free-form reason captured in the error message and logs.
+   *   `'manual disconnect'` for graceful local close, `'peer disconnected'`
+   *   for unexpected remote close, transport name for transport-level
+   *   failures.
+   */
+  handleTransportLost(reason?: string): void {
+    const transport = this.socket.constructor?.name ?? 'unknown';
+    // TimedMap's `entries()` generator returns `[K, V][]` without an
+    // explicit type annotation, so TypeScript infers the tuple element
+    // type as the union — destructure manually to keep types narrow.
+    for (const entry of this.responseHandlers.entries()) {
+      const packetId = entry[0] as number;
+      const handlers = entry[1] as
+        | { successHandler: (response: Packet) => void; errorHandler?: (data: unknown) => void }
+        | undefined;
+      if (handlers?.errorHandler) {
+        try {
+          handlers.errorHandler(NetronErrors.transportLost(transport, this.id, packetId, reason));
+        } catch (err) {
+          this.logger.warn(
+            { err, packetId },
+            'errorHandler threw while rejecting in-flight RPC for transport-lost'
+          );
+        }
+      }
+    }
     this.cleanup();
   }
 

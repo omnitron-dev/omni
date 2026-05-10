@@ -390,7 +390,10 @@ describe('Titan Application', () => {
         },
       });
 
-      await expect(app.start()).rejects.toThrow('Start hook slow-hook timed out');
+      // Start hook timeout message is now richer ("Start hook \"slow-hook\"
+      // timed out after 50ms — check for missing await…"); use a regex that
+      // tolerates the formatting change.
+      await expect(app.start()).rejects.toThrow(/Start hook ["']?slow-hook["']? timed out/);
     });
 
     it('should handle startApp helper', async () => {

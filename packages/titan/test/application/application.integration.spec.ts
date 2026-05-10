@@ -1447,7 +1447,8 @@ describe('Application Integration', () => {
 
       await expect(app.start()).rejects.toThrow('Test error');
       expect(errorHandlerCalled).toBe(true);
-      expect(capturedError?.message).toBe('Test error');
+      // Application wraps with module name + lifecycle phase; assert contains.
+      expect(capturedError?.message).toContain('Test error');
     });
 
     it('should continue stopping other modules when one fails (graceful)', async () => {

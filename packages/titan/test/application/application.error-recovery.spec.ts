@@ -153,7 +153,8 @@ describe('Titan Application Error Recovery', () => {
       await expect(app.start()).rejects.toThrow();
 
       expect(errors.length).toBeGreaterThanOrEqual(1);
-      expect(errors[0].message).toBe('Error event test');
+      // Application wraps with module name + lifecycle phase; assert contains.
+      expect(errors[0].message).toContain('Error event test');
     });
 
     it('should stop already started modules on failure', async () => {

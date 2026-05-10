@@ -21,6 +21,37 @@ import type {
   IRemoteConfigSource,
 } from './types.js';
 
+/**
+ * Net errnos that indicate a transient failure worth retrying. Anything
+ * else is treated as configuration / contract error and fails fast.
+ */
+const RETRYABLE_NET_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED',
+  'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH',
+  'EPIPE', 'EAI_AGAIN',
+]);
+
+/**
+ * True if the error from a single remote-config fetch attempt is the kind
+ * that may succeed on retry: server-side 5xx, 408/429, our own AbortError
+ * timeout, or a libuv net errno.
+ */
+function isRetryableConfigFetchError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; code?: string; details?: { status?: number } };
+
+  if (e.name === 'AbortError') return true;
+  if (typeof e.code === 'string' && RETRYABLE_NET_CODES.has(e.code)) return true;
+
+  const status = e.details?.status;
+  if (typeof status === 'number') {
+    if (status === 408 || status === 429) return true;
+    if (status >= 500 && status < 600) return true;
+  }
+
+  return false;
+}
+
 @Injectable()
 export class ConfigLoaderService implements IConfigLoader {
   /**
@@ -217,12 +248,55 @@ export class ConfigLoaderService implements IConfigLoader {
   }
 
   /**
-   * Load configuration from a remote source
+   * Load configuration from a remote source.
+   *
+   * Wraps the fetch in an exponential-backoff retry loop with jitter so a
+   * transient remote 5xx / network blip during app startup doesn't kill
+   * the boot. Only retries on transient classes:
+   *
+   *   - 5xx responses (server-side, may recover)
+   *   - 408/429 (timeout / rate-limit, may recover)
+   *   - AbortError (our own timeout fired)
+   *   - libuv network errnos (ECONNRESET, ECONNREFUSED, ETIMEDOUT, …)
+   *
+   * 4xx other than the above is a configuration / contract error — fast
+   * fail, no point retrying. 2xx with bad body also fast-fails (parse
+   * errors aren't transient).
    */
   private async loadRemote(source: IRemoteConfigSource): Promise<Record<string, any>> {
+    const maxAttempts = 3;
+    const baseDelay = 200;
+    const maxDelay = 2_000;
+
+    let attempt = 0;
+    let lastError: unknown;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        return await this.fetchRemoteOnce(source);
+      } catch (err) {
+        lastError = err;
+        if (!isRetryableConfigFetchError(err) || attempt >= maxAttempts) {
+          throw err;
+        }
+        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+        const jittered = delay + Math.random() * delay * 0.3; // ±30% jitter
+        await new Promise((resolve) => setTimeout(resolve, jittered));
+      }
+    }
+
+    // Unreachable — loop either returns or throws — but TypeScript needs
+    // an explicit throw for the function's return-type proof.
+    throw lastError;
+  }
+
+  /**
+   * One fetch attempt — extracted so the retry loop can call it cleanly.
+   */
+  private async fetchRemoteOnce(source: IRemoteConfigSource): Promise<Record<string, any>> {
     const controller = new AbortController();
     const timeout = source.timeout || 5000;
-
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {

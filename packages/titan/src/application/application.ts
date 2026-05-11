@@ -518,6 +518,11 @@ export class Application implements IApplication {
     // Ensure state change is observable before continuing
     await new Promise((resolve) => setImmediate(resolve));
 
+    // Tracks modules that successfully completed onStart — accessible to
+    // both the inner module-loop catch and the outer catch so a failure
+    // ANYWHERE in start can roll back accumulated side-effects.
+    const startedForRollback: IModule[] = [];
+
     try {
       // Emit starting event
       this.emit(ApplicationEvent.Starting);
@@ -552,7 +557,14 @@ export class Application implements IApplication {
         delete global.__titanShutdownTasks;
       }
 
-      // Register and start modules in dependency order
+      // Register and start modules in dependency order.
+      //
+      // We track every module that successfully passed `onStart` so the
+      // catch block at the bottom of `_doStart` can roll them back in
+      // reverse order on a later failure. Without this, a mid-start
+      // failure left every preceding module's `onStart` side-effects in
+      // place (timers, listeners, open sockets, DB pools) with no way
+      // to recover short of process exit.
       const sortedModules = this.sortModulesByDependencies();
 
       for (const entry of sortedModules) {
@@ -564,6 +576,12 @@ export class Application implements IApplication {
           try {
             await module.onRegister(this);
           } catch (error) {
+            // onRegister is BEFORE onStart — push module so rollback
+            // can call onStop only if it also implements it (most
+            // don't, but the loop is defensive). startedForRollback
+            // intentionally NOT updated here: only successful onStart
+            // contributes to it.
+            await this._rollbackStartedModules(startedForRollback);
             throw new Error(`Module "${module.name}" failed during onRegister: ${(error as Error).message}`, { cause: error });
           }
         }
@@ -573,9 +591,11 @@ export class Application implements IApplication {
           try {
             await module.onStart(this);
           } catch (error) {
+            await this._rollbackStartedModules(startedForRollback);
             throw new Error(`Module "${module.name}" failed during onStart: ${(error as Error).message}`, { cause: error });
           }
         }
+        startedForRollback.push(module);
 
         this.emit(ApplicationEvent.ModuleStarted, { module: module.name });
         this._logger?.debug({ module: module.name }, 'Module started');
@@ -660,6 +680,21 @@ export class Application implements IApplication {
         'Application started successfully'
       );
     } catch (error) {
+      // Roll back any modules that started successfully. This is a
+      // no-op if the inner module-loop catch already ran (the helper is
+      // idempotent and clears its own input). Failures AFTER the module
+      // loop (Netron start, start-hooks, container.initialize) reach
+      // here with a populated rollback list and benefit most.
+      await this._rollbackStartedModules(startedForRollback);
+      // Best-effort container teardown so DI-tracked instances get their
+      // @PreDestroy / onDestroy hooks. Failures from a partially-built
+      // container are common and intentionally swallowed.
+      try {
+        await this._container.dispose();
+      } catch (disposeErr) {
+        this._logger?.warn({ error: disposeErr }, 'Container disposal during start-rollback failed');
+      }
+
       this.setState(ApplicationState.Failed);
       this._isStarted = false;
       this._logger?.error({ error }, 'Application failed to start');
@@ -667,6 +702,29 @@ export class Application implements IApplication {
         this.handleError(error);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Reverse-order best-effort onStop of modules that successfully
+   * completed onStart. Used by `_doStart`'s error path to compensate
+   * partial startup. Idempotent: clears the input list, so a later call
+   * is a no-op. Per-module failures are logged and swallowed — rollback
+   * must complete every module regardless.
+   */
+  private async _rollbackStartedModules(started: IModule[]): Promise<void> {
+    while (started.length > 0) {
+      const mod = started.pop()!;
+      if (!mod.onStop) continue;
+      try {
+        await mod.onStop(this);
+        this._logger?.debug({ module: mod.name }, 'Rolled back module on failed start');
+      } catch (err) {
+        this._logger?.warn(
+          { module: mod.name, error: err },
+          'Module rollback (onStop) failed during failed-start cleanup',
+        );
+      }
     }
   }
 
@@ -868,10 +926,18 @@ export class Application implements IApplication {
         await this.runCleanupHandlers();
       }
 
-      // Cleanup signal handlers if this is not being called from shutdown
-      if (!this._isShuttingDown) {
-        this.cleanupSignalHandlers();
-      }
+      // Cleanup signal handlers ALWAYS — not just outside a shutdown.
+      //
+      // Previously this was gated by `!this._isShuttingDown` so the
+      // shutdown-driven stop() path skipped cleanup. That left process
+      // listeners attached when an embedded consumer (or a test with
+      // `_disableProcessExit`) called restart() after shutdown — the
+      // next `setupSignalHandlers()` invocation would re-add listeners
+      // and accumulate them across cycles. The idempotency guard in
+      // setup() protects against that today, but a consistent paired
+      // setup/teardown is cleaner and prevents the next reviewer from
+      // assuming the old behaviour was load-bearing.
+      this.cleanupSignalHandlers();
 
       // Give pino-pretty time to flush output
       await new Promise((resolve) => setImmediate(resolve));
@@ -968,7 +1034,26 @@ export class Application implements IApplication {
     // Deduplicate: skip modules that have already been fully processed.
     // This prevents DuplicateRegistrationError when the same module
     // (e.g. AuditLogModule) is imported by multiple feature modules.
-    const moduleRef = typeof moduleInput === 'function' ? moduleInput : null;
+    //
+    // Dedup KEY is the underlying module CLASS reference, which we extract
+    // uniformly across all input shapes:
+    //   - bare class             → moduleInput itself
+    //   - dynamic-module object  → moduleInput.module (the class produced
+    //                              by `MyModule.forRoot(opts)`)
+    //   - everything else        → null (treat as fresh)
+    //
+    // Previously dedup only matched the bare-class path, so `forRoot()`
+    // called twice produced two distinct dynamic-module OBJECTS that
+    // both passed the function-typeof check as falsy and ran through
+    // `processDynamicModule` independently — double-registering every
+    // provider and throwing `DuplicateRegistrationError` (or silently
+    // double-wiring listeners when `override` was set).
+    const moduleRef: ModuleConstructor | null =
+      typeof moduleInput === 'function'
+        ? (moduleInput as ModuleConstructor)
+        : this.isDynamicModule(moduleInput) && typeof moduleInput.module === 'function'
+          ? (moduleInput.module as ModuleConstructor)
+          : null;
     if (moduleRef && this._processedModuleClasses.has(moduleRef)) {
       // Return existing module instance from the modules map
       for (const mod of this._modules.values()) {
@@ -2287,17 +2372,28 @@ export class Application implements IApplication {
       visiting.delete(token);
       visited.add(token);
 
-      if (module) {
+      // LoggerModule is special-cased: it is started ahead of every other
+      // module by `initializeCoreModules()`, before this sort runs.
+      // Adding it to the sorted list AGAIN would invoke its onStart a
+      // second time (it gets visited recursively when another module
+      // declares `dependencies: ['logger']`, so the previous "skip in
+      // outer loop only" guard left this leak open).
+      //
+      // We keep visiting it — that produces correct ordering for OTHER
+      // modules that depend on it — but exclude it from the returned
+      // start order. Result: Logger starts exactly once (via core
+      // initialisation), and dependents still come after it in the
+      // sorted list because their visit() finishes after the recursive
+      // visit(Logger) completes.
+      if (module && token.id !== LOGGER_SERVICE_TOKEN.id) {
         sorted.push([token, module]);
       }
     };
 
-    // Visit all modules
+    // Visit all modules — Logger included, so dependents resolve their
+    // ordering against it correctly. The visit() body skips its
+    // contribution to the sorted output.
     for (const token of this._modules.keys()) {
-      // Skip logger module as it is handled separately (compare by id)
-      if (token.id === LOGGER_SERVICE_TOKEN.id) {
-        continue;
-      }
       visit(token);
     }
 
@@ -2312,9 +2408,19 @@ export class Application implements IApplication {
   }
 
   /**
-   * Setup signal handlers
+   * Setup signal handlers.
+   *
+   * Idempotent: if any signal handler is already registered (e.g. a
+   * previous `start()` call wired them and the subsequent `stop()` did
+   * NOT clean them up, which happens on the shutdown-driven path), we
+   * return early. Without this guard, each restart cycle installed an
+   * additional process listener for SIGTERM/SIGINT/SIGHUP — Node's
+   * MaxListenersExceededWarning fires past 10 cycles and every handler
+   * fires N times for one signal, multiplying shutdown work.
    */
   private setupSignalHandlers(): void {
+    if (this._signalHandlers.size > 0) return;
+
     const signals: ProcessSignal[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
 
     for (const signal of signals) {

@@ -1,40 +1,57 @@
 import { RemotePeer } from '../remote-peer.js';
+import { Errors } from '../../errors/index.js';
+
+/**
+ * Default upper bound on the number of distinct event subscriptions a
+ * single remote peer may hold (T#42). Overridable via the Netron
+ * option `maxSubscriptionsPerPeer`. The default is intentionally
+ * generous — production deployments with adversarial peers should
+ * lower it.
+ */
+const DEFAULT_MAX_SUBSCRIPTIONS_PER_PEER = 1000;
 
 /**
  * Subscribes to events from a remote peer in the Netron network.
- * This function establishes a two-way event subscription mechanism:
- * 1. Creates a handler function that forwards events to the remote peer
- * 2. Stores the subscription in the peer's remote subscriptions map
- * 3. Registers the subscription with the local Netron peer instance
  *
- * @param {RemotePeer} peer - The remote peer instance to subscribe to events from.
- *                           This peer must be connected and authenticated in the Netron network.
- * @param {string} eventName - The name of the event to subscribe to. This should match
- *                            the event name used when emitting events on the remote peer.
- * @returns {void} This function does not return a value as it operates through side effects.
+ * Behaviour:
+ * 1. Creates a handler function that forwards events to the remote peer.
+ * 2. Stores the subscription in the peer's `remoteSubscriptions` map.
+ * 3. Registers the subscription with the local Netron peer instance.
  *
- * @example
- * // Subscribe to a service update event from a remote peer
- * subscribe(remotePeer, 'service:update');
+ * SECURITY (T#42): each entry costs memory (event name string + closure)
+ * and a slot in the local peer's event emitter. Before this fix, an
+ * attacker peer could call `subscribe` repeatedly with random event
+ * names and grow `remoteSubscriptions` without bound — a trivial
+ * memory-exhaustion DoS. We now enforce a per-peer cap and reject
+ * additional subscriptions with `Errors.tooManyRequests`. The cap
+ * is shared with `Netron.options.maxSubscriptionsPerPeer`.
  *
- * @remarks
- * The subscription mechanism works as follows:
- * - When an event is emitted on the remote peer, it will be forwarded to this peer
- * - The handler function created here will execute the 'emit' task on the remote peer
- * - This creates a bidirectional event channel between the peers
- *
- * @throws {Error} If the peer is not connected or if the event subscription fails
+ * @param peer - The remote peer instance.
+ * @param eventName - The event name to subscribe to.
  */
 export function subscribe(peer: RemotePeer, eventName: string): void {
-  // Create a handler function that will forward events to the remote peer
-  // The handler takes any number of arguments and forwards them to the emit task
+  // Idempotent: re-subscribing to the same event reuses the existing
+  // handler. Don't count this against the cap.
+  if (peer.remoteSubscriptions.has(eventName)) {
+    return;
+  }
+
+  const limit = peer.netron.options?.maxSubscriptionsPerPeer ?? DEFAULT_MAX_SUBSCRIPTIONS_PER_PEER;
+  if (peer.remoteSubscriptions.size >= limit) {
+    throw Errors.tooManyRequests().withDetails({
+      reason: 'subscription_limit_exceeded',
+      peerId: peer.id,
+      limit,
+    });
+  }
+
+  // Create a handler function that forwards events to the remote peer.
   const fn = (...args: any[]) => peer.runTask('emit', eventName, ...args);
 
-  // Store the subscription in the peer's remote subscriptions map
-  // This allows for tracking and cleanup of subscriptions
+  // Store the subscription on the peer; supports cleanup via unsubscribe()
+  // and on peer-disconnect cleanup.
   peer.remoteSubscriptions.set(eventName, fn);
 
-  // Register the subscription with the local Netron peer instance
-  // This establishes the actual event listening mechanism
+  // Register the subscription with the local Netron peer instance.
   peer.netron.peer.subscribe(eventName, fn);
 }

@@ -530,6 +530,19 @@ export interface INetronOptions {
   connectionCleanupInterval?: number;
 
   /**
+   * Maximum number of distinct event subscriptions a single remote
+   * peer may hold at once (T#42). Default: 1000.
+   *
+   * Without this gate, any peer could call the `subscribe` core
+   * task with random event names and force the server to grow
+   * `remoteSubscriptions` without bound — a memory-exhaustion DoS
+   * with a trivially short attack script. The cap fires server-side
+   * before the new subscription is recorded, so the map never grows
+   * past the configured ceiling for any one peer.
+   */
+  maxSubscriptionsPerPeer?: number;
+
+  /**
    * Absolute size ceiling for incoming packets (T#40). Bytes.
    *
    * Applied at `decodePacket` BEFORE the msgpack decoder runs, so

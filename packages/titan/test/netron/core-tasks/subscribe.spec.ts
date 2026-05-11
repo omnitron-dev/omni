@@ -70,7 +70,13 @@ describe('subscribe core task', () => {
     expect(subscribeSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('should overwrite previous subscription when subscribing to the same event', () => {
+  it('should be idempotent when subscribing to the same event twice (T#42)', () => {
+    // Pre-T#42 behaviour: each call created a fresh handler closure
+    // and replaced the previous entry in remoteSubscriptions — but the
+    // OLD closure stayed registered on netron.peer's EventEmitter,
+    // leaking handlers on every duplicate. The current behaviour
+    // treats duplicates as no-ops: same handler, same Map entry, no
+    // additional emitter slot.
     const eventName = 'duplicate:event';
 
     subscribe(remotePeer, eventName);
@@ -79,7 +85,7 @@ describe('subscribe core task', () => {
     subscribe(remotePeer, eventName);
     const secondHandler = remotePeer.remoteSubscriptions.get(eventName);
 
-    expect(firstHandler).not.toBe(secondHandler);
+    expect(firstHandler).toBe(secondHandler);
     expect(remotePeer.remoteSubscriptions.size).toBe(1);
   });
 

@@ -136,6 +136,15 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
 
+  // Ensure the managed network exists before we try to attach to it.
+  // Idempotent — `docker network create` errors with "already exists"
+  // when present, which we treat as success. Doing this here (rather
+  // than at daemon start) keeps the provisioner self-sufficient and
+  // means single-container test setups work without a manual prep step.
+  if (config.network) {
+    await ensureNetwork(config.network);
+  }
+
   // Ensure volumes exist
   for (const vol of config.volumes) {
     if (!vol.source.startsWith('/') && !vol.source.startsWith('.')) {
@@ -148,6 +157,15 @@ export async function createContainer(config: ResolvedContainer): Promise<string
 
   // Build docker run command directly — xec adapter can hang
   const args: string[] = ['docker', 'run', '-d', '--name', config.name];
+
+  // Network — explicit network avoids the default bridge, which
+  // accumulates phantom endpoints after dockerd restarts on macOS and
+  // blocks container recreation with "endpoint with name X already
+  // exists in network bridge". Falls back to docker's default when
+  // unspecified so single-container / no-stack usage still works.
+  if (config.network) {
+    args.push('--network', config.network);
+  }
 
   // Port mappings
   for (const p of config.ports) {
@@ -292,6 +310,31 @@ export async function waitForHealthy(name: string, timeoutMs = 60_000): Promise<
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Create a Docker bridge network if it doesn't exist.
+ *
+ * Idempotent — `docker network create` exits non-zero with a recognisable
+ * "already exists" message when the network is present; we swallow that
+ * specific case and propagate everything else. Done via execFile rather
+ * than the adapter because the adapter doesn't expose network APIs and
+ * the call is rare (once per daemon startup per network).
+ */
+export async function ensureNetwork(name: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    await execFileAsync('docker', ['network', 'create', name, '--driver', 'bridge'], {
+      encoding: 'utf-8',
+      timeout: 15_000,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/already exists/i.test(msg)) return; // idempotent
+    throw err;
   }
 }
 

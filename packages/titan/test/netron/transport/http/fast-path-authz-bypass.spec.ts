@@ -48,7 +48,11 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
   let testPort: number;
 
   function setupServer(opts: { withNetronAuth?: boolean; withPreInvokeMiddleware?: boolean } = {}) {
-    testPort = 3500 + Math.floor(Math.random() * 1500);
+    // Worker-safe port allocation to avoid collisions with other HTTP
+    // server tests running in parallel.
+    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+    const basePort = 17000 + (workerId - 1) * 500;
+    testPort = basePort + Math.floor(Math.random() * 450);
     baseUrl = `http://localhost:${testPort}`;
     server = new HttpServer({ port: testPort, host: 'localhost' });
 

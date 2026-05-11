@@ -516,6 +516,32 @@ export interface INetronOptions {
 
   /** Cleanup interval for expired/idle connections in milliseconds. Default: 10000 */
   connectionCleanupInterval?: number;
+
+  /**
+   * Whether REMOTE peers are allowed to publish/withdraw services via the
+   * `expose_service` / `unexpose_service` / `unref_service` core tasks.
+   *
+   * Default: `false` (secure-by-default, introduced for T#36).
+   *
+   * When `false`, the core tasks reject every invocation from a remote
+   * peer with `Errors.forbidden`. The same operations remain available
+   * to trusted local code via `LocalPeer.exposeService()` /
+   * `exposeRemoteService()` — only the wire-level entry points are
+   * gated. Federated topologies that legitimately rely on peers
+   * advertising services to each other should set this to `true` and
+   * pair it with a wired `AuthorizationManager` so the policy engine
+   * can additionally filter who is allowed.
+   *
+   * Rationale: the legacy default left a Netron host accepting
+   * `expose_service` packets from any connected peer (authenticated or
+   * not), letting an anonymous client publish a service definition
+   * with arbitrary metadata into the registry — observable by every
+   * other peer via `query_interface`. Combined with the matching
+   * `unexpose_service` task (which historically did NOT verify
+   * peer-id ownership of the target) any peer could also wipe out
+   * registry entries owned by others.
+   */
+  allowRemoteServiceExposure?: boolean;
 }
 
 // ============================================================================

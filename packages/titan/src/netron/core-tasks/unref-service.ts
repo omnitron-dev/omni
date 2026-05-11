@@ -5,21 +5,16 @@ import { RemotePeer } from '../remote-peer.js';
  * This function acts as a bridge between the core task layer and the peer implementation,
  * delegating the actual service reference removal to the peer's unrefService method.
  *
+ * NOTE on security (T#36): unlike `expose_service` and `unexpose_service`, this
+ * task is intentionally NOT gated. It is invoked by every well-behaved client
+ * during normal interface-release lifecycle (`peer.releaseInterface(...)` →
+ * `runTask('unref_service', defId)`). The underlying `LocalPeer.unrefService`
+ * touches only the per-instance reference map (`serviceInstances`) and does
+ * not mutate `netron.services` — so an anonymous peer cannot use it to
+ * de-register a service from the public registry.
+ *
  * @param {RemotePeer} peer - The remote peer instance from which the service reference should be removed.
- *                           This peer must be connected and authenticated in the Netron network.
  * @param {string} defId - The unique identifier of the service definition to unreference.
- *                        This ID should match the one used when the service was originally referenced.
- * @returns {void} This function does not return a value as it operates through side effects.
- *
- * @example
- * // Remove a service reference from a connected peer
- * unref_service(remotePeer, 'auth-service-123');
- *
- * @remarks
- * This function is typically used to clean up service references when they are no longer needed.
- * It helps prevent memory leaks and ensures proper resource management in the Netron network.
- * The function assumes that the peer is properly connected and has the necessary permissions
- * to unreference services.
  */
 export function unref_service(peer: RemotePeer, defId: string): void {
   peer.netron.peer.unrefService(defId);

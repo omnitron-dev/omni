@@ -15,8 +15,13 @@ describe('expose-service core task', () => {
   let remotePeer: RemotePeer;
 
   beforeEach(async () => {
-    // Create Netron instance with mock logger
-    netron = await Netron.create(createMockLogger(), { id: 'test-netron' });
+    // Create Netron instance with mock logger.
+    // T#36: remote-peer-initiated service exposure is deny-by-default,
+    // so unit tests for the federation entry point must opt in.
+    netron = await Netron.create(createMockLogger(), {
+      id: 'test-netron',
+      allowRemoteServiceExposure: true,
+    });
 
     // Create a mock WebSocket for testing
     const mockSocket = {
@@ -96,5 +101,24 @@ describe('expose-service core task', () => {
     expect(exposeRemoteServiceSpy).toHaveBeenNthCalledWith(1, remotePeer, metadata1);
     expect(exposeRemoteServiceSpy).toHaveBeenNthCalledWith(2, remotePeer, metadata2);
     expect(exposeRemoteServiceSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('should reject when called by remote peer on a netron that opted out (T#36)', async () => {
+    await netron.stop();
+    netron = await Netron.create(createMockLogger(), {
+      id: 'test-netron-locked',
+      // allowRemoteServiceExposure defaults to false — secure default.
+    });
+    const mockSocket = {
+      readyState: WebSocket.OPEN,
+      send: vi.fn((d: any, o: any, cb?: any) => cb?.()),
+      on: vi.fn(),
+      close: vi.fn(),
+    } as unknown as WebSocket;
+    remotePeer = new RemotePeer(mockSocket, netron, 'remote-peer-id');
+
+    await expect(expose_service(remotePeer, { name: 'X', version: '1.0.0' })).rejects.toThrow(
+      /disabled for remote peers/,
+    );
   });
 });

@@ -3,6 +3,7 @@
  * Handles service discovery with authorization checks
  */
 
+import semver from 'semver';
 import type { RemotePeer } from '../remote-peer.js';
 import type { Definition } from '../definition.js';
 import type { ServiceStub } from '../service-stub.js';
@@ -53,8 +54,15 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
       .filter((item): item is { version: string; key: string } => item !== null);
 
     if (candidates.length > 0) {
-      // Sort by version (descending) and pick the latest
-      candidates.sort((a, b) => b.version.localeCompare(a.version));
+      // T#41: sort by semver (descending) and pick the latest.
+      // The historical `localeCompare` was a lexical string sort that
+      // ranked "9.0.0" above "10.0.0" because the first character
+      // '9' > '1'. Once a service crossed major version 10 the
+      // wildcard resolution silently kept routing to the legacy
+      // 9.x build. `semver.rcompare` is the standard descending
+      // semver comparator and already used by `AbstractPeer`'s
+      // sibling lookup path — keep the two consistent.
+      candidates.sort((a, b) => semver.rcompare(a.version, b.version));
       const latestKey = candidates[0]!.key;
       serviceStub = servicesMap.get(latestKey);
 

@@ -2012,6 +2012,42 @@ export class Container implements IContainer {
   }
 
   /**
+   * Public-internal iterator over every registration this container owns.
+   *
+   * The previous way to walk registrations from outside the class — from
+   * `Application.exposeServicesToNetron`, `container.ts:exportGraph`, and
+   * test helpers — was a cast through `unknown as` to dig into the
+   * private `registrations` map. That cast spread responsibility for the
+   * internal data shape across consumers; any rename or restructure of
+   * the storage broke compilation in multiple files at once.
+   *
+   * Multi-tokens store an array of registrations under one key, so the
+   * iterator yields `[token, Registration | Registration[]]` exactly as
+   * the internal Map does. Consumers that need a flat (token, single
+   * registration) stream should call this and array-flatten themselves
+   * (or use the `iterateRegistrationsFlat` helper below).
+   */
+  iterateRegistrations(): IterableIterator<[InjectionToken<unknown>, Registration | Registration[]]> {
+    return this.registrations.entries();
+  }
+
+  /**
+   * Flat iterator variant that yields one `[token, Registration]` per
+   * registration regardless of multi-token grouping. Convenient for
+   * scans that don't care about multi-grouping semantics (e.g. the
+   * Netron service-exposure scan in `Application`).
+   */
+  *iterateRegistrationsFlat(): IterableIterator<[InjectionToken<unknown>, Registration]> {
+    for (const [token, regOrArr] of this.registrations) {
+      if (Array.isArray(regOrArr)) {
+        for (const reg of regOrArr) yield [token, reg];
+      } else {
+        yield [token, regOrArr];
+      }
+    }
+  }
+
+  /**
    * Check if disposed
    */
   private checkDisposed(): void {

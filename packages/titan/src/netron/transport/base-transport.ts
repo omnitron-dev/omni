@@ -92,7 +92,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     if (this.binaryMode) {
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
       try {
-        const packet = decodePacket(buffer);
+        const packet = decodePacket(buffer, this.options.maxPacketSize);
         this.metrics.packetsReceived++;
 
         // Handle PING packets internally
@@ -127,7 +127,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     } else {
       // Try to decode as packet
       try {
-        const packet = decodePacket(data);
+        const packet = decodePacket(data, this.options.maxPacketSize);
         this.metrics.packetsReceived++;
 
         // After successful binary packet decode, enable binary mode

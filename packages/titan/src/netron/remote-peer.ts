@@ -228,7 +228,9 @@ export class RemotePeer extends AbstractPeer {
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         try {
-          this.handlePacket(decodePacket(data));
+          // SECURITY (T#40): pass the netron's configured cap (if any)
+          // so transport-side input is gated at decoder entry.
+          this.handlePacket(decodePacket(data, this.netron.options?.maxPacketSize));
         } catch (error: unknown) {
           this.logger.error({ error }, 'Packet decode error:');
         }

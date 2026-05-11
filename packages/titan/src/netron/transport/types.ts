@@ -91,6 +91,15 @@ export interface TransportOptions {
    */
   maxAsyncGeneratorItems?: number;
   /**
+   * Absolute size ceiling (bytes) for an inbound packet (T#40).
+   * Defaults to 16 MiB. Applied at `decodePacket` BEFORE the
+   * msgpack decoder, so a multi-GB frame cannot force matching
+   * scratch allocations and OOM the host. Lower this on
+   * untrusted-peer transports; raise only with deliberate
+   * measurement.
+   */
+  maxPacketSize?: number;
+  /**
    * URL path prefix for all Netron endpoints (HTTP/WebSocket only).
    * Useful when running behind a reverse proxy that routes based on path.
    *

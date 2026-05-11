@@ -18,7 +18,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { ModuleCompiler } from './module.js';
 import { ContextManager, ContextProvider, resetContextManager } from './context.js';
 import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
-import { isMultiToken, getTokenName, isOptionalToken, createToken, TokenRegistry, clearTokenCache } from './token.js';
+import { isMultiToken, getTokenName, isOptionalToken, createToken } from './token.js';
 import { Middleware, MiddlewarePipeline } from './middleware.js';
 import { isConstructor } from './provider-utils.js';
 import {
@@ -813,46 +813,40 @@ export class Container implements IContainer {
         resolutionState.chain.push(token);
         resolutionState.chainSet.add(token);
 
-        // Create and store the promise
+        // Build the middleware-wrapped resolution promise.
+        //
+        // Pending-promise ownership lives EXCLUSIVELY inside
+        // `resolveAsyncInternal` — see comment there. The outer method
+        // used to double-write to `pendingPromises` (here AND in the
+        // inner singleton path), which created a race window where
+        // inner's cleanup deleted outer's entry and a concurrent caller
+        // briefly saw inner's promise instead of the middleware-wrapped
+        // outer one. Single ownership eliminates the window entirely.
         const resolutionPromise = this.middlewarePipeline.execute(middlewareContext, () =>
           this.resolveAsyncInternal(token)
         );
 
-        // Only cache pending promise for non-transient scopes
-        // Transient scope creates new instances for each concurrent call
-        if (registration?.scope !== Scope.Transient) {
-          this.pendingPromises.set(token, resolutionPromise);
-        }
-
-        // Resolve through async middleware pipeline
+        // Resolve through async middleware pipeline.
         const result = await resolutionPromise;
 
-        // Cache the result in this resolution tree
+        // Cache the result in this resolution tree.
         resolutionState.resolved.set(token, result);
 
-        // Emit after resolve event
+        // Emit after resolve event.
         this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
           token,
           instance: result,
           context: middlewareContext,
         });
 
-        // Always delete pending promise after successful resolution
-        // For singletons, the instance is cached in this.instances so we don't need the promise anymore
-        // This prevents memory leak from accumulating stale promises
-        this.pendingPromises.delete(token);
-
         return result;
       } catch (error: unknown) {
-        // Emit resolve failed event
+        // Emit resolve failed event.
         this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, {
           token,
           error: error instanceof Error ? error : undefined,
           context: middlewareContext,
         });
-
-        // On error, always delete the pending promise
-        this.pendingPromises.delete(token);
 
         throw error;
       } finally {
@@ -894,29 +888,36 @@ export class Container implements IContainer {
       }
     }
 
-    // Check scope-specific caches before creating new instances
+    // Pending-promise dedup — single ownership of the lifecycle lives HERE.
+    //
+    // Any concurrent caller (top-level via the outer `resolveAsync`, OR a
+    // recursive dependency resolution that re-enters this function) joins
+    // the in-flight promise instead of re-creating the instance. This was
+    // previously duplicated between outer (`resolveAsync`) and inner
+    // (this function), with the outer's write OVERWRITING the inner's
+    // creation-promise — leaving a brief window where the inner's cleanup
+    // could delete the outer's stored entry and a concurrent caller would
+    // briefly see no pending promise. Single ownership eliminates that.
+    //
+    // Transient scope is intentionally skipped — every transient resolution
+    // gets its own instance, which is the entire point of the scope.
+    if (registration.scope !== Scope.Transient && this.pendingPromises.has(token)) {
+      return this.pendingPromises.get(token) as Promise<T>;
+    }
+
+    // Check scope-specific caches before creating new instances.
     switch (registration.scope) {
       case Scope.Singleton:
-        // Check for cached singleton instance
         if (this.instances.has(token)) {
           return this.instances.get(token) as T;
         }
-        // Check if already instantiated in registration (for singletons)
         if (registration.instance !== undefined) {
           return registration.instance as T;
-        }
-        // Check for pending singleton resolution to prevent race conditions
-        // when multiple concurrent async resolutions depend on the same singleton.
-        // This handles the case where resolveAsyncInternal is called directly
-        // (not through the outer resolveAsync) from dependency resolution.
-        if (this.pendingPromises.has(token)) {
-          return this.pendingPromises.get(token) as Promise<T>;
         }
         break;
 
       case Scope.Scoped:
       case Scope.Request: {
-        // Check for scoped instance in current scope
         const scopeId = currentContext.metadata?.['scopeId'] || 'default';
         const scopeCache = this.scopedInstances.get(scopeId);
         if (scopeCache?.has(token)) {
@@ -926,31 +927,28 @@ export class Container implements IContainer {
       }
 
       case Scope.Transient:
-        // Transient always creates a new instance
-        break;
-
       default:
-        // Unknown scope, proceed to instance creation
         break;
     }
 
-    // For Singleton, wrap the creation in a pending promise to prevent
-    // concurrent async resolutions from creating duplicate instances (race condition fix).
-    if (registration.scope === Scope.Singleton) {
-      const creationPromise = this.resolveAsyncInternalCreate<T>(token, registration, currentContext);
-      this.pendingPromises.set(token, creationPromise);
-      try {
-        const result = await creationPromise;
-        // Clean up pending promise after singleton is cached in this.instances
-        this.pendingPromises.delete(token);
-        return result;
-      } catch (error) {
-        this.pendingPromises.delete(token);
-        throw error;
-      }
+    // For every non-transient scope, wrap creation in a pending promise so
+    // concurrent callers share the same in-flight work. Transient always
+    // creates afresh.
+    if (registration.scope === Scope.Transient) {
+      return this.resolveAsyncInternalCreate<T>(token, registration, currentContext);
     }
 
-    return this.resolveAsyncInternalCreate<T>(token, registration, currentContext);
+    const creationPromise = this.resolveAsyncInternalCreate<T>(token, registration, currentContext);
+    this.pendingPromises.set(token, creationPromise);
+    try {
+      return await creationPromise;
+    } finally {
+      // Always clean up — successful resolution caches the instance in
+      // `this.instances` / `this.scopedInstances`, so subsequent callers
+      // hit the scope-cache directly. On error, the pending promise
+      // already rejected, so dropping it lets the next caller retry.
+      this.pendingPromises.delete(token);
+    }
   }
 
   private async resolveAsyncInternalCreate<T>(
@@ -1969,15 +1967,29 @@ export class Container implements IContainer {
     this.modules.clear();
     this.moduleLoaderService.clear();
 
-    // Clean up global singletons to prevent memory leaks
-    // Reset global context manager
+    // Reset the per-container context manager. This is safe because the
+    // context manager is INSTANCE-owned (recreated on next use), unlike
+    // the token cache and the TokenRegistry singleton, which are
+    // PROCESS-global (intentionally — Symbol.for-keyed on globalThis to
+    // survive the dual-package hazard where tsx loads `src/` and `dist/`
+    // copies of token.ts in the same process).
+    //
+    // Calling `clearTokenCache()` / `TokenRegistry.reset()` here used to
+    // wipe that process-global state every time ANY container disposed,
+    // breaking every OTHER live container in the process — tests that
+    // construct multiple containers, multi-app daemons (omnitron hosting
+    // sub-applications), and concurrent integration runs. Subsequent
+    // `createToken('Foo')` returned a fresh symbol while the surviving
+    // container's `registrations` Map still keyed by the old symbol,
+    // producing silent `DependencyNotFoundError` on lookups for tokens
+    // that were "obviously" registered.
+    //
+    // Tokens are intentionally process-global; tearing down a single
+    // container is not a license to mutate that state. Tests that need
+    // explicit cleanup can still call `clearTokenCache()` /
+    // `TokenRegistry.reset()` directly from a teardown hook (both
+    // remain exported from `./token.js` for that purpose).
     resetContextManager();
-
-    // Clear module-level token cache
-    clearTokenCache();
-
-    // Reset token registry singleton
-    TokenRegistry.reset();
 
     this.disposed = true;
   }

@@ -872,4 +872,74 @@ describe('Container - Comprehensive Tests', () => {
       expect(service.getValue()).toBe('auto');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Regression: Container.dispose() must not mutate process-global token state.
+  //
+  // The token cache and TokenRegistry singleton are intentionally process-wide
+  // (Symbol.for-keyed on globalThis) to survive the dual-package hazard. A
+  // previous version of dispose() called clearTokenCache() and
+  // TokenRegistry.reset(), which wiped that shared state every time ANY
+  // container disposed — breaking every OTHER live container in the process:
+  // subsequent createToken('Foo') calls returned a fresh symbol while the
+  // surviving container's `registrations` Map still keyed by the old symbol,
+  // producing silent DependencyNotFoundError on what was clearly a registered
+  // token.
+  //
+  // These tests pin the contract: disposing container A must NEVER affect
+  // resolutions in container B.
+  // ---------------------------------------------------------------------------
+  describe('Regression: dispose() does not cross-contaminate containers', () => {
+    it('disposing one container leaves another fully functional', async () => {
+      const containerA = new Container();
+      const containerB = new Container();
+      const SERVICE = createToken<{ value: string }>('CrossContaminationService');
+
+      containerA.register(SERVICE, { useValue: { value: 'A' } });
+      containerB.register(SERVICE, { useValue: { value: 'B' } });
+
+      // Resolve in both to populate caches.
+      expect(containerA.resolve(SERVICE).value).toBe('A');
+      expect(containerB.resolve(SERVICE).value).toBe('B');
+
+      // Tear down A. This used to nuke the global token registry and break B.
+      await containerA.dispose();
+
+      // B must still resolve via the SAME token instance.
+      expect(containerB.resolve(SERVICE).value).toBe('B');
+
+      // And a freshly-created token with the same name must resolve identically
+      // — proving the global registry retained the SERVICE symbol identity
+      // across A's disposal.
+      const SAME_TOKEN = createToken<{ value: string }>('CrossContaminationService');
+      expect(SAME_TOKEN.symbol).toBe(SERVICE.symbol);
+      expect(containerB.resolve(SAME_TOKEN).value).toBe('B');
+
+      await containerB.dispose();
+    });
+
+    it('survives a chain of containers each disposing in sequence', async () => {
+      const TOKEN = createToken<number>('ChainToken');
+      const containers: Container[] = [];
+
+      // Build a chain of 5 containers each registering the same token.
+      for (let i = 0; i < 5; i++) {
+        const c = new Container();
+        c.register(TOKEN, { useValue: i });
+        expect(c.resolve(TOKEN)).toBe(i);
+        containers.push(c);
+      }
+
+      // Dispose containers 0..3, then assert container 4 still resolves.
+      for (let i = 0; i < 4; i++) {
+        await containers[i]!.dispose();
+        // After each disposal, the surviving container must still resolve. We
+        // test container 4 each time to ensure none of the cumulative disposes
+        // corrupt its state.
+        expect(containers[4]!.resolve(TOKEN)).toBe(4);
+      }
+
+      await containers[4]!.dispose();
+    });
+  });
 });

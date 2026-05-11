@@ -482,4 +482,13 @@ export interface ResolvedContainer {
   resources?: ResourceLimits | undefined;
   /** Extra /etc/hosts entries (e.g., 'host.docker.internal:host-gateway') */
   extraHosts?: string[] | undefined;
+  /**
+   * Docker network this container joins. When unset, Docker assigns the
+   * default `bridge` network — which is known to accumulate phantom
+   * endpoints after dockerd restarts / host sleep on macOS, blocking
+   * recreate with "endpoint with name X already exists in network bridge".
+   * Managed containers should default to a named bridge (e.g.
+   * `omni-dev_default`) to sidestep that class of failure.
+   */
+  network?: string | undefined;
 }

@@ -46,6 +46,44 @@ function containerName(service: string): string {
 }
 
 /**
+ * Convention-derived managed network name.
+ *
+ * Every container provisioned by omnitron lives on a named bridge network
+ * (instead of docker's default `bridge`). This is the central piece that
+ * eliminates a whole class of failures we observed in production:
+ *
+ *   - Docker's default `bridge` accumulates **phantom endpoint records**
+ *     after dockerd restarts (host sleep/wake on macOS, dockerd crash).
+ *     Recreating any container by name then fails with
+ *     `endpoint with name X already exists in network bridge` — and
+ *     `docker network disconnect -f bridge X` reports "not found" because
+ *     the endpoint is dangling in dockerd's internal state, not actually
+ *     attached. A named network has no such global pollution; if it gets
+ *     corrupted we can blow it away and rebuild it without touching every
+ *     other container on the host.
+ *   - Inter-service DNS-by-name only works on named networks, so apps that
+ *     need to reach `postgres:5432` from another container can do so
+ *     without leaking host ports.
+ *
+ * Convention `${project}_default` matches what docker-compose creates by
+ * default for `${project}` → seamless coexistence with compose-managed
+ * adjacent infrastructure.
+ */
+export function getManagedNetwork(): string {
+  return `${CONTAINER_PREFIX}_default`;
+}
+
+/**
+ * Stamp the managed network onto a container spec when it doesn't already
+ * declare one. Centralised so every resolver — preset and built-in alike —
+ * gets the same defaults without each having to remember.
+ */
+export function applyManagedDefaults(spec: ResolvedContainer): ResolvedContainer {
+  if (spec.network === undefined) spec.network = getManagedNetwork();
+  return spec;
+}
+
+/**
  * Stack ownership labels — injected into every stack-scoped container.
  * Used by orphan reconciliation on daemon startup to identify
  * containers that belong to a specific project/stack.
@@ -135,7 +173,7 @@ export function resolveServiceRequirement(
   // Convert IServiceHealthCheck → ContainerHealthCheck
   const healthCheck = docker.healthCheck ?? convertHealthCheck(requirement.healthCheck, requirement.ports);
 
-  return {
+  return applyManagedDefaults({
     name: containerName(serviceName),
     image,
     ports,
@@ -157,7 +195,12 @@ export function resolveServiceRequirement(
     shmSize: docker.shmSize,
     resources: docker.resources,
     ...(docker.extraHosts && docker.extraHosts.length > 0 ? { extraHosts: docker.extraHosts } : {}),
-  };
+    // Service requirement can override the managed network when it has
+    // a legitimate reason (host-net for low-latency wallet RPC, isolated
+    // network for security boundary, etc.). When unset, applyManagedDefaults
+    // stamps in the project-wide bridge.
+    ...(typeof docker.network === 'string' ? { network: docker.network } : {}),
+  });
 }
 
 /**
@@ -291,7 +334,7 @@ export function resolveOmnitronPg(options?: {
   const user = options?.user ?? 'omnitron';
   const password = options?.password ?? 'omnitron';
 
-  return {
+  return applyManagedDefaults({
     name: `${CONTAINER_PREFIX}-pg`,
     image,
     ports: [{ host: port, container: 5432 }],
@@ -323,7 +366,7 @@ export function resolveOmnitronPg(options?: {
     },
     restart: 'unless-stopped',
     shmSize: '128m',
-  };
+  });
 }
 
 // =============================================================================
@@ -442,7 +485,7 @@ export function resolveOmnitronNginx(options?: {
     volumes.push({ source: webappDist, target: '/usr/share/nginx/html', readonly: true });
   }
 
-  return {
+  return applyManagedDefaults({
     name: `${CONTAINER_PREFIX}-nginx`,
     image,
     ports: [{ host: port, container: 80 }],
@@ -451,8 +494,15 @@ export function resolveOmnitronNginx(options?: {
       OMNITRON_API_PORT: String(internalPort),
     },
     volumes,
+    // Reach the daemon on the host even when we're on a named bridge —
+    // wget/curl health probes inside the container need this too.
+    extraHosts: ['host.docker.internal:host-gateway'],
+    // Use wget (busybox-shipped in nginx:alpine) — `curl` is not in the
+    // base image, so the previous CMD-SHELL test was permanently
+    // unhealthy on a vanilla alpine nginx until someone bind-mounted curl
+    // in. wget is always present.
     healthCheck: {
-      test: ['CMD-SHELL', 'curl -sf http://localhost/ || exit 1'],
+      test: ['CMD-SHELL', 'wget -q --spider http://localhost/ || exit 1'],
       interval: '10s',
       timeout: '5s',
       retries: 3,
@@ -463,7 +513,7 @@ export function resolveOmnitronNginx(options?: {
       'omnitron.internal': 'true',
     },
     restart: 'unless-stopped',
-  };
+  });
 }
 
 // =============================================================================

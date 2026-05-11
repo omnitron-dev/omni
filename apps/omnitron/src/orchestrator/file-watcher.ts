@@ -137,6 +137,22 @@ export class FileWatcher {
       return;
     }
 
+    // Bootstrap-mode apps get their import graph watched precisely by
+    // BuildService (esbuild context.watch) — running fs.watch on the same
+    // tree on top of that would deliver duplicate restart triggers (often
+    // staggered, often within the same debounce window) and was a primary
+    // contributor to the dev-mode restart storms. esbuild watch knows
+    // EXACTLY which files contribute to the bundle; fs.watch is a
+    // strictly less-precise superset that includes generated files,
+    // editor scratch artefacts, and unrelated paths.
+    if (entry.bootstrap) {
+      this.logger.debug(
+        { app: entry.name },
+        'Bootstrap-mode app — using esbuild import-graph watcher only (fs.watch skipped)'
+      );
+      return;
+    }
+
     // Resolve watch directories from config
     const { dirs, extraIgnore, debounce } = this.resolveWatchConfig(entry);
 

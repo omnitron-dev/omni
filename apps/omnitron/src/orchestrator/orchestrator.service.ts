@@ -101,6 +101,8 @@ function effectiveAppName(key: string): string {
   return idx >= 0 ? key.slice(idx + 1) : key;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export class OrchestratorService extends EventEmitter {
   private readonly handles = new Map<string, AppHandle>();
   private config: IEcosystemConfig | null = null;
@@ -116,6 +118,35 @@ export class OrchestratorService extends EventEmitter {
 
   /** Cached build results per app name */
   private readonly buildResults = new Map<string, BuildResult>();
+
+  /**
+   * Per-app restart coalescer state.
+   *
+   * `inFlight` — the currently-running restart promise (so a concurrent
+   *   trigger doesn't kick off a parallel restart and tear down the half-
+   *   started state from the previous one).
+   * `pending` — at most one queued follow-up. If MORE triggers come in
+   *   while a restart is already running, they collapse onto the same
+   *   pending bit; the queued restart will pick up whatever state is on
+   *   disk at the time it actually runs.
+   * `cooldownUntil` — absolute epoch ms timestamp. Any trigger received
+   *   before this clears is queued (via `pending`) instead of fired
+   *   immediately. Prevents the storm where esbuild's onEnd fires for a
+   *   freshly-spawned context milliseconds after the app reports online.
+   */
+  private readonly restartCoalescer = new Map<
+    string,
+    { inFlight: Promise<AppHandle> | null; pending: boolean; cooldownUntil: number }
+  >();
+
+  /**
+   * Wall-clock window in ms during which restart triggers from
+   * BuildService.watchApp are deferred after `app:online`. Sized so a
+   * normal bundle build + child spawn + DI bootstrap fits comfortably
+   * inside; anything legitimately changing more often than this is a
+   * developer typing very fast, which the regular debounce handles.
+   */
+  private static readonly POST_ONLINE_COOLDOWN_MS = 3_000;
 
   /**
    * Orphan-process reaper. Lazily created on first `startAll` so unit
@@ -471,11 +502,90 @@ export class OrchestratorService extends EventEmitter {
     return count;
   }
 
+  /**
+   * Restart an app, coalescing concurrent triggers.
+   *
+   * The dev-mode hot-reload path can deliver many restart triggers per
+   * second (file save → esbuild rebuild → onEnd → debounced → restart),
+   * and naive parallelism here ends in cross-stomping state mutations
+   * (one restart's stopApp tearing down the other's freshly-spawned
+   * child). This wrapper serialises restarts per app:
+   *
+   *   - If a restart is already in flight, we set the `pending` bit and
+   *     await the current restart. When it completes we run exactly one
+   *     follow-up — extra triggers received in the meantime collapse onto
+   *     the same bit, so a burst of N triggers produces at most 2 actual
+   *     restarts (the current one + one trailing).
+   *   - If we're inside the post-online cooldown window, the trigger is
+   *     queued (via `pending`) and fires after the cooldown clears.
+   *
+   * The hot path is `restartAppNow()` which contains the actual work and
+   * is what tests / non-coalescing callers can hit directly.
+   */
   async restartApp(name: string): Promise<AppHandle> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
     name = canonical;
+
+    const state = this.getCoalescerState(name);
+
+    // Cooldown: the app reported online recently. Queue a single
+    // follow-up restart instead of tearing down a process that just
+    // finished its expensive boot.
+    const now = Date.now();
+    if (now < state.cooldownUntil) {
+      state.pending = true;
+      const waitMs = state.cooldownUntil - now;
+      this.logger.debug(
+        { app: name, cooldownRemainingMs: waitMs },
+        'Restart trigger received during post-online cooldown — queued'
+      );
+      // Wait for the cooldown to expire, then run exactly one restart
+      // (or fold into an existing in-flight one).
+      await sleep(waitMs);
+      return this.restartApp(name);
+    }
+
+    // Already restarting — fold into the running one and queue a follow-up.
+    if (state.inFlight) {
+      state.pending = true;
+      await state.inFlight.catch(() => { /* swallow — outer will re-throw on its own retry */ });
+      return this.restartApp(name);
+    }
+
+    // Take the slot.
+    state.pending = false;
+    const promise = this.restartAppNow(name);
+    state.inFlight = promise;
+
+    try {
+      // Successful restart sets the cooldown window via startPostOnlineCooldown(),
+      // which fires from the `app:online` transition inside startApp(). Doing it
+      // there (vs here in finally) keeps the timer correctly tied to the moment
+      // the new child reports ready, not the moment our promise resolves.
+      return await promise;
+    } finally {
+      state.inFlight = null;
+      if (state.pending) {
+        state.pending = false;
+        // Fire-and-forget: caller already got their handle back from the
+        // first restart; the trailing one exists to pick up any change
+        // that arrived during the in-flight window.
+        this.restartApp(name).catch((err) => {
+          this.logger.error(
+            { app: name, error: (err as Error).message },
+            'Trailing coalesced restart failed'
+          );
+        });
+      }
+    }
+  }
+
+  /** Internal restart hot path — assumes coalescer has cleared us to proceed. */
+  private async restartAppNow(name: string): Promise<AppHandle> {
+    const handle = this.handles.get(name);
+    if (!handle) throw new Error(`Unknown app: ${name}`);
     const entry = handle.entry;
 
     // In dev mode, clear bootstrap config cache so topology changes are picked up
@@ -490,6 +600,26 @@ export class OrchestratorService extends EventEmitter {
 
     await this.stopApp(name);
     return this.startApp(entry);
+  }
+
+  private getCoalescerState(name: string) {
+    let state = this.restartCoalescer.get(name);
+    if (!state) {
+      state = { inFlight: null, pending: false, cooldownUntil: 0 };
+      this.restartCoalescer.set(name, state);
+    }
+    return state;
+  }
+
+  /**
+   * Start the post-online cooldown for an app. Called from the `app:online`
+   * transition (both initial startApp and subsequent restartApp paths
+   * funnel through this), so a freshly-online app cannot be torn down by
+   * a rebuild signal that was already in flight when it finished booting.
+   */
+  private startPostOnlineCooldown(name: string): void {
+    const state = this.getCoalescerState(name);
+    state.cooldownUntil = Date.now() + OrchestratorService.POST_ONLINE_COOLDOWN_MS;
   }
 
   /**
@@ -1267,6 +1397,7 @@ export class OrchestratorService extends EventEmitter {
         handle.markOnline(childPid ?? process.pid);
       }
       this.persistState();
+      this.startPostOnlineCooldown(entry.name);
       this.emit('app:online', entry.name);
     });
 
@@ -1381,6 +1512,7 @@ export class OrchestratorService extends EventEmitter {
         handle.markOnline(childPid ?? process.pid);
       }
       this.persistState();
+      this.startPostOnlineCooldown(entry.name);
       this.emit('app:online', entry.name);
     });
 

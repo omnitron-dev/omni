@@ -18,6 +18,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { ResilientHandle, type ResetInfo } from '@omnitron-dev/titan/utils';
 import type { IAppDefinition } from '../config/types.js';
@@ -61,6 +62,19 @@ interface WatchHandle {
  */
 function escapeForRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * SHA-1 of a file's bytes, or `null` on any I/O error. SHA-1 is fine here —
+ * we use it only as a fast content-fingerprint to detect "the bundle didn't
+ * actually change" and skip a needless restart, not for security.
+ */
+function hashFileSafe(filePath: string): string | null {
+  try {
+    return createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
+  } catch {
+    return null;
+  }
 }
 
 function externalizeNonRelativePlugin() {
@@ -345,11 +359,27 @@ export class BuildService {
 
       const handles: WatchHandle[] = [];
 
-      // Debounce onChange to coalesce rapid rebuilds
+      // Tail-debounce with hard upper bound. 300ms was too aggressive — IDE
+      // auto-format-on-save (prettier/eslint --fix) touches the file 2-3
+      // times within a few hundred ms, and each touch reset the timer too
+      // quickly for the debounce to do anything meaningful. The MAX_WAIT
+      // safety net guarantees we never starve a restart even under a steady
+      // stream of changes.
+      const DEBOUNCE_MS = 750;
+      const MAX_WAIT_MS = 5_000;
       let debounceTimer: NodeJS.Timeout | null = null;
+      let firstChangeAt = 0;
       const debouncedOnChange = () => {
+        if (firstChangeAt === 0) firstChangeAt = Date.now();
         if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(onChange, 300);
+        const elapsed = Date.now() - firstChangeAt;
+        const remaining = Math.max(0, MAX_WAIT_MS - elapsed);
+        const wait = Math.min(DEBOUNCE_MS, remaining || DEBOUNCE_MS);
+        debounceTimer = setTimeout(() => {
+          firstChangeAt = 0;
+          debounceTimer = null;
+          onChange();
+        }, wait);
       };
 
       // Watch bootstrap
@@ -452,6 +482,13 @@ export class BuildService {
     let currentCtx: any = null;
     let consecutiveStaleErrors = 0;
     let recreating = false;
+    // SHA-1 of the previous successful bundle output. If a rebuild produces
+    // byte-identical bytes (input mtime touched without an actual content
+    // change — common with atime updates, IDE re-saves, formatter idempotency,
+    // and concurrent workspace-package rebuilds that emit the same bytes), we
+    // skip onRebuild() entirely. Eliminates the dominant source of phantom
+    // restart storms.
+    let lastBundleHash: string | null = null;
 
     const buildOptions = (): unknown => ({
       entryPoints: [entryPath],
@@ -492,10 +529,23 @@ export class BuildService {
                 }
               }
               if (isInitialBuild) {
+                // Seed the hash from the initial build so the first
+                // legitimate change actually triggers a restart.
+                if (result.errors.length === 0) {
+                  lastBundleHash = hashFileSafe(outPath);
+                }
                 isInitialBuild = false;
                 return;
               }
-              if (result.errors.length === 0) onRebuild();
+              if (result.errors.length > 0) return;
+              // Content-equality gate. If esbuild fired onEnd but the output
+              // bytes are unchanged, this rebuild was a no-op (some upstream
+              // file's mtime moved without altering the bundle) — suppress
+              // the restart entirely.
+              const nextHash = hashFileSafe(outPath);
+              if (nextHash && nextHash === lastBundleHash) return;
+              lastBundleHash = nextHash;
+              onRebuild();
             });
           },
         },

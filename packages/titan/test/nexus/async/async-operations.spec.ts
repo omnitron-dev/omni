@@ -11,6 +11,7 @@ import {
   createAsyncToken,
   createStreamToken,
   createLazyToken,
+  Scope,
 } from '../../../src/nexus/index.js';
 
 describe('Async Operations', () => {
@@ -579,6 +580,80 @@ describe('Async Operations', () => {
 
       expect(results.fast).toBe('fast');
       expect(results.slow).toBeUndefined(); // Timed out
+    });
+
+    // -------------------------------------------------------------------------
+    // Regression: pending-promise dedup ownership.
+    //
+    // The previous implementation stored the in-flight resolution in TWO
+    // places — `resolveAsync` (the middleware-wrapped outer) and
+    // `resolveAsyncInternal` (the singleton-creation inner). When both
+    // wrote to `pendingPromises[token]`, the outer's write overwrote the
+    // inner's, and the inner's cleanup later deleted the outer's entry
+    // prematurely. The fix is single-ownership in `resolveAsyncInternal`
+    // for ALL non-transient scopes.
+    //
+    // These tests assert the invariant that any number of concurrent
+    // `resolveAsync` calls for the same Singleton/Scoped token produce a
+    // single instance — even when the async factory itself takes time.
+    // -------------------------------------------------------------------------
+    it('concurrent resolveAsync for the same Singleton yields ONE instance', async () => {
+      const token = createAsyncToken<{ id: number }>('ConcurrentSingleton');
+      let invocations = 0;
+      container.register(token, {
+        async: true,
+        scope: Scope.Singleton,
+        useFactory: async () => {
+          invocations += 1;
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          return { id: invocations };
+        },
+      });
+
+      // Fire 20 concurrent resolutions BEFORE any has a chance to settle.
+      const results = await Promise.all(
+        Array.from({ length: 20 }, () => container.resolveAsync(token)),
+      );
+
+      expect(invocations).toBe(1);
+      // All resolutions must hand out the SAME instance reference.
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i]).toBe(results[0]);
+      }
+    });
+
+    it('concurrent resolveAsync rejects all callers on factory failure', async () => {
+      const token = createAsyncToken<unknown>('ConcurrentFailing');
+      let invocations = 0;
+      container.register(token, {
+        async: true,
+        scope: Scope.Singleton,
+        useFactory: async () => {
+          invocations += 1;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          throw new Error('boom');
+        },
+      });
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 10 }, () => container.resolveAsync(token)),
+      );
+
+      // Factory must run only once even though 10 callers joined.
+      expect(invocations).toBe(1);
+      // All callers see the same rejection.
+      for (const r of results) {
+        expect(r.status).toBe('rejected');
+        expect((r as PromiseRejectedResult).reason.message).toBe('boom');
+      }
+      // After failure the pending entry is dropped — a retry must run the
+      // factory again rather than reusing the rejected promise forever.
+      try {
+        await container.resolveAsync(token);
+      } catch (err) {
+        expect((err as Error).message).toBe('boom');
+        expect(invocations).toBe(2);
+      }
     });
   });
 });

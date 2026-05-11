@@ -129,6 +129,56 @@ export class AuthenticationManager {
   }
 
   /**
+   * Invalidate a single token in the cache (T#37).
+   *
+   * Why this exists: a successful `validateToken` call caches the
+   * resolved AuthResult for the configured TTL (default 5 minutes).
+   * If the application revokes the corresponding session — logout,
+   * forced-signout, password change, role change — that revocation
+   * is invisible to the AuthenticationManager: cached requests
+   * continue to succeed until TTL expires. This method gives the
+   * application a way to tell the cache "drop this token now."
+   *
+   * Returns `true` if a cached entry was removed, `false` otherwise.
+   * Safe to call when the cache is disabled — it's a no-op.
+   */
+  invalidateToken(token: string): boolean {
+    if (!this.tokenCache || !token || typeof token !== 'string') return false;
+    const removed = this.tokenCache.delete(this.hashToken(token));
+    if (removed) {
+      this.logger.debug('Token invalidated from cache');
+    }
+    return removed;
+  }
+
+  /**
+   * Invalidate every cached entry whose AuthContext belongs to the
+   * given user (T#37). Use after a role/permission/password change,
+   * or when banning/disabling a user — every device session for that
+   * user becomes invalid on the next request without waiting for the
+   * cache TTL.
+   *
+   * Returns the number of cache entries removed. Safe when cache is
+   * disabled — returns 0.
+   */
+  invalidateUser(userId: string): number {
+    if (!this.tokenCache || !userId || typeof userId !== 'string') return 0;
+    // Collect keys first; mutating during forEach iteration is fragile.
+    const victims: string[] = [];
+    this.tokenCache.forEach(
+      (value, key) => {
+        if (value?.context?.userId === userId) victims.push(key);
+      },
+      undefined,
+    );
+    for (const k of victims) this.tokenCache.delete(k);
+    if (victims.length > 0) {
+      this.logger.debug({ userId, count: victims.length }, 'User tokens invalidated from cache');
+    }
+    return victims.length;
+  }
+
+  /**
    * Configure authentication functions
    * @param config - Authentication configuration
    * @throws {TypeError} If authenticate function is not a function

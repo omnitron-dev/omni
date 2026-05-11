@@ -376,6 +376,34 @@ export class Netron extends EventEmitter implements INetron {
   }
 
   /**
+   * Revoke a single token's cached AuthResult (T#37).
+   *
+   * Use after the application has decided a specific token must be
+   * treated as dead — explicit logout, token-rotation, suspicious-
+   * activity sign-out. Without this, a cached `validateToken` result
+   * would continue to serve the now-revoked token for up to the cache
+   * TTL window after revocation.
+   *
+   * Returns `true` if a cached entry was actually evicted; `false`
+   * when there is no authentication manager configured, the cache is
+   * disabled, or the token wasn't in the cache.
+   */
+  revokeToken(token: string): boolean {
+    return this.authenticationManager?.invalidateToken(token) ?? false;
+  }
+
+  /**
+   * Revoke every cached AuthResult for a user (T#37).
+   *
+   * Use after a change that should invalidate ALL sessions for the
+   * user — password change, role demotion, account suspension. Returns
+   * the count of cache entries evicted.
+   */
+  revokeUserSessions(userId: string): number {
+    return this.authenticationManager?.invalidateUser(userId) ?? 0;
+  }
+
+  /**
    * Get the local peer instance
    * Required by INetron interface
    */

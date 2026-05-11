@@ -754,6 +754,13 @@ export class RemotePeer extends AbstractPeer {
 
           const localPeer = this.netron.peer as ILocalPeerInternal;
           const stub = localPeer.getStubByDefinitionId(defId);
+          // SECURITY (T#34): enforce method-level ACL on the wire path.
+          // `query_interface` filters definitions for display; that's
+          // defense by obscurity unless every SET/GET/CALL also goes
+          // through `canAccessMethod`. Without this gate, a client that
+          // knows or guesses a property name bypasses ACLs entirely on
+          // every non-HTTP transport.
+          this.enforceMethodAccess(stub, name);
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: unknown) {
@@ -780,6 +787,8 @@ export class RemotePeer extends AbstractPeer {
 
           const localPeer = this.netron.peer as ILocalPeerInternal;
           const stub = localPeer.getStubByDefinitionId(defId);
+          // SECURITY (T#34): see SET branch.
+          this.enforceMethodAccess(stub, name);
           await this.sendResponse(packet, await stub.get(name));
         } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error getting value:');
@@ -805,6 +814,10 @@ export class RemotePeer extends AbstractPeer {
 
           const localPeer = this.netron.peer as ILocalPeerInternal;
           const stub = localPeer.getStubByDefinitionId(defId);
+          // SECURITY (T#34): see SET branch — this is the most-exercised
+          // entry point on the wire, and the one that mattered most in
+          // the audit (RPC method invocations).
+          this.enforceMethodAccess(stub, method);
           await this.sendResponse(packet, await stub.call(method, args, this));
         } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error calling method:');
@@ -1160,6 +1173,43 @@ export class RemotePeer extends AbstractPeer {
     );
 
     return definition;
+  }
+
+  /**
+   * Enforce method-level ACL for the current peer's auth context.
+   *
+   * Throws `Errors.forbidden` if the configured AuthorizationManager
+   * denies access; returns silently when no authorization manager is
+   * wired (backwards compatibility — Netron deployments without auth
+   * continue to work unchanged).
+   *
+   * This is invoked from the wire-level TYPE_SET / TYPE_GET / TYPE_CALL
+   * branches BEFORE the call reaches the stub. Without it,
+   * `query_interface`'s definition-filtering is purely cosmetic — a
+   * client that knows or guesses a method name bypasses the ACL on
+   * every persistent transport (WS / TCP / Unix).
+   */
+  private enforceMethodAccess(stub: { definition?: Definition } | undefined, methodName: string): void {
+    const authzManager = this.netron.authorizationManager;
+    if (!authzManager) return;
+    // The stub MUST exist and carry a versioned definition for the guard
+    // to even apply — without it we cannot form the qualified service
+    // name that ACLs are keyed by, so we let the call through and rely
+    // on downstream not-found errors. This keeps unit-test mocks that
+    // bypass `localPeer.getStubByDefinitionId` working unchanged.
+    const meta = stub?.definition?.meta;
+    if (!meta) return;
+    const serviceName = getQualifiedName(meta.name, meta.version);
+    const auth = this.getAuthContext();
+    if (authzManager.canAccessMethod(serviceName, methodName, auth)) return;
+    this.logger.warn(
+      { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
+      'Method access denied by authorization manager',
+    );
+    throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
+      service: serviceName,
+      method: methodName,
+    });
   }
 
   /**

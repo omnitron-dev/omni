@@ -231,6 +231,8 @@ export interface IAuthContext {
 export interface IAuthorizationManager {
   /** Check if user can access a service */
   canAccessService(serviceName: string, auth?: IAuthContext): boolean;
+  /** Check if user can access a specific method on a service */
+  canAccessMethod(serviceName: string, methodName: string, auth?: IAuthContext): boolean;
   /** Filter a service definition based on user permissions */
   filterDefinition(serviceName: string, definition: ServiceMetadata, auth?: IAuthContext): ServiceMetadata | null;
 }

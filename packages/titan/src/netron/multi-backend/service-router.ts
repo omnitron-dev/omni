@@ -73,20 +73,39 @@ export class ServiceRouter {
     availableBackends: BackendStatus[],
     context?: { forcedBackendId?: string; clientRegion?: string }
   ): BackendSelection | null {
-    // Handle forced backend
-    if (context?.forcedBackendId) {
-      const backend = availableBackends.find((b) => b.id === context.forcedBackendId && b.health !== 'unhealthy');
-      if (backend) {
-        return {
-          backendId: backend.id,
-          reason: 'forced',
-          alternatives: this.getAlternatives(serviceName, backend.id, availableBackends),
-        };
-      }
-    }
-
-    // Find matching route
+    // Find matching route (needed for the T#47 allowlist check below).
     const route = this.findRoute(serviceName);
+
+    // T#47: a `forcedBackendId` arriving in the request context used
+    // to override the configured route policy unconditionally. That
+    // turned routes — which operators frequently use as an access-
+    // control mechanism ("service X may only be served by backend
+    // A") — into mere defaults. A caller passing `forcedBackendId:
+    // B` was routed to B even when B was NOT on the service's
+    // allowlist. The fix: when a route exists for the service, the
+    // forced backend MUST be on the route's `backends` or `fallback`
+    // list. Otherwise we silently drop the hint and fall through to
+    // normal route-based selection (matching the "ignore forced
+    // backend if unhealthy" precedent already present below).
+    if (context?.forcedBackendId) {
+      const onAllowlist =
+        !route ||
+        route.backends.includes(context.forcedBackendId) ||
+        (route.fallback?.includes(context.forcedBackendId) ?? false);
+
+      if (onAllowlist) {
+        const backend = availableBackends.find((b) => b.id === context.forcedBackendId && b.health !== 'unhealthy');
+        if (backend) {
+          return {
+            backendId: backend.id,
+            reason: 'forced',
+            alternatives: this.getAlternatives(serviceName, backend.id, availableBackends),
+          };
+        }
+      }
+      // Forced backend not on the route's allowlist (or unhealthy):
+      // drop the hint and continue with policy-driven selection.
+    }
 
     if (route) {
       // Filter backends based on route configuration

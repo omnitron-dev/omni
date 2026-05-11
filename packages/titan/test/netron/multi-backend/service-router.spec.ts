@@ -546,7 +546,10 @@ describe('ServiceRouter', () => {
       router = new ServiceRouter(config);
     });
 
-    it('should use forced backend when specified', () => {
+    it('uses forced backend when it is on the route allowlist', () => {
+      // The route in the surrounding describe pins service `test` to
+      // backends 1 and 2. A forced selection for one of those is
+      // honoured.
       const backends = [
         createBackendStatus('backend-1'),
         createBackendStatus('backend-2'),
@@ -554,6 +557,41 @@ describe('ServiceRouter', () => {
       ];
 
       const selection = router.selectBackend('test', backends, {
+        forcedBackendId: 'backend-2',
+      });
+
+      expect(selection?.backendId).toBe('backend-2');
+      expect(selection?.reason).toBe('forced');
+    });
+
+    it('drops the forced backend when it is NOT on the route allowlist (T#47)', () => {
+      // Route pins `test` to backends 1 and 2; the caller asking for
+      // backend-3 must fall through to policy-driven selection.
+      const backends = [
+        createBackendStatus('backend-1'),
+        createBackendStatus('backend-2'),
+        createBackendStatus('backend-3'),
+      ];
+
+      const selection = router.selectBackend('test', backends, {
+        forcedBackendId: 'backend-3',
+      });
+
+      expect(selection?.reason).toBe('route');
+      expect(['backend-1', 'backend-2']).toContain(selection?.backendId);
+    });
+
+    it('still honours a forced backend when no route exists for the service', () => {
+      // Without a configured route the operator hasn't expressed a
+      // policy, so the caller's preference is preserved.
+      const localRouter = new ServiceRouter({ routes: [] });
+      const backends = [
+        createBackendStatus('backend-1'),
+        createBackendStatus('backend-2'),
+        createBackendStatus('backend-3'),
+      ];
+
+      const selection = localRouter.selectBackend('unmapped-service', backends, {
         forcedBackendId: 'backend-3',
       });
 

@@ -530,6 +530,17 @@ export interface INetronOptions {
   connectionCleanupInterval?: number;
 
   /**
+   * Absolute size ceiling for incoming packets (T#40). Bytes.
+   *
+   * Applied at `decodePacket` BEFORE the msgpack decoder runs, so
+   * an attacker who ships a multi-GB frame cannot force the
+   * decoder to allocate matching scratch buffers and OOM the host.
+   * Default: 16 MiB (`DEFAULT_MAX_PACKET_SIZE`). Lower this on
+   * untrusted-peer netrons; raise only with deliberate measurement.
+   */
+  maxPacketSize?: number;
+
+  /**
    * Per-peer rate limit applied to inbound packets on persistent
    * transports (WebSocket / TCP / Unix). T#39 (CRIT).
    *

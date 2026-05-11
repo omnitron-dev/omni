@@ -13,6 +13,8 @@ import {
   PacketImpulse,
 } from './types.js';
 import { NetronErrors } from '../../errors/index.js';
+import { TitanError } from '../../errors/core.js';
+import { ErrorCode } from '../../errors/codes.js';
 
 export * from './types.js';
 
@@ -186,7 +188,32 @@ export const encodePacket = (packet: Packet) => {
  * @example
  * const packet = decodePacket(receivedBuffer);
  */
-export const decodePacket = (buf: Buffer | ArrayBuffer) => {
+/**
+ * SECURITY (T#40): absolute size ceiling enforced before the
+ * msgpack decoder runs. Without this cap a peer can ship an
+ * arbitrarily large frame (multi-GB) and force the decoder to
+ * allocate matching scratch buffers, producing an OOM with a
+ * single packet. WebSocket has `maxPayload` and HTTP has its own
+ * 10 MiB ceiling, but TCP / Unix transports historically did not.
+ *
+ * 16 MiB matches typical msgpack guidelines and is large enough
+ * for legitimate use (file metadata batches, large arrays). Callers
+ * can override per invocation; transport-level configuration is
+ * routed through here so a single setting controls every layer.
+ */
+export const DEFAULT_MAX_PACKET_SIZE = 16 * 1024 * 1024;
+
+export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAULT_MAX_PACKET_SIZE) => {
+  // Compute the byte length once; both Buffer and ArrayBuffer expose it.
+  const byteLength = (buf as Buffer).length ?? (buf as ArrayBuffer).byteLength ?? 0;
+  if (byteLength > maxSize) {
+    throw new TitanError({
+      code: ErrorCode.PAYLOAD_TOO_LARGE,
+      message: `Packet exceeds maximum allowed size: ${byteLength} > ${maxSize}`,
+      details: { received: byteLength, max: maxSize },
+    });
+  }
+
   const buffer = SmartBuffer.wrap(buf);
 
   const pkt = new Packet(buffer.readUInt32BE());

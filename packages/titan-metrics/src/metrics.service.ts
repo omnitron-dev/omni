@@ -44,6 +44,19 @@ const DEFAULT_BATCH_SIZE = 200;
 // MetricsService
 // ---------------------------------------------------------------------------
 
+/**
+ * Live-app staleness window applied by `getSnapshot()`.
+ *
+ * Defaults to `max(3 × collection.interval, 30s)`. A heartbeat sample
+ * (`app_status`) older than this means the orchestrator has stopped reporting
+ * the app — we treat it as a ghost and drop it from the snapshot.
+ *
+ * 3× is the smallest multiplier that survives the normal flush/jitter:
+ *   collector tick + flush interval + clock skew ≈ 2.x × interval worst case.
+ */
+const DEFAULT_STALE_MULTIPLIER = 3;
+const MIN_STALE_MS = 30_000;
+
 export class MetricsService implements IMetricsService {
   private readonly registry: MetricsRegistry;
   private readonly collector: MetricsCollector | null;
@@ -51,6 +64,8 @@ export class MetricsService implements IMetricsService {
   private readonly syncConfig: IMetricsSyncConfig | undefined;
   private readonly maxAgeMs: number;
   private readonly batchSize: number;
+  /** Pre-computed staleness window for `getSnapshot()`. */
+  private readonly snapshotStaleAfterMs: number;
 
   private storageBuffer: MetricSample[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -74,6 +89,11 @@ export class MetricsService implements IMetricsService {
       ...DEFAULT_COLLECTION,
       ...options.collection,
     };
+
+    this.snapshotStaleAfterMs = Math.max(
+      collConfig.interval * DEFAULT_STALE_MULTIPLIER,
+      MIN_STALE_MS,
+    );
 
     if (collConfig.enabled) {
       this.collector = new MetricsCollector(
@@ -111,7 +131,12 @@ export class MetricsService implements IMetricsService {
   }
 
   async getSnapshot(): Promise<MetricsSnapshot> {
-    return this.storage.getLatest();
+    return this.storage.getLatest(undefined, { staleAfterMs: this.snapshotStaleAfterMs });
+  }
+
+  async evictApp(app: string): Promise<void> {
+    this.registry.evictApp(app);
+    await this.storage.evictApp(app);
   }
 
   async querySeries(filter: MetricsQueryFilter): Promise<MetricsTimeSeries[]> {

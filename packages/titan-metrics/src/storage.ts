@@ -14,6 +14,7 @@ import type {
   MetricsTimeSeries,
   MetricsSnapshot,
   IMetricsStorage,
+  IMetricsLatestOptions,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ export class MemoryMetricsStorage implements IMetricsStorage {
     return series;
   }
 
-  async getLatest(apps?: string[]): Promise<MetricsSnapshot> {
+  async getLatest(apps?: string[], opts?: IMetricsLatestOptions): Promise<MetricsSnapshot> {
     const now = Date.now();
     const appMap = new Map<string, Map<string, MetricSample>>();
 
@@ -152,7 +153,45 @@ export class MemoryMetricsStorage implements IMetricsStorage {
       }
     }
 
+    // Ghost-eviction: drop apps whose freshest `app_status` is older than the
+    // staleness window. We use app_status as the liveness signal because the
+    // collector emits it on every tick (so a fresh reading proves the
+    // orchestrator still knows about the app). Counters like
+    // `rpc_requests_total` are not reliable — they tick at the request rate,
+    // not the heartbeat rate.
+    if (opts?.staleAfterMs != null) {
+      const cutoff = now - opts.staleAfterMs;
+      for (const [app, metrics] of appMap) {
+        const status = metrics.get('app_status');
+        // Be conservative: if there's no app_status sample at all, keep the
+        // app (some custom collectors may not emit it). Only evict when we
+        // have a definitive "stale" reading.
+        if (status && status.timestamp < cutoff) {
+          appMap.delete(app);
+        }
+      }
+    }
+
     return buildSnapshot(now, appMap);
+  }
+
+  async evictApp(app: string): Promise<void> {
+    if (this.size === 0) return;
+    // Compact the ring in-place: walk all live samples, copy only the ones
+    // that aren't from the evicted app back into a fresh buffer.
+    const surviving: MetricSample[] = [];
+    for (let i = 0; i < this.size; i++) {
+      const idx = (this.head - this.size + i + this.capacity) % this.capacity;
+      const s = this.ring[idx]!;
+      if ((s.labels['app'] ?? '') !== app) surviving.push(s);
+    }
+    this.head = 0;
+    this.size = 0;
+    for (const s of surviving) {
+      this.ring[this.head] = s;
+      this.head = (this.head + 1) % this.capacity;
+      if (this.size < this.capacity) this.size++;
+    }
   }
 
   async cleanup(maxAgeMs: number): Promise<void> {
@@ -276,7 +315,7 @@ export class PostgresMetricsStorage implements IMetricsStorage {
     return [...groups.values()];
   }
 
-  async getLatest(apps?: string[]): Promise<MetricsSnapshot> {
+  async getLatest(apps?: string[], opts?: IMetricsLatestOptions): Promise<MetricsSnapshot> {
     await this.flushBuffer();
     const now = Date.now();
 
@@ -312,12 +351,27 @@ export class PostgresMetricsStorage implements IMetricsStorage {
       }
     }
 
+    // Drop apps with a stale `app_status` heartbeat — see MemoryMetricsStorage
+    // for rationale.
+    if (opts?.staleAfterMs != null) {
+      const cutoff = now - opts.staleAfterMs;
+      for (const [app, metrics] of appMap) {
+        const status = metrics.get('app_status');
+        if (status && status.timestamp < cutoff) appMap.delete(app);
+      }
+    }
+
     return buildSnapshot(now, appMap);
   }
 
   async cleanup(maxAgeMs: number): Promise<void> {
     const cutoff = Date.now() - maxAgeMs;
     await this.db.deleteFrom('metrics_raw').where('timestamp', '<', cutoff).execute();
+  }
+
+  async evictApp(app: string): Promise<void> {
+    await this.flushBuffer();
+    await this.db.deleteFrom('metrics_raw').where('app', '=', app).execute();
   }
 
   /** Stop the periodic flush timer */
@@ -486,7 +540,7 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
     return [...groups.values()];
   }
 
-  async getLatest(apps?: string[]): Promise<MetricsSnapshot> {
+  async getLatest(apps?: string[], opts?: IMetricsLatestOptions): Promise<MetricsSnapshot> {
     await this.ensureTable();
     await this.flushBuffer();
     const now = Date.now();
@@ -517,6 +571,14 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
       }
     }
 
+    if (opts?.staleAfterMs != null) {
+      const cutoff = now - opts.staleAfterMs;
+      for (const [app, metrics] of appMap) {
+        const status = metrics.get('app_status');
+        if (status && status.timestamp < cutoff) appMap.delete(app);
+      }
+    }
+
     return buildSnapshot(now, appMap);
   }
 
@@ -524,6 +586,12 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
     await this.ensureTable();
     const cutoff = Date.now() - maxAgeMs;
     await this.db.deleteFrom('metrics_raw').where('timestamp', '<', cutoff).execute();
+  }
+
+  async evictApp(app: string): Promise<void> {
+    await this.ensureTable();
+    await this.flushBuffer();
+    await this.db.deleteFrom('metrics_raw').where('app', '=', app).execute();
   }
 
   dispose(): void {

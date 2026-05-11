@@ -359,6 +359,9 @@ export class OrchestratorService extends EventEmitter {
         'Replacing stale duplicate handle',
       );
       this.handles.delete(key);
+      // Drop any metrics that were collected under the stale alias so it
+      // doesn't haunt future snapshots as a ghost offline app.
+      if (key !== entry.name) this.metricsBridge?.evictApp(key);
     }
 
     const existing = this.handles.get(entry.name);

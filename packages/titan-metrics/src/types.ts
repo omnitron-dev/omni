@@ -161,16 +161,32 @@ export interface MetricsSnapshot {
 // Storage interface
 // ---------------------------------------------------------------------------
 
+/** Options for `getLatest` queries. */
+export interface IMetricsLatestOptions {
+  /**
+   * Drop apps whose freshest `app_status` sample is older than this many ms.
+   *
+   * Defends against "ghost apps" — entries in the ring buffer for apps the
+   * orchestrator no longer reports (renamed, removed, dev-mode reload, etc.)
+   * that would otherwise inflate `totals.apps` with offline placeholders.
+   *
+   * When undefined, no staleness filter is applied (legacy behaviour).
+   */
+  staleAfterMs?: number;
+}
+
 /** Pluggable storage backend contract */
 export interface IMetricsStorage {
   /** Persist a batch of samples */
   write(samples: MetricSample[]): Promise<void>;
   /** Query time-series (supports time-bucket aggregation) */
   query(filter: MetricsQueryFilter): Promise<MetricsTimeSeries[]>;
-  /** Latest snapshot per app */
-  getLatest(apps?: string[]): Promise<MetricsSnapshot>;
+  /** Latest snapshot per app — optionally filtered to live apps only */
+  getLatest(apps?: string[], opts?: IMetricsLatestOptions): Promise<MetricsSnapshot>;
   /** Delete data older than maxAgeMs */
   cleanup(maxAgeMs: number): Promise<void>;
+  /** Permanently drop every sample for a named app (e.g., on stack delete) */
+  evictApp(app: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +213,13 @@ export interface IMetricsService {
   flush(): Promise<void>;
   /** Run retention cleanup */
   cleanup(): Promise<void>;
+  /**
+   * Permanently drop every sample for the named app from storage AND the
+   * in-memory registry. Use when an app is definitively removed (stack
+   * deleted, app un-registered) so it cannot show up as a "ghost offline"
+   * in subsequent snapshots.
+   */
+  evictApp(app: string): Promise<void>;
   /**
    * Direct access to the in-memory registry — used by consumers that
    * need to pre-register metric definitions with descriptive HELP text

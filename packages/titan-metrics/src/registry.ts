@@ -236,6 +236,24 @@ export class MetricsRegistry {
     this.metrics.clear();
   }
 
+  /**
+   * Drop every series belonging to a named app from the registry.
+   *
+   * Mirrors `IMetricsStorage.evictApp` for the in-memory side, so a stack
+   * delete (or any other "this app is gone forever" event) wipes the
+   * Prometheus-text output and any cached counter/gauge state.
+   */
+  evictApp(app: string): void {
+    for (const entry of this.metrics.values()) {
+      for (const key of entry.series.keys()) {
+        const labels = parseLabels(key);
+        if (labels['app'] === app) {
+          entry.series.delete(key);
+        }
+      }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------

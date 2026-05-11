@@ -274,13 +274,20 @@ export default function DashboardPage() {
 
   const apps = filterApps(allApps);
 
-  // Use metrics snapshot if available (titan-metrics), fallback to daemon status
-  const snap = metricsSnapshot;
-  const onlineCount = snap?.totals?.onlineApps ?? apps.filter((a) => a.status === 'online').length;
-  const totalApps = snap?.totals?.apps ?? apps.length;
+  // KPI source-of-truth rule: the daemon's `apps` list defines the SET we
+  // count. The metrics snapshot is used only to enrich per-app cpu/memory
+  // (titan-metrics samples those every 5s, often fresher than the daemon's
+  // own bookkeeping). We never trust `snap.totals.*` directly because it
+  // sums across the entire ring buffer — pre-staleness filter that meant
+  // ghosts (stack-switched / renamed / dev-reloaded apps that no longer
+  // report) would inflate the count; even with the filter it bypasses the
+  // active stack filter the user has selected.
+  const snapApps = metricsSnapshot?.apps ?? {};
+  const totalApps = apps.length;
+  const onlineCount = apps.filter((a) => a.status === 'online').length;
   const offlineCount = totalApps - onlineCount;
-  const totalCpu = snap?.totals?.cpu ?? apps.reduce((sum, a) => sum + a.cpu, 0);
-  const totalMemory = snap?.totals?.memory ?? apps.reduce((sum, a) => sum + a.memory, 0);
+  const totalCpu = apps.reduce((sum, a) => sum + (snapApps[a.name]?.cpu ?? a.cpu), 0);
+  const totalMemory = apps.reduce((sum, a) => sum + (snapApps[a.name]?.memory ?? a.memory), 0);
   const runningStacks = stacks.filter((s) => s.status === 'running').length;
   const cpuColor: 'success' | 'warning' | 'error' = totalCpu > 80 ? 'error' : totalCpu > 60 ? 'warning' : 'success';
   const memMb = totalMemory / (1024 * 1024);
@@ -303,10 +310,16 @@ export default function DashboardPage() {
             <Grid size={{ xs: 6, sm: 3 }}>
               <StatCard
                 label="Applications"
-                value={apps.length}
-                subtitle={`${onlineCount} online / ${offlineCount} offline`}
+                value={totalApps === 0 ? '0' : `${onlineCount}/${totalApps}`}
+                subtitle={
+                  totalApps === 0
+                    ? 'No apps yet'
+                    : offlineCount > 0
+                      ? `${offlineCount} offline`
+                      : 'All online'
+                }
                 icon={<AppsIcon sx={{ fontSize: 28 }} />}
-                color={offlineCount > 0 ? 'warning' : 'success'}
+                color={totalApps === 0 ? 'secondary' : offlineCount > 0 ? 'warning' : 'success'}
                 sx={{ height: '100%' }}
               />
             </Grid>

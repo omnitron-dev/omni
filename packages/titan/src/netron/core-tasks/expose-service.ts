@@ -1,5 +1,6 @@
 import { ServiceMetadata } from '../types.js';
 import { RemotePeer } from '../remote-peer.js';
+import { enforceRemoteExposureAllowed } from './_guard.js';
 
 /**
  * Exposes a service to a remote peer in the Netron network.
@@ -27,6 +28,16 @@ import { RemotePeer } from '../remote-peer.js';
  * };
  * await expose_service(remotePeer, serviceMeta);
  */
-export function expose_service(peer: RemotePeer, meta: ServiceMetadata) {
+export async function expose_service(peer: RemotePeer, meta: ServiceMetadata) {
+  // SECURITY (T#36): the wire-level entry point is deny-by-default.
+  // Trusted local code calls `LocalPeer.exposeRemoteService()` directly
+  // and bypasses this guard; remote peers must be explicitly allowed
+  // via the Netron `allowRemoteServiceExposure` option.
+  //
+  // Marked `async` (rather than the historical synchronous `function`)
+  // so that the guard's `throw` surfaces as a Promise rejection — the
+  // wire-level handler awaits the task and expects rejections, not
+  // thrown errors, to flow through its error response path.
+  enforceRemoteExposureAllowed(peer, 'expose_service');
   return peer.netron.peer.exposeRemoteService(peer, meta);
 }

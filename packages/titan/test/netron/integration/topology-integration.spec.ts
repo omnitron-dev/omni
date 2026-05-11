@@ -65,7 +65,11 @@ class SharedServiceV2 {
 /** Create a Netron server instance with WS transport on a free port. */
 async function createServer(id: string): Promise<{ netron: Netron; port: number }> {
   const port = await getFreePort();
-  const netron = new Netron(createMockLogger(), { id });
+  // T#36: this suite exercises the federated `expose_service` flow
+  // (clients publish services to the server), so the server must opt
+  // in to remote-peer-initiated exposure. Production deployments
+  // should pair this flag with a wired AuthorizationManager.
+  const netron = new Netron(createMockLogger(), { id, allowRemoteServiceExposure: true });
 
   netron.registerTransport('ws', () => new WebSocketTransport());
   netron.registerTransportServer('ws', {

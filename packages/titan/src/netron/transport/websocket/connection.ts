@@ -222,10 +222,21 @@ export class WebSocketConnection extends BaseConnection {
       throw Errors.badRequest('Cannot reconnect: no URL stored (connection was not created via connect())');
     }
 
-    // Close old socket if still open
-    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+    // T#45: detach EVERY listener from the old socket BEFORE
+    // touching it further. Without this, the old socket's
+    // `close` / `message` / `error` handlers stay registered
+    // and fire AFTER we've reassigned `this.socket` to the new
+    // one — `handleDisconnect` running with the new socket's
+    // state triggers a second reconnect, and any buffered
+    // `message` events get handled twice (once by the dying
+    // old socket, once by the new one). The cumulative effect
+    // is duplicate packets, duplicate reconnect attempts and
+    // a leaked socket reference per cycle.
+    const oldSocket = this.socket;
+    oldSocket.removeAllListeners();
+    if (oldSocket.readyState === WebSocket.OPEN || oldSocket.readyState === WebSocket.CONNECTING) {
       try {
-        this.socket.terminate();
+        oldSocket.terminate();
       } catch (_error) {
         // Ignore errors during termination
       }
@@ -245,7 +256,8 @@ export class WebSocketConnection extends BaseConnection {
     // Replace the old socket
     this.socket = newSocket;
 
-    // Re-setup event handlers
+    // Re-setup event handlers (on the new socket only — the old one
+    // had its handlers detached above so it cannot interfere).
     this.setupEventHandlers();
 
     // Restart keep-alive if enabled

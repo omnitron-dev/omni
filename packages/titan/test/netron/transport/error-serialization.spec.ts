@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import { encodePacket, decodePacket, Packet } from '../../../src/netron/packet/index.js';
+import { setSerializerErrorOptions } from '../../../src/netron/packet/serializer.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
 import { UnixSocketTransport, NamedPipeTransport } from '../../../src/netron/transport/unix-transport.js';
@@ -172,22 +173,30 @@ describe('TitanError Serialization Across Transports', () => {
       expect(decoded.data.cause.cause.message).toBe('Level 3 error');
     });
 
-    it('should preserve stack traces', () => {
-      const error = new TitanError({
-        code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error with stack',
-      });
+    it('should preserve stack traces when the (opt-in) policy allows it', () => {
+      // T#38: stack-trace transmission defaults to OFF for security.
+      // Suites that genuinely need to verify the encoded stack must
+      // flip the policy on for the duration of the test.
+      setSerializerErrorOptions({ includeStackTraces: true });
+      try {
+        const error = new TitanError({
+          code: ErrorCode.INTERNAL_ERROR,
+          message: 'Test error with stack',
+        });
 
-      const packet = new Packet(6);
-      packet.setError(1);
-      packet.data = error;
+        const packet = new Packet(6);
+        packet.setError(1);
+        packet.data = error;
 
-      const encoded = encodePacket(packet);
-      const decoded = decodePacket(encoded);
+        const encoded = encodePacket(packet);
+        const decoded = decodePacket(encoded);
 
-      expect(decoded.data).toBeInstanceOf(TitanError);
-      expect(decoded.data.stack).toBeDefined();
-      expect(decoded.data.stack).toContain('TitanError');
+        expect(decoded.data).toBeInstanceOf(TitanError);
+        expect(decoded.data.stack).toBeDefined();
+        expect(decoded.data.stack).toContain('TitanError');
+      } finally {
+        setSerializerErrorOptions({ includeStackTraces: false });
+      }
     });
 
     it('should handle TitanError subclasses', () => {

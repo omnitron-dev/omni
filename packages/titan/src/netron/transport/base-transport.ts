@@ -108,41 +108,65 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       return;
     }
 
-    // Handshake phase: check if this looks like text or binary
-    // Check if this looks like a packet (starts with valid packet header)
-    // Packets start with a 4-byte ID, then a flags byte
-    // For now, just check if it's binary-looking data vs text
+    // T#48: handshake phase used a single-byte heuristic to decide
+    // "this looks like text" — any first byte in the printable
+    // ASCII range (0x20..0x7e, ~37% of the byte space) was treated
+    // as text and forwarded to `emit('data', ...)` WITHOUT going
+    // through the binary decoder. Packet IDs are 4-byte big-endian
+    // unsigned ints, so any binary packet whose ID starts in that
+    // range — roughly a third of all valid packets — was
+    // misclassified, depriving the connection of its first real
+    // packet and never flipping `binaryMode` on.
+    //
+    // The replacement is a two-step disambiguation:
+    //   (a) recognise explicit JSON-style handshake markers (the
+    //       handshake messages are JSON objects / arrays) without
+    //       attempting to decode them — they would occasionally
+    //       look msgpack-decodable by accident otherwise; and
+    //   (b) for everything else, TRY to decode as a binary packet
+    //       AND additionally verify the type bits are in range —
+    //       a real packet's type field is 4 bits and our type IDs
+    //       only use 0..7. Garbage that managed to deserialize
+    //       still gets rejected by the type-range check, falling
+    //       back to the raw-data path.
     let isLikelyText = false;
     if (Buffer.isBuffer(data) && data.length > 0) {
       const firstByte = data[0]!;
-      isLikelyText =
-        firstByte === 0x7b || // '{' for JSON
-        firstByte === 0x22 || // '"' for strings
-        (firstByte >= 0x20 && firstByte <= 0x7e); // printable ASCII
+      // Only explicit JSON markers count as text. The over-broad
+      // printable-ASCII check that misclassified binary packets is
+      // gone.
+      isLikelyText = firstByte === 0x7b /* '{' */ || firstByte === 0x5b /* '[' */;
     }
 
     if (isLikelyText) {
-      // Emit as raw data for handshake messages
       this.emit('data', data);
-    } else {
-      // Try to decode as packet
-      try {
-        const packet = decodePacket(data, this.options.maxPacketSize);
-        this.metrics.packetsReceived++;
+      return;
+    }
 
-        // After successful binary packet decode, enable binary mode
-        this.binaryMode = true;
-
-        // Handle PING packets internally
-        if (packet.getType() === TYPE_PING) {
-          this.handlePingPacket(packet);
-        } else {
-          this.emit('packet', packet);
-        }
-      } catch (_error: unknown) {
-        // Not a valid packet, emit as raw data
+    try {
+      const packet = decodePacket(data, this.options.maxPacketSize);
+      // Additional sanity: reject decodes that produced a packet
+      // with an unknown type. Real packets use TYPE 0..TYPE_STREAM_CLOSE
+      // (currently 0..7); anything past that came from coincidental
+      // decode of non-packet bytes.
+      if (packet.getType() > 7) {
         this.emit('data', data);
+        return;
       }
+      this.metrics.packetsReceived++;
+
+      // After successful binary packet decode, enable binary mode.
+      this.binaryMode = true;
+
+      // Handle PING packets internally
+      if (packet.getType() === TYPE_PING) {
+        this.handlePingPacket(packet);
+      } else {
+        this.emit('packet', packet);
+      }
+    } catch (_error: unknown) {
+      // Not a valid packet — emit as raw data for handshake messages.
+      this.emit('data', data);
     }
   }
 

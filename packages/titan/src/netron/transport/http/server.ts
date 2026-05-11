@@ -160,8 +160,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     super();
     this.options = options || {};
 
-    // OPTIMIZATION: Configure request timeout from options
-    this.requestTimeoutMs = (options as any)?.requestTimeout || this.DEFAULT_REQUEST_TIMEOUT;
+    // OPTIMIZATION: Configure request timeout from options.
+    // T#46: use nullish coalescing so explicit `requestTimeout: 0`
+    // (operator intent: "disable the per-request timeout") is
+    // honoured instead of falling through `||` to the 30s default.
+    {
+      const t = (options as any)?.requestTimeout;
+      this.requestTimeoutMs = typeof t === 'number' ? t : this.DEFAULT_REQUEST_TIMEOUT;
+    }
 
     // SECURITY: Configure async generator collection limit from options
     this.maxAsyncGeneratorItems = options?.maxAsyncGeneratorItems || this.DEFAULT_MAX_ASYNC_GENERATOR_ITEMS;
@@ -598,9 +604,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // OPTIMIZATION: Configure keep-alive for connection reuse
       // Expected improvement: ~30% reduction in connection overhead
       const { createServer } = await import('node:http');
-      // Ensure headersTimeout is always <= requestTimeout to satisfy Node.js constraint
+      // T#46: ensure headersTimeout is always <= requestTimeout to
+      // satisfy Node.js' internal constraint, BUT when requestTimeout
+      // is 0 ("disabled") the original `Math.min(60000, 0)` collapsed
+      // headersTimeout to 0 as well — silently disabling the
+      // slowloris defence whenever an operator turned off the
+      // request-level timeout (a common choice for streaming or
+      // long-running endpoints). The slowloris guard is independent
+      // of the per-request timeout and must keep its value of its
+      // own when no upper bound applies.
       const requestTimeout = this.requestTimeoutMs;
-      const headersTimeout = Math.min((this.options as any)?.headersTimeout || 60000, requestTimeout);
+      const userHeadersTimeout = (this.options as any)?.headersTimeout ?? 60_000;
+      const headersTimeout =
+        requestTimeout > 0 ? Math.min(userHeadersTimeout, requestTimeout) : userHeadersTimeout;
       this.server = createServer(
         {
           // OPTIMIZATION: Longer keep-alive timeout for connection reuse

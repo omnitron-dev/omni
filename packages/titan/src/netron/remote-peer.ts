@@ -735,8 +735,30 @@ export class RemotePeer extends AbstractPeer {
     const pType = packet.getType();
 
     if (packet.getImpulse() === 0) {
+      // Responses to requests THIS peer originated are not rate-limited
+      // — they're solicited and bounded by our own pending-request set.
       this.handleResponse(packet);
       return;
+    }
+
+    // SECURITY (T#39): per-peer inbound rate limit. When enabled,
+    // every unsolicited inbound packet costs a token. Exceeding the
+    // configured budget surfaces a structured TOO_MANY_REQUESTS
+    // error to the caller and short-circuits packet processing — the
+    // expensive stub/auth path never runs for the dropped packet.
+    const limiter = this.netron.inboundRateLimiter;
+    if (limiter) {
+      try {
+        await limiter.consume(this.id);
+      } catch (err) {
+        this.logger.warn({ err, peerId: this.id, type: pType }, 'Inbound packet rate-limited (T#39)');
+        try {
+          await this.sendErrorResponse(packet, err);
+        } catch (sendErr) {
+          this.logger.error({ value: sendErr }, 'Error sending rate-limit response:');
+        }
+        return;
+      }
     }
 
     switch (pType) {

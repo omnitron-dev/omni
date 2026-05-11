@@ -218,6 +218,40 @@ export class LifecycleController {
    * to call once.
    */
   installSignalHandlers(): () => void {
+    // Idempotent — repeat calls on the same controller return the same
+    // uninstaller. Without this, a caller wiring start() twice (e.g. a
+    // unit test using `beforeEach`) would attach two layers of listeners
+    // for every signal.
+    if (this.signalHandlers.size > 0 || this.uncaughtListener) {
+      return () => this.uninstallSignalHandlers();
+    }
+
+    // Cross-consumer warning.
+    //
+    // The Titan `Application` class installs its OWN signal +
+    // uncaughtException handlers (see `Application.setupSignalHandlers`
+    // / `setupErrorHandlers`). Application and LifecycleController are
+    // mutually exclusive: when both are wired in the same process,
+    // every signal fires two handlers with subtly different exit
+    // semantics (Application respects `_disableProcessExit`, controller
+    // hard-calls `this.exit(1)`). We can't reliably distinguish "the
+    // intended owner already wired up" from "some unrelated framework
+    // listener exists" (vitest itself registers an unhandledRejection
+    // listener), so we don't auto-skip — but we warn loudly so the
+    // operator can fix the wiring before a real signal arrives.
+    if (
+      process.listenerCount('uncaughtException') > 0 ||
+      process.listenerCount('unhandledRejection') > 0
+    ) {
+      this.opts.logger?.warn?.(
+        {
+          uncaughtCount: process.listenerCount('uncaughtException'),
+          rejectionCount: process.listenerCount('unhandledRejection'),
+        },
+        'LifecycleController.installSignalHandlers: existing process error-handlers detected — verify Application+LifecycleController are not BOTH installed (handlers compose, exit semantics may diverge)',
+      );
+    }
+
     const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
     for (const signal of signals) {
       const handler = () => {

@@ -1187,13 +1187,28 @@ export class Container implements IContainer {
   }
 
   /**
-   * Resolve optional
+   * Resolve optional.
+   *
+   * `AsyncResolutionError` is treated as "unavailable from the SYNC
+   * path" and lowered to `undefined`. The previous version only
+   * forgave `DependencyNotFoundError` / `ResolutionError`, so an
+   * optional dependency whose factory was async (or whose initializer
+   * returned a Promise) would crash the entire sync resolution chain
+   * — for example, an `applyPropertyInjections` step that pulled an
+   * optional async-init service. Optional means "may not be present
+   * here, in the form the caller expects" — async-only is exactly that
+   * shape mismatch, and callers using `resolveOptional` are explicitly
+   * opting into "give me what you can on the sync path, else nothing".
    */
   resolveOptional<T>(token: InjectionToken<T>): T | undefined {
     try {
       return this.resolve(token);
     } catch (error) {
-      if (error instanceof DependencyNotFoundError || error instanceof ResolutionError) {
+      if (
+        error instanceof DependencyNotFoundError ||
+        error instanceof ResolutionError ||
+        error instanceof AsyncResolutionError
+      ) {
         return undefined;
       }
       throw error;

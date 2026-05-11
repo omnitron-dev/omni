@@ -212,6 +212,81 @@ describe('Titan Application Signals and Shutdown', () => {
       expect(tracker.tasksExecuted.filter((t) => t === 'slow-task').length).toBe(1);
     });
 
+    // Regression for T#25: the shutdown latch (_isShuttingDown +
+    // _shutdownPromise) used to remain set forever after the first
+    // shutdown completed, turning every subsequent shutdown call into a
+    // no-op that awaited the already-settled previous promise. In
+    // production this was masked by process.exit(0) terminating the
+    // process; in test mode (or embedded use with disableProcessExit) the
+    // application lived on and the next restart->shutdown silently
+    // failed to tear itself down.
+    it('subsequent shutdown after a Manual shutdown re-runs tasks', async () => {
+      const runs: number[] = [];
+      app = await Application.create({
+        disableGracefulShutdown: false,
+        disableCoreModules: true,
+        environment: 'test',
+      });
+
+      app.registerShutdownTask({
+        id: 'count-task',
+        name: 'Counts each shutdown',
+        handler: () => {
+          runs.push(Date.now());
+        },
+      });
+
+      await app.start();
+      await app.shutdown(ShutdownReason.Manual);
+      expect(runs.length).toBe(1);
+
+      // Restart and shut down again — the second shutdown must re-run
+      // the task, not silently no-op on a stuck latch.
+      await app.start();
+      await app.shutdown(ShutdownReason.Manual);
+      expect(runs.length).toBe(2);
+    });
+  });
+
+  describe('Restart resilience', () => {
+    // Additional regression for T#25: the latch reset must keep the
+    // application reusable across multiple shutdown cycles. Before the
+    // fix, the SECOND shutdown call was a silent no-op; we assert the
+    // task runs more than once when invoked through repeated cycles.
+    //
+    // (Note: `stop()` also runs the shutdown task list — that's
+    // pre-existing behaviour, not part of T#25 — so two cycles produce
+    // *more* than one invocation, but we only care that the count keeps
+    // GROWING across cycles, i.e. the latch isn't stuck.)
+    it('shutdown latch resets across multiple restart→shutdown cycles', async () => {
+      const runs: string[] = [];
+      const localApp = await Application.create({
+        disableGracefulShutdown: false,
+        disableCoreModules: true,
+        environment: 'test',
+      });
+      localApp.registerShutdownTask({
+        id: 't',
+        name: 't',
+        handler: () => {
+          runs.push('cycle');
+        },
+      });
+
+      await localApp.start();
+      const baseline = runs.length;
+      await localApp.shutdown(ShutdownReason.Manual);
+      const afterFirst = runs.length;
+      expect(afterFirst).toBeGreaterThan(baseline);
+
+      await localApp.start();
+      await localApp.shutdown(ShutdownReason.Manual);
+      const afterSecond = runs.length;
+      // Second shutdown must have produced more work — if the latch were
+      // stuck, afterSecond would equal afterFirst.
+      expect(afterSecond).toBeGreaterThan(afterFirst);
+    });
+
     it('should handle rapid restart attempts', async () => {
       let _startCount = 0;
       let _stopCount = 0;

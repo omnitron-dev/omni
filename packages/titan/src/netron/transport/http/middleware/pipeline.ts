@@ -216,6 +216,48 @@ export class MiddlewarePipeline implements IMiddlewareManager {
   }
 
   /**
+   * Quickly check whether the pipeline has at least one registered
+   * middleware (globally, per-service, or per-method). Optionally
+   * restrict the check to a specific stage.
+   *
+   * Used by the HTTP transport's fast-path predicate (T#35): the old
+   * predicate relied on `getMetrics().executions > 0`, which is a
+   * lagging signal — it stays `0` until the slow path has run at least
+   * once, so the very first request always bypassed every middleware.
+   * Asking the pipeline whether anything is registered gives an
+   * eager, correct answer.
+   */
+  hasMiddleware(stage?: MiddlewareStage): boolean {
+    if (stage) {
+      const global = this.globalMiddleware.get(stage);
+      if (global && global.length > 0) return true;
+      for (const serviceMap of this.serviceMiddleware.values()) {
+        const s = serviceMap.get(stage);
+        if (s && s.length > 0) return true;
+      }
+      for (const methodMap of this.methodMiddleware.values()) {
+        const m = methodMap.get(stage);
+        if (m && m.length > 0) return true;
+      }
+      return false;
+    }
+    for (const list of this.globalMiddleware.values()) {
+      if (list.length > 0) return true;
+    }
+    for (const serviceMap of this.serviceMiddleware.values()) {
+      for (const list of serviceMap.values()) {
+        if (list.length > 0) return true;
+      }
+    }
+    for (const methodMap of this.methodMiddleware.values()) {
+      for (const list of methodMap.values()) {
+        if (list.length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Execute middleware pipeline
    * OPTIMIZATION: Uses pre-filtered middleware from cache and EMA for metrics
    */

@@ -952,17 +952,45 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       );
     }
 
-    // OPTIMIZATION: Fast-path for simple requests
-    // Skip middleware pipeline if:
-    // 1. No Authorization header (no auth required)
-    // 2. No CORS needed (no Origin header or CORS disabled)
-    // 3. No custom middleware in pipeline beyond built-in ones
+    // SECURITY (T#35): The fast-path skips the entire middleware
+    // pipeline — including `NetronAuthMiddleware` and any other custom
+    // middleware registered at PRE_INVOKE / POST_INVOKE. The old
+    // predicate relied on three signals that all turned out to be
+    // dangerously weak:
+    //
+    //   1. `hasAuth = headers.has('Authorization')`. Anonymous clients
+    //      omit the header by definition — yet anonymous access is
+    //      exactly what authn middleware is supposed to reject. Trusting
+    //      the absence of a header as proof that auth isn't needed
+    //      inverts the threat model.
+    //   2. `hasCustomMiddleware = getMetrics().executions > 0`. This
+    //      counter only increments AFTER the slow path has executed at
+    //      least once, so the very first request a fresh server sees
+    //      always took the fast path — bypassing every middleware
+    //      including the one that's supposed to gate the request.
+    //   3. The check looked at the pipeline counter rather than what's
+    //      registered, so registering middleware but never running it
+    //      (because every request bypassed it) created a stable steady
+    //      state of "no auth ever runs."
+    //
+    // New rule: take the fast path ONLY when we can prove the pipeline
+    // has nothing meaningful to do. That requires (a) no authentication
+    // or authorization manager wired on the netron, and (b) no
+    // middleware registered at the PRE_INVOKE or POST_INVOKE stages.
+    // Stages PRE_PROCESS / POST_PROCESS host the trivial built-ins
+    // (request-id, http-auth header extraction, compression) which are
+    // safe to skip when there's no auth context to extract or response
+    // to compress.
     const hasAuth = request.headers.has('Authorization');
     const hasOrigin = request.headers.has('Origin');
     const needsCors = this.options.cors && hasOrigin;
-    const hasCustomMiddleware = this.globalPipeline.getMetrics().executions > 0;
+    const netron = this.netronPeer?.netron as INetronInternal | undefined;
+    const hasNetronAuth = !!netron?.authenticationManager || !!netron?.authorizationManager;
+    const hasInvocationMiddleware =
+      this.globalPipeline.hasMiddleware(MiddlewareStage.PRE_INVOKE) ||
+      this.globalPipeline.hasMiddleware(MiddlewareStage.POST_INVOKE);
 
-    if (!hasAuth && !needsCors && !hasCustomMiddleware) {
+    if (!hasAuth && !needsCors && !hasNetronAuth && !hasInvocationMiddleware) {
       const response = await this.handleSimpleInvocation(request, message);
       // Log response if logging enabled
       if (this.options.logging && this.netronPeer?.logger) {

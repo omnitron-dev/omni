@@ -29,6 +29,25 @@ export interface IAuthenticationManager {
    * @returns Authentication result with context if successful
    */
   validateToken(token: string): Promise<AuthResult>;
+
+  /**
+   * Invalidate a single token in the cache (T#37).
+   * Returns `true` if a cached entry was removed. No-op when caching
+   * is disabled or the token isn't cached.
+   */
+  invalidateToken(token: string): boolean;
+
+  /**
+   * Invalidate every cached AuthResult belonging to the given user
+   * (T#37). Returns the count of removed entries.
+   */
+  invalidateUser(userId: string): number;
+
+  /**
+   * Clear the entire token cache (T#37). Use for shutdown or as a
+   * last-resort revocation.
+   */
+  clearCache(): void;
 }
 
 /**

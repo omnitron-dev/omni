@@ -2,9 +2,9 @@
  * Tests for TitanError serialization in Netron packet serializer
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
-import { serializer } from '../../src/netron/packet/serializer.js';
+import { serializer, setSerializerErrorOptions } from '../../src/netron/packet/serializer.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
 import { NetronError, RpcError } from '../../src/errors/netron.js';
@@ -58,7 +58,29 @@ describe('TitanError Serialization', () => {
       expect(decoded.timestamp).toBe(original.timestamp);
     });
 
-    it('should preserve stack trace', () => {
+    it('should preserve stack trace when the (opt-in) policy allows it', () => {
+      // T#38: stack-trace transmission is OFF by default. Tests that
+      // genuinely care about the encoded stack must flip it on.
+      setSerializerErrorOptions({ includeStackTraces: true });
+      try {
+        const original = new TitanError({
+          code: ErrorCode.INTERNAL_ERROR,
+          message: 'Test error',
+        });
+
+        const buffer = new SmartBuffer();
+        serializer.encode(original, buffer);
+        buffer.roffset = 0;
+        const decoded = serializer.decode(buffer);
+
+        expect(decoded.stack).toBeDefined();
+        expect(decoded.stack).toContain('TitanError');
+      } finally {
+        setSerializerErrorOptions({ includeStackTraces: false });
+      }
+    });
+
+    it('omits the stack trace on the wire by default (T#38)', () => {
       const original = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Test error',
@@ -69,8 +91,13 @@ describe('TitanError Serialization', () => {
       buffer.roffset = 0;
       const decoded = serializer.decode(buffer);
 
-      expect(decoded.stack).toBeDefined();
-      expect(decoded.stack).toContain('TitanError');
+      // The local stack remains on the receiver-constructed error
+      // (Node attaches one when `new TitanError(...)` runs in the
+      // decoder), but the WIRE payload must not contain the sender's
+      // stack. Verifying that the decoded stack does not contain a
+      // frame from the original `encode` call site is good enough:
+      // the only frames it could carry are decode-side frames.
+      expect(decoded.stack ?? '').not.toContain('encode (');
     });
   });
 

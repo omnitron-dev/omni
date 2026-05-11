@@ -29,6 +29,39 @@ export function setSerializerLogger(logger: ILogger): void {
 }
 
 /**
+ * SECURITY (T#38) — stack-trace transmission policy for the
+ * over-the-wire error serializer.
+ *
+ * Default is `false` (omit). Stack traces in error responses leak
+ * server-internal file paths, function names, dependency versions
+ * and the structural shape of the host process — every error reply
+ * over WS / TCP / Unix transports historically embedded them, with
+ * no way to opt out. Worse, a stack from a different process is at
+ * best confusing to the receiver and at worst a forensic asset for
+ * an attacker mapping the service.
+ *
+ * Tests and development tooling that genuinely need to inspect the
+ * remote stack can call `setSerializerErrorOptions({
+ * includeStackTraces: true })` before encoding. Production code
+ * MUST NOT flip this on.
+ */
+let includeStackTraces = false;
+
+export interface SerializerErrorOptions {
+  includeStackTraces?: boolean;
+}
+
+export function setSerializerErrorOptions(opts: SerializerErrorOptions): void {
+  if (typeof opts?.includeStackTraces === 'boolean') {
+    includeStackTraces = opts.includeStackTraces;
+  }
+}
+
+export function getSerializerErrorOptions(): Required<SerializerErrorOptions> {
+  return { includeStackTraces };
+}
+
+/**
  * Register TitanError BEFORE common types to ensure it takes precedence over generic Error.
  * This is critical because TitanError extends Error, and we need the more specific handler
  * to be checked first.
@@ -70,8 +103,13 @@ serializer
       buf.write(serializer.encode(obj.spanId));
       buf.write(serializer.encode(obj.traceId));
 
-      // Encode stack trace (optional)
-      buf.write(serializer.encode(obj.stack || null));
+      // SECURITY (T#38): omit the stack trace on the wire by default.
+      // The receiver lives in another process and would gain only an
+      // information-disclosure surface (server file paths, function
+      // names, library shape) from seeing this — and the stack is not
+      // valid context for THEIR own logs. Tests/dev tooling can flip
+      // the policy via `setSerializerErrorOptions`.
+      buf.write(serializer.encode(includeStackTraces ? obj.stack || null : null));
 
       // Encode cause chain - serialize as plain error info to avoid deep nesting
       if ((obj as any).cause) {
@@ -80,13 +118,14 @@ serializer
           // Recursively encode TitanError causes
           buf.write(serializer.encode(cause));
         } else if (cause instanceof Error) {
-          // Encode plain Error as simplified object
+          // Encode plain Error as simplified object. Stack is gated
+          // by the same T#38 policy as the outer TitanError stack.
           buf.write(
             serializer.encode({
               __errorType: 'Error',
               name: cause.name,
               message: cause.message,
-              stack: cause.stack,
+              stack: includeStackTraces ? cause.stack : undefined,
             })
           );
         } else {

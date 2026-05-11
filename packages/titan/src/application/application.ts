@@ -3214,48 +3214,26 @@ export class Application implements IApplication {
   private async exposeServicesToNetron(netron: Netron): Promise<void> {
     this._logger?.debug('Auto-exposing services decorated with @Service to Netron');
 
-    // Get the registrations map from the container
-    // We need to access container internals to scan for service classes
-    // This is necessary for automatic service discovery and exposure
-    type ProviderRegistration = { provider?: unknown };
-    type ContainerWithRegistrations = {
-      registrations?: Map<InjectionToken<unknown>, ProviderRegistration | ProviderRegistration[]>;
-    };
-
-    const containerInternal = this._container as unknown as ContainerWithRegistrations;
-    const registrations = containerInternal.registrations;
-
-    this._logger?.info(
-      {
-        hasRegistrations: !!registrations,
-        isMap: registrations instanceof Map,
-        size: registrations?.size,
-      },
-      'Checking container registrations'
-    );
-
-    if (!registrations || !(registrations instanceof Map)) {
-      this._logger?.warn('Could not access container registrations for service auto-exposure');
-      return;
-    }
-
+    // Use the container's public iteration API (`iterateRegistrationsFlat`)
+    // rather than reaching into a private field via `as unknown as`. The
+    // old cast scattered knowledge of internal storage shape across
+    // multiple files and broke compilation in surprising places whenever
+    // the storage layout changed; the iterator is the supported boundary.
     let exposedCount = 0;
     type ServiceMetadata = { name: string; version?: string };
     type ServiceInfo = { serviceClass: Constructor<unknown>; serviceMetadata: ServiceMetadata };
     const servicesToExpose: ServiceInfo[] = [];
 
-    this._logger?.info({ registrationsCount: registrations.size }, 'Scanning container registrations');
-
     // First pass: collect all services with @Service decorator
-    for (const [_token, registration] of registrations.entries()) {
+    for (const [_token, reg] of this._container.iterateRegistrationsFlat()) {
       try {
-        // Handle both single registration and array of registrations
-        const regs = Array.isArray(registration) ? registration : [registration];
-
-        for (const reg of regs) {
+        {
           // Get the provider class/constructor from the registration
           let serviceClass: Constructor<unknown> | null = null;
-          const provider = reg.provider;
+          const provider = reg.provider as { provider?: unknown; useClass?: Constructor<unknown>; useFactory?: unknown; useValue?: unknown };
+          // `provider` here is `Registration.provider`, which in this
+          // legacy code shape can be a class, a `{useClass}` descriptor,
+          // or a wrapped factory. Below logic stays unchanged.
 
           if (!provider) {
             continue;

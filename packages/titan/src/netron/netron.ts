@@ -254,6 +254,17 @@ export class Netron extends EventEmitter implements INetron {
   public authorizationManager?: IAuthorizationManager;
 
   /**
+   * Per-peer inbound packet rate limiter (T#39). Initialized when
+   * `options.inboundRateLimit` is provided. Keyed by `peer.id`.
+   *
+   * Lifecycle: created in `start()` (so disabled netrons pay zero
+   * cost), torn down in `stop()`. Exposed as a public read-only
+   * property for tests and observability hooks but mutated only by
+   * Netron itself.
+   */
+  public inboundRateLimiter?: import('./auth/rate-limiter.js').RateLimiter;
+
+  /**
    * Creates a new Netron instance.
    * Initializes the task manager and local peer.
    * Transports must be registered separately before calling start().
@@ -500,6 +511,16 @@ export class Netron extends EventEmitter implements INetron {
     // Start connection manager for pooling and health monitoring
     this.connectionManager.start();
 
+    // SECURITY (T#39): if the host opted in, instantiate the per-peer
+    // inbound rate limiter now so RemotePeer.handlePacket can find it.
+    // Lazy-import to keep the limiter out of the startup graph for
+    // netrons that don't configure it.
+    if (this.options?.inboundRateLimit) {
+      const { RateLimiter } = await import('./auth/rate-limiter.js');
+      this.inboundRateLimiter = new RateLimiter(this.logger, this.options.inboundRateLimit);
+      this.logger.info({ config: this.options.inboundRateLimit }, 'Inbound rate limiter enabled (T#39)');
+    }
+
     // Register core tasks directly
     this.registerCoreTasks();
 
@@ -732,6 +753,14 @@ export class Netron extends EventEmitter implements INetron {
     // Clear transport server configs
     if (this.transportServerConfigs) {
       this.transportServerConfigs.clear();
+    }
+
+    // SECURITY (T#39): tear down the inbound rate limiter so its
+    // queue processor and cleanup intervals don't keep the event
+    // loop alive past stop().
+    if (this.inboundRateLimiter) {
+      this.inboundRateLimiter.destroy();
+      this.inboundRateLimiter = undefined;
     }
 
     this.isStarted = false;

@@ -368,6 +368,18 @@ export interface INetron {
    */
   authorizationManager?: IAuthorizationManager;
 
+  /**
+   * Per-peer inbound packet rate limiter (T#39). Optional — only
+   * present when {@link INetronOptions.inboundRateLimit} is set.
+   * The interface intentionally types it as an opaque
+   * `{ consume(key: string): Promise<void> }` so the netron public
+   * surface doesn't leak the concrete `RateLimiter` shape from
+   * the auth subsystem; consumers that need richer access can
+   * cast through the internal types.
+   * @internal
+   */
+  inboundRateLimiter?: { consume(key: string, tier?: string): Promise<void>; destroy(): void };
+
   /** Get local peer */
   getLocalPeer(): ILocalPeer;
 
@@ -516,6 +528,24 @@ export interface INetronOptions {
 
   /** Cleanup interval for expired/idle connections in milliseconds. Default: 10000 */
   connectionCleanupInterval?: number;
+
+  /**
+   * Per-peer rate limit applied to inbound packets on persistent
+   * transports (WebSocket / TCP / Unix). T#39 (CRIT).
+   *
+   * Without this gate, a malicious or malfunctioning peer can flood
+   * the server with packets and amplify any CPU-bound work the
+   * packet handler does — auth lookups, decoding, ACL filtering —
+   * turning a single connection into a ReDoS / event-loop-starvation
+   * vector. HTTP requests are already rate-limited by separate
+   * middleware; this option covers everything else.
+   *
+   * Default: undefined (no rate limit). Recommended production
+   * setting: at least one of these strategies enabled per peer.
+   * The shape mirrors the {@link RateLimitConfig} from
+   * `auth/rate-limiter.ts` so existing tooling can be reused.
+   */
+  inboundRateLimit?: import('../auth/rate-limiter.js').RateLimitConfig;
 
   /**
    * Whether REMOTE peers are allowed to publish/withdraw services via the

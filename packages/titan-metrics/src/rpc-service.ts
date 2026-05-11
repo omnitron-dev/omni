@@ -62,4 +62,15 @@ export class MetricsRpcService {
     await this.metrics.flush();
     return { flushed: true };
   }
+
+  /**
+   * Permanently drop every sample for a named app. Used by orchestrators
+   * when an app is definitively removed (stack delete, app un-registered)
+   * so it doesn't linger as a "ghost offline" entry in subsequent snapshots.
+   */
+  @Public()
+  async evictApp(data: { app: string }): Promise<{ evicted: boolean }> {
+    await this.metrics.evictApp(data.app);
+    return { evicted: true };
+  }
 }

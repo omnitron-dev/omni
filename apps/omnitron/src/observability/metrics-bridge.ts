@@ -146,6 +146,22 @@ export class MetricsBridge {
     }
   }
 
+  /**
+   * Permanently drop every sample for a named app from both the in-memory
+   * registry and the storage backend. Use when an app is definitively
+   * removed (handle replaced under a different canonical name, app
+   * un-registered) so it cannot linger as a "ghost offline" in subsequent
+   * snapshots.
+   *
+   * Best-effort: swallowed errors so an eviction failure can never block
+   * the orchestrator's primary lifecycle path.
+   */
+  evictApp(app: string): void {
+    void this.metrics.evictApp(app).catch((err) => {
+      this.logger?.warn?.({ app, error: (err as Error).message }, 'Failed to evict metrics for app');
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------

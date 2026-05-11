@@ -21,6 +21,7 @@ export type {
   MetricsQueryFilter,
   MetricsTimeSeries,
   MetricsSnapshot,
+  IMetricsLatestOptions,
   IMetricsStorage,
   IMetricsService,
   IMetricsRegistry,

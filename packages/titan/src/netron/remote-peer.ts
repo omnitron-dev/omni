@@ -833,7 +833,9 @@ export class RemotePeer extends AbstractPeer {
           const stub = localPeer.getStubByDefinitionId(defId);
           // SECURITY (T#34): see SET branch.
           this.enforceMethodAccess(stub, name);
-          await this.sendResponse(packet, await stub.get(name));
+          // SECURITY (T#49): pass `this` so a property getter returning
+          // a nested service can be authz-filtered before the leak.
+          await this.sendResponse(packet, await stub.get(name, this));
         } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error getting value:');
           try {

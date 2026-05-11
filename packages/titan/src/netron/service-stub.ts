@@ -19,6 +19,8 @@ import {
   isNetronStreamReference,
 } from './predicates.js';
 import { Interface } from './interface.js';
+import { Errors } from '../errors/index.js';
+import { getServiceMetadata } from './utils.js';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.
@@ -88,8 +90,8 @@ export class ServiceStub {
    * @returns {any} Processed property value
    * @throws {Error} If property does not exist or is not readable
    */
-  get(prop: string) {
-    return this.processResult(this.instance[prop]);
+  get(prop: string, callerPeer?: any) {
+    return this.processResult(this.instance[prop], callerPeer);
   }
 
   /**
@@ -142,24 +144,73 @@ export class ServiceStub {
     if (result instanceof Promise) {
       result = await result;
     }
-    return this.processResult(result);
+    return this.processResult(result, callerPeer);
   }
 
   /**
    * Processes the result of service interaction.
    * Converts special data types (services, streams) into corresponding references.
    *
+   * SECURITY (T#49): when the result is a nested service instance (the
+   * called method returned ANOTHER service), we used to ref it
+   * unconditionally and return its definition to the caller — leaking
+   * the existence and shape of services the caller might not be
+   * authorised to use. If the wire-level handler eventually rejects
+   * `call(nestedDefId, …)` via T#34, the caller still saw the nested
+   * service's metadata via `query_interface`-like exposure. Now we
+   * consult `IAuthorizationManager.canAccessService` BEFORE creating
+   * the ref; on denial we throw `Errors.forbidden` so the leaked
+   * definition never reaches the wire.
+   *
+   * The check is skipped when no `callerPeer` is supplied (local /
+   * trusted code paths) or when no authorization manager is
+   * configured (backwards compat for un-authed netrons).
+   *
    * @param {any} result - Result to process
+   * @param {any} [callerPeer] - The remote peer that initiated the call,
+   *   used to resolve auth context for the nested-service authz check.
    * @returns {any} Processed result
    * @private
    */
-  private processResult(result: any) {
+  private processResult(result: any, callerPeer?: any) {
     if (isNetronService(result) || result instanceof Interface) {
+      this.enforceNestedServiceAccess(result, callerPeer);
       return this.peer.refService(result, this.definition);
     } else if (isNetronStream(result)) {
       return StreamReference.from(result);
     }
     return result;
+  }
+
+  /**
+   * T#49 guard for nested-service leakage. See `processResult` for
+   * rationale.
+   */
+  private enforceNestedServiceAccess(serviceOrIface: any, callerPeer: any): void {
+    if (!callerPeer) return;
+    const netron: any = (this.peer as any).netron;
+    const authzManager: any = netron?.authorizationManager;
+    if (!authzManager || typeof authzManager.canAccessService !== 'function') return;
+
+    // Resolve the nested service's qualified name. Interface instances
+    // carry their definition via `$def`; raw service instances have
+    // metadata accessible via the same `getServiceMetadata` helper the
+    // local-peer uses elsewhere — but we already know the result is a
+    // service or Interface, so grabbing `meta` defensively is enough.
+    const meta = serviceOrIface instanceof Interface
+      ? serviceOrIface.$def?.meta
+      : getServiceMetadata(serviceOrIface);
+    if (!meta?.name) return; // shape unknown — fail open is consistent
+    // with how the wire-level handler treats meta-less stubs (T#34).
+
+    const qualifiedName = meta.version ? `${meta.name}@${meta.version}` : meta.name;
+    const authContext = typeof callerPeer.getAuthContext === 'function' ? callerPeer.getAuthContext() : undefined;
+    if (authzManager.canAccessService(qualifiedName, authContext)) return;
+
+    throw Errors.forbidden(`Access denied to nested service ${qualifiedName}`, {
+      service: qualifiedName,
+      reason: 'nested_service_unauthorized',
+    });
   }
 
   /**

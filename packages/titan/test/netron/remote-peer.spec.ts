@@ -392,7 +392,10 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
 
       await remotePeer.handlePacket(packet);
 
-      expect(mockStub.get).toHaveBeenCalledWith('property');
+      // T#49: the wire-level GET handler now threads the caller peer
+      // through to the stub so nested-service returns can be
+      // authz-filtered.
+      expect(mockStub.get).toHaveBeenCalledWith('property', remotePeer);
       expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'property-value');
     });
 

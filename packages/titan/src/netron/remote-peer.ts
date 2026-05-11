@@ -622,7 +622,20 @@ export class RemotePeer extends AbstractPeer {
       errorHandler,
     });
 
-    return this.sendPacket(packet);
+    // T#44: if `sendPacket` rejects (socket closed mid-RPC, transport
+    // error, etc.) the response handler we just registered would stay
+    // in `responseHandlers` forever — until the TimedMap's TTL expired
+    // — because the response that would trigger `deleteResponseHandler`
+    // never arrives. A flaky connection accumulates orphaned handlers
+    // and the map grows unboundedly. Drop the handler synchronously
+    // on send-failure AND forward the error to the registered error
+    // handler so the caller doesn't hang on a Promise that will never
+    // resolve.
+    return this.sendPacket(packet).catch((err) => {
+      this.responseHandlers.delete(packet.id);
+      if (errorHandler) errorHandler(err);
+      throw err;
+    });
   }
 
   /**

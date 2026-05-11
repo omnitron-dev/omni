@@ -2537,9 +2537,12 @@ export class Application implements IApplication {
     reason: ShutdownReason,
     details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }
   ): Promise<void> {
-    // Prevent multiple concurrent shutdowns
-    if (this._isShuttingDown) {
-      await this._shutdownPromise!;
+    // Prevent multiple concurrent shutdowns. If one is already in flight,
+    // join it; do NOT short-circuit when the previous shutdown already
+    // settled — that case is now reachable because we reset the flags
+    // below (see comment in the `finally`).
+    if (this._isShuttingDown && this._shutdownPromise) {
+      await this._shutdownPromise;
       return;
     }
 
@@ -2565,7 +2568,7 @@ export class Application implements IApplication {
       this._logger?.info('Graceful shutdown completed successfully');
       this.emit(ApplicationEvent.ShutdownComplete, { reason, success: true });
 
-      // Exit process if configured
+      // Exit process if configured.
       if (reason !== ShutdownReason.Manual) {
         this.exitProcess(0);
       }
@@ -2580,6 +2583,23 @@ export class Application implements IApplication {
       }, 5000);
 
       throw error;
+    } finally {
+      // Reset the shutdown latch.
+      //
+      // Without this, the `Manual` reason path (which intentionally does
+      // NOT call exitProcess) AND the test-mode path (_disableProcessExit
+      // suppresses the exit even for terminal reasons) both leave
+      // `_isShuttingDown=true` forever — making every subsequent
+      // `shutdown()` call a no-op that just awaits the already-settled
+      // previous promise. The next `restart()` would silently fail to
+      // tear itself down.
+      //
+      // In production with `_disableProcessExit=false`, the reset is
+      // moot because `process.exit(0|1)` already aborted the process
+      // before we reached this finally — but it's cheap and keeps the
+      // state machine self-consistent for embedded / test consumers.
+      this._isShuttingDown = false;
+      this._shutdownPromise = null;
     }
   }
 

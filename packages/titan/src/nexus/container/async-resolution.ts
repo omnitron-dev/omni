@@ -10,8 +10,9 @@
 
 import { CircularDependencyError } from '../errors.js';
 import { Errors, toTitanError } from '../../errors/factories.js';
-import { InjectionToken, ResolutionContext, ResolutionContextInternal } from '../types.js';
+import { InjectionToken, ResolutionContext } from '../types.js';
 import type { Dependency } from './injection-plan.js';
+import { runInModuleScope } from './module-scope.js';
 
 /**
  * Dependency resolution task with metadata for parallel processing
@@ -201,12 +202,16 @@ export class AsyncResolutionService {
         continue;
       }
 
-      // Resolve with chain tracking
+      // Resolve with chain tracking inside a module-scope frame.
+      // AsyncLocalStorage scope-isolates `__resolvingModule` for THIS
+      // async chain, which is exactly what we need to prevent concurrent
+      // resolutions on a shared context object from clobbering each
+      // other's value across an await.
       resolutionState?.chain.push(depToken);
-      const prevModule = (context as ResolutionContextInternal).__resolvingModule;
       try {
-        (context as ResolutionContextInternal).__resolvingModule = currentModule;
-        const result = await resolveAsyncInternalFn(depToken);
+        const result = currentModule
+          ? await runInModuleScope(currentModule, () => resolveAsyncInternalFn(depToken))
+          : await resolveAsyncInternalFn(depToken);
         resolvedDeps[task.index] = result;
       } catch (error) {
         // Optional deps that fail during resolution should return undefined
@@ -217,7 +222,6 @@ export class AsyncResolutionService {
         }
       } finally {
         resolutionState?.chain.pop();
-        (context as ResolutionContextInternal).__resolvingModule = prevModule;
       }
     }
 

@@ -21,6 +21,7 @@ import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
 import { isMultiToken, getTokenName, isOptionalToken, createToken } from './token.js';
 import { Middleware, MiddlewarePipeline } from './middleware.js';
 import { isConstructor } from './provider-utils.js';
+import { runInModuleScope } from './container/module-scope.js';
 import {
   DisposalError,
   ResolutionError,
@@ -1726,16 +1727,10 @@ export class Container implements IContainer {
           if (providerWithFactory.useFactory && providerWithFactory.inject) {
             const originalFactory = providerWithFactory.useFactory;
             const moduleName = module.name;
-            providerWithFactory.useFactory = (...args: unknown[]) => {
-              const currentCtx = this.getCurrentContext();
-              const prevModule = (currentCtx as ResolutionContextInternal).__resolvingModule;
-              try {
-                (currentCtx as ResolutionContextInternal).__resolvingModule = moduleName;
-                return originalFactory(...args);
-              } finally {
-                (currentCtx as ResolutionContextInternal).__resolvingModule = prevModule;
-              }
-            };
+            // Module scope propagates via AsyncLocalStorage — no shared
+            // context mutation, exception-safe by construction.
+            providerWithFactory.useFactory = (...args: unknown[]) =>
+              runInModuleScope(moduleName, () => originalFactory(...args));
           }
           this.register(token, providerObj, options);
         }
@@ -1803,18 +1798,13 @@ export class Container implements IContainer {
           this.moduleProviders
         );
 
-        // Temporarily mark we're resolving from this module
-        const currentCtx = this.getCurrentContext();
-        const previousModule = (currentCtx as ResolutionContextInternal).__resolvingModule;
-        (currentCtx as ResolutionContextInternal).__resolvingModule = module.name;
-
-        try {
+        // Module scope for conditional registration — AsyncLocalStorage
+        // handles save/restore atomically.
+        runInModuleScope(module.name, () => {
           if (condition && condition(this)) {
             this.register(token, originalProvider, options);
           }
-        } finally {
-          (currentCtx as ResolutionContextInternal).__resolvingModule = previousModule;
-        }
+        });
       }
     }
 

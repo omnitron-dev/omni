@@ -9,10 +9,11 @@
 
 import { getTokenName } from '../token.js';
 import { Errors } from '../../errors/factories.js';
-import { InjectionToken, ResolutionContext, ResolutionContextInternal } from '../types.js';
+import { InjectionToken, ResolutionContext } from '../types.js';
 import type { Registration, ModuleProviderInfo } from './types.js';
 import type { Dependency } from './injection-plan.js';
 import { generateResolutionId } from '../../utils/id.js';
+import { getResolvingModule, runInModuleScope } from './module-scope.js';
 
 // Re-export for backward compatibility
 export { generateResolutionId };
@@ -90,14 +91,14 @@ export class ResolutionService {
           return resolveOptionalFn(depObj.token);
         }
 
-        // Set module context and resolve
-        const prevModule = (context as ResolutionContextInternal).__resolvingModule;
-        try {
-          (context as ResolutionContextInternal).__resolvingModule = currentModule;
-          return resolveFn(depObj.token);
-        } finally {
-          (context as ResolutionContextInternal).__resolvingModule = prevModule;
-        }
+        // Resolve inside a fresh module-scope frame. AsyncLocalStorage
+        // restores the previous scope automatically when `runInModuleScope`
+        // returns — unlike the old "mutate-then-restore" pattern on the
+        // context object, this is exception-safe and isolated across
+        // concurrent async chains.
+        return currentModule
+          ? runInModuleScope(currentModule, () => resolveFn(depObj.token))
+          : resolveFn(depObj.token);
       }
 
       // Handle string context token directly
@@ -105,14 +106,10 @@ export class ResolutionService {
         return (context as any)['resolveContext'] || context;
       }
 
-      // Regular token - set module context and resolve
-      const prevModule = (context as ResolutionContextInternal).__resolvingModule;
-      try {
-        (context as ResolutionContextInternal).__resolvingModule = currentModule;
-        return resolveFn(dep);
-      } finally {
-        (context as ResolutionContextInternal).__resolvingModule = prevModule;
-      }
+      // Regular token — same module-scope handling as above.
+      return currentModule
+        ? runInModuleScope(currentModule, () => resolveFn(dep))
+        : resolveFn(dep);
     });
   }
 
@@ -158,8 +155,11 @@ export class ResolutionService {
     }
 
     if (tokenModule) {
-      // Check if we're resolving from within the same module
-      const resolvingModule = (context as ResolutionContextInternal).__resolvingModule;
+      // Read the currently-resolving module from AsyncLocalStorage so we
+      // see the value scoped to OUR chain (not whatever an unrelated
+      // concurrent resolution might have written on a shared context
+      // object). `context` parameter is no longer consulted for this.
+      const resolvingModule = getResolvingModule();
       const isSameModule = resolvingModule && resolvingModule === tokenModule;
 
       // Check if resolving module imports the token's module

@@ -503,7 +503,10 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
 
   describe('Stream Management', () => {
     it('should send stream chunk', async () => {
-      mockSocket.send = vi.fn();
+      // T#43: stream chunks now go through the callback path like every
+      // other packet type (to honour socket backpressure). The mock
+      // must invoke the callback or sendPacket hangs forever.
+      mockSocket.send = vi.fn((_d: any, _o: any, cb?: (err?: Error) => void) => cb?.());
 
       await remotePeer.sendStreamChunk(123, 'chunk-data', 0, false, false);
 

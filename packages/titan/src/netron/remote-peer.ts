@@ -666,21 +666,28 @@ export class RemotePeer extends AbstractPeer {
     return new Promise<void>((resolve, reject) => {
       // Check if socket is open (works for both WebSocket and TransportAdapter)
       if (this.socket.readyState === 1 || this.socket.readyState === 'OPEN') {
-        // 1 is WebSocket.OPEN
-        // For stream packets, don't wait for callback - just resolve immediately
-        // This avoids performance issues with large numbers of packets
-        if (packet.getType() === TYPE_STREAM) {
-          this.socket.send(encodePacket(packet), { binary: true });
-          resolve();
-        } else {
-          this.socket.send(encodePacket(packet), { binary: true }, (err?: Error) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        }
+        // SECURITY (T#43): historically, TYPE_STREAM packets took a
+        // fast path that resolved IMMEDIATELY without awaiting the
+        // socket's send callback — purportedly "to avoid performance
+        // issues with large numbers of packets." In practice this
+        // defeats backpressure entirely: a producer drains its source
+        // faster than the transport can flush, and the underlying
+        // socket's `bufferedAmount` grows without bound. The writable
+        // stream's `pipeFrom` even has an `await once('drain')`
+        // dance, but `drain` never fires because we resolved before
+        // the transport reported the chunk as actually queued. We
+        // now use the callback path for EVERY packet type so the
+        // producer experiences real backpressure when the socket is
+        // congested. Throughput is unaffected for healthy peers;
+        // misbehaving / slow consumers no longer fill the host's
+        // heap with un-sent buffers.
+        this.socket.send(encodePacket(packet), { binary: true }, (err?: Error) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
       } else {
         reject(NetronErrors.connectionClosed(this.socket.constructor?.name ?? 'unknown', 'Socket closed during RPC'));
       }

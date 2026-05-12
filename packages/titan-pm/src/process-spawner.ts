@@ -231,14 +231,29 @@ export class WorkerHandle implements IWorkerHandle {
   }
 
   async send(message: any): Promise<void> {
+    // T#54: the historical implementation guarded only `child.send` —
+    // the *existence* of the IPC method, not its readiness. Node's
+    // contract is that `child.send(...)` throws synchronously with
+    // `ERR_IPC_CHANNEL_CLOSED` once the channel has closed (child
+    // exited, `disconnect()` was called, etc.). Callers got a raw
+    // ERR_IPC_CHANNEL_CLOSED bubbling up through the supervisor,
+    // sometimes after a child had already been recorded as dead.
+    // The companion path at line ~177 (shutdown) had the correct
+    // `child.send && child.connected` guard; this one didn't. We
+    // align both: gate on `connected`, surface a structured error
+    // when the channel is gone so the caller can react.
     if (this.isWorkerThread) {
       const worker = this.worker as Worker;
+      if (this._status !== ProcessStatus.RUNNING && this._status !== ProcessStatus.STARTING) {
+        throw Errors.unavailable(`Worker thread ${this.id} is ${this._status}; cannot post message`);
+      }
       worker.postMessage(message);
     } else {
       const child = this.worker as ChildProcess;
-      if (child.send) {
-        child.send(message);
+      if (!child.send || !child.connected) {
+        throw Errors.unavailable(`IPC channel to child ${this.id} is closed; cannot send`);
       }
+      child.send(message);
     }
   }
 

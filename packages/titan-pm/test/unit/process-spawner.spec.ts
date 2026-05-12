@@ -41,6 +41,10 @@ class MockChildProcess extends EventEmitter {
   public killed = false;
   public exitCode: number | null = null;
   public messages: unknown[] = [];
+  // Mirrors Node's ChildProcess.connected — true while the IPC
+  // channel is open, false after disconnect or exit. Production
+  // WorkerHandle.send (T#54) gates on this flag.
+  public connected = true;
 
   send(message: unknown): boolean {
     this.messages.push(message);
@@ -50,8 +54,14 @@ class MockChildProcess extends EventEmitter {
   kill(signal?: string): boolean {
     this.killed = true;
     this.exitCode = 0;
+    this.connected = false;
     setImmediate(() => this.emit('exit', 0, signal));
     return true;
+  }
+
+  /** Force-close the IPC channel without killing the process (mirrors `child.disconnect()`). */
+  disconnect(): void {
+    this.connected = false;
   }
 }
 
@@ -136,10 +146,21 @@ class TestWorkerHandle extends EventEmitter {
   }
 
   async send(message: unknown): Promise<void> {
+    // T#54: mirror production WorkerHandle.send — gate on the IPC
+    // channel being open. Without this guard, `child.send(...)`
+    // throws ERR_IPC_CHANNEL_CLOSED once the channel closed.
     if (this.isWorkerThread) {
-      (this.worker as MockWorker).postMessage(message);
+      const w = this.worker as MockWorker;
+      if (this._status !== ProcessStatus.RUNNING && this._status !== ProcessStatus.STARTING) {
+        throw new Error(`Worker thread ${this.id} is ${this._status}; cannot post message`);
+      }
+      w.postMessage(message);
     } else {
-      (this.worker as MockChildProcess).send(message);
+      const child = this.worker as MockChildProcess;
+      if (!child.connected) {
+        throw new Error(`IPC channel to child ${this.id} is closed; cannot send`);
+      }
+      child.send(message);
     }
   }
 
@@ -286,6 +307,56 @@ describe('WorkerHandle', () => {
       mockWorker.emit('exit', 0);
 
       expect(handle.status).toBe(ProcessStatus.STOPPED);
+    });
+  });
+
+  describe('send() — IPC channel guard (T#54)', () => {
+    it('rejects with a structured error when the IPC channel is closed', async () => {
+      const mockChild = new MockChildProcess();
+      const handle = new TestWorkerHandle(
+        'test-id',
+        mockChild,
+        null,
+        'tcp://localhost:3000',
+        'TestService',
+        '1.0.0',
+        mockLogger,
+        false,
+        undefined,
+      );
+
+      // Channel open — happy path.
+      await handle.send({ ping: 1 });
+      expect(mockChild.messages).toHaveLength(1);
+
+      // Simulate the child disconnecting / dying. The next send must
+      // surface a structured error rather than producing
+      // ERR_IPC_CHANNEL_CLOSED from `child.send` synchronously.
+      mockChild.disconnect();
+      await expect(handle.send({ ping: 2 })).rejects.toThrow(/IPC channel.*closed/);
+
+      // No additional message reached the (closed) channel.
+      expect(mockChild.messages).toHaveLength(1);
+    });
+
+    it('rejects when the worker thread has stopped', async () => {
+      const mockWorker = new MockWorker();
+      const handle = new TestWorkerHandle(
+        'test-id',
+        mockWorker,
+        null,
+        'tcp://localhost:3000',
+        'TestService',
+        '1.0.0',
+        mockLogger,
+        true,
+        undefined,
+      );
+
+      // Drive status to STOPPED by emitting exit.
+      mockWorker.emit('exit', 0);
+
+      await expect(handle.send({ ping: 1 })).rejects.toThrow(/cannot post message/);
     });
   });
 

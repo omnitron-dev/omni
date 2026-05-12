@@ -53,10 +53,25 @@ interface OrchestratorLike {
 // MetricsCollector
 // ---------------------------------------------------------------------------
 
+/**
+ * Maximum number of samples the collector's drain buffer is allowed to
+ * hold before the OLDEST samples are dropped (T#70).
+ *
+ * Sized for the worst plausible interval between drains: the
+ * MetricsService flushes every 5 s by default, the collector ticks every
+ * 5 s, and each tick produces O(modules × metrics) samples. 50k entries
+ * is several minutes of moderate-traffic buffer headroom — enough to
+ * survive a paused MetricsService.flush() (PG outage, GC pause) without
+ * letting an unbounded list OOM the daemon.
+ */
+const COLLECTOR_BUFFER_CAP = 50_000;
+
 export class MetricsCollector {
   private timer: ReturnType<typeof setInterval> | null = null;
   private prevCpu: CpuSnapshot | null = null;
   private readonly buffer: MetricSample[] = [];
+  /** Cumulative count of samples dropped due to buffer pressure. */
+  private droppedSamples = 0;
 
   constructor(
     private readonly registry: MetricsRegistry,
@@ -183,8 +198,19 @@ export class MetricsCollector {
           this.push({ name: 'uptime_seconds', value: child.uptime, timestamp: now, labels });
         }
       }
-    } catch {
-      // Orchestrator may not be available — silently skip
+    } catch (error) {
+      // T#70: surface the failure via stderr. Pre-T#70 this catch
+      // had an empty body, which swallowed every failure mode —
+      // including programming errors (TypeError, missing fields)
+      // that would have made any reasonable collector loop
+      // visibly stop emitting metrics. Operators saw blank panels
+      // with no signal in logs. Best-effort stderr keeps the
+      // collector loop running (a single tick failure is
+      // recoverable) while making the symptom visible to anyone
+      // tailing the daemon.
+      // eslint-disable-next-line no-console
+      console.error('[MetricsCollector] orchestrator.getMetrics() failed:',
+        error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -201,8 +227,11 @@ export class MetricsCollector {
           this.push(sample);
         }
       }
-    } catch {
-      // Child may not support drainChildSamples yet — silently skip
+    } catch (error) {
+      // T#70: stderr report (same rationale as `collectChildMetrics`).
+      // eslint-disable-next-line no-console
+      console.error('[MetricsCollector] orchestrator.drainChildSamples() failed:',
+        error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -213,5 +242,26 @@ export class MetricsCollector {
   private push(sample: MetricSample): void {
     this.registry.record(sample);
     this.buffer.push(sample);
+    // T#70: bound the buffer. If MetricsService.flush() stalls (storage
+    // outage, GC pause, slow sync to master), collector ticks keep
+    // appending until either the flusher catches up or — pre-T#70 — the
+    // process runs out of heap. The drop-oldest policy preserves the
+    // most recent observations (which dashboards actually render);
+    // dropped samples are still in the Prometheus registry, so the
+    // exposition surface stays complete.
+    if (this.buffer.length > COLLECTOR_BUFFER_CAP) {
+      const overflow = this.buffer.length - COLLECTOR_BUFFER_CAP;
+      this.buffer.splice(0, overflow);
+      this.droppedSamples += overflow;
+    }
+  }
+
+  /**
+   * Diagnostic counter — total samples dropped since startup due to
+   * `COLLECTOR_BUFFER_CAP` pressure. Surfaced via metrics-bridge so
+   * dashboards can flag a stalled flusher.
+   */
+  get totalDropped(): number {
+    return this.droppedSamples;
   }
 }

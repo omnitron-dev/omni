@@ -252,8 +252,22 @@ export class MetricsService implements IMetricsService {
 
       if (this.storageBuffer.length === 0) return;
 
+      // T#70: re-enqueue on storage failure. Pre-T#70 the buffer was
+      // `splice(0)`-emptied BEFORE the await on `storage.write`, so a
+      // transient storage failure (PG outage, disk full, network blip)
+      // permanently dropped the batch with no retry path — the same
+      // class of bug T#68 fixed inside `PostgresMetricsStorage`, but
+      // one layer up. The fix mirrors the pattern: on write failure
+      // we `unshift` the batch back to the head of the buffer so the
+      // next periodic flush retries it. The storage layer's own cap
+      // (`maxBufferSize`, T#68) catches genuine OOM scenarios.
       const batch = this.storageBuffer.splice(0);
-      await this.storage.write(batch);
+      try {
+        await this.storage.write(batch);
+      } catch (error) {
+        this.storageBuffer.unshift(...batch);
+        throw error;
+      }
 
       // Slave → master sync
       if (this.syncConfig?.enabled && this.syncConfig.onFlush) {

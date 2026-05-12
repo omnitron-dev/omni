@@ -105,10 +105,21 @@ export class TelemetryWal {
       }),
     );
 
-    // Rotate if segment exceeds max size (decision is sync; the
-    // close/open of fds in rotate() also serialises via writeChain).
+    // T#70: rotate synchronously but DEFER the close of the OLD fd.
+    //
+    // The pre-T#70 rotate() called `closeFd()` (sync) immediately after
+    // queuing the async write — `closeFd()` invalidated the FD that
+    // the still-pending `fs.write` was about to use, causing the
+    // in-flight batch to fail with EBADF. The bytes were lost despite
+    // the optimistic `currentSize` / `totalWritten` increments.
+    //
+    // The correct pattern: at sync time, open the NEW segment's FD so
+    // the next `append()` writes there, and chain the close of the
+    // OLD FD behind the pending writeChain. That way every queued
+    // write completes against the FD that was current at queue time,
+    // and only when all those writes have drained do we release it.
     if (this.currentSize >= this.maxSizeBytes) {
-      this.rotate();
+      this.rotateAdvance();
     }
   }
 
@@ -205,8 +216,20 @@ export class TelemetryWal {
 
   /**
    * Clear all WAL data.
+   *
+   * T#70: chained into `writeChain` so any pending appends complete
+   * before we delete the segments they were writing to. Pre-T#70 a
+   * concurrent `append()` + `clear()` could race: clear() would
+   * unlink the file while the queued fs.write was still flying,
+   * leaving us with bytes written to an unlinked inode (lost on
+   * fd-close) AND a freshly-opened "current" segment by the next
+   * append() that thinks it's empty. The chain serialises everything.
    */
   clear(): void {
+    this.writeChain = this.writeChain.then(() => this.doClear());
+  }
+
+  private doClear(): void {
     this.closeFd();
     for (const seg of this.listSegments()) {
       try {
@@ -243,8 +266,22 @@ export class TelemetryWal {
 
   /**
    * Close file descriptor and clean up.
+   *
+   * T#70: returns a Promise so callers can `await` durability of all
+   * queued writes BEFORE the FD closes. The shutdown path in
+   * `TelemetryRelayService.stop()` is already async, so this is a
+   * compatible widening: callers that previously called `.dispose()`
+   * without await continue to work (the close still happens, just
+   * eventually). Pre-T#70 the sync dispose closed the FD with
+   * `writeChain` still pending, causing buffered telemetry to be
+   * silently dropped on graceful shutdown.
    */
-  dispose(): void {
+  async dispose(): Promise<void> {
+    try {
+      await this.writeChain;
+    } catch {
+      // Errors inside the chain are already logged by `append()`.
+    }
     this.closeFd();
   }
 
@@ -288,12 +325,61 @@ export class TelemetryWal {
     }
   }
 
+  /**
+   * Synchronous rotation: open a NEW segment immediately, queue the
+   * close of the OLD fd behind any pending writes. (T#70)
+   *
+   * The legacy `rotate()` was sync-only and closed the FD straight
+   * away. Combined with async writes, this dropped data — see the
+   * comment in `append()`. We keep `rotate()` around for back-compat
+   * with `doClear()` etc., but new flow uses `rotateAdvance()` which
+   * preserves data integrity under concurrent appends.
+   */
+  private rotateAdvance(): void {
+    const oldFd = this.fd;
+    this.fd = null;
+    this.currentSegment++;
+    this.currentSize = 0;
+
+    // Evict old segments beyond maxSegments BEFORE we open the new one,
+    // so listSegments() doesn't count the new one we're about to create.
+    const segments = this.listSegments();
+    while (segments.length >= this.maxSegments) {
+      const oldest = segments.shift();
+      if (oldest) {
+        try {
+          fs.unlinkSync(path.join(this.dir, oldest));
+        } catch {
+          // Already deleted
+        }
+      }
+    }
+
+    // Open the new segment NOW so the next append uses it.
+    this.ensureFd();
+
+    // Defer the old fd close behind pending writes.
+    if (oldFd !== null) {
+      this.writeChain = this.writeChain.then(() => {
+        try {
+          fs.closeSync(oldFd);
+        } catch {
+          // Already closed
+        }
+      });
+    }
+  }
+
+  /**
+   * Legacy sync rotation — used only by paths that have ALREADY
+   * drained the write chain (e.g. `doClear()` which runs inside
+   * the chain).
+   */
   private rotate(): void {
     this.closeFd();
     this.currentSegment++;
     this.currentSize = 0;
 
-    // Evict old segments beyond maxSegments
     const segments = this.listSegments();
     while (segments.length >= this.maxSegments) {
       const oldest = segments.shift();

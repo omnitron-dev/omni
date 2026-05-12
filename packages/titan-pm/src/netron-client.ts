@@ -173,10 +173,26 @@ export class NetronClient {
     // 2. Server sends { type: 'id', id: serverId }
     // 3. Client sends { type: 'client-id', id: clientId }
     // 4. peer.init() with service definition exchange
-    const peer = await Promise.race([
-      this.netron.connect(transportUrl, false),
-      this.createTimeout(this.options.connectTimeout, 'Connection'),
-    ]);
+    //
+    // T#60: capture the connect-timeout handle so it can be cleared
+    // when the connect promise wins the race. Pre-T#60 the setTimeout
+    // ran to completion regardless, keeping the event loop alive for
+    // the full `connectTimeout` (default 10s) even after a successful
+    // connection — multiplied across reconnect storms this kept
+    // thousands of timers pending.
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(Errors.timeout('Connection', this.options.connectTimeout)),
+        this.options.connectTimeout,
+      );
+    });
+    let peer: any;
+    try {
+      peer = await Promise.race([this.netron.connect(transportUrl, false), timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
 
     this.remotePeer = peer as RemotePeer;
 
@@ -200,6 +216,21 @@ export class NetronClient {
     }
 
     this.disconnectHandler = () => {
+      // T#60: ignore peer-initiated disconnects if we're already
+      // tearing down. The user-initiated `disconnect()` sets
+      // `_state = DISCONNECTING` before touching the peer; without
+      // this guard, a `manual-disconnect` event firing during that
+      // teardown would (a) overwrite the state back to DISCONNECTED
+      // mid-cleanup, (b) double-call `cleanup()`, and (c) call
+      // `scheduleReconnect()` even though the user explicitly asked
+      // to stop. End result: the client reconnected moments after
+      // the caller observed a successful `disconnect()`.
+      if (
+        this._state === ConnectionState.DISCONNECTING ||
+        this._state === ConnectionState.DISCONNECTED
+      ) {
+        return;
+      }
       this.logger.warn({ processId: this.processId }, 'Remote peer disconnected');
       this._state = ConnectionState.DISCONNECTED;
       this.cleanup();
@@ -359,17 +390,6 @@ export class NetronClient {
    */
   isConnected(): boolean {
     return this._state === ConnectionState.CONNECTED;
-  }
-
-  /**
-   * Create a timeout promise
-   */
-  private createTimeout(ms: number, operation: string): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(Errors.timeout(operation, ms));
-      }, ms);
-    });
   }
 
   /**

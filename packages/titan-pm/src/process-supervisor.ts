@@ -36,6 +36,10 @@ import { SUPERVISOR_METADATA_KEY } from './decorators.js';
  *   - 'child:restart' (name, attempt) — child restarting
  *   - 'child:started' (name) — child successfully started
  *   - 'child:stopped' (name) — child stopped
+ *   - 'child:start-failed' (name, error) — child failed to start (T#60).
+ *       Emitted on every startup failure, including non-critical/optional
+ *       children that no longer propagate the exception. Subscribe to
+ *       observe partial-startup conditions instead of polling.
  *   - 'escalate' (name, error) — critical child exceeded max restarts
  *   - 'shutdown' () — supervisor shutting down
  */
@@ -71,6 +75,15 @@ export class ProcessSupervisor extends EventEmitter {
 
   /** Custom crash handler from config */
   private configCrashHandler: ((child: ISupervisorChild, error: Error) => Promise<RestartDecision>) | null = null;
+
+  /**
+   * Pending backoff-sleep wakers tracked so `stop()` can wake every
+   * in-flight `performRestart` immediately rather than letting them
+   * run out their (potentially 30s) delay during shutdown. Each
+   * entry is the timer handle + a `resolve` callback into the
+   * sleeping promise. (T#60)
+   */
+  private pendingBackoffSleeps = new Set<{ timer: NodeJS.Timeout; resolve: () => void }>();
 
   constructor(
     private readonly manager: IProcessManager,
@@ -195,6 +208,16 @@ export class ProcessSupervisor extends EventEmitter {
       this.crashHandler = null;
     }
 
+    // T#60: wake every in-flight backoff sleep so the
+    // `performRestart` paths exit immediately via the
+    // `isStopping` check, instead of letting them run out
+    // their full (potentially 30s) delay during teardown.
+    for (const sleep of this.pendingBackoffSleeps) {
+      clearTimeout(sleep.timer);
+      sleep.resolve();
+    }
+    this.pendingBackoffSleeps.clear();
+
     // Stop all children in reverse order
     const names = Array.from(this.children.keys()).reverse();
     for (const name of names) {
@@ -203,6 +226,28 @@ export class ProcessSupervisor extends EventEmitter {
 
     this.isStarted = false;
     this.isStopping = false;
+  }
+
+  /**
+   * Sleep for `delayMs`, but resolve immediately if `stop()` is
+   * called. The sleeper enters its handle into `pendingBackoffSleeps`
+   * so `stop()` can clear the timer and resolve the promise without
+   * waiting for the timeout to fire (T#60).
+   */
+  private sleepCancellableOnStop(delayMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      // Register the entry first so `stop()` can resolve it
+      // even if the host process schedules unusually.
+      const entry: { timer: NodeJS.Timeout; resolve: () => void } = {
+        timer: undefined as unknown as NodeJS.Timeout,
+        resolve: () => {
+          this.pendingBackoffSleeps.delete(entry);
+          resolve();
+        },
+      };
+      entry.timer = setTimeout(entry.resolve, delayMs);
+      this.pendingBackoffSleeps.add(entry);
+    });
   }
 
   /**
@@ -315,6 +360,14 @@ export class ProcessSupervisor extends EventEmitter {
       this.emit('child:started', name);
     } catch (error) {
       this.logger.error({ err: error, child: name }, 'Failed to start child process');
+
+      // T#60: surface every startup failure as an event. Pre-T#60 the
+      // non-critical / optional path swallowed the error in silence —
+      // listeners had no way to know a child never came up. Critical
+      // children still rethrow (start() rolls back the whole tree),
+      // but we emit BEFORE rethrowing so subscribers get the signal
+      // regardless of caller behavior.
+      this.emit('child:start-failed', name, error as Error);
 
       if (!childDef.optional && childDef.critical) {
         throw error;
@@ -492,6 +545,18 @@ export class ProcessSupervisor extends EventEmitter {
 
     this.emit('child:restart', name, count);
 
+    // T#60: drive the backoff curve off the *windowed* restart count,
+    // not the lifetime counter. Pre-T#60 a child that had crashed 200
+    // times last week (long since recovered, all timestamps pruned)
+    // would still hit the 30s ceiling on its first crash today because
+    // `count` is monotonic for the supervisor's lifetime. Using
+    // `recent.length` aligns backoff with the same sliding-window the
+    // budget check uses — the child crashes pay backoff matching their
+    // current crash rate, not their historical rap sheet.
+    const window = this.options.window || 60_000;
+    const cutoff = Date.now() - window;
+    const recentCount = (this.restartTimestamps.get(name) ?? []).filter((t) => t > cutoff).length;
+
     // T#53: honour `options.backoff` between the crash and the
     // respawn. The historical path was `restartChild(name)` with no
     // delay — a child crashing 3× in 100ms produced 3 respawns in
@@ -499,10 +564,26 @@ export class ProcessSupervisor extends EventEmitter {
     // before it could trip. Default backoff (300ms exponential
     // capped at 30s) prevents that without affecting the happy path
     // of a single isolated crash.
-    const delayMs = this.computeBackoffDelay(count);
+    //
+    // T#60: the backoff sleep is now cancellable and isStopping-aware.
+    // Pre-T#60 the sleep was uncancellable — a `stop()` issued during
+    // a 30s backoff had to wait the full 30s before the supervisor
+    // teardown completed, AND when the sleep finally resolved it
+    // proceeded to spawn the child during/after shutdown (no
+    // `isStopping` check on the post-sleep path). Now we:
+    //   1. Track the timer so `stop()` can wake the sleep early.
+    //   2. Re-check `isStopping` after the sleep before restarting.
+    const delayMs = this.computeBackoffDelay(recentCount);
     if (delayMs > 0) {
-      this.logger.debug({ child: name, count, delayMs }, 'Backing off before restart');
-      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      this.logger.debug({ child: name, count, recentCount, delayMs }, 'Backing off before restart');
+      await this.sleepCancellableOnStop(delayMs);
+    }
+    if (this.isStopping || !this.isStarted) {
+      this.logger.debug(
+        { child: name, count },
+        'Skipping post-backoff restart — supervisor is stopping',
+      );
+      return;
     }
 
     switch (strategy) {

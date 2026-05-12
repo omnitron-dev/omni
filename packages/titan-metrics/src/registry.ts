@@ -80,7 +80,28 @@ export class MetricsRegistry {
   private readonly histogramBuckets: number[];
 
   constructor(buckets?: number[]) {
-    this.histogramBuckets = buckets ?? DEFAULT_HISTOGRAM_BUCKETS;
+    // T#62: normalise the bucket boundaries at construction time.
+    // Prometheus's exposition format requires bucket lines in
+    // ASCENDING `le` order and rejects duplicates or non-finite
+    // values. The observe path further relies on ascending order
+    // so that cumulative bucket counts emerge naturally — any
+    // future micro-optimisation (e.g. early-break on the first
+    // match) would corrupt counts silently on unsorted input.
+    const src = buckets ?? DEFAULT_HISTOGRAM_BUCKETS;
+    const normalised: number[] = [];
+    let lastSeen: number | undefined;
+    for (const b of [...src].sort((a, b) => a - b)) {
+      if (!Number.isFinite(b)) continue; // drop NaN / ±Inf
+      if (lastSeen !== undefined && b === lastSeen) continue; // dedupe
+      normalised.push(b);
+      lastSeen = b;
+    }
+    if (normalised.length === 0) {
+      // Empty fallback would make `_bucket` lines empty in Prometheus
+      // output and observe a no-op; keep the default in that case.
+      normalised.push(...DEFAULT_HISTOGRAM_BUCKETS);
+    }
+    this.histogramBuckets = normalised;
   }
 
   // -------------------------------------------------------------------------
@@ -133,13 +154,19 @@ export class MetricsRegistry {
     }
     state.sum += value;
     state.count++;
+    // T#62: cumulative Prometheus semantics. `_bucket{le=X}` is the
+    // count of observations with value ≤ X. Because the bucket
+    // boundaries are sorted ascending (enforced in the constructor),
+    // we increment EVERY bucket whose upper bound covers `value`,
+    // not just the first matching one. An early `break` here would
+    // silently break `histogram_quantile()` — pinned by the
+    // regression suite.
     for (let i = 0; i < state.buckets.length; i++) {
       if (value <= state.buckets[i]!) {
-        state.counts[i]!;
         state.counts[i] = (state.counts[i] ?? 0) + 1;
       }
     }
-    // +Inf bucket (last element)
+    // +Inf bucket (last element of counts, one past the buckets array)
     const infIdx = state.buckets.length;
     state.counts[infIdx] = (state.counts[infIdx] ?? 0) + 1;
   }

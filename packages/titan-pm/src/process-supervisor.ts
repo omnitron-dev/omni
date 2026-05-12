@@ -116,12 +116,29 @@ export class ProcessSupervisor extends EventEmitter {
     // Resolve children: config-based or decorator-based
     const childrenMap = this.configChildren ?? this.getDecoratorChildren();
 
+    // T#52: register the crash handler BEFORE starting any children.
+    // The historical order was:
+    //
+    //     for (...children) await startChild(...);
+    //     setupMonitoring();         //  ← too late
+    //
+    // A child that started successfully but exited within milliseconds
+    // (config error, missing port, instant assertion failure) fired its
+    // `process:crash` event before `setupMonitoring()` registered the
+    // listener — the crash was lost. `children.set(name, ...)` had
+    // already happened, so the supervisor thought the process was
+    // running while the OS process was already gone. Subsequent
+    // restarts depended on user-driven `restartChild()`, and
+    // `processIdToName` ended up pointing at a dead pid that would
+    // never produce another event. Registering first means every
+    // process:crash from t=0 reaches the handler.
+    this.setupMonitoring();
+
     // Start child processes in order
     for (const [name, childDef] of childrenMap) {
       await this.startChild(name, childDef);
     }
 
-    this.setupMonitoring();
     this.isStarted = true;
   }
 

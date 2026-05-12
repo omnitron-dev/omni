@@ -178,6 +178,55 @@ describe('ProcessSupervisor', () => {
       );
     });
 
+    it('registers the crash handler BEFORE starting children (T#52)', async () => {
+      // Pre-T#52 behaviour: the supervisor called `setupMonitoring()`
+      // AFTER the child-startup loop. A child that started successfully
+      // but crashed within the same tick (config error, missing port,
+      // assertion failure in init) fired its `process:crash` event
+      // before the listener was registered — the crash was lost and
+      // the supervisor believed the process was running while its OS
+      // pid was already gone.
+      //
+      // Test: spawn() emits a `process:crash` SYNCHRONOUSLY (still
+      // within the same tick as start()) and we verify the listener
+      // was already wired at that point.
+      let crashReceivedBy: number | undefined;
+      const childName = 'flaky';
+      const children = new Map<string, ISupervisorChild>([
+        [childName, { name: childName, processClass: MockWorkerProcess, propertyKey: 'worker' }],
+      ]);
+
+      (mockManager as any).spawn = vi.fn().mockImplementation(() => {
+        const processId = `proc-flaky`;
+        const proxy = createMockProxy(processId);
+        // Defer the crash emission until after spawn resolves, but BEFORE
+        // start() finishes its for-loop. That's exactly the window
+        // where the bug was reproducible.
+        queueMicrotask(() => {
+          crashReceivedBy = mockManager.listenerCount('process:crash');
+          mockManager.emit('process:crash', { id: processId } as IProcessInfo, new Error('flaky boot'));
+        });
+        return Promise.resolve(proxy);
+      });
+
+      const SupervisorClass = createSupervisorClass(children);
+      const supervisor = new ProcessSupervisor(
+        mockManager,
+        SupervisorClass,
+        { strategy: SupervisionStrategy.ONE_FOR_ONE },
+        mockLogger,
+      );
+
+      await supervisor.start();
+      // Give the queued microtask a tick to fire.
+      await new Promise((r) => setImmediate(r));
+
+      // The crash MUST have been received by a registered listener.
+      expect(crashReceivedBy).toBe(1);
+
+      await supervisor.stop();
+    });
+
     it('should not start twice (idempotent start)', async () => {
       const children = new Map<string, ISupervisorChild>([
         ['worker', { name: 'worker', processClass: MockWorkerProcess, propertyKey: 'worker' }],

@@ -17,8 +17,14 @@ import type { RemotePeer } from '../../../remote-peer.js';
  * Options for auth middleware
  */
 export interface AuthMiddlewareOptions {
-  /** Policy engine instance for complex policy evaluation */
-  policyEngine: PolicyEngine;
+  /**
+   * Policy engine for evaluating `authConfig.policies` expressions on
+   * decorated methods. Optional — when omitted, methods that declare
+   * `policies: [...]` fail closed (FORBIDDEN) at request time. Role +
+   * permission + scope enforcement via `authorizationManager` works
+   * unconditionally regardless of whether a policy engine is supplied.
+   */
+  policyEngine?: PolicyEngine;
 
   /** Authorization manager for role/permission/scope validation (required) */
   authorizationManager: AuthorizationManager;
@@ -247,6 +253,27 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Evaluate policies
     if (authConfig.policies) {
+      if (!policyEngine) {
+        // Method declares `policies` but no PolicyEngine is wired —
+        // fail closed. Silently allowing would convert a policy guard
+        // into an open door, which is the opposite of the decorator's
+        // intent.
+        logger.error(
+          {
+            service: ctx.serviceName,
+            method: ctx.methodName,
+          },
+          'Method declares policies but no PolicyEngine is configured — denying',
+        );
+        throw new TitanError({
+          code: ErrorCode.FORBIDDEN,
+          message: 'Policy enforcement unavailable',
+          details: {
+            service: ctx.serviceName,
+            method: ctx.methodName,
+          },
+        });
+      }
       let policyDecision;
 
       if (Array.isArray(authConfig.policies)) {

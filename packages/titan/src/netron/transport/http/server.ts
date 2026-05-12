@@ -33,6 +33,8 @@ import type { MethodContract } from '../../../validation/contract.js';
 import type { HttpRequestContext, HttpRequestHints } from './types.js';
 import { detectRuntime, generateRequestId } from '../../utils.js';
 import { generateUuidV7 } from '../../../utils/id.js';
+import { AuthorizationManager } from '../../auth/authorization-manager.js';
+import type { PolicyEngine } from '../../auth/policy-engine.js';
 import { extractBearerToken } from '../../auth/utils.js';
 import { isAsyncGenerator } from '@omnitron-dev/common';
 import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
@@ -74,6 +76,15 @@ interface ServiceDescriptor {
   methods: Map<string, MethodDescriptor>;
   description?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The live service instance backing this descriptor.
+   *
+   * Required by `NetronAuthMiddleware`, which reads `@Public` decoration
+   * metadata via `Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, proto, name)`.
+   * Without exposing the instance, the middleware silently bails (every
+   * `@Public({ auth: { roles: [...] } })` method becomes anonymous).
+   */
+  instance?: object;
 }
 
 /**
@@ -333,20 +344,49 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Store logging option for use in request handlers
     // Note: Logging is done inline in handleInvocationRequest for better timing accuracy
 
-    // Add NetronAuthMiddleware if policy engine and authorization manager are configured
-    // Both are now required for auth middleware:
-    // const server = new HttpServer({
-    //   policyEngine: myPolicyEngine,
-    //   authorizationManager: myAuthzManager
-    // });
-    // This allows for policy-based authorization in PRE_INVOKE stage
-    const policyEngine = (this.options as any).policyEngine;
-    const authorizationManager = (this.options as any).authorizationManager;
-    if (policyEngine && authorizationManager && peer.logger) {
+    // Register NetronAuthMiddleware so `@Public({ auth: { ... } })`
+    // decorations on services are enforced on the HTTP transport.
+    //
+    // Resolution order for the two managers:
+    //   1. Explicit HTTP transport options — `policyEngine` and
+    //      `authorizationManager` passed to the HttpServer constructor.
+    //      Power-user override for platforms that want decoupled wiring.
+    //   2. Netron-level managers set via `Netron.configureAuth(authn, authz)`.
+    //      This is the standard path: the same managers used by every
+    //      transport (WebSocket, TCP, Unix) without each platform having
+    //      to re-pass them per transport.
+    //   3. Auto-instantiated AuthorizationManager when only an
+    //      AuthenticationManager is configured. Mirrors how the
+    //      WebSocket transport handles the same case in netron.ts.
+    //
+    // SECURITY (T#100): Before this change, the middleware only registered
+    // when BOTH options-level managers were supplied. Platforms wiring auth
+    // via `Netron.configureAuth(...)` (the documented public API) got NO
+    // authz enforcement on HTTP — every `@Public({ auth: { roles: [...] } })`
+    // method was effectively `allowAnonymous`. The fix is to honor the
+    // Netron-level configuration as a first-class source.
+    const netron = peer.netron as INetronInternal | undefined;
+    const optsPolicyEngine = (this.options as any).policyEngine as PolicyEngine | undefined;
+    const optsAuthorizationManager = (this.options as any)
+      .authorizationManager as AuthorizationManager | undefined;
+    // Auto-instantiation needs a real logger (AuthorizationManager calls
+    // `logger.child(...)` in its constructor). Some test peers stub the
+    // logger with an empty object — in that case skip auto-wire so we
+    // don't crash the transport boot.
+    const canAutoInstantiate =
+      !!netron?.authenticationManager &&
+      typeof (peer.logger as any)?.child === 'function';
+    const resolvedAuthorizationManager =
+      optsAuthorizationManager ||
+      (netron?.authorizationManager as AuthorizationManager | undefined) ||
+      (canAutoInstantiate ? new AuthorizationManager(peer.logger) : undefined);
+    if (resolvedAuthorizationManager && peer.logger) {
       this.globalPipeline.use(
         NetronAuthMiddleware.create({
-          policyEngine,
-          authorizationManager,
+          // policyEngine is optional — methods that declare `policies`
+          // and have no engine wired fail closed inside the middleware.
+          ...(optsPolicyEngine ? { policyEngine: optsPolicyEngine } : {}),
+          authorizationManager: resolvedAuthorizationManager,
           logger: peer.logger,
         }),
         { name: 'netron-auth', priority: 20 },
@@ -379,6 +419,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         methods: new Map(),
         description: meta.description,
         metadata: meta.metadata,
+        instance: stub.instance,
       };
 
       // Register methods - get from the actual instance since decorators might not populate methods in metadata
@@ -476,15 +517,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       contract?: unknown;
     };
 
-    // Create service descriptor
-    const descriptor: ServiceDescriptor = {
-      name: serviceName,
-      version,
-      methods: new Map(),
-      description: meta.description,
-      metadata: meta.metadata,
-    };
-
     // Get the service stub for this definition
     const stub = this.netronPeer.stubs.get(definition.id);
     if (!stub) {
@@ -493,6 +525,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         message: `Service stub not found for ${serviceName}`,
       });
     }
+
+    // Create service descriptor
+    const descriptor: ServiceDescriptor = {
+      name: serviceName,
+      version,
+      methods: new Map(),
+      description: meta.description,
+      metadata: meta.metadata,
+      instance: stub.instance,
+    };
 
     // Register methods - get from the actual instance since decorators might not populate methods in metadata
     const instance = stub.instance;
@@ -1067,6 +1109,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           code: ErrorCode.NOT_FOUND,
           message: `Method ${message.method} not found in service ${message.service}`,
         });
+      }
+
+      // Surface the live service instance to PRE_INVOKE middleware.
+      // NetronAuthMiddleware reads `@Public` decoration metadata via
+      // `Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, proto, name)` —
+      // without the instance, every protected method silently degrades
+      // to anonymous because the middleware bails out at its "no service
+      // instance in context" guard.
+      if (service.instance) {
+        context.metadata.set('serviceInstance', service.instance);
       }
 
       // Execute middleware pipeline

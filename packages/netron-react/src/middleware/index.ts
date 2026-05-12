@@ -80,7 +80,9 @@ export function createRetryMiddleware(options?: {
 }): Middleware {
   const { maxAttempts = 3, initialDelay = 1000, maxDelay = 10000, shouldRetry = () => true } = options ?? {};
 
-  return async (context, next) => {
+  // Retry middleware doesn't read the context — only the wrapped
+  // `next()` does. Underscore-prefix tells TS this is intentional.
+  return async (_context, next) => {
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -113,7 +115,7 @@ export function createCacheMiddleware(options?: {
 }): Middleware {
   const {
     ttl = 60000,
-    keyGenerator = (ctx) => `${ctx.service}.${ctx.method}:${JSON.stringify(ctx.args)}`,
+    keyGenerator = (ctx: MiddlewareContext) => `${ctx.service}.${ctx.method}:${JSON.stringify(ctx.args)}`,
     shouldCache = () => true,
   } = options ?? {};
 

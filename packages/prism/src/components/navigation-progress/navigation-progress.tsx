@@ -54,8 +54,17 @@ const STYLES = `
 // ---------------------------------------------------------------------------
 
 export interface NavigationProgressProps {
-  /** Current route pathname. Triggers NProgress.done() on change. */
+  /** Current route pathname. */
   pathname: string;
+  /**
+   * Current route search string (including the leading `?`, as react-router's
+   * `useLocation().search` returns it). Optional for backwards compat — when
+   * provided, the bar also completes on search-only navigation (e.g. tab
+   * switches encoded in query params). When omitted, only pathname changes
+   * trigger completion, which leaves the bar stuck on `?tab=foo` style
+   * transitions.
+   */
+  search?: string;
   /** Completion delay in ms (avoids flashing on fast transitions). Default: 100 */
   delay?: number;
 }
@@ -86,7 +95,7 @@ function isSamePath(a: string, b: string): boolean {
 // Hook
 // ---------------------------------------------------------------------------
 
-function useProgressBar(pathname: string, delay: number) {
+function useProgressBar(pathname: string, search: string, delay: number) {
   const currentUrlRef = useRef('');
 
   // Initialize
@@ -143,11 +152,18 @@ function useProgressBar(pathname: string, delay: number) {
     };
   }, []);
 
-  // Done on pathname change
+  // Done on full URL change.
+  //
+  // Pre-fix this only depended on `pathname`, so search-only navigation
+  // (tab switches, filter changes, anything that updates `?…=…` while
+  // staying on the same route) started the bar via `pushState` but
+  // never completed it — `pathname` never changed, so the effect didn't
+  // re-fire. The bar then stuck at the top of the page indefinitely.
+  // Keying on `pathname + search` makes start and completion symmetric.
   useEffect(() => {
     const timeout = setTimeout(() => NProgress.done(), delay);
     return () => clearTimeout(timeout);
-  }, [pathname, delay]);
+  }, [pathname, search, delay]);
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +189,7 @@ function useProgressBar(pathname: string, delay: number) {
  * }
  * ```
  */
-export function NavigationProgress({ pathname, delay = 100 }: NavigationProgressProps) {
+export function NavigationProgress({ pathname, search = '', delay = 100 }: NavigationProgressProps) {
   useEffect(() => {
     NProgress.configure({ showSpinner: false });
     return () => {
@@ -181,7 +197,7 @@ export function NavigationProgress({ pathname, delay = 100 }: NavigationProgress
     };
   }, []);
 
-  useProgressBar(pathname, delay);
+  useProgressBar(pathname, search, delay);
 
   return <style>{STYLES}</style>;
 }

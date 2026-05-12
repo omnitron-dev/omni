@@ -322,12 +322,22 @@ export class PostgresMetricsStorage implements IMetricsStorage {
     q = q.where('timestamp', '>=', fromMs);
     q = q.where('timestamp', '<=', toMs);
 
+    // T#64: respect ALL of the supplied name/app filters. The
+    // historical implementation passed only `filter.names[0]` /
+    // `filter.apps[0]` to `where('=' ...)`, silently dropping the
+    // rest. A query `{ names: ['cpu_percent', 'memory_mb'] }` would
+    // return only `cpu_percent` rows; the caller then saw a missing
+    // series and assumed the metric was never collected. Kysely
+    // supports `where(col, 'in', list)` natively — use it.
     if (filter.names && filter.names.length > 0) {
-      // Use first name for simple query — full multi-name would need raw SQL
-      q = q.where('name', '=', filter.names[0]);
+      q = filter.names.length === 1
+        ? q.where('name', '=', filter.names[0])
+        : q.where('name', 'in', filter.names);
     }
     if (filter.apps && filter.apps.length > 0) {
-      q = q.where('app', '=', filter.apps[0]);
+      q = filter.apps.length === 1
+        ? q.where('app', '=', filter.apps[0])
+        : q.where('app', 'in', filter.apps);
     }
 
     q = q.orderBy('timestamp', 'asc').limit(limit);
@@ -369,8 +379,9 @@ export class PostgresMetricsStorage implements IMetricsStorage {
       .orderBy('timestamp', 'desc')
       .limit(5_000);
 
+    // T#64: respect ALL of the supplied app filters.
     if (apps && apps.length > 0) {
-      q = q.where('app', '=', apps[0]);
+      q = apps.length === 1 ? q.where('app', '=', apps[0]) : q.where('app', 'in', apps);
     }
 
     const rows = await q.execute();
@@ -551,11 +562,17 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
     q = q.where('timestamp', '>=', fromMs);
     q = q.where('timestamp', '<=', toMs);
 
+    // T#64: respect ALL of the supplied name/app filters (see
+    // PostgresMetricsStorage.query for the why).
     if (filter.names && filter.names.length > 0) {
-      q = q.where('name', '=', filter.names[0]);
+      q = filter.names.length === 1
+        ? q.where('name', '=', filter.names[0])
+        : q.where('name', 'in', filter.names);
     }
     if (filter.apps && filter.apps.length > 0) {
-      q = q.where('app', '=', filter.apps[0]);
+      q = filter.apps.length === 1
+        ? q.where('app', '=', filter.apps[0])
+        : q.where('app', 'in', filter.apps);
     }
 
     q = q.orderBy('timestamp', 'asc').limit(limit);
@@ -596,8 +613,9 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
       .orderBy('timestamp', 'desc')
       .limit(5_000);
 
+    // T#64: respect ALL of the supplied app filters.
     if (apps && apps.length > 0) {
-      q = q.where('app', '=', apps[0]);
+      q = apps.length === 1 ? q.where('app', '=', apps[0]) : q.where('app', 'in', apps);
     }
 
     const rows = await q.execute();

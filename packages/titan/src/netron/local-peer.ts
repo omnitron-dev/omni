@@ -16,6 +16,7 @@ import { Definition } from './definition.js';
 import { RemotePeer } from './remote-peer.js';
 import { ServiceStub } from './service-stub.js';
 import { AbstractPeer } from './abstract-peer.js';
+import { STATEFUL_PEER } from './interfaces/core-types.js';
 import { isServiceDefinition } from './predicates.js';
 import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils.js';
 import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants.js';
@@ -50,6 +51,9 @@ export class LocalPeer extends AbstractPeer {
    */
   constructor(netron: INetron) {
     super(netron, netron.uuid);
+    // T#51: the local peer manages services and event subscriptions
+    // inside the host process, so it's by definition stateful.
+    (this as any)[STATEFUL_PEER] = true;
     this.logger = netron.logger.child({ peerId: this.id });
   }
 

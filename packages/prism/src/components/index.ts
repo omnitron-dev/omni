@@ -139,6 +139,13 @@ export {
 // Search Input
 export { SearchInput, type SearchInputProps } from './search-input/index.js';
 
+// Tag Cloud
+export {
+  TagCloud,
+  type TagCloudProps,
+  type TagCloudItem,
+} from './tag-cloud/index.js';
+
 // Scrollbar
 export { Scrollbar, type ScrollbarProps } from './scrollbar/index.js';
 

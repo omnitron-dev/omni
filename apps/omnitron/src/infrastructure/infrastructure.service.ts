@@ -272,7 +272,33 @@ export class InfrastructureService {
   // Private — Reconciliation
   // ===========================================================================
 
+  /**
+   * Per-name in-flight reconcile lock (T#58). A health sweep that
+   * overlaps a previous slow sweep — or a reconcile triggered by
+   * `ensureXxx` calls happening concurrently — used to enter
+   * `reconcileService` twice for the same container. The first did
+   * `removeContainer` then `createAndStart`; the second saw the
+   * container missing mid-recreate and tried to recreate it too,
+   * producing name conflicts, partial state, and (with Docker's
+   * own restart-policy in the mix) occasional duplicate containers.
+   */
+  private readonly reconciling = new Set<string>();
+
   private async reconcileService(desired: ResolvedContainer): Promise<void> {
+    // T#58: per-name lock around the whole inspect→decide→act loop.
+    if (this.reconciling.has(desired.name)) {
+      this.logger.debug({ service: desired.name }, 'Reconcile already in flight — skipping');
+      return;
+    }
+    this.reconciling.add(desired.name);
+    try {
+      await this.reconcileServiceLocked(desired);
+    } finally {
+      this.reconciling.delete(desired.name);
+    }
+  }
+
+  private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     const actual = await getContainerState(desired.name);
 
     const action = this.computeAction(desired, actual);
@@ -586,6 +612,21 @@ export class InfrastructureService {
       : [this.omnitronPgContainer, ...this.desiredContainers];
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name);
+
+      // T#58: Docker's own `--restart=always` / `--restart=on-failure`
+      // policy puts the container into the 'restarting' state for the
+      // brief window between exit and re-entry. If we recreate during
+      // that window we race Docker's restart — `removeContainer` mid-
+      // restart leaves the daemon confused, and the recreated container
+      // may end up duplicated under a renamed transient. Let Docker
+      // finish; the next 30s tick will see 'running' and skip.
+      if (actual?.status === 'restarting') {
+        this.logger.debug(
+          { service: desired.name },
+          "Service is restarting via Docker's own policy — yielding to it (T#58)"
+        );
+        continue;
+      }
 
       if (!actual || actual.status !== 'running') {
         this.unhealthyTicks.delete(desired.name);

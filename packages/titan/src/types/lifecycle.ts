@@ -8,6 +8,13 @@
  * 4. onStop() (async) - called during graceful shutdown
  * 5. onDestroy() (async) - called for cleanup
  *
+ * The companion type guards (`isLifecycle`, `hasOnInit`, `hasOnStart`,
+ * `hasOnStop`, `hasOnDestroy`) and `ServiceLifecycleState` enum that
+ * previously lived in this file were removed in the T#77 cleanup —
+ * they had zero consumers across the entire monorepo. Call sites that
+ * need shape detection can use a direct `typeof svc.onInit === 'function'`
+ * check.
+ *
  * @stable
  * @since 0.5.0
  */
@@ -39,46 +46,4 @@ export interface ILifecycle {
    * @returns Promise that resolves when cleanup is complete
    */
   onDestroy?(): Promise<void> | void;
-}
-
-/**
- * Type guard to check if an object implements ILifecycle
- */
-export function isLifecycle(obj: unknown): obj is ILifecycle {
-  return obj !== null && typeof obj === 'object';
-}
-
-/**
- * Type guard for specific lifecycle methods
- */
-export function hasOnInit(obj: unknown): obj is { onInit(): Promise<void> | void } {
-  return obj !== null && typeof obj === 'object' && typeof (obj as any).onInit === 'function';
-}
-
-export function hasOnStart(obj: unknown): obj is { onStart(): Promise<void> | void } {
-  return obj !== null && typeof obj === 'object' && typeof (obj as any).onStart === 'function';
-}
-
-export function hasOnStop(obj: unknown): obj is { onStop(): Promise<void> | void } {
-  return obj !== null && typeof obj === 'object' && typeof (obj as any).onStop === 'function';
-}
-
-export function hasOnDestroy(obj: unknown): obj is { onDestroy(): Promise<void> | void } {
-  return obj !== null && typeof obj === 'object' && typeof (obj as any).onDestroy === 'function';
-}
-
-/**
- * Lifecycle state enum for tracking service state
- */
-export enum ServiceLifecycleState {
-  Created = 'created',
-  Initializing = 'initializing',
-  Initialized = 'initialized',
-  Starting = 'starting',
-  Started = 'started',
-  Stopping = 'stopping',
-  Stopped = 'stopped',
-  Destroying = 'destroying',
-  Destroyed = 'destroyed',
-  Failed = 'failed',
 }

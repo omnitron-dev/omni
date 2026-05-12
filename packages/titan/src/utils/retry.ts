@@ -296,8 +296,3 @@ export const RetryStrategies = {
     jitter,
   }),
 } as const;
-
-/**
- * Type helper for extracting context type from a RetryStrategyConfig
- */
-export type ExtractRetryContext<T> = T extends RetryStrategyConfig<infer C> ? C : unknown;

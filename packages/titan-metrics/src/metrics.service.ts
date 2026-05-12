@@ -130,6 +130,52 @@ export class MetricsService implements IMetricsService {
     }
   }
 
+  /**
+   * T#74: typed record entry point — the SINGLE source of truth that
+   * keeps the Prometheus exposition registry and the long-term
+   * storage layer in sync. Pre-T#74, callers had two ways to
+   * write metrics:
+   *
+   *   1. `metrics.record(sample)` — wrote to BOTH registry and
+   *      storage. But the registry routes by previously-registered
+   *      type, defaulting to gauge — wrong for counters and
+   *      histograms unless someone else pre-registered them.
+   *   2. `metrics.getRegistry().counter(...)` etc — wrote to ONLY
+   *      the registry. The metrics-bridge used this path for
+   *      ~20 omnitron_* metrics, which then appeared in
+   *      `/metrics` (Prometheus) but were INVISIBLE to
+   *      `querySeries()` (storage) — every dashboard query for
+   *      them returned empty.
+   *
+   * The unified entry point takes an explicit type, writes to
+   * the registry via the type-specific method (correct semantics
+   * — counter increments, histogram observes, gauge sets), and
+   * ALSO pushes the sample to the storage buffer.
+   */
+  recordTyped(
+    type: 'counter' | 'gauge' | 'histogram',
+    name: string,
+    labels: Record<string, string>,
+    value: number,
+  ): void {
+    switch (type) {
+      case 'counter':
+        this.registry.counter(name, labels, value);
+        break;
+      case 'histogram':
+        this.registry.histogram(name, labels, value);
+        break;
+      case 'gauge':
+      default:
+        this.registry.gauge(name, labels, value);
+        break;
+    }
+    this.storageBuffer.push({ name, value, timestamp: Date.now(), labels });
+    if (this.storageBuffer.length >= this.batchSize) {
+      void this.flush();
+    }
+  }
+
   async getSnapshot(): Promise<MetricsSnapshot> {
     return this.storage.getLatest(undefined, { staleAfterMs: this.snapshotStaleAfterMs });
   }

@@ -288,12 +288,14 @@ export class MetricsBridge {
     });
   }
 
-  // Thin record helpers — wrap the registry methods so we can swallow
-  // unexpected errors (e.g. if the registry was disposed during shutdown
-  // mid-scrape) rather than crash the metrics pipeline.
+  // Thin record helpers — wrap the unified `recordTyped` entry
+  // point so every metric the bridge emits appears in BOTH the
+  // Prometheus exposition (`/metrics`) AND the storage-backed
+  // `querySeries()` API (T#74). Errors are swallowed so a metrics-
+  // pipeline hiccup never crashes the broader daemon.
   private gauge(name: string, labels: Record<string, string>, value: number): void {
     try {
-      this.metrics.getRegistry().gauge(name, labels, value);
+      this.metrics.recordTyped('gauge', name, labels, value);
     } catch (err) {
       this.logger?.warn?.({ err, name }, 'metrics-bridge: gauge write failed');
     }
@@ -301,7 +303,7 @@ export class MetricsBridge {
 
   private counter(name: string, labels: Record<string, string>, delta: number): void {
     try {
-      this.metrics.getRegistry().counter(name, labels, delta);
+      this.metrics.recordTyped('counter', name, labels, delta);
     } catch (err) {
       this.logger?.warn?.({ err, name }, 'metrics-bridge: counter write failed');
     }
@@ -309,7 +311,7 @@ export class MetricsBridge {
 
   private histogram(name: string, labels: Record<string, string>, value: number): void {
     try {
-      this.metrics.getRegistry().histogram(name, labels, value);
+      this.metrics.recordTyped('histogram', name, labels, value);
     } catch (err) {
       this.logger?.warn?.({ err, name }, 'metrics-bridge: histogram write failed');
     }

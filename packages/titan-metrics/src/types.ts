@@ -199,6 +199,22 @@ export interface IMetricsService {
   record(sample: MetricSample): void;
   /** Record a batch of samples */
   recordBatch(samples: MetricSample[]): void;
+  /**
+   * Typed record (T#74) — writes to BOTH the in-memory Prometheus
+   * registry (with correct counter / gauge / histogram semantics)
+   * AND the long-term storage layer. The single source of truth
+   * for callers that previously had to choose between
+   * `record(sample)` (storage-correct but registry-type-ambiguous)
+   * and `getRegistry().counter(...)` (registry-correct but
+   * storage-invisible). Use this for any metric you want to
+   * appear in BOTH `/metrics` exposition AND `querySeries()`.
+   */
+  recordTyped(
+    type: 'counter' | 'gauge' | 'histogram',
+    name: string,
+    labels: Record<string, string>,
+    value: number,
+  ): void;
   /** Get current snapshot (latest values per app) */
   getSnapshot(): Promise<MetricsSnapshot>;
   /** Query time-series data with optional bucketing */

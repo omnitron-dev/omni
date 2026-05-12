@@ -14,6 +14,13 @@ export class ProcessMetricsCollector {
   private collectors = new Map<string, NodeJS.Timeout>();
   private metricsHistory = new Map<string, IProcessMetrics[]>();
   private latencyTracking = new Map<string, number[]>();
+  /**
+   * Per-process re-entrancy guard for the interval body (T#71). A
+   * slow `__getMetrics` call (network blip, GC pause) would otherwise
+   * let `setInterval` queue overlapping ticks, each racing to write
+   * `metricsHistory[processId]`.
+   */
+  private collectInProgress = new Set<string>();
 
   constructor(private readonly logger: ILogger) {}
 
@@ -31,13 +38,17 @@ export class ProcessMetricsCollector {
     this.metricsHistory.set(processId, []);
     this.latencyTracking.set(processId, []);
 
-    // Setup collection interval
+    // Setup collection interval with re-entrancy guard (T#71).
     const collector = setInterval(async () => {
+      if (this.collectInProgress.has(processId)) return;
+      this.collectInProgress.add(processId);
       try {
         const metrics = await this.collectMetrics(proxy);
         this.storeMetrics(processId, metrics);
       } catch (error) {
         this.logger.error({ error, processId }, 'Failed to collect metrics');
+      } finally {
+        this.collectInProgress.delete(processId);
       }
     }, interval);
 
@@ -54,6 +65,7 @@ export class ProcessMetricsCollector {
       this.collectors.delete(processId);
       this.metricsHistory.delete(processId);
       this.latencyTracking.delete(processId);
+      this.collectInProgress.delete(processId);
 
       this.logger.debug({ processId }, 'Stopped metrics collection');
     }

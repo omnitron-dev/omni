@@ -208,3 +208,64 @@ export interface ListenerOptions {
   retry?: RetryOptions;
   circuit?: CircuitOptions;
 }
+
+/**
+ * Canonical event-bus surface — T#72.
+ *
+ * The Omnitron framework historically had three independent event
+ * systems that drifted apart over time:
+ *
+ *   1. `@omnitron-dev/eventemitter` (`EventEmitter` / `EnhancedEventEmitter`)
+ *      — the underlying primitive used by netron, transports, multi-
+ *      backend, and the application's own bus.
+ *   2. `@omnitron-dev/titan-events` (`EventBusService` / `EventsService`)
+ *      — a DI-driven service layer with decorators, validation,
+ *      scheduling, history, and message-queue backpressure.
+ *   3. `Application._internal/EventBus` (titan) — a thin lifecycle bus
+ *      wrapping the primitive, with its own wildcard fan-out and
+ *      error-handler chain semantics.
+ *
+ * `IEventBus` is the smallest interface every event-bus implementation
+ * in the framework is expected to honour. By declaring it here we give
+ * the three layers a single contract instead of three implicit ones
+ * that consumers had to learn by reading each implementation.
+ *
+ * **What `IEventBus` does NOT promise**: wildcards, history, metrics,
+ * priorities, message queues — those are FEATURES individual
+ * implementations may surface, not part of the core contract.
+ * `EnhancedEventEmitter` is the reference implementation that adds
+ * them; `EventBusService` extends with DI + validation + queues.
+ *
+ * @stable
+ * @since 0.1.4
+ */
+export interface IEventBus {
+  /** Register a listener for `event`. Returns `this` for chaining. */
+  on(event: string | symbol, listener: (...args: any[]) => void): this;
+  /** Register a one-shot listener. Returns `this` for chaining. */
+  once(event: string | symbol, listener: (...args: any[]) => void): this;
+  /** Remove a specific listener. Returns `this` for chaining. */
+  off(event: string | symbol, listener: (...args: any[]) => void): this;
+  /** Synchronous emit. Returns `true` if any listener received the event. */
+  emit(event: string | symbol, ...args: any[]): boolean;
+  /** Read-only view of listeners on `event`. Implementations may return either an array or a single function. */
+  listeners(event: string | symbol): Function[];
+  /** Count listeners on `event`. */
+  listenerCount(event: string | symbol): number;
+  /** Remove every listener for `event` (or every listener everywhere when omitted). */
+  removeAllListeners(event?: string | symbol): this;
+}
+
+/**
+ * Extended event bus — adds async emit semantics on top of `IEventBus`.
+ * `EnhancedEventEmitter` and `EventBusService` both satisfy this.
+ *
+ * @stable
+ * @since 0.1.4
+ */
+export interface IAsyncEventBus extends IEventBus {
+  /** Emit and `await` every listener in parallel. */
+  emitParallel(event: string | symbol, ...args: any[]): Promise<unknown[]>;
+  /** Emit and `await` listeners sequentially. */
+  emitSerial(event: string | symbol, ...args: any[]): Promise<unknown[]>;
+}

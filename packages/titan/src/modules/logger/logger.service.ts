@@ -180,7 +180,19 @@ export class LoggerService implements ILoggerModule {
       }
       this.rootLogger = pino(pinoOptions, multistream(streams as any));
     } else {
-      this.rootLogger = pino(pinoOptions);
+      // T#66: pino without a second-arg defaults to a SYNC stdout
+      // destination — every `logger.info(...)` blocks the event
+      // loop on the kernel's `write()` syscall. On a daemon that
+      // logs heavily, or whose stdout is piped to a slow consumer
+      // (file, network, sluggish terminal), each log call becomes
+      // a multi-millisecond pause that adds up to seconds of total
+      // stall. Use an explicit async destination instead; the cost
+      // is that unflushed buffered lines can be lost if the
+      // process is SIGKILL'd, but the shutdown hook below
+      // (see `flushOnExit`) recovers what it can on clean exit.
+      const asyncStdout = pino.destination({ dest: 1, sync: false });
+      this.rootLogger = pino(pinoOptions, asyncStdout);
+      this.installFlushOnExit(asyncStdout);
     }
 
     // Create global logger
@@ -192,6 +204,34 @@ export class LoggerService implements ILoggerModule {
     }
 
     this.initialized = true;
+  }
+
+  /**
+   * Idempotency flag — multiple `LoggerModule.forRoot` invocations
+   * (tests, hot-reload) must not stack listeners on `process`.
+   */
+  private static flushHookInstalled = false;
+
+  /**
+   * Install a `beforeExit` / signal flush hook for an async pino
+   * destination (T#66). Recovers buffered lines on clean exit so
+   * the operator doesn't lose the last batch of logs to a bare
+   * `Ctrl+C`. SIGKILL still loses unflushed data — there's no
+   * recovery in user-space for that.
+   */
+  private installFlushOnExit(destination: { flushSync?: () => void }): void {
+    if (LoggerService.flushHookInstalled) return;
+    LoggerService.flushHookInstalled = true;
+    const flush = (): void => {
+      try {
+        destination.flushSync?.();
+      } catch {
+        /* best-effort */
+      }
+    };
+    process.once('beforeExit', flush);
+    process.once('SIGTERM', flush);
+    process.once('SIGINT', flush);
   }
 
   private getConfiguration(): any {

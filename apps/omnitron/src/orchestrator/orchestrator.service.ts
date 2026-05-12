@@ -28,11 +28,9 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import {
   PoolStrategy,
   SupervisionStrategy,
-  RestartDecision,
   type ProcessManager,
   type ISupervisorConfig,
   type ISupervisorChildConfig,
-  type ISupervisorChild,
   type IProcessMetrics,
   type IHealthStatus,
   type IProcessPoolOptions,
@@ -137,18 +135,29 @@ export class OrchestratorService extends EventEmitter {
    * `inFlight` — the currently-running restart promise (so a concurrent
    *   trigger doesn't kick off a parallel restart and tear down the half-
    *   started state from the previous one).
-   * `pending` — at most one queued follow-up. If MORE triggers come in
-   *   while a restart is already running, they collapse onto the same
-   *   pending bit; the queued restart will pick up whatever state is on
-   *   disk at the time it actually runs.
+   * `triggerSerial` — monotonically incremented by external trigger
+   *   entry points (BuildService onRebuild, RPC restartApp, manual
+   *   `omnitron restart`, deploy.service). Internal coalescer arms
+   *   that queue themselves DO NOT bump it.
+   * `firedSerial` — value of `triggerSerial` that the most recently
+   *   completed restart consumed. A trailing coalesced restart only
+   *   fires when `triggerSerial > firedSerial`, i.e. a genuinely new
+   *   external trigger arrived during the in-flight window. Two
+   *   coalescer arms colliding can no longer cause a self-perpetuating
+   *   loop because neither bumps `triggerSerial`.
    * `cooldownUntil` — absolute epoch ms timestamp. Any trigger received
-   *   before this clears is queued (via `pending`) instead of fired
-   *   immediately. Prevents the storm where esbuild's onEnd fires for a
-   *   freshly-spawned context milliseconds after the app reports online.
+   *   before this clears is queued instead of fired immediately.
+   *   Prevents the storm where esbuild's onEnd fires for a freshly-
+   *   spawned context milliseconds after the app reports online.
    */
   private readonly restartCoalescer = new Map<
     string,
-    { inFlight: Promise<AppHandle> | null; pending: boolean; cooldownUntil: number }
+    {
+      inFlight: Promise<AppHandle> | null;
+      triggerSerial: number;
+      firedSerial: number;
+      cooldownUntil: number;
+    }
   >();
 
   /**
@@ -557,56 +566,79 @@ export class OrchestratorService extends EventEmitter {
    * is what tests / non-coalescing callers can hit directly.
    */
   async restartApp(name: string): Promise<AppHandle> {
+    // External entry — record one new trigger and dispatch.
+    return this.restartAppCoalesced(name, /* fromExternal */ true);
+  }
+
+  /**
+   * Internal coalescer dispatcher.
+   *
+   * `fromExternal=true` bumps `triggerSerial` (a user / file-watcher /
+   * RPC asked us to restart). `fromExternal=false` is used by the
+   * recursive arms (cooldown-wait, await-inflight) which are NOT new
+   * triggers, just continuations — they must not bump or the trailing
+   * coalesced restart would re-fire forever.
+   */
+  private async restartAppCoalesced(name: string, fromExternal: boolean): Promise<AppHandle> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
     name = canonical;
 
     const state = this.getCoalescerState(name);
+    if (fromExternal) state.triggerSerial += 1;
+    const observedSerial = state.triggerSerial;
 
-    // Cooldown: the app reported online recently. Queue a single
-    // follow-up restart instead of tearing down a process that just
-    // finished its expensive boot.
+    // Cooldown: the app reported online recently. Wait it out, then
+    // proceed as a non-external continuation (we already counted this
+    // trigger when we first arrived).
     const now = Date.now();
     if (now < state.cooldownUntil) {
-      state.pending = true;
       const waitMs = state.cooldownUntil - now;
       this.logger.debug(
         { app: name, cooldownRemainingMs: waitMs },
         'Restart trigger received during post-online cooldown — queued'
       );
-      // Wait for the cooldown to expire, then run exactly one restart
-      // (or fold into an existing in-flight one).
       await sleep(waitMs);
-      return this.restartApp(name);
+      return this.restartAppCoalesced(name, /* fromExternal */ false);
     }
 
-    // Already restarting — fold into the running one and queue a follow-up.
+    // Already restarting — wait for it, then re-enter as a continuation.
+    // The trailing-fire gate at the end of the in-flight finally block
+    // is what re-fires us if our serial outranks what got consumed.
     if (state.inFlight) {
-      state.pending = true;
-      await state.inFlight.catch(() => { /* swallow — outer will re-throw on its own retry */ });
-      return this.restartApp(name);
+      await state.inFlight.catch(() => { /* outer awaiters surface their own errors */ });
+      // If the in-flight restart already consumed our serial (or a
+      // later one), we have nothing new to do — return its result by
+      // re-reading the current handle. Otherwise fall through and
+      // claim the slot ourselves.
+      if (state.firedSerial >= observedSerial) {
+        const refreshed = this.handles.get(name);
+        if (refreshed) return refreshed;
+      }
+      return this.restartAppCoalesced(name, /* fromExternal */ false);
     }
 
-    // Take the slot.
-    state.pending = false;
+    // Take the slot. Capture which serial this run is consuming —
+    // anything bumped after this is the next run's problem.
+    const consumedSerial = state.triggerSerial;
     const promise = this.restartAppNow(name);
     state.inFlight = promise;
 
     try {
-      // Successful restart sets the cooldown window via startPostOnlineCooldown(),
-      // which fires from the `app:online` transition inside startApp(). Doing it
-      // there (vs here in finally) keeps the timer correctly tied to the moment
+      // Cooldown window is started from the `app:online` transition
+      // inside startApp(), not here, so the timer is tied to the moment
       // the new child reports ready, not the moment our promise resolves.
       return await promise;
     } finally {
       state.inFlight = null;
-      if (state.pending) {
-        state.pending = false;
-        // Fire-and-forget: caller already got their handle back from the
-        // first restart; the trailing one exists to pick up any change
-        // that arrived during the in-flight window.
-        this.restartApp(name).catch((err) => {
+      state.firedSerial = consumedSerial;
+      // Trailing coalesced fire — only if a GENUINELY NEW external
+      // trigger arrived between when we claimed the slot and now.
+      // Two coalescer arms colliding can no longer cause this branch
+      // to fire because they don't bump triggerSerial.
+      if (state.triggerSerial > consumedSerial) {
+        this.restartAppCoalesced(name, /* fromExternal */ false).catch((err) => {
           this.logger.error(
             { app: name, error: (err as Error).message },
             'Trailing coalesced restart failed'
@@ -616,20 +648,28 @@ export class OrchestratorService extends EventEmitter {
     }
   }
 
-  /** Internal restart hot path — assumes coalescer has cleared us to proceed. */
+  /**
+   * Internal restart hot path — assumes coalescer has cleared us to proceed.
+   *
+   * Architecture note (Fix #247): we deliberately do NOT tear down the
+   * esbuild watch or invalidate buildResults here. The watch is what
+   * triggered us in the first place — its bundle is already fresh, and
+   * disposing the context creates a window where the next save can be
+   * missed (esbuild's metafile doesn't carry over between contexts).
+   *
+   * `launchBootstrapMode` sees the live buildResult + watch and skips
+   * the cold rebuild, so a restart cycle is just: kill old child →
+   * spawn new child with the bundle that was already on disk. The
+   * bootstrap-config cache is cleared because changes to `bootstrap.ts`
+   * (topology definition) need to take effect on the next start.
+   */
   private async restartAppNow(name: string): Promise<AppHandle> {
     const handle = this.handles.get(name);
     if (!handle) throw new Error(`Unknown app: ${name}`);
     const entry = handle.entry;
 
-    // In dev mode, clear bootstrap config cache so topology changes are picked up
     if (this.devMode && entry.bootstrap) {
       clearCacheFor(path.resolve(entry.cwd ?? this.cwd, entry.bootstrap));
-      // Stop esbuild watch and clear stale build result — launchBootstrapMode will rebuild + re-watch
-      if (this.buildService) {
-        await this.buildService.unwatchApp(name);
-      }
-      this.buildResults.delete(name);
     }
 
     await this.stopApp(name);
@@ -639,7 +679,7 @@ export class OrchestratorService extends EventEmitter {
   private getCoalescerState(name: string) {
     let state = this.restartCoalescer.get(name);
     if (!state) {
-      state = { inFlight: null, pending: false, cooldownUntil: 0 };
+      state = { inFlight: null, triggerSerial: 0, firedSerial: 0, cooldownUntil: 0 };
       this.restartCoalescer.set(name, state);
     }
     return state;
@@ -1144,6 +1184,13 @@ export class OrchestratorService extends EventEmitter {
     }
 
     // Build all entry points via esbuild (dev mode bundles from source .ts)
+    //
+    // On a *restart* (as opposed to a first start), buildResults already
+    // has a fresh entry — esbuild's watcher just produced the bundle
+    // that triggered us. Reusing it skips a redundant cold rebuild
+    // (which was costing ~500ms per restart and racing against the
+    // watcher's own incremental output). The watch context is also
+    // preserved (we never unwatched), so we don't re-arm it either.
     if (definition && this.devMode) {
       try {
         if (!this.buildService) {
@@ -1153,29 +1200,57 @@ export class OrchestratorService extends EventEmitter {
               this.metricsBridge?.recordEsbuildBuild(app, kind, durationMs, ok),
           });
         }
-        const buildResult = await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition);
-        this.buildResults.set(entry.name, buildResult);
-        this.logger.info(
-          { app: entry.name, modules: buildResult.modulePaths.size },
-          'Built entry points via esbuild'
-        );
 
-        // Start esbuild watch for incremental rebuilds on source changes.
-        // On rebuild → restart the app (stop + re-build + re-launch).
-        await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
-          this.logger.info({ app: entry.name }, 'esbuild rebuild detected — restarting');
-          // We don't have a precise rebuild duration on this callback path
-          // (esbuild's incremental builds run inside the Go sidecar), but
-          // we can at least count rebuilds — the time-spent histogram is
-          // populated by initial buildApp calls.
-          this.metricsBridge?.recordEsbuildBuild(entry.name, 'rebuild', 0, true);
-          this.restartApp(entry.name).catch((err) => {
-            this.logger.error(
-              { app: entry.name, error: (err as Error).message },
-              'Restart after esbuild rebuild failed'
-            );
+        const existing = this.buildResults.get(entry.name);
+        const existingWatch = this.buildService.isWatching?.(entry.name);
+
+        if (existing && existingWatch) {
+          // Restart path — keep the already-built bundle and live watch.
+          this.logger.debug(
+            { app: entry.name, modules: existing.modulePaths.size },
+            'Reusing existing esbuild bundle + watch (restart path)'
+          );
+        } else {
+          // First-start path — build everything from cold and arm the watcher.
+          const buildResult = await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition);
+          this.buildResults.set(entry.name, buildResult);
+          this.logger.info(
+            { app: entry.name, modules: buildResult.modulePaths.size },
+            'Built entry points via esbuild'
+          );
+
+          // Start esbuild watch for incremental rebuilds on source changes.
+          // On rebuild → fire a restart trigger; the coalescer takes it
+          // from there.
+          await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
+            // Gate: skip if the app is in a non-running state — repeated
+            // restarts of an escalated/errored process just churn forever
+            // without forward progress (Fix #248).
+            // Skip restart when the app is in a terminal non-running
+            // state. Includes 'crashed' (supervisor escalated after
+            // exceeding its restart budget) and 'errored' (start
+            // failed). 'stopped' means operator explicitly stopped it.
+            // In all three cases, restarting just churns a known-broken
+            // process; the operator must fix the underlying issue and
+            // call `omnitron start <app>` to clear the state.
+            const status = this.getAppStatus(entry.name);
+            if (status === 'errored' || status === 'crashed' || status === 'stopped') {
+              this.logger.warn(
+                { app: entry.name, status },
+                'esbuild rebuild detected but app is not running — skipping restart'
+              );
+              return;
+            }
+            this.logger.info({ app: entry.name }, 'esbuild rebuild detected — restarting');
+            this.metricsBridge?.recordEsbuildBuild(entry.name, 'rebuild', 0, true);
+            this.restartApp(entry.name).catch((err) => {
+              this.logger.error(
+                { app: entry.name, error: (err as Error).message },
+                'Restart after esbuild rebuild failed'
+              );
+            });
           });
-        });
+        }
       } catch (err) {
         // The "fall back to tsx" wording was misleading — the orchestrator
         // does not inject a tsx loader into spawned children, so without
@@ -1412,11 +1487,12 @@ export class OrchestratorService extends EventEmitter {
       window: policy.window ?? config.supervision.window,
       backoff: policy.backoff ?? config.supervision.backoff,
       children,
-      onChildCrash: async (_child: ISupervisorChild, _error: Error): Promise<RestartDecision> => {
-        // Always restart — supervisor's maxRestarts/window handles escalation.
-        // Critical flag determines whether exceeding max restarts kills the app.
-        return RestartDecision.RESTART;
-      },
+      // No custom onChildCrash — supervisor's built-in budget gate
+      // (process-supervisor.ts:524-531) does what we want:
+      //   * within maxRestarts/window → RESTART
+      //   * over budget → ESCALATE (if child is critical) or IGNORE
+      // Wiring an unconditional RESTART here masked the budget and
+      // turned every crashing child into an infinite respawn storm.
     };
 
     // Create supervisor WITHOUT starting — wire events first to avoid race condition
@@ -1525,11 +1601,12 @@ export class OrchestratorService extends EventEmitter {
       window: policy.window ?? config.supervision.window,
       backoff: policy.backoff ?? config.supervision.backoff,
       children: [childConfig],
-      onChildCrash: async (_child: ISupervisorChild, _error: Error): Promise<RestartDecision> => {
-        // Always restart — supervisor's maxRestarts/window handles escalation.
-        // Critical flag determines whether exceeding max restarts kills the app.
-        return RestartDecision.RESTART;
-      },
+      // No custom onChildCrash — supervisor's built-in budget gate
+      // (process-supervisor.ts:524-531) does what we want:
+      //   * within maxRestarts/window → RESTART
+      //   * over budget → ESCALATE (if child is critical) or IGNORE
+      // Wiring an unconditional RESTART here masked the budget and
+      // turned every crashing child into an infinite respawn storm.
     };
 
     // Create supervisor WITHOUT starting — wire events first to avoid race condition

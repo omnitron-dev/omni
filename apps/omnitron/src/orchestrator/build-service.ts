@@ -416,6 +416,17 @@ export class BuildService {
   }
 
   /**
+   * True iff a live esbuild watch context exists for this app. The
+   * orchestrator uses this to decide whether a restart needs a cold
+   * rebuild + watch (first start) or can reuse the existing bundle
+   * and live watcher (subsequent restart).
+   */
+  isWatching(appName: string): boolean {
+    const handles = this.watchHandles.get(appName);
+    return !!handles && handles.length > 0;
+  }
+
+  /**
    * Dispose all watch contexts and clean up.
    */
   async dispose(): Promise<void> {

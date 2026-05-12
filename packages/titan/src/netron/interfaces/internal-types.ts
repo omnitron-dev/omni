@@ -6,7 +6,7 @@
  * @since 0.5.0
  */
 
-import type { INetron, ILocalPeer } from './core-types.js';
+import type { INetron, ILocalPeer, IAuthorizationManager } from './core-types.js';
 import type { ServiceStub } from '../service-stub.js';
 import type { AuthCredentials, AuthResult } from '../auth/types.js';
 
@@ -62,6 +62,17 @@ export interface INetronInternal extends INetron {
    * @internal
    */
   authenticationManager?: IAuthenticationManager;
+
+  /**
+   * Authorization manager for method-level access control
+   * (roles/permissions/scopes). Optional — only present when
+   * authorization is configured via `Netron.configureAuth(authn, authz)`.
+   * Transport servers read this to auto-wire NetronAuthMiddleware so
+   * that `@Public({ auth: { roles, permissions, scopes } })`
+   * decorations on services are enforced uniformly.
+   * @internal
+   */
+  authorizationManager?: IAuthorizationManager;
 }
 
 /**

@@ -56,6 +56,40 @@ function matchesLabels(sample: MetricSample, labels: Record<string, string>): bo
   return true;
 }
 
+/**
+ * Stable label value for metrics emitted by the daemon itself
+ * rather than an app (T#63). Pre-T#63, daemon-scoped collectors
+ * (Netron internals, the health monitor, the orphan reaper)
+ * wrote samples without an `app` label. The storage layer
+ * uniformly coerced missing-or-empty to `''`, which then leaked
+ * into per-app rollups: `sum by (app) (...)` grew a phantom group
+ * labelled `app=""` whose contents were daemon traffic mixed
+ * into app totals.
+ *
+ * The fix normalises every inbound sample at `write()` time so
+ * daemon samples carry `app='__daemon__'`. Callers that want
+ * "apps only" rollups can filter with `apps: someAppList` or
+ * exclude `__daemon__` explicitly; the schema is now honest about
+ * scope.
+ */
+export const DAEMON_APP_LABEL = '__daemon__';
+
+/**
+ * Promote daemon-scoped samples to a stable sentinel label
+ * (T#63). Idempotent — re-running on an already-normalised
+ * sample is a no-op. Returns a new sample only when the label
+ * actually needed correction; otherwise hands back the original
+ * reference to avoid allocations on the hot path.
+ */
+function normaliseAppScope(sample: MetricSample): MetricSample {
+  const a = sample.labels?.['app'];
+  if (a && a !== '') return sample;
+  return {
+    ...sample,
+    labels: { ...sample.labels, app: DAEMON_APP_LABEL },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // MemoryMetricsStorage
 // ---------------------------------------------------------------------------
@@ -74,8 +108,18 @@ export class MemoryMetricsStorage implements IMetricsStorage {
   }
 
   async write(samples: MetricSample[]): Promise<void> {
+    // T#63: normalise the `app` label BEFORE indexing. Samples
+    // emitted from daemon-scoped collectors (Netron internals,
+    // health monitor, etc.) historically arrived with no `app`
+    // label, which the read paths translated to the empty string.
+    // Empty-string app then leaked into per-app rollups: a panel
+    // like `sum by (app) (rate(rpc_requests_total[1m]))` grew a
+    // phantom group labelled `app=""`. Coercing to a stable
+    // `__daemon__` sentinel keeps daemon traffic out of app rollups
+    // (callers filter on it explicitly) and makes the storage
+    // schema honest about scope.
     for (const s of samples) {
-      this.ring[this.head] = s;
+      this.ring[this.head] = normaliseAppScope(s);
       this.head = (this.head + 1) % this.capacity;
       if (this.size < this.capacity) this.size++;
     }
@@ -257,7 +301,8 @@ export class PostgresMetricsStorage implements IMetricsStorage {
   }
 
   async write(samples: MetricSample[]): Promise<void> {
-    this.buffer.push(...samples);
+    // T#63: normalise daemon-scope (see MemoryMetricsStorage.write).
+    for (const s of samples) this.buffer.push(normaliseAppScope(s));
     if (this.buffer.length >= this.batchSize) {
       await this.flushBuffer();
     }
@@ -485,7 +530,8 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
 
   async write(samples: MetricSample[]): Promise<void> {
     await this.ensureTable();
-    this.buffer.push(...samples);
+    // T#63: normalise daemon-scope (see MemoryMetricsStorage.write).
+    for (const s of samples) this.buffer.push(normaliseAppScope(s));
     if (this.buffer.length >= this.batchSize) {
       await this.flushBuffer();
     }

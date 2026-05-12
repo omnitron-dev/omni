@@ -41,7 +41,13 @@ export { MetricsRegistry } from './registry.js';
 export { MetricsCollector } from './collector.js';
 
 // Storage
-export { MemoryMetricsStorage, PostgresMetricsStorage, SQLiteMetricsStorage, parseMaxAge } from './storage.js';
+export {
+  MemoryMetricsStorage,
+  PostgresMetricsStorage,
+  SQLiteMetricsStorage,
+  parseMaxAge,
+  DAEMON_APP_LABEL,
+} from './storage.js';
 
 // Service
 export { MetricsService } from './metrics.service.js';

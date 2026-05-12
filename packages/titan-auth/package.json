@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./preset/shared-session": {
+      "types": "./dist/preset/shared-session.d.ts",
+      "default": "./dist/preset/shared-session.js"
     }
   },
   "files": [

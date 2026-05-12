@@ -136,22 +136,6 @@ export function generateUuidV7(): string {
 }
 
 /**
- * Extract the Unix timestamp (ms) from a UUIDv7 string.
- * Useful for debugging, sorting validation, and time-based queries.
- *
- * @param uuid - A UUIDv7 string (with or without dashes)
- * @returns Unix timestamp in milliseconds, or NaN if invalid
- */
-export function extractUuidV7Timestamp(uuid: string): number {
-  const hex = uuid.replace(/-/g, '');
-  if (hex.length !== 32) return NaN;
-  // First 12 hex chars = 48-bit timestamp
-  const hi = parseInt(hex.slice(0, 8), 16);
-  const lo = parseInt(hex.slice(8, 12), 16);
-  return hi * 0x10000 + lo;
-}
-
-/**
  * Generate a cryptographically secure resolution ID.
  * Format: res_<32-char UUID without dashes>
  *
@@ -258,20 +242,4 @@ export function generateUuid(): string {
  */
 export function generatePrefixedId(prefix: string): string {
   return prefix + '_' + randomBytes(8).toString('hex');
-}
-
-/**
- * Generate a short secure ID (12 characters).
- * Uses 6 bytes of entropy encoded as hex.
- * Suitable for human-readable IDs where collision is less critical.
- *
- * @returns A 12-character hexadecimal ID
- * @example
- * ```typescript
- * const shortId = generateShortId();
- * // => "a1b2c3d4e5f6"
- * ```
- */
-export function generateShortId(): string {
-  return randomBytes(6).toString('hex');
 }

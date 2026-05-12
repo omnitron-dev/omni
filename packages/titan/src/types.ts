@@ -410,26 +410,6 @@ export interface IProcessMetrics {
 }
 
 /**
- * Lifecycle event interface.
- *
- * @stable
- * @since 0.1.0
- */
-export interface ILifecycleEvent {
-  type: string;
-  timestamp: number;
-  data?: any;
-}
-
-/**
- * Event handler function type for application events.
- *
- * @stable
- * @since 0.1.0
- */
-export type ApplicationEventHandler<T = unknown> = (data?: T) => void | Promise<void>;
-
-/**
  * Configuration value type.
  * Represents valid configuration values.
  *
@@ -456,69 +436,21 @@ export interface ConfigObject {
  */
 export interface ConfigArray extends Array<ConfigValue> {}
 
-/**
- * Signal handler function type.
- *
- * @stable
- * @since 0.1.0
- */
-export type SignalHandler = (signal: NodeJS.Signals) => void | Promise<void>;
-
-/**
- * Module configuration for dynamic modules.
- *
- * @stable
- * @since 0.1.0
- */
-export interface IDynamicModuleConfig {
-  module: Token<IModule>;
-  imports?: Array<Token<IModule>>;
-  providers?: Provider[];
-  exports?: Array<Token<unknown>>;
-}
-
-/**
- * Unhandled rejection handler type.
- *
- * @stable
- * @since 0.1.0
- */
-export type RejectionHandler = (reason: unknown, promise: Promise<unknown>) => void;
-
-/**
- * Module export type.
- *
- * @stable
- * @since 0.1.0
- */
-export type ModuleExport = { name: string } | { toString(): string } | string;
-
-/**
- * Deep merge function options.
- *
- * @stable
- * @since 0.1.0
- */
-export interface DeepMergeOptions {
-  arrayMerge?: 'replace' | 'concat' | 'merge';
-}
-
 // ============================================================================
 // Lifecycle Types
 // ============================================================================
 
 /**
- * Re-export lifecycle types from types/lifecycle.ts
+ * Re-export the unified lifecycle interface used by every Titan service
+ * and module. The five type guards (`isLifecycle`, `hasOnInit`,
+ * `hasOnStart`, `hasOnStop`, `hasOnDestroy`) and the
+ * `ServiceLifecycleState` enum that previously sat alongside this were
+ * removed in the T#77 cleanup — they had zero consumers across the
+ * entire monorepo. If runtime-shape detection becomes necessary again,
+ * a simple `typeof svc.onInit === 'function'` check at the call site
+ * is clearer than a re-export.
  *
  * @stable
  * @since 0.5.0
  */
-export {
-  type ILifecycle,
-  ServiceLifecycleState,
-  isLifecycle,
-  hasOnInit,
-  hasOnStart,
-  hasOnStop,
-  hasOnDestroy,
-} from './types/lifecycle.js';
+export { type ILifecycle } from './types/lifecycle.js';

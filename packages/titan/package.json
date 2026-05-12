@@ -103,6 +103,10 @@
     "./utils": {
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"
+    },
+    "./tracing": {
+      "types": "./dist/tracing/index.d.ts",
+      "default": "./dist/tracing/index.js"
     }
   },
   "files": [

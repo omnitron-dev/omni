@@ -120,6 +120,34 @@ export async function createAndStartApp(options?: {
 export * from './types.js';
 
 // ============================================================================
+// Distributed Tracing (T#73)
+// ============================================================================
+
+/**
+ * Distributed-tracing propagation primitives — W3C `traceparent`-compatible
+ * trace/span ids carried across async boundaries via `AsyncLocalStorage`.
+ * Foundation for log correlation and cross-RPC trace stitching; deeper
+ * integrations (Netron headers, logger bindings, metric exemplars) build
+ * on this module without requiring an OTel SDK dependency.
+ *
+ * For the full surface, import from `@omnitron-dev/titan/tracing`.
+ *
+ * @stable
+ * @since 0.1.4
+ */
+export {
+  createSpanId,
+  createTraceId,
+  currentTrace,
+  extractTraceparent,
+  formatTraceparent,
+  parseTraceparent,
+  startSpan,
+  withTrace,
+  type TraceContext,
+} from './tracing/index.js';
+
+// ============================================================================
 // Built-in Modules
 // ============================================================================
 // DO NOT RE-EXPORT MODULES HERE!

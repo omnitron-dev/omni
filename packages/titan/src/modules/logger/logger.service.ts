@@ -3,8 +3,45 @@
  */
 
 import os from 'node:os';
+import { Writable } from 'node:stream';
 import pino, { Logger as PinoLogger, multistream } from 'pino';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
+
+/**
+ * T#67: Wrap a user-provided stream so its `_write` cannot block
+ * pino's multistream hot path. Deferring the inner write to a
+ * `setImmediate` tick yields back to the event loop after each
+ * dispatch and ensures one slow downstream consumer (or a fully
+ * synchronous one) can't stall pino, the daemon, or its siblings.
+ *
+ * Already-wrapped streams are returned as-is via a marker symbol
+ * so repeated initialisations (tests, hot-reload) don't pile up
+ * forwarders.
+ */
+const ASYNC_WRAPPED = Symbol.for('@omnitron-dev/titan/logger/async-wrapped');
+
+function wrapAsyncStream(dest: NodeJS.WritableStream): NodeJS.WritableStream {
+  if (!dest || (dest as any)[ASYNC_WRAPPED]) return dest;
+  const wrapper = new Writable({
+    write(chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) {
+      // Defer to the next macrotask so a sync `_write` on the inner
+      // stream can't run in the same tick as pino's logging call.
+      setImmediate(() => {
+        try {
+          // Mirror Node's "drain"-style backpressure signal by
+          // ignoring the return value — `_write` is non-blocking,
+          // and bookkeeping on the inner stream is its own concern.
+          dest.write(chunk);
+          callback();
+        } catch (err) {
+          callback(err as Error);
+        }
+      });
+    },
+  });
+  (wrapper as any)[ASYNC_WRAPPED] = true;
+  return wrapper as unknown as NodeJS.WritableStream;
+}
 
 import { LOGGER_OPTIONS_TOKEN, LOGGER_TRANSPORTS_TOKEN, LOGGER_PROCESSORS_TOKEN } from './logger.tokens.js';
 
@@ -168,14 +205,30 @@ export class LoggerService implements ILoggerModule {
     const hasDestinations = destinations && destinations.length > 0;
 
     if (hasDestinations) {
+      // T#67: pino's multistream calls `.write()` on every registered
+      // stream synchronously within its hot path. If any of those
+      // streams has a synchronous `_write` — or one that does a
+      // blocking syscall (slow NFS, full disk on EBS, a transport
+      // chaining back into another sync logger) — the daemon's
+      // event loop stalls for the duration of that syscall. Wrap
+      // every USER-supplied stream in an async forwarder so a slow
+      // sub-stream can't block pino itself or its siblings. The
+      // process's own `process.stdout` is left untouched: it's
+      // either a real TTY (already async for most pipes) or
+      // managed by the host runtime.
       const streams: Array<{ stream: NodeJS.WritableStream; level?: string }> = [
         { stream: process.stdout as unknown as NodeJS.WritableStream },
       ];
       for (const dest of destinations) {
         if ('stream' in dest && dest.stream) {
-          streams.push({ stream: (dest as any).stream, level: (dest as any).level });
+          streams.push({
+            stream: wrapAsyncStream((dest as any).stream),
+            level: (dest as any).level,
+          });
         } else {
-          streams.push({ stream: dest as unknown as NodeJS.WritableStream });
+          streams.push({
+            stream: wrapAsyncStream(dest as unknown as NodeJS.WritableStream),
+          });
         }
       }
       this.rootLogger = pino(pinoOptions, multistream(streams as any));

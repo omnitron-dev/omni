@@ -382,6 +382,20 @@ export interface ISupervisorChild {
   pool?: IProcessPoolOptions;
   optional?: boolean;
   propertyKey?: string; // Property key for runtime resolution
+  /**
+   * Per-child shutdown deadline in milliseconds (T#61, OTP-style).
+   *
+   * When the supervisor stops this child, the SIGTERM → SIGKILL
+   * ladder waits up to this many ms before escalating. Without
+   * the override, the ladder uses the hardcoded 5s budget that
+   * suits most workloads but is too generous for a tiny HTTP
+   * server and too short for a database that needs to flush a
+   * checkpoint. Two special markers:
+   *
+   *   - omitted / undefined → use the default 5s ladder
+   *   - 0                   → immediate SIGKILL (OTP's `:brutal_kill`)
+   */
+  shutdownTimeout?: number;
 }
 
 /**
@@ -434,6 +448,11 @@ export interface ISupervisorChildConfig {
   poolOptions?: IProcessPoolOptions;
   critical?: boolean;
   optional?: boolean;
+  /**
+   * Per-child shutdown deadline in milliseconds (T#61, OTP-style).
+   * See {@link ISupervisorChild.shutdownTimeout} for semantics.
+   */
+  shutdownTimeout?: number;
 }
 
 /**

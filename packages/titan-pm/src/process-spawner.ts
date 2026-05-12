@@ -89,7 +89,7 @@ export class WorkerHandle implements IWorkerHandle {
     return (this.worker as ChildProcess).pid;
   }
 
-  async terminate(): Promise<void> {
+  async terminate(opts?: { shutdownTimeout?: number }): Promise<void> {
     try {
       this._status = ProcessStatus.STOPPING;
 
@@ -105,8 +105,9 @@ export class WorkerHandle implements IWorkerHandle {
       } else {
         const child = this.worker as ChildProcess;
 
-        // Wait for actual process exit with proper timeout handling
-        await this.terminateChildProcess(child);
+        // T#61: thread the optional per-child shutdown deadline
+        // through. Without an override the legacy 5s ladder applies.
+        await this.terminateChildProcess(child, opts?.shutdownTimeout);
       }
 
       // Clean up Unix socket file (E1)
@@ -127,12 +128,41 @@ export class WorkerHandle implements IWorkerHandle {
   }
 
   /**
-   * Terminate child process with proper exit verification
+   * Terminate child process with proper exit verification.
+   *
+   * T#61: optional `totalDeadlineMs` lets the supervisor's per-child
+   * `shutdownTimeout` setting override the default 5s ladder. Two
+   * special values:
+   *
+   *   - `undefined` (default): keep the legacy 2s + 2s + 1s ladder.
+   *   - `0` (OTP's `:brutal_kill`): send SIGKILL immediately, no
+   *     graceful shutdown attempt.
+   *
+   * For positive overrides the ladder rescales:
+   *   - graceful IPC message wait    = 40% of the budget
+   *   - then SIGTERM, wait            = 40% of the budget
+   *   - then SIGKILL, final wait      = 20% of the budget
+   *
+   * These ratios match the old 2:2:1 split so a 5000 ms override
+   * behaves identically to the legacy default.
    */
-  private async terminateChildProcess(child: ChildProcess): Promise<void> {
-    const GRACEFUL_TIMEOUT = 2000;
-    const SIGTERM_TIMEOUT = 2000;
-    const SIGKILL_TIMEOUT = 1000;
+  private async terminateChildProcess(child: ChildProcess, totalDeadlineMs?: number): Promise<void> {
+    let GRACEFUL_TIMEOUT = 2000;
+    let SIGTERM_TIMEOUT = 2000;
+    let SIGKILL_TIMEOUT = 1000;
+
+    if (totalDeadlineMs !== undefined) {
+      if (totalDeadlineMs === 0) {
+        // Brutal-kill: immediate SIGKILL, very short final wait.
+        GRACEFUL_TIMEOUT = 0;
+        SIGTERM_TIMEOUT = 0;
+        SIGKILL_TIMEOUT = 500;
+      } else {
+        GRACEFUL_TIMEOUT = Math.floor(totalDeadlineMs * 0.4);
+        SIGTERM_TIMEOUT = Math.floor(totalDeadlineMs * 0.4);
+        SIGKILL_TIMEOUT = totalDeadlineMs - GRACEFUL_TIMEOUT - SIGTERM_TIMEOUT;
+      }
+    }
 
     return new Promise((resolve, reject) => {
       let resolved = false;

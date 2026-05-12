@@ -163,7 +163,7 @@ export class MemoryMetricsStorage implements IMetricsStorage {
     const series: MetricsTimeSeries[] = [];
     for (const g of groups.values()) {
       if (intervalMs > 0) {
-        g.points = bucketAggregate(g.points, intervalMs);
+        g.points = bucketAggregate(g.name, g.points, intervalMs);
       }
       // Sort ascending
       g.points.sort((a, b) => a.timestamp - b.timestamp);
@@ -392,7 +392,7 @@ export class PostgresMetricsStorage implements IMetricsStorage {
     if (filter.interval) {
       const intervalMs = parseIntervalMs(filter.interval);
       for (const g of groups.values()) {
-        g.points = bucketAggregate(g.points, intervalMs);
+        g.points = bucketAggregate(g.name, g.points, intervalMs);
       }
     }
 
@@ -665,7 +665,7 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
     if (filter.interval) {
       const intervalMs = parseIntervalMs(filter.interval);
       for (const g of groups.values()) {
-        g.points = bucketAggregate(g.points, intervalMs);
+        g.points = bucketAggregate(g.name, g.points, intervalMs);
       }
     }
 
@@ -781,28 +781,64 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Aggregate points into time buckets using AVG */
+/**
+ * Detect a counter metric by the Prometheus naming convention.
+ *
+ * Pre-T#70 the bucket aggregator averaged every value type. Averaging
+ * a counter — which is monotonically increasing — produces a value
+ * roughly equal to the bucket's mid-point, which is meaningless: a
+ * counter's bucket value should be its LAST observation so subsequent
+ * `rate()` / `increase()` calculations work. Heuristic detection from
+ * the metric name avoids threading type metadata through the storage
+ * layer, which is intentionally type-agnostic.
+ */
+function isCounterName(name: string): boolean {
+  return name.endsWith('_total') || name.endsWith('_count');
+}
+
+/**
+ * Aggregate points into time buckets.
+ *
+ *   - Counter metrics (`*_total`, `*_count`): take LAST value in each
+ *     bucket so subsequent `rate()` calculations work.
+ *   - Other metrics (gauges, latencies): take AVG.
+ *
+ * T#70: the unconditional AVG was a silent bug — counter dashboards
+ * (request rate, error rate, etc.) showed values an order of magnitude
+ * smaller than reality whenever an `interval:` parameter was supplied.
+ */
 function bucketAggregate(
+  name: string,
   points: Array<{ timestamp: number; value: number }>,
   intervalMs: number,
 ): Array<{ timestamp: number; value: number }> {
   if (points.length === 0 || intervalMs <= 0) return points;
+  const counter = isCounterName(name);
 
-  const buckets = new Map<number, { sum: number; count: number }>();
+  // For counters we keep `{ ts, last }` per bucket; for others we keep
+  // `{ sum, count }`. The discriminant is the same for both shapes —
+  // a counter bucket stores `count = -1` as a sentinel so the read
+  // path can branch.
+  interface Bucket { sum: number; count: number; last: number; lastTs: number }
+  const buckets = new Map<number, Bucket>();
   for (const p of points) {
     const bucket = Math.floor(p.timestamp / intervalMs) * intervalMs;
     const b = buckets.get(bucket);
     if (b) {
       b.sum += p.value;
       b.count++;
+      if (p.timestamp >= b.lastTs) {
+        b.last = p.value;
+        b.lastTs = p.timestamp;
+      }
     } else {
-      buckets.set(bucket, { sum: p.value, count: 1 });
+      buckets.set(bucket, { sum: p.value, count: 1, last: p.value, lastTs: p.timestamp });
     }
   }
 
   const result: Array<{ timestamp: number; value: number }> = [];
   for (const [ts, b] of buckets) {
-    result.push({ timestamp: ts, value: b.sum / b.count });
+    result.push({ timestamp: ts, value: counter ? b.last : b.sum / b.count });
   }
   return result.sort((a, b) => a.timestamp - b.timestamp);
 }

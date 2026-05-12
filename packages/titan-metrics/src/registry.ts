@@ -40,21 +40,36 @@ const DEFAULT_HISTOGRAM_BUCKETS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
 
-/** Stable serialisation of a labels object for map keys */
+/**
+ * Stable, COLLISION-FREE serialisation of a labels object for map keys.
+ *
+ * Pre-T#70 the implementation joined `${k}=${v}` pairs with `,` —
+ * which corrupts silently the moment ANY label value contained a
+ * literal `,` or `=`. A request like
+ * `counter('rpc_calls', { route: 'GET,POST /users' }, 1)` produced the
+ * key `route=GET,POST /users`, which `parseLabels` then split as
+ * `{ route: 'GET', 'POST /users': '' }` — quietly forking the time
+ * series in two. Prometheus exposition output then carried both
+ * misshapen series side by side.
+ *
+ * The fix URI-component-encodes both keys and values before joining.
+ * `,` and `=` (along with `%` itself) are now safe inside label values;
+ * the encoded characters round-trip through `parseLabels` losslessly.
+ */
 function labelKey(labels: Record<string, string>): string {
   const keys = Object.keys(labels).sort();
   if (keys.length === 0) return '';
-  return keys.map(k => `${k}=${labels[k]}`).join(',');
+  return keys.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(labels[k]!)}`).join(',');
 }
 
-/** Parse a label key back to an object */
+/** Parse a label key produced by `labelKey` back into a labels object. */
 function parseLabels(key: string): Record<string, string> {
   if (key === '') return {};
   const out: Record<string, string> = {};
-  const parts = key.split(',');
-  for (const part of parts) {
+  for (const part of key.split(',')) {
     const eq = part.indexOf('=');
-    out[part.slice(0, eq)] = part.slice(eq + 1);
+    if (eq < 0) continue;
+    out[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));
   }
   return out;
 }
@@ -144,6 +159,15 @@ export class MetricsRegistry {
 
   /** Observe a histogram value */
   histogram(name: string, labels: Record<string, string> = {}, value: number): void {
+    // T#70: reject non-finite observations. Pre-T#70, an accidental
+    // `histogram(name, labels, NaN)` (e.g. from a division-by-zero
+    // in a caller) silently poisoned the histogram permanently:
+    // `state.sum += NaN` makes every subsequent percentile NaN, and
+    // there's no way to recover short of evicting the series. Same
+    // problem with ±Infinity — bucket counts get bumped but the sum
+    // is unusable. Dropping non-finite observations matches
+    // Prometheus client_python's behaviour.
+    if (!Number.isFinite(value)) return;
     const entry = this.ensureMetric(name, 'histogram', 'Auto-registered histogram');
     const key = labelKey(labels);
     let state = entry.series.get(key) as HistogramState | undefined;

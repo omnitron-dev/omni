@@ -200,8 +200,9 @@ export class TelemetryRelayService extends EventEmitter {
       await this.transport.disconnect().catch(() => {});
     }
 
-    // Close WAL fd
-    this.wal?.dispose();
+    // T#70: await pending WAL writes before closing the FD so a
+    // graceful shutdown can't drop buffered telemetry.
+    if (this.wal) await this.wal.dispose();
   }
 
   /**

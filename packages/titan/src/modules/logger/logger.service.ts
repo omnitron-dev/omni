@@ -260,31 +260,50 @@ export class LoggerService implements ILoggerModule {
   }
 
   /**
-   * Idempotency flag — multiple `LoggerModule.forRoot` invocations
-   * (tests, hot-reload) must not stack listeners on `process`.
+   * Global registry of destinations whose buffered lines should be
+   * flushed on process exit (T#70).
+   *
+   * Pre-T#70 the flush hook was a single closure captured over the
+   * FIRST `LoggerService` instance's destination, gated by a static
+   * `flushHookInstalled` flag. Subsequent instances skipped
+   * installation — but their destinations were therefore never
+   * flushed at all, AND if the original instance was destroyed the
+   * hook referenced a dead destination. With this registry, every
+   * instance contributes its destination once; the single shared
+   * exit hook iterates over all of them.
+   *
+   * Using a Set (not an Array) means destroying an instance and then
+   * creating a fresh one with the same destination won't double-flush.
    */
+  private static flushDestinations = new Set<{ flushSync?: () => void }>();
   private static flushHookInstalled = false;
 
   /**
    * Install a `beforeExit` / signal flush hook for an async pino
-   * destination (T#66). Recovers buffered lines on clean exit so
-   * the operator doesn't lose the last batch of logs to a bare
+   * destination (T#66 + T#70). Recovers buffered lines on clean exit
+   * so the operator doesn't lose the last batch of logs to a bare
    * `Ctrl+C`. SIGKILL still loses unflushed data — there's no
    * recovery in user-space for that.
+   *
+   * The actual exit hook is installed ONCE per process; later
+   * instances just register their destination into the shared set.
    */
   private installFlushOnExit(destination: { flushSync?: () => void }): void {
+    LoggerService.flushDestinations.add(destination);
     if (LoggerService.flushHookInstalled) return;
     LoggerService.flushHookInstalled = true;
-    const flush = (): void => {
-      try {
-        destination.flushSync?.();
-      } catch {
-        /* best-effort */
+    const flushAll = (): void => {
+      for (const dest of LoggerService.flushDestinations) {
+        try {
+          dest.flushSync?.();
+        } catch {
+          /* best-effort */
+        }
       }
     };
-    process.once('beforeExit', flush);
-    process.once('SIGTERM', flush);
-    process.once('SIGINT', flush);
+    process.once('beforeExit', flushAll);
+    process.once('SIGTERM', flushAll);
+    process.once('SIGINT', flushAll);
   }
 
   private getConfiguration(): any {

@@ -795,7 +795,8 @@ export class Application implements IApplication {
   }
 
   off<E extends ApplicationEvent>(event: E, handler?: EventHandler): void {
-    this._events.off(event, handler);
+    if (handler) this._events.off(event, handler);
+    else this._events.removeAllListeners(event);
   }
 
   once<E extends ApplicationEvent>(event: E, handler: EventHandler): void {

@@ -6,7 +6,7 @@
  * @module titan/modules/auth
  */
 
-import { jwtVerify, createRemoteJWKSet, SignJWT } from 'jose';
+import { jwtVerify, createRemoteJWKSet, SignJWT, decodeProtectedHeader } from 'jose';
 import { JWTExpired } from 'jose/errors';
 import type { JWTVerifyResult, JWTPayload as JoseJWTPayload } from 'jose';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
@@ -54,7 +54,18 @@ export class TokenExpiredError extends InvalidTokenError {
  * Default module options.
  */
 const DEFAULT_OPTIONS: Required<
-  Omit<IAuthModuleOptions, 'jwtSecret' | 'jwksUrl' | 'issuer' | 'audience' | 'serviceKey' | 'anonKey' | 'urlSigningKey'>
+  Omit<
+    IAuthModuleOptions,
+    | 'jwtSecret'
+    | 'jwksUrl'
+    | 'issuer'
+    | 'audience'
+    | 'serviceKey'
+    | 'anonKey'
+    | 'urlSigningKey'
+    | 'verificationKeys'
+    | 'requireKid'
+  >
 > = {
   algorithm: 'HS256',
   defaultTenantId: 'default',
@@ -94,6 +105,14 @@ export class JWTService implements IJWTService, ISignedUrlService {
   private secret: Uint8Array | null = null;
   private urlSigningSecret: Uint8Array | null = null;
 
+  /**
+   * Multi-key verification registry, keyed by the JWT `kid` header.
+   * Lazily built from `options.verificationKeys` in `initializeKeys()`.
+   * Empty when no rotation is configured — in that case verification
+   * uses the legacy single `secret` directly.
+   */
+  private readonly verificationKeys: Map<string, Uint8Array> = new Map();
+
   // Token cache with LRU eviction
   private readonly tokenCache: Map<string, ITokenCacheEntry> = new Map();
   private cacheHits = 0;
@@ -111,7 +130,7 @@ export class JWTService implements IJWTService, ISignedUrlService {
    * Initialize cryptographic keys based on configuration.
    */
   private initializeKeys(): void {
-    const { algorithm, jwtSecret, jwksUrl, urlSigningKey } = this.options;
+    const { algorithm, jwtSecret, jwksUrl, urlSigningKey, verificationKeys } = this.options;
 
     // Initialize JWT secret for HS256
     if (algorithm === 'HS256' && jwtSecret) {
@@ -129,6 +148,29 @@ export class JWTService implements IJWTService, ISignedUrlService {
       }
     }
 
+    // Initialize the kid-keyed verification registry for HS256 rotation.
+    // Each entry is encoded once at boot so the hot verify path doesn't
+    // pay the TextEncoder cost per request.
+    if (verificationKeys) {
+      for (const [kid, secret] of Object.entries(verificationKeys)) {
+        if (typeof kid !== 'string' || kid.length === 0) {
+          this.logger.warn({ kid }, 'Ignoring verificationKeys entry with empty/invalid kid');
+          continue;
+        }
+        if (typeof secret !== 'string' || secret.length === 0) {
+          this.logger.warn({ kid }, 'Ignoring verificationKeys entry with empty secret');
+          continue;
+        }
+        this.verificationKeys.set(kid, new TextEncoder().encode(secret));
+      }
+      if (this.verificationKeys.size > 0) {
+        this.logger.debug(
+          { kids: Array.from(this.verificationKeys.keys()) },
+          'Initialized kid-keyed JWT verification registry',
+        );
+      }
+    }
+
     // Initialize URL signing secret
     const signingKey = urlSigningKey ?? jwtSecret;
     if (signingKey) {
@@ -136,7 +178,7 @@ export class JWTService implements IJWTService, ISignedUrlService {
     }
 
     // Validate configuration
-    if (!this.secret && !this.jwks) {
+    if (!this.secret && !this.jwks && this.verificationKeys.size === 0) {
       this.logger.warn('No JWT verification key configured. JWT verification will fail.');
     }
   }
@@ -183,9 +225,21 @@ export class JWTService implements IJWTService, ISignedUrlService {
 
   /**
    * Verify token with configured key.
+   *
+   * Resolution order:
+   *   1. RS256/ES256 with JWKS configured → JWKS (kid handled by JWKS).
+   *   2. HS256 with `verificationKeys` set:
+   *      - Token carries a `kid` header → look up in the registry.
+   *        Unknown kid is a hard rejection (don't silently fall through
+   *        to the legacy secret, which would defeat the rotation
+   *        boundary).
+   *      - Token has no `kid` header → fall through to the legacy
+   *        single `secret` (back-compat during rotation introduction),
+   *        unless `requireKid: true` is set, in which case reject.
+   *   3. HS256 with a single `secret` only → use it directly.
    */
   private async verifyWithKey(token: string): Promise<JWTVerifyResult<JoseJWTPayload>> {
-    const { algorithm, issuer, audience } = this.options;
+    const { algorithm, issuer, audience, requireKid } = this.options;
 
     const verifyOptions: { algorithms: string[]; issuer?: string; audience?: string } = {
       algorithms: [algorithm],
@@ -201,6 +255,36 @@ export class JWTService implements IJWTService, ISignedUrlService {
 
     if (this.jwks) {
       return jwtVerify(token, this.jwks, verifyOptions);
+    }
+
+    if (this.verificationKeys.size > 0) {
+      // decodeProtectedHeader does NOT verify the signature — it only
+      // parses the base64url JOSE header. We use it solely to read
+      // `kid` and pick the right key for the real verify call below.
+      let header: ReturnType<typeof decodeProtectedHeader>;
+      try {
+        header = decodeProtectedHeader(token);
+      } catch {
+        throw new InvalidTokenError('Malformed JWT header');
+      }
+      const kid = header.kid;
+      if (typeof kid === 'string' && kid.length > 0) {
+        const key = this.verificationKeys.get(kid);
+        if (!key) {
+          throw new InvalidTokenError(
+            `Unknown JWT kid: '${kid}'`,
+            'UNKNOWN_KID',
+          );
+        }
+        return jwtVerify(token, key, verifyOptions);
+      }
+      if (requireKid) {
+        throw new InvalidTokenError(
+          'Token missing required `kid` header',
+          'KID_REQUIRED',
+        );
+      }
+      // No kid claim — fall through to the legacy single secret below.
     }
 
     if (this.secret) {

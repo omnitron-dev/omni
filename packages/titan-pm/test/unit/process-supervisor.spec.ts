@@ -264,6 +264,57 @@ describe('ProcessSupervisor', () => {
       );
     });
 
+    it('applies backoff between restart attempts (T#53)', async () => {
+      // Pre-T#53 behaviour: a crashing child was respawned with NO
+      // delay between attempts, hammering the OS and starving the
+      // sliding-window budget before it could trip. Verify the new
+      // `computeBackoffDelay()` path delays via setTimeout — we use
+      // vitest fake timers to keep the test fast.
+      vi.useFakeTimers();
+      try {
+        const childName = 'worker';
+        const children = new Map<string, ISupervisorChild>([
+          [childName, { name: childName, processClass: MockWorkerProcess, propertyKey: 'worker' }],
+        ]);
+        const SupervisorClass = createSupervisorClass(children);
+        const supervisor = new ProcessSupervisor(
+          mockManager,
+          SupervisorClass,
+          {
+            strategy: SupervisionStrategy.ONE_FOR_ONE,
+            maxRestarts: 10,
+            window: 60_000,
+            backoff: { type: 'exponential', initial: 200, factor: 2, max: 5_000 },
+          },
+          mockLogger,
+        );
+
+        await supervisor.start();
+        const initialSpawnCount = (mockManager.spawn as vi.Mock).mock.calls.length;
+
+        // Fire one crash. The supervisor should respawn but only AFTER
+        // the configured 200ms backoff for the 1st restart.
+        const workerProxy = await (mockManager.spawn as vi.Mock).mock.results[0]!.value;
+        const restartPromise = (async () => {
+          mockManager.emit('process:crash', { id: workerProxy.__processId }, new Error('flaky'));
+        })();
+        await restartPromise;
+
+        // Immediately after the crash, the spawn must NOT have been
+        // called for the restart yet — we're inside the backoff window.
+        await Promise.resolve();
+        expect((mockManager.spawn as vi.Mock).mock.calls.length).toBe(initialSpawnCount);
+
+        // Advance past the 200ms delay; now the respawn fires.
+        await vi.advanceTimersByTimeAsync(250);
+        expect((mockManager.spawn as vi.Mock).mock.calls.length).toBe(initialSpawnCount + 1);
+
+        await supervisor.stop();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('should start child with pool configuration', async () => {
       const children = new Map<string, ISupervisorChild>([
         [

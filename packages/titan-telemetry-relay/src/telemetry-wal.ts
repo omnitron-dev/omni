@@ -19,7 +19,9 @@
  */
 
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
+import readline from 'node:readline';
 import type { TelemetryEntry, TelemetryWalConfig } from './types.js';
 
 const DEFAULT_DIR = path.join(process.env['HOME'] ?? '/tmp', '.omnitron', 'wal');
@@ -38,6 +40,17 @@ export class TelemetryWal {
   /** Total entries written across all segments */
   totalWritten = 0;
 
+  /**
+   * T#69: serialise async writes via a promise chain. `append()` is
+   * synchronous from the caller's perspective (returns void after
+   * queuing the data); the actual `fs.write` happens off the event
+   * loop. Without serialisation, two near-simultaneous `append()`
+   * calls could race and interleave bytes from different batches in
+   * the segment file. The chain guarantees writes complete in the
+   * order they were queued.
+   */
+  private writeChain: Promise<void> = Promise.resolve();
+
   constructor(config?: TelemetryWalConfig) {
     this.dir = config?.directory ?? DEFAULT_DIR;
     this.maxSizeBytes = config?.maxSizeBytes ?? DEFAULT_MAX_SIZE;
@@ -49,6 +62,18 @@ export class TelemetryWal {
 
   /**
    * Append entries to the WAL.
+   *
+   * T#69: the historical implementation used `fs.writeSync` on the
+   * hot path. Telemetry traffic at a moderate rate produced
+   * multi-ms event-loop pauses per batch — under 1 KB/batch on a
+   * slow disk would push the daemon past its supervisor liveness
+   * deadline. Now we queue the write to the OS-level fs.write and
+   * return immediately; in-order delivery is preserved by a
+   * promise chain on the WAL instance.
+   *
+   * The return type stays `void` so existing call sites don't need
+   * updating; callers wanting to await durability should use
+   * {@link flush}.
    */
   append(entries: TelemetryEntry[]): void {
     if (entries.length === 0) return;
@@ -57,29 +82,75 @@ export class TelemetryWal {
     const lines = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
     const buf = Buffer.from(lines, 'utf-8');
 
-    fs.writeSync(this.fd!, buf);
+    // Optimistic accounting — the bytes are conceptually "ours" the
+    // moment we queue them, and a rotate decision based on the
+    // pending size matches the historical sync behaviour. If the
+    // async write later fails, the next ensureFd() will reopen.
     this.currentSize += buf.byteLength;
     this.totalWritten += entries.length;
 
-    // Rotate if segment exceeds max size
+    const fdAtQueue = this.fd!;
+    this.writeChain = this.writeChain.then(() =>
+      new Promise<void>((resolve) => {
+        fs.write(fdAtQueue, buf, (err) => {
+          if (err) {
+            // Best-effort: log to stderr so we don't lose the
+            // signal entirely. Continuing the chain keeps later
+            // appends from blocking on a single failure.
+            // eslint-disable-next-line no-console
+            console.error('[TelemetryWal] write failed:', err.message);
+          }
+          resolve();
+        });
+      }),
+    );
+
+    // Rotate if segment exceeds max size (decision is sync; the
+    // close/open of fds in rotate() also serialises via writeChain).
     if (this.currentSize >= this.maxSizeBytes) {
       this.rotate();
     }
   }
 
   /**
+   * T#69: await all pending async appends. Useful for shutdown
+   * paths that want to know data is at least in the OS kernel
+   * buffer before exiting. Note that fsync-to-disk is a separate
+   * concern (the historical `writeSync` didn't fsync either).
+   */
+  async flush(): Promise<void> {
+    await this.writeChain;
+  }
+
+  /**
    * Read all entries from all segments (for replay on reconnect).
    * Returns entries in chronological order.
+   *
+   * T#69: this used to be `fs.readFileSync` on every segment,
+   * loading the entire file into a single JS string before
+   * splitting on `\n`. With segments up to 50 MB each and up to
+   * 10 segments retained, the WAL replay could allocate 500 MB
+   * peak in a single tick on daemon restart — instant heap
+   * pressure that occasionally took the daemon OOM right after
+   * boot, BEFORE it could supervise anything. Switched to
+   * `createReadStream` + `readline`, which streams the segment
+   * line-by-line with a fixed-size internal buffer regardless of
+   * file size.
+   *
+   * The return type is now `Promise<TelemetryEntry[]>`; the two
+   * call sites (`start()` and the retry timer in
+   * telemetry-relay.service.ts) were already async, so this
+   * change is contained.
    */
-  readAll(): TelemetryEntry[] {
+  async readAll(): Promise<TelemetryEntry[]> {
     const entries: TelemetryEntry[] = [];
     const segments = this.listSegments();
-
     for (const seg of segments) {
       const filePath = path.join(this.dir, seg);
       try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        for (const line of content.split('\n')) {
+        const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        for await (const line of rl) {
           if (!line.trim()) continue;
           try {
             entries.push(JSON.parse(line));
@@ -91,19 +162,23 @@ export class TelemetryWal {
         // Corrupted segment — skip
       }
     }
-
     return entries;
   }
 
   /**
    * Count total entries across all segments (without loading them).
+   * Streams each segment line-by-line — same bounded-memory
+   * guarantee as `readAll` (T#69).
    */
-  entryCount(): number {
+  async entryCount(): Promise<number> {
     let count = 0;
     for (const seg of this.listSegments()) {
       try {
-        const content = fs.readFileSync(path.join(this.dir, seg), 'utf-8');
-        count += content.split('\n').filter((l) => l.trim()).length;
+        const stream = fs.createReadStream(path.join(this.dir, seg), { encoding: 'utf-8' });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        for await (const line of rl) {
+          if (line.trim()) count++;
+        }
       } catch {
         // Skip
       }

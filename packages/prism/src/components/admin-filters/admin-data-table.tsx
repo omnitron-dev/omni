@@ -21,6 +21,8 @@ import TableSortLabel from '@mui/material/TableSortLabel';
 import TablePagination from '@mui/material/TablePagination';
 import Paper from '@mui/material/Paper';
 import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Checkbox from '@mui/material/Checkbox';
 import Typography from '@mui/material/Typography';
 import Skeleton from '@mui/material/Skeleton';
 import { styled, alpha } from '@mui/material/styles';
@@ -84,6 +86,23 @@ export interface AdminDataTableProps<T> {
   maxHeight?: number | string;
   /** Additional styles */
   sx?: SxProps<Theme>;
+  /**
+   * Multi-select mode — adds a leading checkbox column and a header
+   * checkbox that toggles all rows on the current page. Selection
+   * state is controlled: pass `selectedKeys` and `onSelectionChange`.
+   */
+  selectable?: boolean;
+  /** Currently-selected row keys (matched against `rowKey(row)`). */
+  selectedKeys?: ReadonlySet<string>;
+  /** Selection change handler. The new set is rebuilt every change. */
+  onSelectionChange?: (keys: Set<string>) => void;
+  /**
+   * Render slot displayed above the table whenever `selectedKeys` is
+   * non-empty — typically a row of bulk-action buttons. Receives the
+   * current selection so callers can wire actions without re-tracking
+   * state externally.
+   */
+  bulkActions?: (selected: ReadonlySet<string>) => ReactNode;
 }
 
 // =============================================================================
@@ -122,6 +141,10 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
     borderBottom: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
   },
 }));
+
+// Single shared empty Set so default `selection` doesn't churn references
+// when `selectedKeys` is omitted.
+const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
 
 // =============================================================================
 // EMPTY STATE ICON
@@ -200,6 +223,10 @@ export function AdminDataTable<T>({
   dense = false,
   maxHeight,
   sx,
+  selectable = false,
+  selectedKeys,
+  onSelectionChange,
+  bulkActions,
 }: AdminDataTableProps<T>): ReactNode {
   const getRowKey = useCallback(
     (row: T, index: number): string => {
@@ -209,6 +236,41 @@ export function AdminDataTable<T>({
       return String(index);
     },
     [rowKey]
+  );
+
+  // Stable empty set so callers can omit `selectedKeys` without us
+  // creating a fresh Set every render (which would defeat memoisation
+  // downstream).
+  const selection = selectedKeys ?? EMPTY_SELECTION;
+
+  const pageRowKeys = useMemo(
+    () => (selectable ? data.map((row, index) => getRowKey(row, index)) : []),
+    [selectable, data, getRowKey]
+  );
+
+  const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selection.has(k));
+  const somePageSelected = !allPageSelected && pageRowKeys.some((k) => selection.has(k));
+
+  const toggleAllOnPage = useCallback(() => {
+    if (!onSelectionChange) return;
+    const next = new Set(selection);
+    if (allPageSelected) {
+      pageRowKeys.forEach((k) => next.delete(k));
+    } else {
+      pageRowKeys.forEach((k) => next.add(k));
+    }
+    onSelectionChange(next);
+  }, [onSelectionChange, selection, allPageSelected, pageRowKeys]);
+
+  const toggleRow = useCallback(
+    (key: string) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selection);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      onSelectionChange(next);
+    },
+    [onSelectionChange, selection]
   );
 
   const handleSort = useCallback(
@@ -238,6 +300,11 @@ export function AdminDataTable<T>({
     () =>
       Array.from({ length: pageSize }, (_, i) => (
         <TableRow key={`skeleton-${i}`}>
+          {selectable && (
+            <TableCell padding="checkbox">
+              <Skeleton variant="rectangular" width={18} height={18} sx={{ borderRadius: 0.5 }} />
+            </TableCell>
+          )}
           {columns.map((col) => (
             <TableCell key={col.key} align={col.align ?? 'left'}>
               <Skeleton
@@ -252,8 +319,10 @@ export function AdminDataTable<T>({
           ))}
         </TableRow>
       )),
-    [pageSize, columns]
+    [pageSize, columns, selectable]
   );
+
+  const showBulkBar = selectable && selection.size > 0 && !!bulkActions;
 
   // Empty state
   if (!loading && data.length === 0) {
@@ -262,6 +331,7 @@ export function AdminDataTable<T>({
         <MuiTable size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
           <StyledTableHead>
             <TableRow>
+              {selectable && <TableCell padding="checkbox" />}
               {columns.map((col) => (
                 <TableCell key={col.key} align={col.align ?? 'left'} style={{ width: col.width }}>
                   {col.header}
@@ -290,10 +360,41 @@ export function AdminDataTable<T>({
 
   return (
     <StyledTableContainer sx={{ maxHeight, ...sx }}>
+      {showBulkBar && (
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={2}
+          sx={{
+            px: 2,
+            py: 1,
+            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
+          }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            {selection.size} selected
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          {bulkActions(selection)}
+        </Stack>
+      )}
       <TableContainer>
         <MuiTable size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
           <StyledTableHead>
             <TableRow>
+              {selectable && (
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    size="small"
+                    indeterminate={somePageSelected}
+                    checked={allPageSelected}
+                    disabled={loading || pageRowKeys.length === 0}
+                    onChange={toggleAllOnPage}
+                    inputProps={{ 'aria-label': 'select all rows on page' }}
+                  />
+                </TableCell>
+              )}
               {columns.map((col) => (
                 <TableCell
                   key={col.key}
@@ -320,20 +421,40 @@ export function AdminDataTable<T>({
           <TableBody>
             {loading
               ? skeletonRows
-              : data.map((row, index) => (
-                  <StyledTableRow
-                    key={getRowKey(row, index)}
-                    hover
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                  >
-                    {columns.map((col) => (
-                      <TableCell key={col.key} align={col.align ?? 'left'}>
-                        {col.render(row, index)}
-                      </TableCell>
-                    ))}
-                  </StyledTableRow>
-                ))}
+              : data.map((row, index) => {
+                  const key = getRowKey(row, index);
+                  const isSelected = selectable && selection.has(key);
+                  return (
+                    <StyledTableRow
+                      key={key}
+                      hover
+                      selected={isSelected}
+                      onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                    >
+                      {selectable && (
+                        <TableCell
+                          padding="checkbox"
+                          // Stop row-click bubbling so toggling a row's
+                          // checkbox doesn't also fire onRowClick.
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={isSelected}
+                            onChange={() => toggleRow(key)}
+                            inputProps={{ 'aria-label': 'select row' }}
+                          />
+                        </TableCell>
+                      )}
+                      {columns.map((col) => (
+                        <TableCell key={col.key} align={col.align ?? 'left'}>
+                          {col.render(row, index)}
+                        </TableCell>
+                      ))}
+                    </StyledTableRow>
+                  );
+                })}
           </TableBody>
         </MuiTable>
       </TableContainer>

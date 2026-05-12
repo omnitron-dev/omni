@@ -72,6 +72,40 @@ describe('StateStore', () => {
       expect(loaded!.version).toBe('0.2.0');
       expect(loaded!.apps).toHaveLength(0);
     });
+
+    it('writes atomically — never leaves a torn JSON file (T#55)', () => {
+      // Drive a save and then check that NO temp/stale file is left
+      // behind (rename consumed it) and the final file contains the
+      // FULL payload. Pre-T#55, `writeFileSync(stateFile, ...)` was a
+      // direct overwrite; if the process was SIGKILL'd between byte
+      // 0 and byte N, the next boot's `load()` saw truncated JSON
+      // and returned null, losing the entire registry.
+      store.save(sampleState);
+
+      const entries = fs.readdirSync(tmpDir);
+      // Only the final state.json should remain — no `.tmp.*` siblings.
+      const stray = entries.filter((e) => e.includes('.tmp.'));
+      expect(stray).toEqual([]);
+
+      // Round-trip: the on-disk file decodes cleanly to the full
+      // sample state, proving the atomic write delivered the whole
+      // payload (not just a prefix).
+      const loaded = store.load();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.apps).toHaveLength(2);
+    });
+
+    it('cleans up the temp file when the rename fails (T#55 error path)', () => {
+      // Force the rename target to be a *directory* — `fs.renameSync`
+      // can't replace a directory with a file, so the atomic-write
+      // path must throw AND clean up its temp sibling.
+      const dirAsTarget = path.join(tmpDir, 'state.json');
+      fs.mkdirSync(dirAsTarget);
+      expect(() => store.save(sampleState)).toThrow();
+      // No stray temp file should be left.
+      const stray = fs.readdirSync(tmpDir).filter((e) => e.includes('.tmp.'));
+      expect(stray).toEqual([]);
+    });
   });
 
   describe('load', () => {

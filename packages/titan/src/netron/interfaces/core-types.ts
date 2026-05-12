@@ -240,11 +240,32 @@ export interface IAuthorizationManager {
 // ============================================================================
 // Peer Interfaces (Pure types, no class dependencies)
 // ============================================================================
+//
+// T#51 — split the historical monolithic `IPeer` into:
+//
+//   IRpcPeer       — the subset HTTP transport actually supports
+//                    (stateless request/response RPC).
+//   IStatefulPeer  — adds subscription / emit / close semantics
+//                    that ONLY persistent transports (WS, TCP,
+//                    Unix) can implement.
+//
+// Pre-split, the single `IPeer` interface forced HttpRemotePeer
+// to advertise `subscribe()` / `unsubscribe()` / `emit()` etc.
+// even though those methods just threw "not supported in HTTP
+// transport" at runtime. Callers had no way to statically detect
+// the mismatch — they'd write `peer.subscribe(...)` thinking the
+// types vouched for it, then catch a runtime error in production.
+//
+// `IPeer` is retained as a backwards-compatible alias of
+// `IStatefulPeer` so existing code continues to compile. New code
+// that only needs RPC should accept `IRpcPeer` and use the
+// {@link isStatefulPeer} type guard to narrow.
 
 /**
- * Core peer interface.
+ * Pure RPC peer (T#51). Stateless request/response operations
+ * supported by EVERY transport — HTTP included.
  */
-export interface IPeer {
+export interface IRpcPeer {
   /** Peer identifier */
   id: string;
 
@@ -254,6 +275,23 @@ export interface IPeer {
   /** Query service interface by name */
   queryInterface<T = unknown>(name: string | T, version?: string): Promise<T>;
 
+  /** Set property or call method */
+  set(defId: string, name: string, value: unknown): Promise<void>;
+
+  /** Get property value */
+  get(defId: string, name: string): Promise<unknown>;
+
+  /** Call method with arguments */
+  call(defId: string, name: string, args: unknown[]): Promise<unknown>;
+}
+
+/**
+ * Stateful peer (T#51). Extends `IRpcPeer` with operations that
+ * require a persistent connection — event subscriptions,
+ * emission, graceful close. Implemented by WS / TCP / Unix
+ * peers; NOT by HttpRemotePeer.
+ */
+export interface IStatefulPeer extends IRpcPeer {
   /** Subscribe to events */
   subscribe(event: string, handler: EventSubscriber): Promise<void> | void;
 
@@ -265,15 +303,41 @@ export interface IPeer {
 
   /** Close peer connection */
   close?(): Promise<void>;
+}
 
-  /** Set property or call method */
-  set(defId: string, name: string, value: unknown): Promise<void>;
+/**
+ * Core peer interface — retained as an alias of `IStatefulPeer`
+ * for backward compatibility. New code that only requires RPC
+ * semantics should use {@link IRpcPeer} instead so the type
+ * system can catch attempts to subscribe / emit / close on a
+ * transport that doesn't support them (T#51).
+ *
+ * @deprecated Use {@link IRpcPeer} or {@link IStatefulPeer}
+ *   directly to express required capability.
+ */
+export interface IPeer extends IStatefulPeer {}
 
-  /** Get property value */
-  get(defId: string, name: string): Promise<unknown>;
+/**
+ * Runtime type guard for stateful capability (T#51). Returns
+ * `true` if the peer's `subscribe` method is callable —
+ * `HttpRemotePeer.subscribe` throws `notImplemented` at runtime
+ * but the marker symbol set by stateful transports lets us tell
+ * them apart statically AND dynamically.
+ *
+ * Use this in code paths that accept `IRpcPeer` but want to take
+ * advantage of subscription semantics opportunistically:
+ *
+ * ```ts
+ * function attach(peer: IRpcPeer, event: string, handler: EventSubscriber) {
+ *   if (isStatefulPeer(peer)) peer.subscribe(event, handler);
+ *   else // fall back to polling / log a warning
+ * }
+ * ```
+ */
+export const STATEFUL_PEER = Symbol.for('@omnitron-dev/netron/stateful-peer');
 
-  /** Call method with arguments */
-  call(defId: string, name: string, args: unknown[]): Promise<unknown>;
+export function isStatefulPeer(peer: IRpcPeer): peer is IStatefulPeer {
+  return (peer as unknown as Record<symbol, unknown>)[STATEFUL_PEER] === true;
 }
 
 /**

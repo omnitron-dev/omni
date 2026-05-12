@@ -8,6 +8,7 @@ import { TimedMap } from '@omnitron-dev/common';
 
 // Use type-only import for INetron to break circular dependency
 import type { INetron, INetronOptions, EventSubscriber, RemotePeerSocket } from './interfaces/core-types.js';
+import { STATEFUL_PEER } from './interfaces/core-types.js';
 import type { ILocalPeerInternal } from './interfaces/internal-types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
@@ -199,6 +200,11 @@ export class RemotePeer extends AbstractPeer {
     cacheOptions?: DefinitionCacheOptions
   ) {
     super(netron, id, cacheOptions);
+
+    // T#51: brand as stateful so `isStatefulPeer(peer)` returns
+    // true. WS / TCP / Unix peers support subscriptions and
+    // emission via the underlying persistent connection.
+    (this as any)[STATEFUL_PEER] = true;
 
     this.logger = netron.logger.child({ peerId: this.id, remotePeer: true });
 

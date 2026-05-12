@@ -169,9 +169,13 @@ describe('HTTP Transport - Server Capability', () => {
       expect(response.status).toBeLessThanOrEqual(503);
 
       const data = await response.json();
+      // T#50 security hardening: /health is the ONE unauthenticated
+      // surface and MUST NOT reveal `uptime` or `version` — both leak
+      // useful fingerprinting info to attackers. Only `status` is
+      // returned for ready/not-ready probes.
       expect(data).toHaveProperty('status');
-      expect(data).toHaveProperty('uptime');
-      expect(data).toHaveProperty('version');
+      expect(data).not.toHaveProperty('uptime');
+      expect(data).not.toHaveProperty('version');
     });
 
     it('should return 404 for unknown routes', async () => {

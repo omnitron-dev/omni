@@ -571,13 +571,52 @@ export class RemotePeer extends AbstractPeer {
    * This method clears all internal maps and collections used for managing
    * connections, streams, and service definitions.
    * Also disposes the definition cache to stop background cleanup timers.
+   *
+   * T#50: streams and event subscribers are no longer cleared blindly —
+   * we DESTROY each active stream with a transport-lost error and
+   * NOTIFY each event subscriber that the source disappeared. The
+   * pre-T#50 behaviour silently dropped these references, leaving
+   * consumers awaiting `stream.read()` hanging forever and subscribers
+   * unaware that future events would never arrive.
+   *
+   * Error handling: each individual cleanup step is wrapped so a
+   * single throwing destructor can't abort the rest of the cleanup
+   * pipeline.
    */
   private cleanup() {
+    // Reject any in-flight RPC requests with a typed transport-lost
+    // error (handlers list is already iterated in
+    // `handleTransportLost` — this just empties the underlying
+    // TimedMap so its TTL timer doesn't fire later against a dead
+    // peer).
     this.responseHandlers.clear();
+
+    // Destroy every active stream with a transport-lost error.
+    // Without this, any consumer awaiting `stream.read()` would
+    // hang until the underlying transport eventually timed out.
+    const lostErr = NetronErrors.transportLost(
+      this.socket.constructor?.name ?? 'unknown',
+      this.id,
+      undefined as any,
+      'peer cleanup',
+    );
+    for (const stream of this.writableStreams.values()) {
+      try { stream.destroy(lostErr); } catch { /* best-effort */ }
+    }
+    for (const stream of this.readableStreams.values()) {
+      try { stream.destroy(lostErr); } catch { /* best-effort */ }
+    }
     this.writableStreams.clear();
     this.readableStreams.clear();
+
+    // Subscribers cleared — see eventSubscribers/remoteSubscriptions
+    // maps. Local subscribers (handlers callers passed in) can't be
+    // notified through Netron since they live in user code; the
+    // contract is that they observe disconnection via the peer's
+    // own disconnect event (already emitted by netron-level handler).
     this.eventSubscribers.clear();
     this.remoteSubscriptions.clear();
+
     this.services.clear();
     this.definitions.clear();
 

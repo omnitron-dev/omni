@@ -34,13 +34,21 @@ export class Uid {
 
   /**
    * Generates the next unique identifier in sequence.
-   * This method implements a circular counter that wraps around to 1 when
-   * reaching MAX_UID_VALUE, ensuring continuous unique identifier generation
-   * within the defined bounds.
    *
-   * @method next
-   * @returns {number} The next unique identifier in sequence
-   * @throws {Error} If the maximum UID value is exceeded
+   * Implements a circular counter that wraps around to 1 when reaching
+   * `MAX_UID_VALUE`, ensuring continuous identifier generation within
+   * the defined bounds. The wrap-around is intentional — at the default
+   * `MAX_UID_VALUE` (2^32 − 1 ≈ 4.3 billion) the only way to exhaust
+   * the space is to outrun the response window of every in-flight RPC
+   * issued in the prior ~4 billion calls, which in practice is
+   * impossible given the 30-second default request timeout.
+   *
+   * T#50 docstring fix: the previous @throws claim was incorrect —
+   * `next()` never throws; it wraps. Documenting the actual behaviour
+   * so callers don't write defensive try/catch around a non-existent
+   * exception.
+   *
+   * @returns The next unique identifier in sequence
    */
   next(): number {
     this.value = this.value === MAX_UID_VALUE ? 1 : this.value + 1;

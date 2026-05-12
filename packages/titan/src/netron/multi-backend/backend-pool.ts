@@ -220,15 +220,25 @@ export class BackendPool extends EventEmitter {
   }
 
   /**
-   * Start health checks
+   * Start health checks.
+   *
+   * T#50: re-entrancy guard. A health sweep across many backends can
+   * outlive the interval (each backend's `healthCheck()` is async),
+   * piling up overlapping ticks that each mutate `this.backends`
+   * concurrently. The flag drops overlapping ticks.
    */
+  private healthCheckRunning = false;
   private startHealthChecks(): void {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
     }
 
     this.healthCheckInterval = setInterval(() => {
-      this.runHealthChecks();
+      if (this.healthCheckRunning) return;
+      this.healthCheckRunning = true;
+      this.runHealthChecks().finally(() => {
+        this.healthCheckRunning = false;
+      });
     }, this.healthCheckIntervalMs);
 
     // Run initial health check

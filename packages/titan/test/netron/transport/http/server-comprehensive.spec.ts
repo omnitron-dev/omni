@@ -50,7 +50,16 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       },
     });
 
-    // Create comprehensive mock peer
+    // Create comprehensive mock peer.
+    //
+    // T#50: the AuthenticationManager mock's `validateToken` now
+    // RETURNS A SUCCESSFUL RESULT for the `test-token` value used by
+    // the metrics/openapi tests. Pre-T#50 the HTTP server accepted
+    // ANY non-empty Authorization header value (security bug); the
+    // tests were written against that lax behaviour with a bare
+    // `vi.fn()` that returned undefined. Post-T#50 the server
+    // actually validates — so the mock has to act like a real
+    // validator that accepts the test token.
     mockPeer = {
       stubs: new Map(),
       logger: {
@@ -63,7 +72,15 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       netron: {
         authenticationManager: {
           authenticate: vi.fn(),
-          validateToken: vi.fn(),
+          validateToken: vi.fn().mockImplementation(async (token: string) => {
+            if (token === 'test-token') {
+              return {
+                success: true,
+                context: { userId: 'test', roles: [], permissions: [] },
+              };
+            }
+            return { success: false };
+          }),
         },
       },
     };

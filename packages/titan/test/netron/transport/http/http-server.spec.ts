@@ -308,9 +308,11 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
       // Server is not started, so status should be 503
       expect(response.status).toBe(503);
       const data = (await response.json()) as any;
+      // T#50: /health returns ONLY `status` — no uptime/version
+      // fingerprinting on the unauthenticated probe.
       expect(data.status).toBeDefined();
-      expect(data.uptime).toBeGreaterThanOrEqual(0);
-      expect(data.version).toBe('1.0.0');
+      expect(data.uptime).toBeUndefined();
+      expect(data.version).toBeUndefined();
     });
 
     it('should return 200 when server is online', async () => {
@@ -326,7 +328,8 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
       expect(response.status).toBe(200);
       const data = (await response.json()) as any;
       expect(data.status).toBe('online');
-      expect(data.uptime).toBeGreaterThanOrEqual(0);
+      expect(data.uptime).toBeUndefined();
+      expect(data.version).toBeUndefined();
     });
   });
 

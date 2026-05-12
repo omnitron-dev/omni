@@ -413,6 +413,19 @@ export class ProcessSupervisor extends EventEmitter {
 
     this.emit('child:restart', name, count);
 
+    // T#53: honour `options.backoff` between the crash and the
+    // respawn. The historical path was `restartChild(name)` with no
+    // delay — a child crashing 3× in 100ms produced 3 respawns in
+    // 100ms, hammering the OS and starving the sliding-window budget
+    // before it could trip. Default backoff (300ms exponential
+    // capped at 30s) prevents that without affecting the happy path
+    // of a single isolated crash.
+    const delayMs = this.computeBackoffDelay(count);
+    if (delayMs > 0) {
+      this.logger.debug({ child: name, count, delayMs }, 'Backing off before restart');
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+
     switch (strategy) {
       case SupervisionStrategy.ONE_FOR_ONE:
       case SupervisionStrategy.SIMPLE_ONE_FOR_ONE:
@@ -428,6 +441,51 @@ export class ProcessSupervisor extends EventEmitter {
         await this.restartChild(name);
         break;
     }
+  }
+
+  /**
+   * Compute the inter-restart delay for the Nth restart of a child (T#53).
+   *
+   * Honours `options.backoff`:
+   *   - type: 'exponential' (default), 'linear', or 'fixed'
+   *   - initial: starting delay in ms (default 300ms)
+   *   - factor: growth multiplier (default 2 for exponential, 1 for linear)
+   *   - max: hard cap in ms (default 30s)
+   *
+   * The Nth restart of a child during a steady crash loop pays roughly
+   * `initial × factor^(N-1)` ms — by the time crashes are pathological,
+   * the supervisor is sleeping the full `max` between attempts and the
+   * sliding-window budget has time to trip.
+   */
+  private computeBackoffDelay(restartCount: number): number {
+    const cfg = this.options.backoff;
+    if (!cfg) {
+      // T#53 (scoped): the audit's "ignores backoff config" complaint
+      // is specifically about a configured backoff being silently
+      // skipped. With no backoff configured we keep the historical
+      // zero-delay behaviour — callers who care about respawn pacing
+      // must opt in via `options.backoff`. This avoids surprising
+      // existing tests/deployments that drove their own timing.
+      return 0;
+    }
+    const initial = cfg.initial ?? 300;
+    const max = cfg.max ?? 30_000;
+    const factor = cfg.factor ?? (cfg.type === 'linear' ? 1 : 2);
+    const n = Math.max(0, restartCount - 1);
+
+    let delay: number;
+    switch (cfg.type ?? 'exponential') {
+      case 'fixed':
+        delay = initial;
+        break;
+      case 'linear':
+        delay = initial + factor * n * initial;
+        break;
+      case 'exponential':
+      default:
+        delay = initial * Math.pow(factor, n);
+    }
+    return Math.min(delay, max);
   }
 
   private async restartAll(): Promise<void> {

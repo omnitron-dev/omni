@@ -86,9 +86,41 @@ export class InfrastructureService {
   /**
    * Add app-declared infrastructure containers to the provisioning list.
    * Called by StackInfrastructureManager after resolving app requirements.
+   *
+   * T#76: dedupe by container name. The `${CONTAINER_PREFIX}-${service}`
+   * naming convention means two apps that BOTH declare a `postgres`
+   * requirement produce two identical-named entries. Pre-T#76, the
+   * provisioning loop tried to create the container twice; Docker's
+   * name-uniqueness check failed the second create with "name already
+   * in use", leaving the second app's perspective on infrastructure
+   * broken (it saw a failure that, from the cluster's view, was a
+   * benign collision — the shared service was actually fine).
+   *
+   * The intended semantics for shared infrastructure is "all apps that
+   * declare `postgres` use the same container", so the first
+   * declaration wins. When subsequent declarations differ in shape
+   * (image / env / ports), log a structured warning so the operator
+   * can reconcile intent vs. config.
    */
   addAppContainers(containers: ResolvedContainer[]): void {
-    this.desiredContainers.push(...containers);
+    for (const c of containers) {
+      const existing = this.desiredContainers.find((d) => d.name === c.name);
+      if (!existing) {
+        this.desiredContainers.push(c);
+        continue;
+      }
+      if (!shallowContainerEqual(existing, c)) {
+        this.logger.warn(
+          {
+            container: c.name,
+            existingImage: existing.image,
+            duplicateImage: c.image,
+          },
+          'Duplicate container declaration with differing shape — keeping first; check for conflicting app infrastructure requirements (T#76)',
+        );
+      }
+      // else: identical declaration, silent dedupe — this is the common case
+    }
   }
 
   /**
@@ -707,4 +739,33 @@ export class InfrastructureService {
 
     this.state.lastReconciled = new Date().toISOString();
   }
+}
+
+/**
+ * T#76: shallow equality on the fields that drive container
+ * identity. Two declarations that differ only in incidental fields
+ * (label maps, restart policy adornments) should still be treated
+ * as the same shared container; differences in image / env / port
+ * mapping legitimately deserve an operator-facing warning.
+ */
+function shallowContainerEqual(a: ResolvedContainer, b: ResolvedContainer): boolean {
+  if (a.image !== b.image) return false;
+  if (!sameRecord(a.environment, b.environment)) return false;
+  if (a.ports.length !== b.ports.length) return false;
+  for (let i = 0; i < a.ports.length; i++) {
+    if (a.ports[i]!.host !== b.ports[i]!.host || a.ports[i]!.container !== b.ports[i]!.container) return false;
+  }
+  if (a.volumes.length !== b.volumes.length) return false;
+  for (let i = 0; i < a.volumes.length; i++) {
+    if (a.volumes[i]!.source !== b.volumes[i]!.source || a.volumes[i]!.target !== b.volumes[i]!.target) return false;
+  }
+  return true;
+}
+
+function sameRecord(a: Record<string, string> | undefined, b: Record<string, string> | undefined): boolean {
+  const ka = Object.keys(a ?? {});
+  const kb = Object.keys(b ?? {});
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (a?.[k] !== b?.[k]) return false;
+  return true;
 }

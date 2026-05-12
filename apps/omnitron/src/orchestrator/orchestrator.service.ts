@@ -105,6 +105,18 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 export class OrchestratorService extends EventEmitter {
   private readonly handles = new Map<string, AppHandle>();
+
+  /**
+   * Per-name in-flight start lock (T#57). When two `startApp()` calls
+   * arrive concurrently for the same app, the first one's promise is
+   * stored here; the second one awaits and returns the same handle
+   * rather than racing through to a parallel `launchBootstrapMode` /
+   * `launchClassicMode` that would spawn a second worker pool and
+   * leak the original. The map is cleared in a `finally` once the
+   * launch settles (success or failure) so the next legitimate call
+   * for the same name isn't permanently locked out.
+   */
+  private readonly startingApps = new Map<string, Promise<AppHandle>>();
   private config: IEcosystemConfig | null = null;
   private readonly cwd: string;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -348,6 +360,28 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
+    // T#57: coalesce concurrent calls for the same app name. Without
+    // this, two near-simultaneous `startApp({ name: 'main' })` calls
+    // both see `this.handles.get('main')` as undefined-or-not-online
+    // (the first one's handle is in status='starting'), both fall
+    // through to `launchBootstrapMode`, and we spawn two parallel
+    // worker pools competing for the same port. Promise coalescing
+    // — return the in-flight promise to the second caller — gives
+    // both callers the same handle and ensures only one launch
+    // actually runs.
+    const inflight = this.startingApps.get(entry.name);
+    if (inflight) {
+      this.logger.debug({ app: entry.name }, 'Coalescing concurrent startApp into in-flight launch (T#57)');
+      return inflight;
+    }
+    const promise = this.startAppInternal(entry, config).finally(() => {
+      this.startingApps.delete(entry.name);
+    });
+    this.startingApps.set(entry.name, promise);
+    return promise;
+  }
+
+  private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
     // Persist ecosystem config for restartApp — stack mode passes config per-app,
     // but restartApp calls startApp without it.
     if (config && !this.config) {

@@ -109,19 +109,22 @@ export class ServiceRegistry {
           // Direct call with middleware
           call: async (...args: unknown[]) => invoke(serviceName, methodName, args, options),
 
-          // Query hook factory - returns function that creates query config
+          // Query hook factory - returns function that creates query config.
+          // Uses the captured `invoke` closure (this-bound at line 100) — the
+          // previous `self.invoke` resolved to `globalThis.self` (Window),
+          // which made every useQuery/useMutation call a runtime TypeError.
           useQuery: (args: unknown[], queryOptions?: any) =>
             // This returns an object that can be passed to useQuery
             ({
               queryKey: [serviceName, methodName, ...args],
-              queryFn: () => self.invoke(serviceName, methodName, args, options),
+              queryFn: () => invoke(serviceName, methodName, args, options),
               ...queryOptions,
             }),
           // Mutation hook factory - returns function that creates mutation config
           useMutation: (mutationOptions?: any) => ({
             mutationFn: (variables: unknown) => {
               const args = Array.isArray(variables) ? variables : [variables];
-              return self.invoke(serviceName, methodName, args, options);
+              return invoke(serviceName, methodName, args, options);
             },
             mutationKey: [serviceName, methodName],
             ...mutationOptions,

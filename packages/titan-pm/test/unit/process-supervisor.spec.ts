@@ -264,6 +264,53 @@ describe('ProcessSupervisor', () => {
       );
     });
 
+    it('threads per-child shutdownTimeout through to terminate() (T#61)', async () => {
+      // Wire a manager mock that exposes getWorkerHandle so the
+      // supervisor can grab the handle and call terminate({ ... }).
+      const terminateSpy = vi.fn().mockResolvedValue(undefined);
+      const destroySpy = vi.fn().mockResolvedValue(undefined);
+      const handle = { terminate: terminateSpy };
+      (mockManager as any).getWorkerHandle = vi.fn().mockReturnValue(handle);
+
+      // Spawn returns a proxy with __destroy and __processId; the
+      // supervisor's new code path disconnects via the proxy before
+      // calling terminate directly.
+      (mockManager as any).spawn = vi.fn().mockResolvedValueOnce({
+        __processId: 'p-1',
+        __destroy: destroySpy,
+      });
+
+      const children = new Map<string, ISupervisorChild>([
+        ['worker', {
+          name: 'worker',
+          processClass: MockWorkerProcess,
+          propertyKey: 'worker',
+          shutdownTimeout: 750,
+        }],
+      ]);
+      const SupervisorClass = createSupervisorClass(children);
+      const supervisor = new ProcessSupervisor(
+        mockManager,
+        SupervisorClass,
+        { strategy: SupervisionStrategy.ONE_FOR_ONE },
+        mockLogger,
+      );
+
+      await supervisor.start();
+      await supervisor.stop();
+
+      // The supervisor should have:
+      //   1. disconnected the proxy (best-effort),
+      //   2. fetched the WorkerHandle,
+      //   3. called terminate({ shutdownTimeout: 750 }).
+      // It must NOT have routed through manager.kill — that's the
+      // legacy path without timeout support.
+      expect(destroySpy).toHaveBeenCalled();
+      expect((mockManager as any).getWorkerHandle).toHaveBeenCalledWith('p-1');
+      expect(terminateSpy).toHaveBeenCalledWith({ shutdownTimeout: 750 });
+      expect(mockManager.kill).not.toHaveBeenCalled();
+    });
+
     it('applies backoff between restart attempts (T#53)', async () => {
       // Pre-T#53 behaviour: a crashing child was respawned with NO
       // delay between attempts, hammering the OS and starving the

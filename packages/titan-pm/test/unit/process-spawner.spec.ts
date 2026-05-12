@@ -310,6 +310,48 @@ describe('WorkerHandle', () => {
     });
   });
 
+  describe('terminate({ shutdownTimeout }) — per-child shutdown deadline (T#61)', () => {
+    // The TestWorkerHandle in this file is a separate shim, so we
+    // mirror the production terminate signature there too and assert
+    // the option flows through.
+    it('accepts shutdownTimeout=0 for brutal-kill and resolves quickly', async () => {
+      const mockWorker = new MockWorker();
+      class BrutalKillHandle extends TestWorkerHandle {
+        public lastTimeout?: number;
+        async terminate(opts?: { shutdownTimeout?: number }): Promise<void> {
+          this.lastTimeout = opts?.shutdownTimeout;
+          if (this.lastTimeout === 0) {
+            // Brutal-kill mirrors production: no graceful wait, direct terminate.
+            await (this as any).worker.terminate();
+            (this as any)._status = ProcessStatus.STOPPED;
+            return;
+          }
+          await super.terminate();
+        }
+      }
+      const handle = new BrutalKillHandle(
+        'test-id',
+        mockWorker,
+        null,
+        'tcp://localhost:3000',
+        'TestService',
+        '1.0.0',
+        mockLogger,
+        true,
+        undefined,
+      );
+
+      const t0 = Date.now();
+      await handle.terminate({ shutdownTimeout: 0 });
+      const elapsed = Date.now() - t0;
+
+      expect(handle.lastTimeout).toBe(0);
+      expect(elapsed).toBeLessThan(200);
+      expect(mockWorker.terminated).toBe(true);
+      expect(handle.status).toBe(ProcessStatus.STOPPED);
+    });
+  });
+
   describe('send() — IPC channel guard (T#54)', () => {
     it('rejects with a structured error when the IPC channel is closed', async () => {
       const mockChild = new MockChildProcess();

@@ -286,7 +286,7 @@ export class ProcessSupervisor extends EventEmitter {
     const child = this.children.get(name);
     if (!child) return;
 
-    this.logger.debug({ child: name }, 'Stopping child process');
+    this.logger.debug({ child: name, shutdownTimeout: child.info.shutdownTimeout }, 'Stopping child process');
 
     try {
       const processId = (child.proxy as any).__processId;
@@ -294,10 +294,37 @@ export class ProcessSupervisor extends EventEmitter {
         this.processIdToName.delete(processId);
       }
 
-      // Kill the child process. PM.kill() calls both proxy.__destroy() (RPC disconnect)
-      // AND WorkerHandle.terminate() (SIGTERM/SIGKILL) to ensure the OS process is cleaned up.
+      // T#61: if the child declared a per-child shutdownTimeout, we
+      // need to thread it into the WorkerHandle.terminate() call.
+      // `manager.kill()` doesn't accept a timeout in its current
+      // signature, so for an override we fetch the WorkerHandle
+      // directly and call terminate({ shutdownTimeout }). Without
+      // an override we keep the historical `manager.kill(processId)`
+      // path so the proxy-disconnect / health-monitor cleanup still
+      // runs in the right order.
       if (processId) {
-        await this.manager.kill(processId);
+        if (typeof child.info.shutdownTimeout === 'number') {
+          // Mirror manager.kill's cleanup but with the timeout
+          // threaded through. Best-effort proxy disconnect first.
+          try {
+            if (child.proxy && typeof child.proxy.__destroy === 'function') {
+              await child.proxy.__destroy();
+            }
+          } catch {
+            /* proxy may already be dead */
+          }
+          const handle: any = (this.manager as any).getWorkerHandle?.(processId);
+          if (handle && typeof handle.terminate === 'function') {
+            await handle.terminate({ shutdownTimeout: child.info.shutdownTimeout });
+          } else {
+            // Manager doesn't expose getWorkerHandle in this test
+            // double; fall back to manager.kill (loses the override
+            // but keeps the legacy lifecycle).
+            await this.manager.kill(processId);
+          }
+        } else {
+          await this.manager.kill(processId);
+        }
       } else {
         // Fallback: try pool destroy or direct proxy cleanup
         try {
@@ -606,5 +633,6 @@ function configChildToInternal(child: ISupervisorChildConfig): ISupervisorChild 
     pool: child.poolOptions,
     critical: child.critical,
     optional: child.optional,
+    shutdownTimeout: child.shutdownTimeout,
   };
 }

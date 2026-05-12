@@ -286,6 +286,45 @@ export interface IAuthModuleOptions {
   anonKey?: string;
 
   /**
+   * Multi-key JWT verification registry, keyed by the `kid` (key id)
+   * header claim.
+   *
+   * When set, tokens carrying a `kid` header are verified against the
+   * matching entry; tokens without a `kid` header fall back to the
+   * legacy single `jwtSecret` so existing sessions keep working through
+   * the rotation introduction window. Once every client has been
+   * re-issued tokens with a `kid`, tighten the policy by enabling
+   * `requireKid: true`.
+   *
+   * Why this matters: with a single shared secret, the only way to
+   * recover from a key compromise is to rotate the secret and force
+   * every active session to re-login (every existing token instantly
+   * becomes invalid). With `kid`, retire `k1` by removing it from this
+   * map and issue new tokens under `k2` — `k1`-signed tokens keep
+   * verifying until they expire on their own.
+   *
+   * @example
+   *   verificationKeys: {
+   *     k1: process.env.JWT_SECRET_V1!,
+   *     k2: process.env.JWT_SECRET_V2!,
+   *   },
+   *   // Sign-side (the auth-owner backend) sets the active kid:
+   *   //   .setProtectedHeader({ alg: 'HS256', kid: 'k2' })
+   */
+  verificationKeys?: Record<string, string>;
+
+  /**
+   * Reject tokens that lack a `kid` header when `verificationKeys` is
+   * set. Flip this on after the rotation grace window has passed — once
+   * every active token has been re-minted with a kid. Before that, the
+   * legacy single-secret path is still consulted as a back-compat
+   * fallback.
+   *
+   * @defaultValue false
+   */
+  requireKid?: boolean;
+
+  /**
    * Default tenant ID for multi-tenant systems.
    *
    * @defaultValue 'default'

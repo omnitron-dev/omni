@@ -287,22 +287,51 @@ export class PostgresMetricsStorage implements IMetricsStorage {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private readonly batchSize: number;
   private readonly flushInterval: number;
+  /**
+   * T#68: maximum sample count the in-memory buffer is allowed to
+   * hold. When a flush fails (PG outage, network partition, slow
+   * disk on the PG side), the failed batch is re-enqueued at the
+   * front of the buffer so newer samples don't get re-ordered.
+   * Without a cap, every periodic flush during a sustained outage
+   * grew the buffer unboundedly — eventually OOM-ing the daemon.
+   * With the cap, oldest entries are dropped when the buffer would
+   * otherwise exceed it, and we log a structured warning so the
+   * operator sees the data loss.
+   */
+  private readonly maxBufferSize: number;
+  private droppedDuringOutage = 0;
   private readonly onFlush: ((batch: MetricSample[]) => Promise<void>) | undefined;
+  private readonly onDrop: ((count: number) => void) | undefined;
   private flushing = false;
 
   constructor(
     private readonly db: KyselyLike,
-    options: { batchSize?: number; flushInterval?: number; onFlush?: (batch: MetricSample[]) => Promise<void> } = {},
+    options: {
+      batchSize?: number;
+      flushInterval?: number;
+      maxBufferSize?: number;
+      onFlush?: (batch: MetricSample[]) => Promise<void>;
+      onDrop?: (count: number) => void;
+    } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.flushInterval = options.flushInterval ?? 5_000;
+    // 50k samples ≈ several minutes of moderate-traffic backlog.
+    // Generous for genuine outages; small enough that even worst-
+    // case sample objects stay well under 100 MB.
+    this.maxBufferSize = options.maxBufferSize ?? 50_000;
     this.onFlush = options.onFlush;
+    this.onDrop = options.onDrop;
     this.startFlushTimer();
   }
 
   async write(samples: MetricSample[]): Promise<void> {
     // T#63: normalise daemon-scope (see MemoryMetricsStorage.write).
     for (const s of samples) this.buffer.push(normaliseAppScope(s));
+    // T#68: even on the happy path, write() can outrun flushes —
+    // cap the buffer here too so unbounded ingress can't OOM us
+    // before the periodic flush has a chance to drain.
+    this.enforceBufferCap();
     if (this.buffer.length >= this.batchSize) {
       await this.flushBuffer();
     }
@@ -465,12 +494,33 @@ export class PostgresMetricsStorage implements IMetricsStorage {
       if (this.onFlush) {
         await this.onFlush(batch);
       }
+      // Successful drain — reset the cumulative drop counter.
+      this.droppedDuringOutage = 0;
     } catch {
-      // On failure, re-enqueue at front
+      // T#68: re-enqueue at the front so order is preserved, then
+      // enforce the cap. New samples that arrived while we were
+      // blocking on the failed write are at the tail; oldest
+      // samples in `batch` get dropped if we'd exceed maxBufferSize.
       this.buffer.unshift(...batch);
+      this.enforceBufferCap();
     } finally {
       this.flushing = false;
     }
+  }
+
+  /**
+   * T#68: drop oldest samples until the buffer fits within
+   * `maxBufferSize`. Bookkeeping for the operator: accumulate the
+   * count between successful flushes and report it via the
+   * optional `onDrop` callback (typically wired to a metrics-bridge
+   * gauge or a structured logger).
+   */
+  private enforceBufferCap(): void {
+    if (this.buffer.length <= this.maxBufferSize) return;
+    const overflow = this.buffer.length - this.maxBufferSize;
+    this.buffer.splice(0, overflow); // drop oldest
+    this.droppedDuringOutage += overflow;
+    this.onDrop?.(this.droppedDuringOutage);
   }
 }
 
@@ -493,17 +543,34 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private readonly batchSize: number;
   private readonly flushInterval: number;
+  /**
+   * T#68: bounded buffer — see `PostgresMetricsStorage.maxBufferSize`
+   * for the rationale. SQLite outages are rarer than PG ones
+   * (local file vs. remote DB) but the same unbounded-retry
+   * structure used to OOM the daemon when the disk filled.
+   */
+  private readonly maxBufferSize: number;
+  private droppedDuringOutage = 0;
   private readonly onFlush: ((batch: MetricSample[]) => Promise<void>) | undefined;
+  private readonly onDrop: ((count: number) => void) | undefined;
   private flushing = false;
   private initialized = false;
 
   constructor(
     private readonly db: KyselyLike,
-    options: { batchSize?: number; flushInterval?: number; onFlush?: (batch: MetricSample[]) => Promise<void> } = {},
+    options: {
+      batchSize?: number;
+      flushInterval?: number;
+      maxBufferSize?: number;
+      onFlush?: (batch: MetricSample[]) => Promise<void>;
+      onDrop?: (count: number) => void;
+    } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.flushInterval = options.flushInterval ?? 5_000;
+    this.maxBufferSize = options.maxBufferSize ?? 50_000;
     this.onFlush = options.onFlush;
+    this.onDrop = options.onDrop;
     this.startFlushTimer();
   }
 
@@ -543,6 +610,8 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
     await this.ensureTable();
     // T#63: normalise daemon-scope (see MemoryMetricsStorage.write).
     for (const s of samples) this.buffer.push(normaliseAppScope(s));
+    // T#68: cap ingress so write() can't outrun flush.
+    this.enforceBufferCap();
     if (this.buffer.length >= this.batchSize) {
       await this.flushBuffer();
     }
@@ -688,11 +757,23 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
       if (this.onFlush) {
         await this.onFlush(batch);
       }
+      this.droppedDuringOutage = 0;
     } catch {
+      // T#68: bounded re-enqueue. See PostgresMetricsStorage.flushBuffer.
       this.buffer.unshift(...batch);
+      this.enforceBufferCap();
     } finally {
       this.flushing = false;
     }
+  }
+
+  /** T#68: drop oldest samples to fit within `maxBufferSize`. */
+  private enforceBufferCap(): void {
+    if (this.buffer.length <= this.maxBufferSize) return;
+    const overflow = this.buffer.length - this.maxBufferSize;
+    this.buffer.splice(0, overflow);
+    this.droppedDuringOutage += overflow;
+    this.onDrop?.(this.droppedDuringOutage);
   }
 }
 

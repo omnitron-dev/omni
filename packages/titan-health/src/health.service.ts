@@ -177,12 +177,24 @@ export class HealthService implements IHealthService {
   }
 
   /**
-   * Run a single health check by name
+   * Run a single health check by name.
+   *
+   * T#71: consult the cache when caching is enabled. Pre-T#71
+   * `checkOne()` always invoked the indicator — even immediately after
+   * a `check()` had populated the cache — producing inconsistent views
+   * between callers that polled the overall status and callers that
+   * polled a specific indicator. If the cached result contains an entry
+   * for `name`, return it; otherwise fall through to a fresh check.
    */
   async checkOne(name: string): Promise<HealthIndicatorResult> {
     const indicator = this.indicators.get(name);
     if (!indicator) {
       throw Errors.notFound('Health indicator', name);
+    }
+
+    if (this.options.enableCaching && this.cache && Date.now() < this.cache.expiresAt) {
+      const cached = this.cache.result.indicators[name];
+      if (cached) return cached;
     }
 
     return this.runWithTimeout(indicator);
@@ -265,12 +277,27 @@ export class HealthService implements IHealthService {
   }
 
   /**
-   * Run indicator with timeout
+   * Run indicator with timeout.
+   *
+   * T#71: `clearTimeout` runs whether the timer fires first (timeout
+   * path) or the indicator settles first (then/catch path). The
+   * pre-T#71 version cleared it only inside the then/catch branches —
+   * if the timer won the race, it had no way to cancel itself, leaving
+   * a redundant resolve() call in flight against an already-settled
+   * promise (no harm — but tracking it explicitly so a future
+   * promise-state assertion in tests can rely on a single resolve).
    */
   private async runWithTimeout(indicator: IHealthIndicator): Promise<HealthIndicatorResult> {
     return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result: HealthIndicatorResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
       const timer = setTimeout(() => {
-        resolve({
+        finish({
           status: 'unhealthy',
           message: `Health check timed out after ${this.options.timeout}ms`,
           timestamp: new Date(),
@@ -279,13 +306,9 @@ export class HealthService implements IHealthService {
 
       indicator
         .check()
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
+        .then((result) => finish(result))
         .catch((error) => {
-          clearTimeout(timer);
-          resolve({
+          finish({
             status: 'unhealthy',
             message: error?.message || 'Health check failed',
             error: {

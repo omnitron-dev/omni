@@ -1315,8 +1315,13 @@ export class ProcessPool<T> {
   }
 
   /**
-   * Private: Setup auto-scaling
+   * Private: Setup auto-scaling.
+   *
+   * T#71: re-entrancy guard. `scale()` can take seconds (spawn/destroy
+   * workers); `setInterval` doesn't wait. Without this guard, a single
+   * overrunning tick would race subsequent ticks and double-scale.
    */
+  private autoScaleRunning = false;
   private setupAutoScaling(): void {
     if (!this.poolOptions.autoScale?.enabled) return;
 
@@ -1324,6 +1329,8 @@ export class ProcessPool<T> {
 
     this.autoScaleTimer = setInterval(async () => {
       if (this.isShuttingDown || this.isDraining) return;
+      if (this.autoScaleRunning) return;
+      this.autoScaleRunning = true;
 
       try {
         const now = Date.now();
@@ -1365,6 +1372,8 @@ export class ProcessPool<T> {
         }
       } catch (error) {
         this.logger.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Error during auto-scaling check');
+      } finally {
+        this.autoScaleRunning = false;
       }
     }, checkInterval);
   }
@@ -1437,15 +1446,23 @@ export class ProcessPool<T> {
   }
 
   /**
-   * Private: Setup memory monitoring for workers
-   * Tracks memory usage and triggers recycling when limits are exceeded
-   * Expected improvement: 30-50% reduction in memory-related crashes
+   * Private: Setup memory monitoring for workers.
+   * Tracks memory usage and triggers recycling when limits are exceeded.
+   *
+   * T#71: re-entrancy guard — same rationale as the other interval-
+   * driven monitors. Memory metrics from `__getMetrics()` can take
+   * variable time; without the guard, overlapping ticks would race
+   * to write `worker.memoryUsage` / `peakMemoryUsage`.
    */
+  private memoryMonitorRunning = false;
   private setupMemoryMonitoring(): void {
     const MEMORY_CHECK_INTERVAL = 15000; // 15 seconds
 
     this.memoryMonitorTimer = setInterval(async () => {
       if (this.isShuttingDown) return;
+      if (this.memoryMonitorRunning) return;
+      this.memoryMonitorRunning = true;
+      try {
 
       const workers = Array.from(this.workers.values());
 
@@ -1489,14 +1506,23 @@ export class ProcessPool<T> {
           peak: w.peakMemoryUsage,
         })),
       });
+      } finally {
+        this.memoryMonitorRunning = false;
+      }
     }, MEMORY_CHECK_INTERVAL);
   }
 
   /**
-   * Private: Setup heartbeat monitoring
-   * Detects unresponsive workers faster than health checks
-   * Expected improvement: 40-60% faster detection of stuck workers
+   * Private: Setup heartbeat monitoring.
+   * Detects unresponsive workers faster than health checks.
+   *
+   * T#71: re-entrancy guard. With timeouts up to 5s per worker and
+   * potentially many workers, a heartbeat sweep can run longer than
+   * the 10-second interval. Pre-T#71 overlapping ticks raced to
+   * write `consecutiveFailures` AND `replaceWorker` for the same
+   * unresponsive worker.
    */
+  private heartbeatRunning = false;
   private setupHeartbeatMonitoring(): void {
     const HEARTBEAT_INTERVAL = 10000; // 10 seconds
     const HEARTBEAT_TIMEOUT = 5000; // 5 seconds
@@ -1504,20 +1530,25 @@ export class ProcessPool<T> {
 
     this.heartbeatTimer = setInterval(async () => {
       if (this.isShuttingDown) return;
+      if (this.heartbeatRunning) return;
+      this.heartbeatRunning = true;
+      try {
 
       const now = Date.now();
       const workers = Array.from(this.workers.values());
 
       await Promise.all(
         workers.map(async (worker) => {
+          let timeoutHandle: NodeJS.Timeout | null = null;
           try {
-            // Send heartbeat with timeout
+            // Send heartbeat with timeout (T#71: clear timer on race win).
             const heartbeatPromise = this.sendHeartbeat(worker);
-            const timeoutPromise = new Promise<boolean>((resolve) =>
-              setTimeout(() => resolve(false), HEARTBEAT_TIMEOUT)
-            );
+            const timeoutPromise = new Promise<boolean>((resolve) => {
+              timeoutHandle = setTimeout(() => resolve(false), HEARTBEAT_TIMEOUT);
+            });
 
             const responded = await Promise.race([heartbeatPromise, timeoutPromise]);
+            if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
 
             if (responded) {
               worker.lastHeartbeat = now;
@@ -1548,9 +1579,14 @@ export class ProcessPool<T> {
           } catch (error) {
             worker.consecutiveFailures++;
             this.logger.debug({ error, workerId: worker.id }, 'Heartbeat failed');
+          } finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
           }
         })
       );
+      } finally {
+        this.heartbeatRunning = false;
+      }
     }, HEARTBEAT_INTERVAL);
   }
 

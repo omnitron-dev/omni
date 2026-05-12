@@ -16,6 +16,19 @@ export class ProcessHealthChecker extends EventEmitter {
   private checkers = new Map<string, NodeJS.Timeout>();
   private healthHistory = new Map<string, IHealthStatus[]>();
   private failureCounts = new Map<string, number>();
+  /**
+   * Per-process re-entrancy guard for the interval body. `setInterval`
+   * doesn't await the previous tick; a slow health check would cause
+   * concurrent in-flight checks against the same proxy (T#71).
+   */
+  private checkInProgress = new Set<string>();
+  /**
+   * Track whether `health:critical` has already fired for a given
+   * process. Pre-T#71 the event fired on EVERY tick once
+   * `failureCount > 5`, spamming subscribers. Now it fires once on
+   * transition across the threshold and resets on recovery.
+   */
+  private criticalEmitted = new Set<string>();
 
   constructor(private readonly logger: ILogger) {
     super();
@@ -37,8 +50,15 @@ export class ProcessHealthChecker extends EventEmitter {
     this.healthHistory.set(processId, []);
     this.failureCounts.set(processId, 0);
 
-    // Setup health check interval
+    // Setup health check interval.
+    //
+    // T#71: re-entrancy guard. If a health check takes longer than the
+    // interval (slow proxy, retry backoff, network blip), `setInterval`
+    // would fire concurrent ticks against the same proxy — each running
+    // its own retry loop and racing to write `healthHistory`.
     const checker = setInterval(async () => {
+      if (this.checkInProgress.has(processId)) return;
+      this.checkInProgress.add(processId);
       try {
         const health = await this.checkHealth(proxy, timeout, retries);
         this.recordHealth(processId, health);
@@ -56,6 +76,8 @@ export class ProcessHealthChecker extends EventEmitter {
           ],
           timestamp: Date.now(),
         });
+      } finally {
+        this.checkInProgress.delete(processId);
       }
     }, interval);
 
@@ -75,6 +97,9 @@ export class ProcessHealthChecker extends EventEmitter {
       this.checkers.delete(processId);
       this.healthHistory.delete(processId);
       this.failureCounts.delete(processId);
+      // T#71: clean up the new per-process tracking sets too.
+      this.checkInProgress.delete(processId);
+      this.criticalEmitted.delete(processId);
 
       this.logger.debug({ processId }, 'Stopped health monitoring');
     }
@@ -90,6 +115,8 @@ export class ProcessHealthChecker extends EventEmitter {
     this.checkers.clear();
     this.healthHistory.clear();
     this.failureCounts.clear();
+    this.checkInProgress.clear();
+    this.criticalEmitted.clear();
     this.removeAllListeners();
   }
 
@@ -242,28 +269,59 @@ export class ProcessHealthChecker extends EventEmitter {
       );
     }
 
-    // Update failure count
+    // Update failure count.
+    //
+    // T#71 (two related fixes):
+    //
+    //  - `degraded` status is NOT a recovery. Pre-T#71 the `else`
+    //    branch reset `failureCounts` to 0 on anything that wasn't
+    //    `unhealthy` — which incorrectly cleared the counter when
+    //    the process flapped between `unhealthy` and `degraded`,
+    //    masking sustained problems. Now we ONLY reset on `healthy`.
+    //
+    //  - `health:critical` used to fire on every tick once
+    //    `failures > 5`, spamming subscribers with the same signal
+    //    indefinitely. The audit's design intent: fire ONCE on
+    //    transition across the threshold, then again only if the
+    //    process recovers and falls back into degradation. The
+    //    `criticalEmitted` set tracks per-process latched state.
     if (health.status === 'unhealthy') {
       const failures = (this.failureCounts.get(processId) || 0) + 1;
       this.failureCounts.set(processId, failures);
 
-      // Emit critical event if too many failures
-      if (failures > 5) {
+      if (failures > 5 && !this.criticalEmitted.has(processId)) {
+        this.criticalEmitted.add(processId);
         this.emit('health:critical', processId, health);
       }
-    } else {
+    } else if (health.status === 'healthy') {
       this.failureCounts.set(processId, 0);
+      this.criticalEmitted.delete(processId);
     }
+    // `degraded`: leave counters alone.
   }
 
   /**
-   * Execute with timeout
+   * Execute with timeout.
+   *
+   * T#71: clear the timer on the winning-promise path. Pre-T#71 the
+   * setTimeout kept the event loop alive for the full timeout window
+   * even after the promise resolved early — multiplied across every
+   * health check on every process, this kept thousands of dead timers
+   * pending and (more importantly) blocked clean test shutdown.
    */
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('health check', timeout)), timeout)),
-    ]);
+    let timer: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timer = setTimeout(
+        () => reject(Errors.timeout('health check', timeout)),
+        timeout,
+      );
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**

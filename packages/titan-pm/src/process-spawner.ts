@@ -90,9 +90,16 @@ export class WorkerHandle implements IWorkerHandle {
   }
 
   async terminate(opts?: { shutdownTimeout?: number }): Promise<void> {
-    try {
+    // T#71: only transition to STOPPING once. The terminate path is
+    // idempotent — calling it twice (which the supervisor can do
+    // during a chaotic shutdown) must not regress a STOPPED back to
+    // STOPPING. We still proceed with cleanup so a partial first
+    // attempt is fully drained.
+    if (this._status !== ProcessStatus.STOPPED) {
       this._status = ProcessStatus.STOPPING;
+    }
 
+    try {
       // Disconnect Netron client if present
       if (this.netronClient?.isConnected()) {
         await this.netronClient.disconnect();

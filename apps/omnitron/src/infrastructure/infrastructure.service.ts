@@ -24,7 +24,8 @@ import type {
   ResolvedContainer,
   ReconcileAction,
 } from './types.js';
-import { resolveInfrastructure, resolveOmnitronPg } from './service-resolver.js';
+import { resolveInfrastructure, resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
+import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
 import {
   isDockerAvailable,
   getContainerState,
@@ -64,6 +65,12 @@ export class InfrastructureService {
    * making transient pressure look like outages.
    */
   private unhealthyTicks = new Map<string, number>();
+
+  /**
+   * T#75: phantom-endpoint janitor instance. Created in `provision()`
+   * once we know Docker is reachable; torn down in `teardown()`.
+   */
+  private phantomJanitor: PhantomEndpointJanitor | null = null;
 
   constructor(
     private readonly logger: ILogger,
@@ -171,6 +178,18 @@ export class InfrastructureService {
     // 4. Start health monitor
     this.startHealthMonitor();
 
+    // T#75: start the phantom-endpoint janitor. It periodically
+    // cleans up stale endpoint records on the managed network so
+    // a Docker daemon restart / host suspend doesn't leave us
+    // unable to recreate containers ("endpoint with name X
+    // already exists in network ...").
+    this.phantomJanitor = new PhantomEndpointJanitor({
+      networks: [getManagedNetwork()],
+      intervalMs: 60_000,
+      logger: this.logger,
+    });
+    this.phantomJanitor.start();
+
     this.state.ready = true;
     this.state.lastReconciled = new Date().toISOString();
     this.logger.info('Infrastructure provisioned and healthy');
@@ -183,6 +202,13 @@ export class InfrastructureService {
    */
   async teardown(): Promise<void> {
     this.stopHealthMonitor();
+    // T#75: stop the janitor BEFORE removing containers so a final
+    // tick can't race the teardown's `docker rm` and produce noisy
+    // disconnect-of-already-disconnected errors.
+    if (this.phantomJanitor) {
+      this.phantomJanitor.stop();
+      this.phantomJanitor = null;
+    }
 
     // Remove all containers in parallel for fast shutdown.
     // Skip the stack-prefixed PG when using the global omnitron-pg (it's shared).

@@ -164,7 +164,7 @@ export class TelemetryRelayService extends EventEmitter {
 
     // Replay WAL entries that weren't ack'd before shutdown
     if (this.wal && this.transport) {
-      const walEntries = this.wal.readAll();
+      const walEntries = await this.wal.readAll();
       if (walEntries.length > 0) {
         try {
           if (this.transport.isConnected()) {
@@ -281,7 +281,7 @@ export class TelemetryRelayService extends EventEmitter {
         if (!this.transport.isConnected()) {
           await this.transport.connect();
         }
-        const entries = this.wal.readAll();
+        const entries = await this.wal.readAll();
         if (entries.length > 0) {
           const ackd = await this.transport.send(entries);
           if (ackd === entries.length) {

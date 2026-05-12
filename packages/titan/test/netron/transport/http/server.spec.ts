@@ -24,12 +24,30 @@ describe('HttpServer (Legacy Tests)', () => {
       host: 'localhost',
     });
 
-    // Create mock peer
+    // Create mock peer.
+    //
+    // T#50: AuthenticationManager mock accepts `test-token` for the
+    // /metrics and /openapi.json endpoint tests. Pre-T#50 the server
+    // accepted any Authorization header value; post-T#50 it validates.
     mockPeer = {
       stubs: new Map(),
       on: vi.fn(),
       off: vi.fn(),
       emit: vi.fn(),
+      netron: {
+        authenticationManager: {
+          authenticate: vi.fn(),
+          validateToken: vi.fn().mockImplementation(async (token: string) => {
+            if (token === 'test-token') {
+              return {
+                success: true,
+                context: { userId: 'test', roles: [], permissions: [] },
+              };
+            }
+            return { success: false };
+          }),
+        },
+      },
     } as any;
   });
 
@@ -418,6 +436,10 @@ describe('HttpServer (Legacy Tests)', () => {
 
   describe('Health and Metrics', () => {
     beforeEach(async () => {
+      // T#50: wire the mockPeer so the server can resolve
+      // `netron.authenticationManager.validateToken` when /metrics
+      // and /openapi.json are hit.
+      server.setPeer(mockPeer);
       await server.listen();
     });
 
@@ -426,10 +448,12 @@ describe('HttpServer (Legacy Tests)', () => {
 
       expect(response.status).toBe(200);
 
+      // T#50: /health returns ONLY `status` for security — no
+      // uptime/version fingerprinting on the unauthenticated probe.
       const health = await response.json();
       expect(health.status).toBe('online');
-      expect(health.version).toBe('1.0.0');
-      expect(health.uptime).toBeGreaterThan(0);
+      expect(health.version).toBeUndefined();
+      expect(health.uptime).toBeUndefined();
     });
 
     it('should provide metrics with authentication', async () => {

@@ -694,11 +694,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
 
       if (pathname === '/metrics' && request.method === 'GET') {
-        return this.handleMetricsRequest(request);
+        return await this.handleMetricsRequest(request);
       }
 
       if (pathname === '/openapi.json' && request.method === 'GET') {
-        return this.handleOpenAPIRequest(request);
+        return await this.handleOpenAPIRequest(request);
       }
 
       // Custom routes (file serving, webhooks, etc.)
@@ -1509,20 +1509,24 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Handle health check
+   * Handle health check.
+   *
+   * T#50 (security): the health endpoint is the ONE public surface
+   * that must remain unauthenticated (Kubernetes liveness probes,
+   * external monitoring). Therefore it MUST NOT reveal anything that
+   * helps an attacker fingerprint the service. The pre-T#50 payload
+   * shipped `version` AND `uptime` — both leak: `version` lets an
+   * attacker pivot to known-vulnerable releases without probing
+   * /openapi.json; `uptime` shows whether the server was recently
+   * restarted (potentially after a deploy or under attack).
+   *
+   * The fix returns only `{ status }` — enough for a probe to
+   * decide ready/not-ready, nothing more.
    */
-  private handleHealthCheck(request: Request): Response {
+  private handleHealthCheck(_request: Request): Response {
     const status = this.status === 'online' ? 200 : 503;
-    // Get application version from options, fallback to HTTP transport version
-    const appVersion = (this.options as any)?.appVersion || '1.0.0';
-    // Basic health check without sensitive information
     return new Response(
-      JSON.stringify({
-        status: this.status,
-        uptime: Date.now() - this.startTime,
-        version: appVersion,
-        // Removed services list - use authenticated /metrics instead
-      }),
+      JSON.stringify({ status: this.status }),
       {
         status,
         headers: { 'Content-Type': 'application/json' },
@@ -1531,32 +1535,70 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Handle metrics request
+   * Validate a Bearer token via the wired AuthenticationManager.
+   *
+   * T#50 (security): the pre-T#50 `/metrics` and `/openapi.json`
+   * handlers gated on `if (!authHeader)` — meaning ANY non-empty
+   * Authorization header passed. `Authorization: anything` returned
+   * a full service list + OpenAPI spec to unauthenticated callers.
+   * This centralised helper actually invokes the AuthenticationManager
+   * to verify the token. If no AuthenticationManager is wired the
+   * endpoint denies by default — fail-closed.
    */
-  private handleMetricsRequest(request: Request): Response {
-    // Extract and verify authentication
+  private async validateBearerAuth(request: Request): Promise<boolean> {
     const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return false;
+    const token = extractBearerToken(authHeader);
+    if (!token) return false;
 
-    // Require authentication for metrics endpoint
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: '401',
-            message: 'Authentication required for metrics endpoint',
-          },
-        }),
-        {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'WWW-Authenticate': 'Bearer',
-          },
-        }
-      );
+    const netron = this.netronPeer?.netron as INetronInternal | undefined;
+    const authManager = netron?.authenticationManager;
+    if (!authManager) return false; // fail-closed: no validator wired
+
+    try {
+      const result = await authManager.validateToken(token);
+      return !!(result && result.success && result.context);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Standard 401 envelope used by introspection endpoints. The
+   * response carries no internal detail beyond the `WWW-Authenticate`
+   * challenge header — same body shape regardless of whether the
+   * header was missing, malformed, or rejected by the validator.
+   */
+  private unauthorizedResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        error: { code: '401', message: 'Authentication required' },
+      }),
+      {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Bearer',
+        },
+      },
+    );
+  }
+
+  /**
+   * Handle metrics request.
+   *
+   * T#50 (security): the endpoint exposes a service list, request
+   * counters, and middleware metrics — all infrastructure-revealing
+   * data. The pre-T#50 check `if (!authHeader)` was a no-op (any
+   * header value passed). Now goes through `validateBearerAuth`
+   * which actually verifies the token. Fail-closed when no
+   * AuthenticationManager is wired.
+   */
+  private async handleMetricsRequest(request: Request): Promise<Response> {
+    if (!(await this.validateBearerAuth(request))) {
+      return this.unauthorizedResponse();
     }
 
-    // Return full metrics only for authenticated requests
     return new Response(
       JSON.stringify({
         server: {
@@ -1570,7 +1612,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           errors: this.metrics.totalErrors,
           avgResponseTime: this.metrics.avgResponseTime,
         },
-        services: Array.from(this.services.keys()), // OK for authenticated users
+        services: Array.from(this.services.keys()),
         middleware: this.globalPipeline.getMetrics(),
         rateLimit: this.rateLimiter.getStats(),
       }),
@@ -1582,32 +1624,18 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Handle OpenAPI specification request
+   * Handle OpenAPI specification request.
+   *
+   * T#50 (security): the spec describes every public method on every
+   * service — a complete attack-surface map. Same pre-T#50 bug as
+   * `/metrics`: any Authorization header value passed. Now requires
+   * a validated Bearer token via `validateBearerAuth`.
    */
-  private handleOpenAPIRequest(request: Request): Response {
-    // Extract and verify authentication
-    const authHeader = request.headers.get('Authorization');
-
-    // Require authentication for OpenAPI spec
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: '401',
-            message: 'Authentication required for API documentation',
-          },
-        }),
-        {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'WWW-Authenticate': 'Bearer',
-          },
-        }
-      );
+  private async handleOpenAPIRequest(request: Request): Promise<Response> {
+    if (!(await this.validateBearerAuth(request))) {
+      return this.unauthorizedResponse();
     }
 
-    // Continue with OpenAPI generation for authenticated users
     const spec: any = {
       openapi: '3.0.3',
       info: {

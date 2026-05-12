@@ -275,6 +275,11 @@ export class ConnectionManager extends EventEmitter {
   private peerConnections: Map<string, Set<string>> = new Map();
   private healthCheckTimer?: NodeJS.Timeout;
   private cleanupTimer?: NodeJS.Timeout;
+  /**
+   * Re-entrancy guard for `performHealthChecks` (T#50). A slow ping
+   * sweep can outlive the interval; the flag drops overlapping ticks.
+   */
+  private healthCheckRunning = false;
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private logger: ILogger;
 
@@ -312,11 +317,24 @@ export class ConnectionManager extends EventEmitter {
     this.state = ConnectionManagerState.RUNNING;
     this.emit('manager:state_change', oldState, this.state);
 
-    // Start health check timer
+    // Start health check timer.
+    //
+    // T#50: re-entrancy guard. A slow health sweep (many connections,
+    // each with a 30-second ping timeout) could outlast the interval
+    // and pile up overlapping in-flight rounds — each independently
+    // mutating `connection.state` and competing to call
+    // `closeConnection` for the same dead peer. The flag drops
+    // overlapping ticks.
     this.healthCheckTimer = setInterval(() => {
-      this.performHealthChecks().catch((err) => {
-        this.logger.error({ err }, 'Health check cycle failed');
-      });
+      if (this.healthCheckRunning) return;
+      this.healthCheckRunning = true;
+      this.performHealthChecks()
+        .catch((err) => {
+          this.logger.error({ err }, 'Health check cycle failed');
+        })
+        .finally(() => {
+          this.healthCheckRunning = false;
+        });
     }, this.config.healthCheckInterval);
 
     // Start cleanup timer
@@ -835,14 +853,19 @@ export class ConnectionManager extends EventEmitter {
   private async checkConnectionHealth(managed: ManagedConnection, now: number): Promise<void> {
     this.totalHealthChecks++;
 
+    let heartbeatTimer: NodeJS.Timeout | null = null;
     try {
-      // Perform ping with timeout
+      // Perform ping with timeout (T#50: timer cleared on race-win).
       const rtt = await Promise.race([
         managed.connection.ping(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Heartbeat timeout')), this.config.heartbeatTimeout)
-        ),
+        new Promise<never>((_, reject) => {
+          heartbeatTimer = setTimeout(
+            () => reject(new Error('Heartbeat timeout')),
+            this.config.heartbeatTimeout,
+          );
+        }),
       ]);
+      if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
 
       // Successful heartbeat
       managed.lastHeartbeat = now;
@@ -885,6 +908,8 @@ export class ConnectionManager extends EventEmitter {
           });
         }
       }
+    } finally {
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
     }
   }
 

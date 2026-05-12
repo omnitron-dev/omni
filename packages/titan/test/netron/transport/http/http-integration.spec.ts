@@ -286,8 +286,11 @@ describe('HTTP Transport Integration (v1.0)', () => {
 
       expect(response.status).toBeDefined();
       const data = (await response.json()) as any;
+      // T#50: /health only returns `status` (no uptime/version) to
+      // avoid leaking fingerprinting info on the unauthenticated probe.
       expect(data.status).toBeDefined();
-      expect(data.uptime).toBeGreaterThanOrEqual(0);
+      expect(data.uptime).toBeUndefined();
+      expect(data.version).toBeUndefined();
     });
 
     it('should track metrics', async () => {

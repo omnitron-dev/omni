@@ -1,67 +1,96 @@
 /**
- * Titan Application - Core application kernel
+ * Titan Application — orchestrator kernel.
  *
- * The Application class is the main entry point for creating and managing
- * Titan applications. It handles module registration, lifecycle management,
- * configuration, and graceful shutdown.
+ * The `Application` class is the public entry point of the framework.
+ * Historically it was a single 3,200-line god class that owned every
+ * concern from filesystem module discovery to OS signal handling. The
+ * T#33 refactor split those concerns into nine focused collaborators in
+ * `internal/`:
+ *
+ *   - `EventBus`              — sync + async dispatch with wildcard fan-out
+ *   - `LifecycleStateMachine` — state, hooks, in-flight start/stop promises
+ *   - `ConfigStore`           — merged + user config + deep merge
+ *   - `ModuleRegistry`        — module map, dedup, topo sort, registration paths
+ *   - `ModuleDiscovery`       — filesystem `@Module` scan
+ *   - `ShutdownCoordinator`   — tasks, cleanup, LifecycleController wiring
+ *   - `ProcessHost`           — signals, uncaught/rejection, exit
+ *   - `HealthAggregator`      — per-module health roll-up
+ *   - `ServiceExposer`        — @Service → Netron auto-exposure
+ *
+ * This file is the orchestrator: it wires those collaborators, exposes
+ * the public API the framework documents, and runs the two operations
+ * that genuinely require all collaborators in one place — `_doStart`
+ * and `_doStop`.
+ *
+ * Public API surface is preserved byte-for-byte from the legacy
+ * implementation. The internal split is transparent to consumers.
  *
  * @stable
  * @since 0.1.0
  */
 
+import 'reflect-metadata';
 import os from 'node:os';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import {
   Token,
   Container,
   createToken,
-  InjectionToken,
-  Provider,
-  Constructor,
-  ProviderDefinition,
+  type InjectionToken,
+  type Provider,
 } from '../nexus/index.js';
 import { Netron, type NetronOptions } from '../netron/index.js';
 import { Errors } from '../errors/index.js';
-import { fallbackLog } from '../utils/fallback-log.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN, CONFIG_OPTIONS_TOKEN } from '../modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN, LOGGER_OPTIONS_TOKEN } from '../modules/logger/index.js';
-import { LifecycleController, type LifecyclePhaseEvent } from '../lifecycle/index.js';
-// Well-known token for optional scheduler integration (uses Symbol.for for cross-package identity)
-const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
-
-import { isOperationalError, createOperationalErrorRecorder } from '../utils/error-classification.js';
 import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
+
 import {
-  IModule,
-  IEventMeta,
-  ModuleInput,
-  IEnvironment,
-  IApplication,
-  EventHandler,
-  ILifecycleHook,
-  IDynamicModule,
-  IShutdownOptions,
+  type IModule,
+  type ModuleInput,
+  type IEnvironment,
+  type IApplication,
+  type EventHandler,
+  type ILifecycleHook,
+  type IDynamicModule,
+  type IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  ModuleConstructor,
-  IApplicationConfig,
-  IApplicationMetrics,
-  IApplicationOptions,
-  IShutdownTask,
+  type ModuleConstructor,
+  type IApplicationConfig,
+  type IApplicationMetrics,
+  type IApplicationOptions,
+  type IShutdownTask,
   ShutdownReason,
-  ProcessSignal,
-  ShutdownPriority,
-  LifecycleState,
-  IProcessMetrics,
-  IHealthStatus,
-  ConfigValue,
-  ConfigObject,
+  type ProcessSignal,
+  type IProcessMetrics,
+  type IHealthStatus,
+  type ConfigValue,
+  type ConfigObject,
 } from '../types.js';
+
+import {
+  ConfigStore,
+  EventBus,
+  HealthAggregator,
+  hookTimeoutError,
+  isDynamicModule as isDynamicModuleInternal,
+  LifecycleStateMachine,
+  makeRootContextModule,
+  ModuleDiscovery,
+  ModuleRegistry,
+  ProcessHost,
+  ServiceExposer,
+  ShutdownCoordinator,
+  DEFAULT_HOOK_TIMEOUT_MS,
+} from './_internal/index.js';
+
+// Well-known token for optional scheduler integration (Symbol.for so the
+// identity matches across packages without importing the scheduler).
+const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
 
 /**
  * Application token for dependency injection.
- * Use this token to resolve the Application instance from the container.
  *
  * @stable
  * @since 0.1.0
@@ -69,8 +98,7 @@ import {
 export const APPLICATION_TOKEN: Token<Application> = createToken<Application>('Application');
 
 /**
- * Netron service token - Core networking and RPC service.
- * Use this token to resolve the Netron instance from the container.
+ * Netron service token — core networking and RPC.
  *
  * @stable
  * @since 0.1.0
@@ -78,575 +106,355 @@ export const APPLICATION_TOKEN: Token<Application> = createToken<Application>('A
 export const NETRON_TOKEN: Token<Netron> = createToken<Netron>('Netron');
 
 /**
- * The main Titan Application class.
- *
- * Provides a complete application lifecycle management system with:
- * - Module registration and dependency injection
- * - Configuration management
- * - Event system
- * - Health checks
- * - Graceful shutdown handling
- *
- * @stable
- * @since 0.1.0
- *
- * @example Basic application creation
- * ```typescript
- * import { Application } from '@omnitron-dev/titan/application';
- *
- * // Create and start a basic application
- * const app = await Application.create({
- *   name: 'my-app',
- *   version: '1.0.0'
- * });
- * await app.start();
- *
- * // Access configuration
- * const port = app.config('port');
- *
- * // Graceful shutdown
- * await app.stop();
- * ```
- *
- * @example Application with modules
- * ```typescript
- * import { Application } from '@omnitron-dev/titan/application';
- * import { LoggerModule } from '@omnitron-dev/titan/module/logger';
- * import { ConfigModule } from '@omnitron-dev/titan/module/config';
- * import { RedisModule } from '@omnitron-dev/titan/module/redis';
- *
- * const app = await Application.create({
- *   name: 'my-service',
- *   modules: [
- *     LoggerModule.forRoot({ level: 'info' }),
- *     ConfigModule.forRoot({ path: './config' }),
- *     RedisModule.forRootAsync({
- *       useFactory: (config) => ({
- *         host: config.get('redis.host'),
- *         port: config.get('redis.port')
- *       }),
- *       inject: [ConfigService]
- *     })
- *   ],
- *   config: {
- *     port: 3000,
- *     environment: 'production'
- *   }
- * });
- * ```
- *
- * @example Exposing RPC services
- * ```typescript
- * import { Application, NETRON_TOKEN } from '@omnitron-dev/titan/application';
- * import { Service, Public } from '@omnitron-dev/titan/decorators';
- *
- * @Service('api.users@1.0.0')
- * class UserService {
- *   @Public()
- *   async getUser(id: string): Promise<User> {
- *     return await this.userRepo.findById(id);
- *   }
- *
- *   @Public({ auth: { roles: ['admin'] } })
- *   async deleteUser(id: string): Promise<void> {
- *     await this.userRepo.delete(id);
- *   }
- * }
- *
- * const app = await Application.create({
- *   name: 'user-service',
- *   providers: [
- *     [UserService, { useClass: UserService }]
- *   ]
- * });
- *
- * await app.start();
- *
- * // Services decorated with @Service are auto-exposed to Netron
- * // Or manually expose via Netron:
- * const netron = app.resolve(NETRON_TOKEN);
- * await netron.peer.exposeService(new UserService());
- * ```
- *
- * @example Lifecycle hooks
- * ```typescript
- * const app = await Application.create({
- *   name: 'my-app'
- * });
- *
- * // Register startup hook
- * app.onStart({
- *   name: 'database-init',
- *   handler: async () => {
- *     await database.connect();
- *     console.log('Database connected');
- *   },
- *   timeout: 10000
- * });
- *
- * // Register shutdown hook
- * app.onStop({
- *   name: 'database-cleanup',
- *   handler: async () => {
- *     await database.disconnect();
- *     console.log('Database disconnected');
- *   }
- * });
- *
- * // Register shutdown task with priority
- * app.registerShutdownTask({
- *   id: 'close-connections',
- *   name: 'Close all connections',
- *   priority: 10, // Lower priority runs first
- *   handler: async (reason) => {
- *     console.log(`Shutting down: ${reason}`);
- *   }
- * });
- *
- * await app.start();
- * ```
- *
- * @example Event handling
- * ```typescript
- * import { Application, ApplicationEvent } from '@omnitron-dev/titan/application';
- *
- * const app = await Application.create({ name: 'my-app' });
- *
- * app.on(ApplicationEvent.Starting, () => {
- *   console.log('Application is starting...');
- * });
- *
- * app.on(ApplicationEvent.Started, () => {
- *   console.log('Application started successfully');
- * });
- *
- * app.on(ApplicationEvent.ModuleRegistered, ({ module }) => {
- *   console.log(`Module registered: ${module}`);
- * });
- *
- * app.on(ApplicationEvent.Stopping, () => {
- *   console.log('Application is stopping...');
- * });
- *
- * await app.start();
- * ```
- *
- * @example Custom module creation
- * ```typescript
- * import { Application, IModule } from '@omnitron-dev/titan/application';
- *
- * class MyCustomModule implements IModule {
- *   name = 'my-custom-module';
- *
- *   async onRegister(app: Application) {
- *     // Register providers
- *     app.container.register(MyService, { useClass: MyService });
- *   }
- *
- *   async onStart(app: Application) {
- *     const service = app.resolve(MyService);
- *     await service.initialize();
- *   }
- *
- *   async onStop(app: Application) {
- *     const service = app.resolve(MyService);
- *     await service.cleanup();
- *   }
- * }
- *
- * const app = await Application.create({
- *   name: 'my-app',
- *   modules: [MyCustomModule]
- * });
- * ```
+ * Options blob accepted by the static `create()` factory. Extends the
+ * declared `IApplicationOptions` with the "convenience" fields the
+ * factory understands directly (modules array, imports, providers,
+ * autoDiscovery, scanPaths, excludePaths).
  */
+type CreateOptions = IApplicationOptions & {
+  modules?: ModuleInput[];
+  imports?: Token<IModule>[];
+  providers?: Array<[InjectionToken<unknown>, Provider<unknown>]>;
+  autoDiscovery?: boolean;
+  scanPaths?: string[];
+  excludePaths?: string[];
+};
+
 export class Application implements IApplication {
-  private _isStarted = false;
-  private _state: ApplicationState = ApplicationState.Created;
-  private _container: Container;
-  private _config: IApplicationConfig;
-  private _userConfig: ConfigObject; // Store original user config separately
-  private _name: string;
-  private _version: string;
-  private _debug: boolean;
-  private _startTime: number = 0;
-  private _startupTime: number = 0;
-  private _eventEmitter = new EventEmitter();
-  private _modules = new Map<Token<IModule>, IModule>();
-  private _processedModuleClasses = new WeakSet<object>();
-  private _startHooks: ILifecycleHook[] = [];
-  private _stopHooks: ILifecycleHook[] = [];
-  private _errorHandlers: ((error: Error) => void)[] = [];
+  // ─── Identity ────────────────────────────────────────────────────────
+  private readonly _container: Container;
+  private readonly _name: string;
+  private readonly _version: string;
+  private readonly _debug: boolean;
+
+  // ─── Collaborators ───────────────────────────────────────────────────
+  //
+  // Names prefixed with `__` so the simpler `_config`, `_modules`, `_state`
+  // identifiers remain free for legacy backward-compat accessors at the
+  // bottom of this class. Several test suites poke private fields (e.g.
+  // `(app as any)._config.name`) — the accessor shims preserve that
+  // contract while routing through the collaborators internally.
+  private readonly _events = new EventBus();
+  private readonly _lifecycle = new LifecycleStateMachine();
+  private readonly __configStore: ConfigStore;
+  private readonly __moduleRegistry: ModuleRegistry;
+  private readonly _discovery: ModuleDiscovery;
+  private readonly _shutdown: ShutdownCoordinator;
+  private readonly _process: ProcessHost;
+  private readonly _health: HealthAggregator;
+  private readonly _exposer: ServiceExposer;
+
+  /** Cached logger — set after the logger module starts. */
   private _logger?: ILogger;
 
-  // Process lifecycle management
-  private _shutdownTasks = new Map<string, IShutdownTask>();
+  constructor(options: IApplicationOptions = {}) {
+    this._container = options.container || new Container();
+    this._container.register(APPLICATION_TOKEN, { useValue: this });
 
-  private _signalHandlers = new Map<string, (...args: any[]) => void>();
-  private _cleanupHandlers = new Set<() => Promise<void> | void>();
-  private _isShuttingDown = false;
-  private _shutdownPromise: Promise<void> | null = null;
-  private _lifecycleState: LifecycleState = LifecycleState.Created;
-  private _disableProcessExit = false;
-  private _shutdownTimeout = 30000;
-  private _startPromise: Promise<void> | null = null;
-  private _stopPromise: Promise<void> | null = null;
+    this._name = options.name || 'titan-app';
+    this._version = options.version || '1.0.0';
+    this._debug = options.debug || false;
 
-  /**
-   * Static factory method for creating application instance
-   * Supports multiple usage patterns for maximum flexibility
-   */
-  static async create(module: ModuleInput, options?: IApplicationOptions): Promise<Application>;
-  static async create(
-    options?: IApplicationOptions & {
-      modules?: ModuleInput[];
-      imports?: Token<IModule>[]; // Support direct imports like AppModule had
-      providers?: Array<[InjectionToken<unknown>, Provider<unknown>]>; // Support direct providers
-      autoDiscovery?: boolean; // Enable automatic module discovery
-      scanPaths?: string[]; // Paths to scan for modules
-      excludePaths?: string[]; // Paths to exclude from scanning
+    this.__configStore = new ConfigStore({
+      name: this._name,
+      version: this._version,
+      debug: this._debug,
+      environment: process.env['NODE_ENV'] || 'development',
+      userConfig: (options.config as ConfigObject | undefined) ?? {},
+      logging: options.logging,
+      disableCoreModules: options.disableCoreModules,
+      disableGracefulShutdown: options.disableGracefulShutdown,
+      disableProcessExit: (options as { disableProcessExit?: boolean }).disableProcessExit,
+    });
+
+    this.__moduleRegistry = new ModuleRegistry({
+      container: this._container,
+      emit: (e, d) => this._events.emit(e, d),
+      getModuleConfig: (name) => this.__configStore.rawGet(name),
+      getLogger: () => this._logger,
+      getAppState: () => this._lifecycle.state,
+    });
+
+    this._discovery = new ModuleDiscovery({
+      has: (token) => this.__moduleRegistry.has(token),
+      cacheDiscovered: (token, instance) => {
+        // `discoverModules` historically pre-cached discovered classes
+        // into the module map directly; the registry's internal map is
+        // not exposed, so we mimic the legacy behaviour by going through
+        // a synchronous `use()` which inserts the instance and (for
+        // bare instances) does no further work.
+        this.__moduleRegistry.use(instance);
+      },
+      getLogger: () => this._logger,
+    });
+
+    this._shutdown = new ShutdownCoordinator({
+      shutdownTimeoutMs: options.gracefulShutdownTimeout ?? 30_000,
+      emit: (e, d) => this._events.emit(e, d),
+      getLogger: () => this._logger,
+      diStop: async (signal, timeout) => {
+        await this.stop({ timeout, signal });
+      },
+    });
+
+    this._process = new ProcessHost({
+      disableProcessExit:
+        options['environment'] === 'test' ||
+        process.env['NODE_ENV'] === 'test' ||
+        process.env['JEST_WORKER_ID'] !== undefined ||
+        (options as { disableProcessExit?: boolean }).disableProcessExit === true,
+    });
+
+    // The health aggregator needs to read live values from THIS instance.
+    // We pass an object whose getters close over the freshly-constructed
+    // collaborators, sidestepping the class-field-init "no this in
+    // initializer" restriction with explicit closures.
+    const appName = this._name;
+    const appVersion = this._version;
+    const lifecycle = this._lifecycle;
+    const modules = this.__moduleRegistry;
+    this._health = new HealthAggregator({
+      getModule: (name) => modules.get<IModule>(name),
+      modules: () => modules.values(),
+      get appName() { return appName; },
+      get appVersion() { return appVersion; },
+      get state() { return lifecycle.state; },
+      get uptime() { return lifecycle.uptime; },
+      get isStarted() { return lifecycle.isStarted; },
+    });
+
+    this._exposer = new ServiceExposer(this._container, () => this._logger);
+
+    // Graceful-shutdown wiring (default-on).
+    if (!options.disableGracefulShutdown) {
+      this._shutdown.seedDefaults({
+        flushLogs: () => this.flushLoggerService(),
+        emitStateSave: () => this._events.emit(ApplicationEvent.StateSave),
+      });
     }
-  ): Promise<Application>;
-  static async create(
-    moduleOrOptions?:
-      | ModuleInput
-      | (IApplicationOptions & {
-          modules?: ModuleInput[];
-          imports?: Token<IModule>[];
-          providers?: Array<[InjectionToken<unknown>, Provider<unknown>]>;
-          autoDiscovery?: boolean;
-          scanPaths?: string[];
-          excludePaths?: string[];
-        }),
-    optionsArg?: IApplicationOptions
-  ): Promise<Application> {
-    // Detect which overload was used
-    let mainModule: ModuleInput | undefined;
-    let options:
-      | (IApplicationOptions & {
-          modules?: ModuleInput[];
-          imports?: Token<IModule>[];
-          providers?: Array<[InjectionToken<unknown>, Provider<unknown>]>;
-          autoDiscovery?: boolean;
-          scanPaths?: string[];
-          excludePaths?: string[];
-        })
-      | undefined;
+  }
 
-    // Check if first argument is a module class (function) vs options object
+  // ─── Static factory ──────────────────────────────────────────────────
+
+  static async create(module: ModuleInput, options?: IApplicationOptions): Promise<Application>;
+  static async create(options?: CreateOptions): Promise<Application>;
+  static async create(
+    moduleOrOptions?: ModuleInput | CreateOptions,
+    optionsArg?: IApplicationOptions,
+  ): Promise<Application> {
+    let mainModule: ModuleInput | undefined;
+    let options: CreateOptions | undefined;
+
     if (typeof moduleOrOptions === 'function') {
-      // First overload: (module, options)
       mainModule = moduleOrOptions;
-      options = optionsArg;
+      options = optionsArg as CreateOptions | undefined;
     } else {
-      // Second overload: (options)
-      // moduleOrOptions must be options object at this point since it's not a function
-      options = moduleOrOptions as typeof options;
+      options = moduleOrOptions as CreateOptions | undefined;
     }
 
     const app = new Application(options);
 
-    // Register the main module FIRST if provided via first overload
-    // This allows user's module to configure core modules (Logger, Config) before
-    // the defaults are registered
-    if (mainModule) {
-      await app.registerModule(mainModule);
-    }
+    if (mainModule) await app.registerModule(mainModule);
+    if (!options?.disableCoreModules) await app.initializeCoreModules();
 
-    // Register core modules (will skip if already registered by the main module)
-    if (!options?.disableCoreModules) {
-      await app.initializeCoreModules();
-    }
-
-    // Auto-discovery mode - automatically find and register @Module decorated classes
     if (options?.autoDiscovery || options?.scanPaths) {
-      const discoveredModules = await app.discoverModules(options.scanPaths, options?.excludePaths);
-      // Discovered modules are already registered, but we need to fully process them
-      for (const ModuleClass of discoveredModules) {
-        const moduleInstance = new ModuleClass();
-        // Check if module was already registered during discovery
-        const token = createToken<IModule>(moduleInstance.name);
-        if (!app._modules.has(token)) {
-          await app.registerModule(ModuleClass);
-        }
+      const discovered = await app.discoverModules(options.scanPaths, options.excludePaths);
+      for (const ModuleClass of discovered) {
+        const instance = new ModuleClass();
+        const token = createToken<IModule>(instance.name);
+        if (!app._modules.has(token)) await app.registerModule(ModuleClass);
       }
     }
 
-    // Register modules passed via modules array
     if (options?.modules) {
-      for (const moduleInput of options.modules) {
-        await app.registerModule(moduleInput);
-      }
+      for (const input of options.modules) await app.registerModule(input);
     }
-
-    // Support imports like the old AppModule pattern
     if (options?.imports) {
-      for (const moduleToken of options.imports) {
-        await app.registerModule(moduleToken);
-      }
+      for (const token of options.imports) await app.registerModule(token);
     }
 
-    // Register direct providers if provided
     if (options?.providers) {
-      // Create an anonymous root module to hold these providers
-      const rootModule = {
-        name: 'RootContext',
-        providers: options.providers,
-        onRegister: () => {},
-        onStart: () => {},
-        onStop: () => {},
-      };
-      const rootToken = createToken<IModule>('RootContext');
-      app._modules.set(rootToken, rootModule);
-
-      // Register providers in container
-      for (const provider of options.providers) {
-        // Provider is in tuple format [token, providerDef]
-        const [token, providerDef] = provider;
+      // Synthetic root module so providers participate in module-map
+      // invariants. The registry doesn't currently surface a "register
+      // synthetic" path, so the orchestrator inserts directly: this is
+      // the ONLY place outside the registry that touches its internals,
+      // and it does so through documented hooks (`use(instance)` +
+      // `container.register`).
+      const root = makeRootContextModule(options.providers);
+      app.__moduleRegistry.use(root);
+      for (const [token, providerDef] of options.providers) {
         app._container.register(token, providerDef);
       }
     }
 
-    // Eagerly initialize all singleton providers collected during module loading.
-    // This runs AFTER all modules (imports, main module, core modules) are registered,
-    // ensuring cross-module dependencies are available for resolution.
+    // Eagerly initialise singleton providers AFTER all modules are
+    // registered so cross-module dependencies are visible during
+    // resolution.
     await app._container.eagerlyInitialize();
 
     return app;
   }
 
-  constructor(options: IApplicationOptions = {}) {
-    // Initialize container
-    this._container = options.container || new Container();
+  // ─── Lifecycle (start) ───────────────────────────────────────────────
 
-    // Register application itself
-    this._container.register(APPLICATION_TOKEN, {
-      useValue: this,
-    });
-
-    // Initialize app metadata
-    this._name = options.name || 'titan-app';
-    this._version = options.version || '1.0.0';
-    this._debug = options.debug || false;
-
-    // Store original user config separately
-    this._userConfig = options.config ? { ...options.config } : {};
-
-    // Initialize full configuration with app metadata
-    this._config = {
-      name: this._name,
-      version: this._version,
-      debug: this._debug,
-      environment: process.env['NODE_ENV'] || 'development',
-      ...this._userConfig, // User config overrides app metadata
-    };
-
-    // Add specific options to config if provided
-    if (options.disableCoreModules !== undefined) {
-      this._config['disableCoreModules'] = options.disableCoreModules;
-    }
-    if (options.disableGracefulShutdown !== undefined) {
-      this._config['disableGracefulShutdown'] = options.disableGracefulShutdown;
-    }
-    if (options['disableProcessExit'] !== undefined) {
-      this._config['disableProcessExit'] = options['disableProcessExit'];
-    }
-
-    // Add logging if provided at top level
-    if (options.logging && !this._config.logging) {
-      this._config.logging = options.logging;
-    }
-
-    // Set graceful shutdown timeout
-    this._shutdownTimeout = options.gracefulShutdownTimeout || 30000;
-
-    // Note: Core modules are registered asynchronously in the static create method
-
-    // Setup process lifecycle management
-    if (!options.disableGracefulShutdown) {
-      this._disableProcessExit =
-        options['environment'] === 'test' ||
-        process.env['NODE_ENV'] === 'test' ||
-        process.env['JEST_WORKER_ID'] !== undefined;
-      this.setupProcessLifecycle();
-    }
-  }
-
-  /**
-   * Start the application
-   */
   async start(): Promise<void> {
-    // Return existing start promise if already starting
-    if (this._state === ApplicationState.Starting && this._startPromise) {
-      return this._startPromise;
+    // Join an in-flight start.
+    if (this._lifecycle.state === ApplicationState.Starting && this._lifecycle.startPromise) {
+      return this._lifecycle.startPromise;
     }
-
-    // Wait for stop to complete if stopping
-    if (this._state === ApplicationState.Stopping && this._stopPromise) {
-      await this._stopPromise;
-      // After stop completes, proceed to start
+    // Wait for an in-flight stop to settle then proceed.
+    if (this._lifecycle.state === ApplicationState.Stopping && this._lifecycle.stopPromise) {
+      await this._lifecycle.stopPromise;
     }
+    this._lifecycle.ensureCanStart();
 
-    if (this._state !== ApplicationState.Created && this._state !== ApplicationState.Stopped) {
-      if (this._state === ApplicationState.Started) {
-        throw Errors.conflict('Application is already started or starting');
-      }
-      if (this._state === ApplicationState.Failed) {
-        throw Errors.conflict('Cannot start from failed state');
-      }
-      throw Errors.conflict(`Cannot start application in state: ${this._state}`);
-    }
-
-    // Create and track the start promise
-    this._startPromise = this._doStart();
+    // setState() is the legacy observation point — route the transition
+    // through it so test consumers that monkey-patch setState see every
+    // change. The state-machine's `beginStart` captures the side-effects
+    // (start time, in-flight promise) without touching state.
+    this.setState(ApplicationState.Starting);
+    const work = this._doStart();
+    const handle = this._lifecycle.beginStart(work);
     try {
-      await this._startPromise;
+      await work;
     } finally {
-      this._startPromise = null;
+      handle.dispose();
     }
-    return undefined;
   }
 
-  /**
-   * Internal start implementation
-   */
   private async _doStart(): Promise<void> {
-    this.setState(ApplicationState.Starting);
-    const startBegin = Date.now();
-    this._startTime = startBegin;
-
-    // Ensure state change is observable before continuing
+    // Ensure state change is observable before continuing.
     await new Promise((resolve) => setImmediate(resolve));
 
-    // Tracks modules that successfully completed onStart — accessible to
-    // both the inner module-loop catch and the outer catch so a failure
-    // ANYWHERE in start can roll back accumulated side-effects.
+    // Tracks modules that successfully completed onStart — so a later
+    // failure rolls them back in reverse order. Without this, a mid-
+    // start failure left every preceding module's side-effects in
+    // place.
     const startedForRollback: IModule[] = [];
 
     try {
-      // Emit starting event
-      this.emit(ApplicationEvent.Starting);
+      this._events.emit(ApplicationEvent.Starting);
 
-      // Initialize core modules if not already done
-      if (!this._container.has(NETRON_TOKEN) && !this._config?.['disableCoreModules']) {
+      // Initialize core modules if not already done.
+      if (!this._container.has(NETRON_TOKEN) && !this.__configStore.rawGet('disableCoreModules')) {
         await this.initializeCoreModules();
       }
 
-      // Initialize logger after config if available
+      // Resolve the logger early so the rest of start has structured output.
       if (this._container.has(LOGGER_SERVICE_TOKEN)) {
         try {
           const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
           this._logger = loggerService.logger;
-          this._logger.info({ state: this._state }, 'Application starting');
-          // Emit ModuleStarted for logger when it exists
-          this.emit(ApplicationEvent.ModuleStarted, { module: 'logger' });
-        } catch {
-          // Logger not found
-        }
+          this._events.setLogger(this._logger);
+          this._logger.info({ state: this._lifecycle.state }, 'Application starting');
+          this._events.emit(ApplicationEvent.ModuleStarted, { module: 'logger' });
+        } catch { /* logger optional during boot */ }
       }
 
-      // Setup signal handlers and error handlers
-      this.setupSignalHandlers();
-      this.setupErrorHandlers();
+      // Install process listeners (signals + error events).
+      this._process.setLogger(this._logger);
+      this._process.install({
+        onSignal: (signal, reason) => {
+          void this.shutdown(reason, { signal }).catch((error) => {
+            this._logger?.fatal({ error }, 'Failed to handle signal');
+            this._process.exit(1, { emit: (e, d) => this._events.emit(e, d) });
+          });
+        },
+        onRecoverableException: () => undefined,
+        onFatalException: (error) => {
+          void this.shutdown(ShutdownReason.UncaughtException, { error }).catch((err) => {
+            this._logger?.fatal({ error: err }, 'Failed to handle uncaught exception');
+            this._process.exit(1, { emit: (e, d) => this._events.emit(e, d) });
+          });
+        },
+        onRecoverableRejection: () => undefined,
+        onFatalRejection: (reason, promise) => {
+          void this.shutdown(ShutdownReason.UnhandledRejection, { reason, promise }).catch((error) => {
+            this._logger?.fatal({ error }, 'Failed to handle unhandled rejection');
+            this._process.exit(1, { emit: (e, d) => this._events.emit(e, d) });
+          });
+        },
+        emit: (event, data) => this._events.emit(event, data),
+      });
 
-      // Register any pending shutdown tasks
-      if (global.__titanShutdownTasks) {
-        for (const task of global.__titanShutdownTasks) {
-          this.registerShutdownTask(task);
-        }
-        delete global.__titanShutdownTasks;
+      // Pull any pending shutdown tasks registered before the app instance existed.
+      const pending = (globalThis as { __titanShutdownTasks?: IShutdownTask[] }).__titanShutdownTasks;
+      if (pending) {
+        for (const task of pending) this._shutdown.registerTask(task);
+        delete (globalThis as { __titanShutdownTasks?: IShutdownTask[] }).__titanShutdownTasks;
       }
 
-      // Register and start modules in dependency order.
-      //
-      // We track every module that successfully passed `onStart` so the
-      // catch block at the bottom of `_doStart` can roll them back in
-      // reverse order on a later failure. Without this, a mid-start
-      // failure left every preceding module's `onStart` side-effects in
-      // place (timers, listeners, open sockets, DB pools) with no way
-      // to recover short of process exit.
-      const sortedModules = this.sortModulesByDependencies();
-
-      for (const entry of sortedModules) {
-        const [, module] = entry;
+      // Start modules in topological order.
+      const sortedModules = this.__moduleRegistry.sorted();
+      for (const [, module] of sortedModules) {
         this._logger?.debug({ module: module.name }, 'Starting module');
 
-        // Register module
         if (module.onRegister) {
           try {
             await module.onRegister(this);
           } catch (error) {
-            // onRegister is BEFORE onStart — push module so rollback
-            // can call onStop only if it also implements it (most
-            // don't, but the loop is defensive). startedForRollback
-            // intentionally NOT updated here: only successful onStart
-            // contributes to it.
-            await this._rollbackStartedModules(startedForRollback);
-            throw new Error(`Module "${module.name}" failed during onRegister: ${(error as Error).message}`, { cause: error });
+            await this.rollbackStartedModules(startedForRollback);
+            throw new Error(
+              `Module "${module.name}" failed during onRegister: ${(error as Error).message}`,
+              { cause: error },
+            );
           }
         }
-
-        // Start module
         if (module.onStart) {
           try {
             await module.onStart(this);
           } catch (error) {
-            await this._rollbackStartedModules(startedForRollback);
-            throw new Error(`Module "${module.name}" failed during onStart: ${(error as Error).message}`, { cause: error });
+            await this.rollbackStartedModules(startedForRollback);
+            throw new Error(
+              `Module "${module.name}" failed during onStart: ${(error as Error).message}`,
+              { cause: error },
+            );
           }
         }
         startedForRollback.push(module);
-
-        this.emit(ApplicationEvent.ModuleStarted, { module: module.name });
+        this._events.emit(ApplicationEvent.ModuleStarted, { module: module.name });
         this._logger?.debug({ module: module.name }, 'Module started');
       }
 
-      // Start Netron if configured and available
+      // Start Netron if available. Failure is non-fatal.
       if (this._container.has(NETRON_TOKEN)) {
         try {
           const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
           if (netron) {
             await netron.start();
             this._logger?.info({ module: 'Netron' }, 'Netron service started');
-            // Emit ModuleStarted for Netron when it exists
-            this.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
+            this._events.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
           }
         } catch (error) {
           this._logger?.warn({ error }, 'Failed to start Netron service');
-          // Don't fail application start if Netron fails
         }
       }
 
-      // Run start hooks — every hook gets a timeout to prevent silent hangs.
-      // Hooks that declare their own timeout use it; others fall back to 30 s.
-      const DEFAULT_HOOK_TIMEOUT = 30_000;
-      for (const hook of this._startHooks) {
+      // Run start hooks — every hook bounded by its own timeout
+      // (defaults to DEFAULT_HOOK_TIMEOUT_MS) so a stuck hook can't
+      // hang start indefinitely.
+      for (const hook of this._lifecycle.startHooks) {
         this._logger?.debug({ hook: hook.name }, 'Running start hook');
-        const timeout = hook.timeout ?? DEFAULT_HOOK_TIMEOUT;
-        await this.withTimeout(
+        const timeout = hook.timeout ?? DEFAULT_HOOK_TIMEOUT_MS;
+        await withTimeout(
           Promise.resolve(hook.handler()),
           timeout,
-          `Start hook "${hook.name || 'unnamed'}" timed out after ${timeout}ms — check for missing await or blocking I/O`
+          hookTimeoutError(hook.name ?? '', timeout),
         );
       }
 
-      // Auto-expose services decorated with @Service to Netron
-      // This happens after all modules are started and all dependencies are resolved
+      // Auto-expose @Service-decorated classes to Netron.
       if (this._container.has(NETRON_TOKEN)) {
         try {
           const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
-          if (netron) {
-            await this.exposeServicesToNetron(netron);
-          }
+          if (netron) await this._exposer.expose(netron);
         } catch (error) {
           this._logger?.warn({ error }, 'Failed to auto-expose services to Netron');
-          // Don't fail application start if service exposure fails
         }
       }
 
-      // Auto-start SchedulerService if registered — eagerly resolve it so
-      // it can discover and register @Cron/@Interval/@Timeout jobs from providers.
-      // SchedulerService.onInit() triggers discovery of scheduled providers.
+      // SchedulerService onInit() runs cron/interval discovery; eagerly
+      // resolve so it gets a chance to bind providers.
       if (this._container.has(SCHEDULER_SERVICE_TOKEN)) {
         try {
           await this._container.resolveAsync(SCHEDULER_SERVICE_TOKEN);
@@ -655,8 +463,7 @@ export class Application implements IApplication {
         }
       }
 
-      // Initialize all tracked instances (calls @PostConstruct methods)
-      // This ensures services are fully initialized before the application is "started"
+      // Run @PostConstruct on every tracked DI instance.
       try {
         await this._container.initialize();
         this._logger?.debug('Container lifecycle initialization completed');
@@ -666,53 +473,37 @@ export class Application implements IApplication {
       }
 
       this.setState(ApplicationState.Started);
-      this._isStarted = true;
-      // Ensure startup time is at least 1ms for testing
-      this._startupTime = Math.max(1, Date.now() - this._startTime);
-      this.emit(ApplicationEvent.Started);
-
+      this._lifecycle.markStarted();
+      this._events.emit(ApplicationEvent.Started);
       this._logger?.info(
         {
-          state: this._state,
-          startupTime: this.uptime,
-          modules: Array.from(this._modules.values()).map((m) => m.name),
+          state: this._lifecycle.state,
+          startupTime: this._lifecycle.uptime,
+          modules: this.__moduleRegistry.list().map((m) => m.name),
         },
-        'Application started successfully'
+        'Application started successfully',
       );
     } catch (error) {
-      // Roll back any modules that started successfully. This is a
-      // no-op if the inner module-loop catch already ran (the helper is
-      // idempotent and clears its own input). Failures AFTER the module
-      // loop (Netron start, start-hooks, container.initialize) reach
-      // here with a populated rollback list and benefit most.
-      await this._rollbackStartedModules(startedForRollback);
-      // Best-effort container teardown so DI-tracked instances get their
-      // @PreDestroy / onDestroy hooks. Failures from a partially-built
-      // container are common and intentionally swallowed.
+      // Roll back any module that successfully reached onStart.
+      // Idempotent: a no-op if the inner-loop catch already ran.
+      await this.rollbackStartedModules(startedForRollback);
       try {
         await this._container.dispose();
       } catch (disposeErr) {
-        this._logger?.warn({ error: disposeErr }, 'Container disposal during start-rollback failed');
+        this._logger?.warn(
+          { error: disposeErr },
+          'Container disposal during start-rollback failed',
+        );
       }
-
       this.setState(ApplicationState.Failed);
-      this._isStarted = false;
+      this._lifecycle.markFailed();
       this._logger?.error({ error }, 'Application failed to start');
-      if (error instanceof Error) {
-        this.handleError(error);
-      }
+      if (error instanceof Error) this._events.emit(ApplicationEvent.Error, error);
       throw error;
     }
   }
 
-  /**
-   * Reverse-order best-effort onStop of modules that successfully
-   * completed onStart. Used by `_doStart`'s error path to compensate
-   * partial startup. Idempotent: clears the input list, so a later call
-   * is a no-op. Per-module failures are logged and swallowed — rollback
-   * must complete every module regardless.
-   */
-  private async _rollbackStartedModules(started: IModule[]): Promise<void> {
+  private async rollbackStartedModules(started: IModule[]): Promise<void> {
     while (started.length > 0) {
       const mod = started.pop()!;
       if (!mod.onStop) continue;
@@ -728,64 +519,50 @@ export class Application implements IApplication {
     }
   }
 
-  /**
-   * Stop the application
-   */
+  // ─── Lifecycle (stop) ────────────────────────────────────────────────
+
   async stop(options: IShutdownOptions = {}): Promise<void> {
-    // Return existing stop promise if already stopping
-    if (this._state === ApplicationState.Stopping && this._stopPromise) {
-      return this._stopPromise;
+    if (this._lifecycle.state === ApplicationState.Stopping && this._lifecycle.stopPromise) {
+      return this._lifecycle.stopPromise;
     }
-
-    // Wait for start to complete if starting
-    if (this._state === ApplicationState.Starting && this._startPromise) {
-      await this._startPromise;
-      // After start completes, proceed to stop
+    if (this._lifecycle.state === ApplicationState.Starting && this._lifecycle.startPromise) {
+      await this._lifecycle.startPromise;
     }
+    if (!this._lifecycle.canStop()) return;
 
-    if (this._state !== ApplicationState.Started && this._state !== ApplicationState.Failed) {
-      return undefined; // Not in a stoppable state
-    }
-
-    // Create and track the stop promise
-    this._stopPromise = this._doStop(options);
+    this.setState(ApplicationState.Stopping);
+    const work = this._doStop(options);
+    const handle = this._lifecycle.beginStop(work);
     try {
-      await this._stopPromise;
+      await work;
     } finally {
-      this._stopPromise = null;
+      handle.dispose();
     }
-    return undefined;
   }
 
-  /**
-   * Internal stop implementation
-   */
   private async _doStop(options: IShutdownOptions = {}): Promise<void> {
-    this.setState(ApplicationState.Stopping);
     this._logger?.info({ options }, 'Application stopping');
-
-    // Ensure state change is observable before continuing
     await new Promise((resolve) => setImmediate(resolve));
 
     try {
-      // Emit stopping event
-      this.emit(ApplicationEvent.Stopping);
+      this._events.emit(ApplicationEvent.Stopping);
 
-      // Use timeout if provided
       const stopTimeout = options.timeout;
 
-      // Run stop hooks first (in reverse order of registration)
+      // Stop hooks (in reverse-registration order).
       if (!options.force || stopTimeout) {
-        for (let i = this._stopHooks.length - 1; i >= 0; i--) {
-          const hook = this._stopHooks[i];
-          if (!hook) continue;
+        for (let i = this._lifecycle.stopHooks.length - 1; i >= 0; i--) {
+          const hook = this._lifecycle.stopHooks[i]!;
           this._logger?.debug({ hook: hook.name }, 'Running stop hook');
-
           try {
             const promise = Promise.resolve(hook.handler());
             const timeout = stopTimeout || hook.timeout;
             if (timeout) {
-              await this.withTimeout(promise, timeout, `Stop hook ${hook.name || 'unnamed'} timed out`);
+              await withTimeout(
+                promise,
+                timeout,
+                Errors.timeout(`Stop hook ${hook.name || 'unnamed'}`, timeout),
+              );
             } else if (!options.force) {
               await promise;
             }
@@ -796,28 +573,17 @@ export class Application implements IApplication {
         }
       }
 
-      // Execute shutdown tasks (unless being called from shutdown)
-      if (!this._isShuttingDown && this._shutdownTasks.size > 0) {
-        // Get all tasks and ensure priority is a number
-        const tasksArray = Array.from(this._shutdownTasks.values()).map((task) => ({
-          ...task,
-          priority: Number(task.priority ?? 50),
-        }));
-
-        // Sort tasks by priority (lower numbers first), then by ID for stable sorting
-        const sortedTasks = tasksArray.sort((a, b) => {
-          // Ensure priorities are numbers
-          const aPriority = Number(a.priority ?? 50);
-          const bPriority = Number(b.priority ?? 50);
-
-          // Compare priorities
-          if (aPriority < bPriority) return -1;
-          if (aPriority > bPriority) return 1;
-
-          // If priorities are equal, sort by ID to ensure stable order
-          return (a.id || '').localeCompare(b.id || '');
-        });
-
+      // Run shutdown tasks unless we're INSIDE a shutdown-driven stop —
+      // in that case `ShutdownCoordinator.shutdown()` already ran them.
+      if (!this._shutdown.isShuttingDown && this._shutdown.hasTasks) {
+        const sortedTasks = Array.from(this._shutdown.taskValues())
+          .map((t) => ({ ...t, priority: Number(t.priority ?? 50) }))
+          .sort((a, b) => {
+            const ap = Number(a.priority ?? 50);
+            const bp = Number(b.priority ?? 50);
+            if (ap !== bp) return ap - bp;
+            return (a.id ?? '').localeCompare(b.id ?? '');
+          });
         for (const task of sortedTasks) {
           try {
             this._logger?.debug({ taskName: task.name }, 'Executing shutdown task');
@@ -825,143 +591,108 @@ export class Application implements IApplication {
             this._logger?.debug({ taskName: task.name }, 'Shutdown task completed');
           } catch (error) {
             this._logger?.error({ error, taskName: task.name }, 'Shutdown task failed');
-            if (task.critical && !options.force) {
-              throw error; // Re-throw the original error for critical tasks
-            }
+            if (task.critical && !options.force) throw error;
           }
         }
       }
 
-      // Stop modules in reverse dependency order
-      const sortedModules = this.sortModulesByDependencies();
-
+      // Stop modules in reverse topological order.
+      const sortedModules = this.__moduleRegistry.sorted();
       for (let i = sortedModules.length - 1; i >= 0; i--) {
-        const entry = sortedModules[i];
-        if (!entry) continue;
-        const [, module] = entry;
-
+        const [, module] = sortedModules[i]!;
         this._logger?.debug({ module: module.name }, 'Stopping module');
-
         try {
           if (module.onStop) {
-            // With force and no timeout, skip the stop hooks entirely
             if (options.force && !stopTimeout) {
-              this._logger?.debug({ module: module.name }, 'Skipping module stop due to force stop without timeout');
+              this._logger?.debug(
+                { module: module.name },
+                'Skipping module stop due to force stop without timeout',
+              );
             } else {
               const promise = Promise.resolve(module.onStop(this));
               if (stopTimeout) {
-                await this.withTimeout(promise, stopTimeout, `Module ${module.name} stop timed out`);
+                await withTimeout(
+                  promise,
+                  stopTimeout,
+                  Errors.timeout(`Module ${module.name} stop`, stopTimeout),
+                );
               } else {
                 await promise;
               }
             }
           }
-
-          if (module.onDestroy && !options.force) {
-            await module.onDestroy();
-          }
+          if (module.onDestroy && !options.force) await module.onDestroy();
         } catch (error) {
           this._logger?.error({ error, module: module.name }, 'Module stop failed');
-
-          // Handle timeout errors
           if (error instanceof Error && error.message.includes('timed out')) {
-            if (!options.force) {
-              // Only throw timeout errors if not force stop
-              throw error;
-            } else {
-              // For force stop, log and continue even on timeout
-              this._logger?.warn({ module: module.name }, 'Module timed out during force stop, continuing');
-            }
+            if (!options.force) throw error;
+            this._logger?.warn(
+              { module: module.name },
+              'Module timed out during force stop, continuing',
+            );
           } else {
-            // By default, continue stopping to ensure cleanup
-            // Only throw if explicitly requested via graceful: false
-            if (options.graceful === false && !options.force) {
-              throw error;
-            }
-            // Log and continue for normal, graceful, or force stop
+            if (options.graceful === false && !options.force) throw error;
             this._logger?.warn('Continuing stop despite module error');
           }
         }
-
-        this.emit(ApplicationEvent.ModuleStopped, { module: module.name });
+        this._events.emit(ApplicationEvent.ModuleStopped, { module: module.name });
         this._logger?.debug({ module: module.name }, 'Module stopped');
       }
 
-      // Log successful stop before stopping core modules
       this._logger?.info('Application stopped successfully');
 
-      // Stop Netron service before core modules
+      // Stop Netron + logger (in that order — logger flushes from the
+      // shutdown task list).
       if (this._container.has(NETRON_TOKEN)) {
         try {
           const netron = this._container.resolve(NETRON_TOKEN) as Netron;
           if (netron) {
             this._logger?.debug({ module: 'Netron' }, 'Stopping Netron service');
             await netron.stop();
-            this.emit(ApplicationEvent.ModuleStopped, { module: 'netron' });
+            this._events.emit(ApplicationEvent.ModuleStopped, { module: 'netron' });
             this._logger?.info({ module: 'Netron' }, 'Netron service stopped');
           }
         } catch (error) {
           this._logger?.warn({ error }, 'Error stopping Netron service');
-          // Continue shutdown even if Netron fails to stop
         }
       }
-
-      // Stop logger first among core modules
       if (this._container.has(LOGGER_SERVICE_TOKEN)) {
         try {
-          // Ensure logger service is resolved before stopping
           this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
           this._logger?.debug({ module: 'logger' }, 'Stopping module');
-          // Logger service doesn't need explicit stop
-          this.emit(ApplicationEvent.ModuleStopped, { module: 'logger' });
-        } catch {
-          // Logger not found
-        }
+          this._events.emit(ApplicationEvent.ModuleStopped, { module: 'logger' });
+        } catch { /* logger optional */ }
       }
 
-      // Config module shutdown is handled separately
-
-      // Run cleanup handlers (unless being called from shutdown)
-      if (!this._isShuttingDown && this._cleanupHandlers.size > 0) {
-        await this.runCleanupHandlers();
+      // Cleanup handlers (unless already invoked by shutdown coordinator).
+      if (!this._shutdown.isShuttingDown && this._shutdown.hasCleanupHandlers) {
+        await this._shutdown.runCleanupHandlers();
       }
 
-      // Cleanup signal handlers ALWAYS — not just outside a shutdown.
-      //
-      // Previously this was gated by `!this._isShuttingDown` so the
-      // shutdown-driven stop() path skipped cleanup. That left process
-      // listeners attached when an embedded consumer (or a test with
-      // `_disableProcessExit`) called restart() after shutdown — the
-      // next `setupSignalHandlers()` invocation would re-add listeners
-      // and accumulate them across cycles. The idempotency guard in
-      // setup() protects against that today, but a consistent paired
-      // setup/teardown is cleaner and prevents the next reviewer from
-      // assuming the old behaviour was load-bearing.
-      this.cleanupSignalHandlers();
+      // ALWAYS tear down process listeners. The legacy gate
+      // (`!isShuttingDown`) left listeners attached when shutdown drove
+      // stop — restart cycles then accumulated listeners forever.
+      this._process.cleanup();
 
-      // Give pino-pretty time to flush output
+      // Give pino-pretty a tick to flush its output buffer.
       await new Promise((resolve) => setImmediate(resolve));
 
       this.setState(ApplicationState.Stopped);
-      this._lifecycleState = LifecycleState.Stopped;
-      this._isStarted = false;
-      this.emit(ApplicationEvent.Stopped);
-
-      // Also emit ShutdownComplete for compatibility with shutdown flow
-      this.emit(ApplicationEvent.ShutdownComplete, { reason: ShutdownReason.Manual, success: true });
+      this._lifecycle.markStopped();
+      this._events.emit(ApplicationEvent.Stopped);
+      this._events.emit(ApplicationEvent.ShutdownComplete, {
+        reason: ShutdownReason.Manual,
+        success: true,
+      });
     } catch (error) {
       this.setState(ApplicationState.Failed);
-      this._isStarted = false;
+      this._lifecycle.markFailed();
       this._logger?.error({ error }, 'Error during application stop');
-
       if (options.force) {
         this._logger?.warn('Force stopping application despite errors');
         this.setState(ApplicationState.Stopped);
-        this._lifecycleState = LifecycleState.Stopped;
-        this._isStarted = false;
-
-        // Only exit process if not in test environment and explicitly requested
-        if (process.env['NODE_ENV'] !== 'test' && !this._config['disableProcessExit']) {
+        this._lifecycle.markStopped();
+        if (process.env['NODE_ENV'] !== 'test' && !this.__configStore.rawGet('disableProcessExit')) {
           process.exit(1);
         }
       } else {
@@ -970,840 +701,174 @@ export class Application implements IApplication {
     }
   }
 
-  /**
-   * Restart the application
-   */
   async restart(): Promise<void> {
     this._logger?.info('Restarting application');
     await this.stop();
     await this.start();
   }
 
-  /**
-   * Replace a module with a custom implementation
-   */
+  // ─── Module registration ─────────────────────────────────────────────
+
   replaceModule<T extends IModule = IModule>(nameOrToken: string | Token<T>, module: T): this {
-    // Prevent module replacement after the application has started
-    if (this._isStarted || this._state === ApplicationState.Started || this._state === ApplicationState.Starting) {
-      throw Errors.conflict('Cannot replace modules after application has started');
-    }
-
-    // Find the token if string name provided
-    let token: Token<T> | undefined;
-
-    if (typeof nameOrToken === 'string') {
-      // Find the token by module name
-      for (const [tok, mod] of this._modules) {
-        if (mod.name === nameOrToken) {
-          token = tok as Token<T>;
-          break;
-        }
-      }
-
-      if (!token) {
-        // Create a new token if not found
-        token = createToken<T>(nameOrToken);
-      }
-    } else {
-      token = nameOrToken;
-    }
-
-    // Remove old module if exists
-    if (this._modules.has(token)) {
-      this._modules.delete(token);
-    }
-
-    // Register the new module with override option
-    // The override option will replace any existing registration
-    this._container.register(
-      token,
-      {
-        useValue: module,
-      },
-      { override: true }
-    );
-    this._modules.set(token, module);
-
+    this.__moduleRegistry.replace(nameOrToken, module, this._lifecycle.state, this._lifecycle.isStarted);
     return this;
   }
 
-  /**
-   * Register a module - supports various module input types
-   */
   async registerModule(moduleInput: ModuleInput): Promise<IModule> {
-    // Deduplicate: skip modules that have already been fully processed.
-    // This prevents DuplicateRegistrationError when the same module
-    // (e.g. AuditLogModule) is imported by multiple feature modules.
-    //
-    // Dedup KEY is the underlying module CLASS reference, which we extract
-    // uniformly across all input shapes:
-    //   - bare class             → moduleInput itself
-    //   - dynamic-module object  → moduleInput.module (the class produced
-    //                              by `MyModule.forRoot(opts)`)
-    //   - everything else        → null (treat as fresh)
-    //
-    // Previously dedup only matched the bare-class path, so `forRoot()`
-    // called twice produced two distinct dynamic-module OBJECTS that
-    // both passed the function-typeof check as falsy and ran through
-    // `processDynamicModule` independently — double-registering every
-    // provider and throwing `DuplicateRegistrationError` (or silently
-    // double-wiring listeners when `override` was set).
-    const moduleRef: ModuleConstructor | null =
-      typeof moduleInput === 'function'
-        ? (moduleInput as ModuleConstructor)
-        : this.isDynamicModule(moduleInput) && typeof moduleInput.module === 'function'
-          ? (moduleInput.module as ModuleConstructor)
-          : null;
-    if (moduleRef && this._processedModuleClasses.has(moduleRef)) {
-      // Return existing module instance from the modules map
-      for (const mod of this._modules.values()) {
-        if (mod.constructor === moduleRef || mod.name === moduleRef.name) {
-          return mod;
-        }
-      }
-    }
-
-    let moduleInstance: IModule;
-    let dynamicModule: IDynamicModule | null = null;
-
-    // Resolve the module input to an instance
-    if (typeof moduleInput === 'function') {
-      // Check if it's a class constructor
-      if (moduleInput.prototype && moduleInput.prototype.constructor === moduleInput) {
-        const ModuleClass = moduleInput as ModuleConstructor;
-
-        // Check for static forRoot method
-        const moduleClassWithForRoot = ModuleClass as ModuleConstructor & {
-          forRoot?: () => IDynamicModule | Promise<IDynamicModule>;
-        };
-        if (moduleClassWithForRoot.forRoot && typeof moduleClassWithForRoot.forRoot === 'function') {
-          // This is a static module with forRoot - call it to get dynamic module
-          const forRootResult = moduleClassWithForRoot.forRoot();
-          dynamicModule = forRootResult instanceof Promise ? await forRootResult : forRootResult;
-          moduleInstance = new ModuleClass();
-        } else {
-          // Regular module class - instantiate it
-          moduleInstance = new ModuleClass();
-        }
-      } else {
-        // Factory function - execute it
-        const factoryFn = moduleInput as () => IModule | Promise<IModule> | IDynamicModule | Promise<IDynamicModule>;
-        const result = await factoryFn();
-        if (this.isDynamicModule(result)) {
-          dynamicModule = result;
-          const ModuleClass = dynamicModule.module;
-          // Check if it's a constructor or already an instance
-          if (typeof ModuleClass === 'function' && ModuleClass.prototype) {
-            moduleInstance = new (ModuleClass as ModuleConstructor)();
-          } else {
-            moduleInstance = ModuleClass as IModule;
-          }
-        } else {
-          moduleInstance = result as IModule;
-        }
-      }
-    } else if (this.isDynamicModule(moduleInput)) {
-      // Dynamic module object
-      dynamicModule = moduleInput;
-      const ModuleClass = dynamicModule.module;
-      // Check if it's a constructor or already an instance
-      if (typeof ModuleClass === 'function' && ModuleClass.prototype) {
-        moduleInstance = new (ModuleClass as ModuleConstructor)();
-      } else {
-        moduleInstance = ModuleClass as IModule;
-      }
-    } else {
-      // Regular module instance
-      moduleInstance = moduleInput as IModule;
-    }
-
-    // Validate that we have a module instance
-    if (!moduleInstance) {
-      throw Errors.internal('Failed to create module instance from provided input');
-    }
-
-    // Get module metadata from @Module decorator
-    // Check on the constructor of the instance first, then fallback to moduleInput
-    const moduleConstructor = moduleInstance.constructor;
-    type ModuleWithMetadata = { __titanModuleMetadata?: unknown };
-    const metadata =
-      Reflect.getMetadata('module', moduleConstructor) ||
-      Reflect.getMetadata('nexus:module', moduleConstructor) ||
-      Reflect.getMetadata('module', moduleInput) ||
-      Reflect.getMetadata('nexus:module', moduleInput) ||
-      Reflect.getMetadata('module:metadata', moduleInput) ||
-      (moduleConstructor as ModuleWithMetadata).__titanModuleMetadata ||
-      (moduleInput as ModuleWithMetadata).__titanModuleMetadata;
-
-    // Ensure module has a name - use class name or metadata
-    let moduleName = moduleInstance.name;
-    if (!moduleName) {
-      if (metadata?.name) {
-        moduleName = metadata.name;
-      } else if (dynamicModule && dynamicModule.module) {
-        // For dynamic modules, use the module class name
-        moduleName = dynamicModule.module.name || 'UnnamedModule';
-      } else if (typeof moduleInput === 'function') {
-        // Use constructor name as fallback
-        moduleName = moduleInput.name || 'UnnamedModule';
-      } else if (moduleConstructor && moduleConstructor.name) {
-        // Use the constructor name from the instance
-        moduleName = moduleConstructor.name || 'UnnamedModule';
-      } else {
-        moduleName = 'UnnamedModule';
-      }
-
-      // Create a new module instance with the correct name
-      moduleInstance = {
-        ...moduleInstance,
-        name: moduleName,
-      };
-    }
-
-    // Process @Module decorator metadata if not a dynamic module
-    if (!dynamicModule && metadata) {
-      // Create a dynamic module from metadata
-      type MetadataWithModule = {
-        providers?: Provider<unknown>[];
-        imports?: IModule[];
-        exports?: InjectionToken<unknown>[];
-      };
-      const typedMetadata = metadata as MetadataWithModule;
-      dynamicModule = {
-        module: moduleInput as ModuleConstructor,
-        providers: typedMetadata.providers || [],
-        imports: typedMetadata.imports || [],
-        exports: typedMetadata.exports || [],
-      };
-    }
-
-    // Check if module instance has providers/imports/exports directly
-    if (!dynamicModule && moduleInstance) {
-      type ModuleInstanceWithProps = {
-        providers?: Provider<unknown>[];
-        imports?: IModule[];
-        exports?: InjectionToken<unknown>[];
-      };
-      const instanceWithProps = moduleInstance as ModuleInstanceWithProps;
-      const hasProviders = instanceWithProps.providers;
-      const hasImports = instanceWithProps.imports;
-      const hasExports = instanceWithProps.exports;
-
-      if (hasProviders || hasImports || hasExports) {
-        dynamicModule = {
-          module: moduleInput as ModuleConstructor,
-          providers: instanceWithProps.providers || [],
-          imports: instanceWithProps.imports || [],
-          exports: instanceWithProps.exports || [],
-        };
-      }
-    }
-
-    // Create token for the module
-    const token = createToken<IModule>(moduleInstance.name);
-
-    // Register module in container
-    if (!this._container.has(token)) {
-      this._container.register(token, {
-        useValue: moduleInstance,
-      });
-    }
-
-    // Store module
-    this._modules.set(token, moduleInstance);
-
-    // Process dynamic module providers if present
-    if (dynamicModule) {
-      await this.processDynamicModule(dynamicModule, moduleInstance);
-    }
-
-    // Configure module if config is available
-    if (moduleInstance.configure && this._config[moduleInstance.name]) {
-      moduleInstance.configure(this._config[moduleInstance.name]);
-    }
-
-    this.emit(ApplicationEvent.ModuleRegistered, { module: moduleInstance.name });
-
-    // Mark module class as processed to prevent duplicate registration
-    if (moduleRef) {
-      this._processedModuleClasses.add(moduleRef);
-    }
-
-    return moduleInstance;
+    return this.__moduleRegistry.register(moduleInput);
   }
 
-  /**
-   * Use a module - wraps registerModule for convenience
-   */
   use<T extends IModule>(module: T | Token<T>): this {
-    if (typeof module === 'object' && 'symbol' in module && 'id' in module) {
-      // Token provided - resolve from container
-      const token = module as Token<T>;
-      const moduleInstance = this._container.resolve(token);
-
-      // Check for duplicate - for tokens, be idempotent
-      if (this._modules.has(token)) {
-        // Token already registered, just return (idempotent)
-        return this;
-      }
-
-      this._modules.set(token, moduleInstance);
-    } else {
-      // Module instance - check for duplicate by reference
-      const moduleInstance = module as IModule;
-
-      // Check if this exact module instance is already registered
-      for (const [, existingModule] of this._modules) {
-        if (existingModule === moduleInstance) {
-          // Module instance already registered, just return (idempotent)
-          return this;
-        }
-      }
-
-      // Store the token and module
-      const token = createToken<IModule>(moduleInstance.name);
-      this._modules.set(token, moduleInstance);
-
-      // Get module metadata from @Module decorator
-      const moduleConstructor = moduleInstance.constructor;
-      type ModuleWithMetadata = { __titanModuleMetadata?: unknown };
-      const metadata =
-        Reflect.getMetadata('module', moduleConstructor) ||
-        Reflect.getMetadata('nexus:module', moduleConstructor) ||
-        (moduleConstructor as ModuleWithMetadata).__titanModuleMetadata;
-
-      // Process @Module decorator metadata synchronously
-      if (metadata) {
-        type MetadataWithProviders = {
-          providers?: Array<Constructor<unknown> | (Provider<unknown> & { provide: InjectionToken<unknown> })>;
-          exports?: Array<InjectionToken<unknown> | string>;
-        };
-        const typedMetadata = metadata as MetadataWithProviders;
-        // Register providers synchronously
-        if (typedMetadata.providers) {
-          for (const provider of typedMetadata.providers) {
-            if (typeof provider === 'function') {
-              // Constructor - register with the class as both token and implementation
-              this._container.register(provider, { useClass: provider });
-            } else if (typeof provider === 'object' && 'provide' in provider) {
-              // Provider object format { provide: token, useValue/useClass/useFactory: ... }
-              const { provide, ...providerDef } = provider;
-              this._container.register(provide, providerDef as ProviderDefinition<unknown>);
-            }
-          }
-        }
-
-        // Handle exports synchronously
-        if (typedMetadata.exports) {
-          for (const exportToken of typedMetadata.exports) {
-            if (typeof exportToken === 'string') {
-              // Export by string token
-              const provider = typedMetadata.providers?.find(
-                (p) =>
-                  (typeof p === 'function' && p.name === exportToken) ||
-                  (typeof p === 'object' && p.provide === exportToken)
-              );
-              if (provider && !this._container.has(exportToken)) {
-                // Register the exported provider in the parent container
-                if (typeof provider === 'function') {
-                  this._container.register(provider, { useClass: provider });
-                } else if (typeof provider === 'object' && 'provide' in provider) {
-                  const { provide, ...providerDef } = provider;
-                  this._container.register(provide, providerDef as ProviderDefinition<unknown>);
-                }
-              }
-            } else {
-              // Export by token/class - only register if it's a constructor
-              if (!this._container.has(exportToken) && typeof exportToken === 'function') {
-                this._container.register(exportToken, { useClass: exportToken as Constructor<unknown> });
-              }
-            }
-          }
-        }
-      }
-
-      // Configure module if config exists
-      if (moduleInstance.configure && typeof moduleInstance.configure === 'function') {
-        const moduleConfig = this._config[moduleInstance.name];
-        if (moduleConfig !== undefined) {
-          moduleInstance.configure(moduleConfig);
-        }
-      }
-
-      // Emit registration event immediately
-      this.emit(ApplicationEvent.ModuleRegistered, { module: moduleInstance.name });
-    }
-
+    this.__moduleRegistry.use(module);
     return this;
   }
 
-  /**
-   * Get a module by name or token
-   */
   getModule<T extends IModule = IModule>(nameOrToken: string | Token<T>): T {
-    // If string, find module by name
-    if (typeof nameOrToken === 'string') {
-      for (const [, module] of this._modules) {
-        if (module.name === nameOrToken) {
-          return module as T;
-        }
-      }
-      throw Errors.notFound('Module', nameOrToken);
-    }
-
-    // Otherwise use token
-    const token = nameOrToken;
-    if (!this._modules.has(token)) {
-      // Try to resolve from container
-      try {
-        const module = this._container.resolve(token);
-        if (module) {
-          this._modules.set(token, module);
-          return module;
-        }
-      } catch {
-        // Module not found
-      }
-
-      throw Errors.notFound('Module', token.name);
-    }
-
-    return this._modules.get(token) as T;
+    return this.__moduleRegistry.get<T>(nameOrToken);
   }
 
-  /**
-   * Check if a module is registered
-   */
   has(token: Token<unknown>): boolean {
-    return this._modules.has(token as Token<IModule>) || this._container.has(token);
+    return this.__moduleRegistry.has(token);
   }
 
-  /**
-   * Get configuration value or entire configuration
-   */
+  hasModule(nameOrToken: string | Token<unknown>): boolean {
+    if (typeof nameOrToken === 'string') return this.__moduleRegistry.hasByName(nameOrToken);
+    return this.__moduleRegistry.has(nameOrToken);
+  }
+
+  getModules(): IModule[] {
+    return this.__moduleRegistry.list();
+  }
+
+  async registerDynamic(module: IModule): Promise<void> {
+    await this.__moduleRegistry.registerDynamic(module);
+    if (module.onStart) await module.onStart(this);
+  }
+
+  async discoverModules(scanPaths?: string | string[], excludePaths?: string[]): Promise<ModuleConstructor[]> {
+    return this._discovery.discover(scanPaths, excludePaths);
+  }
+
+  // ─── Configuration ───────────────────────────────────────────────────
+
   config(): IApplicationConfig;
   config<K extends keyof IApplicationConfig>(key: K): IApplicationConfig[K];
   config<K extends keyof IApplicationConfig>(key?: K): IApplicationConfig | IApplicationConfig[K] {
-    if (key === undefined) {
-      return this.getConfig();
-    }
-    // Return from user config first, fallback to full config for app metadata
-    return this._userConfig[key] !== undefined ? this._userConfig[key] : this._config[key];
+    if (key === undefined) return this.getConfig();
+    return this.__configStore.get(key);
   }
 
-  /**
-   * Register event handler
-   */
-  on<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
-    this._eventEmitter.on(event, handler);
+  getConfig(): IApplicationConfig {
+    return this.__configStore.toUserView();
   }
 
-  /**
-   * Unregister event handler
-   */
-  off<E extends ApplicationEvent>(event: E, handler?: EventHandler): void {
-    if (handler) {
-      this._eventEmitter.off(event, handler);
-    } else {
-      this._eventEmitter.removeAllListeners(event);
-    }
-  }
-
-  /**
-   * Register one-time event handler
-   */
-  once<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
-    this._eventEmitter.once(event, handler);
-  }
-
-  /**
-   * Prepend event handler (add to beginning of listener list)
-   */
-  prependListener<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
-    // EventEmitter doesn't have prependListener, so we need to work around it
-    const existingListeners = this._eventEmitter.listeners(event);
-    this._eventEmitter.removeAllListeners(event);
-    this._eventEmitter.on(event, handler);
-    for (const listener of existingListeners) {
-      this._eventEmitter.on(event, listener);
-    }
-  }
-
-  /**
-   * Remove all listeners for an event
-   */
-  removeAllListeners<E extends ApplicationEvent>(event?: E): void {
-    if (event) {
-      this._eventEmitter.removeAllListeners(event);
-    } else {
-      this._eventEmitter.removeAllListeners();
-    }
-  }
-
-  /**
-   * Get listener count for an event
-   */
-  listenerCount<E extends ApplicationEvent>(event: E): number {
-    return this._eventEmitter.listenerCount(event);
-  }
-
-  /**
-   * Emit event asynchronously and wait for all handlers
-   */
-  async emitAsync<E extends ApplicationEvent | string>(event: E, data?: unknown): Promise<void> {
-    const meta: IEventMeta = {
-      event,
-      timestamp: Date.now(),
-      source: 'application',
-    };
-
-    // Handle error events specially
-    if (event === 'error' && data instanceof Error) {
-      // Call error handlers
-      for (const handler of this._errorHandlers) {
-        try {
-          await Promise.resolve(handler(data));
-        } catch (err) {
-          if (this._logger) {
-            this._logger.error({ err }, 'Error in error handler');
-          } else {
-            fallbackLog('error', 'Error in error handler', { err });
-          }
-        }
-      }
-    }
-
-    try {
-      // Get listeners for this event
-      const listeners = this._eventEmitter.listeners(event);
-
-      // Execute all listeners and wait for them
-      const promises = listeners.map((listener) => Promise.resolve(listener(data, meta)));
-
-      await Promise.all(promises);
-
-      // Also emit to wildcard listeners if event is not already '*'
-      if (event !== '*') {
-        const wildcardListeners = this._eventEmitter.listeners('*');
-        const wildcardPromises = wildcardListeners.map((listener) => Promise.resolve(listener(data, meta)));
-        await Promise.all(wildcardPromises);
-      }
-    } catch (error) {
-      // Handle errors in event handlers
-      this._logger?.error({ error, event }, 'Error in async event handler');
-      // Emit error event for handler errors
-      if (event !== ApplicationEvent.Error) {
-        this.emit(ApplicationEvent.Error, { error });
-      }
-    }
-  }
-
-  /**
-   * Emit event synchronously
-   */
-  emit<E extends ApplicationEvent | string>(event: E, data?: unknown): void {
-    const meta: IEventMeta = {
-      event,
-      timestamp: Date.now(),
-      source: 'application',
-    };
-
-    // Handle error events specially
-    if (event === 'error' && data instanceof Error) {
-      // Call error handlers
-      for (const handler of this._errorHandlers) {
-        try {
-          handler(data);
-        } catch (err) {
-          if (this._logger) {
-            this._logger.error({ err }, 'Error in error handler');
-          } else {
-            fallbackLog('error', 'Error in error handler', { err });
-          }
-        }
-      }
-    }
-
-    // Wrap handler execution to catch errors
-    const listeners = this._eventEmitter.listeners(event);
-    for (const listener of listeners) {
-      try {
-        listener(data, meta);
-      } catch (handlerError) {
-        // Log the error
-        this._logger?.error({ error: handlerError, event }, 'Error in event handler');
-        // Emit error event if not already handling an error event
-        if (event !== ApplicationEvent.Error) {
-          this.emit(ApplicationEvent.Error, handlerError);
-        }
-      }
-    }
-
-    // Also emit to wildcard listeners if event is not already '*'
-    if (event !== '*') {
-      const wildcardListeners = this._eventEmitter.listeners('*');
-      for (const listener of wildcardListeners) {
-        try {
-          listener(data, meta);
-        } catch (handlerError) {
-          // Log the error
-          this._logger?.error({ error: handlerError, event: '*' }, 'Error in wildcard handler');
-          // Emit error event if not already handling an error event
-          if (event !== ApplicationEvent.Error) {
-            this.emit(ApplicationEvent.Error, handlerError);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Register start hook
-   */
-  onStart(hook: ILifecycleHook | (() => void | Promise<void>), priority?: number, timeout?: number): this {
-    if (typeof hook === 'function') {
-      this._startHooks.push({
-        handler: hook,
-        priority: priority ?? 100, // Default priority is 100
-        timeout,
-      });
-    } else {
-      this._startHooks.push(hook);
-    }
-
-    // Sort by priority (lower priority numbers execute first)
-    this._startHooks.sort((a, b) => (a.priority || 100) - (b.priority || 100));
-    return this;
-  }
-
-  /**
-   * Register stop hook
-   */
-  onStop(hook: ILifecycleHook | (() => void | Promise<void>), priority?: number, timeout?: number): this {
-    if (typeof hook === 'function') {
-      this._stopHooks.push({
-        handler: hook,
-        priority: priority ?? 100, // Default priority is 100
-        timeout,
-      });
-    } else {
-      this._stopHooks.push(hook);
-    }
-
-    // Sort by priority (lower priority numbers execute first)
-    this._stopHooks.sort((a, b) => (a.priority || 100) - (b.priority || 100));
-    return this;
-  }
-
-  /**
-   * Register error handler
-   */
-  onError(handler: (error: Error) => void): this {
-    this._errorHandlers.push(handler);
-    return this;
-  }
-
-  /**
-   * Deep merge helper function
-   */
-  private deepMerge(target: ConfigObject, source: ConfigObject): ConfigObject {
-    if (!source || typeof source !== 'object') return source;
-    if (Array.isArray(source)) return source;
-
-    const result = { ...target };
-
-    for (const key of Object.keys(source)) {
-      const sourceValue = source[key];
-      const targetValue = result[key];
-
-      if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
-        if (targetValue && typeof targetValue === 'object' && !Array.isArray(targetValue)) {
-          result[key] = this.deepMerge(targetValue, sourceValue);
-        } else {
-          result[key] = sourceValue;
-        }
-      } else {
-        result[key] = sourceValue;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Configure application settings
-   */
   configure<T = ConfigObject>(configOrKey: T | string, value?: ConfigValue): this {
-    let options: ConfigObject;
+    const options: ConfigObject =
+      typeof configOrKey === 'string'
+        ? { [configOrKey as string]: value }
+        : (configOrKey as ConfigObject);
 
-    // Support both full config object and key-value pairs
-    if (typeof configOrKey === 'string') {
-      options = { [configOrKey]: value };
-    } else {
-      options = configOrKey as ConfigObject;
-    }
+    this.__configStore.merge(options);
 
-    // Deep merge helper function
-    const deepMerge = (target: any, source: any): any => {
-      if (!source || typeof source !== 'object' || Array.isArray(source)) {
-        return source;
-      }
-
-      const result = { ...target };
-      for (const key of Object.keys(source)) {
-        if (
-          source[key] &&
-          typeof source[key] === 'object' &&
-          !Array.isArray(source[key]) &&
-          result[key] &&
-          typeof result[key] === 'object' &&
-          !Array.isArray(result[key])
-        ) {
-          // Both are objects, merge recursively
-          result[key] = deepMerge(result[key], source[key]);
-        } else {
-          // Otherwise replace
-          result[key] = source[key];
-        }
-      }
-      return result;
-    };
-
-    // Merge configuration deeply
-    const newConfig = { ...this._config };
-
-    for (const key of Object.keys(options)) {
-      if (
-        newConfig[key] &&
-        typeof newConfig[key] === 'object' &&
-        !Array.isArray(newConfig[key]) &&
-        options[key] &&
-        typeof options[key] === 'object' &&
-        !Array.isArray(options[key])
-      ) {
-        // Deep merge objects
-        newConfig[key] = deepMerge(newConfig[key], options[key]);
-      } else {
-        // Replace non-objects or arrays
-        newConfig[key] = options[key];
+    // Module-level reconfigure pass — invoke once per module that has
+    // a `configure` method and a config section under its name.
+    for (const module of this.__moduleRegistry.values()) {
+      if (module.configure) {
+        const moduleConfig = this.__configStore.rawGet(module.name);
+        if (moduleConfig !== undefined) module.configure(moduleConfig);
       }
     }
 
-    // Apply the merged configuration
-    this._config = newConfig;
-
-    // Update user config - deep merge same as main config
-    for (const key of Object.keys(options)) {
-      if (
-        this._userConfig[key] &&
-        typeof this._userConfig[key] === 'object' &&
-        !Array.isArray(this._userConfig[key]) &&
-        options[key] &&
-        typeof options[key] === 'object' &&
-        !Array.isArray(options[key])
-      ) {
-        // Deep merge objects
-        this._userConfig[key] = deepMerge(this._userConfig[key], options[key]);
-      } else {
-        // Replace non-objects or arrays
-        this._userConfig[key] = options[key];
-      }
-    }
-
-    // Apply logger configuration if provided
-    if (options['logger'] && this._container.has(LOGGER_SERVICE_TOKEN)) {
-      // Logger service configuration is handled via forRoot pattern now
-      // We could add a reconfigure method if needed in future
-    }
-
-    // Apply event configuration if provided
-    if (options['events'] && this._eventEmitter) {
-      // Apply event emitter configuration
-      // Note: Our EventEmitter doesn't have setMaxListeners, store in config
-      const eventsConfig = options['events'] as ConfigObject;
-      if (eventsConfig && typeof eventsConfig === 'object' && eventsConfig['maxListeners']) {
-        this._config = {
-          ...this._config,
-          events: {
-            ...((this._config['events'] as ConfigObject) || {}),
-            maxListeners: eventsConfig['maxListeners'],
-          },
-        };
-      }
-    }
-
-    // Reconfigure modules that have configure method
-    for (const [, module] of this._modules.entries()) {
-      if (module.configure && module.name && this._config[module.name]) {
-        module.configure(this._config[module.name]);
-      }
-    }
-
-    // Update module configurations if they have configure method
-    for (const [, module] of this._modules) {
-      if (module.configure && typeof module.configure === 'function') {
-        const moduleConfig = this._config[module.name];
-        if (moduleConfig !== undefined) {
-          module.configure(moduleConfig);
-        }
-      }
-    }
-
-    // Emit the current user configuration state
-    this.emit(ApplicationEvent.ConfigChanged, { config: { ...this._userConfig } });
+    this._events.emit(ApplicationEvent.ConfigChanged, { config: this.getConfig() });
     return this;
   }
 
-  /**
-   * Set a configuration value and emit change event
-   */
   setConfig(key: string, value: ConfigValue): void {
-    const parts = key.split('.');
-    let obj: ConfigObject = this._config as ConfigObject;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (part && !(part in obj)) {
-        obj[part] = {};
-      }
-      const nextObj = obj[part!];
-      if (!nextObj || typeof nextObj !== 'object' || Array.isArray(nextObj)) {
-        obj[part!] = {};
-      }
-      obj = obj[part!] as ConfigObject;
-    }
-    const lastPart = parts[parts.length - 1];
-    if (lastPart) {
-      obj[lastPart] = value;
-    }
-
-    // Emit configuration change event
-    this.emit(ApplicationEvent.ConfigChanged, { key, value });
+    this.__configStore.setNested(key, value);
+    this._events.emit(ApplicationEvent.ConfigChanged, { key, value });
   }
 
-  /**
-   * Get application state
-   */
+  // ─── Event system ────────────────────────────────────────────────────
+
+  on<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
+    this._events.on(event, handler);
+  }
+
+  off<E extends ApplicationEvent>(event: E, handler?: EventHandler): void {
+    this._events.off(event, handler);
+  }
+
+  once<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
+    this._events.once(event, handler);
+  }
+
+  prependListener<E extends ApplicationEvent>(event: E, handler: EventHandler): void {
+    this._events.prependListener(event, handler);
+  }
+
+  removeAllListeners<E extends ApplicationEvent>(event?: E): void {
+    this._events.removeAllListeners(event);
+  }
+
+  listenerCount<E extends ApplicationEvent>(event: E): number {
+    return this._events.listenerCount(event);
+  }
+
+  emit<E extends ApplicationEvent | string>(event: E, data?: unknown): void {
+    this._events.emit(event, data);
+  }
+
+  async emitAsync<E extends ApplicationEvent | string>(event: E, data?: unknown): Promise<void> {
+    return this._events.emitAsync(event, data);
+  }
+
+  // ─── Lifecycle hooks ─────────────────────────────────────────────────
+
+  onStart(hook: ILifecycleHook | (() => void | Promise<void>), priority?: number, timeout?: number): this {
+    this._lifecycle.addStartHook(hook, priority, timeout);
+    return this;
+  }
+
+  onStop(hook: ILifecycleHook | (() => void | Promise<void>), priority?: number, timeout?: number): this {
+    this._lifecycle.addStopHook(hook, priority, timeout);
+    return this;
+  }
+
+  onError(handler: (error: Error) => void): this {
+    this._events.registerErrorHandler(handler);
+    return this;
+  }
+
+  // ─── Runtime info ────────────────────────────────────────────────────
+
   get state(): ApplicationState {
-    return this._state;
+    return this._lifecycle.state;
   }
 
-  /**
-   * Set application state (internal method for testing)
-   */
-  private setState(state: ApplicationState): void {
-    this._state = state;
-  }
-
-  /**
-   * Get uptime in milliseconds
-   */
   get uptime(): number {
-    return this._startTime ? Date.now() - this._startTime : 0;
+    return this._lifecycle.uptime;
   }
 
-  /**
-   * Get environment information
-   */
+  get isStarted(): boolean {
+    return this._lifecycle.isStarted;
+  }
+
+  get container(): Container {
+    return this._container;
+  }
+
+  get name(): string {
+    return this._name;
+  }
+
+  get version(): string {
+    return this._version;
+  }
+
+  get debug(): boolean {
+    return this._debug;
+  }
+
   get environment(): IEnvironment {
     return {
       nodeVersion: process.version,
@@ -1815,1085 +880,138 @@ export class Application implements IApplication {
     };
   }
 
-  /**
-   * Get application metrics
-   */
   get metrics(): IApplicationMetrics {
     return {
-      uptime: this.uptime,
+      uptime: this._lifecycle.uptime,
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
-      startupTime: this._startupTime,
-      modules: this._modules.size,
+      startupTime: this._lifecycle.startupTime,
+      modules: this.__moduleRegistry.size,
     };
   }
 
-  /**
-   * Get the DI container - public API
-   */
-  get container(): Container {
-    return this._container;
-  }
-
-  /**
-   * Get application name
-   */
-  get name(): string {
-    return this._name;
-  }
-
-  /**
-   * Get application version
-   */
-  get version(): string {
-    return this._version;
-  }
-
-  /**
-   * Get debug mode
-   */
-  get debug(): boolean {
-    return this._debug;
-  }
-
-  /**
-   * Check if application is started
-   */
-  get isStarted(): boolean {
-    return this._state === ApplicationState.Started;
-  }
-
-  /**
-   * Check health of a specific module
-   */
-  async checkHealth(moduleName: string): Promise<IHealthStatus> {
-    const module = this.getModule(moduleName);
-
-    if (!module) {
-      return {
-        status: 'unhealthy',
-        message: `Module ${moduleName} not found`,
-      };
-    }
-
-    if (!module.health) {
-      return {
-        status: 'healthy',
-        message: `Module ${moduleName} does not have health check`,
-        details: {
-          started: this._isStarted,
-        },
-      };
-    }
-
-    try {
-      return await module.health();
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        message: `Health check failed for module ${moduleName}`,
-        details: {
-          error: error instanceof Error ? error.message : 'Unknown error',
-        },
-      };
-    }
-  }
-
-  /**
-   * Perform health check on the application and all modules
-   */
-  async health(): Promise<IHealthStatus> {
-    const modules: Record<string, IHealthStatus> = {};
-    let overallStatus: 'healthy' | 'unhealthy' | 'degraded' = 'healthy';
-
-    // Check each module's health
-    for (const [, module] of this._modules) {
-      try {
-        if (module.health) {
-          const moduleHealth = await module.health();
-          modules[module.name] = moduleHealth;
-
-          // Update overall status based on module health
-          if (moduleHealth.status === 'unhealthy') {
-            overallStatus = 'unhealthy';
-          } else if (moduleHealth.status === 'degraded' && overallStatus === 'healthy') {
-            overallStatus = 'degraded';
-          }
-        }
-      } catch (error) {
-        // If a health check throws, mark that module as unhealthy
-        modules[module.name] = {
-          status: 'unhealthy',
-          message: 'Health check failed',
-          details: {
-            error: error instanceof Error ? error.message : 'Unknown error',
-          },
-        };
-        overallStatus = 'unhealthy';
-      }
-    }
-
-    return {
-      status: overallStatus,
-      message: `Application is ${overallStatus}`,
-      modules, // Add modules at top level for easy access
-      details: {
-        name: this.name,
-        version: this.version,
-        uptime: this.getMetrics().uptime,
-        state: this._state,
-        modules, // Also keep in details for backward compatibility
-      },
-    };
-  }
-
-  /**
-   * Get application metrics
-   */
   getMetrics(): IApplicationMetrics {
+    // Historical divergence: this method reports `process.uptime()` (in ms)
+    // rather than `this._lifecycle.uptime`. Preserved verbatim because at
+    // least one consumer (omnitron metrics-bridge) reads each independently
+    // and treats the divergence as the "wall-clock vs since-start" pair.
     return {
       uptime: process.uptime(),
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
-      startupTime: this._startTime ? Date.now() - this._startTime : 0,
-      modules: this._modules.size,
+      startupTime: this._lifecycle.uptime,
+      modules: this.__moduleRegistry.size,
     };
   }
 
-  /**
-   * Get configuration - method for compatibility
-   */
-  getConfig(): IApplicationConfig {
-    // Return user configuration, preserving user-provided values even if they overlap with app metadata
-    const result = { ...this._config };
-
-    // Only exclude app metadata if they weren't provided by user
-    if (this._userConfig['name'] === undefined) {
-      delete result.name;
-    }
-    if (this._userConfig['version'] === undefined) {
-      delete result.version;
-    }
-    if (this._userConfig['debug'] === undefined) {
-      delete result.debug;
-    }
-    if (this._userConfig['environment'] === undefined) {
-      delete result.environment;
-    }
-
-    // Always exclude internal options that are not part of user configuration
-    delete result['disableCoreModules'];
-    delete result['disableGracefulShutdown'];
-    delete result['disableProcessExit'];
-
-    return result;
-  }
-
-  /**
-   * Modules getter property - returns modules by name for easy access
-   */
   get modules(): Map<string, IModule> {
-    const result = new Map<string, IModule>();
-    for (const [, module] of this._modules) {
-      result.set(module.name, module);
-    }
-    return result;
+    return this.__moduleRegistry.byName();
   }
 
-  /**
-   * Register a provider in the container - public API
-   */
+  // ─── DI surface ──────────────────────────────────────────────────────
+
   register<T>(token: Token<T>, provider: Provider<T>, options?: { override?: boolean }): this {
     this._container.register(token, provider, options);
     return this;
   }
 
-  /**
-   * Resolve a dependency from the container - public API
-   */
   resolve<T>(token: Token<T>): T {
     return this._container.resolve(token);
   }
 
-  /**
-   * Resolve an async dependency from the container - public API
-   */
   async resolveAsync<T>(token: Token<T>): Promise<T> {
     return this._container.resolveAsync(token);
   }
 
-  /**
-   * Get a dependency from the container - tries modules first, then container
-   */
   get<T>(token: Token<T>): T {
-    // First check if it's a module (cast to check in module map)
-    const moduleToken = token as unknown as Token<IModule>;
-    if (this._modules.has(moduleToken)) {
-      return this._modules.get(moduleToken) as T;
-    }
-
-    // Try to resolve from container
-    try {
-      const resolved = this._container.resolve(token);
-      // If it's a module-like object, cache it
-      if (resolved && typeof resolved === 'object' && 'name' in resolved) {
-        this._modules.set(token as Token<IModule>, resolved as IModule);
-      }
-      return resolved;
-    } catch (error: unknown) {
-      // Check if it's an async resolution error
-      const errorObj = error as { message?: string; name?: string };
-      if (errorObj?.message?.includes('registered as async') || errorObj?.name === 'AsyncResolutionError') {
-        const tokenName = token.name || token.id.description || 'Unknown';
-        throw Errors.badRequest(
-          `Cannot resolve '${tokenName}' synchronously because it has async dependencies. ` +
-            `Use 'await app.resolveAsync(${tokenName})' instead.`
-        );
-      }
-      // Provide a better error message
-      const tokenStr = token.name || token.id.description || 'Unknown';
-      throw Errors.notFound('Module', tokenStr);
-    }
+    return this.__moduleRegistry.resolveOrFail(token);
   }
 
-  /**
-   * Check if a token is registered in the container - public API
-   */
   hasProvider(token: Token<unknown>): boolean {
     return this._container.has(token);
   }
 
-  /**
-   * Check if a module exists by name or token
-   */
-  hasModule(nameOrToken: string | Token<unknown>): boolean {
-    if (typeof nameOrToken === 'string') {
-      for (const [, module] of this._modules) {
-        if (module.name === nameOrToken) {
-          return true;
-        }
-      }
-      return false;
-    } else {
-      return this._modules.has(nameOrToken as Token<IModule>);
-    }
-  }
-
-  /**
-   * Get all registered modules in dependency order
-   */
-  getModules(): IModule[] {
-    // If application is started, return modules sorted by dependencies
-    if (this._state === ApplicationState.Started || this._state === ApplicationState.Starting) {
-      try {
-        const sorted = this.sortModulesByDependencies();
-        return sorted.map(([, module]) => module);
-      } catch {
-        // If there's an error in sorting (e.g., circular dependencies), return unsorted
-        return Array.from(this._modules.values());
-      }
-    }
-
-    // Otherwise return in registration order
-    return Array.from(this._modules.values());
-  }
-
-  /**
-   * Register a module dynamically at runtime
-   */
-  async registerDynamic(module: IModule): Promise<void> {
-    // Check if app is running
-    if (this._state !== ApplicationState.Started) {
-      throw Errors.conflict('Application must be running to register dynamic modules');
-    }
-
-    // Check dependencies
-    if (module.dependencies) {
-      for (const dep of module.dependencies) {
-        // Convert dependency to appropriate type for hasModule
-        if (typeof dep === 'string') {
-          if (!this.hasModule(dep)) {
-            throw Errors.notFound('Module dependency', `${module.name} requires ${dep}`);
-          }
-        } else if (dep && typeof dep === 'object' && 'id' in dep) {
-          // It's a Token
-          if (!this.hasModule(dep as Token<unknown>)) {
-            throw Errors.notFound('Module dependency', `${module.name} requires ${dep.toString()}`);
-          }
-        }
-        // Skip other types of dependencies (symbols, constructors, etc)
-      }
-    }
-
-    // Register the module
-    await this.registerModule(module);
-
-    // If module has onStart, call it
-    if (module.onStart) {
-      await module.onStart(this);
-    }
-  }
-
-  /**
-   * Get the logger instance
-   */
   get logger(): ILogger | undefined {
     if (!this._logger && this._container.has(LOGGER_SERVICE_TOKEN)) {
       try {
         const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
         this._logger = loggerService.logger;
-      } catch {
-        // Logger not found
-      }
+        this._events.setLogger(this._logger);
+      } catch { /* logger optional */ }
     }
     return this._logger;
   }
 
-  /**
-   * Get the Netron instance
-   * Lazily initialized on first access
-   */
   get netron(): Netron | undefined {
     if (this._container.has(NETRON_TOKEN)) {
       try {
         return this._container.resolve(NETRON_TOKEN) as Netron;
-      } catch {
-        // Netron not available
-      }
+      } catch { /* netron optional */ }
     }
     return undefined;
   }
 
-  // Private methods
+  // ─── Health ──────────────────────────────────────────────────────────
 
-  private async initializeCoreModules(): Promise<void> {
-    // 1. First, register Logger module (it initializes immediately)
-    // Check for both LOGGER_OPTIONS_TOKEN and LOGGER_SERVICE_TOKEN to avoid duplicates
-    if (!this._container.has(LOGGER_SERVICE_TOKEN) && !this._container.has(LOGGER_OPTIONS_TOKEN)) {
-      // Get logger configuration from application config
-      const loggerConfig = this._config?.logger || this._config?.logging || {};
-      const loggerOptions = {
-        ...loggerConfig,
-        level: loggerConfig.level || (this._config?.debug ? 'debug' : 'info'),
-        prettyPrint: loggerConfig.prettyPrint ?? this._config?.environment === 'development',
-        name: this._config?.name || 'titan-app',
-      };
-
-      // Register Logger module with forRoot pattern
-      const loggerModuleConfig = LoggerModule.forRoot(loggerOptions);
-      await this.registerDynamicModule(loggerModuleConfig);
-    }
-
-    // Get logger service for internal use (even if it was registered by main module)
-    if (!this._logger && this._container.has(LOGGER_SERVICE_TOKEN)) {
-      try {
-        const loggerService = (await this._container.resolveAsync(LOGGER_SERVICE_TOKEN)) as ILoggerModule;
-        this._logger = loggerService.logger;
-        this._logger.info({ module: 'Application' }, 'Logger module initialized');
-      } catch (_error) {
-        // Logger not available yet, silently continue
-      }
-    }
-
-    // 2. Then, register Config module if not already registered
-    // Check for both CONFIG_OPTIONS_TOKEN and CONFIG_SERVICE_TOKEN to avoid duplicates
-    if (!this._container.has(CONFIG_SERVICE_TOKEN) && !this._container.has(CONFIG_OPTIONS_TOKEN)) {
-      // Register Config module with forRoot pattern
-      const configOptions = {
-        sources: [{ type: 'object' as const, data: this._config }, { type: 'env' as const }],
-      };
-
-      const configModuleConfig = ConfigModule.forRoot(configOptions);
-      await this.registerDynamicModule(configModuleConfig);
-    }
-
-    // Initialize ConfigService — always call onInit() since ConfigModule.forRoot()
-    // registers ConfigService as useValue, and the container skips lifecycle hooks
-    // for useValue providers. Without this, file-based config sources are never loaded.
-    if (this._container.has(CONFIG_SERVICE_TOKEN)) {
-      try {
-        this._logger?.debug({ module: 'Application' }, 'Attempting to resolve ConfigService...');
-        const configService = (await this._container.resolveAsync(CONFIG_SERVICE_TOKEN)) as {
-          onInit?: () => Promise<void> | void;
-        };
-        this._logger?.debug({ module: 'Application', hasService: !!configService }, 'ConfigService resolved');
-
-        if (configService && typeof configService.onInit === 'function') {
-          await configService.onInit();
-          this._logger?.debug({ module: 'Application' }, 'ConfigService initialized');
-        } else if (configService) {
-          this._logger?.debug({ module: 'Application' }, 'ConfigService does not need initialization');
-        }
-      } catch (error) {
-        this._logger?.warn({ module: 'Application', error }, 'Failed to initialize ConfigService');
-      }
-    }
-
-    // 3. Register Netron service as a singleton instance
-    if (!this._container.has(NETRON_TOKEN)) {
-      const netronConfig = this._config?.['netron'] || {};
-      const netronOptions: NetronOptions = {
-        ...netronConfig,
-        // Use application ID as Netron ID if not specified
-        id: netronConfig.id || `${this._name}-netron`,
-      };
-
-      // Create Netron instance directly with logger if available
-      if (this._logger) {
-        const netron = new Netron(this._logger, netronOptions);
-
-        // Register as singleton instance
-        this._container.register(NETRON_TOKEN, {
-          useValue: netron,
-        });
-
-        this._logger.debug({ module: 'Application' }, 'Netron service registered as singleton instance');
-      }
-      // If logger not available, skip Netron registration silently
-    }
+  async checkHealth(moduleName: string): Promise<IHealthStatus> {
+    return this._health.checkModule(moduleName);
   }
 
-  /**
-   * Register a dynamic module (with forRoot pattern)
-   */
-  private async registerDynamicModule(moduleConfig: IDynamicModule): Promise<void> {
-    const { module: ModuleClass, providers = [], exports = [] } = moduleConfig;
-
-    // Register providers
-    for (const provider of providers) {
-      if (Array.isArray(provider) && provider.length === 2) {
-        const [token, providerDef] = provider;
-        try {
-          this._container.register(token, providerDef);
-          this._logger?.debug(
-            {
-              module: 'Application',
-              tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
-            },
-            'Provider registered'
-          );
-        } catch (error) {
-          this._logger?.error(
-            {
-              module: 'Application',
-              tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
-              error,
-            },
-            'Failed to register provider'
-          );
-          throw error;
-        }
-      }
-    }
-
-    // Store module metadata for exports
-    if (ModuleClass && exports.length > 0) {
-      // Module exports are already handled by the container
-      this._logger?.debug({ module: 'Application' }, 'Dynamic module registered', {
-        module: ModuleClass.name,
-        providers: providers.length,
-        exports: exports.map((t: InjectionToken<unknown>) => {
-          const tokenWithName = t as { name?: string };
-          return tokenWithName.name || t.toString();
-        }),
-      });
-    }
+  async health(): Promise<IHealthStatus> {
+    return this._health.aggregate();
   }
 
-  private sortModulesByDependencies(): Array<[Token<IModule>, IModule]> {
-    const sorted: Array<[Token<IModule>, IModule]> = [];
-    const visited = new Set<Token<IModule>>();
-    const visiting = new Set<Token<IModule>>();
+  // ─── Shutdown system ─────────────────────────────────────────────────
 
-    const visit = (token: Token<IModule>): void => {
-      if (visited.has(token)) {
-        return;
-      }
-
-      if (visiting.has(token)) {
-        const tokenName = token.name || token.id.description || 'Unknown';
-        throw Errors.conflict(`Circular dependency detected in module: ${tokenName}`);
-      }
-
-      visiting.add(token);
-
-      const module = this._modules.get(token);
-      if (module && module.dependencies) {
-        for (const dep of module.dependencies) {
-          // Check if dependency is a token or a string name
-          let depToken: Token<IModule> | undefined;
-
-          if (typeof dep === 'string') {
-            // Find the token by module name
-            for (const [t, m] of this._modules.entries()) {
-              if (m.name === dep) {
-                depToken = t;
-                break;
-              }
-            }
-
-            // Check if dependency was found
-            if (!depToken) {
-              // Log warning but continue - dependency is optional
-              this._logger?.warn(`Module ${module.name} dependency '${dep}' not found - continuing without it`);
-              continue;
-            }
-          } else if (dep && typeof dep === 'object' && 'id' in dep) {
-            // It's a Token
-            depToken = dep as Token<IModule>;
-            // If the token isn't in our modules, try to find by its name
-            if (!this._modules.has(depToken)) {
-              const depName = depToken.name; // Use the string name, not the symbol id
-              for (const [t, m] of this._modules.entries()) {
-                if (m.name === depName) {
-                  depToken = t;
-                  break;
-                }
-              }
-
-              // Check if dependency was found
-              if (!this._modules.has(depToken)) {
-                // Log warning but continue - dependency is optional
-                this._logger?.warn(`Module ${module.name} dependency '${depName}' not found - continuing without it`);
-                continue;
-              }
-            }
-          } else {
-            // Skip non-token dependencies (symbols, constructors, etc.)
-            continue;
-          }
-
-          if (depToken && this._modules.has(depToken)) {
-            visit(depToken);
-          }
-        }
-      }
-
-      visiting.delete(token);
-      visited.add(token);
-
-      // LoggerModule is special-cased: it is started ahead of every other
-      // module by `initializeCoreModules()`, before this sort runs.
-      // Adding it to the sorted list AGAIN would invoke its onStart a
-      // second time (it gets visited recursively when another module
-      // declares `dependencies: ['logger']`, so the previous "skip in
-      // outer loop only" guard left this leak open).
-      //
-      // We keep visiting it — that produces correct ordering for OTHER
-      // modules that depend on it — but exclude it from the returned
-      // start order. Result: Logger starts exactly once (via core
-      // initialisation), and dependents still come after it in the
-      // sorted list because their visit() finishes after the recursive
-      // visit(Logger) completes.
-      if (module && token.id !== LOGGER_SERVICE_TOKEN.id) {
-        sorted.push([token, module]);
-      }
-    };
-
-    // Visit all modules — Logger included, so dependents resolve their
-    // ordering against it correctly. The visit() body skips its
-    // contribution to the sorted output.
-    for (const token of this._modules.keys()) {
-      visit(token);
-    }
-
-    return sorted;
-  }
-
-  private setupProcessLifecycle(): void {
-    // Register default shutdown tasks
-    this.registerDefaultShutdownTasks();
-
-    this._logger?.debug('Process lifecycle management initialized');
-  }
-
-  /**
-   * Setup signal handlers.
-   *
-   * Idempotent: if any signal handler is already registered (e.g. a
-   * previous `start()` call wired them and the subsequent `stop()` did
-   * NOT clean them up, which happens on the shutdown-driven path), we
-   * return early. Without this guard, each restart cycle installed an
-   * additional process listener for SIGTERM/SIGINT/SIGHUP — Node's
-   * MaxListenersExceededWarning fires past 10 cycles and every handler
-   * fires N times for one signal, multiplying shutdown work.
-   */
-  private setupSignalHandlers(): void {
-    if (this._signalHandlers.size > 0) return;
-
-    const signals: ProcessSignal[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
-
-    for (const signal of signals) {
-      const handler = () => this.handleSignal(signal);
-      this._signalHandlers.set(signal, handler);
-      process.on(signal, handler);
-      this._logger?.debug({ signal }, 'Registered signal handler');
-    }
-  }
-
-  /**
-   * Setup error handlers.
-   *
-   * Operational errors (network blips, DB connection drops, peer hangups)
-   * do NOT crash the daemon — the underlying clients (pg Pool, ioredis,
-   * etc.) own reconnection. Only programming errors (TypeError,
-   * ReferenceError, ...) trigger shutdown.
-   *
-   * A circuit breaker still shuts the process down if operational errors
-   * arrive faster than the recovery loops can absorb them — that level of
-   * churn means something deeper is wrong and silent retries would mask it.
-   */
-  private setupErrorHandlers(): void {
-    const recordOperationalError = createOperationalErrorRecorder();
-
-    const uncaughtHandler = (error: Error) => {
-      if (isOperationalError(error)) {
-        const tripped = recordOperationalError();
-        if (!tripped) {
-          this._logger?.error({ error }, 'Uncaught operational exception — continuing');
-          this.emit(ApplicationEvent.UncaughtException, { error, recovered: true });
-          return;
-        }
-        this._logger?.fatal({ error }, 'Operational error rate exceeded — shutting down');
-      } else {
-        this._logger?.fatal({ error }, 'Uncaught exception');
-      }
-      this.emit(ApplicationEvent.UncaughtException, { error });
-      this.shutdown(ShutdownReason.UncaughtException, { error }).catch((err) => {
-        this._logger?.fatal({ error: err }, 'Failed to handle uncaught exception');
-        this.exitProcess(1);
-      });
-    };
-
-    this._signalHandlers.set('uncaughtException', uncaughtHandler);
-    process.on('uncaughtException', uncaughtHandler);
-
-    const rejectionHandler = (reason: unknown, promise: Promise<unknown>) => {
-      if (isOperationalError(reason)) {
-        const tripped = recordOperationalError();
-        if (!tripped) {
-          this._logger?.error({ reason }, 'Unhandled operational rejection — continuing');
-          this.emit(ApplicationEvent.UnhandledRejection, { reason, promise, recovered: true });
-          return;
-        }
-        this._logger?.fatal({ reason }, 'Operational rejection rate exceeded — shutting down');
-      } else {
-        this._logger?.error({ reason, promise }, 'Unhandled promise rejection');
-      }
-      this.emit(ApplicationEvent.UnhandledRejection, { reason, promise });
-
-      // Only shutdown if not in test environment
-      if (!this._disableProcessExit) {
-        this.shutdown(ShutdownReason.UnhandledRejection, { reason, promise }).catch((error) => {
-          this._logger?.fatal({ error }, 'Failed to handle unhandled rejection');
-          this.exitProcess(1);
-        });
-      }
-    };
-
-    this._signalHandlers.set('unhandledRejection', rejectionHandler);
-    process.on('unhandledRejection', rejectionHandler);
-  }
-
-
-  /**
-   * Handle process signal
-   */
-  private handleSignal(signal: ProcessSignal): void {
-    this._logger?.info({ signal }, `Received ${signal} signal, initiating graceful shutdown...`);
-    this.emit(ApplicationEvent.Signal, { signal });
-
-    let reason: ShutdownReason;
-    switch (signal) {
-      case 'SIGTERM':
-        reason = ShutdownReason.SIGTERM;
-        break;
-      case 'SIGINT':
-        reason = ShutdownReason.SIGINT;
-        break;
-      case 'SIGHUP':
-        reason = ShutdownReason.Reload;
-        break;
-      default:
-        reason = ShutdownReason.Signal;
-    }
-
-    this.shutdown(reason, { signal }).catch((error) => {
-      this._logger?.fatal({ error }, 'Failed to handle signal');
-      this.exitProcess(1);
-    });
-  }
-
-  /**
-   * Register default shutdown tasks
-   */
-  private registerDefaultShutdownTasks(): void {
-    // Flush logs
-    this.registerShutdownTask({
-      id: 'flush-logs',
-      name: 'Flush Logs',
-      priority: ShutdownPriority.Last,
-      handler: async () => {
-        this._logger?.info('Flushing logs...');
-
-        // Flush the logger properly if available
-        if (this._container.has(LOGGER_SERVICE_TOKEN)) {
-          try {
-            const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
-            if (loggerService && typeof loggerService.flush === 'function') {
-              await loggerService.flush();
-              this._logger?.info('Logs flushed successfully');
-            }
-          } catch (error) {
-            this._logger?.warn({ error }, 'Failed to flush logger');
-          }
-        }
-
-        // Also wait a bit to ensure everything is written
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      },
-    });
-
-    // Close connections
-    this.registerShutdownTask({
-      id: 'close-connections',
-      name: 'Close Active Connections',
-      priority: ShutdownPriority.High,
-      handler: async () => {
-        this._logger?.info('Closing active connections');
-      },
-    });
-
-    // Save state
-    this.registerShutdownTask({
-      id: 'save-state',
-      name: 'Save Application State',
-      priority: ShutdownPriority.VeryHigh,
-      handler: async () => {
-        this._logger?.info('Saving application state');
-        this.emit(ApplicationEvent.StateSave);
-      },
-    });
-  }
-
-  /**
-   * Register a shutdown task
-   */
   registerShutdownTask(
     taskOrName: IShutdownTask | string,
     handler?: () => void | Promise<void>,
     priority?: number,
-    isCritical?: boolean
+    isCritical?: boolean,
   ): string {
-    let task: IShutdownTask;
-
-    if (typeof taskOrName === 'string') {
-      // Multi-parameter API
-      task = {
-        name: taskOrName,
-        handler: handler || (() => {}),
-        priority: priority ?? ShutdownPriority.Normal,
-        critical: isCritical,
-      };
-    } else {
-      // Object API
-      task = taskOrName;
-    }
-
-    if (!task.id) {
-      task.id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    }
-
-    // Set default priority if not provided
-    if (task.priority === undefined) {
-      task.priority = ShutdownPriority.Normal;
-    }
-
-    this._shutdownTasks.set(task.id, task);
-    this._logger?.debug({ taskId: task.id, taskName: task.name }, 'Registered shutdown task');
-
-    return task.id;
+    return this._shutdown.registerTask(taskOrName, handler, priority, isCritical);
   }
 
-  /**
-   * Unregister a shutdown task
-   */
   unregisterShutdownTask(taskId: string): void {
-    this._shutdownTasks.delete(taskId);
+    this._shutdown.unregisterTask(taskId);
   }
 
-  /**
-   * Register a cleanup handler
-   */
   registerCleanup(handler: () => Promise<void> | void): void {
-    this._cleanupHandlers.add(handler);
+    this._shutdown.registerCleanup(handler);
   }
 
-  /**
-   * Register a cleanup handler (alias for registerCleanup)
-   */
+  /** @deprecated Use `registerCleanup`. Retained for compatibility. */
   registerCleanupHandler(handler: () => Promise<void> | void): void {
-    this.registerCleanup(handler);
+    this._shutdown.registerCleanup(handler);
   }
 
-  /**
-   * Perform graceful shutdown
-   */
-  async shutdown(
-    reason: ShutdownReason,
-    details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }
-  ): Promise<void> {
-    // Prevent multiple concurrent shutdowns. If one is already in flight,
-    // join it; do NOT short-circuit when the previous shutdown already
-    // settled — that case is now reachable because we reset the flags
-    // below (see comment in the `finally`).
-    if (this._isShuttingDown && this._shutdownPromise) {
-      await this._shutdownPromise;
-      return;
-    }
-
-    this._isShuttingDown = true;
-    this._lifecycleState = LifecycleState.ShuttingDown;
-
-    this._logger?.info({ reason, details }, 'Starting graceful shutdown');
-    this.emit(ApplicationEvent.ShutdownStart, { reason, details });
-
-    // Create shutdown promise with timeout
-    this._shutdownPromise = this.executeShutdown(reason, details);
-
-    // Add timeout
-    const timeoutPromise = new Promise<void>((_, reject) => {
-      setTimeout(() => {
-        reject(Errors.timeout('Shutdown', this._shutdownTimeout));
-      }, this._shutdownTimeout);
-    });
-
+  async shutdown(reason: ShutdownReason, details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }): Promise<void> {
+    this._lifecycle.markShuttingDown();
     try {
-      await Promise.race([this._shutdownPromise, timeoutPromise]);
-
-      this._logger?.info('Graceful shutdown completed successfully');
-      this.emit(ApplicationEvent.ShutdownComplete, { reason, success: true });
-
-      // Exit process if configured.
+      await this._shutdown.shutdown(reason, details);
       if (reason !== ShutdownReason.Manual) {
-        this.exitProcess(0);
+        this._process.exit(0, { emit: (e, d) => this._events.emit(e, d) });
       }
     } catch (error) {
-      this._logger?.error({ error }, 'Graceful shutdown failed or timed out');
-      this.emit(ApplicationEvent.ShutdownError, { reason, error });
-
-      // Force exit after additional timeout
+      // Force-exit safety net (separate from the controller's own).
       setTimeout(() => {
         this._logger?.fatal('Force killing process after timeout');
-        this.exitProcess(1);
+        this._process.exit(1, { emit: (e, d) => this._events.emit(e, d) });
       }, 5000);
-
       throw error;
-    } finally {
-      // Reset the shutdown latch.
-      //
-      // Without this, the `Manual` reason path (which intentionally does
-      // NOT call exitProcess) AND the test-mode path (_disableProcessExit
-      // suppresses the exit even for terminal reasons) both leave
-      // `_isShuttingDown=true` forever — making every subsequent
-      // `shutdown()` call a no-op that just awaits the already-settled
-      // previous promise. The next `restart()` would silently fail to
-      // tear itself down.
-      //
-      // In production with `_disableProcessExit=false`, the reset is
-      // moot because `process.exit(0|1)` already aborted the process
-      // before we reached this finally — but it's cheap and keeps the
-      // state machine self-consistent for embedded / test consumers.
-      this._isShuttingDown = false;
-      this._shutdownPromise = null;
     }
   }
 
-  /**
-   * Execute shutdown tasks via the unified `LifecycleController`.
-   *
-   * Public contract preserved verbatim — this method is private and
-   * only called from `shutdown()`. Behaviour the test suite asserts on:
-   *
-   *   - Tasks run in (priority asc, id asc) order. Within a priority
-   *     bucket the controller runs them sequentially because we
-   *     register every user task with `parallel: false`.
-   *   - On `task.critical === true` failure: shutdown aborts and the
-   *     remaining tasks (including DI-stop and cleanup) are skipped.
-   *   - On non-critical failure: log+event and continue with the next
-   *     task. Same `ShutdownTaskComplete` / `ShutdownTaskError` events
-   *     fire from the controller's `onPhaseEvent` hook so external
-   *     listeners (and test assertions) keep working unchanged.
-   *   - After all user tasks: `this.stop()` (DI shutdown), then
-   *     `runCleanupHandlers()`. We register them as internal high-
-   *     priority tasks (priority 1000, 1001) so they fall in the
-   *     `dispose` phase after every user task.
-   *
-   * The controller adds:
-   *   - per-phase telemetry (LifecyclePhaseEvent) — re-emitted to
-   *     consumers that listen for `application:lifecycle-phase`, used
-   *     by the omnitron metrics-bridge for the
-   *     `lifecycle_shutdown_phase_duration_seconds` histogram.
-   *   - hard force-exit safety net (separate timer) layered on top of
-   *     the existing outer-promise timeout race in `shutdown()`.
-   *
-   * `exitOverride: () => false` keeps process.exit under Application's
-   * control — the outer `shutdown()` already owns that responsibility
-   * and the test suite's `_disableProcessExit` flag must remain
-   * effective.
-   */
-  private async executeShutdown(reason: ShutdownReason, details?: unknown): Promise<void> {
-    const controller = new LifecycleController({
-      bucketTimeoutMs: this._shutdownTimeout,
-      totalTimeoutMs: this._shutdownTimeout,
-      forceKillBufferMs: 1_000,
-      defaultTaskTimeoutMs: this._shutdownTimeout,
-      logger: this.adaptLifecycleLogger(),
-      onPhaseEvent: (e) => this.handleLifecyclePhaseEvent(e),
-      // Application owns process.exit (outer `shutdown()` already does
-      // it). Suppressing here prevents the controller from racing with
-      // the existing exit path.
-      exitOverride: () => false,
-    });
-
-    // Register every user-registered task. `parallel: false` preserves
-    // the strict-sequential semantics the existing implementation
-    // (and 1k+ lines of tests) depend on.
-    for (const task of this._shutdownTasks.values()) {
-      controller.register({
-        ...task,
-        parallel: false,
-      });
-    }
-
-    // Internal terminal tasks. priority 1000+ falls in the `dispose`
-    // bucket so they run after every user task. They are NOT critical
-    // — failure here logs and is swallowed, matching the existing
-    // best-effort behaviour of `this.stop()` and the cleanup handler
-    // loop in `runCleanupHandlers`.
-    const detailsWithSignal = details as { signal?: NodeJS.Signals } | undefined;
-    controller.register({
-      id: '__app_di_stop',
-      name: '__app_di_stop',
-      priority: 1000,
-      parallel: false,
-      handler: async () => {
-        await this.stop({
-          timeout: this._shutdownTimeout,
-          signal: detailsWithSignal?.signal,
-        });
-      },
-    });
-    controller.register({
-      id: '__app_cleanup',
-      name: '__app_cleanup',
-      priority: 1001,
-      parallel: false,
-      handler: () => this.runCleanupHandlers(),
-    });
-
-    await controller.shutdown(reason, details);
-  }
-
-  /**
-   * Translate `LifecyclePhaseEvent` into the legacy
-   * `ShutdownTaskComplete` / `ShutdownTaskError` events that the test
-   * suite and consumer code already subscribe to. Internal terminal
-   * tasks (`__app_di_stop`, `__app_cleanup`) are silenced — they were
-   * never user-visible in the previous implementation.
-   */
-  private handleLifecyclePhaseEvent(event: LifecyclePhaseEvent): void {
-    if (event.kind === 'task-finish' && event.taskName) {
-      if (this.isInternalShutdownTask(event.taskName)) return;
-      this._logger?.debug({ taskName: event.taskName }, 'Shutdown task completed');
-      this.emit(ApplicationEvent.ShutdownTaskComplete, { task: event.taskName });
-      return;
-    }
-    if (event.kind === 'task-error' && event.taskName) {
-      if (this.isInternalShutdownTask(event.taskName)) return;
-      this._logger?.error(
-        { error: event.error, taskName: event.taskName },
-        'Shutdown task failed',
-      );
-      this.emit(ApplicationEvent.ShutdownTaskError, {
-        task: event.taskName,
-        error: event.error,
-      });
-    }
-    // Phase-level events (phase-start/finish/timeout) propagate via
-    // a dedicated event so observability code can consume them
-    // without parsing the per-task stream.
-    if (
-      event.kind === 'phase-start' ||
-      event.kind === 'phase-finish' ||
-      event.kind === 'phase-timeout'
-    ) {
-      this.emit(ApplicationEvent.LifecyclePhaseEvent, event);
-    }
-  }
-
-  private isInternalShutdownTask(name: string): boolean {
-    return name === '__app_di_stop' || name === '__app_cleanup';
-  }
-
-  /**
-   * Adapter so the controller's structured logger calls land on the
-   * Application's pino-style logger. Returns undefined if no logger is
-   * attached so the controller's own console fallback is used.
-   */
-  private adaptLifecycleLogger() {
-    const logger = this._logger;
-    if (!logger) return undefined;
-    return {
-      debug: (payload: unknown, msg?: string) => logger.debug(payload as object, msg ?? ''),
-      info: (payload: unknown, msg?: string) => logger.info(payload as object, msg ?? ''),
-      warn: (payload: unknown, msg?: string) => logger.warn(payload as object, msg ?? ''),
-      error: (payload: unknown, msg?: string) => logger.error(payload as object, msg ?? ''),
-    };
-  }
-
-  /**
-   * Run cleanup handlers
-   */
-  private async runCleanupHandlers(): Promise<void> {
-    for (const handler of this._cleanupHandlers) {
-      try {
-        await handler();
-      } catch (error) {
-        this._logger?.error({ error }, 'Cleanup handler failed');
-      }
-    }
-    this._cleanupHandlers.clear();
-  }
-
-  /**
-   * Exit process with code
-   */
-  private exitProcess(code: number): void {
-    if (!this._disableProcessExit) {
-      process.exit(code);
-    } else {
-      this._logger?.debug(`Process exit with code ${code} (disabled in test mode)`);
-      this.emit(ApplicationEvent.ProcessExit, { code });
-    }
-  }
-
-  /**
-   * Force immediate shutdown
-   */
   forceShutdown(code: number = 1): void {
     this._logger?.fatal(`Force shutdown with code ${code}`);
-    this.exitProcess(code);
+    this._process.exit(code, { emit: (e, d) => this._events.emit(e, d) });
   }
 
-  /**
-   * Get process metrics
-   */
   getProcessMetrics(): IProcessMetrics {
-    // Ensure startTime is properly set - use process.uptime() as fallback
     const uptime =
-      this._startTime > 0 ? Math.max(1, Date.now() - this._startTime) : Math.max(1, process.uptime() * 1000);
-
+      this._lifecycle.uptime > 0
+        ? Math.max(1, this._lifecycle.uptime)
+        : Math.max(1, process.uptime() * 1000);
     return {
       uptime,
       memoryUsage: process.memoryUsage(),
@@ -2902,467 +1020,211 @@ export class Application implements IApplication {
       ppid: process.ppid,
       platform: process.platform,
       nodeVersion: process.version,
-      state: this._lifecycleState,
-      shutdownTasksCount: this._shutdownTasks.size,
-      cleanupHandlersCount: this._cleanupHandlers.size,
+      state: this._lifecycle.lifecycleState,
+      shutdownTasksCount: this._shutdown.taskCount,
+      cleanupHandlersCount: this._shutdown.cleanupCount,
     };
   }
 
-  /**
-   * Cleanup signal handlers
-   */
-  private cleanupSignalHandlers(): void {
-    for (const [event, handler] of this._signalHandlers.entries()) {
-      process.removeListener(event, handler);
-    }
-    this._signalHandlers.clear();
-  }
+  // ─── Core-module bootstrap ───────────────────────────────────────────
 
-  /**
-   * Check if an object is a DynamicModule
-   */
-  private isDynamicModule(obj: unknown): obj is IDynamicModule {
-    if (!obj || typeof obj !== 'object' || !('module' in obj)) {
-      return false;
-    }
-    const objWithModule = obj as { module: unknown };
-    return typeof objWithModule.module === 'function';
-  }
-
-  /**
-   * Discover modules automatically from the filesystem
-   * Scans for @Module decorated classes and registers them
-   */
-  async discoverModules(scanPaths?: string | string[], excludePaths?: string[]): Promise<ModuleConstructor[]> {
-    const modules: ModuleConstructor[] = [];
-    const criticalErrors: Error[] = [];
-    const validationErrors: Error[] = [];
-    const fs = await import('node:fs/promises');
-    const path = await import('node:path');
-    const { pathToFileURL } = await import('node:url');
-
-    // Convert single path to array
-    let paths: string[];
-    if (typeof scanPaths === 'string') {
-      // Check if it's a glob pattern
-      if (scanPaths.includes('*')) {
-        // Use glob to resolve files
-        const glob = (await import('glob')).glob;
-        const resolvedFiles = await glob(scanPaths, { absolute: true });
-        paths = resolvedFiles;
-      } else {
-        paths = [scanPaths];
-      }
-    } else if (Array.isArray(scanPaths)) {
-      paths = scanPaths;
-    } else {
-      // Default scan paths
-      paths = [
-        path.join(process.cwd(), 'src', 'modules'),
-        path.join(process.cwd(), 'dist', 'modules'),
-        path.join(process.cwd(), 'lib', 'modules'),
-      ];
-    }
-
-    for (const scanPath of paths) {
-      try {
-        let files: string[] = [];
-
-        // Check if scanPath is a file or directory
-        const stat = await fs.stat(scanPath).catch(() => null);
-        if (stat?.isFile()) {
-          files = [scanPath];
-        } else if (stat?.isDirectory()) {
-          // Recursively find all .js and .ts files
-          files = await this.findModuleFiles(scanPath, fs, path);
-        } else {
-          continue; // Path doesn't exist
-        }
-
-        for (const file of files) {
-          try {
-            // Skip test files
-            if (file.includes('.test.') || file.includes('.spec.')) {
-              continue;
-            }
-
-            // Check if file should be excluded
-            if (excludePaths && excludePaths.length > 0) {
-              const shouldExclude = excludePaths.some((pattern) => {
-                // Simple pattern matching (supports **/filename.ext patterns)
-                if (pattern.includes('**')) {
-                  const filename = pattern.replace('**/', '');
-                  return file.endsWith(filename);
-                }
-                return file.includes(pattern);
-              });
-              if (shouldExclude) {
-                this._logger?.debug(`Excluding file from discovery: ${file}`);
-                continue;
-              }
-            }
-
-            // Dynamically import the file
-            const fileUrl = pathToFileURL(file).href;
-            const moduleExports = await import(fileUrl);
-
-            // Check all exports for @Module decorated classes
-            for (const exportName in moduleExports) {
-              const exported = moduleExports[exportName];
-
-              // Check if it's a module (has __titanModule metadata)
-              if (exported && typeof exported === 'function' && exported.__titanModule) {
-                // Validate module before adding
-                try {
-                  const moduleInstance = new exported();
-
-                  // Validate that module has required properties
-                  if (!moduleInstance.name) {
-                    const error = Errors.badRequest(
-                      `Module ${exported.name || exportName} is missing required 'name' property`
-                    );
-                    validationErrors.push(error);
-                    this._logger?.warn(`Invalid module: ${error.message}`);
-                    continue;
-                  }
-
-                  modules.push(exported as ModuleConstructor);
-                  this._logger?.debug(`Discovered module: ${exported.name || exportName} from ${file}`);
-
-                  // Also register the module so it's available immediately
-                  const token = createToken<IModule>(moduleInstance.name);
-                  if (!this._modules.has(token)) {
-                    this._modules.set(token, moduleInstance);
-                    this._logger?.debug(`Registered module: ${moduleInstance.name}`);
-                  }
-                } catch (err: any) {
-                  const error = Errors.internal(`Failed to instantiate module ${exported.name}: ${err.message}`);
-                  validationErrors.push(error);
-                  this._logger?.warn(error.message);
-                }
-              }
-            }
-          } catch (error) {
-            // Treat actual syntax errors in the file content as critical
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (
-              error instanceof Error &&
-              errorMessage &&
-              (errorMessage.includes('Unexpected end of input') ||
-                (errorMessage.includes('SyntaxError') && !errorMessage.includes("Unexpected token 'export'")))
-            ) {
-              criticalErrors.push(error);
-              this._logger?.error(`Critical error loading module from ${file}: ${errorMessage}`);
-            } else {
-              // Module format issues or other import errors are just warnings
-              this._logger?.warn(`Failed to load potential module from ${file}: ${errorMessage}`);
-            }
-          }
-        }
-      } catch {
-        // Path doesn't exist, skip it
-        this._logger?.debug(`Scan path not found: ${scanPath}`);
-      }
-    }
-
-    // Throw if there are validation errors for modules that are explicitly marked as modules
-    if (validationErrors.length > 0) {
-      this._logger?.warn(`Module discovery found ${validationErrors.length} validation error(s)`);
-      // If there are validation errors and we found modules with __titanModule metadata, throw
-      const hasInvalidModules = validationErrors.some((e) => e.message.includes('missing required'));
-      if (hasInvalidModules) {
-        const errorMessages = validationErrors.map((e) => e.message).join('; ');
-        throw Errors.badRequest(`Module discovery failed: ${errorMessages}`);
-      }
-    }
-
-    // Also throw for critical errors (syntax errors)
-    if (criticalErrors.length > 0) {
-      const errorMessages = criticalErrors.map((e) => e.message).join('; ');
-      throw Errors.internal(
-        `Module discovery failed with ${criticalErrors.length} critical error(s): ${errorMessages}`
-      );
-    }
-
-    return modules;
-  }
-
-  /**
-   * Recursively find all potential module files
-   */
-  private async findModuleFiles(
-    dir: string,
-    fs: typeof import('node:fs/promises'),
-    path: typeof import('node:path')
-  ): Promise<string[]> {
-    const files: string[] = [];
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        // Recursively search subdirectories
-        const subFiles = await this.findModuleFiles(fullPath, fs, path);
-        files.push(...subFiles);
-      } else if (
-        entry.isFile() &&
-        (entry.name.endsWith('.js') ||
-          entry.name.endsWith('.ts') ||
-          entry.name.endsWith('.cjs') ||
-          entry.name.endsWith('.mjs'))
-      ) {
-        // Include all JS/TS/CJS/MJS files
-        files.push(fullPath);
-      }
-    }
-
-    return files;
-  }
-
-  /**
-   * Process a dynamic module's providers and imports
-   */
-  private async processDynamicModule(dynamicModule: IDynamicModule, moduleInstance: IModule): Promise<void> {
-    // Process imports first (Application-level recursion)
-    if (dynamicModule.imports) {
-      for (const importModule of dynamicModule.imports) {
-        await this.registerModule(importModule);
-      }
-    }
-
-    // Build an IModule from the dynamic module and load it through the container's
-    // module system. This ensures:
-    // 1. Module tracking and scoping work correctly
-    // 2. Singleton providers are eagerly initialized (event listeners, subscribers)
-    // 3. DI diagnostics are available for fast error detection
-    const filteredProviders: Provider<unknown>[] = [];
-
-    if (dynamicModule.providers) {
-      for (const provider of dynamicModule.providers) {
-        if (Array.isArray(provider)) {
-          // Tuple format [token, providerDef, options?] — register directly
-          const [token, providerDef, options] = provider as [
-            InjectionToken<unknown>,
-            ProviderDefinition<unknown>,
-            Record<string, unknown>?,
-          ];
-          // Convert tuple to provide-style object for loadModuleAsync
-          const providerObj = { provide: token, ...(providerDef as object), ...(options || {}) };
-          filteredProviders.push(providerObj as unknown as Provider<unknown>);
-        } else if (typeof provider === 'function') {
-          // Skip repositories — they're registered by the database module with async factories
-          const isRepository = Reflect.getMetadata('database:is-repository', provider);
-          if (isRepository) continue;
-          filteredProviders.push(provider);
-        } else {
-          filteredProviders.push(provider);
-        }
-      }
-    }
-
-    // Build the module object for container.loadModuleAsync()
-    const containerModule: IModule = {
-      name: moduleInstance.name,
-      providers: filteredProviders,
-      exports: (dynamicModule.exports || []) as InjectionToken<unknown>[],
-      global: dynamicModule.global || false,
-    };
-
-    // Use loadModuleAsync for eager singleton initialization with full diagnostics
-    await this._container.loadModuleAsync(containerModule);
-
-    // Mark global exports
-    if (dynamicModule.global && dynamicModule.exports) {
-      type ModuleInstanceWithGlobalExports = IModule & {
-        __globalExports?: (InjectionToken<unknown> | ModuleInput)[];
+  private async initializeCoreModules(): Promise<void> {
+    // Logger first — every subsequent core-init step uses it.
+    if (!this._container.has(LOGGER_SERVICE_TOKEN) && !this._container.has(LOGGER_OPTIONS_TOKEN)) {
+      const loggerConfig = (this.__configStore.rawGet('logger') ?? this.__configStore.rawGet('logging') ?? {}) as Record<string, unknown>;
+      const loggerOptions = {
+        ...loggerConfig,
+        level: (loggerConfig['level'] as string | undefined) ?? (this.__configStore.rawGet('debug') ? 'debug' : 'info'),
+        prettyPrint:
+          (loggerConfig['prettyPrint'] as boolean | undefined) ??
+          this.__configStore.rawGet('environment') === 'development',
+        name: this.__configStore.rawGet('name') || 'titan-app',
       };
-      (moduleInstance as ModuleInstanceWithGlobalExports).__globalExports = dynamicModule.exports;
+      const loggerModuleConfig = LoggerModule.forRoot(loggerOptions as Parameters<typeof LoggerModule.forRoot>[0]);
+      this.__moduleRegistry.registerCoreDynamic(loggerModuleConfig as IDynamicModule);
+    }
+
+    if (!this._logger && this._container.has(LOGGER_SERVICE_TOKEN)) {
+      try {
+        const loggerService = (await this._container.resolveAsync(LOGGER_SERVICE_TOKEN)) as ILoggerModule;
+        this._logger = loggerService.logger;
+        this._events.setLogger(this._logger);
+        this._logger.info({ module: 'Application' }, 'Logger module initialized');
+      } catch { /* logger optional */ }
+    }
+
+    if (!this._container.has(CONFIG_SERVICE_TOKEN) && !this._container.has(CONFIG_OPTIONS_TOKEN)) {
+      const configOptions = {
+        sources: [
+          { type: 'object' as const, data: this.__configStore.raw as Record<string, unknown> },
+          { type: 'env' as const },
+        ],
+      };
+      const configModuleConfig = ConfigModule.forRoot(configOptions);
+      this.__moduleRegistry.registerCoreDynamic(configModuleConfig as IDynamicModule);
+    }
+
+    // ConfigService.onInit() — manually invoked because ConfigModule
+    // registers ConfigService as `useValue`, and the container skips
+    // lifecycle hooks for those.
+    if (this._container.has(CONFIG_SERVICE_TOKEN)) {
+      try {
+        this._logger?.debug({ module: 'Application' }, 'Attempting to resolve ConfigService...');
+        const configService = (await this._container.resolveAsync(CONFIG_SERVICE_TOKEN)) as {
+          onInit?: () => Promise<void> | void;
+        };
+        if (configService?.onInit) {
+          await configService.onInit();
+          this._logger?.debug({ module: 'Application' }, 'ConfigService initialized');
+        }
+      } catch (error) {
+        this._logger?.warn({ module: 'Application', error }, 'Failed to initialize ConfigService');
+      }
+    }
+
+    if (!this._container.has(NETRON_TOKEN)) {
+      const netronConfig = (this.__configStore.rawGet('netron') ?? {}) as NetronOptions;
+      const netronOptions: NetronOptions = {
+        ...netronConfig,
+        id: netronConfig.id || `${this._name}-netron`,
+      };
+      if (this._logger) {
+        const netron = new Netron(this._logger, netronOptions);
+        this._container.register(NETRON_TOKEN, { useValue: netron });
+        this._logger.debug({ module: 'Application' }, 'Netron service registered as singleton instance');
+      }
+    }
+  }
+
+  // ─── Backward-compat private-field shims ─────────────────────────────
+  //
+  // Several test suites and a handful of older internal call sites poke
+  // at fields that the legacy monolithic Application exposed as private
+  // members (`_config`, `_modules`, `_state`, `_isStarted`, `setState`,
+  // `_disableProcessExit`). The T#33 refactor moved those fields into
+  // dedicated collaborators, but breaking the contract on a refactor
+  // would cascade into churn elsewhere. The accessors below preserve
+  // the EXACT shape callers reached for — read AND write — by routing
+  // through the collaborator surface. All marked `@internal` and not
+  // documented as public.
+
+  /** @internal — proxy to `__configStore.raw`. */
+  private get _config(): Readonly<IApplicationConfig> {
+    return this.__configStore.raw;
+  }
+
+  /** @internal — proxy to `__moduleRegistry`'s underlying Map. */
+  private get _modules(): Map<Token<IModule>, IModule> {
+    return this.__moduleRegistry.rawMap();
+  }
+
+  /** @internal — proxy to `_lifecycle.state`. */
+  private get _state(): ApplicationState {
+    return this._lifecycle.state;
+  }
+  private set _state(value: ApplicationState) {
+    this._lifecycle.forceState(value);
+  }
+
+  /** @internal — proxy to `_lifecycle.isStarted`. */
+  private get _isStarted(): boolean {
+    return this._lifecycle.isStarted;
+  }
+  private set _isStarted(value: boolean) {
+    // Force-set the underlying state to match. Legacy code used this
+    // pair (`_state` + `_isStarted`) as two independently writable
+    // signals; we collapse onto the single state-machine axis.
+    if (value) this._lifecycle.forceState(ApplicationState.Started);
+    else if (this._lifecycle.state === ApplicationState.Started) {
+      this._lifecycle.forceState(ApplicationState.Stopped);
+    }
+  }
+
+  /** @internal — legacy private method; forwards to `_lifecycle.forceState`. */
+  private setState(state: ApplicationState): void {
+    this._lifecycle.forceState(state);
+  }
+
+  /**
+   * @internal — legacy `disableProcessExit` flag that gates the actual
+   * `process.exit` call. The ProcessHost collaborator owns the live
+   * value; this shim proxies for callers that toggle it on the
+   * Application instance directly.
+   */
+  private get _disableProcessExit(): boolean {
+    return (this._process as unknown as { disableProcessExit: boolean }).disableProcessExit;
+  }
+  private set _disableProcessExit(value: boolean) {
+    (this._process as unknown as { disableProcessExit: boolean }).disableProcessExit = value;
+  }
+
+  // ─── Internal helpers ────────────────────────────────────────────────
+
+  /**
+   * Flush logger output through the logger service if it exposes a
+   * `flush()` method. Used by the default `flush-logs` shutdown task.
+   */
+  private async flushLoggerService(): Promise<void> {
+    if (!this._container.has(LOGGER_SERVICE_TOKEN)) return;
+    try {
+      const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
+      if (loggerService && typeof loggerService.flush === 'function') {
+        await loggerService.flush();
+      }
+    } catch (error) {
+      this._logger?.warn({ error }, 'Failed to flush logger');
     }
   }
 
   /**
-   * Register a provider in the container
+   * Type-guard for the `IDynamicModule` shape — exposed for any user
+   * code that branches on input shape. Mirrors the legacy private
+   * helper, surfaced because some test fixtures historically reached
+   * into it via `as any`.
    */
-  private async registerProvider(
-    provider: [InjectionToken<unknown>, Provider<unknown>, Record<string, unknown>?]
-  ): Promise<void> {
-    const [token, providerDef, registrationOptions] = provider;
-    // Use provided registration options or default to empty object
-    const options = registrationOptions || {};
-    this._container.register(token, providerDef, options);
-  }
-
-  private handleError(error: Error): void {
-    // Just emit the error event, which will trigger error handlers
-    this.emit(ApplicationEvent.Error, error);
-  }
-
-  private async withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => reject(Errors.timeout(message, timeout)), timeout);
-      }),
-    ]);
-  }
-
-  /**
-   * Automatically expose services decorated with @Service to Netron
-   * This scans all registered providers in the container and exposes those with the @Service decorator
-   */
-  private async exposeServicesToNetron(netron: Netron): Promise<void> {
-    this._logger?.debug('Auto-exposing services decorated with @Service to Netron');
-
-    // Use the container's public iteration API (`iterateRegistrationsFlat`)
-    // rather than reaching into a private field via `as unknown as`. The
-    // old cast scattered knowledge of internal storage shape across
-    // multiple files and broke compilation in surprising places whenever
-    // the storage layout changed; the iterator is the supported boundary.
-    let exposedCount = 0;
-    type ServiceMetadata = { name: string; version?: string };
-    type ServiceInfo = { serviceClass: Constructor<unknown>; serviceMetadata: ServiceMetadata };
-    const servicesToExpose: ServiceInfo[] = [];
-
-    // First pass: collect all services with @Service decorator
-    for (const [_token, reg] of this._container.iterateRegistrationsFlat()) {
-      try {
-        {
-          // Get the provider class/constructor from the registration
-          let serviceClass: Constructor<unknown> | null = null;
-          const provider = reg.provider as { provider?: unknown; useClass?: Constructor<unknown>; useFactory?: unknown; useValue?: unknown };
-          // `provider` here is `Registration.provider`, which in this
-          // legacy code shape can be a class, a `{useClass}` descriptor,
-          // or a wrapped factory. Below logic stays unchanged.
-
-          if (!provider) {
-            continue;
-          }
-
-          if (typeof provider === 'function') {
-            serviceClass = provider as Constructor<unknown>;
-          } else if (typeof provider === 'object') {
-            type ProviderWithUseClass = { useClass?: Constructor<unknown> };
-            type ProviderWithUseValue = { useValue?: { constructor?: Constructor<unknown> } };
-            const providerWithClass = provider as ProviderWithUseClass;
-            const providerWithValue = provider as ProviderWithUseValue;
-
-            if ('useClass' in provider && providerWithClass.useClass) {
-              serviceClass = providerWithClass.useClass;
-            } else if ('useValue' in provider && providerWithValue.useValue) {
-              // Check if the value is a service instance
-              serviceClass = providerWithValue.useValue?.constructor || null;
-            }
-          }
-
-          if (!serviceClass) {
-            continue;
-          }
-
-          // Check if this class has the @Service decorator metadata
-          const serviceMetadata = Reflect.getMetadata('netron:service', serviceClass);
-          if (!serviceMetadata) {
-            // Log classes without @Service for debugging
-            if (serviceClass.name && serviceClass.name.includes('RpcService')) {
-              this._logger?.info(
-                { className: serviceClass.name, hasMetadata: !!serviceMetadata },
-                'RPC Service class found without @Service metadata'
-              );
-            }
-            continue;
-          }
-
-          this._logger?.info(
-            { serviceName: serviceMetadata.name, className: serviceClass.name },
-            'Found service with @Service decorator'
-          );
-
-          // Add to the list of services to expose
-          servicesToExpose.push({ serviceClass, serviceMetadata });
-        }
-      } catch (error) {
-        this._logger?.warn({ error }, 'Error during service discovery');
-      }
-    }
-
-    this._logger?.info({ servicesToExposeCount: servicesToExpose.length }, 'Services to expose');
-
-    // Second pass: resolve and expose services
-    // This ensures all dependencies are registered before we try to resolve
-    for (const { serviceClass, serviceMetadata } of servicesToExpose) {
-      try {
-        // Resolve the service instance from the container
-        let serviceInstance: unknown = null;
-        try {
-          // Try to resolve using the class as the token
-          const hasService = this._container.has(serviceClass);
-          this._logger?.info(
-            { serviceName: serviceMetadata.name, className: serviceClass.name, hasService },
-            'Attempting to resolve service'
-          );
-
-          if (hasService) {
-            serviceInstance = await this._container.resolveAsync(serviceClass);
-            this._logger?.info(
-              { serviceName: serviceMetadata.name, resolved: !!serviceInstance },
-              'Service resolution result'
-            );
-          }
-        } catch (error) {
-          this._logger?.info(
-            { serviceName: serviceMetadata.name, error },
-            'Failed to resolve service instance for auto-exposure'
-          );
-          continue;
-        }
-
-        if (!serviceInstance) {
-          this._logger?.info({ serviceName: serviceMetadata.name }, 'Service instance not found for auto-exposure');
-          continue;
-        }
-
-        // Expose the service to Netron
-        try {
-          await netron.peer.exposeService(serviceInstance);
-          exposedCount++;
-          this._logger?.info(
-            { serviceName: serviceMetadata.name, version: serviceMetadata.version },
-            'Auto-exposed service to Netron'
-          );
-        } catch (error) {
-          // Check if already exposed
-          if (error instanceof Error && error.message.includes('already exposed')) {
-            this._logger?.debug({ serviceName: serviceMetadata.name }, 'Service already exposed, skipping');
-          } else {
-            const errMsg = error instanceof Error ? error.message : String(error);
-            const errStack = error instanceof Error ? error.stack : undefined;
-            this._logger?.error(
-              { serviceName: serviceMetadata.name, errMsg, errStack },
-              'Failed to expose service to Netron'
-            );
-          }
-        }
-      } catch (error) {
-        this._logger?.warn({ serviceName: serviceMetadata.name, error }, 'Error during service auto-exposure');
-      }
-    }
-
-    this._logger?.info({ exposedCount }, `Auto-exposed ${exposedCount} service(s) to Netron`);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private isDynamicModule(obj: unknown): obj is IDynamicModule {
+    return isDynamicModuleInternal(obj);
   }
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────
+
 /**
- * Create a new Titan application
+ * Race `promise` against a timeout. Resolves with `promise`'s value when
+ * it settles first; rejects with `timeoutError` if the timer fires. Used
+ * by start/stop hook running and module-stop bounded waits.
+ */
+function withTimeout<T>(promise: Promise<T>, timeout: number, timeoutError: Error): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(timeoutError), timeout)),
+  ]);
+}
+
+/**
+ * Create a new Titan application without starting it. Thin sugar over
+ * `new Application()` for callers that prefer functional construction.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export function createApp(options?: IApplicationOptions): Application {
   return new Application(options);
 }
 
 /**
- * Create and start an application
+ * Create and start an application. Helper for the common 2-line
+ * "make + start" pattern.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export async function startApp(options?: IApplicationOptions): Promise<Application> {
   const app = createApp(options);
   await app.start();
   return app;
 }
+
+// Re-export the public type re-exports the legacy file expressed.
+export type { ProcessSignal };

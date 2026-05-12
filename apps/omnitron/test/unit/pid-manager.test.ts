@@ -24,7 +24,21 @@ describe('PidManager', () => {
       manager.write();
       expect(fs.existsSync(pidFile)).toBe(true);
       const content = fs.readFileSync(pidFile, 'utf-8');
+      // T#56: the file now contains pid + signature on separate lines.
+      // `parseInt` on the leading line still yields the pid, so both
+      // legacy readers (parseInt on the file body) and the new
+      // `readPid()` parser keep working.
       expect(parseInt(content, 10)).toBe(process.pid);
+    });
+
+    it('writes pid and signature on separate lines (T#56)', () => {
+      manager.write();
+      const lines = fs.readFileSync(pidFile, 'utf-8').split('\n').map((l) => l.trim()).filter(Boolean);
+      expect(lines[0]).toBe(String(process.pid));
+      // Signature is argv[1] (the entry-point script path). In the
+      // vitest worker that's a vitest internal path, so we just
+      // assert non-empty and stable across consecutive writes.
+      expect(lines[1]).toBe(PidManager.currentSignature());
     });
 
     it('creates parent directories', () => {
@@ -54,6 +68,23 @@ describe('PidManager', () => {
       // PID 99999999 almost certainly doesn't exist
       fs.writeFileSync(pidFile, '99999999', 'utf-8');
       expect(manager.isRunning()).toBe(false);
+    });
+
+    it('returns false when the alive PID is a recycled stranger (T#56)', () => {
+      // Simulate a pid-reuse: pid is OUR process pid (so isProcessAlive
+      // returns true), but the recorded signature is something else —
+      // signalling the original daemon died and the kernel handed our
+      // current process the same pid.
+      fs.writeFileSync(pidFile, `${process.pid}\n/path/to/some/other/daemon.js\n`, 'utf-8');
+      expect(manager.isRunning()).toBe(false);
+    });
+
+    it('treats legacy pid-only files as authoritative (back-compat)', () => {
+      // Pre-T#56 pidfile format had no signature line. We must keep
+      // those readable, otherwise rolling-deploy upgrades would
+      // misclassify the previous-version daemon as stale.
+      fs.writeFileSync(pidFile, `${process.pid}`, 'utf-8');
+      expect(manager.isRunning()).toBe(true);
     });
   });
 

@@ -356,13 +356,24 @@ export class ProcessWorkflow<T> {
   }
 
   /**
-   * Execute with timeout
+   * Execute with timeout.
+   *
+   * T#60: the setTimeout is captured and cleared on the race-win path.
+   * Pre-T#60 each stage execution left its timeout timer alive even
+   * after the handler resolved — a multi-stage workflow accumulated
+   * one pending timer per completed stage, stalling clean shutdown
+   * for the full slowest-stage-timeout interval.
    */
   private async executeWithTimeout(handler: WorkflowHandler, input: any, timeout: number): Promise<any> {
-    return Promise.race([
-      handler(input),
-      new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('Stage', timeout)), timeout)),
-    ]);
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(Errors.timeout('Stage', timeout)), timeout);
+    });
+    try {
+      return await Promise.race([handler(input), timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   }
 
   /**

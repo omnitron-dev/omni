@@ -495,6 +495,16 @@ export class ProcessPool<T> {
       clearInterval(this.memoryMonitorTimer);
       this.memoryMonitorTimer = undefined;
     }
+    // T#60: also clear the circuit-breaker half-open timer so it
+    // can't fire after the pool is gone. Without this, destroying
+    // a pool with an open circuit left a setTimeout pending for
+    // the full `circuitBreaker.timeout` (default 60s), keeping the
+    // event loop alive and emitting `circuitbreaker:halfopen` on
+    // a destroyed pool.
+    if (this.circuitBreakerHalfOpenTimer) {
+      clearTimeout(this.circuitBreakerHalfOpenTimer);
+      this.circuitBreakerHalfOpenTimer = undefined;
+    }
 
     // Drain first
     await this.drain();
@@ -1022,15 +1032,25 @@ export class ProcessPool<T> {
     worker.currentLoad++;
     this.totalRequests++;
 
+    let timeoutHandle: NodeJS.Timeout | null = null;
     try {
-      // Add timeout if configured
+      // Add timeout if configured.
+      //
+      // T#60: the setTimeout is captured so it can be cleared on
+      // race-win. Pre-T#60 the timer leaked — every RPC under a pool
+      // with `requestTimeout` configured left a pending timer behind
+      // even after the worker responded; under load this kept tens of
+      // thousands of timers alive and stalled clean shutdown.
       const timeout = this.poolOptions.requestTimeout;
       let result: any;
 
       if (timeout) {
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(Errors.timeout('Request', timeout)), timeout);
+        });
         result = await Promise.race([
           (worker.proxy as any)[method](...args),
-          new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('Request', timeout)), timeout)),
+          timeoutPromise,
         ]);
       } else {
         result = await (worker.proxy as any)[method](...args);
@@ -1071,8 +1091,13 @@ export class ProcessPool<T> {
 
       throw error;
     } finally {
+      // T#60: clear the request-timeout timer on the race-win path.
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       worker.processing.delete(requestId);
-      worker.currentLoad--;
+      // T#60: clamp `currentLoad` at 0 so a double-decrement bug
+      // (which would corrupt every load-balancer that reads it)
+      // can't produce a negative value.
+      worker.currentLoad = Math.max(0, worker.currentLoad - 1);
       worker.lastUsed = Date.now();
     }
   }
@@ -1721,7 +1746,18 @@ export class ProcessPool<T> {
   }
 
   /**
-   * Private: Open circuit breaker
+   * Tracked handle of the pending half-open transition timer.
+   * Cleared by `closeCircuitBreaker` (recovery before the deadline)
+   * and by `destroy()` (pool shutdown).
+   *
+   * T#60: pre-T#60 the half-open setTimeout was fired-and-forgotten —
+   * it kept the event loop alive for the full `timeout` (default 60s)
+   * even after the circuit recovered or the pool was destroyed.
+   */
+  private circuitBreakerHalfOpenTimer?: NodeJS.Timeout;
+
+  /**
+   * Private: Open circuit breaker.
    */
   private openCircuitBreaker(): void {
     this.circuitBreaker.isOpen = true;
@@ -1730,9 +1766,14 @@ export class ProcessPool<T> {
     this.logger.warn('Circuit breaker opened');
     this.emit('circuitbreaker:open');
 
-    // Schedule half-open attempt
+    // Schedule half-open attempt; track the handle so it can be
+    // cleared on early recovery or pool shutdown.
+    if (this.circuitBreakerHalfOpenTimer) {
+      clearTimeout(this.circuitBreakerHalfOpenTimer);
+    }
     const timeout = this.poolOptions.circuitBreaker?.timeout || 60000;
-    setTimeout(() => {
+    this.circuitBreakerHalfOpenTimer = setTimeout(() => {
+      this.circuitBreakerHalfOpenTimer = undefined;
       if (this.circuitBreaker.isOpen) {
         this.logger.info('Circuit breaker entering half-open state');
         this.emit('circuitbreaker:halfopen');
@@ -1741,12 +1782,23 @@ export class ProcessPool<T> {
   }
 
   /**
-   * Private: Close circuit breaker
+   * Private: Close circuit breaker.
+   *
+   * T#60: clear the half-open timer and reset `lastFailTime`. The
+   * pre-T#60 close path left both stale — the timer kept firing,
+   * and `shouldTryHalfOpen()` continued to read the old
+   * `lastFailTime` for any post-close logic.
    */
   private closeCircuitBreaker(): void {
     this.circuitBreaker.isOpen = false;
     this.circuitBreaker.failures = 0;
     this.circuitBreaker.successAfterOpen = 0;
+    this.circuitBreaker.lastFailTime = 0;
+
+    if (this.circuitBreakerHalfOpenTimer) {
+      clearTimeout(this.circuitBreakerHalfOpenTimer);
+      this.circuitBreakerHalfOpenTimer = undefined;
+    }
 
     this.logger.info('Circuit breaker closed');
     this.emit('circuitbreaker:close');

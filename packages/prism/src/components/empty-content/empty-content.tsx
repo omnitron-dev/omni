@@ -200,7 +200,31 @@ export function EmptyContent({
         textAlign: 'center',
         py: compact ? 4 : 8,
         px: 2,
-        ...(filled && { height: '100%', minHeight: 200 }),
+        // Default non-compact behavior: vertically center inside the
+        // available "main content" area. Two complementary anchors:
+        //   * `flex: 1, alignSelf: 'stretch'` — when the parent IS a
+        //     flex column with explicit height (DashboardLayout main,
+        //     full-height page wrappers), EmptyContent grows to fill
+        //     the column and the inner `justifyContent: center` puts
+        //     the message in the middle of that column.
+        //   * `minHeight: calc(100vh - 240px)` — fallback for the
+        //     common case where the page wrapper is just a content-
+        //     sized `<Stack>` or `<Box>`. 240px is the typical
+        //     vertical chrome (header ~64 + breadcrumbs ~60 + page
+        //     padding ~80 + a small margin), so this leaves enough
+        //     space below the breadcrumbs for the message to sit at
+        //     the optical center of the visible viewport.
+        //
+        // `compact` keeps the inline-sized behavior for callers that
+        // drop EmptyContent inside a card cell or sidebar.
+        // `filled` is the explicit "fill my parent" mode and shares
+        // the same fallback so the visual is consistent.
+        ...(!compact && {
+          flex: 1,
+          alignSelf: 'stretch',
+          minHeight: 'calc(100vh - 240px)',
+        }),
+        ...(filled && { height: '100%' }),
         ...sx,
       }}
     >

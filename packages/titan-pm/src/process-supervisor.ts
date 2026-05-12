@@ -46,6 +46,21 @@ export class ProcessSupervisor extends EventEmitter {
   private restartCounts = new Map<string, number>();
   private restartTimestamps = new Map<string, number[]>();
   private isStarted = false;
+  /**
+   * In-flight start promise so concurrent `start()` calls join the
+   * same async operation instead of racing through `setupMonitoring()`
+   * twice and registering duplicate crash handlers (T#59).
+   */
+  private startPromise: Promise<void> | null = null;
+  /**
+   * `true` once `stop()` has begun, BEFORE any child has been removed.
+   * The crash handler reads this flag and refuses to restart anyone
+   * whose crash arrives while the supervisor is mid-shutdown. Without
+   * this gate, a child crashing during stop() would be `performRestart`-ed
+   * — the supervisor brought it back up moments before tearing the
+   * whole tree down. (T#59)
+   */
+  private isStopping = false;
   private crashHandler: ((info: IProcessInfo, error: Error) => Promise<void>) | null = null;
 
   /**
@@ -106,11 +121,26 @@ export class ProcessSupervisor extends EventEmitter {
   // ============================================================================
 
   /**
-   * Start the supervisor and all child processes
+   * Start the supervisor and all child processes.
+   *
+   * T#59: idempotent against concurrent calls. The pre-T#59 guard was
+   * `if (this.isStarted) return` BEFORE the children loop, with
+   * `this.isStarted = true` AFTER it — two concurrent `start()` calls
+   * both passed the guard, both called `setupMonitoring()` (registering
+   * two crash handlers on the manager), and both ran the children loop
+   * (every child got spawned twice). Tracking the in-flight promise
+   * makes concurrent callers join the same operation.
    */
   async start(): Promise<void> {
+    if (this.startPromise) return this.startPromise;
     if (this.isStarted) return;
+    this.startPromise = this.doStart().finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
 
+  private async doStart(): Promise<void> {
     this.logger.info({ supervisor: this.SupervisorClass.name }, 'Starting supervisor');
 
     // Resolve children: config-based or decorator-based
@@ -143,11 +173,20 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   /**
-   * Stop the supervisor and all child processes
+   * Stop the supervisor and all child processes.
+   *
+   * T#59: sets `isStopping = true` BEFORE doing anything else so the
+   * crash handler (which can fire any time before the manager-level
+   * `off()` takes effect) refuses to restart children that die during
+   * shutdown. Without this gate, a child crashing in the window
+   * between `stop()` start and `stopChild(name)` for itself would be
+   * `performRestart`-ed by the crash handler, racing the very stop
+   * loop that was tearing it down.
    */
   async stop(): Promise<void> {
     if (!this.isStarted) return;
 
+    this.isStopping = true;
     this.logger.info({ supervisor: this.SupervisorClass.name }, 'Stopping supervisor');
     this.emit('shutdown');
 
@@ -163,6 +202,7 @@ export class ProcessSupervisor extends EventEmitter {
     }
 
     this.isStarted = false;
+    this.isStopping = false;
   }
 
   /**
@@ -352,6 +392,18 @@ export class ProcessSupervisor extends EventEmitter {
   private setupMonitoring(): void {
     this.crashHandler = async (info: IProcessInfo, error: Error) => {
       try {
+        // T#59: drop crash events that arrive while we're tearing
+        // the supervisor down. The pre-T#59 handler still ran
+        // `performRestart` on these, racing the stop loop — a
+        // shut-down child would briefly come back online before
+        // being killed again moments later. Emitting `child:crash`
+        // (without restart) preserves observability for tests that
+        // assert on the event.
+        if (this.isStopping || !this.isStarted) {
+          const name = this.processIdToName.get(info.id);
+          if (name) this.emit('child:crash', name, error);
+          return;
+        }
         const name = this.processIdToName.get(info.id);
         if (name) {
           const child = this.children.get(name);
@@ -563,8 +615,17 @@ export class ProcessSupervisor extends EventEmitter {
 
     const strategy = this.options.strategy ?? SupervisionStrategy.ONE_FOR_ONE;
     if (strategy === SupervisionStrategy.ONE_FOR_ALL) {
-      this.logger.warn({ child: name, strategy }, 'Stopping all siblings per ONE_FOR_ALL escalation');
-      for (const [siblingName] of this.children) {
+      // T#59: snapshot the names BEFORE the stop loop. `stopChild`
+      // calls `this.children.delete(name)`, which mutates the map
+      // the legacy `for (const [siblingName] of this.children)` loop
+      // was iterating — JS Map iteration with concurrent deletion
+      // skips the entry that was just removed AND any entry the
+      // iterator advanced past while the previous stopChild was
+      // awaiting. Result: siblings silently survived an escalation
+      // that was supposed to stop them.
+      const siblings = Array.from(this.children.keys());
+      this.logger.warn({ child: name, strategy, stopping: siblings }, 'Stopping all siblings per ONE_FOR_ALL escalation');
+      for (const siblingName of siblings) {
         await this.stopChild(siblingName).catch((err) =>
           this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
         );

@@ -309,16 +309,22 @@ export class ProcessPool<T> {
 
   /**
    * Get worker handle by ID (for IPC message sending).
+   *
+   * T#59: route through the manager's PUBLIC `getWorkerHandle()` method
+   * instead of reaching into its private `workers` map via `as any`.
+   * The pre-T#59 path coupled the pool's lookup to ProcessManager's
+   * internal field name — a rename of the private map (or a switch to
+   * a different storage shape, e.g. WeakMap) would have silently
+   * returned `undefined` here with no compile error.
    */
   getWorkerHandle(workerId: string): { send: (message: unknown) => Promise<void> } | null {
     const worker = this.workers.get(workerId);
     if (!worker) return null;
     const proxy = worker.proxy as any;
-    // The proxy's __processId gives us the PM process ID to look up the handle
     const pmProcessId = proxy?.__processId;
     if (!pmProcessId) return null;
-    const handle = (this.manager as any).workers?.get(pmProcessId);
-    return handle ?? null;
+    const handle = (this.manager as { getWorkerHandle?(id: string): unknown }).getWorkerHandle?.(pmProcessId);
+    return (handle ?? null) as { send: (message: unknown) => Promise<void> } | null;
   }
 
   /**
@@ -536,11 +542,20 @@ export class ProcessPool<T> {
       throw Errors.conflict('Pool is draining, not accepting new requests');
     }
 
-    // Queue if no workers available
-    if (
-      this.workers.size === 0 ||
-      (this.active >= this.workers.size && this.queue.length < (this.poolOptions.maxQueueSize || 100))
-    ) {
+    // T#59: queue when there are no idle workers — period.
+    //
+    // The pre-T#59 condition was:
+    //   workers.size === 0 || (active >= workers.size && queue.length < maxQueueSize)
+    // which meant: when ALL workers were busy AND the queue was FULL,
+    // we fell through to `selectWorker()` and routed the request to an
+    // already-saturated worker. That swallowed backpressure silently
+    // (the worker's local queue grew, latency spiked, and dashboards
+    // saw "all workers healthy" because the pool-level metrics never
+    // reflected the saturation). The fix: any time there's no idle
+    // worker, go through `queueRequest()` which honours the queue cap
+    // and raises `PoolBackpressureError` when full. Callers who care
+    // (retry mw, ingress shapers) get a typed signal.
+    if (this.workers.size === 0 || this.active >= this.workers.size) {
       return this.queueRequest(method, args);
     }
 
@@ -650,18 +665,27 @@ export class ProcessPool<T> {
     if (!worker) return;
 
     try {
-      // Wait for active requests
+      // T#59: actually WAIT for active requests to drain — but no
+      // longer than 5s. The pre-T#59 path unconditionally slept 5
+      // seconds whenever `processing.size > 0`, which made every
+      // shutdown of a worker mid-call needlessly slow even when the
+      // active call finished in 100ms. Polling every 50ms exits
+      // as soon as the worker is idle.
       if (worker.processing.size > 0) {
         this.logger.debug(
-          {
-            workerId,
-            activeRequests: worker.processing.size,
-          },
+          { workerId, activeRequests: worker.processing.size },
           'Waiting for worker to finish active requests'
         );
-
-        // Give it some time to finish
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const deadline = Date.now() + 5_000;
+        while (worker.processing.size > 0 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        if (worker.processing.size > 0) {
+          this.logger.warn(
+            { workerId, activeRequests: worker.processing.size },
+            'Worker still has active requests after grace period; killing anyway',
+          );
+        }
       }
 
       // Kill the worker via PM which properly terminates the OS process.
@@ -1181,15 +1205,27 @@ export class ProcessPool<T> {
   }
 
   /**
-   * Private: Setup health monitoring with exponential backoff
-   * Enhanced with failure tracking and backoff for better resilience
+   * Private: Setup health monitoring with exponential backoff.
+   * Enhanced with failure tracking and backoff for better resilience.
+   *
+   * T#59: re-entrancy guard. `setInterval` doesn't await the previous
+   * tick — if a health-check round takes longer than `baseInterval`
+   * (slow workers, big pool), subsequent ticks pile up in flight,
+   * each iterating `this.workers` independently. That created
+   * concurrent `replaceWorker` calls for the same unhealthy worker,
+   * double-restart counters, and bursts of spawns during outages.
+   * The `healthCheckRunning` flag drops overlapping ticks.
    */
+  private healthCheckRunning = false;
   private setupHealthMonitoring(): void {
     const baseInterval = this.poolOptions.healthCheck?.interval || 30000;
     const HEALTH_CHECK_CONCURRENCY = 10; // Check up to 10 workers in parallel
     const MAX_BACKOFF_MULTIPLIER = 8; // Max 8x the base interval for unhealthy workers
 
     this.healthCheckTimer = setInterval(async () => {
+      if (this.healthCheckRunning) return;
+      this.healthCheckRunning = true;
+      try {
       let healthChanged = false;
       const workers = Array.from(this.workers.values());
       const now = Date.now();
@@ -1272,6 +1308,9 @@ export class ProcessPool<T> {
           await this.replaceWorker(worker.id);
         }
       }
+      } finally {
+        this.healthCheckRunning = false;
+      }
     }, baseInterval);
   }
 
@@ -1332,11 +1371,19 @@ export class ProcessPool<T> {
 
   /**
    * Private: Setup worker recycling
-   * Enhanced with memory-based recycling for better resource management
+   * Enhanced with memory-based recycling for better resource management.
+   *
+   * T#59: re-entrancy guard — same rationale as `setupHealthMonitoring`.
+   * Recycling can take seconds per worker (spawn → drain → kill); a
+   * naive setInterval would queue overlapping ticks during sustained
+   * recycle pressure and double-recycle workers.
    */
+  private recyclingRunning = false;
   private setupRecycling(): void {
     this.recycleTimer = setInterval(async () => {
       if (this.isShuttingDown) return;
+      if (this.recyclingRunning) return;
+      this.recyclingRunning = true;
 
       try {
         const now = Date.now();
@@ -1383,6 +1430,8 @@ export class ProcessPool<T> {
         }
       } catch (error) {
         this.logger.error({ error }, 'Error during worker recycling');
+      } finally {
+        this.recyclingRunning = false;
       }
     }, 60000); // Check every minute
   }

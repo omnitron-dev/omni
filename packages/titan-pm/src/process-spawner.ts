@@ -166,11 +166,23 @@ export class WorkerHandle implements IWorkerHandle {
 
     return new Promise((resolve, reject) => {
       let resolved = false;
+      // T#59: track every escalation timer so the early-exit path can
+      // clear them. Pre-T#59 the three setTimeout calls below kept the
+      // event loop alive for the full 5 s ladder even after the child
+      // exited cleanly in <100 ms — tests that needed the process to
+      // exit quickly stayed pinned by these timers. Storing the
+      // handles lets `cleanup()` clear them on early exit.
+      let termTimer: NodeJS.Timeout | null = null;
+      let killTimer: NodeJS.Timeout | null = null;
+      let finalTimer: NodeJS.Timeout | null = null;
 
       const cleanup = () => {
         resolved = true;
         child.off('exit', exitHandler);
         child.off('error', errorHandler);
+        if (termTimer) { clearTimeout(termTimer); termTimer = null; }
+        if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+        if (finalTimer) { clearTimeout(finalTimer); finalTimer = null; }
       };
 
       const exitHandler = () => {
@@ -213,7 +225,7 @@ export class WorkerHandle implements IWorkerHandle {
       }
 
       // Schedule SIGTERM after graceful timeout
-      setTimeout(() => {
+      termTimer = setTimeout(() => {
         if (resolved || child.exitCode !== null || child.killed) return;
 
         this.logger.debug({ workerId: this.id }, 'Graceful shutdown timeout, sending SIGTERM');
@@ -225,7 +237,7 @@ export class WorkerHandle implements IWorkerHandle {
       }, GRACEFUL_TIMEOUT);
 
       // Schedule SIGKILL as last resort
-      setTimeout(() => {
+      killTimer = setTimeout(() => {
         if (resolved || child.exitCode !== null || child.killed) return;
 
         this.logger.warn({ workerId: this.id }, 'SIGTERM timeout, sending SIGKILL');
@@ -237,7 +249,7 @@ export class WorkerHandle implements IWorkerHandle {
       }, GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT);
 
       // Final timeout - resolve even if process didn't exit cleanly
-      setTimeout(
+      finalTimer = setTimeout(
         () => {
           if (!resolved) {
             cleanup();

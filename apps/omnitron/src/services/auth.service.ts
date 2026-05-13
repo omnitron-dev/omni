@@ -77,8 +77,15 @@ export class AuthService {
     private readonly db: Kysely<OmnitronDatabase>,
     jwtSecret?: string
   ) {
-    // Derive JWT signing key from secret (or use a default for dev)
-    const secret = jwtSecret ?? 'omnitron-dev-jwt-secret-change-in-production';
+    // Derive JWT signing key from secret. The default string MUST
+    // match the one TitanAuthModule uses for token verification (set
+    // in daemon.module.ts → `resolvedJwtSecret`); otherwise every
+    // sign-in produces a token the daemon's own auth middleware
+    // immediately rejects with "Authentication required". The fix is
+    // for callers to always pass the resolved secret; the default
+    // here exists only as a fail-safe for unit tests that construct
+    // AuthService directly.
+    const secret = jwtSecret ?? 'omnitron-dev-jwt-secret';
     this.jwtSecret = new TextEncoder().encode(secret);
   }
 

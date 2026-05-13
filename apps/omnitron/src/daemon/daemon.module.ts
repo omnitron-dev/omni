@@ -164,6 +164,22 @@ export function getDaemonLogCollectorStream(): LogCollectorStream | null {
 export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig) {
   const isSlave = dc.role === 'slave';
 
+  // Single source of truth for the JWT secret. AuthService (mint) and
+  // TitanAuthModule (verify) MUST use the same key or every locally-
+  // minted token is rejected by the daemon's own validator. Pre-fix
+  // these had two unrelated default strings — sign-in returned a
+  // valid-looking token that every subsequent RPC immediately
+  // rejected with "Authentication required". Production callers were
+  // forced to set `auth.jwtSecret` explicitly to avoid the mismatch;
+  // dev mode (which uses the default) was silently broken.
+  const resolvedJwtSecret: string = (() => {
+    const jwtSecret = dc.auth?.jwtSecret;
+    if (!jwtSecret && process.env['NODE_ENV'] === 'production') {
+      throw new Error('auth.jwtSecret must be configured in production mode');
+    }
+    return jwtSecret ?? 'omnitron-dev-jwt-secret';
+  })();
+
   @Module({
     imports: [
       ConfigModule.forRoot({
@@ -222,13 +238,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       // Auth — JWT verification + caching via titan-auth (same as main/storage/messaging/paysys)
       TitanAuthModule.forRoot({
         algorithm: 'HS256',
-        jwtSecret: (() => {
-          const jwtSecret = dc.auth?.jwtSecret;
-          if (!jwtSecret && process.env['NODE_ENV'] === 'production') {
-            throw new Error('auth.jwtSecret must be configured in production mode');
-          }
-          return jwtSecret ?? 'omnitron-dev-jwt-secret';
-        })(),
+        jwtSecret: resolvedJwtSecret,
         issuer: 'omnitron',
         cacheEnabled: true,
         cacheTTL: 10_000,
@@ -446,22 +456,25 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any] : []),
 
-      // Auth service (master only — requires PG for sessions/users)
+      // Auth service (master only — requires PG for sessions/users).
+      // Receives the SAME `resolvedJwtSecret` that TitanAuthModule uses
+      // for verification. Two different defaults here previously meant
+      // AuthService minted tokens with secret A while TitanAuthModule
+      // verified with secret B — every locally-issued token was
+      // rejected by the daemon's own auth middleware as "Authentication
+      // required". The factory-level secret resolution is the single
+      // source of truth.
       ...(!isSlave ? [[
         AUTH_SERVICE_TOKEN,
         {
           useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule) => {
-            const jwtSecret = dc.auth?.jwtSecret;
-            if (!jwtSecret && process.env['NODE_ENV'] === 'production') {
-              throw new Error('auth.jwtSecret must be configured in production mode');
-            }
-            if (!jwtSecret) {
+            if (!dc.auth?.jwtSecret) {
               loggerModule.logger.warn(
                 'No auth.jwtSecret configured — using insecure default. ' +
                 'Set auth.jwtSecret in omnitron.config.ts for production.'
               );
             }
-            return new AuthService(db, jwtSecret);
+            return new AuthService(db, resolvedJwtSecret);
           },
           inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
           scope: Scope.Singleton,

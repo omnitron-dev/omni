@@ -343,6 +343,14 @@ export type IProcessPool<T> = ServiceProxy<T> & {
   scale(size: number): Promise<void>;
   drain(): Promise<void>;
   destroy(): Promise<void>;
+  /**
+   * Return PM process ids of all workers in the pool. Surfaced so
+   * external orchestrators can resolve workers to the parent's
+   * `getWorkerHandle()` registry (e.g., to report PIDs / liveness
+   * for pool-managed topology — supervisor knows nothing about
+   * these workers).
+   */
+  getWorkerIds(): string[];
   on(event: string, listener: (...args: any[]) => void): void;
   off(event: string, listener: (...args: any[]) => void): void;
 };

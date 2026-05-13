@@ -6,7 +6,7 @@
  */
 
 import type { ChildProcess } from 'node:child_process';
-import type { IProcessMetrics, IHealthStatus } from '@omnitron-dev/titan-pm';
+import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev/titan-pm';
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
 import type { AppStatus, IEcosystemAppEntry, IProcessEntry } from '../config/types.js';
 import type { ServiceRouter } from './service-router.js';
@@ -34,6 +34,19 @@ export class AppHandle {
 
   /** Process topology entries from defineSystem() */
   public topologyProcesses: IProcessEntry[] | null = null;
+
+  /**
+   * Pool refs keyed by topology entry `name` (only for entries with
+   * `instances > 1` — single-instance topology runs as a supervisor
+   * child instead). Populated when the pool is created in
+   * `OrchestratorService.startBootstrapApp`; consumed by `getInfo()`
+   * so per-pool status reflects actual worker count instead of
+   * defaulting to 'stopped' (supervisor knows nothing about pool
+   * workers, so without this map the orchestrator would always
+   * report pool-managed topology entries as stopped even when they
+   * have N live workers).
+   */
+  public topologyPools: Map<string, IProcessPool<unknown>> = new Map();
 
   /** Timer for classic-mode crash restart backoff (cleared on explicit stop) */
   public crashRestartTimer: ReturnType<typeof setTimeout> | null = null;

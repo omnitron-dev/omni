@@ -33,6 +33,7 @@ import {
   type ISupervisorChildConfig,
   type IProcessMetrics,
   type IHealthStatus,
+  type IProcessPool,
   type IProcessPoolOptions,
   type ProcessPool,
 } from '@omnitron-dev/titan-pm';
@@ -1419,6 +1420,13 @@ export class OrchestratorService extends EventEmitter {
         ProcessPool<unknown> & { execute(method: string, ...args: unknown[]): Promise<unknown> };
       poolNames.push(procEntry.name);
 
+      // Track the pool on the AppHandle so `getInfo()` can report the
+      // actual worker count for pool-managed topology entries. Without
+      // this the orchestrator falls back to `supervisor.getChildProcessId()`
+      // which returns null for pool workers (they aren't supervisor
+      // children) and the entry is mis-reported as `status: 'stopped'`.
+      handle.topologyPools.set(procEntry.name, pool as unknown as IProcessPool<unknown>);
+
       // Auto-discover @Service metadata from pool workers and expose via ServiceRouter.
       // No manual `exports` needed — @Service decorator IS the source of truth.
       // Requires explicit `topology: { expose: true }` — opt-in for security.
@@ -1869,22 +1877,43 @@ export class OrchestratorService extends EventEmitter {
     if (handle.topologyProcesses && handle.topologyProcesses.length > 0 && handle.supervisor) {
       info.processes = [];
       for (const topo of handle.topologyProcesses) {
-        const childNames = handle.supervisor.getChildNames();
-        // Match topology entry to supervisor child by name
-        const childName = childNames.find((cn) => cn.includes(topo.name)) ?? topo.name;
-        const processId = handle.supervisor.getChildProcessId(childName);
+        const isPoolEntry = (topo.instances ?? 1) > 1;
         let childPid: number | null = null;
         let childStatus: AppStatus = 'stopped';
 
-        if (processId) {
-          const wh = this.pm.getWorkerHandle(processId);
-          childPid = wh?.pid ?? null;
-          childStatus = childPid ? 'online' : 'stopped';
+        if (isPoolEntry) {
+          // Pool-managed topology — the supervisor doesn't know about
+          // these (workers are owned by ProcessPool). Read directly
+          // from the pool ref we stashed at creation time.
+          const pool = handle.topologyPools.get(topo.name);
+          if (pool && pool.size > 0) {
+            childStatus = 'online';
+            // Surface the first worker's PID. Pool workers are
+            // interchangeable so any one is representative; the CLI
+            // prints "PID" as a quick liveness signal, not a unique
+            // identifier.
+            const workerIds = pool.getWorkerIds();
+            if (workerIds.length > 0) {
+              const firstId = workerIds[0]!;
+              const wh = this.pm.getWorkerHandle(firstId);
+              childPid = wh?.pid ?? null;
+            }
+          }
+        } else {
+          // Single-instance topology — supervisor manages the child directly.
+          const childNames = handle.supervisor.getChildNames();
+          const childName = childNames.find((cn) => cn.includes(topo.name)) ?? topo.name;
+          const processId = handle.supervisor.getChildProcessId(childName);
+          if (processId) {
+            const wh = this.pm.getWorkerHandle(processId);
+            childPid = wh?.pid ?? null;
+            childStatus = childPid ? 'online' : 'stopped';
+          }
         }
 
         // Derive process type from declarations for backward-compatible DTO
         const derivedType: 'server' | 'worker' | 'scheduler' | 'custom' =
-          topo.transports ? 'server' : (topo.instances ?? 1) > 1 ? 'worker' : 'custom';
+          topo.transports ? 'server' : isPoolEntry ? 'worker' : 'custom';
 
         info.processes.push({
           name: topo.name,

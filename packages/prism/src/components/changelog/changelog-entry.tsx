@@ -32,14 +32,26 @@ export function ChangelogEntry({ version, date, badge, children }: ChangelogEntr
           zIndex: 1,
         }}
       />
-
       <Card variant="outlined" sx={{ p: 3 }}>
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-          <Typography variant="h6" fontWeight={700}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: "center",
+            mb: 2
+          }}>
+          <Typography variant="h6" sx={{
+            fontWeight: 700
+          }}>
             {version}
           </Typography>
           {badge && <Chip label={badge} size="small" color="primary" variant="soft" />}
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto !important' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              ml: 'auto !important'
+            }}>
             {date}
           </Typography>
         </Stack>

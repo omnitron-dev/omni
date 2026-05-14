@@ -207,8 +207,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
     MuiCardHeader: {
       defaultProps: {
-        titleTypographyProps: { variant: 'h6' },
-        subheaderTypographyProps: { variant: 'body2' },
+        slotProps: {
+          title: { variant: 'h6' },
+          subheader: { variant: 'body2' }
+        }
       },
       styleOverrides: {
         root: {
@@ -635,9 +637,15 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
     MuiTablePagination: {
       defaultProps: {
-        backIconButtonProps: { size: 'small' },
-        nextIconButtonProps: { size: 'small' },
-        slotProps: { select: { name: 'table-pagination-select' } },
+        // MUI v9 removed `backIconButtonProps`/`nextIconButtonProps` —
+        // both replaced by slotProps.
+        slotProps: {
+          select: { name: 'table-pagination-select' },
+          actions: {
+            previousButton: { size: 'small' },
+            nextButton: { size: 'small' },
+          },
+        },
       },
       styleOverrides: {
         root: ({ theme }) => ({
@@ -674,25 +682,22 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     // FEEDBACK
     // =========================================================================
     MuiAlert: {
+      // MUI v9: `standardSuccess`/`standardError`/`standardWarning`/
+      // `standardInfo` slots were removed in favour of the variants
+      // array (props-matched style rules).
       styleOverrides: {
-        root: {
+        root: ({ theme }) => ({
           borderRadius,
-        },
-        standardSuccess: ({ theme }) => ({
-          backgroundColor: `rgba(${getColorChannel(theme, 'success')} / 0.08)`,
-          color: theme.vars?.palette.success.dark || theme.palette.success.dark,
-        }),
-        standardError: ({ theme }) => ({
-          backgroundColor: `rgba(${getColorChannel(theme, 'error')} / 0.08)`,
-          color: theme.vars?.palette.error.dark || theme.palette.error.dark,
-        }),
-        standardWarning: ({ theme }) => ({
-          backgroundColor: `rgba(${getColorChannel(theme, 'warning')} / 0.08)`,
-          color: theme.vars?.palette.warning.dark || theme.palette.warning.dark,
-        }),
-        standardInfo: ({ theme }) => ({
-          backgroundColor: `rgba(${getColorChannel(theme, 'info')} / 0.08)`,
-          color: theme.vars?.palette.info.dark || theme.palette.info.dark,
+          variants: (['success', 'error', 'warning', 'info'] as const).map(
+            (severity) => ({
+              props: { severity, variant: 'standard' },
+              style: {
+                backgroundColor: `rgba(${getColorChannel(theme, severity)} / 0.08)`,
+                color:
+                  theme.vars?.palette[severity].dark || theme.palette[severity].dark,
+              },
+            }),
+          ),
         }),
       },
     },

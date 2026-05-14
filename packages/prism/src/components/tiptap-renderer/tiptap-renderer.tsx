@@ -161,7 +161,7 @@ function CodeBlock({ node }: { node: TipTapNode }) {
       {html ? (
         // Shiki-rendered HTML is pre-sanitised at build time and contains only
         // <pre>/<code>/<span> tags with style attributes. Safe to inject.
-        <div dangerouslySetInnerHTML={{ __html: html }} />
+        (<div dangerouslySetInnerHTML={{ __html: html }} />)
       ) : (
         <pre>
           <code className={language ? `language-${language}` : undefined}>{code}</code>

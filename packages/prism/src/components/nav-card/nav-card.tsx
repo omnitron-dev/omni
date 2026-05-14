@@ -185,7 +185,7 @@ export function NavCard({
           // Vertical: icon top, title + description stacked below, no
           // chevron (the entire card is the affordance — adding an
           // arrow into a narrow tile just steals text space).
-          <>
+          (<>
             {icon && (
               <Box
                 sx={{
@@ -204,7 +204,12 @@ export function NavCard({
               </Box>
             )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.2 }}>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 600,
+                  lineHeight: 1.2
+                }}>
                 {title}
               </Typography>
               {showBadge && (
@@ -219,21 +224,22 @@ export function NavCard({
             {description && (
               <Typography
                 variant="body2"
-                color="text.secondary"
                 sx={{
+                  color: "text.secondary",
                   lineHeight: 1.35,
+
                   // Clamp the description to 2 lines so an unusually
                   // long copy doesn't push a tile out of its row.
                   display: '-webkit-box',
+
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                }}
-              >
+                  overflow: 'hidden'
+                }}>
                 {description}
               </Typography>
             )}
-          </>
+          </>)
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
@@ -256,7 +262,12 @@ export function NavCard({
               )}
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.3 }}>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.3
+                    }}>
                     {title}
                   </Typography>
                   {showBadge && (
@@ -269,7 +280,12 @@ export function NavCard({
                   )}
                 </Box>
                 {description && (
-                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                      lineHeight: 1.4
+                    }}>
                     {description}
                   </Typography>
                 )}

@@ -137,14 +137,13 @@ function UploadPlaceholder({ isDragActive, disabled }: PlaceholderProps): ReactN
   return (
     <Stack
       spacing={1}
-      alignItems="center"
-      justifyContent="center"
       sx={{
+        alignItems: "center",
+        justifyContent: "center",
         p: 3,
         textAlign: 'center',
-        color: disabled ? 'text.disabled' : 'text.secondary',
-      }}
-    >
+        color: disabled ? 'text.disabled' : 'text.secondary'
+      }}>
       <Box
         component="span"
         sx={{
@@ -230,7 +229,9 @@ function FilePreview({ files, thumbnail, onRemove }: FilePreviewProps): ReactNod
                 {fileName}
               </Typography>
               {fileSize && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   {fileSize}
                 </Typography>
               )}

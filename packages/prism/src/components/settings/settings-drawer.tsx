@@ -393,7 +393,9 @@ function FontSizeSection(): ReactNode {
 
   return (
     <Section title="Font Size">
-      <Stack direction="row" alignItems="center" spacing={2}>
+      <Stack direction="row" spacing={2} sx={{
+        alignItems: "center"
+      }}>
         <Typography variant="body2" sx={{ minWidth: 24, color: 'text.secondary' }}>
           A
         </Typography>
@@ -576,11 +578,13 @@ export function SettingsDrawer({ width = 300, sections = DEFAULT_SECTIONS }: Set
       anchor="right"
       open={drawer.open}
       onClose={drawer.onClose}
-      PaperProps={{
-        sx: {
-          width,
-          backgroundImage: 'none',
-        },
+      slotProps={{
+        paper: {
+          sx: {
+            width,
+            backgroundImage: 'none',
+          },
+        }
       }}
     >
       {/* Header */}
@@ -609,7 +613,6 @@ export function SettingsDrawer({ width = 300, sections = DEFAULT_SECTIONS }: Set
           </IconButton>
         </Stack>
       </Box>
-
       {/* Content */}
       <Box sx={{ p: 2.5, flex: 1, overflowY: 'auto' }}>
         {sections.map((section) => {
@@ -617,7 +620,6 @@ export function SettingsDrawer({ width = 300, sections = DEFAULT_SECTIONS }: Set
           return SectionComponent ? <SectionComponent key={section} /> : null;
         })}
       </Box>
-
       {/* Footer */}
       <Box sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
         <Button fullWidth variant="soft" color="primary" onClick={drawer.onClose}>

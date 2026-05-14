@@ -94,18 +94,19 @@ function SidebarNode({
       >
         <ListItemText
           primary={item.label}
-          primaryTypographyProps={{
-            variant: 'body2',
-            fontWeight: isCategory ? 600 : isActive ? 600 : 400,
-            fontSize: isCategory ? '0.8125rem' : '0.8125rem',
-            noWrap: true,
-            ...(isCategory && {
-              color: 'text.primary',
-            }),
+          slotProps={{
+            primary: {
+              variant: 'body2',
+              noWrap: true,
+              sx: {
+                fontWeight: isCategory ? 600 : isActive ? 600 : 400,
+                fontSize: '0.8125rem',
+                ...(isCategory && { color: 'text.primary' }),
+              },
+            },
           }}
         />
       </ListItemButton>
-
       {hasChildren && (
         <Collapse in={open}>
           <List dense disablePadding>

@@ -134,15 +134,23 @@ export function TagCloud<T extends TagCloudItem = TagCloudItem>({
                   {renderAdornment?.(tag)}
                 </Box>
               }
-              primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
               secondary={tag.description}
-              secondaryTypographyProps={{
-                variant: 'caption',
-                noWrap: true,
-                sx: { mt: 0.25 },
-              }}
-            />
-            <Typography variant="caption" color="text.disabled" sx={{ ml: 1, flexShrink: 0 }}>
+              slotProps={{
+                primary: { variant: 'body2', sx: { fontWeight: 500 } },
+
+                secondary: {
+                  variant: 'caption',
+                  noWrap: true,
+                  sx: { mt: 0.25 },
+                }
+              }} />
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                ml: 1,
+                flexShrink: 0
+              }}>
               {renderStat ? renderStat(tag) : formatShort(tag.postCount)}
             </Typography>
           </ListItemButton>
@@ -157,7 +165,14 @@ export function TagCloud<T extends TagCloudItem = TagCloudItem>({
   const max = counts.length > 0 ? Math.max(...counts) : 0;
 
   return (
-    <Stack direction="row" flexWrap="wrap" useFlexGap gap={1} alignItems="center" sx={sx}>
+    <Stack
+      direction="row"
+      useFlexGap
+      sx={[{
+        flexWrap: "wrap",
+        gap: 1,
+        alignItems: "center"
+      }, ...(Array.isArray(sx) ? sx : [sx])]}>
       {visible.map((tag) => {
         const size = computeSize(tag.postCount, min, max);
         const isFeatured = tag.status === 'featured';

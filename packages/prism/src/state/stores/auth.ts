@@ -114,10 +114,10 @@ export const useAuthStore = createPersistedStore<AuthStoreState>(
   {
     // Only persist non-sensitive data
     partialize: (state) =>
-      ({
+      (({
         status: state.status,
-        sessionId: state.sessionId,
-      }) as AuthStoreState,
+        sessionId: state.sessionId
+      }) as AuthStoreState),
   }
 );
 

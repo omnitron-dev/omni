@@ -118,8 +118,10 @@ export function FieldRadio({
                 control={
                   <Radio
                     id={`${groupId}-option-${index}`}
-                    inputProps={{
-                      'aria-label': option.label,
+                    slotProps={{
+                      input: {
+                        'aria-label': option.label,
+                      }
                     }}
                   />
                 }

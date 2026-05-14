@@ -123,13 +123,17 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
             {title}
           </Typography>
           {subtitle && (
-            <Typography variant={config.subtitleVariant} color="text.secondary" sx={{ mt: 0.25 }}>
+            <Typography
+              variant={config.subtitleVariant}
+              sx={{
+                color: "text.secondary",
+                mt: 0.25
+              }}>
               {subtitle}
             </Typography>
           )}
         </Box>
       </Box>
-
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
         {actions}
         {collapsed !== undefined && (

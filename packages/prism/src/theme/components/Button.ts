@@ -229,6 +229,19 @@ export function createButtonOverrides(config: ComponentsConfig): Components<Them
           ...outlinedNeutralVariants,
           ...sizeVariants,
           ...disabledVariants,
+          // MUI v9 replacement for the removed `outlinedSize*` slots.
+          {
+            props: { variant: 'outlined', size: 'large' },
+            style: { paddingTop: 9 * dm, paddingBottom: 9 * dm },
+          },
+          {
+            props: { variant: 'outlined', size: 'medium' },
+            style: { paddingTop: 7 * dm, paddingBottom: 7 * dm },
+          },
+          {
+            props: { variant: 'outlined', size: 'small' },
+            style: { paddingTop: 5 * dm, paddingBottom: 5 * dm },
+          },
         ],
       },
       sizeLarge: {
@@ -241,18 +254,9 @@ export function createButtonOverrides(config: ComponentsConfig): Components<Them
         fontSize: '13px',
         lineHeight: 1.286,
       },
-      outlinedSizeLarge: {
-        paddingTop: 9 * dm,
-        paddingBottom: 9 * dm,
-      },
-      outlinedSizeMedium: {
-        paddingTop: 7 * dm,
-        paddingBottom: 7 * dm,
-      },
-      outlinedSizeSmall: {
-        paddingTop: 5 * dm,
-        paddingBottom: 5 * dm,
-      },
+      // outlinedSize* class slots were removed in MUI v9 in favour
+      // of the `variants` array on the component override. See
+      // https://mui.com/material-ui/migration/upgrade-to-v9/.
       startIcon: {
         marginRight: 4,
         [`& > *:first-of-type`]: {

@@ -162,7 +162,12 @@ export function Accordion({
               {item.title}
             </Typography>
             {item.subtitle && (
-              <Typography component="span" color="text.secondary" sx={{ ml: 1 }}>
+              <Typography
+                component="span"
+                sx={{
+                  color: "text.secondary",
+                  ml: 1
+                }}>
                 {item.subtitle}
               </Typography>
             )}
@@ -211,7 +216,12 @@ export function SimpleAccordion({ title, subtitle, children, icon, ...props }: S
           {title}
         </Typography>
         {subtitle && (
-          <Typography component="span" color="text.secondary" sx={{ ml: 1 }}>
+          <Typography
+            component="span"
+            sx={{
+              color: "text.secondary",
+              ml: 1
+            }}>
             {subtitle}
           </Typography>
         )}

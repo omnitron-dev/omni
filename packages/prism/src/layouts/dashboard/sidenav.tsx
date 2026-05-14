@@ -401,10 +401,12 @@ function DefaultNavItem({ item, showText, depth, active }: DefaultNavItemProps):
       {showText && (
         <ListItemText
           primary={item.title}
-          primaryTypographyProps={{
-            variant: 'body2',
-            fontWeight: active ? 600 : 500,
-            noWrap: true,
+          slotProps={{
+            primary: {
+              variant: 'body2',
+              noWrap: true,
+              sx: { fontWeight: active ? 600 : 500 },
+            },
           }}
         />
       )}

@@ -103,7 +103,9 @@ export function FieldSlider({
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 {label && <FormLabel id={labelId}>{label}</FormLabel>}
                 {showValue && (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                  }}>
                     {displayValue(field.value ?? (Array.isArray(other.defaultValue) ? [min, max] : min))}
                   </Typography>
                 )}

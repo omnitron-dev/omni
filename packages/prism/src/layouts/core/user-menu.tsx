@@ -268,7 +268,6 @@ export function UserMenu({
           {initials}
         </Avatar>
       </TriggerButton>
-
       <StyledPopover
         open={open}
         anchorEl={anchorEl}
@@ -308,12 +307,16 @@ export function UserMenu({
                 {user.name}
               </Typography>
               {showEmail && user.email && (
-                <Typography variant="body2" color="text.secondary" noWrap>
+                <Typography variant="body2" noWrap sx={{
+                  color: "text.secondary"
+                }}>
                   {user.email}
                 </Typography>
               )}
               {showRole && user.role && (
-                <Typography variant="caption" color="text.disabled" noWrap>
+                <Typography variant="caption" noWrap sx={{
+                  color: "text.disabled"
+                }}>
                   {user.role}
                 </Typography>
               )}
@@ -344,9 +347,11 @@ export function UserMenu({
                     )}
                     <ListItemText
                       primary={item.label}
-                      primaryTypographyProps={{
-                        variant: 'body2',
-                        noWrap: true,
+                      slotProps={{
+                        primary: {
+                          variant: 'body2',
+                          noWrap: true,
+                        }
                       }}
                     />
                   </StyledMenuItem>

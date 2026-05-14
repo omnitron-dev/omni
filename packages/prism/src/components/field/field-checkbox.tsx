@@ -75,14 +75,15 @@ export function FieldCheckbox({
                 id={inputId}
                 checked={!!field.value}
                 indeterminate={indeterminate}
-                inputProps={{
-                  'aria-describedby': error?.message || helperText ? helperId : undefined,
-                  'aria-invalid': !!error,
-                  'aria-required': required,
-                  ...(indeterminate && { 'aria-checked': 'mixed' as const }),
-                }}
                 {...other}
-              />
+                slotProps={{
+                  input: {
+                    'aria-describedby': error?.message || helperText ? helperId : undefined,
+                    'aria-invalid': !!error,
+                    'aria-required': required,
+                    ...(indeterminate && { 'aria-checked': 'mixed' as const }),
+                  }
+                }} />
             }
             label={label}
             htmlFor={inputId}

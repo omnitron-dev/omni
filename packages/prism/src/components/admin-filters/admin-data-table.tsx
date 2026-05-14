@@ -350,7 +350,9 @@ export function AdminDataTable<T>({
           }}
         >
           <EmptyIcon />
-          <Typography variant="body2" color="text.disabled">
+          <Typography variant="body2" sx={{
+            color: "text.disabled"
+          }}>
             {emptyMessage}
           </Typography>
         </Box>
@@ -363,16 +365,17 @@ export function AdminDataTable<T>({
       {showBulkBar && (
         <Stack
           direction="row"
-          alignItems="center"
           spacing={2}
           sx={{
+            alignItems: "center",
             px: 2,
             py: 1,
             borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
-          }}
-        >
-          <Typography variant="body2" fontWeight={600}>
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06)
+          }}>
+          <Typography variant="body2" sx={{
+            fontWeight: 600
+          }}>
             {selection.size} selected
           </Typography>
           <Box sx={{ flex: 1 }} />
@@ -391,7 +394,9 @@ export function AdminDataTable<T>({
                     checked={allPageSelected}
                     disabled={loading || pageRowKeys.length === 0}
                     onChange={toggleAllOnPage}
-                    inputProps={{ 'aria-label': 'select all rows on page' }}
+                    slotProps={{
+                      input: { 'aria-label': 'select all rows on page' }
+                    }}
                   />
                 </TableCell>
               )}
@@ -443,7 +448,9 @@ export function AdminDataTable<T>({
                             size="small"
                             checked={isSelected}
                             onChange={() => toggleRow(key)}
-                            inputProps={{ 'aria-label': 'select row' }}
+                            slotProps={{
+                              input: { 'aria-label': 'select row' }
+                            }}
                           />
                         </TableCell>
                       )}
@@ -458,7 +465,6 @@ export function AdminDataTable<T>({
           </TableBody>
         </MuiTable>
       </TableContainer>
-
       <TablePagination
         component="div"
         count={total}

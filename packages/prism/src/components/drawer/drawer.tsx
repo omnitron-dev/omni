@@ -112,16 +112,16 @@ export function Drawer({
       sx={sx}
       slotProps={{
         backdrop: { sx: { backdropFilter: 'blur(2px)' } },
-      }}
-      PaperProps={{
-        sx: {
-          ...drawerSize,
-          display: 'flex',
-          flexDirection: 'column',
-        },
-        ...PaperProps,
-      }}
-    >
+
+        paper: {
+          sx: {
+            ...drawerSize,
+            display: 'flex',
+            flexDirection: 'column',
+          },
+          ...PaperProps,
+        }
+      }}>
       {/* Header */}
       {(title || showCloseButton || headerActions) && (
         <>
@@ -151,7 +151,6 @@ export function Drawer({
           <Divider />
         </>
       )}
-
       {/* Content */}
       <Box
         sx={{
@@ -162,7 +161,6 @@ export function Drawer({
       >
         {children}
       </Box>
-
       {/* Footer */}
       {footer && (
         <>

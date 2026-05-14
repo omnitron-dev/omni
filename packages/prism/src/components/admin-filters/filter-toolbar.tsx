@@ -263,7 +263,9 @@ export function FilterToolbar({
               }}
             >
               <MenuItem value="">
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>
                   {label}
                 </Typography>
               </MenuItem>
@@ -292,7 +294,9 @@ export function FilterToolbar({
                     const sel = selected as string[];
                     if (sel.length === 0) {
                       return (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                          color: "text.secondary"
+                        }}>
                           {label}
                         </Typography>
                       );
@@ -370,7 +374,9 @@ export function FilterToolbar({
 
         case 'number-range':
           return (
-            <Stack key={key} direction="row" spacing={1} alignItems="center">
+            <Stack key={key} direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <TextField
                 type="number"
                 size="small"
@@ -379,7 +385,12 @@ export function FilterToolbar({
                 onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(`${key}Min`, e.target.value)}
                 sx={{ minWidth: width ?? 100 }}
               />
-              <Typography variant="body2" color="text.disabled" sx={{ px: 0.5 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.disabled",
+                  px: 0.5
+                }}>
                 —
               </Typography>
               <TextField
@@ -412,11 +423,23 @@ export function FilterToolbar({
       }}
     >
       {/* Filter controls row */}
-      <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1.5}>
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 1.5
+        }}>
         {filters.map(renderFilter)}
 
         {/* Active filter count + reset */}
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ ml: 'auto' }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            ml: 'auto'
+          }}>
           {activeCount > 0 && (
             <Badge badgeContent={activeCount} color="primary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem' } }}>
               <Box sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center' }}>
@@ -443,10 +466,14 @@ export function FilterToolbar({
           )}
         </Stack>
       </Stack>
-
       {/* Results count */}
       {total !== undefined && !compact && (
-        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.disabled",
+            mt: 0.5
+          }}>
           {total.toLocaleString()} result{total !== 1 ? 's' : ''}
         </Typography>
       )}

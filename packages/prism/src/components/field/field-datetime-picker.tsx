@@ -193,7 +193,7 @@ export function FieldDateTimePicker({
                 error: !!error,
                 helperText: error?.message ?? helperText,
                 ...textFieldProps,
-              },
+              } as never,
             }}
           />
         );

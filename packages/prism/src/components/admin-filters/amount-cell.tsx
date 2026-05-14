@@ -116,14 +116,13 @@ export function AmountCell({
         <Typography
           component="span"
           variant="caption"
-          color="text.disabled"
           sx={{
+            color: "text.disabled",
             ml: 0.5,
             fontFamily: 'inherit',
             fontSize: '0.7rem',
-            fontWeight: 400,
-          }}
-        >
+            fontWeight: 400
+          }}>
           {currency}
         </Typography>
       )}

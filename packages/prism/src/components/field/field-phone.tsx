@@ -308,7 +308,13 @@ export function FieldPhone({
                           {selectedCountry.flag}
                         </Box>
                       </IconButton>
-                      <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5, minWidth: 40 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "text.secondary",
+                          mr: 0.5,
+                          minWidth: 40
+                        }}>
                         {selectedCountry.dialCode}
                       </Typography>
                     </InputAdornment>
@@ -320,7 +326,6 @@ export function FieldPhone({
                 },
               }}
             />
-
             <Menu
               anchorEl={anchorRef.current}
               open={menuOpen}

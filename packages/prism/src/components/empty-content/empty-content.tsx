@@ -194,12 +194,13 @@ export function EmptyContent({
 
   return (
     <Stack
-      alignItems="center"
-      justifyContent="center"
       sx={{
+        alignItems: "center",
+        justifyContent: "center",
         textAlign: 'center',
         py: compact ? 4 : 8,
         px: 2,
+
         // Default non-compact behavior: vertically center inside the
         // available "main content" area. Two complementary anchors:
         //   * `flex: 1, alignSelf: 'stretch'` — when the parent IS a
@@ -224,10 +225,10 @@ export function EmptyContent({
           alignSelf: 'stretch',
           minHeight: 'calc(100vh - 240px)',
         }),
+
         ...(filled && { height: '100%' }),
-        ...sx,
-      }}
-    >
+        ...sx
+      }}>
       <Box
         sx={{
           maxWidth,
@@ -241,19 +242,29 @@ export function EmptyContent({
         {visual}
 
         {/* Text */}
-        <Stack alignItems="center" spacing={0.5}>
+        <Stack spacing={0.5} sx={{
+          alignItems: "center"
+        }}>
           {title && (
             <Typography
               variant={compact ? 'subtitle1' : 'h6'}
-              color="text.secondary"
-              sx={{ fontWeight: 600, ...slotProps?.title }}
-            >
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+                ...slotProps?.title
+              }}>
               {title}
             </Typography>
           )}
 
           {description && (
-            <Typography variant="body2" color="text.disabled" sx={{ lineHeight: 1.6, ...slotProps?.description }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.disabled",
+                lineHeight: 1.6,
+                ...slotProps?.description
+              }}>
               {description}
             </Typography>
           )}

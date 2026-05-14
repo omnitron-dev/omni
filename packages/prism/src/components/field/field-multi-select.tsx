@@ -158,9 +158,9 @@ export function FieldMultiSelect({
               const newValues = newValue.map((item) => item.value);
               setValue(name, newValues, { shouldValidate: true });
             }}
-            renderTags={(value, getTagProps) =>
+            renderValue={(value, getItemProps) =>
               value.map((option, index) => {
-                const { key, ...tagProps } = getTagProps({ index });
+                const { key, ...tagProps } = getItemProps({ index });
                 return (
                   <Chip
                     key={key}

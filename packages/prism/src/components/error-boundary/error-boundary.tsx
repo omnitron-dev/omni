@@ -293,19 +293,28 @@ function DefaultErrorFallback({
       <Typography variant="h6" color="error" gutterBottom>
         Something went wrong
       </Typography>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1, maxWidth: 400 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 1,
+          maxWidth: 400
+        }}>
         {error.message || 'An unexpected error occurred'}
       </Typography>
-
       {shouldShowDetails && parsedStack.primary && (
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, fontFamily: 'monospace' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            mb: 2,
+            fontFamily: 'monospace'
+          }}>
           {parsedStack.primary.filePath}
           {parsedStack.primary.lineNumber && `:${parsedStack.primary.lineNumber}`}
           {parsedStack.primary.functionName && ` (${parsedStack.primary.functionName})`}
         </Typography>
       )}
-
       <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
         <Button variant="outlined" onClick={resetErrorBoundary}>
           Try Again
@@ -328,14 +337,18 @@ function DefaultErrorFallback({
               <ContentCopyIcon fontSize="small" />
             </IconButton>
             {copied && (
-              <Typography variant="caption" color="success.main" sx={{ alignSelf: 'center' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "success.main",
+                  alignSelf: 'center'
+                }}>
                 Copied!
               </Typography>
             )}
           </>
         )}
       </Box>
-
       {shouldShowDetails && (
         <Collapse in={expanded}>
           <Box

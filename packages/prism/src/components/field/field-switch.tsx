@@ -76,13 +76,14 @@ export function FieldSwitch({
                 {...field}
                 id={inputId}
                 checked={!!field.value}
-                inputProps={{
-                  'aria-describedby': error?.message || helperText ? helperId : undefined,
-                  'aria-invalid': !!error,
-                  'aria-required': required,
-                }}
                 {...other}
-              />
+                slotProps={{
+                  input: {
+                    'aria-describedby': error?.message || helperText ? helperId : undefined,
+                    'aria-invalid': !!error,
+                    'aria-required': required,
+                  }
+                }} />
             }
             label={label}
             labelPlacement={labelPlacement}

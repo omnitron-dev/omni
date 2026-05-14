@@ -237,7 +237,9 @@ export function CommandPalette({
         >
           {filtered.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 {emptyMessage}
               </Typography>
             </Box>
@@ -247,15 +249,14 @@ export function CommandPalette({
                 {g.label ? (
                   <Typography
                     variant="caption"
-                    color="text.secondary"
                     sx={{
+                      color: "text.secondary",
                       px: 2,
                       py: 0.75,
                       display: 'block',
                       textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
-                  >
+                      letterSpacing: 0.5
+                    }}>
                     {g.label}
                   </Typography>
                 ) : null}
@@ -324,12 +325,16 @@ function Row({
         </Box>
       ) : null}
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={1} alignItems="baseline">
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: "baseline"
+        }}>
           <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
             {action.title}
           </Typography>
           {action.subtitle ? (
-            <Typography variant="caption" color="text.secondary" noWrap>
+            <Typography variant="caption" noWrap sx={{
+              color: "text.secondary"
+            }}>
               {action.subtitle}
             </Typography>
           ) : null}

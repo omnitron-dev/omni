@@ -284,7 +284,9 @@ export function LoginForm({
         {showSocialLogin && socialProviders.length > 0 && (
           <>
             <Divider>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 {labels.socialDivider ?? 'or continue with'}
               </Typography>
             </Divider>
@@ -551,7 +553,12 @@ export function ForgotPasswordForm({
         <Typography variant="h6" gutterBottom>
           Check your email
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 3
+          }}>
           We sent a password reset link to your email address.
         </Typography>
         {onBackToLogin && (
@@ -575,7 +582,9 @@ export function ForgotPasswordForm({
           <Typography variant="h6" gutterBottom>
             {labels.title ?? 'Forgot password?'}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {labels.description ?? "Enter your email and we'll send you a reset link."}
           </Typography>
         </Box>
@@ -677,7 +686,9 @@ export function ResetPasswordForm({
           <Typography variant="h6" gutterBottom>
             {labels.title ?? 'Set new password'}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {labels.description ?? 'Create a new password for your account.'}
           </Typography>
         </Box>
@@ -837,7 +848,9 @@ export function VerifyCodeForm({
           <Typography variant="h6" gutterBottom>
             {labels.title ?? 'Enter verification code'}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {labels.description ?? 'We sent a verification code to your email.'}
           </Typography>
         </Box>
@@ -864,7 +877,9 @@ export function VerifyCodeForm({
         {onResendCode && (
           <Box sx={{ textAlign: 'center' }}>
             {cooldown > 0 ? (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 {labels.resendIn ?? 'Resend code in'} {cooldown}s
               </Typography>
             ) : (

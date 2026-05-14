@@ -270,7 +270,9 @@ function TableInner<T>(
     return (
       <StyledTableContainer sx={containerSx}>
         <Box sx={{ p: 4, textAlign: 'center' }}>
-          {emptyContent || <Typography color="text.secondary">No data available</Typography>}
+          {emptyContent || <Typography sx={{
+            color: "text.secondary"
+          }}>No data available</Typography>}
         </Box>
       </StyledTableContainer>
     );

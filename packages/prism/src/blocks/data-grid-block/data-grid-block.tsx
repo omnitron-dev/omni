@@ -366,7 +366,12 @@ function EmptyState({
       <Typography variant="h6" gutterBottom>
         {title}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: action ? 2 : 0 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: action ? 2 : 0
+        }}>
         {description}
       </Typography>
       {action && (

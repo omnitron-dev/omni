@@ -498,10 +498,10 @@ export function createAddFieldMigration<TNext>(version: number, key: string, def
   return {
     version,
     migrate: (state) =>
-      ({
+      (({
         ...(state as object),
-        [key]: defaultValue,
-      }) as TNext,
+        [key]: defaultValue
+      }) as TNext),
   };
 }
 

@@ -172,7 +172,7 @@ export function FieldTimePicker({
                 error: !!error,
                 helperText: error?.message ?? helperText,
                 ...textFieldProps,
-              },
+              } as never,
             }}
           />
         );

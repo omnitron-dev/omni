@@ -378,11 +378,13 @@ export function FieldCountrySelect({
                 error={!!error}
                 helperText={error?.message ?? helperText}
                 slotProps={{
+                  ...params.slotProps,
                   ...textFieldProps?.slotProps,
+
                   htmlInput: {
-                    ...params.inputProps,
+                    ...params.slotProps.htmlInput,
                     autoComplete: 'country-name',
-                  },
+                  }
                 }}
               />
             )}

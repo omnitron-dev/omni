@@ -196,16 +196,20 @@ export function createChipOverrides(config: ComponentsConfig): Components<Theme>
       },
       label: {
         fontWeight: 500,
-      },
-      labelSmall: {
-        fontSize: '0.75rem',
-        paddingLeft: 8,
-        paddingRight: 8,
-      },
-      labelMedium: {
-        fontSize: '0.8125rem',
-        paddingLeft: 12,
-        paddingRight: 12,
+        // MUI v9: size-scoped label rules moved from `labelSmall`/
+        // `labelMedium` slots to nested selectors. The class names
+        // themselves still ship (and styles still apply), only the
+        // top-level `styleOverrides.labelSmall` slot was removed.
+        '&.MuiChip-labelSmall': {
+          fontSize: '0.75rem',
+          paddingLeft: 8,
+          paddingRight: 8,
+        },
+        '&.MuiChip-labelMedium': {
+          fontSize: '0.8125rem',
+          paddingLeft: 12,
+          paddingRight: 12,
+        },
       },
       icon: {
         fontSize: 18,

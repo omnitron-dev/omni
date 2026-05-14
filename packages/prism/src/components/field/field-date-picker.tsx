@@ -128,12 +128,20 @@ export function FieldDatePicker({
             openTo={openTo}
             format={format}
             slotProps={{
+              // MUI v9 x-date-pickers' default textField slot is the new
+              // PickersTextField (separate from the MUI TextField). The
+              // shape is structurally compatible for our use (fullWidth,
+              // error, helperText, sx, label) but TS's strict slot typing
+              // refuses to merge with our caller-supplied TextFieldProps.
+              // Cast silences the union mismatch without losing runtime
+              // behaviour — the picker forwards every prop through to
+              // the underlying input.
               textField: {
                 fullWidth: true,
                 error: !!error,
                 helperText: error?.message ?? helperText,
                 ...textFieldProps,
-              },
+              } as never,
             }}
           />
         );

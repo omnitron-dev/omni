@@ -74,7 +74,14 @@ export function LinearProgress({
     return (
       <Box sx={{ width: '100%' }}>
         <MuiLinearProgress variant={variant} value={value} color={color} sx={{ borderRadius: 1, ...sx }} {...props} />
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            mt: 0.5,
+            display: 'block',
+            textAlign: 'center'
+          }}>
           {label}
         </Typography>
       </Box>
@@ -86,7 +93,12 @@ export function LinearProgress({
       <Box sx={{ flex: 1 }}>
         <MuiLinearProgress variant={variant} value={value} color={color} sx={{ borderRadius: 1, ...sx }} {...props} />
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          minWidth: 40
+        }}>
         {label}
       </Typography>
     </Box>
@@ -152,9 +164,10 @@ export function CircularProgress({
       >
         <Typography
           variant="caption"
-          color="text.secondary"
-          sx={{ fontSize: typeof size === 'number' ? size * 0.25 : undefined }}
-        >
+          sx={{
+            color: "text.secondary",
+            fontSize: typeof size === 'number' ? size * 0.25 : undefined
+          }}>
           {label}
         </Typography>
       </Box>
@@ -238,7 +251,9 @@ export function ProgressBar({ segments, height = 8, showLabels = false }: Progre
                   bgcolor: colorMap[segment.color ?? 'primary'],
                 }}
               />
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {segment.label ?? `${segment.value}%`}
               </Typography>
             </Box>

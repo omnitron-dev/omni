@@ -201,12 +201,22 @@ export function CardSection({ title, description, children, sx }: CardSectionPro
   return (
     <Box sx={{ mb: 3, ...sx }}>
       {title && (
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
+        <Typography
+          variant="subtitle1"
+          sx={{
+            fontWeight: 600,
+            mb: 1
+          }}>
           {title}
         </Typography>
       )}
       {description && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2
+          }}>
           {description}
         </Typography>
       )}
@@ -278,29 +288,40 @@ export function StatCard({
             <>
               <Typography
                 variant="caption"
-                fontWeight={600}
-                color="text.secondary"
-                textTransform="uppercase"
-                letterSpacing={0.5}
-              >
+                sx={{
+                  fontWeight: 600,
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5
+                }}>
                 {label}
               </Typography>
-              <Typography variant="h4" fontWeight={700} sx={{ color: `${color}.main`, mt: 0.5 }}>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 700,
+                  color: `${color}.main`,
+                  mt: 0.5
+                }}>
                 {value}
               </Typography>
               {change !== undefined && (
                 <Typography
                   variant="caption"
-                  fontWeight={500}
                   color={isPositive ? 'success.main' : isNegative ? 'error.main' : 'text.secondary'}
-                  sx={{ mt: 0.5, display: 'block' }}
-                >
+                  sx={{
+                    fontWeight: 500,
+                    mt: 0.5,
+                    display: 'block'
+                  }}>
                   {isPositive ? '+' : ''}
                   {change}%
                 </Typography>
               )}
               {subtitle && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   {subtitle}
                 </Typography>
               )}

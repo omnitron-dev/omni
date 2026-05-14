@@ -59,7 +59,12 @@ function renderMenuItems(items: MenuItemDef[], onItemClick: (item: MenuItemDef) 
         {item.icon && <ListItemIcon sx={{ color: item.danger ? 'error.main' : undefined }}>{item.icon}</ListItemIcon>}
         <ListItemText>{item.label}</ListItemText>
         {item.shortcut && (
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              ml: 2
+            }}>
             {item.shortcut}
           </Typography>
         )}

@@ -151,13 +151,21 @@ export function SplashScreen({
         {renderIndicator()}
 
         {message && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mt: 1,
+              textAlign: 'center'
+            }}>
             {message}
           </Typography>
         )}
 
         {isDeterminate && (
-          <Typography variant="caption" color="text.disabled">
+          <Typography variant="caption" sx={{
+            color: "text.disabled"
+          }}>
             {Math.round(progress)}%
           </Typography>
         )}

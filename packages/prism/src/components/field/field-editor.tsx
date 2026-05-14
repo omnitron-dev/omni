@@ -270,7 +270,7 @@ export function FieldEditor({
 
           {renderEditor ? (
             // Custom editor implementation
-            renderEditor({
+            (renderEditor({
               value: field.value ?? '',
               onChange: field.onChange,
               onBlur: field.onBlur,
@@ -284,10 +284,10 @@ export function FieldEditor({
               maxHeight,
               'aria-label': ariaLabel || label || name,
               'aria-describedby': describedBy,
-            })
+            }))
           ) : (
             // Basic textarea fallback
-            <BasicEditor
+            (<BasicEditor
               value={field.value ?? ''}
               onChange={field.onChange}
               onBlur={field.onBlur}
@@ -301,7 +301,7 @@ export function FieldEditor({
               maxHeight={maxHeight}
               aria-label={ariaLabel || label || name}
               aria-describedby={describedBy}
-            />
+            />)
           )}
 
           {(error?.message || helperText) && (

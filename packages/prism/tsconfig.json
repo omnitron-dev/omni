@@ -18,6 +18,10 @@
     "declarationMap": true,
     "sourceMap": true,
 
+    // TS 6.0 deprecated `baseUrl` (removed in TS 7). Our `paths` are
+    // relative to baseUrl. Silence until a coordinated paths-without-
+    // baseUrl refactor across the workspace.
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

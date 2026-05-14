@@ -67,10 +67,11 @@
       "@typescript-eslint/visitor-keys": "8.59.2"
     },
     "onlyBuiltDependencies": [
+      "@swc/core",
       "better-sqlite3",
       "cpu-features",
-      "esbuild",
-      "ssh2"
+      "ssh2",
+      "unrs-resolver"
     ]
   },
   "packageManager": "pnpm@10.33.0",

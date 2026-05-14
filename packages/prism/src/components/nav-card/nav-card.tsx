@@ -127,15 +127,31 @@ export function NavCard({
         cursor: interactive ? 'pointer' : 'default',
         textDecoration: 'none',
         color: 'inherit',
-        // Suppress the theme-level Card box-shadow for the outlined
-        // variant. The prism `Card` wrapper does this for its own
-        // outlined cards; we replicate it here so a raw MuiCard
-        // (which NavCard uses to be a real anchor) doesn't get a
-        // halo that swallows the 1px border on dark backgrounds.
+        // Explicit elevated paper background so the card pops on both
+        // light and dark themes — the default `background.paper` is
+        // very close to the page background in some dark presets,
+        // which made the 1px border read as a faint vertical line
+        // rather than a card outline. Falls back gracefully when a
+        // theme doesn't define `elevation1`.
+        bgcolor: (theme) =>
+          theme.palette.background?.elevation1 ??
+          theme.palette.background?.neutral ??
+          theme.palette.background.paper,
+        // Suppress the theme-level Card box-shadow halo for the
+        // outlined variant — replicates prism's `Card` wrapper logic
+        // so a raw MuiCard (which NavCard uses to be a real anchor)
+        // doesn't get a glow that swallows the border.
         boxShadow: 'none',
-        transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
+        transition: 'border-color 0.2s, transform 0.2s, background-color 0.2s',
         '&:hover': interactive
-          ? { borderColor: `${color}.main`, transform: 'translateY(-2px)' }
+          ? {
+              borderColor: `${color}.main`,
+              transform: 'translateY(-2px)',
+              bgcolor: (theme) =>
+                theme.palette.background?.elevation2 ??
+                theme.palette.background?.elevation1 ??
+                theme.palette.background.paper,
+            }
           : undefined,
         '&:focus-visible': {
           outline: 2,

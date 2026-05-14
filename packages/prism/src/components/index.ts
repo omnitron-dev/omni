@@ -368,7 +368,7 @@ export {
 } from './breadcrumbs/index.js';
 
 // Nav Card
-export { NavCard, type NavCardProps } from './nav-card/index.js';
+export { NavCard, NavCardGrid, type NavCardProps, type NavCardGridProps } from './nav-card/index.js';
 
 // Drawer
 export { Drawer, type DrawerProps, type DrawerAnchor } from './drawer/index.js';

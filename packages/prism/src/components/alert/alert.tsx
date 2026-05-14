@@ -8,7 +8,7 @@
  * @module @omnitron-dev/prism/components/alert
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import MuiAlert from '@mui/material/Alert';
 import AlertTitle from '@mui/material/AlertTitle';
 import { alpha } from '@mui/material/styles';
@@ -135,6 +135,110 @@ export function InlineAlert({ severity = 'info', message, icon }: InlineAlertPro
       }}
     >
       {message}
+    </MuiAlert>
+  );
+}
+
+/**
+ * Props for FormAlert component.
+ */
+export interface FormAlertProps {
+  /** Severity — defaults to 'error' since this primitive is most
+   * commonly used to surface form submission failures. */
+  severity?: AlertSeverity;
+  /** Optional heading rendered above the message. Use for a short
+   * categorisation ("Couldn't save") when the message body is a
+   * detailed reason. */
+  title?: ReactNode;
+  /** The alert body. Pass `null` to keep the slot rendered but
+   * empty — useful for conditional rendering without unmounting. */
+  children?: ReactNode;
+  /** Renders a close (x) icon button when provided. Should clear the
+   * underlying error state in the parent. */
+  onClose?: () => void;
+  /** When true, scroll the alert into view on mount so the user
+   * sees it even if the dialog content has been scrolled away from
+   * the top. Default: true. */
+  autoScroll?: boolean;
+  /** Custom sx overrides for niche layouts. */
+  sx?: SxProps<Theme>;
+}
+
+/**
+ * FormAlert — the platform's canonical surface for **form-level**
+ * errors inside dialogs and inline forms.
+ *
+ * UX policy (see CLAUDE.md "Error UX"):
+ *
+ *   Form submission failure → `<FormAlert>` at the top of the form
+ *   Background / cross-cutting event → `toast`
+ *
+ * Why a dedicated primitive vs. plain `<Alert>`:
+ *
+ *   - `role="alert"` + `aria-live="assertive"` so screen readers
+ *     immediately announce the message, not just visually-sighted
+ *     users.
+ *   - Auto-scrolls into view on mount — a form often has fields
+ *     below the fold; surfacing an error you can't see is a dark
+ *     pattern. (Disable with `autoScroll={false}` if your dialog
+ *     manages focus differently.)
+ *   - Sensible defaults: `severity='error'`, top margin baked in so
+ *     it sits naturally above the first field, `flex-start`
+ *     alignment so multi-line messages don't push the close button
+ *     out of place.
+ *
+ * @example
+ * ```tsx
+ * const [error, setError] = useState<string | null>(null);
+ *
+ * <DialogContent>
+ *   {error && <FormAlert onClose={() => setError(null)}>{error}</FormAlert>}
+ *   <TextField ... />
+ * </DialogContent>
+ * ```
+ */
+export function FormAlert({
+  severity = 'error',
+  title,
+  children,
+  onClose,
+  autoScroll = true,
+  sx,
+}: FormAlertProps): ReactNode {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!autoScroll) return;
+    // Schedule after paint so we measure the alert in its final
+    // position. `nearest` keeps the dialog stable instead of
+    // jumping to the very top, which would feel jarring if the
+    // alert is already visible.
+    const id = requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [autoScroll]);
+
+  return (
+    <MuiAlert
+      ref={ref}
+      severity={severity}
+      onClose={onClose}
+      // role/aria-live are normally set by MUI based on severity, but
+      // form-level surfacing of submission errors warrants assertive
+      // announcement regardless of severity. aria-atomic ensures the
+      // whole alert is read together (title + body), not piecewise.
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+      sx={{
+        alignItems: 'flex-start',
+        mb: 2,
+        ...sx,
+      }}
+    >
+      {title && <AlertTitle sx={{ mb: 0.5 }}>{title}</AlertTitle>}
+      {children}
     </MuiAlert>
   );
 }

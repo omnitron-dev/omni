@@ -349,10 +349,12 @@ export { Tooltip, type TooltipProps } from './tooltip/index.js';
 export {
   Alert,
   InlineAlert,
+  FormAlert,
   type AlertProps,
   type AlertSeverity,
   type AlertVariant,
   type InlineAlertProps,
+  type FormAlertProps,
 } from './alert/index.js';
 
 // Breadcrumbs
@@ -364,6 +366,9 @@ export {
   type BreadcrumbsSlotProps,
   type MoreLinksProps,
 } from './breadcrumbs/index.js';
+
+// Nav Card
+export { NavCard, type NavCardProps } from './nav-card/index.js';
 
 // Drawer
 export { Drawer, type DrawerProps, type DrawerAnchor } from './drawer/index.js';

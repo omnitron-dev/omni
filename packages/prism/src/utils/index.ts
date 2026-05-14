@@ -306,3 +306,9 @@ export {
   type I18nText,
   type I18nResolvable,
 } from './i18n-text.js';
+
+// =============================================================================
+// TOAST (Sonner wrapper with dedup)
+// =============================================================================
+
+export { toast } from './toast.js';

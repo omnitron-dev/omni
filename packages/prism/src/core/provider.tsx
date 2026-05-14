@@ -40,6 +40,21 @@ export interface PrismProviderProps {
   disableCssBaseline?: boolean;
   /** Custom theme overrides */
   themeOverrides?: Record<string, unknown>;
+  /**
+   * Locale code passed to MUI's `LocalizationProvider` as
+   * `adapterLocale` — e.g. `'ru'`, `'en'`. Must be a locale already
+   * registered with dayjs (e.g. `import 'dayjs/locale/ru'`).
+   * Switches calendar month/weekday labels and date masks.
+   * If omitted, MUI falls back to dayjs's global locale (English).
+   */
+  dateAdapterLocale?: string;
+  /**
+   * Override for MUI x-date-pickers' built-in strings
+   * (e.g. ARIA labels, toolbar text). Passed straight through to
+   * `LocalizationProvider.localeText`. Typically pulled from
+   * `@mui/x-date-pickers/locales` (e.g. `ruRU.components.MuiLocalizationProvider.defaultProps.localeText`).
+   */
+  dateLocaleText?: Record<string, unknown>;
 }
 
 /**
@@ -99,6 +114,8 @@ export function PrismProvider({
   defaultSettings,
   disableCssBaseline = false,
   themeOverrides,
+  dateAdapterLocale,
+  dateLocaleText,
 }: PrismProviderProps): ReactNode {
   // Merge configuration
   const config = useMemo(() => mergeConfig(defaultPrismConfig, configOverrides), [configOverrides]);
@@ -269,7 +286,11 @@ export function PrismProvider({
     <CacheProvider value={emotionCache}>
       <PrismContext.Provider value={contextValue}>
         <MuiThemeProvider theme={theme}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LocalizationProvider
+            dateAdapter={AdapterDayjs}
+            adapterLocale={dateAdapterLocale}
+            localeText={dateLocaleText as any}
+          >
             {!disableCssBaseline && <CssBaseline />}
             {children}
           </LocalizationProvider>

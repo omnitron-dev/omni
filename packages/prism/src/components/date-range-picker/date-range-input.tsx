@@ -8,8 +8,9 @@
  */
 
 import type { DateRangeValue } from './use-date-range-picker.js';
+import type { DateRangePickerTranslations } from './date-range-picker.js';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import dayjs from 'dayjs';
 
 import TextField from '@mui/material/TextField';
@@ -63,6 +64,25 @@ function ClearIcon() {
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Translatable strings rendered around the input field.
+ *
+ * Stays prop-driven so prism doesn't pull in a translation library.
+ * Pass already-translated strings; missing keys fall back to English.
+ *
+ * For the picker dialog's own strings (Cancel, Apply, etc.) see
+ * `DateRangePickerTranslations` — those can be passed via
+ * `pickerTranslations` and are threaded through to the dialog.
+ */
+export interface DateRangeInputTranslations {
+  /** Placeholder shown when both ends are empty — "Select dates..." */
+  placeholder?: string;
+  /** Prefix for partial range with only start — "From" → "From 12 Jan 2026" */
+  from?: string;
+  /** Prefix for partial range with only end — "To"   → "To 31 Dec 2026" */
+  to?: string;
+}
+
 export interface DateRangeInputProps {
   /** Label displayed on the field */
   label?: string;
@@ -78,6 +98,10 @@ export interface DateRangeInputProps {
   variant?: 'calendar' | 'input';
   /** Size of the field */
   size?: 'small' | 'medium';
+  /** Translations for the input field surface (placeholder, "From"/"To") */
+  translations?: DateRangeInputTranslations;
+  /** Translations forwarded into the embedded picker dialog */
+  pickerTranslations?: DateRangePickerTranslations;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +119,12 @@ function toIso(value: DateRangeValue): string {
   return value.format('YYYY-MM-DD');
 }
 
-function formatLabel(start: string, end: string): string {
+function formatLabel(
+  start: string,
+  end: string,
+  fromPrefix: string,
+  toPrefix: string,
+): string {
   if (!start && !end) return '';
   const s = toDayjs(start);
   const e = toDayjs(end);
@@ -105,8 +134,8 @@ function formatLabel(start: string, end: string): string {
     if (s.isSame(e, 'year')) return `${s.format('DD MMM')} – ${e.format('DD MMM YYYY')}`;
     return `${s.format('DD MMM YYYY')} – ${e.format('DD MMM YYYY')}`;
   }
-  if (s) return `From ${s.format('DD MMM YYYY')}`;
-  if (e) return `To ${e.format('DD MMM YYYY')}`;
+  if (s) return `${fromPrefix} ${s.format('DD MMM YYYY')}`;
+  if (e) return `${toPrefix} ${e.format('DD MMM YYYY')}`;
   return '';
 }
 
@@ -122,12 +151,21 @@ export function DateRangeInput({
   width = 220,
   variant = 'input',
   size = 'small',
+  translations,
+  pickerTranslations,
 }: DateRangeInputProps) {
   const [open, setOpen] = useState(false);
   const [tempStart, setTempStart] = useState<DateRangeValue>(toDayjs(startDate));
   const [tempEnd, setTempEnd] = useState<DateRangeValue>(toDayjs(endDate));
 
-  const displayLabel = formatLabel(startDate, endDate);
+  const txPlaceholder = translations?.placeholder ?? 'Select dates...';
+  const txFrom = translations?.from ?? 'From';
+  const txTo = translations?.to ?? 'To';
+
+  const displayLabel = useMemo(
+    () => formatLabel(startDate, endDate, txFrom, txTo),
+    [startDate, endDate, txFrom, txTo],
+  );
   const hasValue = !!startDate || !!endDate;
 
   const handleOpen = useCallback(() => {
@@ -161,7 +199,7 @@ export function DateRangeInput({
         size={size}
         label={label}
         value={displayLabel}
-        placeholder="Select dates..."
+        placeholder={txPlaceholder}
         onClick={handleOpen}
         slotProps={{
           input: {
@@ -201,6 +239,7 @@ export function DateRangeInput({
         onChangeStartDate={setTempStart}
         onChangeEndDate={setTempEnd}
         variant={variant}
+        translations={pickerTranslations}
         selected={!!(tempStart && tempEnd)}
         label=""
         shortLabel=""

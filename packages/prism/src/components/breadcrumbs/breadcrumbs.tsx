@@ -123,6 +123,21 @@ const BreadcrumbsSeparator = styled('span')(({ theme }) => ({
   backgroundColor: theme.palette.text.disabled,
 }));
 
+/**
+ * Breadcrumb item base. Three visual states:
+ *
+ *   - `clickable` (default — link with `href`)  → `text.secondary`
+ *     so the user can distinguish "I can navigate here" from
+ *     "you are here" at rest, not just on hover. Pre-fix every
+ *     item rendered in `text.primary` and the only differentiator
+ *     was the link underline, which appears only on hover.
+ *
+ *   - `disabled` (terminal / current page — the last link by
+ *     default) → `text.primary` and `fontWeight: 600`. The current
+ *     location should be the MOST prominent crumb in the trail;
+ *     the prior styling greyed it out, which read as "this item is
+ *     unavailable" instead of "this is where you are".
+ */
 const ItemRoot = styled('div', {
   shouldForwardProp: (prop: string) => prop !== 'disabled',
 })<{ disabled?: boolean }>(({ disabled, theme }) => ({
@@ -130,11 +145,12 @@ const ItemRoot = styled('div', {
   alignItems: 'center',
   gap: theme.spacing(0.5),
   display: 'inline-flex',
-  color: theme.palette.text.primary,
+  color: theme.palette.text.secondary,
   ...(disabled && {
     cursor: 'default',
     pointerEvents: 'none',
-    color: theme.palette.text.disabled,
+    color: theme.palette.text.primary,
+    fontWeight: 600,
   }),
 }));
 

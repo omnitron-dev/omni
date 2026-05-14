@@ -127,7 +127,13 @@ export function NavCard({
         cursor: interactive ? 'pointer' : 'default',
         textDecoration: 'none',
         color: 'inherit',
-        transition: 'border-color 0.2s, transform 0.2s',
+        // Suppress the theme-level Card box-shadow for the outlined
+        // variant. The prism `Card` wrapper does this for its own
+        // outlined cards; we replicate it here so a raw MuiCard
+        // (which NavCard uses to be a real anchor) doesn't get a
+        // halo that swallows the 1px border on dark backgrounds.
+        boxShadow: 'none',
+        transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
         '&:hover': interactive
           ? { borderColor: `${color}.main`, transform: 'translateY(-2px)' }
           : undefined,

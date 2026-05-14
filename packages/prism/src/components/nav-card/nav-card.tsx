@@ -31,6 +31,15 @@ export interface NavCardProps {
   /** Icon element rendered inside a colored square on the left. */
   icon?: ReactNode;
   /**
+   * `'horizontal'` (default) — icon left, text right; works well in
+   * 2-column rows (`md: 6`) where each card is wide.
+   * `'vertical'` — icon top, text below; required when the card lives
+   * in 4-column rows (`md: 3`) or narrower, because the horizontal
+   * variant runs out of room for the text and starts breaking letters.
+   * Pick orientation per row, not per card.
+   */
+  orientation?: 'horizontal' | 'vertical';
+  /**
    * Palette key for the icon background (e.g. `'primary'`, `'error'`,
    * `'warning.dark'`). Defaults to `'primary'`. The hover border picks
    * up the same color.
@@ -74,6 +83,7 @@ export function NavCard({
   color = 'primary',
   badge,
   badgeColor = 'warning',
+  orientation = 'horizontal',
   to,
   linkComponent,
   onClick,
@@ -91,6 +101,8 @@ export function NavCard({
   const label =
     ariaLabel ??
     (typeof title === 'string' && typeof description === 'string' ? `${title} — ${description}` : undefined);
+
+  const isVertical = orientation === 'vertical';
 
   return (
     <Card
@@ -129,20 +141,25 @@ export function NavCard({
     >
       <CardContent
         sx={{
-          p: 3,
-          '&:last-child': { pb: 3 },
+          p: isVertical ? 2.5 : 3,
+          '&:last-child': { pb: isVertical ? 2.5 : 3 },
           height: '100%',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: isVertical ? 'column' : 'row',
+          alignItems: isVertical ? 'stretch' : 'center',
+          gap: isVertical ? 1.25 : 0,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+        {isVertical ? (
+          // Vertical: icon top, title + description stacked below, no
+          // chevron (the entire card is the affordance — adding an
+          // arrow into a narrow tile just steals text space).
+          <>
             {icon && (
               <Box
                 sx={{
-                  width: iconSize,
-                  height: iconSize,
+                  width: 40,
+                  height: 40,
                   borderRadius: 1.5,
                   display: 'flex',
                   alignItems: 'center',
@@ -155,33 +172,85 @@ export function NavCard({
                 {icon}
               </Box>
             )}
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.3 }}>
-                  {title}
-                </Typography>
-                {showBadge && (
-                  <Chip
-                    size="small"
-                    label={badge}
-                    color={badgeColor}
-                    sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
-                  />
-                )}
-              </Box>
-              {description && (
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.4 }}>
-                  {description}
-                </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.2 }}>
+                {title}
+              </Typography>
+              {showBadge && (
+                <Chip
+                  size="small"
+                  label={badge}
+                  color={badgeColor}
+                  sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
+                />
               )}
             </Box>
-          </Box>
-          {arrow !== false && (
-            <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'text.secondary' }}>
-              {arrow === true ? <ChevronRightIcon /> : arrow}
+            {description && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  lineHeight: 1.35,
+                  // Clamp the description to 2 lines so an unusually
+                  // long copy doesn't push a tile out of its row.
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {description}
+              </Typography>
+            )}
+          </>
+        ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+              {icon && (
+                <Box
+                  sx={{
+                    width: iconSize,
+                    height: iconSize,
+                    borderRadius: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: `${color}.main`,
+                    color: `${color}.contrastText`,
+                    flexShrink: 0,
+                  }}
+                >
+                  {icon}
+                </Box>
+              )}
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.3 }}>
+                    {title}
+                  </Typography>
+                  {showBadge && (
+                    <Chip
+                      size="small"
+                      label={badge}
+                      color={badgeColor}
+                      sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
+                    />
+                  )}
+                </Box>
+                {description && (
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                    {description}
+                  </Typography>
+                )}
+              </Box>
             </Box>
-          )}
-        </Box>
+            {arrow !== false && (
+              <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'text.secondary' }}>
+                {arrow === true ? <ChevronRightIcon /> : arrow}
+              </Box>
+            )}
+          </Box>
+        )}
       </CardContent>
     </Card>
   );

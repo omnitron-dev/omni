@@ -151,9 +151,13 @@ describe('DistributedLockService', () => {
       const lockId = await lockService.acquireLock('test-key', 5000);
 
       expect(lockId).toBeNull();
-      expect(mockLogger.logger.error).toHaveBeenCalledWith(
-        { key: 'test-key', error: redisError },
-        '[DistributedLock] Failed to acquire lock'
+      // First failure routes through the FailureTracker → WARN
+      // with the new "started failing" message + a payload that
+      // includes the op + error. See lock.service.ts emitFailure
+      // and the regression suite at the bottom of this file.
+      expect(mockLogger.logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'acquireLock', key: 'test-key', error: redisError }),
+        expect.stringContaining('acquireLock started failing')
       );
     });
 
@@ -255,9 +259,11 @@ describe('DistributedLockService', () => {
       const result = await lockService.releaseLock('test-key', 'lock-id');
 
       expect(result).toBe(false);
-      expect(mockLogger.logger.error).toHaveBeenCalledWith(
-        { key: 'test-key', lockId: 'lock-id', error: redisError },
-        '[DistributedLock] Failed to release lock'
+      // First failure → WARN via FailureTracker. See acquireLock
+      // test above for rationale on the new contract.
+      expect(mockLogger.logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'releaseLock', key: 'test-key', lockId: 'lock-id', error: redisError }),
+        expect.stringContaining('releaseLock started failing')
       );
     });
 
@@ -317,9 +323,10 @@ describe('DistributedLockService', () => {
       const result = await lockService.extendLock('test-key', 'lock-id', 5000);
 
       expect(result).toBe(false);
-      expect(mockLogger.logger.error).toHaveBeenCalledWith(
-        { key: 'test-key', lockId: 'lock-id', error: redisError },
-        '[DistributedLock] Failed to extend lock'
+      // First failure → WARN via FailureTracker.
+      expect(mockLogger.logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'extendLock', key: 'test-key', lockId: 'lock-id', error: redisError }),
+        expect.stringContaining('extendLock started failing')
       );
     });
 
@@ -551,9 +558,10 @@ describe('DistributedLockService', () => {
       const result = await lockService.isLocked('test-key');
 
       expect(result).toBe(false);
-      expect(mockLogger.logger.error).toHaveBeenCalledWith(
-        { key: 'test-key', error: redisError },
-        '[DistributedLock] Failed to check lock status'
+      // First failure → WARN via FailureTracker.
+      expect(mockLogger.logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'isLocked', key: 'test-key', error: redisError }),
+        expect.stringContaining('isLocked started failing')
       );
     });
 
@@ -610,9 +618,10 @@ describe('DistributedLockService', () => {
       const ttl = await lockService.getLockTtl('test-key');
 
       expect(ttl).toBe(-2);
-      expect(mockLogger.logger.error).toHaveBeenCalledWith(
-        { key: 'test-key', error: redisError },
-        '[DistributedLock] Failed to get lock TTL'
+      // First failure → WARN via FailureTracker.
+      expect(mockLogger.logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'getLockTtl', key: 'test-key', error: redisError }),
+        expect.stringContaining('getLockTtl started failing')
       );
     });
 
@@ -835,6 +844,96 @@ describe('DistributedLockService', () => {
       expect(innerFn).toHaveBeenCalledTimes(1);
       expect(mockRedis.eval).toHaveBeenCalledTimes(2); // Two acquires
       expect(mockRedis.evalsha).toHaveBeenCalledTimes(2); // Two releases
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // Spam-suppression regression — without this, a Redis OOM
+  // window like the May-15 incident produced 158 ERROR lines per
+  // minute, all identical, from `[DistributedLock] Failed to
+  // acquire lock`. The fix introduced a FailureTracker that
+  // collapses repeated failures into edge-transition log lines:
+  // one WARN on first, one ERROR after threshold, one INFO on
+  // recovery, silence everywhere else.
+  // ──────────────────────────────────────────────────────────────
+  describe('Log spam suppression on persistent Redis failures', () => {
+    it('emits exactly one WARN on the first acquireLock failure', async () => {
+      (mockRedis.eval as Mock).mockRejectedValue(
+        new Error("OOM command not allowed when used memory > 'maxmemory'.")
+      );
+      await lockService.acquireLock('k', 1000);
+      expect(mockLogger.logger.warn).toHaveBeenCalledTimes(1);
+      expect(mockLogger.logger.error).not.toHaveBeenCalled();
+    });
+
+    it('emits exactly one ERROR after the persistent threshold (default 10) and suppresses the rest', async () => {
+      (mockRedis.eval as Mock).mockRejectedValue(new Error('OOM'));
+      for (let i = 0; i < 30; i++) {
+        await lockService.acquireLock('k', 1000);
+      }
+      expect(mockLogger.logger.warn).toHaveBeenCalledTimes(1); // first
+      expect(mockLogger.logger.error).toHaveBeenCalledTimes(1); // persistent
+      // The remaining 28 are continuing (8) at DEBUG + suppress (20)
+      // — neither WARN nor ERROR.
+      const debugCalls = (mockLogger.logger.debug as Mock).mock.calls.filter(
+        ([payload, msg]) =>
+          typeof msg === 'string' && msg.startsWith('[DistributedLock]') && msg.includes('still failing')
+      );
+      expect(debugCalls.length).toBe(8);
+    });
+
+    it('emits one INFO recovery line on the first success after a failure streak', async () => {
+      // Drive 5 failures then a success
+      const eval5Fail1Success = vi.fn();
+      let calls = 0;
+      eval5Fail1Success.mockImplementation(() => {
+        calls++;
+        if (calls <= 5) throw new Error('OOM');
+        return 'OK';
+      });
+      (mockRedis.eval as Mock).mockImplementation(eval5Fail1Success);
+
+      for (let i = 0; i < 5; i++) await lockService.acquireLock('k', 1000);
+      const ok = await lockService.acquireLock('k', 1000);
+
+      expect(ok).toBeTruthy();
+      expect(mockLogger.logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'acquireLock', count: 5 }),
+        expect.stringContaining('recovered')
+      );
+    });
+
+    it('tracks failures per key independently', async () => {
+      // Key A always fails, key B always succeeds — the tracker
+      // must NOT mark B as failing just because A is.
+      (mockRedis.eval as Mock).mockImplementation((..._args: unknown[]) => {
+        // Inspect the lockKey (KEYS[1] is 3rd positional)
+        const lockKey = _args[2] as string;
+        if (lockKey.endsWith(':a')) throw new Error('OOM');
+        return 'OK';
+      });
+      await lockService.acquireLock('a', 1000);
+      await lockService.acquireLock('b', 1000);
+      await lockService.acquireLock('a', 1000);
+      await lockService.acquireLock('b', 1000);
+      // Only the key-A stream produced a WARN. Key B never warned.
+      const warnCalls = (mockLogger.logger.warn as Mock).mock.calls;
+      expect(warnCalls.some((c) => c[0].key === 'a')).toBe(true);
+      expect(warnCalls.some((c) => c[0].key === 'b')).toBe(false);
+    });
+
+    it('does not log on normal contention (result !== OK)', async () => {
+      // Redis returns null (lock already held by someone else) —
+      // this is a HEALTHY state, not a failure. The tracker must
+      // not bump the failure count nor produce any non-DEBUG log.
+      (mockRedis.eval as Mock).mockResolvedValue(null);
+      for (let i = 0; i < 50; i++) {
+        const id = await lockService.acquireLock('k', 1000);
+        expect(id).toBeNull();
+      }
+      expect(mockLogger.logger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.logger.error).not.toHaveBeenCalled();
+      expect(mockLogger.logger.info).not.toHaveBeenCalled();
     });
   });
 });

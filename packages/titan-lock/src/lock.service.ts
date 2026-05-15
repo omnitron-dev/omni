@@ -17,7 +17,7 @@
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { InjectRedis, type IRedisClient } from '@omnitron-dev/titan-redis';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
-import { generateUuidV7 } from '@omnitron-dev/titan/utils';
+import { generateUuidV7, FailureTracker, type IFailureDecision } from '@omnitron-dev/titan/utils';
 import type { IDistributedLockService, ILockModuleOptions, IWithLockOptions } from './lock.types.js';
 import { LOCK_OPTIONS_TOKEN, DEFAULT_LOCK_PREFIX } from './lock.tokens.js';
 
@@ -96,6 +96,19 @@ export class DistributedLockService implements IDistributedLockService {
   private _releaseLockSha: Promise<string> | null = null;
   private _extendLockSha: Promise<string> | null = null;
   private readonly options: Required<Omit<ILockModuleOptions, 'redisClientName' | 'isGlobal'>>;
+  /**
+   * Per-operation failure trackers. Each underlying Redis op has
+   * its own stream so an outage that breaks acquireLock doesn't
+   * also force releaseLock into "persistent" — they are
+   * independently relevant signals at the operator level.
+   * Categories within each tracker are scoped by lock key
+   * (`acquire:<key>`, etc.) so concurrent contention on different
+   * keys does not amplify each other.
+   */
+  private readonly acquireFailures = new FailureTracker();
+  private readonly releaseFailures = new FailureTracker();
+  private readonly extendFailures = new FailureTracker();
+  private readonly statusFailures = new FailureTracker();
 
   constructor(
     @InjectRedis() private readonly redis: IRedisClient,
@@ -103,6 +116,44 @@ export class DistributedLockService implements IDistributedLockService {
     @Inject(LOCK_OPTIONS_TOKEN) options: ILockModuleOptions
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
+  }
+
+  /**
+   * Apply a `FailureTracker` decision to the actual logger.
+   * Centralises the level mapping so every consumer-call-site
+   * stays a single line. The same surface is used by
+   * release/extend/status — different tracker, same shape.
+   */
+  private emitFailure(decision: IFailureDecision, op: string, context: Record<string, unknown>): void {
+    const payload = { op, count: decision.count, elapsedMs: decision.elapsedMs, ...context };
+    switch (decision.level) {
+      case 'first':
+        this.logger.warn(payload, `[DistributedLock] ${op} started failing`);
+        break;
+      case 'continuing':
+        this.logger.debug(payload, `[DistributedLock] ${op} still failing`);
+        break;
+      case 'persistent':
+        this.logger.error(
+          payload,
+          `[DistributedLock] ${op} persistent failure (Redis may be OOM / unreachable — check server health)`
+        );
+        break;
+      case 'suppress':
+        // Intentional silence — the persistent error already
+        // fired once. We don't even DEBUG this path because the
+        // suppressed window can be long (an OOM incident lasting
+        // minutes).
+        break;
+      case 'recovery':
+        this.logger.info(payload, `[DistributedLock] ${op} recovered`);
+        break;
+    }
+  }
+
+  private emitRecovery(decision: IFailureDecision | null, op: string, context: Record<string, unknown>): void {
+    if (!decision) return;
+    this.emitFailure(decision, op, context);
   }
 
   /** Lazily load Lua scripts on first use */
@@ -157,15 +208,25 @@ export class DistributedLockService implements IDistributedLockService {
         ttlMs.toString()
       )) as string | null;
 
+      // Reaching this branch — Redis answered, even if 'OK' or
+      // nil — counts as recovery for the per-key streak.
+      this.emitRecovery(this.acquireFailures.recordSuccess(`acquire:${key}`), 'acquireLock', { key });
+
       if (result === 'OK') {
         this.logger.debug({ key, lockId, ttlMs }, '[DistributedLock] Lock acquired');
         return lockId;
       }
 
+      // Normal contention — at DEBUG by design; not a failure.
       this.logger.debug({ key }, '[DistributedLock] Lock already held');
       return null;
     } catch (error) {
-      this.logger.error({ key, error }, '[DistributedLock] Failed to acquire lock');
+      // Genuine eval failure (Redis OOM, connection drop). Run
+      // through the tracker so a sustained outage doesn't spam
+      // 158 errors/minute; the operator gets one WARN on first
+      // failure, one ERROR if it persists, one INFO on recovery.
+      const decision = this.acquireFailures.recordFailure(`acquire:${key}`);
+      this.emitFailure(decision, 'acquireLock', { key, error });
       return null;
     }
   }
@@ -187,6 +248,8 @@ export class DistributedLockService implements IDistributedLockService {
       const sha = await this.releaseLockSha;
       const result = (await this.redis.evalsha(sha, 1, lockKey, lockId)) as number;
 
+      this.emitRecovery(this.releaseFailures.recordSuccess(`release:${key}`), 'releaseLock', { key });
+
       if (result === 1) {
         this.logger.debug({ key, lockId }, '[DistributedLock] Lock released');
         return true;
@@ -195,7 +258,8 @@ export class DistributedLockService implements IDistributedLockService {
       this.logger.debug({ key, lockId }, '[DistributedLock] Lock not owned or already released');
       return false;
     } catch (error) {
-      this.logger.error({ key, lockId, error }, '[DistributedLock] Failed to release lock');
+      const decision = this.releaseFailures.recordFailure(`release:${key}`);
+      this.emitFailure(decision, 'releaseLock', { key, lockId, error });
       return false;
     }
   }
@@ -218,6 +282,8 @@ export class DistributedLockService implements IDistributedLockService {
       const sha = await this.extendLockSha;
       const result = (await this.redis.evalsha(sha, 1, lockKey, lockId, ttlMs.toString())) as number;
 
+      this.emitRecovery(this.extendFailures.recordSuccess(`extend:${key}`), 'extendLock', { key });
+
       if (result === 1) {
         this.logger.debug({ key, lockId, ttlMs }, '[DistributedLock] Lock extended');
         return true;
@@ -226,7 +292,8 @@ export class DistributedLockService implements IDistributedLockService {
       this.logger.debug({ key, lockId }, '[DistributedLock] Lock not owned, cannot extend');
       return false;
     } catch (error) {
-      this.logger.error({ key, lockId, error }, '[DistributedLock] Failed to extend lock');
+      const decision = this.extendFailures.recordFailure(`extend:${key}`);
+      this.emitFailure(decision, 'extendLock', { key, lockId, error });
       return false;
     }
   }
@@ -284,9 +351,11 @@ export class DistributedLockService implements IDistributedLockService {
     const lockKey = this.getLockKey(key);
     try {
       const result = await this.redis.exists(lockKey);
+      this.emitRecovery(this.statusFailures.recordSuccess(`status:${key}`), 'isLocked', { key });
       return result === 1;
     } catch (error) {
-      this.logger.error({ key, error }, '[DistributedLock] Failed to check lock status');
+      const decision = this.statusFailures.recordFailure(`status:${key}`);
+      this.emitFailure(decision, 'isLocked', { key, error });
       return false;
     }
   }
@@ -300,9 +369,12 @@ export class DistributedLockService implements IDistributedLockService {
   async getLockTtl(key: string): Promise<number> {
     const lockKey = this.getLockKey(key);
     try {
-      return await this.redis.pttl(lockKey);
+      const ttl = await this.redis.pttl(lockKey);
+      this.emitRecovery(this.statusFailures.recordSuccess(`status:${key}`), 'getLockTtl', { key });
+      return ttl;
     } catch (error) {
-      this.logger.error({ key, error }, '[DistributedLock] Failed to get lock TTL');
+      const decision = this.statusFailures.recordFailure(`status:${key}`);
+      this.emitFailure(decision, 'getLockTtl', { key, error });
       return -2;
     }
   }

@@ -165,6 +165,14 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
   private writeBackBuffer: Map<string, { value: T; options?: ICacheSetOptions }> = new Map();
   private syncTimer?: NodeJS.Timeout;
   private accessCounts: Map<string, number> = new Map();
+  /**
+   * Single-flight registry for `getOrSet` so concurrent callers
+   * on the same key collapse to one factory invocation. Lazy —
+   * only allocated when getOrSet is first invoked, keeping the
+   * memory cost of MultiTierCache instances that never use
+   * single-flight at zero.
+   */
+  private inflight?: Map<string, Promise<T>>;
   private l1Stats: ICacheStats;
   private l2Stats: ICacheStats;
   /** Tag-to-keys mapping for L2 (since L2 adapters don't support tags natively) */
@@ -322,6 +330,14 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
         await this.l1Cache.set(key, value);
         this.accessCounts.delete(key);
       }
+      // Amortized cleanup — pre-fix this map could grow without
+      // bound when `syncInterval` was 0 (no timer) or when the
+      // sync timer was slow relative to read traffic. Running the
+      // O(N log N) sort only when size crosses the cap means the
+      // steady-state cost is a single size comparison per read.
+      if (this.accessCounts.size > MultiTierCache.MAX_ACCESS_COUNTS) {
+        this.cleanupAccessCounts();
+      }
     }
     return value;
   }
@@ -359,8 +375,49 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
           }
           this.l2TagIndex.get(tag)!.add(key);
         }
+        // Amortized cap enforcement at the growth site, mirroring
+        // the accessCounts pattern. The actual cleanup work runs
+        // only when crossing the cap; the steady-state cost is a
+        // single map-size compare per write that uses tags.
+        if (this.l2TagIndex.size > MultiTierCache.MAX_L2_TAG_ENTRIES) {
+          this.cleanupL2TagIndex();
+        }
       }
     }
+  }
+
+  /**
+   * Atomic fetch-or-compute. Eliminates the has-then-get TOCTOU
+   * window described on `ICache.has`. Concurrent callers on the
+   * same key are single-flighted: only one factory invocation
+   * runs per key, the others await its result. Single-flight
+   * survives factory throws — the in-flight promise is cleared
+   * on rejection so a subsequent caller gets a fresh attempt
+   * instead of an already-rejected cached promise.
+   */
+  async getOrSet(
+    key: string,
+    factory: () => Promise<T> | T,
+    options?: ICacheSetOptions
+  ): Promise<T> {
+    const cached = await this.get(key, options as ICacheGetOptions | undefined);
+    if (cached !== undefined) return cached;
+    // In-flight registry — created lazily to avoid the field
+    // overhead on caches that never call getOrSet.
+    const inflight = (this.inflight ??= new Map<string, Promise<T>>());
+    const existing = inflight.get(key);
+    if (existing) return existing;
+    const promise = (async () => {
+      try {
+        const value = await factory();
+        await this.set(key, value, options);
+        return value;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, promise);
+    return promise;
   }
 
   async has(key: string): Promise<boolean> {
@@ -755,18 +812,46 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
     }
   }
 
+  /** Soft cap on the (tag, key) pair count tracked in l2TagIndex. */
+  private static readonly MAX_L2_TAG_ENTRIES = 50_000;
+
   /**
    * Clean up stale l2TagIndex entries.
-   * Removes tag entries for keys that no longer exist in L2 (best-effort batch check).
+   *
+   * Step 1 always runs: drop empty tag sets (cheap O(N) sweep).
+   * Step 2 kicks in only when the total (tag, key) pair count
+   * exceeds `MAX_L2_TAG_ENTRIES` — then we drop entire tag
+   * buckets, oldest-largest first, until back under the cap.
+   * Pre-fix this map could grow without bound under tag-heavy
+   * workloads even though there was a periodic sweep — the
+   * sweep removed *empty* sets only, and a busy set never
+   * emptied naturally between syncs.
    */
   private cleanupL2TagIndex(): void {
     if (!this.trackL2Tags || this.l2TagIndex.size === 0) return;
 
-    // Remove empty tag sets
+    // Step 1: remove empty tag sets — keeps the common case fast.
     for (const [tag, keySet] of this.l2TagIndex) {
       if (keySet.size === 0) {
         this.l2TagIndex.delete(tag);
       }
+    }
+
+    // Step 2: hard cap on total tracked (tag, key) pairs. We sum
+    // set-sizes once; if we're under the cap, return. If over,
+    // evict whole buckets (the largest first — that's the
+    // cheapest way to shed many pairs per delete).
+    let total = 0;
+    for (const set of this.l2TagIndex.values()) total += set.size;
+    if (total <= MultiTierCache.MAX_L2_TAG_ENTRIES) return;
+
+    const buckets = Array.from(this.l2TagIndex.entries()).sort(
+      (a, b) => b[1].size - a[1].size
+    );
+    for (const [tag, set] of buckets) {
+      if (total <= MultiTierCache.MAX_L2_TAG_ENTRIES) break;
+      total -= set.size;
+      this.l2TagIndex.delete(tag);
     }
   }
 

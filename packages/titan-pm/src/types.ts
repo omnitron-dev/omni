@@ -985,6 +985,17 @@ export interface IProcessManagerConfig {
   /** Default process restart policy */
   restartPolicy?: IRestartPolicy;
 
+  /**
+   * Interval in ms between defensive PID-liveness sweeps. The
+   * primary mechanism for detecting worker death is the
+   * WorkerHandle `exit` event; this sweep is a backstop for the
+   * (rare) cases where that event misfires. Default 30_000.
+   * Set to 0 to disable the sweep entirely (not recommended in
+   * production — leaves a single point of failure in the
+   * supervision contract).
+   */
+  livenessSweepIntervalMs?: number;
+
   /** Default resource limits */
   resources?: {
     maxMemory?: string;

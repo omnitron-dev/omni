@@ -29,6 +29,35 @@ export function getGreyChannel(theme: Theme, shade: '500' | '900' = '500'): stri
 }
 
 /**
+ * Resolve a `theme.vars.palette.<path>` value with fallback to the
+ * non-CSS-variable `theme.palette.<path>` equivalent. The `theme.vars`
+ * branch exists when CssVarsProvider is in scope and the override
+ * needs to participate in light/dark theme-switching without a
+ * re-mount; the fallback covers SSR and theme-without-vars paths.
+ *
+ * Path is dotted, e.g. `'text.primary'`, `'action.disabled'`,
+ * `'grey.500'`. Returns the resolved string. Returns `undefined`
+ * only when both branches are missing — callers should treat that
+ * as a `theme.palette` shape error.
+ *
+ * This replaces the verbose `theme.vars?.palette.X.Y || theme.palette.X.Y`
+ * chain used throughout component overrides — one helper, one
+ * fallback rule, type-safe-at-call-site through generics.
+ */
+export function paletteVar(theme: Theme, path: string): string | undefined {
+  const segments = path.split('.');
+  const fromVars = (theme.vars?.palette as unknown as Record<string, unknown> | undefined) ?? undefined;
+  const fromFallback = theme.palette as unknown as Record<string, unknown>;
+  const walk = (obj: Record<string, unknown> | undefined): unknown =>
+    segments.reduce<unknown>(
+      (acc, key) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key] : undefined),
+      obj,
+    );
+  const v = walk(fromVars) ?? walk(fromFallback);
+  return typeof v === 'string' ? v : undefined;
+}
+
+/**
  * Safely get a semantic color channel from theme.vars.
  */
 export function getColorChannel(theme: Theme, color: 'primary' | 'success' | 'error' | 'warning' | 'info'): string {

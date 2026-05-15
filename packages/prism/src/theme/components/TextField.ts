@@ -171,15 +171,26 @@ export function createOutlinedInputOverrides(config: ComponentsConfig): Componen
           },
         },
       }),
-      input: {
-        ...INPUT_PADDING.outlined.medium,
-        '&.MuiInputBase-inputSizeSmall': {
-          ...INPUT_PADDING.outlined.small,
-        },
-        '&.MuiInputBase-inputMultiline': {
-          paddingTop: 0,
-          paddingBottom: 0,
-        },
+      // ownerState-driven so each shape (single-line/multiline ×
+      // medium/small) compiles to its own class with the exact
+      // padding values baked in — no nested `&.X` rules whose
+      // runtime specificity has to outrun MUI's own
+      // .MuiOutlinedInput-root .MuiOutlinedInput-input descendant
+      // selector. The textarea inside `multiline` should carry
+      // zero vertical padding because the OUTER root already
+      // owns the 16px inset (see the root override above) —
+      // stacking both gave a doubled 32px gap between fieldset
+      // border and first line of text.
+      input: ({ ownerState }) => {
+        const size = ownerState.size === 'small' ? 'small' : 'medium';
+        if (ownerState.multiline) {
+          return {
+            ...INPUT_PADDING.outlined[size],
+            paddingTop: 0,
+            paddingBottom: 0,
+          };
+        }
+        return INPUT_PADDING.outlined[size];
       },
       notchedOutline: ({ theme }) => ({
         borderColor: varAlpha(getGreyChannel(theme), 0.2),
@@ -226,15 +237,19 @@ export function createFilledInputOverrides(config: ComponentsConfig): Components
           [`&.${filledInputClasses.disabled}`]: { backgroundColor: disabledBg },
         };
       },
-      input: {
-        ...INPUT_PADDING.filled.medium,
-        '&.MuiInputBase-inputSizeSmall': {
-          ...INPUT_PADDING.filled.small,
-        },
-        '&.MuiInputBase-inputMultiline': {
-          paddingTop: 0,
-          paddingBottom: 0,
-        },
+      // Same ownerState shape as outlined: the multiline textarea
+      // sheds its vertical padding because the filled root carries
+      // the visible inset already.
+      input: ({ ownerState }) => {
+        const size = ownerState.size === 'small' ? 'small' : 'medium';
+        if (ownerState.multiline) {
+          return {
+            ...INPUT_PADDING.filled[size],
+            paddingTop: 0,
+            paddingBottom: 0,
+          };
+        }
+        return INPUT_PADDING.filled[size];
       },
     },
   };

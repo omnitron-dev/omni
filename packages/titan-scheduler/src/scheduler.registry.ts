@@ -263,18 +263,21 @@ export class SchedulerRegistry {
       jobs = jobs.filter((job) => pattern.test(job.name));
     }
 
-    // Filter by priority
+    // Filter by priority — `job.options` is `ICronOptions |
+    // IIntervalOptions | ITimeoutOptions`; all three extend
+    // `IBaseJobOptions` which has `priority?: JobPriority`, so the
+    // narrowed access is type-safe without `as any`.
     if (filter.priority !== undefined) {
       const priorities = Array.isArray(filter.priority) ? filter.priority : [filter.priority];
       jobs = jobs.filter((job) => {
-        const jobPriority = (job.options as any).priority;
+        const jobPriority = job.options.priority;
         return jobPriority !== undefined && priorities.includes(jobPriority);
       });
     }
 
     // Filter disabled jobs
     if (!filter.includeDisabled) {
-      jobs = jobs.filter((job) => !(job.options as any).disabled);
+      jobs = jobs.filter((job) => !job.options.disabled);
     }
 
     // Sort
@@ -293,7 +296,7 @@ export class SchedulerRegistry {
             compareValue = (a.lastExecution?.getTime() || 0) - (b.lastExecution?.getTime() || 0);
             break;
           case 'priority':
-            compareValue = ((a.options as any).priority || 999) - ((b.options as any).priority || 999);
+            compareValue = (a.options.priority ?? 999) - (b.options.priority ?? 999);
             break;
           case 'createdAt':
             compareValue = a.createdAt.getTime() - b.createdAt.getTime();

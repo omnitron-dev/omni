@@ -11,7 +11,7 @@
  */
 
 import { Module } from '@omnitron-dev/titan/decorators';
-import type { DynamicModule, ProviderDefinition, InjectionToken, Provider } from '@omnitron-dev/titan/nexus';
+import type { DynamicModule, IModule, ProviderDefinition, InjectionToken, Provider } from '@omnitron-dev/titan/nexus';
 import { CacheService } from './cache.service.js';
 import {
   CACHE_SERVICE_TOKEN,
@@ -157,7 +157,14 @@ export class TitanCacheModule {
     const result: DynamicModule = {
       module: TitanCacheModule,
 
-      imports: (options.imports as any) ?? [],
+      // Caller-supplied imports come in as the wide
+      // `ModuleMetadata['imports']` shape (Constructor | IModule |
+      // DynamicModule), but `DynamicModule.imports` is narrowed to
+      // `IModule[]`. titan-core's module loader does the widening
+      // at registration time, so the assertion mirrors what every
+      // other titan-* module does at its assembly seam. Pre-fix
+      // this was a bare `as any` that hid the real type contract.
+      imports: (options.imports ?? []) as IModule[],
       providers,
       exports,
     };

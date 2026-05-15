@@ -26,6 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { isProcessAlive } from '@omnitron-dev/titan/utils';
 
 export class PidManager {
   constructor(private readonly pidFile: string) {}
@@ -140,15 +141,18 @@ export class PidManager {
   }
 
   /**
-   * Check if a process with given PID is alive.
+   * Check if a process with given PID is alive. Thin delegate to
+   * the shared helper in `@omnitron-dev/titan/utils` — kept on
+   * `PidManager` as a static so existing call sites continue to
+   * work, but the actual semantic (EPERM-as-alive,
+   * invalid-pid-as-dead) lives in one place. Pre-fix this
+   * version caught ALL errors as dead and so mis-classified
+   * processes owned by another uid (EPERM) as crashed —
+   * potentially triggering false-positive restarts in
+   * multi-tenant supervisors.
    */
   static isProcessAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
+    return isProcessAlive(pid);
   }
 
   /**

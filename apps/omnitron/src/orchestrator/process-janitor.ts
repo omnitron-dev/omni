@@ -31,6 +31,7 @@
 import { execSync } from 'node:child_process';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { isProcessAlive } from '@omnitron-dev/titan/utils';
 
 export interface ProcessJanitorOptions {
   /** Interval between sweeps. Default 30s. */
@@ -326,18 +327,13 @@ function parseEtime(raw: string): number {
   return total;
 }
 
+// Thin delegate to the shared helper in @omnitron-dev/titan/utils.
+// Kept as a named local so `__test__` exports continue to point at
+// a callable, but the actual liveness logic (EPERM-as-alive,
+// invalid-pid-as-dead) lives in exactly one place across the
+// monorepo now.
 function defaultIsAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false;
-  try {
-    // Signal 0 doesn't actually send anything — just probes existence.
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    // ESRCH = no such process; EPERM = exists but we lack permission
-    // (still alive from our perspective).
-    return e.code === 'EPERM';
-  }
+  return isProcessAlive(pid);
 }
 
 // Re-exported for tests — same logic without the spawning side effects.

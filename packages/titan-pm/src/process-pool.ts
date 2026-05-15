@@ -10,6 +10,7 @@ import path from 'node:path';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { FailureTracker, computeBackoff, type IFailureDecision } from '@omnitron-dev/titan/utils';
 import type { IProcessPoolOptions, ServiceProxy, IPoolMetrics, IProcessManager, IProcessMetrics } from './types.js';
 import { PoolStrategy } from './types.js';
 import { Deque } from './utils/index.js';
@@ -113,6 +114,16 @@ export class ProcessPool<T> {
   private heartbeatTimer?: NodeJS.Timeout;
   private memoryMonitorTimer?: NodeJS.Timeout;
   private unhealthyWorkers = new Set<string>();
+  /**
+   * Spam-suppression tracker for the per-worker health-check loop.
+   * Pre-fix every failed tick produced a WARN line; in a 100-worker
+   * pool with a 10 % failure rate that was ~300 lines/5 min with
+   * zero net signal. The tracker compresses repeated failures of
+   * the same worker into edge transitions (first/persistent/recovery)
+   * while leaving the existing `consecutiveFailures` counter intact
+   * for the auto-replacement gate.
+   */
+  private readonly healthFailures = new FailureTracker();
 
   // Memory management configuration
   private readonly memoryLimitBytes: number;
@@ -1230,6 +1241,45 @@ export class ProcessPool<T> {
   }
 
   /**
+   * Translate a `FailureTracker` decision into the appropriate
+   * pool-level log line. Co-located with the health-check site so
+   * a maintainer reading the loop sees the exact message shape.
+   * Suppress decisions emit nothing — the whole point.
+   */
+  private emitHealthDecision(
+    decision: IFailureDecision | null,
+    workerId: string,
+    error: unknown
+  ): void {
+    if (!decision) return;
+    const payload = {
+      workerId,
+      consecutiveFailures: decision.count,
+      elapsedMs: decision.elapsedMs,
+      ...(error !== undefined && { error }),
+    };
+    switch (decision.level) {
+      case 'first':
+        this.logger.warn(payload, 'Worker health check started failing');
+        break;
+      case 'continuing':
+        this.logger.debug(payload, 'Worker health check still failing');
+        break;
+      case 'persistent':
+        this.logger.error(
+          payload,
+          'Worker health check persistent failure — worker will be replaced when threshold is reached'
+        );
+        break;
+      case 'suppress':
+        break;
+      case 'recovery':
+        this.logger.info(payload, 'Worker health check recovered');
+        break;
+    }
+  }
+
+  /**
    * Private: Setup health monitoring with exponential backoff.
    * Enhanced with failure tracking and backoff for better resilience.
    *
@@ -1260,9 +1310,18 @@ export class ProcessPool<T> {
         const previousHealth = worker.health;
 
         // Apply exponential backoff for workers with consecutive failures
-        // Skip checks for recently failed workers to reduce load
+        // Skip checks for recently failed workers to reduce load.
+        // Shared computeBackoff() with baseMs=1 produces the same
+        // capped 2^n multiplier used here (the result is *applied*
+        // to baseInterval below, so we want a multiplier, not a
+        // delay). Keeps the same arithmetic, kills the third
+        // hand-rolled copy of Math.min(Math.pow(2, n), cap).
         if (worker.consecutiveFailures > 0) {
-          const backoffMultiplier = Math.min(Math.pow(2, worker.consecutiveFailures - 1), MAX_BACKOFF_MULTIPLIER);
+          const backoffMultiplier = computeBackoff({
+            attempt: worker.consecutiveFailures - 1,
+            baseMs: 1,
+            maxMs: MAX_BACKOFF_MULTIPLIER,
+          });
           const nextCheckTime = worker.lastHeartbeat + baseInterval * backoffMultiplier;
           if (now < nextCheckTime) {
             return false; // Skip this check, worker is in backoff period
@@ -1279,6 +1338,11 @@ export class ProcessPool<T> {
             // Reset consecutive failures on successful health check
             if (worker.health === 'healthy') {
               worker.consecutiveFailures = 0;
+              // Edge-transition log: only fires the once a streak
+              // actually broke. No-op for workers that were never
+              // failing (returns null), so the steady-state cost
+              // is a Map lookup per tick.
+              this.emitHealthDecision(this.healthFailures.recordSuccess(worker.id), worker.id, undefined);
             }
           }
 
@@ -1287,14 +1351,12 @@ export class ProcessPool<T> {
             worker.metrics = await (worker.proxy as any).__getMetrics();
           }
         } catch (error) {
-          this.logger.warn(
-            {
-              error,
-              workerId: worker.id,
-              consecutiveFailures: worker.consecutiveFailures + 1,
-            },
-            'Health check failed'
-          );
+          // Edge-transition log: WARN on first failure, DEBUG on
+          // continuing, ERROR exactly once at the persistent
+          // threshold, silence after. The per-worker counter
+          // still drives the auto-replace gate below.
+          const decision = this.healthFailures.recordFailure(worker.id);
+          this.emitHealthDecision(decision, worker.id, error);
           worker.health = 'unhealthy';
           worker.consecutiveFailures++;
         }

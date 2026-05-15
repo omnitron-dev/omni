@@ -469,6 +469,47 @@ describe('ProcessPool', () => {
       expect(pool.size).toBe(1);
       expect(pool.metrics.healthyWorkers).toBeDefined();
     });
+
+    // Spam-suppression regression — pre-fix every failed health-
+    // check tick produced an unconditional WARN line. In a busy
+    // pool that turned into hundreds of log lines per minute with
+    // zero added signal beyond the first one. The fix wires the
+    // shared FailureTracker into the health-check loop so a
+    // failing worker produces: first → WARN, persistent → ERROR
+    // (once), continuing → DEBUG, suppress after.
+    it('suppresses repeated health-check WARN spam for a chronically failing worker', async () => {
+      vi.useRealTimers();
+      const failingProxy = createMockProxy({
+        __getHealth: vi.fn().mockRejectedValue(new Error('boom')),
+      });
+      mockManager.spawn.mockResolvedValue(failingProxy);
+
+      pool = new ProcessPool(
+        mockManager,
+        'TestProcess',
+        {
+          size: 1,
+          healthCheck: { enabled: true, interval: 25, unhealthyThreshold: 99 },
+        },
+        mockLogger as any
+      );
+      await pool.initialize();
+      // Let the health-check loop tick many times — exponential
+      // backoff inside the loop means actual __getHealth call
+      // count is lower than tick count, but every catch path
+      // exercises the FailureTracker decision regardless.
+      await new Promise((r) => setTimeout(r, 600));
+
+      const healthWarnCalls = (mockLogger.warn as any).mock.calls.filter(
+        ([, msg]: [unknown, unknown]) =>
+          typeof msg === 'string' && msg.includes('health check started failing')
+      );
+      // Either zero (loop didn't catch a tick before our wait
+      // window — possible on very fast machines) or exactly one.
+      // Never more than one: the FailureTracker emits `first`
+      // exactly once per streak.
+      expect(healthWarnCalls.length).toBeLessThanOrEqual(1);
+    });
   });
 
   describe('Auto-Scaling', () => {

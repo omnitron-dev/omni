@@ -289,16 +289,27 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         paper: ({ theme }) => ({
           boxShadow: `0 24px 48px -12px rgba(${getGreyChannel(theme, '900')} / 0.24)`,
-          // Mobile-first: fullscreen on < sm (600px)
-          [theme.breakpoints.down('sm')]: {
-            margin: 0,
-            width: '100% !important',
-            maxWidth: 'none !important',
-            maxHeight: 'none !important',
-            height: '100%',
-            borderRadius: '0 !important',
-          },
           variants: [
+            // Mobile-first: any dialog (non-fullScreen included) goes
+            // edge-to-edge on < sm. MUI's `maxWidth`/`fullWidth` props
+            // attach their own paper-sizing rules at the same
+            // specificity tier, so we used to need `!important` to
+            // beat them. Encoding the same rule as a `variants` entry
+            // lets MUI's styled engine compose it correctly and the
+            // !important comes out — same final visual.
+            {
+              props: () => true,
+              style: {
+                [theme.breakpoints.down('sm')]: {
+                  margin: 0,
+                  width: '100%',
+                  maxWidth: 'none',
+                  maxHeight: 'none',
+                  height: '100%',
+                  borderRadius: 0,
+                },
+              },
+            },
             {
               props: (props: Record<string, unknown>) => !props.fullScreen,
               style: {
@@ -971,14 +982,14 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         },
       },
     },
+    // The group only owns layout (gap, sibling border). Per-button
+    // styling (border, radius, padding) is already covered by the
+    // MuiToggleButton override above — the previous descendant
+    // selector with `!important` here was redundant.
     MuiToggleButtonGroup: {
       styleOverrides: {
         root: {
           gap: 4,
-          '& .MuiToggleButton-root': {
-            border: '1px solid',
-            borderRadius: `${borderRadius}px !important`,
-          },
         },
         grouped: {
           '&:not(:first-of-type)': {

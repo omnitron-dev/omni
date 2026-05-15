@@ -141,6 +141,28 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       // Store references
       this.workers.set(processId, handle);
 
+      // Wire post-spawn lifecycle: an unexpected exit now routes
+      // back through `process:crash`, the same event consumed by
+      // ProcessSupervisor's restart loop. Pre-fix this event fired
+      // ONLY when the initial spawn threw — a worker that crashed
+      // 10 minutes after going online produced zero observable
+      // signal, and omnitron's `list`/`getInfo` happily kept
+      // reporting "online" until a manual restart.
+      handle.onExit?.((info) => {
+        processInfo.status = ProcessStatus.STOPPED;
+        if (info.expected) return;
+        const reason = info.signal
+          ? `signal ${info.signal}`
+          : info.code !== null
+            ? `exit code ${info.code}`
+            : 'unknown cause';
+        const error = new Error(`Worker '${processInfo.name}' crashed (${reason})`);
+        (error as any).exit = info;
+        processInfo.status = ProcessStatus.FAILED;
+        processInfo.errors = [...(processInfo.errors ?? []), error];
+        this.emit('process:crash', processInfo, error);
+      });
+
       // Check if worker is already running
       if (handle.status === ProcessStatus.RUNNING) {
         processInfo.status = ProcessStatus.RUNNING;

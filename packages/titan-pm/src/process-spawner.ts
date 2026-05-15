@@ -5,6 +5,7 @@
  * is defined in a separate file with a default export. No runtime code extraction!
  */
 
+import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Worker } from 'worker_threads';
 import { fork, ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -15,7 +16,14 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import type { IProcessSpawner, ISpawnOptions, IWorkerHandle, IProcessOptions, IProcessManagerConfig } from './types.js';
+import type {
+  IProcessSpawner,
+  ISpawnOptions,
+  IWorkerHandle,
+  IWorkerExitInfo,
+  IProcessOptions,
+  IProcessManagerConfig,
+} from './types.js';
 import { ProcessStatus } from './types.js';
 import { NetronClient } from './netron-client.js';
 import { ServiceProxyHandler } from './service-proxy.js';
@@ -52,10 +60,28 @@ interface IWorkerContext {
 /**
  * Unified worker handle implementation
  */
-export class WorkerHandle implements IWorkerHandle {
+/**
+ * Worker handle for spawned processes.
+ *
+ * Lifecycle observability: pre-fix the underlying `child.on('exit')`
+ * handler in `setupMessageHandlers` was a dead-end (private
+ * `_status` flip + DEBUG log only). The supervisor never learned
+ * about crashed workers and omnitron mis-reported "online" for
+ * processes that had been dead for hours. Routing exits through a
+ * proper EventEmitter `exit` event with a typed payload restores
+ * the lifecycle observability the supervisor's `process:crash`
+ * pathway was already wired to consume.
+ */
+export class WorkerHandle extends EventEmitter implements IWorkerHandle {
   private _status: ProcessStatus;
   private messageHandlers = new Map<string, (data: any) => void>();
   private logHandlers = new Set<(line: string, stream: 'stdout' | 'stderr') => void>();
+  /**
+   * Single-shot guard so paired exit signals from worker_threads
+   * (`error` immediately followed by `exit`) don't emit twice
+   * for the same physical termination.
+   */
+  private exitEmitted = false;
   public readonly worker: Worker | ChildProcess;
   public readonly netronClient: NetronClient | null;
 
@@ -72,11 +98,39 @@ export class WorkerHandle implements IWorkerHandle {
     initialStatus: ProcessStatus = ProcessStatus.STARTING,
     public readonly transportConfig?: ITransportConfig
   ) {
+    super();
     this._status = initialStatus;
     this.worker = worker;
     this.netronClient = netronClient;
     this.setupMessageHandlers();
     this.setupDefaultLogForwarding();
+  }
+
+  private emitExit(code: number | null, signal: NodeJS.Signals | null): void {
+    if (this.exitEmitted) return;
+    this.exitEmitted = true;
+    const expected =
+      this._status === ProcessStatus.STOPPING || this._status === ProcessStatus.STOPPED;
+    this._status = ProcessStatus.STOPPED;
+    const info: IWorkerExitInfo = {
+      workerId: this.id,
+      serviceName: this.serviceName,
+      code,
+      signal,
+      expected,
+    };
+    this.logger[expected ? 'info' : 'warn'](
+      info,
+      expected ? 'Worker exited cleanly' : 'Worker exited unexpectedly'
+    );
+    // EventEmitter swallows listener throws into an `error` event
+    // if any; we want subscriber faults isolated from each other AND
+    // from the lifecycle path, so emit defensively.
+    try {
+      this.emit('exit', info);
+    } catch (err) {
+      this.logger.error({ err, workerId: this.id }, 'exit listener threw');
+    }
   }
 
   get status(): ProcessStatus {
@@ -87,6 +141,17 @@ export class WorkerHandle implements IWorkerHandle {
   get pid(): number | undefined {
     if (this.isWorkerThread) return undefined;
     return (this.worker as ChildProcess).pid;
+  }
+
+  /**
+   * Typed lifecycle subscription. Delegates to the underlying
+   * EventEmitter — the explicit method gives callers a stable
+   * unsubscribe contract without coupling them to EventEmitter's
+   * full API.
+   */
+  onExit(handler: (info: IWorkerExitInfo) => void): () => void {
+    this.on('exit', handler);
+    return () => this.off('exit', handler);
   }
 
   async terminate(opts?: { shutdownTimeout?: number }): Promise<void> {
@@ -333,13 +398,20 @@ export class WorkerHandle implements IWorkerHandle {
       });
 
       worker.on('error', (error) => {
+        // `error` is a precursor to `exit` for worker_threads. We
+        // log here but defer status change + emit to the `exit`
+        // listener so a single physical death produces a single
+        // observable event downstream (emitExit's idempotency guard
+        // also covers the inverse order if it ever happens).
         this.logger.error({ error, workerId: this.id }, 'Worker error');
-        this._status = ProcessStatus.FAILED;
+        if (this._status !== ProcessStatus.STOPPING && this._status !== ProcessStatus.STOPPED) {
+          this._status = ProcessStatus.FAILED;
+        }
       });
 
       worker.on('exit', (code) => {
-        this.logger.debug({ workerId: this.id, code }, 'Worker exited');
-        this._status = ProcessStatus.STOPPED;
+        // Worker threads only carry an exit code, never a signal.
+        this.emitExit(code, null);
       });
     } else {
       const child = this.worker as ChildProcess;
@@ -352,13 +424,16 @@ export class WorkerHandle implements IWorkerHandle {
       });
 
       child.on('error', (error) => {
+        // Same precursor pattern as worker_threads: log + soft
+        // status flip; the authoritative event is `exit`.
         this.logger.error({ error, workerId: this.id }, 'Child process error');
-        this._status = ProcessStatus.FAILED;
+        if (this._status !== ProcessStatus.STOPPING && this._status !== ProcessStatus.STOPPED) {
+          this._status = ProcessStatus.FAILED;
+        }
       });
 
       child.on('exit', (code, signal) => {
-        this.logger.debug({ workerId: this.id, code, signal }, 'Child process exited');
-        this._status = ProcessStatus.STOPPED;
+        this.emitExit(code, signal);
       });
 
       // Capture stdout/stderr for structured log routing

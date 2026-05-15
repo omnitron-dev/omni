@@ -887,6 +887,26 @@ export interface IProcessSpawner {
 }
 
 /**
+ * Information published on the `exit` event when a worker
+ * terminates (intentionally OR unexpectedly). Supervisors branch
+ * on `expected` to decide whether to restart.
+ */
+export interface IWorkerExitInfo {
+  workerId: string;
+  serviceName: string;
+  /** Exit code (null when killed by a signal). */
+  code: number | null;
+  /** POSIX signal name when applicable (e.g., 'SIGKILL'). */
+  signal: NodeJS.Signals | null;
+  /**
+   * `true` when termination came from a deliberate `terminate()`
+   * call; `false` for crashes (OOM, segfault, uncaught throw,
+   * external kill). Drives the supervisor's restart policy.
+   */
+  expected: boolean;
+}
+
+/**
  * Worker handle for managing spawned processes
  */
 export interface IWorkerHandle {
@@ -901,6 +921,14 @@ export interface IWorkerHandle {
   send?(message: any): Promise<void>;
   onMessage?(handler: (data: any) => void): void;
   onLog?(handler: (line: string, stream: 'stdout' | 'stderr') => void): void;
+  /**
+   * Subscribe to the underlying process's lifecycle exit. Fires
+   * exactly once per physical termination — for both clean
+   * shutdowns and crashes. Branch on `info.expected` in the
+   * handler. Returns an unsubscribe function for symmetry with
+   * other event APIs.
+   */
+  onExit?(handler: (info: IWorkerExitInfo) => void): () => void;
   status?: ProcessStatus;
   proxy?: any;
   worker?: any;

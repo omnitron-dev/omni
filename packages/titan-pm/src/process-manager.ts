@@ -11,7 +11,7 @@ import path from 'node:path';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { isOperationalError, createOperationalErrorRecorder } from '@omnitron-dev/titan/utils';
+import { isOperationalError, createOperationalErrorRecorder, isProcessAlive } from '@omnitron-dev/titan/utils';
 
 import type {
   IProcessManager,
@@ -58,6 +58,19 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   private readonly spawner: IProcessSpawner;
   private readonly metricsCollector: ProcessMetricsCollector;
   private readonly healthChecker: ProcessHealthChecker;
+  /**
+   * Defense-in-depth liveness sweep. WorkerHandle's `exit` event
+   * is the primary signal that a child died (commit 2a69267).
+   * This periodic sweep covers the edge cases where that signal
+   * misfires — kernel signal races, file-descriptor exhaustion,
+   * the libuv reaper getting wedged. Every interval we ask the
+   * OS "is this pid alive" via `isProcessAlive` (signal 0); when
+   * the answer is "no" but our state still says RUNNING, we
+   * synthesize the missing crash event so the supervisor restart
+   * loop kicks in. Pre-fix this exact case produced workers
+   * reported as "online" indefinitely after a real death.
+   */
+  private livenessSweepTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly logger: ILogger,
@@ -74,11 +87,73 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     this.metricsCollector = new ProcessMetricsCollector(this.logger);
     this.healthChecker = new ProcessHealthChecker(this.logger);
 
+    // Start the defensive liveness sweep. Interval is intentionally
+    // longer than the primary exit-event path's response time — this
+    // is a backstop, not a polling-driven supervisor. The unref() so
+    // the timer doesn't keep the event loop alive when the host
+    // process has nothing else to do.
+    const sweepInterval = this.config.livenessSweepIntervalMs ?? 30_000;
+    if (sweepInterval > 0) {
+      this.livenessSweepTimer = setInterval(() => {
+        this.sweepDeadWorkers();
+      }, sweepInterval);
+      if (typeof this.livenessSweepTimer.unref === 'function') {
+        this.livenessSweepTimer.unref();
+      }
+    }
+
     // Setup shutdown handlers only when explicitly opted in.
     // PM is a library component — the daemon (or top-level app) should own
     // process signal handling. Default: off.
     if (config.handleSignals === true) {
       this.setupShutdownHandlers();
+    }
+  }
+
+  /**
+   * Defensive sweep: scan every tracked worker, ask the OS
+   * whether its pid is still alive (signal 0), and if a process
+   * we think is RUNNING is actually gone, synthesize the missing
+   * `process:crash` event so the supervisor restart loop fires.
+   *
+   * Idempotency
+   * -----------
+   * If the primary exit-event path fires before the sweep does,
+   * the worker will already have been removed from
+   * `this.workers` by the time the sweep iterates — nothing to
+   * detect. If the sweep fires first, it emits `process:crash`;
+   * the consumer flow then removes the worker from the registry
+   * and `this.workers`. Either way, exactly one crash event is
+   * emitted per physical death.
+   *
+   * Worker_thread caveat
+   * --------------------
+   * Worker threads run inside the parent process and have no
+   * separate pid (`handle.pid` is `undefined`). We skip them —
+   * their lifecycle is observable via the parent's own state.
+   * Only OS-process workers benefit from the kill-0 backstop.
+   */
+  private sweepDeadWorkers(): void {
+    if (this.isShuttingDown) return;
+    for (const [processId, handle] of this.workers) {
+      const pid = handle.pid;
+      if (typeof pid !== 'number') continue; // worker_thread — skip
+      if (isProcessAlive(pid)) continue;
+      const processInfo = this.registry.get(processId);
+      if (!processInfo) continue;
+      if (
+        processInfo.status === ProcessStatus.RUNNING ||
+        processInfo.status === ProcessStatus.STARTING
+      ) {
+        this.logger.warn(
+          { processId, pid, name: processInfo.name },
+          'Liveness sweep detected dead worker — primary exit signal missed; synthesizing process:crash'
+        );
+        const error = new Error(`Worker '${processInfo.name}' (pid ${pid}) detected as dead by liveness sweep`);
+        processInfo.status = ProcessStatus.FAILED;
+        processInfo.errors = [...(processInfo.errors ?? []), error];
+        this.emit('process:crash', processInfo, error);
+      }
     }
   }
 
@@ -518,6 +593,15 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     const { timeout = 30000, force = false } = options;
 
     this.logger.info('Shutting down Process Manager');
+
+    // Stop the liveness sweep BEFORE we start tearing things
+    // down — otherwise a sweep firing mid-shutdown could
+    // synthesize spurious crash events for workers we're
+    // already in the process of terminating.
+    if (this.livenessSweepTimer) {
+      clearInterval(this.livenessSweepTimer);
+      this.livenessSweepTimer = undefined;
+    }
 
     try {
       // Phase 1: Drain all pools first to complete in-flight requests

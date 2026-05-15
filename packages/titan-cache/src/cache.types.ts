@@ -284,8 +284,31 @@ export interface ICache<T = unknown> {
   get(key: string, options?: ICacheGetOptions): Promise<T | undefined>;
   /** Set value with key */
   set(key: string, value: T, options?: ICacheSetOptions): Promise<void>;
-  /** Check if key exists */
+  /**
+   * Check if key exists.
+   *
+   * **Caveat**: there is a TOCTOU window between `has(key) === true`
+   * and a subsequent `get(key)` — the entry can expire or be
+   * evicted in between, so `get()` may return `undefined` even
+   * when `has()` just returned `true`. If you need to *use* the
+   * value, prefer `getOrSet(key, factory)` (atomic from the
+   * caller's perspective). Reserve `has()` for fast-path
+   * cardinality checks where the value isn't read afterwards.
+   */
   has(key: string): Promise<boolean>;
+  /**
+   * Atomic "fetch or compute" — eliminates the has-then-get
+   * TOCTOU window. If `key` is present, returns the cached
+   * value; otherwise invokes `factory()`, stores the result,
+   * and returns it. Implementations MAY single-flight concurrent
+   * callers on the same key (collapse multiple factory()
+   * invocations into one), but are not required to.
+   */
+  getOrSet?(
+    key: string,
+    factory: () => Promise<T> | T,
+    options?: ICacheSetOptions
+  ): Promise<T>;
   /** Delete key */
   delete(key: string): Promise<boolean>;
   /** Clear all entries or by pattern */

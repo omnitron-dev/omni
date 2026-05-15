@@ -207,6 +207,104 @@ describe('ProcessManager', () => {
       expect(discovered).toBeNull();
     });
   });
+
+  describe('Liveness sweep (defense-in-depth)', () => {
+    // The primary exit-detection path is the WorkerHandle exit
+    // event. This sweep is a backstop for cases where that event
+    // misfires (kernel signal race, fd exhaustion, etc.). The
+    // contract under test: a sweep firing on a worker whose pid
+    // is no longer alive synthesizes a `process:crash` event.
+    it('synthesizes process:crash for workers whose pid the OS reports dead', async () => {
+      const pm2 = new ProcessManager(mockLogger as any, {
+        testing: { useMockSpawner: true },
+        netron: { transport: 'unix', discovery: 'local' },
+        // Disable the auto timer — drive the sweep manually
+        // for determinism.
+        livenessSweepIntervalMs: 0,
+      });
+      try {
+        const proxy: any = await pm2.spawn(TestService);
+        const processId = proxy.__processId;
+        // Force the worker handle's pid to an obviously-dead one
+        // (large pid that the OS hasn't allocated). The shared
+        // helper will return false for it. Mock spawner returns
+        // an undefined pid by default, so we need to coerce.
+        const handle = (pm2 as any).workers.get(processId);
+        Object.defineProperty(handle, 'pid', { value: 99999999, configurable: true });
+
+        const crashes: Array<{ name: string; error: Error }> = [];
+        pm2.on('process:crash', (info: any, err: Error) => {
+          crashes.push({ name: info.name, error: err });
+        });
+
+        // Fire the sweep manually.
+        (pm2 as any).sweepDeadWorkers();
+        // The synthesized crash event fires synchronously inside the sweep.
+        expect(crashes).toHaveLength(1);
+        expect(crashes[0]!.error.message).toContain('detected as dead by liveness sweep');
+      } finally {
+        await pm2.shutdown({ force: true });
+      }
+    });
+
+    it('skips worker-thread workers (no pid)', async () => {
+      const pm2 = new ProcessManager(mockLogger as any, {
+        testing: { useMockSpawner: true },
+        netron: { transport: 'unix', discovery: 'local' },
+        livenessSweepIntervalMs: 0,
+      });
+      try {
+        const proxy: any = await pm2.spawn(TestService);
+        const handle = (pm2 as any).workers.get(proxy.__processId);
+        Object.defineProperty(handle, 'pid', { value: undefined, configurable: true });
+
+        const crashes: any[] = [];
+        pm2.on('process:crash', (info: any) => crashes.push(info));
+        (pm2 as any).sweepDeadWorkers();
+        expect(crashes).toHaveLength(0);
+      } finally {
+        await pm2.shutdown({ force: true });
+      }
+    });
+
+    it('does not synthesize a crash for already-stopped processes', async () => {
+      const pm2 = new ProcessManager(mockLogger as any, {
+        testing: { useMockSpawner: true },
+        netron: { transport: 'unix', discovery: 'local' },
+        livenessSweepIntervalMs: 0,
+      });
+      try {
+        const proxy: any = await pm2.spawn(TestService);
+        const processId = proxy.__processId;
+        const handle = (pm2 as any).workers.get(processId);
+        Object.defineProperty(handle, 'pid', { value: 99999999, configurable: true });
+        // Mark as already stopped (e.g., the primary exit event
+        // already fired and the consumer marked it).
+        const info = (pm2 as any).registry.get(processId);
+        info.status = 'stopped';
+
+        const crashes: any[] = [];
+        pm2.on('process:crash', (i: any) => crashes.push(i));
+        (pm2 as any).sweepDeadWorkers();
+        expect(crashes).toHaveLength(0);
+      } finally {
+        await pm2.shutdown({ force: true });
+      }
+    });
+
+    it('clears the sweep timer on shutdown', async () => {
+      const pm2 = new ProcessManager(mockLogger as any, {
+        testing: { useMockSpawner: true },
+        netron: { transport: 'unix', discovery: 'local' },
+        livenessSweepIntervalMs: 100,
+      });
+      // The timer is private — just assert shutdown completes
+      // cleanly and doesn't leave the loop alive.
+      await pm2.shutdown({ force: true });
+      // After shutdown, the field should be undefined.
+      expect((pm2 as any).livenessSweepTimer).toBeUndefined();
+    });
+  });
 });
 
 describe('ProcessPool', () => {

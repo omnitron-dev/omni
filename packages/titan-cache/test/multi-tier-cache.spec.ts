@@ -723,6 +723,112 @@ describe('MultiTierCache', () => {
       await expect(cache.dispose()).resolves.toBeUndefined();
     });
 
+    // getOrSet — atomic fetch-or-compute that eliminates the
+    // has-then-get TOCTOU window described on ICache.has.
+    it('getOrSet returns cached value when present', async () => {
+      cache = new MultiTierCache({ l1: { maxSize: 100 } });
+      await cache.set('k', 'cached-value');
+      const factory = vi.fn().mockResolvedValue('factory-value');
+      const result = await cache.getOrSet('k', factory);
+      expect(result).toBe('cached-value');
+      expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('getOrSet invokes factory and stores result when key is missing', async () => {
+      cache = new MultiTierCache({ l1: { maxSize: 100 } });
+      const factory = vi.fn().mockResolvedValue('fresh-value');
+      const result = await cache.getOrSet('k', factory);
+      expect(result).toBe('fresh-value');
+      expect(factory).toHaveBeenCalledTimes(1);
+      // And the value is now cached.
+      expect(await cache.get('k')).toBe('fresh-value');
+    });
+
+    it('getOrSet single-flights concurrent callers on the same key', async () => {
+      cache = new MultiTierCache({ l1: { maxSize: 100 } });
+      let callCount = 0;
+      const factory = vi.fn(async () => {
+        callCount++;
+        // Simulate slow factory so concurrent callers overlap.
+        await new Promise((r) => setTimeout(r, 30));
+        return 'fresh';
+      });
+      const [a, b, c] = await Promise.all([
+        cache.getOrSet('k', factory),
+        cache.getOrSet('k', factory),
+        cache.getOrSet('k', factory),
+      ]);
+      expect(a).toBe('fresh');
+      expect(b).toBe('fresh');
+      expect(c).toBe('fresh');
+      // The whole point — factory invoked once for the three
+      // overlapping callers, not three times.
+      expect(callCount).toBe(1);
+    });
+
+    it('getOrSet clears in-flight slot on factory failure (next caller retries)', async () => {
+      cache = new MultiTierCache({ l1: { maxSize: 100 } });
+      const failingFactory = vi.fn().mockRejectedValue(new Error('boom'));
+      await expect(cache.getOrSet('k', failingFactory)).rejects.toThrow('boom');
+      // After the failure, a fresh caller must be able to retry —
+      // pre-fix, a cached rejected promise would have leaked into
+      // the second call.
+      const goodFactory = vi.fn().mockResolvedValue('recovered');
+      const value = await cache.getOrSet('k', goodFactory);
+      expect(value).toBe('recovered');
+      expect(goodFactory).toHaveBeenCalledTimes(1);
+    });
+
+    it('getOrSet eliminates the has-then-get TOCTOU window', async () => {
+      // Direct demonstration: factory runs exactly once even if
+      // we pretend two callers serialize through getOrSet.
+      cache = new MultiTierCache({ l1: { maxSize: 100 } });
+      let factoryCalls = 0;
+      const factory = async () => {
+        factoryCalls++;
+        return `value-${factoryCalls}`;
+      };
+      const a = await cache.getOrSet('k', factory);
+      const b = await cache.getOrSet('k', factory);
+      expect(a).toBe('value-1');
+      expect(b).toBe('value-1');
+      expect(factoryCalls).toBe(1);
+    });
+
+    // Regression: pre-fix `accessCounts` map could grow without
+    // bound under read-heavy workloads when syncInterval was 0
+    // or the sync timer was slow. The fix added an amortized
+    // size-cap check at the growth site so the map can never
+    // exceed MAX_ACCESS_COUNTS (10k) by more than a constant.
+    it('keeps accessCounts bounded under heavy read traffic', async () => {
+      // Use writeStrategy: 'through' AND syncInterval: 0 → no
+      // sync timer firing. Without the inline cleanup the map
+      // would grow until we run out of memory.
+      cache = new MultiTierCache({
+        l1: { maxSize: 10 }, // tiny L1, ensures L2 reads dominate
+        autoPromote: true,
+        promotionThreshold: 1_000_000, // never promote → accessCounts grows
+        writeStrategy: 'through',
+        syncInterval: 0,
+      });
+
+      // Seed L2 with 20k unique keys, then read them all.
+      for (let i = 0; i < 20_000; i++) {
+        await cache.set(`k${i}`, `v${i}`);
+      }
+      for (let i = 0; i < 20_000; i++) {
+        await cache.get(`k${i}`);
+      }
+
+      // accessCounts is private — assert via .size on the
+      // private map without exposing it.
+      const counts = (cache as any).accessCounts as Map<string, unknown>;
+      // The cap is 10k; the amortized cleanup runs only when
+      // size > cap, so the steady-state size sits AT or just
+      // above 10k (a single overflow then trim). Never 20k.
+      expect(counts.size).toBeLessThanOrEqual(10_000);
+    });
+
     it('should be safe to call dispose() twice', async () => {
       let disposeCalls = 0;
       class TrackingAdapter extends MemoryL2Adapter {

@@ -530,10 +530,23 @@ export class ProcessPool<T> {
     this.isShuttingDown = false;
     this.isDraining = false;
 
-    this.emit('pool:destroyed', { class: this.processName });
-
-    // Clean up event emitter listeners
-    this.emitter.removeAllListeners();
+    // Notify subscribers BEFORE we tear down the emitter — they
+    // need to see the destroyed event. Wrapped in try/finally so a
+    // throwing subscriber cannot leak listeners: pre-fix, a single
+    // `pool:destroyed` handler that threw would skip the
+    // removeAllListeners() call below, keeping the emitter wired
+    // and any captured pool references reachable from the GC root.
+    try {
+      this.emit('pool:destroyed', { class: this.processName });
+    } catch (err) {
+      this.logger.warn({ err }, 'pool:destroyed subscriber threw — continuing teardown');
+    } finally {
+      // Single seam for listener cleanup. Subscribers who passed
+      // their own listener references can still call pool.off()
+      // for symmetry, but they don't need to — the pool guarantees
+      // its emitter is drained at destroy-time.
+      this.emitter.removeAllListeners();
+    }
   }
 
   /**

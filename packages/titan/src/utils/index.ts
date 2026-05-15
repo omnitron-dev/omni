@@ -17,6 +17,7 @@
  */
 
 export * from './error-classification.js';
+export * from './failure-tracker.js';
 export * from './id.js';
 export * from './json.js';
 export * from './lru-cache.js';

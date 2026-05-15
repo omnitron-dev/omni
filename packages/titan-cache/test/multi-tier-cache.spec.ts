@@ -685,6 +685,64 @@ describe('MultiTierCache', () => {
       const stats = cache.getStats();
       expect(stats.size).toBe(0);
     });
+
+    // Regression for the L2-adapter dispose gap: pre-fix the
+    // multi-tier cache disposed L1 + cleared its sync timer but
+    // never invoked `l2Adapter.dispose?.()`. Redis-backed adapters
+    // therefore leaked their connection every time the host
+    // shut down a cache. The fix made `dispose` optional on the
+    // adapter interface and the cache now invokes it before
+    // disposing L1.
+    it('should invoke l2Adapter.dispose() when present', async () => {
+      let disposeCalls = 0;
+      class TrackingAdapter extends MemoryL2Adapter {
+        override async dispose(): Promise<void> {
+          disposeCalls++;
+        }
+      }
+      const adapter = new TrackingAdapter();
+      cache = new MultiTierCache({
+        l1: { maxSize: 100 },
+        l2: { client: adapter as any },
+      });
+      await cache.dispose();
+      expect(disposeCalls).toBe(1);
+    });
+
+    it('should not throw when l2Adapter has no dispose method', async () => {
+      class NoDisposeAdapter extends MemoryL2Adapter {
+        // Intentionally omit `dispose` to mirror an in-memory
+        // adapter that holds no OS resources.
+        override dispose = undefined as unknown as () => Promise<void>;
+      }
+      cache = new MultiTierCache({
+        l1: { maxSize: 100 },
+        l2: { client: new NoDisposeAdapter() as any },
+      });
+      // Must not throw.
+      await expect(cache.dispose()).resolves.toBeUndefined();
+    });
+
+    it('should be safe to call dispose() twice', async () => {
+      let disposeCalls = 0;
+      class TrackingAdapter extends MemoryL2Adapter {
+        override async dispose(): Promise<void> {
+          disposeCalls++;
+        }
+      }
+      cache = new MultiTierCache({
+        l1: { maxSize: 100 },
+        l2: { client: new TrackingAdapter() as any },
+        writeStrategy: 'back',
+        syncInterval: 1000,
+      });
+      await cache.dispose();
+      await expect(cache.dispose()).resolves.toBeUndefined();
+      // Adapter dispose called on each invocation — the adapter
+      // itself is expected to be idempotent (it's not our
+      // responsibility to second-guess the adapter contract).
+      expect(disposeCalls).toBe(2);
+    });
   });
 
   describe('MemoryL2Adapter', () => {

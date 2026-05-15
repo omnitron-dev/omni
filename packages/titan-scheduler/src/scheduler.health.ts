@@ -44,8 +44,12 @@ export class SchedulerHealthIndicator {
       const issues: string[] = [];
       const warnings: string[] = [];
 
-      // Scheduler must be started
-      if (!(this.schedulerService as any).isStarted) {
+      // Scheduler must be started. Reach the state through the
+      // public `isRunning()` accessor; pre-fix this poked at the
+      // private `isStarted` field via `as any`, which broke as
+      // soon as someone renamed the field and which TypeScript
+      // could not catch.
+      if (!this.schedulerService.isRunning()) {
         return {
           status: 'unhealthy',
           message: 'Scheduler is not started',

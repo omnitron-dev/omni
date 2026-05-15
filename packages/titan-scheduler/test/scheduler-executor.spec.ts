@@ -172,6 +172,38 @@ describe('Scheduler Executor', () => {
 
       await expect(executor.executeJob(job)).resolves.toBeDefined();
     });
+
+    // Regression for the silent-swallow bug: pre-fix when an
+    // onError handler itself threw, the catch block did nothing
+    // (`catch { /* Error in job error handler */ }`). The
+    // secondary failure vanished and the only diagnostic was a
+    // commented-out wish. The fix routes handler failures through
+    // the `scheduler:error` event so subscribers see both the
+    // original error and the handler error with full context.
+    it('should emit scheduler:error with originalError + handlerError when onError throws', async () => {
+      const originalError = new Error('original failure');
+      const handlerError = new Error('handler failure');
+      const onError = vi.fn(() => {
+        throw handlerError;
+      });
+      const handler = vi.fn(() => {
+        throw originalError;
+      });
+      const job = createMockJob('onErrorEmitJob', handler, { onError, retry: undefined });
+
+      const seen: any[] = [];
+      executor.on('scheduler:error', (payload: any) => {
+        seen.push(payload);
+      });
+
+      await executor.executeJob(job);
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0].scope).toBe('onError-handler');
+      expect(seen[0].jobName).toBe('onErrorEmitJob');
+      expect(seen[0].originalError).toBe(originalError);
+      expect(seen[0].handlerError).toBe(handlerError);
+    });
   });
 
   describe('Retry Logic', () => {

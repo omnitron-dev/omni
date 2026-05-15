@@ -11,6 +11,8 @@
  * @module titan/modules/cache
  */
 
+import type { ModuleMetadata, InjectionToken } from '@omnitron-dev/titan/nexus';
+
 /**
  * Cache eviction policy
  */
@@ -262,9 +264,14 @@ export interface ICacheModuleAsyncOptions {
   /** Factory function */
   useFactory?: (...args: unknown[]) => Promise<ICacheModuleOptions> | ICacheModuleOptions;
   /** Inject tokens */
-  inject?: unknown[];
-  /** Module imports */
-  imports?: unknown[];
+  inject?: InjectionToken[];
+  /**
+   * Module imports forwarded into the generated `DynamicModule`.
+   * Typed against `ModuleMetadata['imports']` so the cache module's
+   * surface matches the rest of the framework (pre-fix this was
+   * `unknown[]`, forcing an `as any` at the assembly site).
+   */
+  imports?: ModuleMetadata['imports'];
   /** Make global */
   isGlobal?: boolean;
 }

@@ -51,6 +51,15 @@ export interface IL2CacheAdapter {
   expire(key: string, ttlSeconds: number): Promise<void>;
   ttl(key: string): Promise<number>;
   flush(pattern?: string): Promise<void>;
+  /**
+   * Optional cleanup hook. Adapters that hold OS resources
+   * (Redis connection, file handle, worker thread) MUST implement
+   * this to release them; in-memory adapters can omit it. The
+   * MultiTierCache invokes it in `dispose()`. Pre-fix this hook
+   * didn't exist and Redis-backed L2 adapters leaked their
+   * connection on every cache shutdown.
+   */
+  dispose?(): Promise<void>;
 }
 
 export class MemoryL2Adapter implements IL2CacheAdapter {
@@ -593,8 +602,19 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
   async dispose(): Promise<void> {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
+      // Defensive: drop the timer ref so a double-dispose doesn't
+      // try to clear an already-cleared handle (no-op but tidy).
+      this.syncTimer = undefined;
     }
     await this.flushWriteBackBuffer();
+    // Release L2 resources BEFORE L1 — readers that race the
+    // shutdown may still hit L1 after L2 closes, which is safe;
+    // the inverse (L1 closed, L2 still open) would leave a window
+    // where a get() falls through to a live L2 with no L1 to
+    // populate, costing a network round-trip for nothing.
+    if (this.l2Adapter.dispose) {
+      await this.l2Adapter.dispose();
+    }
     await this.l1Cache.dispose();
   }
 

@@ -239,12 +239,26 @@ export class SchedulerExecutor {
     // Notify failure
     await this.notifyJobError(job, error, context);
 
-    // Call error handler if provided
+    // Call error handler if provided. The handler itself may
+    // throw — pre-fix that was swallowed silently with a comment
+    // ("Error in job error handler") that meant the bug NEVER
+    // surfaced. Now we route handler failures through
+    // `scheduler:error` so subscribers (including the
+    // scheduler service's own logger) see both errors with full
+    // context: the original failure the handler was reacting to,
+    // and the secondary failure the handler itself caused.
     if (job.options.onError) {
       try {
         await job.options.onError(error);
-      } catch {
-        // Error in job error handler
+      } catch (handlerError) {
+        this.eventEmitter.emit(SCHEDULER_EVENTS.SCHEDULER_ERROR, {
+          scope: 'onError-handler',
+          jobId: job.id,
+          jobName: job.name,
+          executionId,
+          originalError: error,
+          handlerError,
+        });
       }
     }
 

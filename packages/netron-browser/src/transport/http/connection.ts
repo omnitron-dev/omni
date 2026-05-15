@@ -212,8 +212,13 @@ export class HttpConnection extends EventEmitter {
           // Fallback to HTTP status error
         }
 
+        // Preserve the upstream HTTP status as the error code so the
+        // consuming app's locale dictionary can translate it. The
+        // previous default (`INTERNAL_ERROR=500`) collapsed every
+        // 5xx into "internal error", which left auth screens
+        // mistranslating gateway 502s as "wrong credentials".
         throw new TitanError({
-          code: ErrorCode.INTERNAL_ERROR,
+          code: response.status as ErrorCode,
           message: `HTTP ${response.status}: ${response.statusText}`,
         });
       }

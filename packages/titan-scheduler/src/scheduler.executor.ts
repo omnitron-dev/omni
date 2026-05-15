@@ -7,6 +7,7 @@
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors, TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
+import { computeBackoff } from '@omnitron-dev/titan/utils';
 
 import { SCHEDULER_EVENTS, SCHEDULER_CONFIG_TOKEN, SCHEDULER_LISTENERS_TOKEN } from './scheduler.constants.js';
 
@@ -269,12 +270,17 @@ export class SchedulerExecutor {
    * Calculate retry delay
    */
   private calculateRetryDelay(retryOptions: IRetryOptions, attempt: number): number {
-    const baseDelay = retryOptions.delay || 1000;
-    const backoff = retryOptions.backoff || 2;
-    const maxDelay = retryOptions.maxDelay || 30000;
-
-    const delay = Math.min(baseDelay * Math.pow(backoff, attempt - 1), maxDelay);
-    return delay;
+    // Delegate to the shared `computeBackoff` helper. The local
+    // `attempt` is 1-indexed (1 = first retry); the helper is
+    // 0-indexed, so subtract 1. This preserves the prior
+    // semantic exactly while dropping the third hand-rolled
+    // Math.pow / Math.min combo.
+    return computeBackoff({
+      attempt: attempt - 1,
+      baseMs: retryOptions.delay || 1000,
+      maxMs: retryOptions.maxDelay || 30000,
+      factor: retryOptions.backoff || 2,
+    });
   }
 
   /**

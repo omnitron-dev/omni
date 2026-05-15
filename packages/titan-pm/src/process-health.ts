@@ -6,6 +6,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { computeBackoff } from '@omnitron-dev/titan/utils';
 import type { IHealthStatus, ServiceProxy, IProcessOptions } from './types.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 
@@ -192,10 +193,12 @@ export class ProcessHealthChecker extends EventEmitter {
         this.logger.debug({ error, attempt, retries }, 'Health check attempt failed');
 
         if (attempt < retries - 1) {
-          // Exponential backoff with jitter to prevent thundering herd
-          const exponentialDelay = Math.min(BASE_DELAY * Math.pow(2, attempt), MAX_DELAY);
-          const jitter = Math.random() * exponentialDelay * 0.3; // Add up to 30% jitter
-          await this.delay(exponentialDelay + jitter);
+          // Shared backoff helper — 30% jitter to prevent
+          // thundering herd when N parallel health checks all
+          // fall through to the retry path at once.
+          await this.delay(
+            computeBackoff({ attempt, baseMs: BASE_DELAY, maxMs: MAX_DELAY, jitter: 0.3 })
+          );
         }
       }
     }

@@ -35,6 +35,17 @@ export {
   type UseDateRangePickerReturn,
 } from './date-range-picker/index.js';
 
+// Country select — minimalist ISO 3166 picker with local flag SVG
+// support. Asset-free (consumer supplies options + flag URLs).
+export {
+  CountrySelect,
+  FlagIcon,
+  type CountrySelectProps,
+  type CountryOption,
+  type FlagIconProps,
+  type FlagShape,
+} from './country-select/index.js';
+
 // Animate
 export {
   AnimateBorder,

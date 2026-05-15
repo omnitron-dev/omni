@@ -79,6 +79,20 @@ export interface FilterToolbarProps {
   compact?: boolean;
   /** Additional styles */
   sx?: SxProps<Theme>;
+  /**
+   * Localized label for the Reset button. Defaults to "Reset" so
+   * existing call sites still work; pass `t('common.reset')` from
+   * the host app to translate.
+   */
+  resetLabel?: string;
+  /**
+   * Formatter for the "N results" counter below the toolbar.
+   * Defaults to English pluralisation. Pass a function from the host
+   * app's i18n to get plural-aware translation, e.g.
+   *   (n) => t('common.resultsCount', { count: n })
+   * Receives the already-formatted number string for direct use.
+   */
+  resultsLabel?: (count: number) => string;
 }
 
 // =============================================================================
@@ -164,6 +178,8 @@ export function FilterToolbar({
   searchDebounce = 300,
   compact = false,
   sx,
+  resetLabel = 'Reset',
+  resultsLabel,
 }: FilterToolbarProps): ReactNode {
   const [, startTransition] = useTransition();
 
@@ -461,7 +477,7 @@ export function FilterToolbar({
                 '&:hover': { color: 'text.primary' },
               }}
             >
-              Reset
+              {resetLabel}
             </Button>
           )}
         </Stack>
@@ -474,7 +490,9 @@ export function FilterToolbar({
             color: "text.disabled",
             mt: 0.5
           }}>
-          {total.toLocaleString()} result{total !== 1 ? 's' : ''}
+          {resultsLabel
+            ? resultsLabel(total)
+            : `${total.toLocaleString()} result${total !== 1 ? 's' : ''}`}
         </Typography>
       )}
     </Stack>

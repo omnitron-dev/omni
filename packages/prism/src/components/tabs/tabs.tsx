@@ -129,12 +129,10 @@ export function Tabs({
     return items;
   }, [tabs, children]);
 
-  // When an action is present, the bottom-border-of-tabs role
-  // shifts from `MuiTabs` to the surrounding flex row, so the
-  // divider line spans the full width past the action area
-  // (matches the breadcrumbs heading-row treatment). Without an
-  // action the wrapper is transparent and `MuiTabs` keeps drawing
-  // its own indicator track as before.
+  // Flex wrapper exists only to host the optional action node to
+  // the right of the tab strip — no bottom divider; MuiTabs keeps
+  // its own active-tab indicator track and that's the only line
+  // we want under the strip.
   const hasAction = action !== undefined && action !== null && action !== false;
 
   return (
@@ -142,30 +140,12 @@ export function Tabs({
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'flex-end',
+          alignItems: 'center',
           justifyContent: 'space-between',
           gap: 2,
-          ...(hasAction && {
-            borderBottom: 1,
-            borderColor: 'divider',
-          }),
         }}
       >
-        <MuiTabs
-          value={value}
-          onChange={handleChange}
-          {...muiProps}
-          sx={{
-            // Suppress MuiTabs' own bottom border when the
-            // wrapper owns the divider — otherwise we'd get a
-            // double line under the tab strip.
-            ...(hasAction && {
-              minHeight: 'auto',
-              '& .MuiTabs-flexContainer': { gap: 0 },
-            }),
-            ...muiProps.sx,
-          }}
-        >
+        <MuiTabs value={value} onChange={handleChange} {...muiProps}>
           {tabItems.map((tab) => (
             <MuiTab
               key={tab.value}
@@ -184,11 +164,6 @@ export function Tabs({
               alignItems: 'center',
               gap: 1,
               flexShrink: 0,
-              // Sit the action visually on the tab baseline so
-              // the underline runs cleanly underneath; a small
-              // bottom inset keeps a 44px-tall button from
-              // crowding the divider.
-              pb: 1,
             }}
           >
             {action}

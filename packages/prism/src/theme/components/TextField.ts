@@ -157,6 +157,19 @@ export function createOutlinedInputOverrides(config: ComponentsConfig): Componen
             borderColor: theme.vars?.palette.action.disabledBackground || theme.palette.action.disabledBackground,
           },
         },
+        // MUI v9 ships a `padding: 16.5px 14px` *shorthand* on the
+        // multiline root via a styled variant. To beat that on the
+        // top/bottom axis we have to use !important, otherwise the
+        // shorthand's compiled order wins over our longhand and the
+        // first row of text sits ~one line-height below the border.
+        [`&.${inputBaseClasses.multiline}`]: {
+          paddingTop: `${INPUT_PADDING.outlined.medium.paddingTop}px !important`,
+          paddingBottom: `${INPUT_PADDING.outlined.medium.paddingBottom}px !important`,
+          [`&.${inputBaseClasses.sizeSmall}`]: {
+            paddingTop: `${INPUT_PADDING.outlined.small.paddingTop}px !important`,
+            paddingBottom: `${INPUT_PADDING.outlined.small.paddingBottom}px !important`,
+          },
+        },
       }),
       input: {
         ...INPUT_PADDING.outlined.medium,

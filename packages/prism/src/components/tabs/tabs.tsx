@@ -33,7 +33,10 @@ export interface TabItem {
 /**
  * Props for Tabs component.
  */
-export interface TabsProps extends Omit<ComponentProps<typeof MuiTabs>, 'onChange' | 'value'> {
+// `action` clashes with MUI's imperative `action: Ref<TabsActions>` —
+// we're not exposing the imperative ref API (it's almost never used
+// in app code) and reclaim the name for the actions slot instead.
+export interface TabsProps extends Omit<ComponentProps<typeof MuiTabs>, 'onChange' | 'value' | 'action'> {
   /** Tab items configuration */
   tabs?: TabItem[];
   /** Controlled value */
@@ -46,6 +49,14 @@ export interface TabsProps extends Omit<ComponentProps<typeof MuiTabs>, 'onChang
   children?: ReactNode;
   /** Keep unmounted tabs in DOM */
   keepMounted?: boolean;
+  /**
+   * Optional actions area rendered to the right of the tab strip
+   * (e.g. a primary "Create" button). Mirrors the action slot on
+   * `Breadcrumbs`. When set, the tab strip's bottom border moves
+   * onto the surrounding flex row so the divider runs full-width
+   * past the action area without breaking.
+   */
+  action?: ReactNode;
 }
 
 /**
@@ -81,6 +92,7 @@ export function Tabs({
   onChange,
   children,
   keepMounted = false,
+  action,
   ...muiProps
 }: TabsProps): ReactNode {
   const [internalValue, setInternalValue] = useState(defaultValue ?? tabs?.[0]?.value ?? '');
@@ -117,23 +129,80 @@ export function Tabs({
     return items;
   }, [tabs, children]);
 
+  // When an action is present, the bottom-border-of-tabs role
+  // shifts from `MuiTabs` to the surrounding flex row, so the
+  // divider line spans the full width past the action area
+  // (matches the breadcrumbs heading-row treatment). Without an
+  // action the wrapper is transparent and `MuiTabs` keeps drawing
+  // its own indicator track as before.
+  const hasAction = action !== undefined && action !== null && action !== false;
+
   return (
     <Box sx={{ width: '100%' }}>
-      <MuiTabs value={value} onChange={handleChange} {...muiProps}>
-        {tabItems.map((tab) => (
-          <MuiTab
-            key={tab.value}
-            value={tab.value}
-            label={tab.label}
-            icon={tab.icon}
-            iconPosition="start"
-            disabled={tab.disabled}
-          />
-        ))}
-      </MuiTabs>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 2,
+          ...(hasAction && {
+            borderBottom: 1,
+            borderColor: 'divider',
+          }),
+        }}
+      >
+        <MuiTabs
+          value={value}
+          onChange={handleChange}
+          {...muiProps}
+          sx={{
+            // Suppress MuiTabs' own bottom border when the
+            // wrapper owns the divider — otherwise we'd get a
+            // double line under the tab strip.
+            ...(hasAction && {
+              minHeight: 'auto',
+              '& .MuiTabs-flexContainer': { gap: 0 },
+            }),
+            ...muiProps.sx,
+          }}
+        >
+          {tabItems.map((tab) => (
+            <MuiTab
+              key={tab.value}
+              value={tab.value}
+              label={tab.label}
+              icon={tab.icon}
+              iconPosition="start"
+              disabled={tab.disabled}
+            />
+          ))}
+        </MuiTabs>
+        {hasAction && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              flexShrink: 0,
+              // Sit the action visually on the tab baseline so
+              // the underline runs cleanly underneath; a small
+              // bottom inset keeps a 44px-tall button from
+              // crowding the divider.
+              pb: 1,
+            }}
+          >
+            {action}
+          </Box>
+        )}
+      </Box>
       {tabItems.map((tab) => {
         const isActive = tab.value === value;
         if (!isActive && !keepMounted) return null;
+        // Strip-only usage (`tabs` entries without `content`):
+        // the page renders its own content below the tabs and
+        // just needs the navigation strip. Skipping the panel
+        // box keeps the layout flush.
+        if (tab.content === undefined) return null;
 
         return (
           <Box

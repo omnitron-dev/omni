@@ -312,3 +312,15 @@ export {
 // =============================================================================
 
 export { toast } from './toast.js';
+
+// =============================================================================
+// CRYPTO AMOUNT FORMATTING (canonical BTC/XMR display)
+// =============================================================================
+
+export {
+  formatCoinAmount,
+  formatCoinAmountList,
+  getCoinDecimals,
+  COIN_DISPLAY_DECIMALS,
+  type FormatCoinAmountOptions,
+} from './format-crypto.js';

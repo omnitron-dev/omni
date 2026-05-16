@@ -986,17 +986,23 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     // styling (border, radius, padding) is already covered by the
     // MuiToggleButton override above — the previous descendant
     // selector with `!important` here was redundant.
+    //
+    // The sibling-border explicitly carries the same `divider`
+    // colour used by each button's own border, otherwise the
+    // shorthand `1px solid` would fall back to `currentColor`
+    // (text colour) and the first-of-type's left edge looked
+    // brighter than the seams between subsequent buttons.
     MuiToggleButtonGroup: {
       styleOverrides: {
         root: {
           gap: 4,
         },
-        grouped: {
+        grouped: ({ theme }) => ({
           '&:not(:first-of-type)': {
             marginLeft: 0,
-            borderLeft: '1px solid',
+            borderLeft: `1px solid ${theme.vars?.palette.divider || theme.palette.divider}`,
           },
-        },
+        }),
       },
     },
 

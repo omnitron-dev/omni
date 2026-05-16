@@ -1001,6 +1001,18 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           '&:not(:first-of-type)': {
             marginLeft: 0,
             borderLeft: `1px solid ${theme.vars?.palette.divider || theme.palette.divider}`,
+            // The MuiToggleButton override sets `borderColor: primary`
+            // when selected via a longhand on the .selected class, but
+            // that rule's specificity equals ours and MUI's
+            // toggle-button-group styleOverrides land later in source
+            // order — so the left edge stayed `divider` even after
+            // selection. Re-state the primary colour inside our
+            // selected branch so it wins on cascade (specificity here
+            // is one class higher than the MuiToggleButton.selected
+            // rule).
+            [`&.${toggleButtonClasses.selected}`]: {
+              borderLeftColor: theme.vars?.palette.primary.main || theme.palette.primary.main,
+            },
           },
         }),
       },

@@ -7,7 +7,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Popover from '@mui/material/Popover';
 import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 
 import { editorClasses } from '../classes.js';
 import { ToolbarItem } from './toolbar-item.js';
@@ -80,11 +79,16 @@ export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockPro
           },
         }}
       >
-        <Typography variant="subtitle2">Link URL</Typography>
+        {/* Floating Material-Design label sits in the outline notch
+            when the field is empty/focused and tucks above when filled
+            — replaces the old `<Typography>` heading + bare-placeholder
+            shape which left the outline notched without a label,
+            producing a visible gap. */}
         <Box sx={{ gap: 1, display: 'flex', alignItems: 'center' }}>
           <TextField
             fullWidth
             size="small"
+            label="Link URL"
             placeholder="https://"
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}

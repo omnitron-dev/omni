@@ -40,9 +40,22 @@ const cardContentSx = { p: 3, '&:last-child': { pb: 3 } } as const;
 
 function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.5 }}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" fontWeight={600} sx={mono ? { fontFamily: 'monospace', fontSize: '0.8rem' } : undefined}>
+    <Stack
+      direction="row"
+      sx={{
+        justifyContent: "space-between",
+        alignItems: "center",
+        py: 0.5
+      }}>
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>{label}</Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          fontWeight: 600,
+          ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }),
+        }}>
         {value}
       </Typography>
     </Stack>
@@ -55,9 +68,22 @@ function UsageBar({ label, used, total, color = 'primary' }: { label: string; us
 
   return (
     <Box sx={{ mb: 1.5 }}>
-      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-        <Typography variant="caption" color="text.secondary">{label}</Typography>
-        <Typography variant="caption" fontWeight={600} sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
+      <Stack
+        direction="row"
+        sx={{
+          justifyContent: "space-between",
+          mb: 0.5
+        }}>
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>{label}</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 600,
+            fontFamily: 'monospace',
+            fontSize: '0.7rem'
+          }}>
           {formatMemory(used)} / {formatMemory(total)} ({percent.toFixed(1)}%)
         </Typography>
       </Stack>
@@ -126,7 +152,6 @@ export default function SystemInfoPage() {
   return (
     <Stack spacing={3}>
       {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
-
       <Grid container spacing={3}>
         {/* Daemon */}
         <Grid size={{ xs: 12, md: 6 }}>
@@ -146,7 +171,14 @@ export default function SystemInfoPage() {
               {d?.daemon?.memoryUsage && (
                 <>
                   <Divider sx={{ my: 1.5 }} />
-                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 1, display: 'block' }}>Process Memory</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 600,
+                      mb: 1,
+                      display: 'block'
+                    }}>Process Memory</Typography>
                   <UsageBar label="Heap" used={d.daemon.memoryUsage.heapUsed} total={d.daemon.memoryUsage.heapTotal} />
                   <InfoRow label="RSS" value={formatMemory(d.daemon.memoryUsage.rss)} mono />
                   <InfoRow label="External" value={formatMemory(d.daemon.memoryUsage.external)} mono />
@@ -183,7 +215,14 @@ export default function SystemInfoPage() {
               {d?.cpu?.loadPerCore?.length > 0 && (
                 <>
                   <Divider sx={{ my: 1.5 }} />
-                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 1, display: 'block' }}>Load per Core</Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 600,
+                      mb: 1,
+                      display: 'block'
+                    }}>Load per Core</Typography>
                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                     {d.cpu.loadPerCore.map((load: number, i: number) => (
                       <Box
@@ -253,7 +292,9 @@ export default function SystemInfoPage() {
                   </Box>
                 ))
               ) : (
-                <Typography variant="body2" color="text.secondary">No disk information available</Typography>
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>No disk information available</Typography>
               )}
             </CardContent>
           </Card>
@@ -268,8 +309,15 @@ export default function SystemInfoPage() {
                 <Stack spacing={1}>
                   {d.network.interfaces.slice(0, 5).map((iface: any, i: number) => (
                     <Box key={i}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2" fontWeight={600}>{iface.iface}</Typography>
+                      <Stack
+                        direction="row"
+                        sx={{
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}>
+                        <Typography variant="body2" sx={{
+                          fontWeight: 600
+                        }}>{iface.iface}</Typography>
                         <Chip
                           label={iface.operstate}
                           size="small"
@@ -278,7 +326,13 @@ export default function SystemInfoPage() {
                           sx={{ height: 18, fontSize: '0.6rem' }}
                         />
                       </Stack>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                          fontFamily: 'monospace',
+                          fontSize: '0.7rem'
+                        }}>
                         {iface.ip4 || iface.ip6 || '--'}
                         {iface.speed ? ` · ${iface.speed} Mbps` : ''}
                       </Typography>
@@ -295,7 +349,9 @@ export default function SystemInfoPage() {
                   )}
                 </Stack>
               ) : (
-                <Typography variant="body2" color="text.secondary">No network interfaces</Typography>
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>No network interfaces</Typography>
               )}
             </CardContent>
           </Card>

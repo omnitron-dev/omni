@@ -36,7 +36,6 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="source" position={Position.Right} style={{ background: statusColor, width: 8, height: 8 }} />
-
       <Box
         sx={{
           ...glassCardSx,
@@ -49,7 +48,13 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
         }}
       >
         {/* Header */}
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: "center",
+            mb: 1.5
+          }}>
           <Box
             sx={{
               width: 36,
@@ -68,13 +73,12 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
           <Stack spacing={0} sx={{ minWidth: 0, flex: 1 }}>
             <Typography
               variant="subtitle2"
-              fontWeight={700}
               sx={{
+                fontWeight: 700,
                 textTransform: 'capitalize',
                 letterSpacing: 0.3,
-                lineHeight: 1.2,
-              }}
-            >
+                lineHeight: 1.2
+              }}>
               {nodeData.label}
             </Typography>
             <Typography
@@ -101,7 +105,9 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
         </Stack>
 
         {/* Status chip */}
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: "center"
+        }}>
           <Chip
             label={nodeData.status}
             size="small"

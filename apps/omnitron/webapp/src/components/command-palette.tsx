@@ -162,20 +162,20 @@ export function CommandPalette() {
       onClose={() => setOpen(false)}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: {
-          bgcolor: alpha('#111118', 0.95),
-          backdropFilter: 'blur(20px)',
-          border: '1px solid',
-          borderColor: 'rgba(255,255,255,0.08)',
-          borderRadius: 2,
-          mt: '15vh',
-          alignSelf: 'flex-start',
-          maxHeight: '60vh',
-          overflow: 'hidden',
-        },
-      }}
       slotProps={{
+        paper: {
+          sx: {
+            bgcolor: alpha('#111118', 0.95),
+            backdropFilter: 'blur(20px)',
+            border: '1px solid',
+            borderColor: 'rgba(255,255,255,0.08)',
+            borderRadius: 2,
+            mt: '15vh',
+            alignSelf: 'flex-start',
+            maxHeight: '60vh',
+            overflow: 'hidden',
+          },
+        },
         backdrop: { sx: { bgcolor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' } },
       }}
     >
@@ -219,11 +219,17 @@ export function CommandPalette() {
           ESC
         </Typography>
       </Box>
-
       {/* Results */}
       <Box sx={{ overflow: 'auto', maxHeight: 'calc(60vh - 56px)', py: 0.5 }}>
         {filtered.length === 0 && (
-          <Typography color="text.secondary" sx={{ px: 2, py: 3, textAlign: 'center', fontSize: '0.85rem' }}>
+          <Typography
+            sx={{
+              color: "text.secondary",
+              px: 2,
+              py: 3,
+              textAlign: 'center',
+              fontSize: '0.85rem'
+            }}>
             No results for &quot;{query}&quot;
           </Typography>
         )}
@@ -277,7 +283,12 @@ export function CommandPalette() {
                     {cmd.label}
                   </Typography>
                   {cmd.description && (
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                        fontSize: '0.7rem'
+                      }}>
                       {cmd.description}
                     </Typography>
                   )}

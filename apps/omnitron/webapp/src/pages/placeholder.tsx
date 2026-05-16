@@ -16,15 +16,23 @@ export default function PlaceholderPage() {
       <Breadcrumbs
         links={[{ name: title }]}
       />
-
       <Card variant="outlined">
         <CardContent>
-          <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
+          <Stack
+            spacing={2}
+            sx={{
+              alignItems: "center",
+              py: 6
+            }}>
             <ConstructionIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
-            <Typography variant="h6" color="text.secondary">
+            <Typography variant="h6" sx={{
+              color: "text.secondary"
+            }}>
               Under Construction
             </Typography>
-            <Typography variant="body2" color="text.disabled">
+            <Typography variant="body2" sx={{
+              color: "text.disabled"
+            }}>
               This section is not yet implemented. Check back soon.
             </Typography>
           </Stack>

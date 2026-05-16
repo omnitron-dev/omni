@@ -153,12 +153,25 @@ function RunDetail({ run }: { run: PipelineRun }) {
   return (
     <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
       {run.status === 'running' && <LinearProgress sx={{ mb: 1 }} />}
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          mb: 1,
+          display: 'block'
+        }}>
         Triggered by: {run.triggeredBy} | Started: {formatDate(run.startedAt)}
         {run.completedAt && ` | Completed: ${formatDate(run.completedAt)}`}
       </Typography>
       {run.steps.map((step, i) => (
-        <Stack key={i} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }}>
+        <Stack
+          key={i}
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            py: 0.5
+          }}>
           <Chip
             label={step.status}
             size="small"
@@ -166,12 +179,24 @@ function RunDetail({ run }: { run: PipelineRun }) {
             variant="filled"
             sx={{ minWidth: 70, fontWeight: 600, fontSize: 11 }}
           />
-          <Typography variant="body2" fontWeight={500}>{step.name}</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+          <Typography variant="body2" sx={{
+            fontWeight: 500
+          }}>{step.name}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontFamily: 'monospace'
+            }}>
             {formatDuration(step.duration)}
           </Typography>
           {step.error && (
-            <Typography variant="caption" color="error.main" sx={{ fontFamily: 'monospace' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "error.main",
+                fontFamily: 'monospace'
+              }}>
               {step.error}
             </Typography>
           )}
@@ -257,13 +282,11 @@ export default function PipelinesPage() {
           </Stack>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Pipeline Definitions */}
       <Card variant="outlined">
         <CardHeader
@@ -295,7 +318,9 @@ export default function PipelinesPage() {
               ) : pipelineList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No pipelines defined
                     </Typography>
                   </TableCell>
@@ -304,22 +329,30 @@ export default function PipelinesPage() {
                 pipelineList.map((p) => (
                   <TableRow key={p.id} hover>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>{p.name}</Typography>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>{p.name}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                      }}>
                         {p.description ?? '--'}
                       </Typography>
                     </TableCell>
                     <TableCell>{p.steps.length}</TableCell>
                     <TableCell>{p.triggers.length}</TableCell>
                     <TableCell>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                      }}>
                         {formatDate(p.createdAt)}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Stack direction="row" spacing={0.5} sx={{
+                        justifyContent: "flex-end"
+                      }}>
                         <IconButton size="small" color="error" onClick={() => handleDelete(p.id)} title="Delete">
                           <CloseIcon />
                         </IconButton>
@@ -335,7 +368,6 @@ export default function PipelinesPage() {
           </Table>
         </TableContainer>
       </Card>
-
       {/* Run History */}
       <Card variant="outlined">
         <CardHeader
@@ -365,7 +397,9 @@ export default function PipelinesPage() {
               ) : runs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No pipeline runs yet
                     </Typography>
                   </TableCell>
@@ -380,8 +414,15 @@ export default function PipelinesPage() {
                           sx={{ cursor: 'pointer', px: 2, py: 1 }}
                           onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
                         >
-                          <Stack direction="row" spacing={2} alignItems="center">
-                            <Typography variant="body2" fontWeight={600} sx={{ minWidth: 120 }}>
+                          <Stack direction="row" spacing={2} sx={{
+                            alignItems: "center"
+                          }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 600,
+                                minWidth: 120
+                              }}>
                               {pipeline?.name ?? run.pipelineId.slice(0, 8)}
                             </Typography>
                             <Chip
@@ -391,13 +432,19 @@ export default function PipelinesPage() {
                               variant="filled"
                               sx={{ fontWeight: 600 }}
                             />
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               {formatDate(run.startedAt)}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               {run.completedAt ? formatDate(run.completedAt) : '--'}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               {run.triggeredBy}
                             </Typography>
                           </Stack>
@@ -414,7 +461,6 @@ export default function PipelinesPage() {
           </Table>
         </TableContainer>
       </Card>
-
       {/* Create Pipeline Dialog */}
       <CreatePipelineDialog
         open={dialogOpen}

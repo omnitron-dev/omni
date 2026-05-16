@@ -68,14 +68,32 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
       }}
     >
       <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-        <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 10 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            fontSize: 10
+          }}>
           {label}
         </Typography>
-        <Typography variant="h5" fontWeight={700} sx={{ color: color ?? 'text.primary', mt: 0.25 }}>
+        <Typography
+          variant="h5"
+          sx={{
+            fontWeight: 700,
+            color: color ?? 'text.primary',
+            mt: 0.25
+          }}>
           {value}
         </Typography>
         {sub && (
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 11
+            }}>
             {sub}
           </Typography>
         )}
@@ -136,16 +154,25 @@ function OverviewTab({
           value={app.instances}
         />
       </Stack>
-
       {/* Memory usage bar */}
       {diagnostics && (
         <Card variant="outlined">
           <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
             {hasHeapData ? (
               <>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                  <Typography variant="caption" color="text.secondary">Heap Usage</Typography>
-                  <Typography variant="caption" fontWeight={600}>{memPercent}%</Typography>
+                <Stack
+                  direction="row"
+                  sx={{
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 0.5
+                  }}>
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>Heap Usage</Typography>
+                  <Typography variant="caption" sx={{
+                    fontWeight: 600
+                  }}>{memPercent}%</Typography>
                 </Stack>
                 <LinearProgress
                   variant="determinate"
@@ -159,26 +186,45 @@ function OverviewTab({
                     },
                   }}
                 />
-                <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-                  <Typography variant="caption" color="text.disabled">RSS: {formatMemory(diagnostics.memory.rss)}</Typography>
-                  <Typography variant="caption" color="text.disabled">External: {formatMemory(diagnostics.memory.external)}</Typography>
+                <Stack
+                  direction="row"
+                  sx={{
+                    justifyContent: "space-between",
+                    mt: 0.5
+                  }}>
+                  <Typography variant="caption" sx={{
+                    color: "text.disabled"
+                  }}>RSS: {formatMemory(diagnostics.memory.rss)}</Typography>
+                  <Typography variant="caption" sx={{
+                    color: "text.disabled"
+                  }}>External: {formatMemory(diagnostics.memory.external)}</Typography>
                 </Stack>
               </>
             ) : (
               <Stack spacing={0.5}>
-                <Typography variant="caption" color="text.secondary">Memory (RSS)</Typography>
-                <Typography variant="h6" fontWeight={600}>{formatMemory(diagnostics.memory.rss)}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Memory (RSS)</Typography>
+                <Typography variant="h6" sx={{
+                  fontWeight: 600
+                }}>{formatMemory(diagnostics.memory.rss)}</Typography>
               </Stack>
             )}
           </CardContent>
         </Card>
       )}
-
       {/* Process Topology */}
       {app.processes && app.processes.length > 0 && (
         <Card variant="outlined">
           <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-            <Typography variant="subtitle2" fontWeight={600} sx={{ px: 2, pt: 1.5, pb: 1 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 600,
+                px: 2,
+                pt: 1.5,
+                pb: 1
+              }}>
               Process Topology
             </Typography>
             <TableContainer>
@@ -199,7 +245,9 @@ function OverviewTab({
                   {app.processes.map((proc) => (
                     <TableRow key={proc.name}>
                       <TableCell>
-                        <Stack direction="row" spacing={1} alignItems="center">
+                        <Stack direction="row" spacing={1} sx={{
+                          alignItems: "center"
+                        }}>
                           <CircleIcon sx={{
                             fontSize: 8,
                             color: proc.status === 'online'
@@ -208,7 +256,9 @@ function OverviewTab({
                                 ? theme.palette.text.disabled
                                 : theme.palette.error.main,
                           }} />
-                          <Typography variant="body2" fontWeight={600}>{proc.name}</Typography>
+                          <Typography variant="body2" sx={{
+                            fontWeight: 600
+                          }}>{proc.name}</Typography>
                         </Stack>
                       </TableCell>
                       <TableCell>
@@ -256,17 +306,23 @@ function OverviewTab({
           </CardContent>
         </Card>
       )}
-
       {/* Exposed Services (deduplicated) */}
       {diagnostics && diagnostics.services.length > 0 && (() => {
         const unique = [...new Set(diagnostics.services)];
         return (
           <Card variant="outlined">
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 600,
+                  mb: 1
+                }}>
                 Exposed Services
               </Typography>
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              <Stack direction="row" spacing={0.75} useFlexGap sx={{
+                flexWrap: "wrap"
+              }}>
                 {unique.map((svc) => (
                   <Chip key={svc} label={svc} size="small" variant="outlined" sx={{ fontSize: 11, height: 24 }} />
                 ))}
@@ -275,11 +331,15 @@ function OverviewTab({
           </Card>
         );
       })()}
-
       {/* Process Details */}
       <Card variant="outlined">
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 600,
+              mb: 1
+            }}>
             Details
           </Typography>
           <Stack spacing={0.75}>
@@ -296,8 +356,18 @@ function OverviewTab({
 
 function InfoRow({ label, value, mono }: { label: string; value: string | number; mono?: boolean }) {
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center">
-      <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>{label}</Typography>
+    <Stack
+      direction="row"
+      sx={{
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          fontSize: 13
+        }}>{label}</Typography>
       <Typography variant="body2" sx={{ fontSize: 13, ...(mono && { fontFamily: 'monospace' }) }}>
         {value}
       </Typography>
@@ -491,7 +561,13 @@ function LogsTab({ appName }: { appName: string }) {
   return (
     <Stack spacing={1.5}>
       {/* Controls bar */}
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{
+          alignItems: "center",
+          flexWrap: 'wrap'
+        }}>
         {/* Search */}
         <TextField
           size="small"
@@ -543,7 +619,6 @@ function LogsTab({ appName }: { appName: string }) {
           {paused ? 'Resume' : 'Pause'}
         </Button>
       </Stack>
-
       {/* Terminal */}
       <Card
         ref={scrollRef}
@@ -566,10 +641,20 @@ function LogsTab({ appName }: { appName: string }) {
           )}
         </CardContent>
       </Card>
-
       {/* Footer */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="caption" color="text.disabled" sx={{ fontFamily: MONO, fontSize: 11 }}>
+      <Stack
+        direction="row"
+        sx={{
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.disabled",
+            fontFamily: MONO,
+            fontSize: 11
+          }}>
           {logRows.length} entries {!paused && '· streaming'}
         </Typography>
         {selectedLevels.length > 0 && (
@@ -605,15 +690,34 @@ function MetricsGaugeCard({ title, value, suffix, color, loading }: {
   return (
     <Card variant="outlined" sx={{ flex: 1, minWidth: 120 }}>
       <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-        <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 10 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            fontSize: 10
+          }}>
           {title}
         </Typography>
         {loading ? (
           <Skeleton width={50} height={36} />
         ) : (
-          <Typography variant="h5" fontWeight={700} sx={{ color: `${color}.main`, mt: 0.25 }}>
+          <Typography
+            variant="h5"
+            sx={{
+              fontWeight: 700,
+              color: `${color}.main`,
+              mt: 0.25
+            }}>
             {value}
-            {suffix && <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>{suffix}</Typography>}
+            {suffix && <Typography
+              component="span"
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                ml: 0.5
+              }}>{suffix}</Typography>}
           </Typography>
         )}
       </CardContent>
@@ -733,7 +837,6 @@ function MetricsTab({ appName }: { appName: string }) {
   return (
     <Stack spacing={2.5}>
       {error && <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
-
       {/* Gauge cards */}
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
         <MetricsGaugeCard title="CPU" value={loading ? '—' : `${cpu}%`} color={cpu > 80 ? 'error' : cpu > 60 ? 'warning' : 'success'} loading={loading} />
@@ -741,7 +844,6 @@ function MetricsTab({ appName }: { appName: string }) {
         <MetricsGaugeCard title="Requests" value={loading ? '—' : String(requests)} color="info" loading={loading} />
         <MetricsGaugeCard title="Errors" value={loading ? '—' : String(errors)} color={errors > 0 ? 'error' : 'success'} loading={loading} />
       </Stack>
-
       {/* CPU Chart */}
       <Card variant="outlined">
         <CardHeader
@@ -750,8 +852,15 @@ function MetricsTab({ appName }: { appName: string }) {
           subheader="Last 5 minutes"
           subheaderTypographyProps={{ variant: 'caption' }}
           action={
-            <Stack direction="row" alignItems="center" spacing={0.5}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Auto</Typography>
+            <Stack direction="row" spacing={0.5} sx={{
+              alignItems: "center"
+            }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontSize: 11
+                }}>Auto</Typography>
               <IconButton size="small" onClick={() => setAutoRefresh(!autoRefresh)} sx={{ color: autoRefresh ? 'primary.main' : 'text.disabled' }}>
                 <RefreshIcon sx={{ fontSize: 16 }} />
               </IconButton>
@@ -765,14 +874,22 @@ function MetricsTab({ appName }: { appName: string }) {
           ) : cpuSeries.length > 0 ? (
             <Chart type="area" height={220} options={cpuChartOptions} series={cpuSeries} />
           ) : (
-            <Stack alignItems="center" justifyContent="center" sx={{ height: 220 }}>
-              <Typography variant="body2" color="text.disabled">No CPU time-series data available</Typography>
-              <Typography variant="caption" color="text.disabled">Metrics collection may not be active for this app</Typography>
+            <Stack
+              sx={{
+                alignItems: "center",
+                justifyContent: "center",
+                height: 220
+              }}>
+              <Typography variant="body2" sx={{
+                color: "text.disabled"
+              }}>No CPU time-series data available</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.disabled"
+              }}>Metrics collection may not be active for this app</Typography>
             </Stack>
           )}
         </CardContent>
       </Card>
-
       {/* Memory Chart */}
       <Card variant="outlined">
         <CardHeader
@@ -788,9 +905,18 @@ function MetricsTab({ appName }: { appName: string }) {
           ) : memSeries.length > 0 ? (
             <Chart type="area" height={220} options={memChartOptions} series={memSeries} />
           ) : (
-            <Stack alignItems="center" justifyContent="center" sx={{ height: 220 }}>
-              <Typography variant="body2" color="text.disabled">No memory time-series data available</Typography>
-              <Typography variant="caption" color="text.disabled">Metrics collection may not be active for this app</Typography>
+            <Stack
+              sx={{
+                alignItems: "center",
+                justifyContent: "center",
+                height: 220
+              }}>
+              <Typography variant="body2" sx={{
+                color: "text.disabled"
+              }}>No memory time-series data available</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.disabled"
+              }}>Metrics collection may not be active for this app</Typography>
             </Stack>
           )}
         </CardContent>
@@ -879,7 +1005,9 @@ export default function AppDetailPage() {
         ]}
         action={
           app ? (
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <Chip
                 label={app.status}
                 color={STATUS_COLORS[app.status] || 'default'}
@@ -907,13 +1035,11 @@ export default function AppDetailPage() {
           ) : undefined
         }
       />
-
       {error && (
         <Alert severity="error" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {loading ? (
         <Stack spacing={2}>
           <Stack direction="row" spacing={2}>

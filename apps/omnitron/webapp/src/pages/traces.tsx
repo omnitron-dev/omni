@@ -103,11 +103,23 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
 
     return (
       <Box key={span.spanId}>
-        <Stack direction="row" alignItems="center" sx={{ py: 0.25, pl: depth * 2 }}>
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "center",
+            py: 0.25,
+            pl: depth * 2
+          }}>
           <Typography variant="caption" sx={{ minWidth: 120, fontWeight: 500 }} noWrap>
             {span.serviceName}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 140 }} noWrap>
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{
+              color: "text.secondary",
+              minWidth: 140
+            }}>
             {span.operationName}
           </Typography>
           <Box sx={{ flex: 1, position: 'relative', height: 16, mx: 1 }}>
@@ -208,17 +220,17 @@ export default function TracesPage() {
           </IconButton>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Filters */}
       <Card variant="outlined">
         <CardContent>
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: "center"
+          }}>
             <SearchIcon />
             <TextField
               label="Service"
@@ -245,7 +257,6 @@ export default function TracesPage() {
           </Stack>
         </CardContent>
       </Card>
-
       <Grid container spacing={3}>
         {/* Trace List */}
         <Grid size={{ xs: 12, lg: 8 }}>
@@ -278,7 +289,9 @@ export default function TracesPage() {
                   ) : traceList.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                          color: "text.secondary"
+                        }}>
                           No traces collected yet
                         </Typography>
                       </TableCell>
@@ -295,11 +308,23 @@ export default function TracesPage() {
                                 setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)
                               }
                             >
-                              <Stack direction="row" spacing={2} alignItems="center">
-                                <Typography variant="body2" fontWeight={600} sx={{ minWidth: 100 }}>
+                              <Stack direction="row" spacing={2} sx={{
+                                alignItems: "center"
+                              }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontWeight: 600,
+                                    minWidth: 100
+                                  }}>
                                   {trace.serviceName}
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 140 }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: "text.secondary",
+                                    minWidth: 140
+                                  }}>
                                   {trace.operationName}
                                 </Typography>
                                 <Chip
@@ -309,20 +334,34 @@ export default function TracesPage() {
                                   variant="outlined"
                                   sx={{ fontFamily: 'monospace', fontSize: 11 }}
                                 />
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" sx={{
+                                  color: "text.secondary"
+                                }}>
                                   {trace.spans.length} spans
                                 </Typography>
                                 {hasErrors && (
                                   <Chip label="errors" size="small" color="error" variant="filled" sx={{ fontSize: 10, height: 18 }} />
                                 )}
-                                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto !important' }}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: "text.secondary",
+                                    ml: 'auto !important'
+                                  }}>
                                   {formatDate(trace.startTime)}
                                 </Typography>
                               </Stack>
                             </Box>
                             <Collapse in={expandedTrace === trace.traceId}>
                               <Box sx={{ px: 2, pb: 1 }}>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', mb: 1, display: 'block' }}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: "text.secondary",
+                                    fontFamily: 'monospace',
+                                    mb: 1,
+                                    display: 'block'
+                                  }}>
                                   Trace ID: {trace.traceId}
                                 </Typography>
                                 <SpanWaterfall spans={trace.spans} />
@@ -371,7 +410,9 @@ export default function TracesPage() {
                   ) : serviceMap.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} sx={{ textAlign: 'center', py: 4 }}>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{
+                          color: "text.secondary"
+                        }}>
                           No service map data
                         </Typography>
                       </TableCell>
@@ -380,7 +421,9 @@ export default function TracesPage() {
                     serviceMap.map((entry, i) => (
                       <TableRow key={i} hover>
                         <TableCell>
-                          <Typography variant="caption" fontWeight={500}>{entry.source}</Typography>
+                          <Typography variant="caption" sx={{
+                            fontWeight: 500
+                          }}>{entry.source}</Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="caption">{entry.target}</Typography>

@@ -101,20 +101,26 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: {
-          bgcolor: '#0c0c14',
-          border: '1px solid rgba(255,255,255,0.08)',
-          color: '#e2e8f0',
+      slotProps={{
+        paper: {
+          sx: {
+            bgcolor: '#0c0c14',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#e2e8f0',
+          },
         },
       }}
     >
       <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: 700 }}>
         Add Server
       </DialogTitle>
-
       <DialogContent sx={{ pt: 3 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2.5
+          }}>
           Register a new remote server to the fleet. The server must be reachable
           and have the Omnitron agent installed.
         </Typography>
@@ -233,7 +239,6 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
           />
         </Stack>
       </DialogContent>
-
       <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.06)', px: 3, py: 2 }}>
         <Button onClick={handleClose} disabled={submitting} sx={{ color: '#94a3b8', textTransform: 'none' }}>
           Cancel

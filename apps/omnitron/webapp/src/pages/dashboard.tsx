@@ -66,8 +66,16 @@ function AppStatusCard({ app }: { app: ProcessInfoDto }) {
   return (
     <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}>
       <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-          <Typography variant="subtitle2" fontWeight={700}>
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 1.5
+          }}>
+          <Typography variant="subtitle2" sx={{
+            fontWeight: 700
+          }}>
             {displayName}
           </Typography>
           <Chip
@@ -88,11 +96,22 @@ function AppStatusCard({ app }: { app: ProcessInfoDto }) {
 
         <Stack spacing={0.5}>
           {rows.map((row) => (
-            <Stack key={row.label} direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.25 }}>
-              <Typography variant="caption" color="text.secondary">
+            <Stack
+              key={row.label}
+              direction="row"
+              sx={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                py: 0.25
+              }}>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {row.label}
               </Typography>
-              <Typography variant="caption" fontWeight={600}>
+              <Typography variant="caption" sx={{
+                fontWeight: 600
+              }}>
                 {row.value}
               </Typography>
             </Stack>
@@ -102,13 +121,31 @@ function AppStatusCard({ app }: { app: ProcessInfoDto }) {
         {app.processes && app.processes.length > 0 && (
           <>
             <Divider sx={{ my: 1 }} />
-            <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+                mb: 0.5,
+                display: 'block'
+              }}>
               Processes
             </Typography>
             <Stack spacing={0.25}>
               {app.processes.map((p) => (
-                <Stack key={p.name} direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                <Stack
+                  key={p.name}
+                  direction="row"
+                  sx={{
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontSize: '0.68rem'
+                    }}>
                     {p.name}
                   </Typography>
                   <Chip
@@ -166,7 +203,13 @@ function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeSt
     <Stack spacing={3}>
       {Array.from(groups.entries()).map(([stackName, stackApps]) => (
         <Box key={stackName}>
-          <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1.5 }}>
+          <Stack
+            direction="row"
+            sx={{
+              alignItems: "center",
+              gap: 1,
+              mb: 1.5
+            }}>
             <Box
               sx={{
                 width: 8,
@@ -175,10 +218,18 @@ function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeSt
                 bgcolor: stackApps.every((a) => a.status === 'online') ? '#22c55e' : '#eab308',
               }}
             />
-            <Typography variant="subtitle2" fontWeight={700} textTransform="uppercase" letterSpacing={0.5}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: 0.5
+              }}>
               {stackName}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {stackApps.filter((a) => a.status === 'online').length}/{stackApps.length} online
             </Typography>
           </Stack>
@@ -300,7 +351,6 @@ export default function DashboardPage() {
           {error}
         </Alert>
       )}
-
       {/* Row 1: KPI Stat Cards */}
       <Grid container spacing={2.5}>
         {loading ? (
@@ -354,17 +404,20 @@ export default function DashboardPage() {
           </>
         )}
       </Grid>
-
       {/* Row 2: Application Status Grid — grouped by stack when showing all */}
       {apps.length > 0 && (
         <Box>
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              mb: 2
+            }}>
             Application Status
           </Typography>
           <AppStatusGrid apps={apps} activeStack={activeStack} />
         </Box>
       )}
-
     </Stack>
   );
 }

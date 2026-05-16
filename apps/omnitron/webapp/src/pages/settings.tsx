@@ -74,9 +74,22 @@ const cardContentSx = { p: 3, '&:last-child': { pb: 3 } } as const;
 
 function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.5 }}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" fontWeight={600} sx={mono ? { fontFamily: 'monospace', fontSize: '0.8rem' } : undefined}>
+    <Stack
+      direction="row"
+      sx={{
+        justifyContent: "space-between",
+        alignItems: "center",
+        py: 0.5
+      }}>
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>{label}</Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          fontWeight: 600,
+          ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }),
+        }}>
         {value}
       </Typography>
     </Stack>
@@ -228,7 +241,9 @@ function SessionsSection() {
         </CardContent>
       ) : sessions.length === 0 ? (
         <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-          <Typography variant="body2" color="text.secondary">No active sessions found.</Typography>
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>No active sessions found.</Typography>
         </CardContent>
       ) : (
         <TableContainer>
@@ -246,14 +261,20 @@ function SessionsSection() {
               {sessions.map((session) => (
                 <TableRow key={session.id}>
                   <TableCell>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{
+                      alignItems: "center"
+                    }}>
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{session.id.slice(0, 8)}...</Typography>
                       {session.current && <Chip label="current" size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: 10 }} />}
                     </Stack>
                   </TableCell>
                   <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{session.ipAddress ?? '--'}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" color="text.secondary">{timeAgo(session.createdAt)}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" color="text.secondary">{formatDateShort(session.expiresAt)}</Typography></TableCell>
+                  <TableCell><Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>{timeAgo(session.createdAt)}</Typography></TableCell>
+                  <TableCell><Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>{formatDateShort(session.expiresAt)}</Typography></TableCell>
                   <TableCell align="center">
                     {!session.current && (
                       <IconButton size="small" color="error" disabled={revoking === session.id} onClick={() => handleRevoke(session.id)} title="Revoke session">
@@ -286,7 +307,12 @@ function AppearanceSection() {
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         <Stack spacing={3}>
           <Box>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Theme Mode</Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                mb: 1
+              }}>Theme Mode</Typography>
             <ToggleButtonGroup value={themeMode} exclusive onChange={(_, v) => { if (v) { setThemeMode(v); localStorage.setItem(LS_THEME_MODE, v); } }} size="small" fullWidth>
               <ToggleButton value="light" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Light</ToggleButton>
               <ToggleButton value="dark" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Dark</ToggleButton>
@@ -296,12 +322,20 @@ function AppearanceSection() {
           <Divider />
           <FormControlLabel
             control={<Switch size="small" checked={sidebarCollapsed} onChange={(_, c) => { setSidebarCollapsed(c); writeLocalBool(LS_SIDEBAR_COLLAPSED, c); }} />}
-            label={<Box><Typography variant="body2" fontWeight={600}>Sidebar collapsed by default</Typography><Typography variant="caption" color="text.secondary">Start with the navigation sidebar minimized</Typography></Box>}
+            label={<Box><Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>Sidebar collapsed by default</Typography><Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Start with the navigation sidebar minimized</Typography></Box>}
             sx={{ alignItems: 'flex-start', ml: 0 }}
           />
           <FormControlLabel
             control={<Switch size="small" checked={compactDensity} onChange={(_, c) => { setCompactDensity(c); writeLocalBool(LS_COMPACT_DENSITY, c); }} />}
-            label={<Box><Typography variant="body2" fontWeight={600}>Compact density</Typography><Typography variant="caption" color="text.secondary">Reduce spacing and padding throughout the UI</Typography></Box>}
+            label={<Box><Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>Compact density</Typography><Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Reduce spacing and padding throughout the UI</Typography></Box>}
             sx={{ alignItems: 'flex-start', ml: 0 }}
           />
         </Stack>
@@ -337,18 +371,37 @@ function NotificationsSection() {
         <Stack spacing={3}>
           <FormControlLabel
             control={<Switch size="small" checked={desktopNotifications} onChange={handleDesktopToggle} disabled={permissionState === 'denied'} />}
-            label={<Box><Typography variant="body2" fontWeight={600}>Desktop notifications</Typography><Typography variant="caption" color="text.secondary">{permissionState === 'denied' ? 'Blocked by browser — enable in site settings' : permissionState === 'unsupported' ? 'Not supported' : 'Show browser notifications for alerts'}</Typography></Box>}
+            label={<Box><Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>Desktop notifications</Typography><Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>{permissionState === 'denied' ? 'Blocked by browser — enable in site settings' : permissionState === 'unsupported' ? 'Not supported' : 'Show browser notifications for alerts'}</Typography></Box>}
             sx={{ alignItems: 'flex-start', ml: 0 }}
           />
           <FormControlLabel
             control={<Switch size="small" checked={soundAlerts} onChange={(_, c) => { setSoundAlerts(c); writeLocalBool(LS_SOUND_ALERTS, c); }} />}
-            label={<Box><Typography variant="body2" fontWeight={600}>Sound alerts</Typography><Typography variant="caption" color="text.secondary">Play audio cue on critical alerts</Typography></Box>}
+            label={<Box><Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>Sound alerts</Typography><Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Play audio cue on critical alerts</Typography></Box>}
             sx={{ alignItems: 'flex-start', ml: 0 }}
           />
           <Divider />
           <Box>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Minimum alert severity</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>Only receive notifications at or above this level</Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                mb: 1
+              }}>Minimum alert severity</Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                mb: 1.5,
+                display: 'block'
+              }}>Only receive notifications at or above this level</Typography>
             <FormControl size="small" fullWidth>
               <Select value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); localStorage.setItem(LS_ALERT_SEVERITY, e.target.value); }}>
                 <MenuItem value="info">Info</MenuItem>

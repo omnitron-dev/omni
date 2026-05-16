@@ -104,9 +104,7 @@ function AppOverview({ data }: { data: AppNodeData }) {
           </>
         )}
       </Stack>
-
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-
       {/* Info rows */}
       <InfoRow label="Status">
         <Chip
@@ -128,7 +126,6 @@ function AppOverview({ data }: { data: AppNodeData }) {
       <InfoRow label="Instances">{data.instances}</InfoRow>
       <InfoRow label="Uptime">{formatUptime(data.uptime)}</InfoRow>
       <InfoRow label="Restarts">{data.restarts}</InfoRow>
-
       {isOnline && (
         <>
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
@@ -137,14 +134,18 @@ function AppOverview({ data }: { data: AppNodeData }) {
             <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Resources
             </Typography>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <Typography variant="caption" sx={{ fontSize: 12, color: '#94a3b8', width: 60 }}>CPU</Typography>
               <Box sx={{ flex: 1, ...miniBarSx(data.cpu, data.cpu > 80 ? '#ef4444' : '#22c55e', 6) }} />
               <Typography variant="caption" sx={{ fontSize: 12, color: '#e2e8f0', width: 50, textAlign: 'right' }}>
                 {data.cpu.toFixed(1)}%
               </Typography>
             </Stack>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <Typography variant="caption" sx={{ fontSize: 12, color: '#94a3b8', width: 60 }}>Memory</Typography>
               <Box sx={{ flex: 1, ...miniBarSx(Math.min(100, (data.memory / (512 * 1024 * 1024)) * 100), '#3b82f6', 6) }} />
               <Typography variant="caption" sx={{ fontSize: 12, color: '#e2e8f0', width: 50, textAlign: 'right' }}>
@@ -154,7 +155,6 @@ function AppOverview({ data }: { data: AppNodeData }) {
           </Stack>
         </>
       )}
-
       {/* Sub-processes */}
       {data.processes && data.processes.length > 0 && (
         <>
@@ -165,7 +165,9 @@ function AppOverview({ data }: { data: AppNodeData }) {
           {data.processes.map((proc) => {
             const pc = getStatusColor(proc.status);
             return (
-              <Stack key={proc.name} direction="row" alignItems="center" spacing={1}>
+              <Stack key={proc.name} direction="row" spacing={1} sx={{
+                alignItems: "center"
+              }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: pc, flexShrink: 0 }} />
                 <Typography variant="body2" sx={{ flex: 1, fontSize: 13 }}>{proc.name}</Typography>
                 <Chip
@@ -285,7 +287,12 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
           <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Applications
           </Typography>
-          <Stack direction="row" flexWrap="wrap" gap={0.5}>
+          <Stack
+            direction="row"
+            sx={{
+              flexWrap: "wrap",
+              gap: 0.5
+            }}>
             {data.apps.map((a) => (
               <Chip key={a} label={a} size="small" sx={{ height: 22, fontSize: 11, bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }} />
             ))}
@@ -330,7 +337,11 @@ function LogsTab({ appName }: { appName?: string }) {
   }
 
   if (logEntries.length === 0) {
-    return <Typography variant="body2" color="text.secondary">No recent logs.</Typography>;
+    return (
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>No recent logs.</Typography>
+    );
   }
 
   return (
@@ -400,7 +411,11 @@ function ConfigTab({ appName }: { appName: string }) {
   }
 
   if (!config) {
-    return <Typography variant="body2" color="text.secondary">Could not load configuration.</Typography>;
+    return (
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>Could not load configuration.</Typography>
+    );
   }
 
   return (
@@ -454,7 +469,12 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             CPU Usage
           </Typography>
@@ -464,9 +484,13 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
         </Stack>
         <MiniSparkline data={cpuHistory} maxValue={100} color="#22c55e" warnColor="#f59e0b" dangerColor="#ef4444" />
       </Stack>
-
       <Stack spacing={1}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Memory Usage
           </Typography>
@@ -483,7 +507,6 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
           formatValue={(v) => `${v.toFixed(0)}MB`}
         />
       </Stack>
-
       {cpuHistory.length < 3 && (
         <Typography variant="caption" sx={{ color: '#475569', textAlign: 'center', pt: 1 }}>
           Collecting samples... metrics will populate over the next few seconds.
@@ -619,17 +642,21 @@ export function DetailPanel() {
       {/* Header */}
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
         sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
           px: 2.5,
           py: 2,
           borderBottom: '1px solid rgba(255,255,255,0.06)',
-          bgcolor: 'rgba(0,0,0,0.2)',
-        }}
-      >
+          bgcolor: 'rgba(0,0,0,0.2)'
+        }}>
         <Stack spacing={0.25}>
-          <Typography variant="h6" fontWeight={700} sx={{ fontSize: 16 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              fontSize: 16
+            }}>
             {data.label}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'capitalize' }}>
@@ -640,7 +667,6 @@ export function DetailPanel() {
           <CloseIcon />
         </IconButton>
       </Stack>
-
       {/* Tabs */}
       <Tabs
         value={tab}
@@ -665,7 +691,6 @@ export function DetailPanel() {
         {isApp && <Tab label="Metrics" />}
         <Tab label="Logs" />
       </Tabs>
-
       {/* Tab Content */}
       <Box sx={{ px: 2.5, overflow: 'auto', flex: 1 }}>
         <TabPanel value={tab} index={0}>
@@ -705,7 +730,12 @@ export function DetailPanel() {
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <Stack direction="row" alignItems="center" justifyContent="space-between">
+    <Stack
+      direction="row"
+      sx={{
+        alignItems: "center",
+        justifyContent: "space-between"
+      }}>
       <Typography variant="caption" sx={{ color: '#64748b', fontSize: 12 }}>
         {label}
       </Typography>

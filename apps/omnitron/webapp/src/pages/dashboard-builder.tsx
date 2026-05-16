@@ -168,7 +168,11 @@ function useTimeSeriesHistory(apps: ProcessInfoDto[], refreshKey: number, metric
 function DaemonInfoPanel({ data }: { data: DaemonData }) {
   const theme = useTheme();
   if (data.loading) return <Skeleton variant="rectangular" height={120} />;
-  if (!data.status) return <Typography variant="body2" color="text.secondary">Daemon offline</Typography>;
+  if (!data.status) return (
+    <Typography variant="body2" sx={{
+      color: "text.secondary"
+    }}>Daemon offline</Typography>
+  );
 
   const { status } = data;
   const onlineApps = data.apps.filter((a) => a.status === 'online').length;
@@ -183,14 +187,31 @@ function DaemonInfoPanel({ data }: { data: DaemonData }) {
 
   return (
     <Stack spacing={0.75}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "center",
+          mb: 0.5
+        }}>
         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.success.main }} />
-        <Typography variant="caption" fontWeight={600} color="success.main">RUNNING</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 600,
+            color: "success.main"
+          }}>RUNNING</Typography>
       </Stack>
       {rows.map((r) => (
-        <Stack key={r.label} direction="row" justifyContent="space-between">
-          <Typography variant="caption" color="text.secondary">{r.label}</Typography>
-          <Typography variant="caption" fontWeight={600}>{r.value}</Typography>
+        <Stack key={r.label} direction="row" sx={{
+          justifyContent: "space-between"
+        }}>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{r.label}</Typography>
+          <Typography variant="caption" sx={{
+            fontWeight: 600
+          }}>{r.value}</Typography>
         </Stack>
       ))}
     </Stack>
@@ -210,17 +231,34 @@ function AppGridPanel({ data }: { data: DaemonData }) {
           : theme.palette.text.disabled;
 
         return (
-          <Stack key={app.name} direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.5 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack
+            key={app.name}
+            direction="row"
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              py: 0.5
+            }}>
+            <Stack direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color }} />
-              <Typography variant="body2" fontWeight={500}>{app.name}</Typography>
+              <Typography variant="body2" sx={{
+                fontWeight: 500
+              }}>{app.name}</Typography>
             </Stack>
-            <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Stack direction="row" spacing={1.5} sx={{
+              alignItems: "center"
+            }}>
               {app.cpu > 0 && (
-                <Typography variant="caption" color="text.secondary">{app.cpu.toFixed(1)}%</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>{app.cpu.toFixed(1)}%</Typography>
               )}
               {app.memory > 0 && (
-                <Typography variant="caption" color="text.secondary">{formatMemory(app.memory)}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>{formatMemory(app.memory)}</Typography>
               )}
               <Chip
                 label={app.status}
@@ -238,7 +276,9 @@ function AppGridPanel({ data }: { data: DaemonData }) {
         );
       })}
       {data.apps.length === 0 && (
-        <Typography variant="caption" color="text.secondary">No applications configured</Typography>
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>No applications configured</Typography>
       )}
     </Stack>
   );
@@ -288,8 +328,12 @@ function TimeSeriesChartPanel({
   if (history.length < 2) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
-        <Stack alignItems="center" spacing={1}>
-          <Typography variant="caption" color="text.secondary">Collecting data...</Typography>
+        <Stack spacing={1} sx={{
+          alignItems: "center"
+        }}>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>Collecting data...</Typography>
           <LinearProgress sx={{ width: 120 }} />
         </Stack>
       </Box>
@@ -352,10 +396,23 @@ function StatPanel({ data, config }: { data: DaemonData; config: Record<string, 
 
   return (
     <Box sx={{ textAlign: 'center', py: 1.5 }}>
-      <Typography variant="h3" fontWeight={800} sx={{ color, lineHeight: 1.2 }}>
+      <Typography
+        variant="h3"
+        sx={{
+          fontWeight: 800,
+          color,
+          lineHeight: 1.2
+        }}>
         {value}
       </Typography>
-      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: 0.5
+        }}>
         {label}
       </Typography>
     </Box>
@@ -391,12 +448,31 @@ function AlertSummaryPanel() {
   return (
     <Stack spacing={1}>
       {items.map((item) => (
-        <Stack key={item.label} direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.5, px: 1, borderRadius: 1, bgcolor: alpha(item.color, 0.06) }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
+        <Stack
+          key={item.label}
+          direction="row"
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between",
+            py: 0.5,
+            px: 1,
+            borderRadius: 1,
+            bgcolor: alpha(item.color, 0.06)
+          }}>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color }} />
-            <Typography variant="body2" fontWeight={500}>{item.label}</Typography>
+            <Typography variant="body2" sx={{
+              fontWeight: 500
+            }}>{item.label}</Typography>
           </Stack>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ color: item.color }}>{item.count}</Typography>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 700,
+              color: item.color
+            }}>{item.count}</Typography>
         </Stack>
       ))}
     </Stack>
@@ -413,7 +489,9 @@ function RecentErrorsPanel({ data }: { data: DaemonData }) {
   if (erroredApps.length === 0 && restartCount === 0) {
     return (
       <Box sx={{ py: 3, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">No errors or restarts</Typography>
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>No errors or restarts</Typography>
       </Box>
     );
   }
@@ -421,14 +499,33 @@ function RecentErrorsPanel({ data }: { data: DaemonData }) {
   return (
     <Stack spacing={0.5}>
       {erroredApps.map((app) => (
-        <Stack key={app.name} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5, px: 1, borderRadius: 1, bgcolor: alpha(theme.palette.error.main, 0.06) }}>
+        <Stack
+          key={app.name}
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            py: 0.5,
+            px: 1,
+            borderRadius: 1,
+            bgcolor: alpha(theme.palette.error.main, 0.06)
+          }}>
           <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: theme.palette.error.main }} />
-          <Typography variant="caption" fontWeight={600}>{app.name}</Typography>
-          <Typography variant="caption" color="text.secondary">{app.status}</Typography>
+          <Typography variant="caption" sx={{
+            fontWeight: 600
+          }}>{app.name}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{app.status}</Typography>
         </Stack>
       ))}
       {restartCount > 0 && (
-        <Typography variant="caption" color="warning.main" sx={{ pt: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "warning.main",
+            pt: 0.5
+          }}>
           {restartCount} total restart{restartCount !== 1 ? 's' : ''} across all apps
         </Typography>
       )}
@@ -449,7 +546,11 @@ function PanelRenderer({ panel, data, refreshKey }: { panel: DashboardPanel; dat
     case 'stat': return <StatPanel data={data} config={panel.config} />;
     case 'alert-summary': return <AlertSummaryPanel />;
     case 'recent-errors': return <RecentErrorsPanel data={data} />;
-    default: return <Typography variant="body2" color="text.secondary">Unknown panel type</Typography>;
+    default: return (
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>Unknown panel type</Typography>
+    );
   }
 }
 
@@ -540,8 +641,12 @@ function AddPanelDialog({ open, onClose, onAdd }: { open: boolean; onClose: () =
             {PANEL_TYPES.map((pt) => (
               <MenuItem key={pt.value} value={pt.value}>
                 <Stack>
-                  <Typography variant="body2" fontWeight={600}>{pt.label}</Typography>
-                  <Typography variant="caption" color="text.secondary">{pt.description}</Typography>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 600
+                  }}>{pt.label}</Typography>
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>{pt.description}</Typography>
                 </Stack>
               </MenuItem>
             ))}
@@ -649,8 +754,12 @@ export default function DashboardBuilderPage() {
       <Breadcrumbs
         links={[{ name: 'Dashboard Builder' }]}
         action={
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="caption" color="text.secondary">Auto-refresh</Typography>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Auto-refresh</Typography>
             <Switch size="small" checked={autoRefresh} onChange={(_, checked) => setAutoRefresh(checked)} />
             <Tooltip title="Refresh now">
               <IconButton size="small" onClick={() => setRefreshKey((k) => k + 1)}>
@@ -660,9 +769,14 @@ export default function DashboardBuilderPage() {
           </Stack>
         }
       />
-
       {/* Dashboard Tabs */}
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         {dashboards.map((d) => (
           <Chip
             key={d.id}
@@ -682,7 +796,6 @@ export default function DashboardBuilderPage() {
           New
         </Button>
       </Stack>
-
       {/* Panels Grid */}
       {currentDashboard && (
         <Grid container spacing={2.5}>
@@ -697,8 +810,23 @@ export default function DashboardBuilderPage() {
                   '&:hover': { boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.2)}` },
                 }}
               >
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, pt: 1.5, pb: 0 }}>
-                  <Typography variant="caption" fontWeight={700} color="text.secondary" textTransform="uppercase" letterSpacing={0.5}>
+                <Stack
+                  direction="row"
+                  sx={{
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    px: 2,
+                    pt: 1.5,
+                    pb: 0
+                  }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 700,
+                      color: "text.secondary",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5
+                    }}>
                     {panel.title}
                   </Typography>
                   <IconButton size="small" onClick={() => handleRemovePanel(panel.id)} sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}>
@@ -730,9 +858,16 @@ export default function DashboardBuilderPage() {
               }}
               onClick={() => setAddDialogOpen(true)}
             >
-              <Stack alignItems="center" spacing={0.5}>
+              <Stack spacing={0.5} sx={{
+                alignItems: "center"
+              }}>
                 <PlusIcon sx={{ fontSize: 20, color: 'text.disabled' }} />
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    fontWeight: 600
+                  }}>
                   Add Panel
                 </Typography>
               </Stack>
@@ -740,7 +875,6 @@ export default function DashboardBuilderPage() {
           </Grid>
         </Grid>
       )}
-
       <AddPanelDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onAdd={handleAddPanel} />
     </Stack>
   );

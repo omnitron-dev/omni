@@ -36,15 +36,16 @@ export function getGreyChannel(theme: Theme, shade: '500' | '900' = '500'): stri
  * re-mount; the fallback covers SSR and theme-without-vars paths.
  *
  * Path is dotted, e.g. `'text.primary'`, `'action.disabled'`,
- * `'grey.500'`. Returns the resolved string. Returns `undefined`
- * only when both branches are missing — callers should treat that
- * as a `theme.palette` shape error.
+ * `'grey.500'`, `'divider'`. Always returns a string — when neither
+ * branch resolves to a string (path typo or missing palette token)
+ * returns `''`, which CSS treats as "no-op" so a broken token never
+ * breaks layout, just produces a missing colour.
  *
  * This replaces the verbose `theme.vars?.palette.X.Y || theme.palette.X.Y`
  * chain used throughout component overrides — one helper, one
- * fallback rule, type-safe-at-call-site through generics.
+ * fallback rule, two code lines collapse to one.
  */
-export function paletteVar(theme: Theme, path: string): string | undefined {
+export function paletteVar(theme: Theme, path: string): string {
   const segments = path.split('.');
   const fromVars = (theme.vars?.palette as unknown as Record<string, unknown> | undefined) ?? undefined;
   const fromFallback = theme.palette as unknown as Record<string, unknown>;
@@ -53,8 +54,11 @@ export function paletteVar(theme: Theme, path: string): string | undefined {
       (acc, key) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key] : undefined),
       obj,
     );
-  const v = walk(fromVars) ?? walk(fromFallback);
-  return typeof v === 'string' ? v : undefined;
+  const fromVarsVal = walk(fromVars);
+  if (typeof fromVarsVal === 'string') return fromVarsVal;
+  const fromFallbackVal = walk(fromFallback);
+  if (typeof fromFallbackVal === 'string') return fromFallbackVal;
+  return '';
 }
 
 /**

@@ -23,7 +23,7 @@ export type I18nText = Record<string, string | undefined>;
 
 /** Object shape that carries both a localised bag and a legacy
  * scalar field as final fallback — the canonical wire format for
- * DAOS categories, achievements etc. */
+ * categories, achievements etc. */
 export interface I18nResolvable {
   /** Bilingual / multilingual bag. */
   nameI18n?: I18nText | null;

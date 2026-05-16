@@ -26,7 +26,7 @@
  *
  *
  * // backend (apps/main/src/modules/auth/auth.rpc-service.ts):
- * import { AuthService } from '@daos/main/dto';
+ * import { AuthService } from '@project/main/dto';
  *
  * @Service(AuthService)        // accepts ServiceDescriptor — name + version come from it
  * class AuthRpcService implements IAuthService { ... }

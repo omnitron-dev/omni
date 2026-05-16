@@ -1,5 +1,5 @@
 /**
- * `runMigrationCli` — turnkey migration CLI for daos backends.
+ * `runMigrationCli` — turnkey migration CLI for backends.
  *
  * Each app's `migrate.ts` reduces to:
  *

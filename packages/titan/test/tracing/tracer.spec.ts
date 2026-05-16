@@ -3,7 +3,7 @@
  *
  * The audit's T#73 entry calls out that the platform had NO way to
  * correlate work across RPC hops: a request that fans out main → storage
- * → daos produced three independent log streams, and reconstructing the
+ * → produced three independent log streams, and reconstructing the
  * causal chain required eyeballing timestamps. The fix introduces a
  * minimal `TraceContext` (W3C-aligned) with `AsyncLocalStorage`-backed
  * propagation. This file pins the invariants the foundation MUST hold so

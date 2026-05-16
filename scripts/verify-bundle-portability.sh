@@ -13,7 +13,7 @@
 #
 # When no PATH is given, scans the standard locations:
 #   apps/*/.omnitron-build, packages/*/.omnitron-build,
-#   and the developer's project tree at /Users/taaliman/projects/dao/daos.
+#   and the developer's project tree at /Users/taaliman/projects.
 #
 # Exit codes:
 #   0 — clean

@@ -20,8 +20,6 @@ import type { ComponentsConfig } from '../../types/theme.js';
 import { iconButtonClasses } from '@mui/material/IconButton';
 import { accordionClasses } from '@mui/material/Accordion';
 import { accordionSummaryClasses } from '@mui/material/AccordionSummary';
-import { autocompleteClasses } from '@mui/material/Autocomplete';
-import { svgIconClasses } from '@mui/material/SvgIcon';
 import { tableRowClasses } from '@mui/material/TableRow';
 import { tableCellClasses } from '@mui/material/TableCell';
 import { stepIconClasses } from '@mui/material/StepIcon';
@@ -50,6 +48,11 @@ import {
   createFormLabelOverrides,
 } from './FormControls.js';
 import { createTabsOverrides, createTabOverrides } from './Tabs.js';
+import { createDialogOverrides } from './Dialog.js';
+import { createCardOverrides } from './Card.js';
+import { createAutocompleteOverrides } from './Autocomplete.js';
+import { createDataGridOverrides } from './DataGrid.js';
+import { createDatePickerOverrides } from './DatePicker.js';
 
 // =============================================================================
 // MAIN EXPORT
@@ -151,101 +154,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         },
       },
     },
-    MuiAutocomplete: {
-      styleOverrides: {
-        paper: ({ theme }) => ({
-          borderRadius,
-          boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.24), -20px 20px 40px -4px rgba(${getGreyChannel(theme)} / 0.24)`,
-        }),
-        listbox: {
-          padding: 4,
-        },
-        option: ({ theme }) => ({
-          borderRadius: borderRadius - 2,
-          margin: 2,
-          [`&.${autocompleteClasses.focused}`]: {
-            backgroundColor: paletteVar(theme, "action.hover"),
-          },
-          '&[aria-selected="true"]': {
-            backgroundColor: paletteVar(theme, "action.selected"),
-            fontWeight: 500,
-            [`&.${autocompleteClasses.focused}`]: {
-              backgroundColor: paletteVar(theme, "action.hover"),
-            },
-          },
-        }),
-        popupIndicator: {
-          [`& .${svgIconClasses.root}`]: {
-            fontSize: 20,
-          },
-        },
-        clearIndicator: {
-          [`& .${svgIconClasses.root}`]: {
-            fontSize: 18,
-          },
-        },
-      },
-    },
+    MuiAutocomplete: createAutocompleteOverrides(config),
 
     // =========================================================================
-    // CARDS
+    // CARDS — modularized in ./Card.ts
     // =========================================================================
-    MuiCard: {
-      defaultProps: {
-        elevation: 0,
-      },
-      styleOverrides: {
-        root: ({ theme }) => ({
-          position: 'relative',
-          zIndex: 0, // Safari stacking context fix
-          borderRadius: borderRadius * 1.5,
-          border: `1px solid ${paletteVar(theme, "divider")}`,
-          backgroundImage: 'none',
-          boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.2), 0 12px 24px -4px rgba(${getGreyChannel(theme)} / 0.12)`,
-        }),
-      },
-    },
-    MuiCardHeader: {
-      defaultProps: {
-        slotProps: {
-          title: { variant: 'h6' },
-          subheader: { variant: 'body2' }
-        }
-      },
-      styleOverrides: {
-        root: {
-          padding: `${16 * dm}px ${20 * dm}px`,
-        },
-        title: ({ theme }) => ({
-          fontSize: theme.typography.pxToRem(16),
-          fontWeight: 600,
-          lineHeight: 1.5,
-        }),
-        subheader: ({ theme }) => ({
-          fontSize: theme.typography.pxToRem(14),
-          lineHeight: 22 / 14,
-          color: paletteVar(theme, "text.secondary"),
-        }),
-      },
-    },
-    MuiCardContent: {
-      styleOverrides: {
-        root: {
-          padding: `${16 * dm}px ${20 * dm}px`,
-          '&:last-child': {
-            paddingBottom: 16 * dm,
-          },
-        },
-      },
-    },
-    MuiCardActions: {
-      styleOverrides: {
-        root: {
-          padding: `${12 * dm}px ${20 * dm}px`,
-          gap: 8,
-        },
-      },
-    },
+    ...createCardOverrides(config),
 
     // =========================================================================
     // PAPER & SURFACES
@@ -283,71 +197,9 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
 
     // =========================================================================
-    // DIALOGS
+    // DIALOGS — modularized in ./Dialog.ts
     // =========================================================================
-    MuiDialog: {
-      styleOverrides: {
-        paper: ({ theme }) => ({
-          boxShadow: `0 24px 48px -12px rgba(${getGreyChannel(theme, '900')} / 0.24)`,
-          variants: [
-            // Mobile-first: any dialog (non-fullScreen included) goes
-            // edge-to-edge on < sm. MUI's `maxWidth`/`fullWidth` props
-            // attach their own paper-sizing rules at the same
-            // specificity tier, so we used to need `!important` to
-            // beat them. Encoding the same rule as a `variants` entry
-            // lets MUI's styled engine compose it correctly and the
-            // !important comes out — same final visual.
-            {
-              props: () => true,
-              style: {
-                [theme.breakpoints.down('sm')]: {
-                  margin: 0,
-                  width: '100%',
-                  maxWidth: 'none',
-                  maxHeight: 'none',
-                  height: '100%',
-                  borderRadius: 0,
-                },
-              },
-            },
-            {
-              props: (props: Record<string, unknown>) => !props.fullScreen,
-              style: {
-                borderRadius: borderRadius * 2,
-                [theme.breakpoints.up('sm')]: {
-                  margin: theme.spacing(2),
-                },
-              },
-            },
-          ],
-        }),
-      },
-    },
-    MuiDialogTitle: {
-      styleOverrides: {
-        root: ({ theme }) => ({
-          padding: `${20 * dm}px ${24 * dm}px`,
-          fontSize: theme.typography.pxToRem(18),
-          fontWeight: 600,
-          lineHeight: 28 / 18,
-        }),
-      },
-    },
-    MuiDialogContent: {
-      styleOverrides: {
-        root: {
-          padding: `${16 * dm}px ${24 * dm}px`,
-        },
-      },
-    },
-    MuiDialogActions: {
-      styleOverrides: {
-        root: {
-          padding: `${16 * dm}px ${24 * dm}px`,
-          gap: 8,
-        },
-      },
-    },
+    ...createDialogOverrides(config),
 
     // =========================================================================
     // NAVIGATION
@@ -1127,118 +979,14 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
 
     // =========================================================================
-    // DATA GRID (MUI X)
+    // DATA GRID (MUI X) — modularized in ./DataGrid.ts
     // =========================================================================
-    MuiDataGrid: {
-      styleOverrides: {
-        root: ({ theme }: { theme: Theme }) => ({
-          border: 'none',
-          borderRadius,
-          '--DataGrid-containerBackground': theme.vars?.palette.background.neutral || theme.palette.grey[50],
-          '--DataGrid-pinnedBackground': paletteVar(theme, "background.paper"),
-          '& .MuiDataGrid-columnHeaders': {
-            borderBottom: `1px solid ${paletteVar(theme, "divider")}`,
-          },
-          '& .MuiDataGrid-columnHeader': {
-            fontWeight: 600,
-            fontSize: theme.typography.pxToRem(14),
-            color: paletteVar(theme, "text.secondary"),
-            '&:focus, &:focus-within': {
-              outline: 'none',
-            },
-          },
-          '& .MuiDataGrid-cell': {
-            borderBottom: `1px solid rgba(${getGreyChannel(theme)} / 0.12)`,
-            '&:focus, &:focus-within': {
-              outline: 'none',
-            },
-          },
-          '& .MuiDataGrid-row': {
-            '&:hover': {
-              backgroundColor: paletteVar(theme, "action.hover"),
-            },
-            '&.Mui-selected': {
-              backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.08)`,
-              '&:hover': {
-                backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.12)`,
-              },
-            },
-          },
-          '& .MuiDataGrid-footerContainer': {
-            borderTop: `1px solid ${paletteVar(theme, "divider")}`,
-          },
-          '& .MuiDataGrid-selectedRowCount': {
-            whiteSpace: 'nowrap',
-          },
-          '& .MuiDataGrid-toolbarContainer': {
-            padding: theme.spacing(1.5, 1.5, 0.5),
-            gap: theme.spacing(1),
-          },
-          '& .MuiDataGrid-columnSeparator': {
-            color: paletteVar(theme, "divider"),
-          },
-        }),
-      },
-    },
+    MuiDataGrid: createDataGridOverrides(config),
 
     // =========================================================================
-    // DATE/TIME PICKERS (MUI X)
+    // DATE/TIME PICKERS (MUI X) — modularized in ./DatePicker.ts
     // =========================================================================
-    MuiDatePicker: {
-      defaultProps: {
-        slotProps: {
-          openPickerButton: {
-            size: density === 'compact' ? 'small' : 'medium',
-          },
-        },
-      },
-    },
-    MuiPickersLayout: {
-      styleOverrides: {
-        root: ({ theme }: { theme: Theme }) => ({
-          '& .MuiPickersLayout-actionBar': {
-            padding: theme.spacing(1, 2),
-          },
-        }),
-      },
-    },
-    MuiPickersDay: {
-      styleOverrides: {
-        root: ({ theme }: { theme: Theme }) => ({
-          borderRadius: borderRadius - 2,
-          fontWeight: 400,
-          '&.Mui-selected': {
-            fontWeight: 600,
-          },
-        }),
-        today: ({ theme }: { theme: Theme }) => ({
-          borderColor: paletteVar(theme, "primary.main"),
-          '&:not(.Mui-selected)': {
-            backgroundColor: 'transparent',
-          },
-        }),
-      },
-    },
-    MuiPickersYear: {
-      styleOverrides: {
-        yearButton: ({ theme }: { theme: Theme }) => ({
-          borderRadius,
-          '&.Mui-selected': {
-            fontWeight: 600,
-          },
-        }),
-      },
-    },
-    MuiPickersMonth: {
-      styleOverrides: {
-        monthButton: ({ theme }: { theme: Theme }) => ({
-          borderRadius,
-          '&.Mui-selected': {
-            fontWeight: 600,
-          },
-        }),
-      },
-    },
+    ...createDatePickerOverrides(config),
 
     // =========================================================================
     // TREE VIEW (MUI X)

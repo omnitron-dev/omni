@@ -712,6 +712,21 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         }),
       },
     },
+    MuiAlertTitle: {
+      // The title slot in Alert was unstyled — defaulted to MUI's
+      // generic Typography preset and stuck out vs the Alert body
+      // text, especially at compact density where 14/16 became
+      // 13/14 around it. Pin to a slightly larger weight with the
+      // alert's own colour inheritance.
+      styleOverrides: {
+        root: ({ theme }) => ({
+          fontWeight: 600,
+          fontSize: theme.typography.pxToRem(14),
+          marginBottom: theme.spacing(0.5),
+          lineHeight: 1.5,
+        }),
+      },
+    },
     MuiSnackbar: {
       styleOverrides: {
         root: {
@@ -727,6 +742,14 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           borderRadius: 4,
           height: 6,
         },
+      },
+    },
+    MuiCircularProgress: {
+      // Density-aware default size — the bare MUI default is 40px,
+      // which dwarfs adornments / inline loaders at compact density.
+      // Consumers can still override per-instance.
+      defaultProps: {
+        size: density === 'compact' ? 20 : density === 'comfortable' ? 32 : 24,
       },
     },
 
@@ -836,6 +859,20 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     // =========================================================================
     // LISTS
     // =========================================================================
+    MuiList: {
+      // Default MUI list padding is 8/0/8/0 — fine for spacious lists
+      // but it stacks awkwardly with our ListItemButton's `margin: 2`
+      // (the first/last buttons end up indented away from the
+      // container edge). Density-aware top/bottom keeps the seam tight
+      // while leaving the side at 0 so the row hover bleed reaches
+      // the container border.
+      styleOverrides: {
+        root: {
+          paddingTop: density === 'compact' ? 4 : 8,
+          paddingBottom: density === 'compact' ? 4 : 8,
+        },
+      },
+    },
     MuiListItemButton: {
       styleOverrides: {
         root: ({ theme }) => ({
@@ -856,6 +893,28 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: {
           minWidth: 40,
         },
+      },
+    },
+    MuiListItemText: {
+      // Multiline rows (primary + secondary) inherited MUI defaults
+      // that left an awkward 6px gap between the two lines at any
+      // density. Tighten the inter-line gap and reduce horizontal
+      // padding so dense rows actually FEEL dense.
+      styleOverrides: {
+        root: {
+          marginTop: 0,
+          marginBottom: 0,
+        },
+        primary: ({ theme }) => ({
+          fontSize: theme.typography.pxToRem(density === 'compact' ? 13 : 14),
+          fontWeight: 500,
+          lineHeight: 1.5,
+        }),
+        secondary: ({ theme }) => ({
+          fontSize: theme.typography.pxToRem(density === 'compact' ? 12 : 13),
+          lineHeight: 1.5,
+          color: theme.vars?.palette.text.secondary || theme.palette.text.secondary,
+        }),
       },
     },
 

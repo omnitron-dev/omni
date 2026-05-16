@@ -84,9 +84,19 @@ export const ContentRoot = styled('div')(({ theme }) => ({
     marginBottom: '1.25rem',
     '& > li': {
       lineHeight: 2,
+      // Markdown wraps every list-item body in a `<p>`. With
+      // `display: inline-block` (the previous setting), Chromium
+      // refuses to render the `<li>`'s ::marker at all — the
+      // disc/decimal vanishes and the list looks like a series of
+      // bullet-less paragraphs. `display: inline` collapses the
+      // `<p>` into inline flow so the marker positions normally;
+      // `margin: 0` keeps the LI height tight against the marker
+      // baseline. Multi-paragraph list items (rare here, but
+      // possible) still render — subsequent `<p>` siblings get a
+      // line break by the inline-flow rules.
       '& > p': {
         margin: 0,
-        display: 'inline-block',
+        display: 'inline',
       },
     },
   },

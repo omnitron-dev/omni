@@ -63,14 +63,15 @@ export function ImageBlock({ editor, icon }: ImageBlockProps) {
         <TextField
           fullWidth
           size="small"
-          placeholder="Image URL"
+          label="Image URL"
+          placeholder="https://"
           value={state.imageUrl}
           onChange={(e) => setState((prev) => ({ ...prev, imageUrl: e.target.value }))}
         />
         <TextField
           fullWidth
           size="small"
-          placeholder="Alt text"
+          label="Alt text"
           value={state.altText}
           onChange={(e) => setState((prev) => ({ ...prev, altText: e.target.value }))}
         />

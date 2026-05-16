@@ -233,13 +233,11 @@ export default function DeploymentsPage() {
           </Stack>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Deployments Table */}
       <Card variant="outlined">
         <TableContainer>
@@ -270,7 +268,9 @@ export default function DeploymentsPage() {
               ) : deployments.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No deployments yet
                     </Typography>
                   </TableCell>
@@ -283,7 +283,9 @@ export default function DeploymentsPage() {
                     sx={{ '&:last-child td': { borderBottom: 0 } }}
                   >
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>
                         {dep.app}
                       </Typography>
                     </TableCell>
@@ -298,9 +300,11 @@ export default function DeploymentsPage() {
                     <TableCell>
                       <Typography
                         variant="caption"
-                        color="text.secondary"
-                        sx={{ fontFamily: 'monospace', fontSize: 12 }}
-                      >
+                        sx={{
+                          color: "text.secondary",
+                          fontFamily: 'monospace',
+                          fontSize: 12
+                        }}>
                         {dep.previousVersion || '--'}
                       </Typography>
                     </TableCell>
@@ -322,7 +326,9 @@ export default function DeploymentsPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                      }}>
                         {formatDate(dep.startedAt)}
                       </Typography>
                     </TableCell>
@@ -332,7 +338,9 @@ export default function DeploymentsPage() {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                      }}>
                         {dep.deployedBy}
                       </Typography>
                     </TableCell>
@@ -343,7 +351,6 @@ export default function DeploymentsPage() {
           </Table>
         </TableContainer>
       </Card>
-
       {/* Deploy Dialog */}
       <DeployDialog
         open={dialogOpen}

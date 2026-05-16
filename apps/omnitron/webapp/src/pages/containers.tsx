@@ -84,9 +84,17 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
           <Stack spacing={0.5}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {title}
             </Typography>
             {loading ? (
@@ -258,13 +266,11 @@ export default function ContainersPage() {
           </IconButton>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Summary Cards */}
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -304,7 +310,6 @@ export default function ContainersPage() {
           />
         </Grid>
       </Grid>
-
       {/* Containers Table */}
       <Card variant="outlined">
         <TableContainer>
@@ -333,7 +338,9 @@ export default function ContainersPage() {
               ) : containers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No containers found. Infrastructure containers will appear here when Docker is running.
                     </Typography>
                   </TableCell>
@@ -346,7 +353,9 @@ export default function ContainersPage() {
                     sx={{ '&:last-child td': { borderBottom: 0 } }}
                   >
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>
                         {container.name}
                       </Typography>
                     </TableCell>
@@ -385,7 +394,9 @@ export default function ContainersPage() {
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Stack direction="row" spacing={0.5} sx={{
+                        justifyContent: "flex-end"
+                      }}>
                         <Tooltip title="Remove">
                           <IconButton
                             size="small"
@@ -434,7 +445,6 @@ export default function ContainersPage() {
           </Table>
         </TableContainer>
       </Card>
-
       {/* Log Modal */}
       <LogModal
         open={logModalOpen}

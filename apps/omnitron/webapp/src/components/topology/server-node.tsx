@@ -41,7 +41,6 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
     <>
       <Handle type="source" position={Position.Right} style={{ background: roleColor, width: 8, height: 8 }} />
       <Handle type="target" position={Position.Left} style={{ background: roleColor, width: 8, height: 8 }} />
-
       <Box
         sx={{
           ...glassCardSx,
@@ -57,7 +56,13 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
         }}
       >
         {/* Header */}
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: "center",
+            mb: 1.5
+          }}>
           <Box
             sx={{
               width: 40,
@@ -74,7 +79,13 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           </Box>
 
           <Stack spacing={0} sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ letterSpacing: 0.3, lineHeight: 1.2 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: 0.3,
+                lineHeight: 1.2
+              }}>
               {nodeData.hostname}
             </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
@@ -95,7 +106,13 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
         </Stack>
 
         {/* Role + Status */}
-        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.5 }}>
+        <Stack
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: "center",
+            mb: 1.5
+          }}>
           <Chip
             label={nodeData.role}
             size="small"
@@ -128,7 +145,9 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
         {isOnline && (
           <Stack spacing={0.75}>
             {nodeData.cpu !== undefined && (
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" spacing={1} sx={{
+                alignItems: "center"
+              }}>
                 <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
                   CPU
                 </Typography>
@@ -139,7 +158,9 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               </Stack>
             )}
             {nodeData.memory !== undefined && (
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" spacing={1} sx={{
+                alignItems: "center"
+              }}>
                 <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
                   MEM
                 </Typography>
@@ -150,7 +171,9 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               </Stack>
             )}
             {nodeData.disk !== undefined && (
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" spacing={1} sx={{
+                alignItems: "center"
+              }}>
                 <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
                   DSK
                 </Typography>

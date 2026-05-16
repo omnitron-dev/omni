@@ -676,7 +676,9 @@ export default function LogsPage() {
           links={[{ name: daemonMode ? 'Daemon Logs' : 'Logs' }]}
           sx={{ mb: 1.5 }}
           action={
-            <Stack direction="row" spacing={0.5} alignItems="center">
+            <Stack direction="row" spacing={0.5} sx={{
+              alignItems: "center"
+            }}>
               {isLive && (
                 <Chip
                   label={paused ? 'PAUSED' : 'LIVE'}
@@ -728,7 +730,14 @@ export default function LogsPage() {
         />
 
         {/* Row 2: App + Search + Labels */}
-        <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          useFlexGap
+          sx={{
+            flexWrap: "wrap",
+            mb: 1.5
+          }}>
           {!daemonMode && (
             <TextField
               select
@@ -814,9 +823,18 @@ export default function LogsPage() {
         </Stack>
 
         {/* Row 3: Levels + Time range */}
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={2}
+          useFlexGap
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           {/* Level chips */}
-          <Stack direction="row" spacing={0.5} alignItems="center">
+          <Stack direction="row" spacing={0.5} sx={{
+            alignItems: "center"
+          }}>
             {LEVELS.map((level) => {
               const active = selectedLevels.includes(level);
               const color = LEVEL_COLORS[level] ?? '#6b7280';
@@ -825,7 +843,9 @@ export default function LogsPage() {
                   key={level}
                   size="small"
                   label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Stack direction="row" spacing={0.5} sx={{
+                      alignItems: "center"
+                    }}>
                       <Box
                         sx={{
                           width: 6,
@@ -897,7 +917,9 @@ export default function LogsPage() {
 
           {/* Custom date pickers */}
           {timeRangeKey === 'custom' && (
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} sx={{
+              alignItems: "center"
+            }}>
               <TextField
                 type="datetime-local"
                 size="small"
@@ -928,17 +950,20 @@ export default function LogsPage() {
           )}
         </Stack>
       </Box>
-
       {/* ================================================================== */}
       {/* Stats Bar                                                          */}
       {/* ================================================================== */}
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 1, px: 0.5 }}
-      >
-        <Stack direction="row" spacing={2} alignItems="center">
+        sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+          px: 0.5
+        }}>
+        <Stack direction="row" spacing={2} sx={{
+          alignItems: "center"
+        }}>
           <Typography
             variant="caption"
             sx={{ fontFamily: MONO, fontSize: 11, color: '#5a6270' }}
@@ -951,10 +976,14 @@ export default function LogsPage() {
           </Typography>
 
           {filteredStats && filteredStats.length > 0 && (
-            <Stack direction="row" spacing={1.5} alignItems="center">
+            <Stack direction="row" spacing={1.5} sx={{
+              alignItems: "center"
+            }}>
               <Box sx={{ width: 1, height: 12, bgcolor: alpha('#fff', 0.06) }} />
               {filteredStats.map((entry) => (
-                <Stack key={entry.level} direction="row" spacing={0.5} alignItems="center">
+                <Stack key={entry.level} direction="row" spacing={0.5} sx={{
+                  alignItems: "center"
+                }}>
                   <Box
                     sx={{
                       width: 5,
@@ -993,7 +1022,6 @@ export default function LogsPage() {
           </Typography>
         )}
       </Stack>
-
       {/* ================================================================== */}
       {/* Error banner                                                       */}
       {/* ================================================================== */}
@@ -1007,7 +1035,6 @@ export default function LogsPage() {
           {error}
         </Alert>
       )}
-
       {/* ================================================================== */}
       {/* Log Viewer — Terminal-style container                               */}
       {/* ================================================================== */}
@@ -1083,7 +1110,13 @@ export default function LogsPage() {
               ))}
             </Stack>
           ) : logRows.length === 0 ? (
-            <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', py: 8 }}>
+            <Stack
+              sx={{
+                alignItems: "center",
+                justifyContent: "center",
+                height: '100%',
+                py: 8
+              }}>
               <TerminalIcon sx={{ fontSize: 40, color: alpha('#fff', 0.08), mb: 1.5 }} />
               <Typography
                 sx={{
@@ -1110,7 +1143,11 @@ export default function LogsPage() {
             <>
               {/* Load more button at top (for paginated mode) */}
               {hasMore && !isLive && (
-                <Stack alignItems="center" sx={{ py: 1 }}>
+                <Stack
+                  sx={{
+                    alignItems: "center",
+                    py: 1
+                  }}>
                   <Button
                     size="small"
                     variant="text"

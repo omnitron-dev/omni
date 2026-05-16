@@ -49,20 +49,25 @@ export default function SignInPage() {
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 420, mx: 'auto', width: 1 }}>
-      <Stack spacing={1.5} alignItems="center" textAlign="center">
+      <Stack
+        spacing={1.5}
+        sx={{
+          alignItems: "center",
+          textAlign: "center"
+        }}>
         <OmnitronLogo size={48} />
         <Typography variant="h4">Omnitron Console</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Sign in to manage your infrastructure
         </Typography>
       </Stack>
-
       {error && (
         <Alert severity="error" variant="outlined" onClose={() => setError('')}>
           {error}
         </Alert>
       )}
-
       <form onSubmit={handleSubmit} noValidate>
         <Stack spacing={2.5}>
           <TextField

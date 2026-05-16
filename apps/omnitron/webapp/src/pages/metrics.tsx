@@ -115,9 +115,17 @@ function GaugeCard({ title, value, suffix, icon, color, loading }: GaugeCardProp
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
           <Stack spacing={0.5}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {title}
             </Typography>
             {loading ? (
@@ -129,9 +137,10 @@ function GaugeCard({ title, value, suffix, icon, color, loading }: GaugeCardProp
                   <Typography
                     component="span"
                     variant="body2"
-                    color="text.secondary"
-                    sx={{ ml: 0.5 }}
-                  >
+                    sx={{
+                      color: "text.secondary",
+                      ml: 0.5
+                    }}>
                     {suffix}
                   </Typography>
                 )}
@@ -343,8 +352,12 @@ export default function MetricsPage() {
       <Breadcrumbs
         links={[{ name: 'Metrics' }]}
         action={
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="body2" color="text.secondary">
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               Auto-refresh
             </Typography>
             <Switch
@@ -358,13 +371,11 @@ export default function MetricsPage() {
           </Stack>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Gauge Cards */}
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -419,7 +430,6 @@ export default function MetricsPage() {
           />
         </Grid>
       </Grid>
-
       {/* CPU Chart */}
       <Card variant="outlined">
         <CardHeader
@@ -436,7 +446,6 @@ export default function MetricsPage() {
           )}
         </CardContent>
       </Card>
-
       {/* Memory Chart */}
       <Card variant="outlined">
         <CardHeader
@@ -453,7 +462,6 @@ export default function MetricsPage() {
           )}
         </CardContent>
       </Card>
-
       {/* Log Volume Chart */}
       <Card variant="outlined">
         <CardHeader

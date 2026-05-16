@@ -375,7 +375,6 @@ export default function TopologyPage() {
     <>
       {/* Inject pulse animation keyframes */}
       <style>{pulseKeyframes}</style>
-
       <Box
         ref={containerRef}
         sx={{
@@ -497,20 +496,25 @@ export default function TopologyPage() {
               <Panel position="top-left">
                 <Stack
                   direction="row"
-                  alignItems="center"
                   spacing={1.5}
                   sx={{
+                    alignItems: "center",
                     bgcolor: 'rgba(15, 15, 25, 0.92)',
                     backdropFilter: 'blur(12px)',
                     border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: '10px',
                     px: 2,
-                    py: 1,
-                  }}
-                >
+                    py: 1
+                  }}>
                   {/* Title */}
                   <NodesIcon sx={{ color: '#818cf8', fontSize: 20 }} />
-                  <Typography variant="subtitle2" fontWeight={700} sx={{ color: '#e2e8f0', mr: 1 }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      fontWeight: 700,
+                      color: '#e2e8f0',
+                      mr: 1
+                    }}>
                     Topology
                   </Typography>
 

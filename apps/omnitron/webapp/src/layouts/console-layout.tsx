@@ -143,16 +143,20 @@ function ConsoleLogo() {
   const showText = !sidenavCollapsed && sidenavVariant !== 'mini';
 
   return (
-    <Stack direction="row" alignItems="center" spacing={1}>
+    <Stack direction="row" spacing={1} sx={{
+      alignItems: "center"
+    }}>
       <OmnitronLogo size={48} />
       {showText && (
         <Typography
           variant="subtitle1"
-          fontWeight={800}
-          letterSpacing={2}
           noWrap
-          sx={{ textTransform: 'uppercase', fontSize: '0.85rem' }}
-        >
+          sx={{
+            fontWeight: 800,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            fontSize: '0.85rem'
+          }}>
           Omnitron
         </Typography>
       )}
@@ -212,13 +216,14 @@ function HeaderRight() {
   const themeTooltip = mode === 'light' ? 'Dark mode' : mode === 'dark' ? 'System mode' : 'Light mode';
 
   return (
-    <Stack direction="row" alignItems="center" spacing={0.5}>
+    <Stack direction="row" spacing={0.5} sx={{
+      alignItems: "center"
+    }}>
       <Tooltip title={themeTooltip}>
         <IconButton disableRipple onClick={handleCycleTheme} sx={headerIconBtnSx}>
           <ThemeModeIcon mode={mode} />
         </IconButton>
       </Tooltip>
-
       <Tooltip title="Sign out">
         <IconButton disableRipple onClick={() => signOut()} sx={headerIconBtnSx}>
           <LogoutIcon sx={{ fontSize: 20 }} />

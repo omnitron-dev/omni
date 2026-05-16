@@ -25,7 +25,6 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={{ background: '#3b82f6', width: 8, height: 8 }} />
-
       <Box
         sx={{
           ...glassCardSx,
@@ -38,7 +37,13 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
         }}
       >
         {/* Header */}
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: "center",
+            mb: 1.5
+          }}>
           <Box
             sx={{
               width: 36,
@@ -55,7 +60,13 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
           </Box>
 
           <Stack spacing={0} sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ letterSpacing: 0.3, lineHeight: 1.2 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: 0.3,
+                lineHeight: 1.2
+              }}>
               {nodeData.label}
             </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
@@ -76,7 +87,13 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
         </Stack>
 
         {/* Status + Tor chip */}
-        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+        <Stack
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: "center",
+            mb: 1
+          }}>
           <Chip
             label={nodeData.status}
             size="small"
@@ -123,7 +140,9 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               Routes
             </Typography>
             {nodeData.routes.slice(0, 6).map((route) => (
-              <Stack key={route.path} direction="row" alignItems="center" spacing={0.75}>
+              <Stack key={route.path} direction="row" spacing={0.75} sx={{
+                alignItems: "center"
+              }}>
                 <Typography
                   variant="caption"
                   sx={{ fontSize: 11, color: '#60a5fa', fontFamily: 'monospace' }}

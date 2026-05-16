@@ -82,14 +82,30 @@ function ProjectCard({
     >
       <CardContent sx={{ flex: 1, pb: '12px !important' }}>
         {/* Header */}
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            mb: 1.5
+          }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              minWidth: 0
+            }}>
             <ProjectIcon sx={{ fontSize: 28, color: hasRunning ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="subtitle2" fontWeight={700} noWrap>
+              <Typography variant="subtitle2" noWrap sx={{
+                fontWeight: 700
+              }}>
                 {project.displayName}
               </Typography>
-              <Typography variant="caption" color="text.disabled" noWrap>
+              <Typography variant="caption" noWrap sx={{
+                color: "text.disabled"
+              }}>
                 {project.name}
               </Typography>
             </Box>
@@ -105,7 +121,9 @@ function ProjectCard({
         <DetailRow label="Path" value={project.path} mono />
 
         {/* Stats */}
-        <Stack spacing={0.5} mt={1}>
+        <Stack spacing={0.5} sx={{
+          mt: 1
+        }}>
           <DetailRow label="Stacks" value={`${project.runningStacks} / ${project.totalStacks}`} />
           {project.enabledStacks.length > 0 && (
             <DetailRow label="Enabled" value={project.enabledStacks.join(', ')} />
@@ -115,14 +133,20 @@ function ProjectCard({
 
         {/* Enabled stacks as chips */}
         {project.enabledStacks.length > 0 && (
-          <Stack direction="row" spacing={0.5} mt={1.5} flexWrap="wrap" useFlexGap>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            useFlexGap
+            sx={{
+              mt: 1.5,
+              flexWrap: "wrap"
+            }}>
             {project.enabledStacks.map((s) => (
               <Chip key={s} label={s} size="small" variant="outlined" sx={{ height: 22, fontSize: 11 }} />
             ))}
           </Stack>
         )}
       </CardContent>
-
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
         <Tooltip title="Remove project">
           <IconButton
@@ -146,21 +170,31 @@ function ProjectCard({
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-      <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>
+    <Stack
+      direction="row"
+      spacing={1}
+      sx={{
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.disabled",
+          flexShrink: 0
+        }}>
         {label}
       </Typography>
       <Typography
         variant="caption"
-        fontWeight={500}
         noWrap
         title={value}
         sx={{
+          fontWeight: 500,
           textAlign: 'right',
           minWidth: 0,
-          ...(mono && { fontFamily: 'monospace', fontSize: 11 }),
-        }}
-      >
+          ...(mono && { fontFamily: 'monospace', fontSize: 11 })
+        }}>
         {value}
       </Typography>
     </Stack>
@@ -201,7 +235,9 @@ function EditProjectDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Project Settings — {project.displayName}</DialogTitle>
       <DialogContent sx={{ pt: '8px !important' }}>
-        <Stack spacing={2.5} mt={1}>
+        <Stack spacing={2.5} sx={{
+          mt: 1
+        }}>
           <TextField
             label="Project Name"
             value={project.displayName}
@@ -280,7 +316,9 @@ function AddProjectDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Project</DialogTitle>
       <DialogContent sx={{ pt: '8px !important' }}>
-        <Stack spacing={2.5} mt={1}>
+        <Stack spacing={2.5} sx={{
+          mt: 1
+        }}>
           <TextField
             label="Project Name"
             value={name}

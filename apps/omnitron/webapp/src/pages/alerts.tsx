@@ -222,9 +222,17 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
           <Stack spacing={0.5}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {title}
             </Typography>
             {loading ? (
@@ -323,7 +331,9 @@ export default function AlertsPage() {
       <Breadcrumbs
         links={[{ name: 'Alerts' }]}
         action={
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             {firingCount > 0 && (
               <Badge badgeContent={firingCount} color="error">
                 <Chip label="Firing" size="small" color="error" variant="outlined" />
@@ -343,13 +353,11 @@ export default function AlertsPage() {
           </Stack>
         }
       />
-
       {error && (
         <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       {/* Summary Cards */}
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -380,7 +388,6 @@ export default function AlertsPage() {
           />
         </Grid>
       </Grid>
-
       {/* Active Alerts */}
       {activeAlerts.filter((a) => !a.resolvedAt).length > 0 && (
         <Card variant="outlined">
@@ -398,24 +405,26 @@ export default function AlertsPage() {
                   <Stack
                     key={alert.id}
                     direction="row"
-                    alignItems="center"
                     spacing={2}
                     sx={{
+                      alignItems: "center",
                       p: 1.5,
                       borderRadius: 1,
+
                       bgcolor: (t) =>
                         alpha(
                           t.palette[SEVERITY_COLORS[alert.severity] ?? 'info'].main,
                           0.08,
                         ),
+
                       border: 1,
+
                       borderColor: (t) =>
                         alpha(
                           t.palette[SEVERITY_COLORS[alert.severity] ?? 'info'].main,
                           0.2,
-                        ),
-                    }}
-                  >
+                        )
+                    }}>
                     <Chip
                       label={alert.severity}
                       size="small"
@@ -424,22 +433,28 @@ export default function AlertsPage() {
                       sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 10, minWidth: 64 }}
                     />
                     <Stack sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>
                         {alert.ruleName}
                       </Typography>
                       <Typography
                         variant="caption"
-                        color="text.secondary"
                         sx={{
+                          color: "text.secondary",
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
+                          whiteSpace: 'nowrap'
+                        }}>
                         {alert.message}
                       </Typography>
                     </Stack>
-                    <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.disabled",
+                        flexShrink: 0
+                      }}>
                       {timeAgo(alert.firedAt)}
                     </Typography>
                     {!alert.acknowledged && (
@@ -461,7 +476,6 @@ export default function AlertsPage() {
           </CardContent>
         </Card>
       )}
-
       {/* Alert Rules Table */}
       <Card variant="outlined">
         <CardHeader
@@ -494,7 +508,9 @@ export default function AlertsPage() {
               ) : rules.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No alert rules configured. Create a rule to get started.
                     </Typography>
                   </TableCell>
@@ -510,7 +526,9 @@ export default function AlertsPage() {
                     }}
                   >
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>
                         {rule.name}
                       </Typography>
                     </TableCell>
@@ -547,7 +565,9 @@ export default function AlertsPage() {
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Stack direction="row" spacing={0.5} sx={{
+                        justifyContent: "flex-end"
+                      }}>
                         <Tooltip title="Edit rule">
                           <IconButton size="small">
                             <EditIcon sx={{ fontSize: 18 }} />

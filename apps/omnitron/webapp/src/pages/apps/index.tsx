@@ -129,13 +129,11 @@ export default function AppsListPage() {
           </IconButton>
         }
       />
-
       {error && (
         <Alert severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-
       <Card variant="outlined">
         <TableContainer>
           <Table>
@@ -165,11 +163,20 @@ export default function AppsListPage() {
               ) : apps.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8}>
-                    <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
+                    <Stack
+                      spacing={1}
+                      sx={{
+                        alignItems: "center",
+                        py: 4
+                      }}>
+                      <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                      }}>
                         No applications deployed yet.
                       </Typography>
-                      <Typography variant="caption" color="text.disabled">
+                      <Typography variant="caption" sx={{
+                        color: "text.disabled"
+                      }}>
                         Use <code>omnitron deploy</code> to get started.
                       </Typography>
                     </Stack>
@@ -184,7 +191,9 @@ export default function AppsListPage() {
                     onClick={() => navigate(`/apps/${app.name}`)}
                   >
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 600
+                      }}>
                         {app.name}
                       </Typography>
                     </TableCell>
@@ -208,7 +217,9 @@ export default function AppsListPage() {
                     </TableCell>
                     <TableCell align="right">{formatMemoryMb(app.memory)}</TableCell>
                     <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <Stack direction="row" spacing={0.5} sx={{
+                        justifyContent: "center"
+                      }}>
                         {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
                           <Tooltip title="Start">
                             <IconButton
@@ -253,8 +264,13 @@ export default function AppsListPage() {
           </Table>
         </TableContainer>
       </Card>
-
-      <Typography variant="caption" color="text.disabled" sx={{ mt: 2, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.disabled",
+          mt: 2,
+          display: 'block'
+        }}>
         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
           <Chip label="online" size="small" color="success" variant="outlined" />
           <Chip label="stopped" size="small" color="default" variant="outlined" />

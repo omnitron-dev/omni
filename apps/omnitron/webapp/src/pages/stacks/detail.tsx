@@ -162,17 +162,20 @@ export default function StackDetailPage() {
           </Box>
         }
       />
-
       {/* Deployment banner for remote/cluster stacks */}
       {stack.type !== 'local' && isRunning && (
         <Card variant="outlined" sx={{ mb: 2, p: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <DeployIcon sx={{ fontSize: 20, color: 'primary.main' }} />
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={600}>
+              <Typography variant="body2" sx={{
+                fontWeight: 600
+              }}>
                 {stack.nodes.filter((n) => n.connected).length}/{stack.nodes.length} nodes connected
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {stack.type === 'remote' ? 'SSH' : 'Cluster'} deployment —
                 {stack.nodes.some((n) => n.syncStatus?.pendingItems)
                   ? ` ${stack.nodes.reduce((sum, n) => sum + (n.syncStatus?.pendingItems ?? 0), 0)} items pending sync`
@@ -190,7 +193,6 @@ export default function StackDetailPage() {
           </Box>
         </Card>
       )}
-
       {/* Applications — top priority */}
       <Card variant="outlined">
         <CardContent>
@@ -238,7 +240,6 @@ export default function StackDetailPage() {
           )}
         </CardContent>
       </Card>
-
       {/* Overview */}
       <Card variant="outlined">
         <CardContent>
@@ -255,10 +256,8 @@ export default function StackDetailPage() {
           {stack.startedAt && <InfoRow label="Started" value={new Date(stack.startedAt).toLocaleString()} />}
         </CardContent>
       </Card>
-
       {/* Infrastructure cards */}
       <InfrastructureCards stack={stack} />
-
       {/* Sync Status (remote/cluster only) */}
       {stack.type !== 'local' && (
         <Card variant="outlined">
@@ -280,7 +279,6 @@ export default function StackDetailPage() {
           </CardContent>
         </Card>
       )}
-
       {/* Nodes Table */}
       {stack.nodes.length > 0 && (
         <Card variant="outlined">
@@ -344,7 +342,6 @@ export default function StackDetailPage() {
           </CardContent>
         </Card>
       )}
-
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Stack</DialogTitle>
         <DialogContent>

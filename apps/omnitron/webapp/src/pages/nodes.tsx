@@ -127,13 +127,17 @@ function StatusDot({ state, label, tooltip }: { state: DotState; label: string; 
 
   return (
     <Tooltip title={tooltip ?? texts[state]} arrow>
-      <Stack direction="row" alignItems="center" spacing={0.5}>
+      <Stack direction="row" spacing={0.5} sx={{
+        alignItems: "center"
+      }}>
         <Box sx={{
           width: 8, height: 8, borderRadius: '50%', bgcolor: colors[state], flexShrink: 0,
           ...(state === 'checking' && { animation: `${pulse} 1s ease-in-out infinite` }),
           ...(state === 'not-installed' && { border: '1px dashed', borderColor: 'text.disabled', bgcolor: 'transparent' }),
         }} />
-        <Typography variant="caption" color="text.secondary" noWrap>{label}</Typography>
+        <Typography variant="caption" noWrap sx={{
+          color: "text.secondary"
+        }}>{label}</Typography>
       </Stack>
     </Tooltip>
   );
@@ -260,8 +264,20 @@ function UptimeStrip<T extends Record<string, any>>({
 
   return (
     <Stack spacing={0.25}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="caption" color="text.disabled" sx={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <Stack
+        direction="row"
+        sx={{
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.disabled",
+            fontSize: 9,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5
+          }}>
           {label}
         </Typography>
         {avgPct >= 0 && (
@@ -343,14 +359,28 @@ function NodeCard({
     }}>
       <CardContent sx={{ pb: '12px !important', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            mb: 1.5
+          }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              minWidth: 0
+            }}>
             {node.isLocal
               ? <ChipIcon sx={{ fontSize: 24, color: 'primary.main', flexShrink: 0 }} />
               : <NodesIcon sx={{ fontSize: 24, color: 'text.secondary', flexShrink: 0 }} />}
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="subtitle2" noWrap>{node.name}</Typography>
-              <Typography variant="caption" color="text.disabled" noWrap>
+              <Typography variant="caption" noWrap sx={{
+                color: "text.disabled"
+              }}>
                 {node.host}{node.isLocal ? '' : `:${node.sshPort}`}
               </Typography>
             </Box>
@@ -375,7 +405,9 @@ function NodeCard({
         </Stack>
 
         {/* Status dots: PING + OMNITRON */}
-        <Stack direction="row" spacing={2} mb={1.5}>
+        <Stack direction="row" spacing={2} sx={{
+          mb: 1.5
+        }}>
           {node.isLocal ? (
             <StatusDot state={omnState.state} label="OMNITRON" tooltip={omnState.tooltip} />
           ) : (
@@ -401,7 +433,14 @@ function NodeCard({
         </Stack>
 
         {node.tags.length > 0 && (
-          <Stack direction="row" spacing={0.5} mt={1.5} flexWrap="wrap" useFlexGap>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            useFlexGap
+            sx={{
+              mt: 1.5,
+              flexWrap: "wrap"
+            }}>
             {node.tags.map((tag) => (
               <Chip key={tag} label={tag} size="small" variant="outlined" sx={{ height: 22, fontSize: 11 }} />
             ))}
@@ -424,9 +463,18 @@ function NodeCard({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center">
-      <Typography variant="caption" color="text.disabled">{label}</Typography>
-      <Typography variant="caption" fontWeight={500}>{value}</Typography>
+    <Stack
+      direction="row"
+      sx={{
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+      <Typography variant="caption" sx={{
+        color: "text.disabled"
+      }}>{label}</Typography>
+      <Typography variant="caption" sx={{
+        fontWeight: 500
+      }}>{value}</Typography>
     </Stack>
   );
 }
@@ -484,7 +532,9 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading }: {
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? `Edit "${editNode.name}"` : 'Add Node'}</DialogTitle>
       <DialogContent sx={{ pt: '8px !important' }}>
-        <Stack spacing={2.5} mt={1}>
+        <Stack spacing={2.5} sx={{
+          mt: 1
+        }}>
           <TextField label="Name" value={form.name} onChange={(e) => up('name', e.target.value)} fullWidth placeholder="production-server-1" autoFocus />
           <Stack direction="row" spacing={2}>
             <TextField label="Host" value={form.host} onChange={(e) => up('host', e.target.value)} fullWidth placeholder="192.168.1.100" />
@@ -507,14 +557,30 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading }: {
                 <Select value={form.sshPrivateKey} label="SSH Private Key" onChange={(e) => up('sshPrivateKey', e.target.value as string)}>
                   {sshKeys.map((key) => (
                     <MenuItem key={key.path} value={key.path}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
-                        <Typography variant="body2" fontWeight={500}>{key.name}</Typography>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          alignItems: "center",
+                          width: '100%'
+                        }}>
+                        <Typography variant="body2" sx={{
+                          fontWeight: 500
+                        }}>{key.name}</Typography>
                         <Chip label={key.type} size="small" sx={{ height: 20, fontSize: 11 }} />
-                        <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto !important' }} noWrap>{key.path}</Typography>
+                        <Typography
+                          variant="caption"
+                          noWrap
+                          sx={{
+                            color: "text.disabled",
+                            ml: 'auto !important'
+                          }}>{key.path}</Typography>
                       </Stack>
                     </MenuItem>
                   ))}
-                  {sshKeys.length === 0 && <MenuItem disabled><Typography variant="body2" color="text.secondary">No SSH keys found</Typography></MenuItem>}
+                  {sshKeys.length === 0 && <MenuItem disabled><Typography variant="body2" sx={{
+                    color: "text.secondary"
+                  }}>No SSH keys found</Typography></MenuItem>}
                 </Select>
               </FormControl>
               <TextField

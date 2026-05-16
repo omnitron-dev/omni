@@ -277,7 +277,6 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>Create Stack</DialogTitle>
-
       <DialogContent>
         <Box sx={{ mb: 3, mt: 1 }}>
           <Stepper steps={effectiveSteps} activeStep={stepper.activeStep} alternativeLabel />
@@ -315,7 +314,9 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                     {st.title}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     {st.description}
                   </Typography>
                 </CardContent>
@@ -327,7 +328,12 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
         {/* Step: Nodes */}
         {currentStepLabel === 'Nodes' && (
           <Stack spacing={1.5}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 0.5
+              }}>
               {type === 'remote'
                 ? 'Select a target node for deployment.'
                 : 'Select at least 2 nodes for the cluster.'}
@@ -377,7 +383,12 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                           {node.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                            fontFamily: 'monospace'
+                          }}>
                           {node.host}
                         </Typography>
                       </Box>
@@ -495,7 +506,6 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
           </Stack>
         )}
       </DialogContent>
-
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={handleClose} disabled={submitting}>
           Cancel
@@ -526,7 +536,9 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         {label}
       </Typography>
       <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>

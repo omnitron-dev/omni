@@ -97,8 +97,10 @@ const COLUMN_SIZE: Record<number, { xs: number; sm?: number; md: number }> = {
 /**
  * Responsive card grid with equal-height items.
  *
- * Each direct child is wrapped in a Grid item sized by `columns`.
+ * Each direct child is wrapped in a Grid cell sized by `columns`.
  * Cards should use `height: '100%'` or be wrapped in a full-height container.
+ * (MUI v9 unified Grid — sizing is via `size={{ xs, sm, md, ... }}` rather
+ * than the deprecated `<Grid item>` shorthand from v1.)
  */
 export function CardGrid({ children, columns = 2, gap = GRID_GAP, sx }: CardGridProps) {
   const size = COLUMN_SIZE[columns] ?? COLUMN_SIZE[2];

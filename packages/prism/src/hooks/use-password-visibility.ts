@@ -57,14 +57,16 @@ export interface UsePasswordVisibilityOptions {
  *   return (
  *     <TextField
  *       type={password.type}
- *       InputProps={{
- *         endAdornment: (
- *           <InputAdornment position="end">
- *             <IconButton onClick={password.toggle}>
- *               {password.visible ? <VisibilityOff /> : <Visibility />}
- *             </IconButton>
- *           </InputAdornment>
- *         ),
+ *       slotProps={{
+ *         input: {
+ *           endAdornment: (
+ *             <InputAdornment position="end">
+ *               <IconButton onClick={password.toggle}>
+ *                 {password.visible ? <VisibilityOff /> : <Visibility />}
+ *               </IconButton>
+ *             </InputAdornment>
+ *           ),
+ *         },
  *       }}
  *     />
  *   );
@@ -73,7 +75,9 @@ export interface UsePasswordVisibilityOptions {
  *
  * @example
  * ```tsx
- * // With confirm password field
+ * // With confirm password field. MUI v9 routes slot props through
+ * // the `slotProps` API rather than the legacy `InputProps` /
+ * // `InputLabelProps` / `FormHelperTextProps` family.
  * function RegisterForm() {
  *   const password = usePasswordVisibility();
  *   const confirmPassword = usePasswordVisibility();
@@ -83,12 +87,12 @@ export interface UsePasswordVisibilityOptions {
  *       <TextField
  *         label="Password"
  *         type={password.type}
- *         InputProps={{ endAdornment: <PasswordToggle {...password} /> }}
+ *         slotProps={{ input: { endAdornment: <PasswordToggle {...password} /> } }}
  *       />
  *       <TextField
  *         label="Confirm Password"
  *         type={confirmPassword.type}
- *         InputProps={{ endAdornment: <PasswordToggle {...confirmPassword} /> }}
+ *         slotProps={{ input: { endAdornment: <PasswordToggle {...confirmPassword} /> } }}
  *       />
  *     </Box>
  *   );

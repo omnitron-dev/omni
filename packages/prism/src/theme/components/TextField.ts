@@ -302,9 +302,21 @@ export function createOutlinedInputOverrides(config: ComponentsConfig): Componen
         ...outlinedInputStyles.root(theme, borderRadius),
         variants: outlinedInputVariants.root,
       }),
-      input: {
-        variants: [...outlinedInputVariants.input, ...multilineInputVariants],
-      },
+      // MUI v9 narrowed `styleOverrides[slot]` to `CSSObject` and
+      // hoisted the `variants` API to the component-level
+      // `variants` field. We still emit the variants on the slot
+      // because (a) MUI's styled engine honours them there at
+      // runtime, (b) per-slot variant styles wouldn't translate
+      // cleanly to component-level (each entry would need a
+      // descendant selector targeting the slot class).
+      //
+      // The cast escapes the narrowed type without lying about
+      // runtime shape — the engine reads `variants` from the
+      // returned object regardless of where TypeScript thinks it
+      // belongs.
+      input: () => ({
+        variants: [...outlinedInputVariants.input, ...multilineInputVariants] as OutlinedInputVariantsT,
+      }) as unknown as CSSObject,
       notchedOutline: ({ theme }) => outlinedInputStyles.notchedOutline(theme),
     },
   };
@@ -396,9 +408,10 @@ export function createFilledInputOverrides(config: ComponentsConfig): Components
         ...filledInputStyles.root(theme, borderRadius),
         variants: filledInputVariants.root,
       }),
-      input: {
-        variants: [...filledInputVariants.input, ...multilineInputVariants],
-      },
+      // See the OutlinedInput counterpart above for the rationale.
+      input: () => ({
+        variants: [...filledInputVariants.input, ...multilineInputVariants] as FilledInputVariantsT,
+      }) as unknown as CSSObject,
     },
   };
 }

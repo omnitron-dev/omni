@@ -117,6 +117,18 @@ export {
 // Image
 export { Image, ImageWithDefault, type ImageProps, type AspectRatio } from './image/index.js';
 
+// Emoji
+export {
+  Emoji,
+  EmojiPicker,
+  type EmojiProps,
+  type EmojiPickerProps,
+  type EmojiSet,
+  type PickedEmoji,
+  type SkinTone,
+  type EmojiPickerI18n,
+} from './emoji-picker/index.js';
+
 // Label
 export {
   Label,

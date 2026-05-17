@@ -13,14 +13,15 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 /**
  * Connection state enum for proper lifecycle tracking
  */
-export enum ConnectionState {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  RECONNECTING = 'reconnecting',
-  DISCONNECTING = 'disconnecting',
-  FAILED = 'failed',
-}
+export const ConnectionState = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+  DISCONNECTING: 'disconnecting',
+  FAILED: 'failed',
+} as const;
+export type ConnectionState = (typeof ConnectionState)[keyof typeof ConnectionState];
 
 /**
  * Connection options for the Netron client

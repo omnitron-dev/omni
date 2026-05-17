@@ -11,14 +11,15 @@ import { Errors } from './factories.js';
 /**
  * Supported transport types
  */
-export enum TransportType {
-  HTTP = 'http',
-  WEBSOCKET = 'websocket',
-  GRPC = 'grpc',
-  TCP = 'tcp',
-  GRAPHQL = 'graphql',
-  JSONRPC = 'jsonrpc',
-}
+export const TransportType = {
+  HTTP: 'http',
+  WEBSOCKET: 'websocket',
+  GRPC: 'grpc',
+  TCP: 'tcp',
+  GRAPHQL: 'graphql',
+  JSONRPC: 'jsonrpc',
+} as const;
+export type TransportType = (typeof TransportType)[keyof typeof TransportType];
 
 /**
  * HTTP error response format

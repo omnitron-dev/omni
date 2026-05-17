@@ -58,16 +58,17 @@ export type ServiceIdentifier<T = any> = Constructor<T> | AbstractConstructor<T>
  * @stable
  * @since 0.1.0
  */
-export enum Scope {
+export const Scope = {
   /** New instance each time */
-  Transient = 'transient',
+  Transient: 'transient',
   /** One instance per container */
-  Singleton = 'singleton',
+  Singleton: 'singleton',
   /** One instance per scope */
-  Scoped = 'scoped',
+  Scoped: 'scoped',
   /** One instance per request */
-  Request = 'request',
-}
+  Request: 'request',
+} as const;
+export type Scope = (typeof Scope)[keyof typeof Scope];
 
 /**
  * Union type of scope values for backward compatibility with string literals.

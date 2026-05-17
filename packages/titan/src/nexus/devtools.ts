@@ -22,21 +22,22 @@ import { createNullLogger, type ILogger } from '../types/logger.js';
  * @experimental
  * @since 0.1.0
  */
-export enum MessageType {
-  ContainerCreated = 'CONTAINER_CREATED',
-  ContainerDisposed = 'CONTAINER_DISPOSED',
-  TokenRegistered = 'TOKEN_REGISTERED',
-  TokenResolved = 'TOKEN_RESOLVED',
-  ResolutionStarted = 'RESOLUTION_STARTED',
-  ResolutionCompleted = 'RESOLUTION_COMPLETED',
-  ResolutionFailed = 'RESOLUTION_FAILED',
-  ScopeCreated = 'SCOPE_CREATED',
-  ScopeDisposed = 'SCOPE_DISPOSED',
-  ModuleLoaded = 'MODULE_LOADED',
-  PluginInstalled = 'PLUGIN_INSTALLED',
-  StateSnapshot = 'STATE_SNAPSHOT',
-  PerformanceMetrics = 'PERFORMANCE_METRICS',
-}
+export const MessageType = {
+  ContainerCreated: 'CONTAINER_CREATED',
+  ContainerDisposed: 'CONTAINER_DISPOSED',
+  TokenRegistered: 'TOKEN_REGISTERED',
+  TokenResolved: 'TOKEN_RESOLVED',
+  ResolutionStarted: 'RESOLUTION_STARTED',
+  ResolutionCompleted: 'RESOLUTION_COMPLETED',
+  ResolutionFailed: 'RESOLUTION_FAILED',
+  ScopeCreated: 'SCOPE_CREATED',
+  ScopeDisposed: 'SCOPE_DISPOSED',
+  ModuleLoaded: 'MODULE_LOADED',
+  PluginInstalled: 'PLUGIN_INSTALLED',
+  StateSnapshot: 'STATE_SNAPSHOT',
+  PerformanceMetrics: 'PERFORMANCE_METRICS',
+} as const;
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 /**
  * DevTools message

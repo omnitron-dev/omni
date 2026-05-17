@@ -12,13 +12,14 @@ export type CronExpressionType = string | Date;
 /**
  * Scheduler job types
  */
-export enum SchedulerJobType {
-  CRON = 'cron',
-  INTERVAL = 'interval',
-  TIMEOUT = 'timeout',
-  DELAYED = 'delayed',
-  RECURRING = 'recurring',
-}
+export const SchedulerJobType = {
+  CRON: 'cron',
+  INTERVAL: 'interval',
+  TIMEOUT: 'timeout',
+  DELAYED: 'delayed',
+  RECURRING: 'recurring',
+} as const;
+export type SchedulerJobType = (typeof SchedulerJobType)[keyof typeof SchedulerJobType];
 
 /**
  * Job priority levels
@@ -34,15 +35,16 @@ export enum JobPriority {
 /**
  * Job status
  */
-export enum JobStatus {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-  PAUSED = 'paused',
-  RETRYING = 'retrying',
-}
+export const JobStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  PAUSED: 'paused',
+  RETRYING: 'retrying',
+} as const;
+export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 /**
  * Cron job options
@@ -627,29 +629,30 @@ export interface IJobMetadata {
 /**
  * Predefined cron expressions
  */
-export enum CronExpression {
-  EVERY_SECOND = '* * * * * *',
-  EVERY_5_SECONDS = '*/5 * * * * *',
-  EVERY_10_SECONDS = '*/10 * * * * *',
-  EVERY_30_SECONDS = '*/30 * * * * *',
-  EVERY_MINUTE = '*/1 * * * *',
-  EVERY_5_MINUTES = '*/5 * * * *',
-  EVERY_10_MINUTES = '*/10 * * * *',
-  EVERY_30_MINUTES = '*/30 * * * *',
-  EVERY_HOUR = '0 * * * *',
-  EVERY_DAY_AT_1AM = '0 1 * * *',
-  EVERY_DAY_AT_2AM = '0 2 * * *',
-  EVERY_DAY_AT_3AM = '0 3 * * *',
-  EVERY_DAY_AT_4AM = '0 4 * * *',
-  EVERY_DAY_AT_5AM = '0 5 * * *',
-  EVERY_DAY_AT_6AM = '0 6 * * *',
-  EVERY_DAY_AT_MIDNIGHT = '0 0 * * *',
-  EVERY_DAY_AT_NOON = '0 12 * * *',
-  EVERY_WEEK = '0 0 * * 0',
-  EVERY_WEEKDAY = '0 0 * * 1-5',
-  EVERY_WEEKEND = '0 0 * * 0,6',
-  EVERY_1ST_DAY_OF_MONTH = '0 0 1 * *',
-  EVERY_LAST_DAY_OF_MONTH = '0 0 L * *',
-  EVERY_QUARTER = '0 0 1 */3 *',
-  EVERY_YEAR = '0 0 1 1 *',
-}
+export const CronExpression = {
+  EVERY_SECOND: '* * * * * *',
+  EVERY_5_SECONDS: '*/5 * * * * *',
+  EVERY_10_SECONDS: '*/10 * * * * *',
+  EVERY_30_SECONDS: '*/30 * * * * *',
+  EVERY_MINUTE: '*/1 * * * *',
+  EVERY_5_MINUTES: '*/5 * * * *',
+  EVERY_10_MINUTES: '*/10 * * * *',
+  EVERY_30_MINUTES: '*/30 * * * *',
+  EVERY_HOUR: '0 * * * *',
+  EVERY_DAY_AT_1AM: '0 1 * * *',
+  EVERY_DAY_AT_2AM: '0 2 * * *',
+  EVERY_DAY_AT_3AM: '0 3 * * *',
+  EVERY_DAY_AT_4AM: '0 4 * * *',
+  EVERY_DAY_AT_5AM: '0 5 * * *',
+  EVERY_DAY_AT_6AM: '0 6 * * *',
+  EVERY_DAY_AT_MIDNIGHT: '0 0 * * *',
+  EVERY_DAY_AT_NOON: '0 12 * * *',
+  EVERY_WEEK: '0 0 * * 0',
+  EVERY_WEEKDAY: '0 0 * * 1-5',
+  EVERY_WEEKEND: '0 0 * * 0,6',
+  EVERY_1ST_DAY_OF_MONTH: '0 0 1 * *',
+  EVERY_LAST_DAY_OF_MONTH: '0 0 L * *',
+  EVERY_QUARTER: '0 0 1 */3 *',
+  EVERY_YEAR: '0 0 1 1 *',
+} as const;
+export type CronExpression = (typeof CronExpression)[keyof typeof CronExpression];

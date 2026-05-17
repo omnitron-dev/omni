@@ -304,19 +304,21 @@ export interface PaginationOptions extends KyseraPaginationOptions {
 export type PaginatedResult<T> = KyseraPaginatedResult<T>;
 export type { KyseraCursorOptions as CursorOptions };
 
-export enum DatabaseEventType {
-  CONNECTED = 'database.connected',
-  DISCONNECTED = 'database.disconnected',
-  ERROR = 'database.error',
-  MIGRATION_STARTED = 'database.migration.started',
-  MIGRATION_COMPLETED = 'database.migration.completed',
-  MIGRATION_FAILED = 'database.migration.failed',
-  QUERY_EXECUTED = 'database.query.executed',
-  SLOW_QUERY = 'database.query.slow',
-  TRANSACTION_STARTED = 'database.transaction.started',
-  TRANSACTION_COMMITTED = 'database.transaction.committed',
-  TRANSACTION_ROLLED_BACK = 'database.transaction.rolledback',
-}
+export const DatabaseEventType = {
+  CONNECTED: 'database.connected',
+  DISCONNECTED: 'database.disconnected',
+  ERROR: 'database.error',
+  MIGRATION_STARTED: 'database.migration.started',
+  MIGRATION_COMPLETED: 'database.migration.completed',
+  MIGRATION_FAILED: 'database.migration.failed',
+  QUERY_EXECUTED: 'database.query.executed',
+  SLOW_QUERY: 'database.query.slow',
+  TRANSACTION_STARTED: 'database.transaction.started',
+  TRANSACTION_COMMITTED: 'database.transaction.committed',
+  TRANSACTION_ROLLED_BACK: 'database.transaction.rolledback',
+} as const;
+
+export type DatabaseEventType = (typeof DatabaseEventType)[keyof typeof DatabaseEventType];
 
 export interface DatabaseEvent<T = unknown> {
   type: DatabaseEventType;

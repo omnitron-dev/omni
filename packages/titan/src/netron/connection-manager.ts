@@ -21,36 +21,38 @@ import { Errors } from '../errors/index.js';
 /**
  * Connection state machine states
  */
-export enum ConnectionManagerState {
+export const ConnectionManagerState = {
   /** Initial state, not started */
-  IDLE = 'idle',
+  IDLE: 'idle',
   /** Manager is running */
-  RUNNING = 'running',
+  RUNNING: 'running',
   /** Manager is shutting down */
-  STOPPING = 'stopping',
+  STOPPING: 'stopping',
   /** Manager has stopped */
-  STOPPED = 'stopped',
-}
+  STOPPED: 'stopped',
+} as const;
+export type ConnectionManagerState = (typeof ConnectionManagerState)[keyof typeof ConnectionManagerState];
 
 /**
  * Individual connection state with metadata
  */
-export enum ManagedConnectionState {
+export const ManagedConnectionState = {
   /** Connection is being established */
-  CONNECTING = 'connecting',
+  CONNECTING: 'connecting',
   /** Connection is healthy and available */
-  HEALTHY = 'healthy',
+  HEALTHY: 'healthy',
   /** Connection is unhealthy (missed heartbeats) */
-  UNHEALTHY = 'unhealthy',
+  UNHEALTHY: 'unhealthy',
   /** Connection is being used */
-  IN_USE = 'in_use',
+  IN_USE: 'in_use',
   /** Connection is idle */
-  IDLE = 'idle',
+  IDLE: 'idle',
   /** Connection is being closed */
-  CLOSING = 'closing',
+  CLOSING: 'closing',
   /** Connection is closed */
-  CLOSED = 'closed',
-}
+  CLOSED: 'closed',
+} as const;
+export type ManagedConnectionState = (typeof ManagedConnectionState)[keyof typeof ManagedConnectionState];
 
 /**
  * Configuration for connection manager

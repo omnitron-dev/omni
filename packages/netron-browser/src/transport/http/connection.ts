@@ -15,11 +15,12 @@ import { createRequestMessage, isHttpResponseMessage } from './types.js';
 /**
  * Connection state enum
  */
-export enum ConnectionState {
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  DISCONNECTED = 'disconnected',
-}
+export const ConnectionState = {
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  DISCONNECTED: 'disconnected',
+} as const;
+export type ConnectionState = (typeof ConnectionState)[keyof typeof ConnectionState];
 
 /**
  * Normalize a path prefix by removing trailing slashes.

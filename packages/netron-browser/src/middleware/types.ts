@@ -8,14 +8,15 @@
 /**
  * Middleware execution stage
  */
-export enum MiddlewareStage {
+export const MiddlewareStage = {
   /** Before request is sent */
-  PRE_REQUEST = 'pre-request',
+  PRE_REQUEST: 'pre-request',
   /** After response is received */
-  POST_RESPONSE = 'post-response',
+  POST_RESPONSE: 'post-response',
   /** Error handling */
-  ERROR = 'error',
-}
+  ERROR: 'error',
+} as const;
+export type MiddlewareStage = (typeof MiddlewareStage)[keyof typeof MiddlewareStage];
 
 /**
  * Client middleware context

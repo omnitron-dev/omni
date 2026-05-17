@@ -18,25 +18,27 @@ import type { WebSocketConnection } from './ws/connection.js';
 /**
  * Connection manager lifecycle states
  */
-export enum ConnectionManagerState {
-  IDLE = 'idle',
-  RUNNING = 'running',
-  STOPPING = 'stopping',
-  STOPPED = 'stopped',
-}
+export const ConnectionManagerState = {
+  IDLE: 'idle',
+  RUNNING: 'running',
+  STOPPING: 'stopping',
+  STOPPED: 'stopped',
+} as const;
+export type ConnectionManagerState = (typeof ConnectionManagerState)[keyof typeof ConnectionManagerState];
 
 /**
  * Individual connection states
  */
-export enum ManagedConnectionState {
-  CONNECTING = 'connecting',
-  HEALTHY = 'healthy',
-  UNHEALTHY = 'unhealthy',
-  IN_USE = 'in_use',
-  IDLE = 'idle',
-  CLOSING = 'closing',
-  CLOSED = 'closed',
-}
+export const ManagedConnectionState = {
+  CONNECTING: 'connecting',
+  HEALTHY: 'healthy',
+  UNHEALTHY: 'unhealthy',
+  IN_USE: 'in_use',
+  IDLE: 'idle',
+  CLOSING: 'closing',
+  CLOSED: 'closed',
+} as const;
+export type ManagedConnectionState = (typeof ManagedConnectionState)[keyof typeof ManagedConnectionState];
 
 /**
  * Configuration for the connection manager

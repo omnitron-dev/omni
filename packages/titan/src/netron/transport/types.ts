@@ -178,14 +178,15 @@ export interface TransportOptions {
 /**
  * Connection state
  */
-export enum ConnectionState {
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  DISCONNECTING = 'disconnecting',
-  DISCONNECTED = 'disconnected',
-  RECONNECTING = 'reconnecting',
-  ERROR = 'error',
-}
+export const ConnectionState = {
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  DISCONNECTING: 'disconnecting',
+  DISCONNECTED: 'disconnected',
+  RECONNECTING: 'reconnecting',
+  ERROR: 'error',
+} as const;
+export type ConnectionState = (typeof ConnectionState)[keyof typeof ConnectionState];
 
 /**
  * Connection events

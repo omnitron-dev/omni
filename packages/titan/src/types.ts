@@ -22,14 +22,15 @@ import { Token, Container, Provider, type IModule, type DynamicModule } from './
  * @stable
  * @since 0.1.0
  */
-export enum ApplicationState {
-  Created = 'created',
-  Starting = 'starting',
-  Started = 'started',
-  Stopping = 'stopping',
-  Stopped = 'stopped',
-  Failed = 'failed',
-}
+export const ApplicationState = {
+  Created: 'created',
+  Starting: 'starting',
+  Started: 'started',
+  Stopping: 'stopping',
+  Stopped: 'stopped',
+  Failed: 'failed',
+} as const;
+export type ApplicationState = (typeof ApplicationState)[keyof typeof ApplicationState];
 
 /**
  * Application lifecycle events.
@@ -38,36 +39,37 @@ export enum ApplicationState {
  * @stable
  * @since 0.1.0
  */
-export enum ApplicationEvent {
-  Starting = 'starting',
-  Started = 'started',
-  Stopping = 'stopping',
-  Stopped = 'stopped',
-  Error = 'error',
-  ModuleRegistered = 'module:registered',
-  ModuleStarted = 'module:started',
-  ModuleStopped = 'module:stopped',
-  ConfigChanged = 'config:changed',
-  HealthCheck = 'health:check',
-  Signal = 'signal',
-  UncaughtException = 'uncaughtException',
-  UnhandledRejection = 'unhandledRejection',
-  StateSave = 'state:save',
-  ShutdownStart = 'shutdown:start',
-  ShutdownComplete = 'shutdown:complete',
-  ShutdownError = 'shutdown:error',
-  ShutdownTaskComplete = 'shutdown:task:complete',
-  ShutdownTaskError = 'shutdown:task:error',
+export const ApplicationEvent = {
+  Starting: 'starting',
+  Started: 'started',
+  Stopping: 'stopping',
+  Stopped: 'stopped',
+  Error: 'error',
+  ModuleRegistered: 'module:registered',
+  ModuleStarted: 'module:started',
+  ModuleStopped: 'module:stopped',
+  ConfigChanged: 'config:changed',
+  HealthCheck: 'health:check',
+  Signal: 'signal',
+  UncaughtException: 'uncaughtException',
+  UnhandledRejection: 'unhandledRejection',
+  StateSave: 'state:save',
+  ShutdownStart: 'shutdown:start',
+  ShutdownComplete: 'shutdown:complete',
+  ShutdownError: 'shutdown:error',
+  ShutdownTaskComplete: 'shutdown:task:complete',
+  ShutdownTaskError: 'shutdown:task:error',
   /**
    * Lifecycle phase event from the underlying `LifecycleController`.
    * Payload shape: `LifecyclePhaseEvent` from `lifecycle/index.ts`.
    * Consumers (metrics exporters, structured loggers) subscribe to
    * this to populate phase-duration histograms and timeout counters.
    */
-  LifecyclePhaseEvent = 'lifecycle:phase',
-  ProcessExit = 'process:exit',
-  Custom = 'custom',
-}
+  LifecyclePhaseEvent: 'lifecycle:phase',
+  ProcessExit: 'process:exit',
+  Custom: 'custom',
+} as const;
+export type ApplicationEvent = (typeof ApplicationEvent)[keyof typeof ApplicationEvent];
 
 /**
  * Application configuration interface.
@@ -330,20 +332,21 @@ export interface IShutdownTask {
  * @stable
  * @since 0.1.0
  */
-export enum ShutdownReason {
-  Manual = 'manual',
-  SIGTERM = 'SIGTERM',
-  SIGINT = 'SIGINT',
-  SIGHUP = 'SIGHUP',
-  Signal = 'signal',
-  UncaughtException = 'uncaughtException',
-  UnhandledRejection = 'unhandledRejection',
-  Timeout = 'timeout',
-  Error = 'error',
-  Reload = 'reload',
-  Upgrade = 'upgrade',
-  Maintenance = 'maintenance',
-}
+export const ShutdownReason = {
+  Manual: 'manual',
+  SIGTERM: 'SIGTERM',
+  SIGINT: 'SIGINT',
+  SIGHUP: 'SIGHUP',
+  Signal: 'signal',
+  UncaughtException: 'uncaughtException',
+  UnhandledRejection: 'unhandledRejection',
+  Timeout: 'timeout',
+  Error: 'error',
+  Reload: 'reload',
+  Upgrade: 'upgrade',
+  Maintenance: 'maintenance',
+} as const;
+export type ShutdownReason = (typeof ShutdownReason)[keyof typeof ShutdownReason];
 
 /**
  * Process signals type.
@@ -378,17 +381,18 @@ export enum ShutdownPriority {
  * @stable
  * @since 0.1.0
  */
-export enum LifecycleState {
-  Created = 'created',
-  Initializing = 'initializing',
-  Initialized = 'initialized',
-  Starting = 'starting',
-  Running = 'running',
-  Stopping = 'stopping',
-  Stopped = 'stopped',
-  ShuttingDown = 'shuttingDown',
-  Error = 'error',
-}
+export const LifecycleState = {
+  Created: 'created',
+  Initializing: 'initializing',
+  Initialized: 'initialized',
+  Starting: 'starting',
+  Running: 'running',
+  Stopping: 'stopping',
+  Stopped: 'stopped',
+  ShuttingDown: 'shuttingDown',
+  Error: 'error',
+} as const;
+export type LifecycleState = (typeof LifecycleState)[keyof typeof LifecycleState];
 
 /**
  * Process metrics interface.

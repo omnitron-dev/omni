@@ -208,13 +208,15 @@ export function useImageDimensions(
  *
  * @example
  * ```tsx
+ * // MUI v9 unified the Grid component — the `<Grid item>` shorthand
+ * // from v1 is gone; size is expressed via `size={{ xs, sm, md, ... }}`.
  * function Gallery({ urls }: { urls: string[] }) {
  *   const results = useMultipleImageDimensions(urls);
  *
  *   return (
  *     <Grid container>
  *       {results.map((result, i) => (
- *         <Grid item key={urls[i]}>
+ *         <Grid key={urls[i]} size={{ xs: 12, sm: 6, md: 4 }}>
  *           {result.loading && <Skeleton />}
  *           {result.dimensions && (
  *             <img

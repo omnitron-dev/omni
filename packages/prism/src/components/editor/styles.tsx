@@ -56,7 +56,14 @@ export const EditorRoot = styled('div')(({ theme }) => ({
   // Placeholder
   // ---------------------------------------------------------------------------
   [`& .${editorClasses.content.placeholder}`]: {
-    '&:first-of-type::before': {
+    // `:first-child::before` — placeholder is rendered as the first
+    // element of the editable content area when the editor is empty.
+    // The previous of-type form fired only when the placeholder was
+    // the first sibling of its tag, which is fragile if the editor
+    // wrapper changes tag (the placeholder might be the SECOND child
+    // of its tag but still the first child overall — both intents
+    // converge on the first-child variant).
+    '&:first-child::before': {
       ...theme.typography.body2,
       height: 0,
       float: 'left',

@@ -8,8 +8,7 @@
  * @module @omnitron-dev/prism/components/svg-color
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
 
@@ -80,10 +79,7 @@ const SvgRoot = styled('span')(() => ({
  * </Box>
  * ```
  */
-export const SvgColor = forwardRef<HTMLSpanElement, SvgColorProps>(function SvgColor(
-  { src, color, size = 24, width, height, className, sx },
-  ref
-) {
+export function SvgColor({src, color, size = 24, width, height, className, sx, ref }: SvgColorProps & { ref?: Ref<HTMLSpanElement> }) {
   const computedWidth = width ?? size;
   const computedHeight = height ?? size;
 
@@ -103,7 +99,7 @@ export const SvgColor = forwardRef<HTMLSpanElement, SvgColorProps>(function SvgC
       ]}
     />
   );
-});
+}
 
 // =============================================================================
 // ICON SET COMPONENT

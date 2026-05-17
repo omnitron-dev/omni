@@ -156,7 +156,12 @@ const ItemRoot = styled('div', {
 
 const ItemIcon = styled('span')({
   display: 'inherit',
-  '& > :first-of-type:not(style):not(:first-of-type ~ *)': {
+  // Constrain the icon (first real child) to 20×20. The previous
+  // selector chain `:first-of-type:not(style):not(:first-of-type ~ *)`
+  // was an obscure way to say "the first child that isn't a <style>
+  // tag" — replaced with the modern `:first-child:not(style)` for
+  // both readability and v9 lint compliance.
+  '& > :first-child:not(style)': {
     width: 20,
     height: 20,
   },

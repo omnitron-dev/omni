@@ -8,8 +8,7 @@
  * @module @omnitron-dev/prism/components/badge
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import MuiBadge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import { styled } from '@mui/material/styles';
@@ -122,7 +121,6 @@ const StyledBadge = styled(MuiBadge, {
     },
   };
 });
-
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -148,10 +146,7 @@ const StyledBadge = styled(MuiBadge, {
  * </Badge>
  * ```
  */
-export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
-  { variant = 'standard', color = 'error', size = 'medium', badgeContent, children, sx, ...other },
-  ref
-) {
+export function Badge({variant = 'standard', color = 'error', size = 'medium', badgeContent, children, sx, ref, ...other }: BadgeProps & { ref?: Ref<HTMLSpanElement> }) {
   const ownerState = { variant, color, size };
 
   const isStatusVariant = variant === 'online' || variant === 'offline' || variant === 'busy';
@@ -169,7 +164,7 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
       {children}
     </StyledBadge>
   );
-});
+}
 
 // =============================================================================
 // COUNT BADGE

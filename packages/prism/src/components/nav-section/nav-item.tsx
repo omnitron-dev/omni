@@ -8,7 +8,8 @@
  * @module @omnitron-dev/prism/components/nav-section
  */
 
-import { forwardRef, useMemo } from 'react';
+import { useMemo } from 'react';
+import type { Ref } from 'react';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 
@@ -74,7 +75,8 @@ function resolveInfo(
  * />
  * ```
  */
-export const NavItem = forwardRef<HTMLButtonElement, NavItemProps>(function NavItem(props, ref) {
+export function NavItem(props: NavItemProps & { ref?: Ref<HTMLButtonElement> }) {
+  const { ref } = props;
   const {
     // Data props
     path,
@@ -149,8 +151,7 @@ export const NavItem = forwardRef<HTMLButtonElement, NavItemProps>(function NavI
   }
 
   return content;
-});
-
+}
 // =============================================================================
 // NAV ITEM EXPORTS
 // =============================================================================

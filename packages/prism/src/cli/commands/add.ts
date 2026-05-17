@@ -790,7 +790,6 @@ function generateComponent(
  * @see https://mui.com/material-ui/react-${name}/
  */
 
-import { forwardRef } from 'react';
 import Mui${muiComponent} from '@mui/material/${muiComponent}';
 import type { ${muiComponent}Props as Mui${muiComponent}Props } from '@mui/material/${muiComponent}';
 import { clsx } from 'clsx';
@@ -817,19 +816,17 @@ export interface ${componentPascal}Props extends Mui${muiComponent}Props {
  * </${componentPascal}>
  * \`\`\`
  */
-export const ${componentPascal} = forwardRef<HTMLButtonElement, ${componentPascal}Props>(
-  function ${componentPascal}({ className, ...props }, ref) {
-    return (
-      <Mui${muiComponent}
-        ref={ref}
-        className={clsx('prism-${name}', className)}
-        {...props}
-      />
-    );
-  }
-);
-
-${componentPascal}.displayName = '${componentPascal}';
+// React 19 passes ref through props directly — a plain function
+// component is sufficient and keeps the call site free of the
+// extra displayName line that forwardRef demanded for DevTools.
+export function ${componentPascal}({ className, ...props }: ${componentPascal}Props) {
+  return (
+    <Mui${muiComponent}
+      className={clsx('prism-${name}', className)}
+      {...props}
+    />
+  );
+}
 `;
 }
 
@@ -852,7 +849,6 @@ function generateBlockComponent(
  * @module @omnitron-dev/prism/blocks/${definition.name}
  */
 
-import { forwardRef } from 'react';
 import type { ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import type { BoxProps } from '@mui/material/Box';
@@ -895,21 +891,19 @@ const ${componentPascal}Root = styled(Box)(({ theme }) => ({
  * </${componentPascal}>
  * \`\`\`
  */
-export const ${componentPascal} = forwardRef<HTMLDivElement, ${componentPascal}Props>(
-  function ${componentPascal}({ className, children, ...props }, ref) {
-    return (
-      <${componentPascal}Root
-        ref={ref}
-        className={clsx('prism-${name}', className)}
-        {...props}
-      >
-        {children}
-      </${componentPascal}Root>
-    );
-  }
-);
-
-${componentPascal}.displayName = '${componentPascal}';
+// React 19 passes ref through props directly. No forwardRef
+// wrapper, no displayName follow-up needed — the function name
+// is what DevTools reads.
+export function ${componentPascal}({ className, children, ...props }: ${componentPascal}Props) {
+  return (
+    <${componentPascal}Root
+      className={clsx('prism-${name}', className)}
+      {...props}
+    >
+      {children}
+    </${componentPascal}Root>
+  );
+}
 `;
 }
 

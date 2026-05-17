@@ -142,7 +142,11 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   transition: theme.transitions.create('background-color', {
     duration: theme.transitions.duration.shortest,
   }),
-  '&:nth-of-type(even)': {
+  // `:nth-child(even)` for zebra-striping — table rows are homogeneous
+  // siblings, so child-position is equivalent to of-type but doesn't
+  // assume the rendered tag never changes (e.g. a row replaced by a
+  // skeleton placeholder still alternates correctly).
+  '&:nth-child(even)': {
     backgroundColor: alpha(theme.palette.grey[500], 0.02),
   },
   '&:hover': {

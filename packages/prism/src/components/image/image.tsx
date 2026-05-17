@@ -8,8 +8,8 @@
  * @module @omnitron-dev/prism/components/image
  */
 
-import type { ReactNode, ImgHTMLAttributes } from 'react';
-import { useState, useCallback, forwardRef } from 'react';
+import type { ReactNode, ImgHTMLAttributes, Ref } from 'react';
+import { useState, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import { styled, alpha } from '@mui/material/styles';
 import type { SxProps, Theme, Breakpoint } from '@mui/material/styles';
@@ -100,7 +100,6 @@ const ImageRoot = styled(Box, {
     }),
   };
 });
-
 const StyledImg = styled('img')(() => ({
   width: '100%',
   height: '100%',
@@ -192,9 +191,7 @@ const FallbackBox = styled(Box)(({ theme }) => ({
  * />
  * ```
  */
-export const Image = forwardRef<HTMLDivElement, ImageProps>(function Image(
-  {
-    src,
+export function Image({src,
     alt,
     ratio,
     fallback,
@@ -207,10 +204,9 @@ export const Image = forwardRef<HTMLDivElement, ImageProps>(function Image(
     imgSx,
     onLoad,
     onError,
+    ref,
     ...imgProps
-  },
-  ref
-) {
+  }: ImageProps & { ref?: Ref<HTMLDivElement> }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [currentSrc, setCurrentSrc] = useState(src);
@@ -270,7 +266,7 @@ export const Image = forwardRef<HTMLDivElement, ImageProps>(function Image(
       {overlay && <OverlayBox>{overlay}</OverlayBox>}
     </ImageRoot>
   );
-});
+}
 
 // =============================================================================
 // DEFAULT FALLBACK

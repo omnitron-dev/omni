@@ -249,21 +249,28 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           '&::before': {
             display: 'none',
           },
-          '&:first-of-type': {
+          // Position selectors switched from `:first-of-type` /
+          // `:last-of-type` to `:first-child` / `:last-child` —
+          // accordions are intended to be direct siblings, so the
+          // child-position form gives the correct result without
+          // depending on element-tag homogeneity (an interspersed
+          // <Divider /> would break the of-type form silently by
+          // making each accordion the only "of-type" sibling).
+          '&:first-child': {
             borderTopLeftRadius: borderRadius,
             borderTopRightRadius: borderRadius,
           },
-          '&:last-of-type': {
+          '&:last-child': {
             borderBottomLeftRadius: borderRadius,
             borderBottomRightRadius: borderRadius,
           },
-          '&:not(:last-of-type)': {
+          '&:not(:last-child)': {
             borderBottom: 0,
           },
           [`&.${accordionClasses.expanded}`]: {
             margin: 0,
-            '&:first-of-type': { marginTop: 0 },
-            '&:last-of-type': { marginBottom: 0 },
+            '&:first-child': { marginTop: 0 },
+            '&:last-child': { marginBottom: 0 },
           },
           [`&.${accordionClasses.disabled}`]: {
             backgroundColor: 'transparent',
@@ -792,7 +799,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           borderRadius: borderRadius - 2,
           margin: 2,
           padding: `${8 * dm}px ${12 * dm}px`,
-          '&:not(:last-of-type)': {
+          // `:not(:last-child)` — element-tag-agnostic position
+          // selector. The `:last-of-type` form was wrong when a
+          // <Divider /> ended the list (the previous MenuItem
+          // became the last-of-type MenuItem and kept its
+          // margin-bottom, creating an inconsistent gap).
+          '&:not(:last-child)': {
             marginBottom: 4,
           },
           '&.Mui-selected': {
@@ -893,37 +905,67 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         },
       },
     },
-    // The group only owns layout (gap, sibling border). Per-button
-    // styling (border, radius, padding) is already covered by the
-    // MuiToggleButton override above — the previous descendant
-    // selector with `!important` here was redundant.
+    // ToggleButtonGroup is a single connected segmented control,
+    // not a row of independent buttons. The canonical MUI v9
+    // implementation tags non-edge children with the
+    // `firstButton / middleButton / lastButton` classes (replacing
+    // the deprecated `:not(:first-of-type)` sibling pattern from
+    // MUI v5) and uses an overlap-and-collapse trick:
     //
-    // The sibling-border explicitly carries the same `divider`
-    // colour used by each button's own border, otherwise the
-    // shorthand `1px solid` would fall back to `currentColor`
-    // (text colour) and the first-of-type's left edge looked
-    // brighter than the seams between subsequent buttons.
+    //   horizontal: margin-left: -1; border-left: 1px solid transparent
+    //               border-top/bottom-left-radius: 0
+    //   vertical:   margin-top:  -1; border-top:  1px solid transparent
+    //               border-top-left/right-radius:  0
+    //
+    // So the visible seam between segments is the *previous*
+    // button's right (or bottom) border, painted through a
+    // transparent slot on the next button.
+    //
+    // The bug the user hit: the selected button's left edge stayed
+    // transparent, so the indigo outline looked broken on its
+    // joining side. The fix is a single rule — lift the selected
+    // segment above its neighbours with z-index, and restate the
+    // seam-edge as primary so it overpaints the divider that the
+    // previous sibling owns. We deliberately do NOT force `gap` or
+    // a per-button left border (the historical prism override),
+    // because that fragments the control into independent boxes
+    // and breaks the segmented-control affordance.
+    //
+    // No `:not(:first-of-type)` here — MUI v9 fully removed that
+    // pattern in favour of position classes, and using both
+    // mechanisms creates cascade ambiguity that bit us before.
     MuiToggleButtonGroup: {
       styleOverrides: {
-        root: {
-          gap: 4,
-        },
         grouped: ({ theme }) => ({
-          '&:not(:first-of-type)': {
-            marginLeft: 0,
-            borderLeft: `1px solid ${paletteVar(theme, "divider")}`,
-            // The MuiToggleButton override sets `borderColor: primary`
-            // when selected via a longhand on the .selected class, but
-            // that rule's specificity equals ours and MUI's
-            // toggle-button-group styleOverrides land later in source
-            // order — so the left edge stayed `divider` even after
-            // selection. Re-state the primary colour inside our
-            // selected branch so it wins on cascade (specificity here
-            // is one class higher than the MuiToggleButton.selected
-            // rule).
-            [`&.${toggleButtonClasses.selected}`]: {
-              borderLeftColor: paletteVar(theme, "primary.main"),
-            },
+          // Restate the seam-edge with the divider colour on
+          // unselected middle/last buttons. MUI's default is
+          // `1px solid transparent` for the legacy "overlap with
+          // negative margin" pattern (inline-flex layout). That
+          // pattern hides the transparent seam under the previous
+          // sibling's right border. But consumers regularly pass
+          // `sx={{ display: 'grid' }}` (e.g. /admin/messaging
+          // settings) — and grid ignores the negative margin, so
+          // the seam-edge becomes a visibly missing border.
+          //
+          // Painting the seam as `divider` here is a no-op in the
+          // canonical inline-flex layout (it sits exactly under
+          // prev's right border) and restores the missing edge in
+          // grid/custom layouts. One rule, both cases.
+          borderLeftColor: paletteVar(theme, "divider"),
+          borderTopColor: paletteVar(theme, "divider"),
+          [`&.${toggleButtonClasses.selected}`]: {
+            // Lift above neighbours so the selected indigo border
+            // paints OVER the prev sibling's seam border. Without
+            // z-index the divider connecting two segments swallows
+            // the selected segment's leading edge in inline-flex.
+            zIndex: 1,
+            // Horizontal orientation seam: paint primary so the
+            // selected outline is uniform on all four sides.
+            borderLeftColor: paletteVar(theme, "primary.main"),
+            // Vertical orientation seam: same idea for the top
+            // edge. Harmless when orientation is horizontal — the
+            // top border already shares the same colour.
+            borderTopColor: paletteVar(theme, "primary.main"),
           },
         }),
       },

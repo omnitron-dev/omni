@@ -307,7 +307,14 @@ export function menuItemStyles(theme: Theme): CSSObject {
     ...theme.typography.body2,
     padding: theme.spacing(0.75, 1),
     borderRadius: Number(theme.shape.borderRadius) * 0.75,
-    '&:not(:last-of-type)': {
+    // `:not(:last-child)` is the universal sibling-position selector
+    // that works regardless of element type. `:last-of-type` only
+    // matches the last sibling of the SAME tag, so a fragment-rendered
+    // <Divider /> next to <MenuItem /> can fool it (Divider becomes
+    // the last-of-type MenuItem too, so the previous MenuItem keeps
+    // its margin instead of dropping it). Switching to :last-child
+    // also satisfies MUI v9's lint-against-of-type-selectors guidance.
+    '&:not(:last-child)': {
       marginBottom: 4,
     },
     '&.Mui-selected': {

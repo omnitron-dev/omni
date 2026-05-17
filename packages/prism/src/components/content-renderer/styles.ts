@@ -22,8 +22,12 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     scrollMarginTop: 100, // Account for sticky header on anchor jump
   },
-  // First heading in content should not have excessive top margin
-  '& > h1:first-of-type, & > h2:first-of-type, & > h3:first-of-type': {
+  // First heading in content should not have excessive top margin.
+  // `:first-child:is(h1, h2, h3)` matches the heading ONLY when it's
+  // the very first child of the container — semantically tighter
+  // than the previous `& > hN:first-of-type` chain which also fired
+  // for "the first hN in the article" even if paragraphs preceded it.
+  '& > :first-child:is(h1, h2, h3)': {
     marginTop: 0,
   },
   h1: { ...theme.typography.h1, marginTop: 40, marginBottom: 12 },
@@ -233,7 +237,10 @@ export const ContentRoot = styled('div')(({ theme }) => ({
       fontWeight: 700,
       backgroundColor: alpha(theme.palette.grey[500], 0.08),
     },
-    '& tbody tr:nth-of-type(odd)': {
+    // Zebra rows — child-position over of-type for the same
+    // reason elsewhere: row replacements (skeleton placeholders,
+    // empty-state cells) don't break the alternation pattern.
+    '& tbody tr:nth-child(odd)': {
       backgroundColor: alpha(theme.palette.grey[500], 0.04),
     },
   },
@@ -415,7 +422,7 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   },
   [`& .${contentClasses.tabsPanel}`]: {
     padding: theme.spacing(2),
-    '& > :first-of-type': { marginTop: 0 },
+    '& > :first-child': { marginTop: 0 },
     '& > :last-child': { marginBottom: 0 },
   },
 
@@ -475,7 +482,7 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   // ─── Compact mode (chat messages, comments, etc.) ─────────
   [`&.${contentClasses.compact}`]: {
     '> * + *': { marginTop: 0, marginBottom: 2 },
-    '& > :first-of-type:not(p)': { marginTop: 4 },
+    '& > :first-child:not(p)': { marginTop: 4 },
     '& h1, & h2, & h3, & h4, & h5, & h6': { marginTop: 0, marginBottom: 2 },
     h1: { fontSize: '1.25rem', fontWeight: 600, marginTop: 0, marginBottom: 2 },
     h2: { fontSize: '1.125rem', fontWeight: 600, marginTop: 0, marginBottom: 2 },

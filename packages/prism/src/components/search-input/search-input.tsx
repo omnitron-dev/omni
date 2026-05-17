@@ -9,7 +9,8 @@
  * - Works standalone or controlled
  */
 
-import { useState, useEffect, useRef, forwardRef, type ChangeEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
+import type { Ref } from 'react';
 import InputBase from '@mui/material/InputBase';
 import InputAdornment from '@mui/material/InputAdornment';
 import Tooltip from '@mui/material/Tooltip';
@@ -95,9 +96,7 @@ export interface SearchInputProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
-  {
-    value: controlledValue,
+export function SearchInput({value: controlledValue,
     onChange,
     placeholder = 'Search...',
     debounce = 0,
@@ -111,9 +110,8 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
     onBlur,
     onKeyDown,
     sx,
-  },
-  ref
-) {
+    ref,
+  }: SearchInputProps & { ref?: Ref<HTMLInputElement> }) {
   const theme = useTheme();
 
   // Internal state for debounced mode or uncontrolled usage
@@ -226,4 +224,4 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
       }}
     />
   );
-});
+}

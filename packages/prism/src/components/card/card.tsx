@@ -8,8 +8,7 @@
  * @module @omnitron-dev/prism/components/card
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
 import MuiCard from '@mui/material/Card';
 import CardHeader from '@mui/material/CardHeader';
@@ -80,7 +79,6 @@ const StyledCard = styled(MuiCard, {
     }),
   };
 });
-
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -119,9 +117,7 @@ const StyledCard = styled(MuiCard, {
  * </Card>
  * ```
  */
-export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
-  {
-    variant = 'elevation',
+export function Card({variant = 'elevation',
     title,
     subheader,
     headerAction,
@@ -132,10 +128,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
     disablePadding,
     children,
     sx,
-    ...other
-  },
-  ref
-) {
+    ref, ...other }: CardProps & { ref?: Ref<HTMLDivElement> }) {
   const ownerState = { variant };
 
   const hasHeader = title || subheader || headerAction;
@@ -164,7 +157,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
       {actions && <CardActions sx={actionsSx}>{actions}</CardActions>}
     </StyledCard>
   );
-});
+}
 
 // =============================================================================
 // CARD SECTION

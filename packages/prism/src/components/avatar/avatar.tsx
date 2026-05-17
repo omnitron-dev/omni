@@ -8,8 +8,8 @@
  * @module @omnitron-dev/prism/components/avatar
  */
 
-import type { ReactNode, CSSProperties } from 'react';
-import { forwardRef, useMemo } from 'react';
+import type { ReactNode, CSSProperties, Ref } from 'react';
+import { useMemo } from 'react';
 import MuiAvatar from '@mui/material/Avatar';
 import AvatarGroup from '@mui/material/AvatarGroup';
 import { styled, useTheme } from '@mui/material/styles';
@@ -144,7 +144,6 @@ const StyledAvatar = styled(MuiAvatar, {
       }),
   };
 });
-
 // =============================================================================
 // WRAPPER FOR BADGES
 // =============================================================================
@@ -247,10 +246,7 @@ function AvatarWrapper({
  * <Avatar src="/avatar.jpg" name="John Doe" badge={3} />
  * ```
  */
-export const Avatar = forwardRef<HTMLDivElement, AvatarProps>(function Avatar(
-  { size = 'md', shape = 'circular', name, src, alt, online, offline, badge, badgeColor, children, sx, ...other },
-  ref
-) {
+export function Avatar({size = 'md', shape = 'circular', name, src, alt, online, offline, badge, badgeColor, children, sx, ref, ...other }: AvatarProps & { ref?: Ref<HTMLDivElement> }) {
   const initials = useMemo(() => {
     if (children) return null;
     return name ? getInitials(name) : null;
@@ -279,7 +275,7 @@ export const Avatar = forwardRef<HTMLDivElement, AvatarProps>(function Avatar(
       {avatarContent}
     </AvatarWrapper>
   );
-});
+}
 
 // =============================================================================
 // AVATAR GROUP

@@ -212,7 +212,14 @@ export function DurationPicker({ value, onChange, size = 'small', disabled = fal
             border: '1px solid',
             borderRadius: '8px !important',
             borderColor: alpha(theme.palette.divider, 0.2),
-            '&:not(:first-of-type)': {
+            // Position-class selectors replace the deprecated
+            // `:not(:first-of-type)` sibling pattern (MUI v9 tags
+            // children with firstButton/middleButton/lastButton via
+            // ToggleButtonGroupButtonContext). gap:0.5 above means
+            // we want INDEPENDENT borders on every button (no
+            // overlap/collapse), so restore left border + zero out
+            // MUI's default `margin-left: -1px` on middle/last.
+            '&.MuiToggleButtonGroup-middleButton, &.MuiToggleButtonGroup-lastButton': {
               borderLeft: '1px solid',
               borderColor: alpha(theme.palette.divider, 0.2),
               marginLeft: 0,

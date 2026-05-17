@@ -128,7 +128,10 @@ const SectionHeader = styled(Typography)(({ theme }) => ({
   letterSpacing: '0.08em',
   marginBottom: 8,
   marginTop: 16,
-  '&:first-of-type': {
+  // `:first-child` — homogeneous list of subheaders; child-position
+  // selector is equivalent to of-type but doesn't tie correctness
+  // to tag-name uniqueness.
+  '&:first-child': {
     marginTop: 0,
   },
 }));

@@ -8,8 +8,7 @@
  * @module @omnitron-dev/prism/components/scrollbar
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
 import { styled, alpha } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
@@ -108,7 +107,6 @@ const ScrollbarRoot = styled(Box, {
     }),
   };
 });
-
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -139,10 +137,7 @@ const ScrollbarRoot = styled(Box, {
  * </Scrollbar>
  * ```
  */
-export const Scrollbar = forwardRef<HTMLDivElement, ScrollbarProps>(function Scrollbar(
-  { children, sx, fillContent = false, hideScrollbar = false, axis = 'y', maxHeight, minHeight, className, ...other },
-  ref
-) {
+export function Scrollbar({children, sx, fillContent = false, hideScrollbar = false, axis = 'y', maxHeight, minHeight, className, ref, ...other }: ScrollbarProps & { ref?: Ref<HTMLDivElement> }) {
   const ownerState = {
     fillContent,
     hideScrollbar,
@@ -166,4 +161,4 @@ export const Scrollbar = forwardRef<HTMLDivElement, ScrollbarProps>(function Scr
       {children}
     </ScrollbarRoot>
   );
-});
+}

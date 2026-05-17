@@ -20,11 +20,11 @@ export type MergeableRef<T> = Ref<T> | RefCallback<T> | MutableRefObject<T> | nu
  *
  * @example
  * ```tsx
- * const Component = forwardRef((props, ref) => {
+ * function Component({ ref, ...props }: ComponentProps) {
  *   const localRef = useRef<HTMLDivElement>(null);
  *   const mergedRef = mergeRefs(ref, localRef);
  *   return <div ref={mergedRef} />;
- * });
+ * }
  * ```
  *
  * @param refs - Array of refs to merge
@@ -48,7 +48,7 @@ export function mergeRefs<T>(...refs: MergeableRef<T>[]): RefCallback<T> {
  *
  * @example
  * ```tsx
- * const Component = forwardRef<API, Props>((props, ref) => {
+ * function Component({ ref, ...props }: Props & { ref?: Ref<API> }) {
  *   const inputRef = useRef<HTMLInputElement>(null);
  *
  *   useImperativeHandle(ref, () => ({
@@ -57,7 +57,7 @@ export function mergeRefs<T>(...refs: MergeableRef<T>[]): RefCallback<T> {
  *   }), []);
  *
  *   return <input ref={inputRef} />;
- * });
+ * }
  * ```
  *
  * @param ref - The ref to set

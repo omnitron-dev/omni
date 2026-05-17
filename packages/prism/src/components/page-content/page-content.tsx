@@ -19,8 +19,8 @@
  * @module @omnitron-dev/prism/components/page-content
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef, Children } from 'react';
+import type { ReactNode, Ref } from 'react';
+import { Children } from 'react';
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Grid';
 import type { SxProps, Theme } from '@mui/material/styles';
@@ -54,8 +54,15 @@ export interface PageContentProps {
  * Wraps children in a `Stack` with standardized gap.
  * Use `fill` to stretch for empty-state centering.
  */
-export const PageContent = forwardRef<HTMLDivElement, PageContentProps>(
-  ({ children, gap = PAGE_GAP, fill, sx, ...rest }, ref) => (
+export function PageContent({
+  children,
+  gap = PAGE_GAP,
+  fill,
+  sx,
+  ref,
+  ...rest
+}: PageContentProps & { ref?: Ref<HTMLDivElement> }) {
+  return (
     <Stack
       ref={ref}
       spacing={gap}
@@ -64,10 +71,8 @@ export const PageContent = forwardRef<HTMLDivElement, PageContentProps>(
     >
       {children}
     </Stack>
-  ),
-);
-
-PageContent.displayName = 'PageContent';
+  );
+}
 
 // =============================================================================
 // CardGrid

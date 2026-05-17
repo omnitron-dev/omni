@@ -8,8 +8,7 @@
  * @module @omnitron-dev/prism/components/label
  */
 
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
 import { alpha, styled } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
@@ -37,6 +36,12 @@ export interface LabelProps {
   sx?: SxProps<Theme>;
   /** Disabled state */
   disabled?: boolean;
+  /**
+   * Forwarded ref to the underlying span. React 19 threads `ref`
+   * through props directly, so consumers pass it like any other
+   * prop and no `forwardRef` wrapper is required on this side.
+   */
+  ref?: Ref<HTMLSpanElement>;
 }
 
 // =============================================================================
@@ -163,10 +168,17 @@ const StyledLabel = styled('span', {
  * </Label>
  * ```
  */
-export const Label = forwardRef<HTMLSpanElement, LabelProps>(function Label(
-  { children, color = 'default', variant = 'soft', startIcon, endIcon, sx, disabled, ...other },
-  ref
-) {
+export function Label({
+  children,
+  color = 'default',
+  variant = 'soft',
+  startIcon,
+  endIcon,
+  sx,
+  disabled,
+  ref,
+  ...other
+}: LabelProps) {
   const ownerState = {
     color,
     variant,
@@ -189,7 +201,7 @@ export const Label = forwardRef<HTMLSpanElement, LabelProps>(function Label(
       {endIcon && <Box sx={{ ml: 0.5, ...iconStyles }}>{endIcon}</Box>}
     </StyledLabel>
   );
-});
+}
 
 // =============================================================================
 // PRESET LABELS

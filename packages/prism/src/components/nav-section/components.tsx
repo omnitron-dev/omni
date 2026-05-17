@@ -8,7 +8,7 @@
  * @module @omnitron-dev/prism/components/nav-section
  */
 
-import { forwardRef } from 'react';
+import type { Ref } from 'react';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled, alpha } from '@mui/material/styles';
@@ -32,7 +32,7 @@ export interface NavProps extends Omit<React.ComponentPropsWithoutRef<'nav'>, 's
 /**
  * Nav - Root navigation element for navigation sections.
  */
-export const Nav = forwardRef<HTMLElement, NavProps>(function Nav({ className, sx, ...other }, ref) {
+export function Nav({className, sx, ref, ...other }: NavProps & { ref?: Ref<HTMLElement> }) {
   return (
     <Box
       component="nav"
@@ -49,7 +49,7 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav({ className, s
       {...other}
     />
   );
-});
+}
 
 // =============================================================================
 // NAV UL (UNORDERED LIST)
@@ -66,7 +66,7 @@ export interface NavUlProps extends Omit<React.ComponentPropsWithoutRef<'ul'>, '
 /**
  * NavUl - Styled unordered list for navigation.
  */
-export const NavUl = forwardRef<HTMLUListElement, NavUlProps>(function NavUl({ className, sx, ...other }, ref) {
+export function NavUl({className, sx, ref, ...other }: NavUlProps & { ref?: Ref<HTMLUListElement> }) {
   return (
     <Box
       component="ul"
@@ -85,7 +85,7 @@ export const NavUl = forwardRef<HTMLUListElement, NavUlProps>(function NavUl({ c
       {...other}
     />
   );
-});
+}
 
 // =============================================================================
 // NAV LI (LIST ITEM)
@@ -101,7 +101,7 @@ export interface NavLiProps extends React.ComponentPropsWithoutRef<'li'> {
 /**
  * NavLi - Styled list item for navigation.
  */
-export const NavLi = forwardRef<HTMLLIElement, NavLiProps>(function NavLi({ className, ...other }, ref) {
+export function NavLi({className, ref, ...other }: NavLiProps & { ref?: Ref<HTMLLIElement> }) {
   return (
     <Box
       component="li"
@@ -114,7 +114,7 @@ export const NavLi = forwardRef<HTMLLIElement, NavLiProps>(function NavLi({ clas
       {...other}
     />
   );
-});
+}
 
 // =============================================================================
 // NAV SUBHEADER
@@ -175,17 +175,14 @@ const ArrowIcon = styled('span')<{ open?: boolean }>(({ open }) => ({
 /**
  * NavSubheader - Section header with collapse toggle.
  */
-export const NavSubheader = forwardRef<HTMLButtonElement, NavSubheaderProps>(function NavSubheader(
-  { className, open, onClick, children, ...other },
-  ref
-) {
+export function NavSubheader({className, open, onClick, children, ref, ...other }: NavSubheaderProps & { ref?: Ref<HTMLButtonElement> }) {
   return (
     <StyledSubheader ref={ref} className={cn(navSectionClasses.subheader, className)} onClick={onClick} {...other}>
       {children}
       {onClick && <ArrowIcon open={open} />}
     </StyledSubheader>
   );
-});
+}
 
 // =============================================================================
 // NAV ITEM (BASE)
@@ -250,10 +247,7 @@ const StyledNavItem = styled(ButtonBase, {
 /**
  * NavItemBase - Base button component for nav items.
  */
-export const NavItemBase = forwardRef<HTMLButtonElement, NavItemBaseProps>(function NavItemBase(
-  { className, active, disabled, open, depth, hasChild, ...other },
-  ref
-) {
+export function NavItemBase({className, active, disabled, open, depth, hasChild, ref, ...other }: NavItemBaseProps & { ref?: Ref<HTMLButtonElement> }) {
   return (
     <StyledNavItem
       ref={ref}
@@ -272,7 +266,7 @@ export const NavItemBase = forwardRef<HTMLButtonElement, NavItemBaseProps>(funct
       {...other}
     />
   );
-});
+}
 
 // =============================================================================
 // NAV ICON
@@ -302,7 +296,6 @@ const IconWrapper = styled('span')({
     height: '100%',
   },
 });
-
 /**
  * NavIcon - Icon wrapper for nav items.
  */
@@ -334,7 +327,6 @@ const TextsWrapper = styled('span')({
   alignItems: 'flex-start',
   minWidth: 0,
 });
-
 const Title = styled('span')({
   fontSize: 'var(--nav-item-font-size, 0.875rem)',
   fontWeight: 500,
@@ -344,7 +336,6 @@ const Title = styled('span')({
   maxWidth: '100%',
   lineHeight: 1.5,
 });
-
 const Caption = styled('span')(({ theme }) => ({
   fontSize: 'var(--nav-item-caption-size, 0.75rem)',
   color: theme.palette.text.disabled,
@@ -432,7 +423,6 @@ const InfoWrapper = styled('span')({
   display: 'inline-flex',
   alignItems: 'center',
 });
-
 /**
  * NavInfo - Info badge/content for nav items.
  */

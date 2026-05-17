@@ -84,6 +84,17 @@ export interface AdminDataTableProps<T> {
   dense?: boolean;
   /** Container max height */
   maxHeight?: number | string;
+  /**
+   * Localised labels for the underlying MUI TablePagination. When
+   * omitted, the MUI defaults (English) apply — consumers that
+   * need a translated UI pass the strings from their i18n layer.
+   */
+  paginationLabels?: {
+    /** "Rows per page:" label next to the page-size selector */
+    rowsPerPage?: string;
+    /** Renderer for the "1–10 of 42" line. Same signature as MUI's labelDisplayedRows. */
+    displayedRows?: (info: { from: number; to: number; count: number; page: number }) => React.ReactNode;
+  };
   /** Additional styles */
   sx?: SxProps<Theme>;
   /**
@@ -222,6 +233,7 @@ export function AdminDataTable<T>({
   stickyHeader = false,
   dense = false,
   maxHeight,
+  paginationLabels,
   sx,
   selectable = false,
   selectedKeys,
@@ -473,6 +485,8 @@ export function AdminDataTable<T>({
         rowsPerPageOptions={pageSizeOptions}
         onPageChange={handlePageChange}
         onRowsPerPageChange={handlePageSizeChange}
+        {...(paginationLabels?.rowsPerPage != null && { labelRowsPerPage: paginationLabels.rowsPerPage })}
+        {...(paginationLabels?.displayedRows != null && { labelDisplayedRows: paginationLabels.displayedRows })}
         sx={{
           borderTop: (theme) => `1px solid ${theme.palette.divider}`,
           '& .MuiTablePagination-displayedRows': {

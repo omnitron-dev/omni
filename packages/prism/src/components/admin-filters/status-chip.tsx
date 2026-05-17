@@ -20,8 +20,14 @@ import type { SxProps, Theme } from '@mui/material/styles';
 export type StatusColor = 'success' | 'error' | 'warning' | 'info' | 'default';
 
 export interface StatusChipProps {
-  /** Status string to display */
+  /** Status string to display (drives color mapping) */
   status: string;
+  /**
+   * Optional display override — pass a localized label while keeping
+   * `status` as the raw enum value used for color mapping. When omitted,
+   * the chip falls back to the capitalized `status` string.
+   */
+  label?: ReactNode;
   /** Map status values to colors */
   colorMap?: Record<string, StatusColor>;
   /** Chip size */
@@ -87,13 +93,12 @@ const DEFAULT_COLOR_MAP: Record<string, StatusColor> = {
  * />
  * ```
  */
-export function StatusChip({ status, colorMap, size = 'small', sx }: StatusChipProps): ReactNode {
+export function StatusChip({ status, label, colorMap, size = 'small', sx }: StatusChipProps): ReactNode {
   const normalizedStatus = status.toLowerCase();
   const mergedMap = colorMap ? { ...DEFAULT_COLOR_MAP, ...colorMap } : DEFAULT_COLOR_MAP;
   const color: StatusColor = mergedMap[normalizedStatus] ?? 'default';
 
-  // Capitalize first letter
-  const displayLabel = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  const displayLabel: ReactNode = label ?? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 
   return (
     <Chip

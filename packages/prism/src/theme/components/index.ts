@@ -882,7 +882,18 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           border: `1px solid ${paletteVar(theme, "divider")}`,
           [`&.${toggleButtonClasses.selected}`]: {
             backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.08)`,
-            borderColor: paletteVar(theme, "primary.main"),
+            // `currentColor` makes the border track the foreground
+            // colour set on the selected state — by default that
+            // foreground is primary (set on the same rule below),
+            // but consumers that override `color` via the MUI
+            // `color` prop or an inline `sx` (e.g. /admin/messaging
+            // settings sets per-button OPT_COLOR for success /
+            // warning / error / info modes) get a border that
+            // matches without needing to also override the border
+            // shorthand. Defeats the prior "half-and-half" bug
+            // where prism forced primary on left+top while the
+            // consumer's sx painted right+bottom in OPT_COLOR.
+            borderColor: 'currentColor',
             color: paletteVar(theme, "primary.main"),
             '&:hover': {
               backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.16)`,
@@ -954,18 +965,20 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           borderLeftColor: paletteVar(theme, "divider"),
           borderTopColor: paletteVar(theme, "divider"),
           [`&.${toggleButtonClasses.selected}`]: {
-            // Lift above neighbours so the selected indigo border
-            // paints OVER the prev sibling's seam border. Without
-            // z-index the divider connecting two segments swallows
-            // the selected segment's leading edge in inline-flex.
+            // Lift above neighbours so the selected outline paints
+            // OVER the prev sibling's seam border. Without z-index
+            // the divider connecting two segments swallows the
+            // selected segment's leading edge in inline-flex.
             zIndex: 1,
-            // Horizontal orientation seam: paint primary so the
-            // selected outline is uniform on all four sides.
-            borderLeftColor: paletteVar(theme, "primary.main"),
-            // Vertical orientation seam: same idea for the top
-            // edge. Harmless when orientation is horizontal — the
-            // top border already shares the same colour.
-            borderTopColor: paletteVar(theme, "primary.main"),
+            // Seam edges use `currentColor` rather than a hard-
+            // coded primary so per-button colour overrides (MUI
+            // `color` prop, inline `sx={{ color }}`) propagate
+            // uniformly to all four sides. The previous primary-
+            // forced longhands fought consumer styling on the
+            // left/top while letting it through on right/bottom,
+            // producing the visible "half-and-half" border bug.
+            borderLeftColor: 'currentColor',
+            borderTopColor: 'currentColor',
           },
         }),
       },

@@ -25,6 +25,15 @@ export default defineConfig([
       // uses `from '@omnitron-dev/prism/components/<name>'`.
       'components/index': 'src/components/index.ts',
       'components/editor/index': 'src/components/editor/index.ts',
+      // EmojiPicker — independent subpath entry so apps can lazy-load
+      // it as its own chunk (the dataset adds ~260 KiB raw / ~80 KiB
+      // gzipped that we never want on the critical path).
+      'components/emoji-picker/index': 'src/components/emoji-picker/index.ts',
+    },
+    loader: {
+      // Bundle the bundled emoji-data JSON as a code-split asset so it
+      // ships with the emoji-picker chunk rather than every dep tree.
+      '.json': 'json',
     },
     format: ['esm'],
     dts: true,

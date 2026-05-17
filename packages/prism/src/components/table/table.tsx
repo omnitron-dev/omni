@@ -8,8 +8,8 @@
  * @module @omnitron-dev/prism/components/table
  */
 
-import type { ReactNode, ChangeEvent } from 'react';
-import { forwardRef, useCallback, useState, useMemo } from 'react';
+import type { ReactNode, ChangeEvent, Ref } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -155,8 +155,12 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
  * />
  * ```
  */
-function TableInner<T>(
-  {
+// React 19 forwards `ref` through props, so a generic component
+// no longer needs the `forwardRef(...) as <T>(...)` cast workaround
+// that earlier React versions required to preserve `T`. We declare
+// `ref` on the props (typed against the rendered MUI Table element)
+// and call it a day.
+export function Table<T>({
     columns,
     data,
     rowKey = 'id' as keyof T,
@@ -182,10 +186,9 @@ function TableInner<T>(
     onRowClick,
     containerSx,
     sx,
+    ref,
     ...other
-  }: TableProps<T>,
-  ref: React.Ref<HTMLTableElement>
-): ReactNode {
+  }: TableProps<T> & { ref?: Ref<HTMLTableElement> }): ReactNode {
   // Get row key
   const getRowKey = useCallback(
     (row: T, index: number): string | number => {
@@ -372,10 +375,6 @@ function TableInner<T>(
   );
 }
 
-// Type assertion to preserve generics with forwardRef
-export const Table = forwardRef(TableInner) as <T>(
-  props: TableProps<T> & { ref?: React.Ref<HTMLTableElement> }
-) => ReactNode;
 
 // =============================================================================
 // USE TABLE HOOK

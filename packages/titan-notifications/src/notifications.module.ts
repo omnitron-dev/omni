@@ -330,7 +330,7 @@ export class NotificationsModule {
           useFactory: async () => {
             const { Redis } = await import('ioredis');
             const redisClient =
-              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as any);
+              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as RedisOptions);
             return new RedisRateLimiter(redisClient, options.rateLimiterConfig);
           },
           scope: Scope.Singleton,
@@ -355,7 +355,7 @@ export class NotificationsModule {
           useFactory: async () => {
             const { Redis } = await import('ioredis');
             const redisClient =
-              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as any);
+              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as RedisOptions);
             return new RedisPreferenceStore(redisClient, options.preferenceStoreConfig);
           },
           scope: Scope.Singleton,
@@ -533,7 +533,7 @@ export class NotificationsModule {
           const redisClient =
             typeof moduleOptions.redis === 'string'
               ? new Redis(moduleOptions.redis)
-              : new Redis(moduleOptions.redis as any);
+              : new Redis(moduleOptions.redis as RedisOptions);
           return new RedisRateLimiter(redisClient, moduleOptions.rateLimiterConfig);
         },
         inject: [NOTIFICATIONS_MODULE_OPTIONS],
@@ -569,7 +569,7 @@ export class NotificationsModule {
           const redisClient =
             typeof moduleOptions.redis === 'string'
               ? new Redis(moduleOptions.redis)
-              : new Redis(moduleOptions.redis as any);
+              : new Redis(moduleOptions.redis as RedisOptions);
           return new RedisPreferenceStore(redisClient, moduleOptions.preferenceStoreConfig);
         },
         inject: [NOTIFICATIONS_MODULE_OPTIONS],
@@ -608,7 +608,7 @@ export class NotificationsModule {
 
     const result: DynamicModule = {
       module: NotificationsModule,
-      imports: (options.imports as any) || [],
+      imports: options.imports || [],
       providers,
       exports,
     };
@@ -799,7 +799,10 @@ export class NotificationsModule {
         NOTIFICATIONS_MODULE_OPTIONS,
         {
           useFactory: async (...args: any[]) => Promise.resolve(options.useFactory!(...args)),
-          inject: (options.inject || []) as any,
+          // options.inject is already typed as `any[]` so it satisfies
+          // `InjectionToken<any>[]` structurally — no narrowing cast
+          // needed beyond the original union.
+          inject: options.inject || [],
         },
       ]);
     } else if (options.useExisting) {
@@ -812,8 +815,12 @@ export class NotificationsModule {
         },
       ]);
     } else if (options.useClass) {
+      // The class itself doubles as its own injection token in
+      // Titan's DI (same pattern as Nest). Use `InjectionToken<any>`
+      // to widen safely without resorting to `as any`.
+      const useClassToken = options.useClass as InjectionToken<any>;
       providers.push([
-        options.useClass as any,
+        useClassToken,
         {
           useClass: options.useClass,
         },
@@ -824,7 +831,7 @@ export class NotificationsModule {
         {
           useFactory: async (optionsFactory: NotificationsOptionsFactory) =>
             optionsFactory.createNotificationsOptions(),
-          inject: [options.useClass as any],
+          inject: [useClassToken],
         },
       ]);
     } else {

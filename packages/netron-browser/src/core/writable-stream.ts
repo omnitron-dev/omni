@@ -13,20 +13,21 @@ const uid = new Uid();
 /**
  * Stream states for lifecycle management
  */
-export enum StreamState {
+export const StreamState = {
   /** Stream is idle and ready to accept writes */
-  IDLE = 'IDLE',
+  IDLE: 'IDLE',
   /** Stream is actively processing writes */
-  ACTIVE = 'ACTIVE',
+  ACTIVE: 'ACTIVE',
   /** Stream is draining its buffer */
-  DRAINING = 'DRAINING',
+  DRAINING: 'DRAINING',
   /** Stream is in the process of closing */
-  CLOSING = 'CLOSING',
+  CLOSING: 'CLOSING',
   /** Stream is closed and no longer accepts writes */
-  CLOSED = 'CLOSED',
+  CLOSED: 'CLOSED',
   /** Stream encountered an error */
-  ERROR = 'ERROR',
-}
+  ERROR: 'ERROR',
+} as const;
+export type StreamState = (typeof StreamState)[keyof typeof StreamState];
 
 /**
  * Write buffer entry

@@ -47,23 +47,25 @@ export interface ServiceDiscovery {
 /**
  * Load balancing strategies
  */
-export enum LoadBalancingStrategy {
-  RoundRobin = 'round-robin',
-  Random = 'random',
-  LeastConnections = 'least-connections',
-  WeightedRoundRobin = 'weighted-round-robin',
-  ResponseTime = 'response-time',
-  ConsistentHash = 'consistent-hash',
-}
+export const LoadBalancingStrategy = {
+  RoundRobin: 'round-robin',
+  Random: 'random',
+  LeastConnections: 'least-connections',
+  WeightedRoundRobin: 'weighted-round-robin',
+  ResponseTime: 'response-time',
+  ConsistentHash: 'consistent-hash',
+} as const;
+export type LoadBalancingStrategy = (typeof LoadBalancingStrategy)[keyof typeof LoadBalancingStrategy];
 
 /**
  * Circuit breaker state
  */
-export enum CircuitState {
-  Closed = 'closed',
-  Open = 'open',
-  HalfOpen = 'half-open',
-}
+export const CircuitState = {
+  Closed: 'closed',
+  Open: 'open',
+  HalfOpen: 'half-open',
+} as const;
+export type CircuitState = (typeof CircuitState)[keyof typeof CircuitState];
 
 /**
  * Circuit breaker configuration

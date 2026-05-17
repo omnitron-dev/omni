@@ -48,13 +48,14 @@ function getInstanceLogger(instance: any): ILogger {
 /**
  * Decorator target types
  */
-export enum DecoratorTarget {
-  Class = 'class',
-  Method = 'method',
-  Property = 'property',
-  Parameter = 'parameter',
-  Accessor = 'accessor',
-}
+export const DecoratorTarget = {
+  Class: 'class',
+  Method: 'method',
+  Property: 'property',
+  Parameter: 'parameter',
+  Accessor: 'accessor',
+} as const;
+export type DecoratorTarget = (typeof DecoratorTarget)[keyof typeof DecoratorTarget];
 
 /**
  * Decorator context containing information about the decoration target

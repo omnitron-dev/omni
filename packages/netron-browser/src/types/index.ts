@@ -269,13 +269,14 @@ export interface Packet {
 /**
  * Connection state
  */
-export enum ConnectionState {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  RECONNECTING = 'reconnecting',
-  FAILED = 'failed',
-}
+export const ConnectionState = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+  FAILED: 'failed',
+} as const;
+export type ConnectionState = (typeof ConnectionState)[keyof typeof ConnectionState];
 
 /**
  * Connection metrics

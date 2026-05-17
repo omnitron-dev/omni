@@ -16,20 +16,21 @@ import { calculateStrategyDelay, addJitter, type RetryStrategyType } from './ret
 /**
  * Circuit breaker state enumeration
  */
-export enum CircuitState {
+export const CircuitState = {
   /**
    * Circuit is closed - requests are allowed through normally
    */
-  Closed = 'closed',
+  Closed: 'closed',
   /**
    * Circuit is open - requests fail fast without attempting the operation
    */
-  Open = 'open',
+  Open: 'open',
   /**
    * Circuit is half-open - allowing limited test requests to check if service recovered
    */
-  HalfOpen = 'half-open',
-}
+  HalfOpen: 'half-open',
+} as const;
+export type CircuitState = (typeof CircuitState)[keyof typeof CircuitState];
 
 /**
  * Configuration options for the CircuitBreaker
@@ -502,27 +503,28 @@ export async function withTimeout<T>(
 /**
  * Backoff strategy for retry operations
  */
-export enum BackoffStrategy {
+export const BackoffStrategy = {
   /**
    * Fixed delay between retries
    */
-  Fixed = 'fixed',
+  Fixed: 'fixed',
 
   /**
    * Linear increase in delay (delay * attempt)
    */
-  Linear = 'linear',
+  Linear: 'linear',
 
   /**
    * Exponential increase in delay (delay * multiplier^attempt)
    */
-  Exponential = 'exponential',
+  Exponential: 'exponential',
 
   /**
    * Exponential with random jitter to avoid thundering herd
    */
-  ExponentialWithJitter = 'exponential-with-jitter',
-}
+  ExponentialWithJitter: 'exponential-with-jitter',
+} as const;
+export type BackoffStrategy = (typeof BackoffStrategy)[keyof typeof BackoffStrategy];
 
 /**
  * Configuration options for retry operations

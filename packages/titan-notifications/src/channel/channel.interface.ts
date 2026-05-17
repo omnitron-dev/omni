@@ -47,13 +47,14 @@ export interface NotificationChannel {
 /**
  * Channel types supported by Notifications
  */
-export enum ChannelType {
-  Email = 'email',
-  SMS = 'sms',
-  Push = 'push',
-  InApp = 'inApp',
-  Webhook = 'webhook',
-}
+export const ChannelType = {
+  Email: 'email',
+  SMS: 'sms',
+  Push: 'push',
+  InApp: 'inApp',
+  Webhook: 'webhook',
+} as const;
+export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType];
 
 /**
  * Base channel content interface

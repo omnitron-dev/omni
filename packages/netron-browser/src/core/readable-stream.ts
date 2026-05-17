@@ -29,30 +29,32 @@ const BUFFER_CLEANUP_INTERVAL = 30_000; // 30 seconds
  * Stream state enumeration.
  * Defines the lifecycle states of a NetronReadableStream.
  */
-export enum StreamState {
+export const StreamState = {
   /** Stream is initialized but not yet active */
-  IDLE = 'IDLE',
+  IDLE: 'IDLE',
   /** Stream is actively processing packets */
-  ACTIVE = 'ACTIVE',
+  ACTIVE: 'ACTIVE',
   /** Stream is paused due to backpressure */
-  PAUSED = 'PAUSED',
+  PAUSED: 'PAUSED',
   /** Stream is in the process of closing */
-  CLOSING = 'CLOSING',
+  CLOSING: 'CLOSING',
   /** Stream is closed */
-  CLOSED = 'CLOSED',
+  CLOSED: 'CLOSED',
   /** Stream encountered an error */
-  ERROR = 'ERROR',
-}
+  ERROR: 'ERROR',
+} as const;
+export type StreamState = (typeof StreamState)[keyof typeof StreamState];
 
 /**
  * Error severity categories for improved error handling.
  */
-export enum ErrorSeverity {
+export const ErrorSeverity = {
   /** Recoverable error, stream can continue */
-  RECOVERABLE = 'RECOVERABLE',
+  RECOVERABLE: 'RECOVERABLE',
   /** Fatal error, stream must be destroyed */
-  FATAL = 'FATAL',
-}
+  FATAL: 'FATAL',
+} as const;
+export type ErrorSeverity = (typeof ErrorSeverity)[keyof typeof ErrorSeverity];
 
 /**
  * Stream metrics for monitoring and debugging.

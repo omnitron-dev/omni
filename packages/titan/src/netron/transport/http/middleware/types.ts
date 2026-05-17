@@ -70,18 +70,19 @@ export interface MiddlewareConfig {
 /**
  * Middleware pipeline stage
  */
-export enum MiddlewareStage {
+export const MiddlewareStage = {
   /** Before packet processing */
-  PRE_PROCESS = 'pre-process',
+  PRE_PROCESS: 'pre-process',
   /** Before service invocation */
-  PRE_INVOKE = 'pre-invoke',
+  PRE_INVOKE: 'pre-invoke',
   /** After service invocation */
-  POST_INVOKE = 'post-invoke',
+  POST_INVOKE: 'post-invoke',
   /** After packet processing */
-  POST_PROCESS = 'post-process',
+  POST_PROCESS: 'post-process',
   /** Error handling */
-  ERROR = 'error',
-}
+  ERROR: 'error',
+} as const;
+export type MiddlewareStage = (typeof MiddlewareStage)[keyof typeof MiddlewareStage];
 
 /**
  * Middleware registration options

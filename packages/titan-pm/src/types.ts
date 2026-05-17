@@ -161,15 +161,16 @@ export interface IProcessInfo {
 /**
  * Process status enumeration
  */
-export enum ProcessStatus {
-  PENDING = 'pending',
-  STARTING = 'starting',
-  RUNNING = 'running',
-  STOPPING = 'stopping',
-  STOPPED = 'stopped',
-  FAILED = 'failed',
-  CRASHED = 'crashed',
-}
+export const ProcessStatus = {
+  PENDING: 'pending',
+  STARTING: 'starting',
+  RUNNING: 'running',
+  STOPPING: 'stopping',
+  STOPPED: 'stopped',
+  FAILED: 'failed',
+  CRASHED: 'crashed',
+} as const;
+export type ProcessStatus = (typeof ProcessStatus)[keyof typeof ProcessStatus];
 
 // ============================================================================
 // Service Proxy Types
@@ -304,25 +305,26 @@ export interface IProcessPoolOptions {
 /**
  * Pool load balancing strategies
  */
-export enum PoolStrategy {
-  ROUND_ROBIN = 'round-robin',
-  LEAST_LOADED = 'least-loaded',
-  LEAST_CONNECTIONS = 'least-connections',
-  WEIGHTED_ROUND_ROBIN = 'weighted-round-robin',
-  LEAST_RESPONSE_TIME = 'least-response-time',
-  IP_HASH = 'ip-hash',
-  RANDOM = 'random',
-  WEIGHTED = 'weighted',
-  ADAPTIVE = 'adaptive',
-  CONSISTENT_HASH = 'consistent-hash',
-  LATENCY = 'latency',
+export const PoolStrategy = {
+  ROUND_ROBIN: 'round-robin',
+  LEAST_LOADED: 'least-loaded',
+  LEAST_CONNECTIONS: 'least-connections',
+  WEIGHTED_ROUND_ROBIN: 'weighted-round-robin',
+  LEAST_RESPONSE_TIME: 'least-response-time',
+  IP_HASH: 'ip-hash',
+  RANDOM: 'random',
+  WEIGHTED: 'weighted',
+  ADAPTIVE: 'adaptive',
+  CONSISTENT_HASH: 'consistent-hash',
+  LATENCY: 'latency',
   /**
    * Power of Two Random Choices (P2C) - O(1) selection with excellent load distribution.
    * Picks 2 random workers and selects the one with lower load.
    * Used by NGINX, HAProxy, and Envoy. Recommended for high-throughput pools.
    */
-  POWER_OF_TWO = 'power-of-two',
-}
+  POWER_OF_TWO: 'power-of-two',
+} as const;
+export type PoolStrategy = (typeof PoolStrategy)[keyof typeof PoolStrategy];
 
 /**
  * Process pool interface
@@ -372,12 +374,13 @@ export interface ISupervisorOptions {
 /**
  * Supervision strategies
  */
-export enum SupervisionStrategy {
-  ONE_FOR_ONE = 'one-for-one',
-  ONE_FOR_ALL = 'one-for-all',
-  REST_FOR_ONE = 'rest-for-one',
-  SIMPLE_ONE_FOR_ONE = 'simple-one-for-one',
-}
+export const SupervisionStrategy = {
+  ONE_FOR_ONE: 'one-for-one',
+  ONE_FOR_ALL: 'one-for-all',
+  REST_FOR_ONE: 'rest-for-one',
+  SIMPLE_ONE_FOR_ONE: 'simple-one-for-one',
+} as const;
+export type SupervisionStrategy = (typeof SupervisionStrategy)[keyof typeof SupervisionStrategy];
 
 /**
  * Supervisor child definition
@@ -466,12 +469,13 @@ export interface ISupervisorChildConfig {
 /**
  * Restart decision enumeration
  */
-export enum RestartDecision {
-  RESTART = 'restart',
-  IGNORE = 'ignore',
-  ESCALATE = 'escalate',
-  SHUTDOWN = 'shutdown',
-}
+export const RestartDecision = {
+  RESTART: 'restart',
+  IGNORE: 'ignore',
+  ESCALATE: 'escalate',
+  SHUTDOWN: 'shutdown',
+} as const;
+export type RestartDecision = (typeof RestartDecision)[keyof typeof RestartDecision];
 
 // ============================================================================
 // Workflow Types

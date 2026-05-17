@@ -7,13 +7,14 @@ import { Errors } from '../errors/index.js';
 /**
  * Supported runtime environments
  */
-export enum Runtime {
-  Node = 'node',
-  Bun = 'bun',
-  Deno = 'deno',
-  Browser = 'browser',
-  Unknown = 'unknown',
-}
+export const Runtime = {
+  Node: 'node',
+  Bun: 'bun',
+  Deno: 'deno',
+  Browser: 'browser',
+  Unknown: 'unknown',
+} as const;
+export type Runtime = (typeof Runtime)[keyof typeof Runtime];
 
 /**
  * Runtime information

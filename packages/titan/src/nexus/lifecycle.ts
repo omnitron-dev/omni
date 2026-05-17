@@ -24,62 +24,63 @@ const LIFECYCLE_CONSTANTS = {
 /**
  * Lifecycle events
  */
-export enum LifecycleEvent {
+export const LifecycleEvent = {
   // Container lifecycle
-  ContainerCreated = 'container:created',
-  ContainerInitialized = 'container:initialized',
-  ContainerDisposing = 'container:disposing',
-  ContainerDisposed = 'container:disposed',
+  ContainerCreated: 'container:created',
+  ContainerInitialized: 'container:initialized',
+  ContainerDisposing: 'container:disposing',
+  ContainerDisposed: 'container:disposed',
 
   // Registration lifecycle
-  BeforeRegister = 'register:before',
-  AfterRegister = 'register:after',
+  BeforeRegister: 'register:before',
+  AfterRegister: 'register:after',
 
   // Resolution lifecycle
-  BeforeResolve = 'resolve:before',
-  AfterResolve = 'resolve:after',
-  ResolveFailed = 'resolve:failed',
+  BeforeResolve: 'resolve:before',
+  AfterResolve: 'resolve:after',
+  ResolveFailed: 'resolve:failed',
 
   // Instance lifecycle
-  InstanceCreating = 'instance:creating',
-  InstanceCreated = 'instance:created',
-  InstanceInitializing = 'instance:initializing',
-  InstanceInitialized = 'instance:initialized',
-  InstanceDisposing = 'instance:disposing',
-  InstanceDisposed = 'instance:disposed',
+  InstanceCreating: 'instance:creating',
+  InstanceCreated: 'instance:created',
+  InstanceInitializing: 'instance:initializing',
+  InstanceInitialized: 'instance:initialized',
+  InstanceDisposing: 'instance:disposing',
+  InstanceDisposed: 'instance:disposed',
 
   // Module lifecycle
-  ModuleLoading = 'module:loading',
-  ModuleLoaded = 'module:loaded',
-  ModuleInitializing = 'module:initializing',
-  ModuleInitialized = 'module:initialized',
-  ModuleDestroying = 'module:destroying',
-  ModuleDestroyed = 'module:destroyed',
+  ModuleLoading: 'module:loading',
+  ModuleLoaded: 'module:loaded',
+  ModuleInitializing: 'module:initializing',
+  ModuleInitialized: 'module:initialized',
+  ModuleDestroying: 'module:destroying',
+  ModuleDestroyed: 'module:destroyed',
 
   // Cache lifecycle
-  CacheHit = 'cache:hit',
-  CacheMiss = 'cache:miss',
-  CacheSet = 'cache:set',
-  CacheClearing = 'cache:clearing',
-  CacheCleared = 'cache:cleared',
+  CacheHit: 'cache:hit',
+  CacheMiss: 'cache:miss',
+  CacheSet: 'cache:set',
+  CacheClearing: 'cache:clearing',
+  CacheCleared: 'cache:cleared',
 
   // Scope lifecycle
-  ScopeCreated = 'scope:created',
-  ScopeDisposing = 'scope:disposing',
-  ScopeDisposed = 'scope:disposed',
+  ScopeCreated: 'scope:created',
+  ScopeDisposing: 'scope:disposing',
+  ScopeDisposed: 'scope:disposed',
 
   // Middleware lifecycle
-  MiddlewareAdded = 'middleware:added',
-  MiddlewareRemoved = 'middleware:removed',
-  MiddlewareExecuting = 'middleware:executing',
-  MiddlewareExecuted = 'middleware:executed',
+  MiddlewareAdded: 'middleware:added',
+  MiddlewareRemoved: 'middleware:removed',
+  MiddlewareExecuting: 'middleware:executing',
+  MiddlewareExecuted: 'middleware:executed',
 
   // Plugin lifecycle
-  PluginInstalling = 'plugin:installing',
-  PluginInstalled = 'plugin:installed',
-  PluginUninstalling = 'plugin:uninstalling',
-  PluginUninstalled = 'plugin:uninstalled',
-}
+  PluginInstalling: 'plugin:installing',
+  PluginInstalled: 'plugin:installed',
+  PluginUninstalling: 'plugin:uninstalling',
+  PluginUninstalled: 'plugin:uninstalled',
+} as const;
+export type LifecycleEvent = (typeof LifecycleEvent)[keyof typeof LifecycleEvent];
 
 /**
  * Lifecycle event data

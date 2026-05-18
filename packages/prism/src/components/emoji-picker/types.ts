@@ -17,7 +17,7 @@ export interface EmojiDataset {
 
 /** A single emoji + its metadata, stored in a dense shape on disk. */
 export interface EmojiEntry {
-  /** Hex codepoint sequence, no separators on multi-cp (e.g. `1F1EA-1F1FA`). */
+  /** Hex codepoint sequence, dash-separated for multi-cp (e.g. `1F1EA-1F1FA`). */
   i: string;
   /** Unicode form, ready to render natively. */
   e: string;
@@ -27,12 +27,6 @@ export interface EmojiEntry {
   k: string[];
   /** Compact group index — see `EmojiDataset.groups`. */
   g: number;
-  /**
-   * Skin-tone variants, one per tone 1..5. Stored as
-   * `[unicode, hexcode]` pairs so each tone gets a stable id.
-   * Absent when the emoji has no skin tones.
-   */
-  s?: [string, string][];
 }
 
 /** Visual style used to render an emoji. */

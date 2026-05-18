@@ -25,9 +25,9 @@ import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
+import InputBase from '@mui/material/InputBase';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -126,7 +126,7 @@ export function EmojiPicker({
       const matches = searchEmojis(data.dataset.emojis, data.searchTokens, query);
       const out: GridRow[] = [];
       if (matches.length === 0) return out;
-      out.push({ kind: 'header', label: i18n.searchPlaceholder, group: 'search' });
+      out.push({ kind: 'header', label: i18n.searchResults, group: 'search' });
       for (let i = 0; i < matches.length; i += perLine) {
         out.push({ kind: 'row', entries: matches.slice(i, i + perLine), group: 'search' });
       }
@@ -192,16 +192,65 @@ export function EmojiPicker({
     overscan: 6,
   });
 
-  // Scroll-spy: keep the active category strip in sync with what's
-  // visible at the top of the scroll viewport.
+  // ----- Scroll-spy -----
+  //
+  // We can't drive this off a `useEffect` keyed on the virtualizer
+  // object — its identity is stable across scrolls. The previous
+  // version subscribed to `virtualizer.getVirtualItems()` inside an
+  // effect's body, which only re-evaluates when the effect's deps
+  // change, never on actual scroll. The result was that the active
+  // category never advanced past `recent` (or `smileys` for users
+  // without a recent list) no matter how far you scrolled.
+  //
+  // Fix: bind to the scroll container's native `scroll` event and
+  // walk the cached `virtualizer.measurementsCache` (synchronous,
+  // already computed) to find the first row whose start >= viewport
+  // top. A short rAF debounce coalesces fast scrolls into a single
+  // setState — the strip stays jitter-free.
+  const rowsRef = useRef(rows);
   useEffect(() => {
-    if (!data || query) return;
-    const items = virtualizer.getVirtualItems();
-    if (items.length === 0) return;
-    const top = items.find((i) => i.start + i.size >= (scrollRef.current?.scrollTop ?? 0));
-    const row = top ? rows[top.index] : undefined;
-    if (row && row.group !== activeGroup) setActiveGroup(row.group);
-  }, [virtualizer, rows, data, query, activeGroup]);
+    rowsRef.current = rows;
+  }, [rows]);
+
+  useEffect(() => {
+    if (!data || query) return undefined;
+    const el = scrollRef.current;
+    if (!el) return undefined;
+
+    let raf = 0;
+    const HEADER_OFFSET = 24; // bias so a section's first row counts as "in"
+    const update = () => {
+      raf = 0;
+      const currentRows = rowsRef.current;
+      const top = el.scrollTop + HEADER_OFFSET;
+      const measurements = virtualizer.measurementsCache;
+      // Walk linearly — measurements is in row order and we typically
+      // only travel a few entries past the previous active section.
+      let activeIdx = -1;
+      for (let i = 0; i < measurements.length; i++) {
+        const m = measurements[i]!;
+        if (m.start <= top) activeIdx = i;
+        else break;
+      }
+      const row = activeIdx >= 0 ? currentRows[activeIdx] : currentRows[0];
+      if (row) {
+        setActiveGroup((prev) => (prev === row.group ? prev : row.group));
+      }
+    };
+
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(update);
+    };
+
+    // Prime the initial value so the strip is correct on first render.
+    update();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [data, query, virtualizer]);
 
   const handlePick = useCallback(
     (entry: EmojiEntry) => {
@@ -240,37 +289,54 @@ export function EmojiPicker({
         overflow: 'hidden',
       })}
     >
-      {/* Search input */}
+      {/* Search input — InputBase (not OutlinedInput) so there's no
+          notched-legend remnant when we don't pass a label. The
+          outline is drawn by us via `sx`, so it stays a continuous
+          rounded rect with no rvani granica. */}
       <Box sx={{ p: 1, pb: 0.5 }}>
-        <TextField
+        <InputBase
           autoFocus
-          size="small"
           fullWidth
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={i18n.searchPlaceholder}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start" sx={{ pl: 0.5, color: 'text.disabled' }}>
-                  <SearchGlyph />
-                </InputAdornment>
-              ),
-              endAdornment: query ? (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => setQuery('')}
-                    sx={{ width: 22, height: 22, color: 'text.disabled' }}
-                    aria-label="clear"
-                  >
-                    <ClearGlyph />
-                  </IconButton>
-                </InputAdornment>
-              ) : null,
-              sx: { fontSize: '0.8125rem', borderRadius: 1.5 },
+          startAdornment={
+            <InputAdornment position="start" sx={{ pl: 0.75, color: 'text.disabled' }}>
+              <SearchGlyph />
+            </InputAdornment>
+          }
+          endAdornment={
+            query ? (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => setQuery('')}
+                  sx={{ width: 22, height: 22, mr: 0.25, color: 'text.disabled' }}
+                  aria-label={i18n.clear}
+                >
+                  <ClearGlyph />
+                </IconButton>
+              </InputAdornment>
+            ) : null
+          }
+          sx={(theme) => ({
+            fontSize: '0.8125rem',
+            px: 0.5,
+            py: 0.25,
+            borderRadius: 1.5,
+            border: `1px solid ${theme.palette.divider}`,
+            transition: theme.transitions.create(['border-color', 'box-shadow'], {
+              duration: theme.transitions.duration.shortest,
+            }),
+            '&.Mui-focused': {
+              borderColor: theme.palette.primary.main,
+              boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`,
             },
-          }}
+            '& input::placeholder': {
+              color: theme.palette.text.disabled,
+              opacity: 1,
+            },
+          })}
         />
       </Box>
 
@@ -436,16 +502,12 @@ export function EmojiPicker({
               variant="caption"
               sx={{ color: 'text.disabled', fontStyle: 'italic' }}
             >
-              {i18n.searchPlaceholder}
+              {i18n.previewHint}
             </Typography>
           )}
         </Stack>
 
-        <Tooltip title={i18n.skinTone}>
-          <Box>
-            <SkinToneSelector value={tone} onChange={setTone} set={set} />
-          </Box>
-        </Tooltip>
+        <SkinToneSelector value={tone} onChange={setTone} set={set} i18n={i18n} />
       </Stack>
     </Box>
   );
@@ -499,35 +561,39 @@ function CategoryBtn({
 // Using literal emoji squares lets us paint with the same Emoji
 // renderer the rest of the picker uses — keeps the palette
 // consistent across the native/twemoji axis.
-const SKIN_TONES: { tone: SkinTone; emoji: string }[] = [
-  { tone: 0, emoji: '✋' }, // neutral
-  { tone: 1, emoji: '✋🏻' },
-  { tone: 2, emoji: '✋🏼' },
-  { tone: 3, emoji: '✋🏽' },
-  { tone: 4, emoji: '✋🏾' },
-  { tone: 5, emoji: '✋🏿' },
+const SKIN_TONES: { tone: SkinTone; emoji: string; key: keyof EmojiPickerI18n['skinTones'] }[] = [
+  { tone: 0, emoji: '✋', key: 'default' },
+  { tone: 1, emoji: '✋🏻', key: 'light' },
+  { tone: 2, emoji: '✋🏼', key: 'mediumLight' },
+  { tone: 3, emoji: '✋🏽', key: 'medium' },
+  { tone: 4, emoji: '✋🏾', key: 'mediumDark' },
+  { tone: 5, emoji: '✋🏿', key: 'dark' },
 ];
 
 function SkinToneSelector({
   value,
   onChange,
   set,
+  i18n,
 }: {
   value: SkinTone;
   onChange: (t: SkinTone) => void;
   set: EmojiSet;
+  i18n: EmojiPickerI18n;
 }) {
   const [open, setOpen] = useState(false);
   const current = SKIN_TONES.find((t) => t.tone === value) ?? SKIN_TONES[0]!;
   return (
     <Box sx={{ position: 'relative' }}>
-      <ButtonBase
-        onClick={() => setOpen((o) => !o)}
-        aria-label="skin tone"
-        sx={{ width: 26, height: 26, borderRadius: '50%' }}
-      >
-        <Emoji native={current.emoji} set={set} size={18} />
-      </ButtonBase>
+      <Tooltip title={`${i18n.skinTone}: ${i18n.skinTones[current.key]}`} placement="top">
+        <ButtonBase
+          onClick={() => setOpen((o) => !o)}
+          aria-label={i18n.skinTone}
+          sx={{ width: 26, height: 26, borderRadius: '50%' }}
+        >
+          <Emoji native={current.emoji} set={set} size={18} />
+        </ButtonBase>
+      </Tooltip>
       {open && (
         <Box
           sx={(theme) => ({
@@ -545,23 +611,25 @@ function SkinToneSelector({
           })}
         >
           {SKIN_TONES.map((t) => (
-            <ButtonBase
-              key={t.tone}
-              onClick={() => {
-                onChange(t.tone);
-                setOpen(false);
-              }}
-              sx={(theme) => ({
-                width: 26,
-                height: 26,
-                borderRadius: '50%',
-                ...(t.tone === value && {
-                  boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
-                }),
-              })}
-            >
-              <Emoji native={t.emoji} set={set} size={18} />
-            </ButtonBase>
+            <Tooltip key={t.tone} title={i18n.skinTones[t.key]} placement="top">
+              <ButtonBase
+                onClick={() => {
+                  onChange(t.tone);
+                  setOpen(false);
+                }}
+                aria-label={i18n.skinTones[t.key]}
+                sx={(theme) => ({
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  ...(t.tone === value && {
+                    boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
+                  }),
+                })}
+              >
+                <Emoji native={t.emoji} set={set} size={18} />
+              </ButtonBase>
+            </Tooltip>
           ))}
         </Box>
       )}

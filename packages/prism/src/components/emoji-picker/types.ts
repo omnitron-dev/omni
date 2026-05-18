@@ -93,8 +93,11 @@ export interface EmojiPickerProps {
 /** All localisable strings inside the picker. */
 export interface EmojiPickerI18n {
   searchPlaceholder: string;
+  searchResults: string;
   noResults: string;
   loading: string;
+  previewHint: string;
+  clear: string;
   categories: {
     recent: string;
     smileys: string;
@@ -108,13 +111,24 @@ export interface EmojiPickerI18n {
     flags: string;
   };
   skinTone: string;
+  skinTones: {
+    default: string;
+    light: string;
+    mediumLight: string;
+    medium: string;
+    mediumDark: string;
+    dark: string;
+  };
 }
 
 /** Default English copy used when no `i18n` prop is supplied. */
 export const DEFAULT_I18N: EmojiPickerI18n = {
   searchPlaceholder: 'Search emoji',
+  searchResults: 'Search results',
   noResults: 'No emoji match',
   loading: 'Loading…',
+  previewHint: 'Hover any emoji to preview',
+  clear: 'Clear search',
   categories: {
     recent: 'Recently used',
     smileys: 'Smileys & emotion',
@@ -128,4 +142,12 @@ export const DEFAULT_I18N: EmojiPickerI18n = {
     flags: 'Flags',
   },
   skinTone: 'Skin tone',
+  skinTones: {
+    default: 'Default',
+    light: 'Light',
+    mediumLight: 'Medium-light',
+    medium: 'Medium',
+    mediumDark: 'Medium-dark',
+    dark: 'Dark',
+  },
 };

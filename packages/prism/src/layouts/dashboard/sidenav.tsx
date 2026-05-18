@@ -8,7 +8,7 @@
  * @module @omnitron-dev/prism/layouts/dashboard/sidenav
  */
 
-import { type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { styled, alpha } from '@mui/material/styles';
 import Drawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
@@ -193,36 +193,46 @@ export function Sidenav({
       <NavContent>
         <NavScrollArea>
           {navData?.map((section, idx) => (
-            <List
-              key={section.id}
-              subheader={
-                showText && section.subheader ? (
-                  <ListSubheader
-                    disableSticky
-                    sx={{
-                      px: 2.5,
-                      py: 1.5,
-                      typography: 'overline',
-                      color: 'text.secondary',
-                      bgcolor: 'transparent',
-                    }}
-                  >
-                    {section.subheader}
-                  </ListSubheader>
-                ) : !showText && idx > 0 ? (
-                  <Divider sx={{ my: 1, mx: 1.5 }} />
-                ) : null
-              }
-              sx={{ px: showText ? 1 : 0.5 }}
-            >
-              {section.items.map((item) =>
-                renderNavItem ? (
-                  renderNavItem(item, 0)
-                ) : (
-                  <NavItemWithActive key={item.id} item={item} showText={showText} depth={0} />
-                )
-              )}
-            </List>
+            <Fragment key={section.id}>
+              {/* Collapsed-mode section separator. Lives as a sibling
+                  of the two surrounding `<List>`s rather than inside
+                  the next list's `subheader` slot — `<List>` adds a
+                  symmetric 8px padding top + bottom, and a subheader
+                  divider would have that 8px above it but nothing
+                  below, leaving the divider line ~3× closer to the
+                  next icon than to the previous one. As a sibling
+                  both surrounding paddings contribute equally to
+                  top and bottom, so the divider sits visually
+                  centred between the two icon clusters. */}
+              {!showText && idx > 0 && <Divider sx={{ mx: 1.5 }} />}
+              <List
+                subheader={
+                  showText && section.subheader ? (
+                    <ListSubheader
+                      disableSticky
+                      sx={{
+                        px: 2.5,
+                        py: 1.5,
+                        typography: 'overline',
+                        color: 'text.secondary',
+                        bgcolor: 'transparent',
+                      }}
+                    >
+                      {section.subheader}
+                    </ListSubheader>
+                  ) : null
+                }
+                sx={{ px: showText ? 1 : 0.5 }}
+              >
+                {section.items.map((item) =>
+                  renderNavItem ? (
+                    renderNavItem(item, 0)
+                  ) : (
+                    <NavItemWithActive key={item.id} item={item} showText={showText} depth={0} />
+                  )
+                )}
+              </List>
+            </Fragment>
           ))}
         </NavScrollArea>
 

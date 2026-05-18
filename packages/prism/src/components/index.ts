@@ -125,7 +125,6 @@ export {
   type EmojiPickerProps,
   type EmojiSet,
   type PickedEmoji,
-  type SkinTone,
   type EmojiPickerI18n,
 } from './emoji-picker/index.js';
 

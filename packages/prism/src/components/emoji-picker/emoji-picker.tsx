@@ -43,7 +43,6 @@ import {
   type EmojiPickerProps,
   type EmojiSet,
   type PickedEmoji,
-  type SkinTone,
 } from './types.js';
 
 // Match emojibase's group ordering (after we dropped "components").
@@ -90,7 +89,6 @@ export function EmojiPicker({
   perLine = 9,
   emojiSize = 22,
   maxRecent = 16,
-  defaultTone = 0,
   i18n: i18nOverride,
   className,
 }: EmojiPickerProps) {
@@ -99,26 +97,12 @@ export function EmojiPicker({
   const { recent, push: pushRecent } = useRecentEmojis(maxRecent);
 
   const [query, setQuery] = useState('');
-  const [tone, setTone] = useState<SkinTone>(defaultTone);
   const [hovered, setHovered] = useState<EmojiEntry | null>(null);
   const [activeGroup, setActiveGroup] = useState<string>('recent');
 
-  // Apply skin tone to an emoji entry. Returns the tone-applied
-  // unicode + a tone-suffixed id used by the recent list.
-  const applyTone = useCallback(
-    (entry: EmojiEntry, useTone: SkinTone = tone): PickedEmoji => {
-      if (useTone === 0 || !entry.s) {
-        return { native: entry.e, id: entry.i, name: entry.n, tone: 0 };
-      }
-      const idx = (useTone - 1) as 0 | 1 | 2 | 3 | 4;
-      const variant = entry.s[idx];
-      if (!variant) return { native: entry.e, id: entry.i, name: entry.n, tone: 0 };
-      return { native: variant[0], id: variant[1], name: entry.n, tone: useTone };
-    },
-    [tone],
-  );
-
-  // Build the flat row list once per (data, query, recent, tone) change.
+  // Build the flat row list once per (data, query, recent) change.
+  // Each pick produces a `PickedEmoji` shape directly from the
+  // dataset entry — no per-pick mutation needed.
   const rows = useMemo<GridRow[]>(() => {
     if (!data) return [];
 
@@ -134,29 +118,22 @@ export function EmojiPicker({
     }
 
     const out: GridRow[] = [];
-    // Recent row first (if non-empty).
+    // Recent row first (if non-empty). Lookups are by base id — the
+    // picker no longer produces tone-suffixed ids, so the lookup is
+    // a single map hit. Pre-existing tone-suffixed ids in localStorage
+    // are skipped (they'd otherwise render as "?", and they'll age out
+    // of the MRU after a few picks).
     if (recent.length > 0) {
-      out.push({ kind: 'header', label: i18n.categories.recent, group: 'recent' });
       const resolved: EmojiEntry[] = [];
       for (const id of recent) {
-        // Recent id might carry a tone suffix; look up the base entry.
-        const base = id.includes('-') && id.length > 5 ? id.split('-')[0]! : id;
-        const entry = data.indexById.get(base) ?? data.indexById.get(id);
-        if (entry) {
-          // Build a synthetic entry whose `e` field already reflects the
-          // recent tone so the grid renders the user's exact prior pick.
-          if (id !== base && entry.s) {
-            const variant = entry.s.find(([, h]) => h === id);
-            if (variant) {
-              resolved.push({ ...entry, e: variant[0], i: variant[1] });
-              continue;
-            }
-          }
-          resolved.push(entry);
-        }
+        const entry = data.indexById.get(id);
+        if (entry) resolved.push(entry);
       }
-      for (let i = 0; i < resolved.length; i += perLine) {
-        out.push({ kind: 'row', entries: resolved.slice(i, i + perLine), group: 'recent' });
+      if (resolved.length > 0) {
+        out.push({ kind: 'header', label: i18n.categories.recent, group: 'recent' });
+        for (let i = 0; i < resolved.length; i += perLine) {
+          out.push({ kind: 'row', entries: resolved.slice(i, i + perLine), group: 'recent' });
+        }
       }
     }
 
@@ -254,11 +231,11 @@ export function EmojiPicker({
 
   const handlePick = useCallback(
     (entry: EmojiEntry) => {
-      const picked = applyTone(entry);
+      const picked: PickedEmoji = { native: entry.e, id: entry.i, name: entry.n };
       pushRecent(picked.id);
       onSelect(picked);
     },
-    [applyTone, pushRecent, onSelect],
+    [pushRecent, onSelect],
   );
 
   // Jump to a section when a category icon is clicked.
@@ -461,7 +438,7 @@ export function EmojiPicker({
                             },
                           })}
                         >
-                          <Emoji native={applyTone(entry).native} set={set} size={emojiSize} />
+                          <Emoji native={entry.e} set={set} size={emojiSize} />
                         </ButtonBase>
                       ))}
                     </Stack>
@@ -473,12 +450,11 @@ export function EmojiPicker({
         )}
       </Box>
 
-      {/* Preview + skin-tone selector */}
+      {/* Preview bar */}
       <Stack
         direction="row"
         sx={(theme) => ({
           alignItems: 'center',
-          justifyContent: 'space-between',
           px: 1.25,
           py: 0.75,
           borderTop: `1px solid ${theme.palette.divider}`,
@@ -488,7 +464,7 @@ export function EmojiPicker({
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flex: 1, minWidth: 0 }}>
           {hovered ? (
             <>
-              <Emoji native={applyTone(hovered).native} set={set} size={20} />
+              <Emoji native={hovered.e} set={set} size={20} />
               <Typography
                 variant="caption"
                 noWrap
@@ -506,8 +482,6 @@ export function EmojiPicker({
             </Typography>
           )}
         </Stack>
-
-        <SkinToneSelector value={tone} onChange={setTone} set={set} i18n={i18n} />
       </Stack>
     </Box>
   );
@@ -554,86 +528,6 @@ function CategoryBtn({
         <Emoji native={icon} set={set} size={18} />
       </ButtonBase>
     </Tooltip>
-  );
-}
-
-// Skin tone palette: 0 = neutral yellow, 1..5 = Fitzpatrick scale.
-// Using literal emoji squares lets us paint with the same Emoji
-// renderer the rest of the picker uses — keeps the palette
-// consistent across the native/twemoji axis.
-const SKIN_TONES: { tone: SkinTone; emoji: string; key: keyof EmojiPickerI18n['skinTones'] }[] = [
-  { tone: 0, emoji: '✋', key: 'default' },
-  { tone: 1, emoji: '✋🏻', key: 'light' },
-  { tone: 2, emoji: '✋🏼', key: 'mediumLight' },
-  { tone: 3, emoji: '✋🏽', key: 'medium' },
-  { tone: 4, emoji: '✋🏾', key: 'mediumDark' },
-  { tone: 5, emoji: '✋🏿', key: 'dark' },
-];
-
-function SkinToneSelector({
-  value,
-  onChange,
-  set,
-  i18n,
-}: {
-  value: SkinTone;
-  onChange: (t: SkinTone) => void;
-  set: EmojiSet;
-  i18n: EmojiPickerI18n;
-}) {
-  const [open, setOpen] = useState(false);
-  const current = SKIN_TONES.find((t) => t.tone === value) ?? SKIN_TONES[0]!;
-  return (
-    <Box sx={{ position: 'relative' }}>
-      <Tooltip title={`${i18n.skinTone}: ${i18n.skinTones[current.key]}`} placement="top">
-        <ButtonBase
-          onClick={() => setOpen((o) => !o)}
-          aria-label={i18n.skinTone}
-          sx={{ width: 26, height: 26, borderRadius: '50%' }}
-        >
-          <Emoji native={current.emoji} set={set} size={18} />
-        </ButtonBase>
-      </Tooltip>
-      {open && (
-        <Box
-          sx={(theme) => ({
-            position: 'absolute',
-            right: 0,
-            bottom: 'calc(100% + 4px)',
-            display: 'flex',
-            gap: 0.25,
-            p: 0.5,
-            bgcolor: 'background.paper',
-            border: `1px solid ${theme.palette.divider}`,
-            borderRadius: 1,
-            boxShadow: theme.shadows[4],
-            zIndex: 1,
-          })}
-        >
-          {SKIN_TONES.map((t) => (
-            <Tooltip key={t.tone} title={i18n.skinTones[t.key]} placement="top">
-              <ButtonBase
-                onClick={() => {
-                  onChange(t.tone);
-                  setOpen(false);
-                }}
-                aria-label={i18n.skinTones[t.key]}
-                sx={(theme) => ({
-                  width: 26,
-                  height: 26,
-                  borderRadius: '50%',
-                  ...(t.tone === value && {
-                    boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
-                  }),
-                })}
-              >
-                <Emoji native={t.emoji} set={set} size={18} />
-              </ButtonBase>
-            </Tooltip>
-          ))}
-        </Box>
-      )}
-    </Box>
   );
 }
 

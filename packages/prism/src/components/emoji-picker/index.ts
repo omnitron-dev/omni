@@ -16,6 +16,5 @@ export type {
   EmojiProps,
   EmojiSet,
   PickedEmoji,
-  SkinTone,
   EmojiPickerI18n,
 } from './types.js';

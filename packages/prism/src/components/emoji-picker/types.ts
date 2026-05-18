@@ -38,9 +38,6 @@ export interface EmojiEntry {
 /** Visual style used to render an emoji. */
 export type EmojiSet = 'native' | 'twitter';
 
-/** Skin tone selector (1=light, 5=dark; 0=neutral/default). */
-export type SkinTone = 0 | 1 | 2 | 3 | 4 | 5;
-
 /**
  * Payload returned by `<EmojiPicker onSelect>` when the user picks
  * an emoji. The fields mirror the public surface of every
@@ -48,14 +45,12 @@ export type SkinTone = 0 | 1 | 2 | 3 | 4 | 5;
  * `emoji-mart`'s `{ native }` callback shape.
  */
 export interface PickedEmoji {
-  /** The rendered unicode glyph after skin-tone substitution. */
+  /** The rendered unicode glyph. */
   native: string;
-  /** Stable codepoint id (with tone suffix when applicable). */
+  /** Stable codepoint id (hexcode form, e.g. `1F44D`). */
   id: string;
   /** Human-readable label. */
   name: string;
-  /** Skin tone that produced `native` (0 when none applied). */
-  tone: SkinTone;
 }
 
 /** Props for the standalone `<Emoji>` renderer. */
@@ -82,8 +77,6 @@ export interface EmojiPickerProps {
   emojiSize?: number;
   /** Max emojis shown in the "Recent" row (capped at 32). */
   maxRecent?: number;
-  /** Default skin tone applied across the picker. */
-  defaultTone?: SkinTone;
   /** Localised strings shown in the chrome. */
   i18n?: Partial<EmojiPickerI18n>;
   /** Optional className on the outer container. */
@@ -110,15 +103,6 @@ export interface EmojiPickerI18n {
     symbols: string;
     flags: string;
   };
-  skinTone: string;
-  skinTones: {
-    default: string;
-    light: string;
-    mediumLight: string;
-    medium: string;
-    mediumDark: string;
-    dark: string;
-  };
 }
 
 /** Default English copy used when no `i18n` prop is supplied. */
@@ -140,14 +124,5 @@ export const DEFAULT_I18N: EmojiPickerI18n = {
     objects: 'Objects',
     symbols: 'Symbols',
     flags: 'Flags',
-  },
-  skinTone: 'Skin tone',
-  skinTones: {
-    default: 'Default',
-    light: 'Light',
-    mediumLight: 'Medium-light',
-    medium: 'Medium',
-    mediumDark: 'Medium-dark',
-    dark: 'Dark',
   },
 };

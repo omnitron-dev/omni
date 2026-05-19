@@ -167,9 +167,16 @@ export function LayoutProvider({ children, initialConfig, persistKey }: LayoutPr
     // Exact match
     if (item.path === cleanPath) return true;
 
-    // Selection prefix match (e.g., /products matches /products/123)
-    if (item.selectionPrefix && cleanPath.startsWith(item.selectionPrefix)) {
-      return true;
+    // Selection prefix match. Accepts a single string or an array
+    // — array form lets one nav item span disjoint URL spaces
+    // (e.g. "/communities" + "/c/" for the Communities entry).
+    if (item.selectionPrefix) {
+      const prefixes = Array.isArray(item.selectionPrefix)
+        ? item.selectionPrefix
+        : [item.selectionPrefix];
+      if (prefixes.some((p) => cleanPath.startsWith(p))) {
+        return true;
+      }
     }
 
     // Deep match (default: true) — active if path is a prefix of pathname

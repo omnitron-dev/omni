@@ -121,19 +121,26 @@ export interface LayoutNavItem {
   /** Badge for "new" or count indicators */
   badge?: string | number;
   /**
-   * Selection prefix for active state matching.
+   * Selection prefix(es) for active state matching.
    * If set, the item will be marked active when the current path
-   * starts with this prefix. Useful for parent items that should
-   * stay highlighted when on child routes.
+   * starts with any of the listed prefixes. Useful for parent
+   * items that should stay highlighted when on child routes —
+   * including child routes whose URL doesn't share a prefix with
+   * the item's `path` (e.g. /communities + /c/<slug>).
+   *
+   * Accepts a single string or an array of strings; arrays are
+   * matched as "any prefix wins".
    *
    * @example
    * ```tsx
-   * // Parent item with selectionPrefix
-   * { id: 'products', title: 'Products', path: '/products', selectionPrefix: '/products' }
-   * // Will be active for /products, /products/123, /products/new, etc.
+   * // Single prefix
+   * { id: 'products', path: '/products', selectionPrefix: '/products' }
+   * // Multiple prefixes (covers two disjoint URL spaces)
+   * { id: 'communities', path: '/communities',
+   *   selectionPrefix: ['/communities', '/c/'] }
    * ```
    */
-  selectionPrefix?: string;
+  selectionPrefix?: string | string[];
 }
 
 /**

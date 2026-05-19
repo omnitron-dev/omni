@@ -411,15 +411,39 @@ export class OrchestratorService extends EventEmitter {
     //   - exact key already exists, online   → return it (idempotent)
     //   - exact key already exists, not online → fall through and re-launch
     //     under the same key
-    //   - DIFFERENT key with the same effective short name → reject:
-    //     operator should restart by canonical name, not register an
-    //     alias.
+    //   - DIFFERENT key with the same effective short name:
+    //       - new is MORE specific (namespaced) and existing is bare → stop
+    //         the bare one and re-launch under the namespaced key. Without
+    //         this, a boot-race where bare-name auto-start beats the
+    //         project/stack flow strands the app under the wrong key and
+    //         webapp/CLI lookups by namespaced key see it as stopped.
+    //       - new is LESS-or-equally specific → refuse: operator should
+    //         restart by canonical name, not register an alias.
     const effective = effectiveAppName(entry.name);
+    const newIsNamespaced = entry.name.includes('/');
     for (const [key, h] of this.handles) {
       if (key === entry.name) continue;
       if (effectiveAppName(key) !== effective) continue;
+      const existingIsNamespaced = key.includes('/');
       // Same effective app under a different key.
       if (h.status === 'online') {
+        if (newIsNamespaced && !existingIsNamespaced) {
+          this.logger.info(
+            { stale: key, replacing_with: entry.name, effective },
+            'Stopping bare-name handle to re-register under namespaced key',
+          );
+          try {
+            await this.stopApp(key);
+          } catch (err) {
+            this.logger.warn(
+              { stale: key, error: (err as Error).message },
+              'stopApp during dedup failed — clearing handle anyway',
+            );
+          }
+          this.handles.delete(key);
+          if (key !== entry.name) this.metricsBridge?.evictApp(key);
+          continue;
+        }
         this.logger.warn(
           { existing: key, attempted: entry.name, effective },
           'App already running under a canonical name — refusing duplicate registration',

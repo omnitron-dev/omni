@@ -147,4 +147,87 @@ describe('cookie-codec', () => {
       expect(parsed.get('omni')).toBe('hello world!');
     });
   });
+
+  describe('fuzz: round-trip arbitrary payloads (T#376)', () => {
+    // Deterministic PRNG so failures reproduce. xorshift32, seeded.
+    function makePrng(seed: number): () => number {
+      let s = seed | 0;
+      return () => {
+        s ^= s << 13;
+        s ^= s >>> 17;
+        s ^= s << 5;
+        return ((s >>> 0) / 0xffffffff);
+      };
+    }
+
+    const rng = makePrng(0xc0c0_1e51);
+
+    function randomPayload(): string {
+      const len = 1 + Math.floor(rng() * 256);
+      let out = '';
+      for (let i = 0; i < len; i++) {
+        const cp = 0x20 + Math.floor(rng() * (0x7e - 0x20));
+        out += String.fromCodePoint(cp);
+      }
+      return out;
+    }
+
+    it('500 random payloads survive build → parse', () => {
+      for (let i = 0; i < 500; i++) {
+        const value = randomPayload();
+        const set = buildSetCookie('fuzz', value);
+        const nameValuePair = set.split(';')[0]!;
+        const parsed = parseCookieHeader(nameValuePair);
+        expect(parsed.get('fuzz')).toBe(value);
+      }
+    });
+
+    it('semicolon-laden multi-cookie strings parse without leaking attrs', () => {
+      // Browsers send name=value pairs separated by `; `. Attributes
+      // (HttpOnly, Path, etc.) only appear in Set-Cookie, NEVER in
+      // the Cookie request header. parseCookieHeader must therefore
+      // refuse to mis-interpret attr-shaped tokens as cookies.
+      const cookieHeader = 'omni_access=eyJhbGc; HttpOnly; Path=/api; omni_csrf=abc123';
+      const parsed = parseCookieHeader(cookieHeader);
+      expect(parsed.get('omni_access')).toBe('eyJhbGc');
+      expect(parsed.get('omni_csrf')).toBe('abc123');
+      // HttpOnly was tokenised as a no-value pair → skipped; Path= as
+      // a key=value pair → captured under key 'Path'. The auth layer
+      // never reads 'Path' so this is benign but worth pinning down.
+      expect(parsed.get('HttpOnly')).toBeUndefined();
+    });
+
+    it('malformed entries are skipped without throwing', () => {
+      const cookieHeader = '=novalue; ; key-no-equals; valid=ok; =alsoempty=foo';
+      const parsed = parseCookieHeader(cookieHeader);
+      expect(parsed.get('valid')).toBe('ok');
+      expect(parsed.size).toBe(1);
+    });
+
+    it('quote-wrapped values are unwrapped', () => {
+      const parsed = parseCookieHeader('q="value with spaces"');
+      expect(parsed.get('q')).toBe('value with spaces');
+    });
+
+    it('URL-encoded values are decoded', () => {
+      const parsed = parseCookieHeader('encoded=hello%20world%21');
+      expect(parsed.get('encoded')).toBe('hello world!');
+    });
+
+    it('control characters in values do not crash decode', () => {
+      // Lone-percent invalid encoding falls back to raw value, not
+      // throw. The parser MUST be tolerant — browsers can send weird
+      // legacy state.
+      const parsed = parseCookieHeader('weird=%ZZ');
+      expect(parsed.get('weird')).toBe('%ZZ');
+    });
+
+    it('buildSetCookie rejects names with whitespace or separators', () => {
+      // CRLF injection defense — a header builder must NEVER let a
+      // name like "foo\r\nSet-Cookie: evil" through.
+      expect(() => buildSetCookie('foo\r\nSet-Cookie: evil', 'x')).toThrow();
+      expect(() => buildSetCookie('foo bar', 'x')).toThrow();
+      expect(() => buildSetCookie('foo;bar', 'x')).toThrow();
+    });
+  });
 });

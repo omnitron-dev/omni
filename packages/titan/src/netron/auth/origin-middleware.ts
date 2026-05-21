@@ -117,11 +117,17 @@ export function createOriginMiddleware(opts: OriginMiddlewareOptions): Middlewar
     }
 
     const origin = headers['origin'];
+    const netron = (ctx.peer as any)?.netron as INetronInternal | undefined;
     if (!origin) {
       // Strict-fail. A cookie-authenticated mutating call without an
       // Origin header is either (a) a misbehaving browser, or (b) a
       // hand-crafted client trying to bypass SameSite — we cannot
       // tell them apart, and the safe default is to deny.
+      // T#369 — structured event for log aggregation.
+      netron?.logger?.warn?.(
+        { event: 'auth.origin_missing', service: ctx.serviceName, method: ctx.methodName },
+        '[origin] missing on cookie-auth request',
+      );
       throw new TitanError({
         code: ErrorCode.FORBIDDEN,
         message: 'Origin header required for cookie-authenticated requests',
@@ -136,6 +142,12 @@ export function createOriginMiddleware(opts: OriginMiddlewareOptions): Middlewar
     const host = parseHost(origin)?.toLowerCase();
     if (host && allowedSet!.has(host)) return await next();
 
+    // T#369 — log the rejected origin so an operator can spot
+    // typo'd whitelists vs. real cross-origin attacks.
+    netron?.logger?.warn?.(
+      { event: 'auth.origin_rejected', service: ctx.serviceName, method: ctx.methodName, origin },
+      '[origin] mismatch',
+    );
     throw new TitanError({
       code: ErrorCode.FORBIDDEN,
       message: 'Origin not allowed',

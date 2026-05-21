@@ -20,3 +20,4 @@ export * from './cookie-codec.js';
 export * from './token-issuance.js';
 export * from './csrf.js';
 export * from './csrf-middleware.js';
+export * from './origin-middleware.js';

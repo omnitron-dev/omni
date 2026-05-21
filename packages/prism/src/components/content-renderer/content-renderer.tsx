@@ -50,6 +50,26 @@ function isTipTapDoc(value: unknown): value is TipTapDoc {
   );
 }
 
+/**
+ * Detect a string that is a JSON-serialised TipTap doc. The
+ * comments composer saves the editor state via `editor.getJSON()`
+ * then `JSON.stringify(...)`; without this hop the string ends
+ * up in the markdown branch and the page prints the raw JSON
+ * literal (`{"type":"doc","content":[...]}`) instead of the
+ * formatted comment body. Cheap-first check on the prefix so we
+ * don't `JSON.parse` every markdown comment.
+ */
+function tryParseTipTapJson(value: string): TipTapDoc | null {
+  const trimmed = value.trimStart();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return isTipTapDoc(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -83,9 +103,17 @@ export function ContentRenderer({
     return <TipTapRenderer content={content as any} className={className} sx={sx} compact={compact} />;
   }
 
-  // String content — markdown or HTML
+  // String content — TipTap-JSON / markdown / HTML
   if (typeof content === 'string') {
     if (!content.trim()) return null;
+    // Comments composer persists TipTap state as `JSON.stringify
+    // (editor.getJSON())`, so string-typed content may actually
+    // be a serialised TipTap doc. Try the JSON path first;
+    // markdown is the fallback for plain text.
+    const docFromJson = tryParseTipTapJson(content);
+    if (docFromJson) {
+      return <TipTapRenderer content={docFromJson} className={className} sx={sx} compact={compact} />;
+    }
     return (
       <Markdown
         className={className}

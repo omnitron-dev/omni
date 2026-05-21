@@ -124,6 +124,20 @@ export function createCsrfMiddleware(opts: CsrfMiddlewareOptions): MiddlewareFun
     }
 
     if (!csrf.verify({ headers: headersRecord })) {
+      // T#369 — emit a structured security event so the platform's
+      // log-aggregation pipeline can detect attack clusters. The
+      // detail set is intentionally narrow (no token bytes, no
+      // attacker-controllable payload) so the log can't be poisoned.
+      const netron = (ctx.peer as any)?.netron as INetronInternal | undefined;
+      netron?.logger?.warn?.(
+        {
+          event: 'auth.csrf_violation',
+          service: ctx.serviceName,
+          method: ctx.methodName,
+          origin: typeof headersRecord['origin'] === 'string' ? headersRecord['origin'] : undefined,
+        },
+        '[csrf] validation failed',
+      );
       throw new TitanError({
         code: ErrorCode.FORBIDDEN,
         message: 'CSRF validation failed',

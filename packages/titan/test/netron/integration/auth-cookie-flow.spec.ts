@@ -376,4 +376,134 @@ describe('Netron auth — cookie token transport (integration)', () => {
       expect(parseSetCookies(res)).toEqual([]);
     });
   });
+
+  // T#366 — pin down the security-critical cookie attributes. These
+  // are what makes cookie-mode safe in production; a future code
+  // change that silently drops HttpOnly or weakens SameSite=Strict
+  // would lose this test. We boot a dedicated cookie transport here
+  // with `secure: true` so the Secure attribute is exercised — the
+  // other suites set secure:false to keep dev-mode parity simple.
+  describe('cookie attribute contract', () => {
+    beforeEach(async () => {
+      port = await findAvailablePort();
+      const logger = createMockLogger();
+      serverNetron = new Netron(logger, { id: 'cookie-attrs-server' });
+      const authManager = new AuthenticationManager(logger, {
+        authenticate: async (_c: AuthCredentials): Promise<AuthContext> => ({ userId: 'u1', roles: ['user'], permissions: [] }),
+        validateToken: async (_t: string): Promise<AuthContext> => ({ userId: 'u1', roles: ['user'], permissions: [] }),
+      });
+      const authzManager = new AuthorizationManager(logger);
+      const csrf = new CsrfManager({ cookie: { name: 'omni_csrf', maxAgeSec: 900, secure: true } });
+      const tokenTransport = new CookieTokenTransport({
+        accessCookie: { name: 'omni_access', maxAgeSec: 900, secure: true, path: '/' },
+        refreshCookie: { name: 'omni_refresh', maxAgeSec: 7 * 24 * 3600, secure: true, path: '/' },
+        csrf,
+      });
+      serverNetron.configureAuth(authManager, authzManager, { tokenTransport });
+      serverNetron.registerTransport('http', () => new HttpTransport());
+      await serverNetron.registerTransportServer('http', { name: 'http', options: { host: 'localhost', port } });
+      await serverNetron.start();
+      await serverNetron.peer.exposeService(new CookieAuthService());
+    });
+
+    it('access cookie carries HttpOnly + Secure + SameSite=Strict + Path=/', async () => {
+      const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', 'bob');
+      const accessCookie = parseSetCookies(signin).find((c) => c.startsWith('omni_access='))!;
+      expect(accessCookie).toBeDefined();
+      expect(accessCookie).toContain('HttpOnly');
+      expect(accessCookie).toContain('Secure');
+      expect(accessCookie).toContain('SameSite=Strict');
+      expect(accessCookie).toContain('Path=/');
+      expect(accessCookie).toMatch(/Max-Age=\d+/);
+    });
+
+    it('refresh cookie also carries HttpOnly + Secure + SameSite=Strict', async () => {
+      const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', 'bob');
+      const refreshCookie = parseSetCookies(signin).find((c) => c.startsWith('omni_refresh='))!;
+      expect(refreshCookie).toBeDefined();
+      expect(refreshCookie).toContain('HttpOnly');
+      expect(refreshCookie).toContain('Secure');
+      expect(refreshCookie).toContain('SameSite=Strict');
+    });
+
+    it('CSRF cookie is NOT HttpOnly (must be readable by client JS) but still Secure + SameSite=Strict', async () => {
+      const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', 'bob');
+      const csrfCookie = parseSetCookies(signin)
+        .filter((c) => c.startsWith('omni_csrf=') && !c.includes('Max-Age=0'))
+        .pop()!;
+      expect(csrfCookie).toBeDefined();
+      expect(csrfCookie).not.toContain('HttpOnly');
+      expect(csrfCookie).toContain('Secure');
+      expect(csrfCookie).toContain('SameSite=Strict');
+    });
+
+    it('clear cookie carries Max-Age=0 and matching Path so the browser actually deletes it', async () => {
+      await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', 'bob');
+      const signout = await rpcCall(port, 'cookieAuthService@1.0.0', 'signout', null);
+      const cookies = parseSetCookies(signout);
+      const clearAccess = cookies.find((c) => c.startsWith('omni_access='))!;
+      expect(clearAccess).toContain('Max-Age=0');
+      expect(clearAccess).toContain('Path=/');
+    });
+  });
+
+  // T#370 — Cookie-mode behaviour when the JWT's kid is no longer
+  // in the server's key registry. The pluggable transport layer
+  // doesn't itself know about kid rotation — it just hands the
+  // token to the AuthenticationManager. This test pins down that
+  // the cookie path correctly surfaces a rotation failure rather
+  // than silently bypassing it.
+  describe('cookie + JWT kid rotation', () => {
+    let validateCalled: { count: number; lastToken: string | null };
+    beforeEach(async () => {
+      validateCalled = { count: 0, lastToken: null };
+      port = await findAvailablePort();
+      const logger = createMockLogger();
+      serverNetron = new Netron(logger, { id: 'cookie-kid-rot-server' });
+      const authManager = new AuthenticationManager(logger, {
+        authenticate: async (_c: AuthCredentials): Promise<AuthContext> => ({ userId: 'u1', roles: ['user'], permissions: [] }),
+        validateToken: async (token: string): Promise<AuthContext> => {
+          validateCalled.count += 1;
+          validateCalled.lastToken = token;
+          // Simulate a kid-not-found rejection: any token containing
+          // 'stale-kid' is treated as if its signing key has been
+          // rotated out of the JWKS.
+          if (token.includes('stale-kid')) {
+            throw new Error('UNKNOWN_KID: signing key no longer registered');
+          }
+          return { userId: 'u1', roles: ['user'], permissions: [] };
+        },
+      });
+      const tokenTransport = new CookieTokenTransport({
+        accessCookie: { name: 'omni_access', secure: false, path: '/' },
+      });
+      serverNetron.configureAuth(authManager, new AuthorizationManager(logger), { tokenTransport });
+      serverNetron.registerTransport('http', () => new HttpTransport());
+      await serverNetron.registerTransportServer('http', { name: 'http', options: { host: 'localhost', port } });
+      await serverNetron.start();
+      await serverNetron.peer.exposeService(new CookieAuthService());
+    });
+
+    it('fresh kid: cookie token validates and protected RPC succeeds', async () => {
+      const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
+        headers: { Cookie: 'omni_access=fresh-kid-token' },
+      });
+      expect(res.status).toBe(200);
+      expect(validateCalled.lastToken).toBe('fresh-kid-token');
+    });
+
+    it('stale kid: cookie token is observed by the validator (no silent bypass)', async () => {
+      const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
+        headers: { Cookie: 'omni_access=stale-kid-token' },
+      });
+      // Critical assertion: the validator IS consulted on the cookie
+      // path — a stale-kid rejection is NOT bypassed by virtue of the
+      // token having ridden in a Cookie header instead of an
+      // Authorization header. ping() itself is @Public so the request
+      // still returns 200 (which is fine — the framework simply
+      // doesn't attach an authContext when validation rejects).
+      expect(validateCalled.lastToken).toBe('stale-kid-token');
+      expect(res.status).toBe(200);
+    });
+  });
 });

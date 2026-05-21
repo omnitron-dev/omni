@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### ✨ Features
+
+- feat(netron+auth): T#176 pluggable token transport — Bearer (default, unchanged) /
+  Cookie (HttpOnly + CSRF double-submit) / Composite (cookie preferred, bearer fallback
+  for S2S). Service code is transport-agnostic — `issueTokens()` / `clearTokens()` are
+  thin facades over an AsyncLocalStorage frame; the configured `ITokenTransport`
+  decides whether the JWT rides in `Authorization` or in a `Set-Cookie`. Apps swap
+  modes via the `AUTH_TRANSPORT` env var; downstream consumers (omnitron-webapp, etc.)
+  continue to work unmodified in Bearer mode.
+- feat(netron/auth): `createCsrfMiddleware` — server-side double-submit verifier for
+  cookie-mode deployments. Bypasses bearer-only traffic and a configurable exempt list
+  (signin / refresh / verifyMfa) where no CSRF cookie exists yet.
+- feat(netron/auth): `createOriginMiddleware` — defense-in-depth HTTP Origin check
+  paired with the WS-upgrade Origin handler. Together they pin cookie-authenticated
+  RPC traffic to the deployment's allowed-origins whitelist.
+- feat(netron-browser): `CookieClientTokenTransport`, `HybridClientTokenTransport`, and
+  `createCsrfMiddleware` for the client side. The `AuthenticationClient` gains a
+  `tokenless` mode that uses the server's `whoami` probe instead of reading a JWT from
+  local storage.
+
+### 🛡️ Security
+
+- fix(titan-auth-sec): refuse non-Secure cookies in production (`createOmniCookieTransport`
+  throws at boot rather than silently emit cookies an on-path attacker could steal).
+- fix(netron+auth-sec): clear-then-set CSRF cookie on every issue() — defends against
+  session-fixation-style pre-signin cookie planting.
+- fix(prism+netron-auth): XSS hardening pass on TipTap renderer (sanitizeHref for
+  link/image, sanitizeEmbedSrc for youtube iframes, removed user-controllable
+  `attrs.html` CodeBlock injection) and markdown renderer (added `rehype-sanitize`
+  with a tight schema that preserves spoilers + hljs while stripping every other
+  raw-HTML node `rehype-raw` would otherwise pass through).
+
+### 🔧 Fixes
+
+- fix(netron-browser/csrf): unwrap quote-wrapped cookie values per RFC 6265 §5.2 so
+  the X-CSRF-Token header carries the byte sequence the server signed.
+
+
 ## [0.2.0] - 2026-05-16
 
 ### ✨ Features

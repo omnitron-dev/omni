@@ -72,7 +72,18 @@ function readCookie(name: string): string | null {
     if (eq < 0) continue;
     const key = raw.slice(0, eq).trim();
     if (key !== name) continue;
-    const value = raw.slice(eq + 1).trim();
+    let value = raw.slice(eq + 1).trim();
+    // T#375 — RFC 6265 permits quote-wrapped cookie values (`name="value"`).
+    // Browsers normally elide the quotes when serialising into
+    // document.cookie, but some pre-set scenarios (e.g. a server that
+    // serialised through a sloppy cookie library, or values that happen
+    // to contain spaces) leave the quotes intact. We strip a single
+    // matched pair so the CSRF header carries the same byte sequence
+    // the server signed — without it, the server's double-submit
+    // comparison would fail on an otherwise-legitimate request.
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    }
     try {
       return decodeURIComponent(value);
     } catch {

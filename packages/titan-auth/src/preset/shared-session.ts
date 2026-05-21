@@ -328,6 +328,27 @@ export function createSharedSessionAuthManager(
 
       // ---- Session registry check ----
       const sessionId = payload['sid'] as string | undefined;
+      // T#176-sec — `sid` is mandatory for any user-tier token. Without it
+      // the framework has NO way to revoke the session (no Redis key, no
+      // DB row to flip) — JWT signature alone would grant access until
+      // natural expiry (15 min for access, 7 days for refresh). Service-
+      // role tokens (S2S) legitimately have no session and are allowed
+      // through unchanged. The role-check uses the same canonical list
+      // the role-resolution code uses below so it stays in lockstep.
+      const claimedRolesForSidCheck = payload['roles'];
+      const rolesForSidCheck: string[] =
+        Array.isArray(claimedRolesForSidCheck) && claimedRolesForSidCheck.length > 0
+          ? (claimedRolesForSidCheck as string[])
+          : payload['role']
+            ? [payload['role'] as string]
+            : [];
+      const isServiceTier =
+        rolesForSidCheck.includes('service_role') || payload['role'] === 'service_role';
+      if (!sessionId && !isServiceTier) {
+        throw new InvalidTokenClaimError(
+          'Token missing required `sid` claim (user-tier tokens MUST carry a session id for revocation)',
+        );
+      }
       let activeSession: ParsedSessionValue | null = null;
       if (sessionId) {
         const redisKey = `${sessionKeyPrefix}${sessionId}`;

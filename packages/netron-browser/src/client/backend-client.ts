@@ -121,6 +121,7 @@ export class BackendClient implements IBackendClient {
     const { WebSocketClient } = await import('./ws-client.js');
 
     if (this.transportType === 'websocket') {
+      const authTransport = this.auth?.getTransport();
       this.client = new WebSocketClient({
         url: this.fullUrl,
         protocols: this.config.websocket?.protocols,
@@ -129,6 +130,7 @@ export class BackendClient implements IBackendClient {
         reconnectInterval: this.config.websocket?.reconnectInterval,
         maxReconnectAttempts: this.config.websocket?.maxReconnectAttempts,
         auth: this.auth,
+        ...(authTransport ? { authTransport } : {}),
         middleware: this.middleware,
       });
     } else {

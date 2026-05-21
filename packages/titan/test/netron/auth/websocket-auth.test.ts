@@ -84,6 +84,8 @@ function createMockRequest(options: {
   authorization?: string;
   customHeader?: { name: string; value: string };
   url?: string;
+  origin?: string;
+  host?: string;
 }): IncomingMessage {
   const socket = new Socket();
   const req = new IncomingMessage(socket);
@@ -96,6 +98,14 @@ function createMockRequest(options: {
 
   if (options.customHeader) {
     req.headers[options.customHeader.name.toLowerCase()] = options.customHeader.value;
+  }
+
+  if (options.origin) {
+    req.headers['origin'] = options.origin;
+  }
+
+  if (options.host) {
+    req.headers['host'] = options.host;
   }
 
   req.url = options.url || '/ws';
@@ -513,6 +523,95 @@ describe('WebSocketAuthHandler', () => {
         expect(result.success).toBe(false);
         // AuthenticationManager returns "Token validation failed" for non-Error exceptions
         expect(result.error).toBe('Token validation failed');
+      });
+    });
+
+    // T#176-sec — WebSocket Origin enforcement
+    describe('Origin policy', () => {
+      const validToken = 'valid-jwt-12345';
+
+      beforeEach(() => {
+        authManager.configure({
+          authenticate: vi.fn(),
+          validateToken: vi.fn().mockResolvedValue(createAuthContext({ userId: 'u1' })),
+        });
+      });
+
+      it('default policy (undefined) passes any origin', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'https://evil.com', host: 'app.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('same-host policy (true) allows same-host origin', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: true,
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'https://app.local', host: 'app.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('same-host policy rejects cross-origin upgrade', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: true,
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'https://evil.com', host: 'app.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/origin/i);
+      });
+
+      it('whitelist policy allows listed origin', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['https://portal.example', 'https://admin.example'],
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'https://admin.example', host: 'gateway.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('whitelist policy rejects unlisted origin', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['https://portal.example'],
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'https://evil.example', host: 'gateway.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(false);
+      });
+
+      it('missing Origin header passes (non-browser/S2S clients)', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: true,
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, host: 'app.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('malformed Origin header is rejected', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: true,
+        });
+        const req = createMockRequest({ authorization: `Bearer ${validToken}`, origin: 'not::a::url', host: 'app.local' });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(false);
       });
     });
   });

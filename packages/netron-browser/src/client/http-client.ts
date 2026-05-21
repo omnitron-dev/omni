@@ -156,8 +156,12 @@ export class HttpClient {
         },
       });
 
-      // Send request
-      const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth);
+      // Send request — credentials threaded through so cookie-mode
+      // transport ('include') reaches the fetch layer. The AuthenticationClient's
+      // configured transport is the source of truth; middleware may
+      // override per-request via ctx.request.credentials.
+      const credentials = ctx.request?.credentials ?? this.auth?.getRequestCredentials();
+      const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth, credentials);
 
       if (!response.success) {
         const error = new Error(response.error?.message || 'Method invocation failed');
@@ -198,7 +202,8 @@ export class HttpClient {
     message: HttpRequestMessage,
     retryCount = 0,
     customHeaders?: Record<string, string>,
-    skipAuth = false
+    skipAuth = false,
+    credentials?: RequestCredentials
   ): Promise<HttpResponseMessage> {
     const url = `${this.baseUrl}/netron/invoke`;
     const timeout = message.hints?.timeout || this.timeout;
@@ -228,6 +233,9 @@ export class HttpClient {
         headers,
         body: JSON.stringify(message),
         signal: controller.signal,
+        // T#176 — credentials threaded from middleware (cookie mode sets
+        // 'include'); undefined preserves the default 'same-origin'.
+        ...(credentials !== undefined ? { credentials } : {}),
       });
 
       clearTimeout(timeoutId);
@@ -264,7 +272,7 @@ export class HttpClient {
       if (this.retry && retryCount < this.maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.sendRequest(message, retryCount + 1, customHeaders, skipAuth);
+        return this.sendRequest(message, retryCount + 1, customHeaders, skipAuth, credentials);
       }
 
       if (error.name === 'AbortError') {

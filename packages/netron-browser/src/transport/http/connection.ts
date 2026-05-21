@@ -46,6 +46,13 @@ export interface TransportOptions {
   requestTimeout?: number;
   /** Path prefix for all endpoints (e.g., '/api/v1', '/core') */
   pathPrefix?: string;
+  /**
+   * Fetch credentials policy applied to every request issued through
+   * this connection. Cookie-mode deployments set 'include' so the
+   * browser ships its cookie jar on cross-origin gateway calls. Left
+   * undefined → browser default ('same-origin').
+   */
+  credentials?: RequestCredentials;
 }
 
 /**
@@ -192,6 +199,8 @@ export class HttpConnection extends EventEmitter {
         headers,
         body: body ? JSON.stringify(body) : undefined,
         signal: this.abortController.signal,
+        // T#176 — propagate the transport-level credentials policy.
+        ...(this.options?.credentials !== undefined ? { credentials: this.options.credentials } : {}),
       });
 
       clearTimeout(timeoutId);
@@ -258,6 +267,7 @@ export class HttpConnection extends EventEmitter {
         headers: {
           'Content-Type': 'application/json',
         },
+        ...(this.options?.credentials !== undefined ? { credentials: this.options.credentials } : {}),
       });
 
       if (!response.ok) {

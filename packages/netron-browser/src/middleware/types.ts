@@ -32,6 +32,13 @@ export interface ClientMiddlewareContext {
     headers?: Record<string, string>;
     timeout?: number;
     metadata?: Record<string, any>;
+    /**
+     * Fetch credentials policy. Set by client-side token transports —
+     * cookie / hybrid modes upgrade this to 'include' so the browser
+     * ships its cookie jar on cross-origin (gateway-fronted) calls.
+     * The HTTP transport reads this when constructing the fetch init.
+     */
+    credentials?: RequestCredentials;
   };
 
   response?: {

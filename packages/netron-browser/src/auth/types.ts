@@ -203,6 +203,15 @@ export interface AuthOptions {
 
   /** Cross-tab synchronization configuration */
   crossTabSync?: CrossTabSyncConfig;
+
+  /**
+   * Pluggable token-transport strategy (T#176). When provided,
+   * {@link AuthenticationClient.getAuthHeaders} delegates to the
+   * transport to inject headers/credentials (Bearer header, cookie
+   * mode credentials, hybrid). When omitted, falls back to the legacy
+   * Bearer-header behaviour for backwards compatibility.
+   */
+  transport?: import('./client-token-transport.js').IClientTokenTransport;
 }
 
 /**

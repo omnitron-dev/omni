@@ -63,6 +63,16 @@ export interface WebSocketClientOptions {
   auth?: AuthenticationClient;
 
   /**
+   * Client-side token-transport strategy used to decorate the WS
+   * upgrade URL. Bearer mode appends `?token=` (browsers can't set
+   * custom headers on upgrade); cookie mode is a no-op (browser
+   * carries the cookie automatically on same-origin upgrade). When
+   * omitted, the WS URL is used verbatim — matches pre-T#176 behaviour
+   * for callers that built the URL themselves.
+   */
+  authTransport?: import('../auth/client-token-transport.js').IClientTokenTransport;
+
+  /**
    * Middleware pipeline (optional, will create default if not provided)
    */
   middleware?: IMiddlewareManager;
@@ -128,6 +138,7 @@ export class WebSocketClient extends EventEmitter {
   private reconnectTimeout?: number;
   private isManualDisconnect = false;
   private auth?: AuthenticationClient;
+  private authTransport?: import('../auth/client-token-transport.js').IClientTokenTransport;
   private middleware: IMiddlewareManager;
   private serviceDefinitions?: Map<string, string>;
   private enableServiceDiscovery: boolean;
@@ -170,6 +181,7 @@ export class WebSocketClient extends EventEmitter {
     this.reconnectInterval = options.reconnectInterval ?? 1000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? Infinity;
     this.auth = options.auth;
+    this.authTransport = options.authTransport;
     this.middleware = options.middleware || new MiddlewarePipeline();
     this.serviceDefinitions = options.serviceDefinitions;
     this.enableServiceDiscovery = options.enableServiceDiscovery === true;
@@ -222,7 +234,19 @@ export class WebSocketClient extends EventEmitter {
           throw new Error('WebSocket is not available in this environment');
         }
 
-        this.ws = new WebSocketImpl(this.wsUrl, this.protocols);
+        // T#176 — let the configured client-token-transport decorate
+        // the upgrade URL. Bearer mode appends `?token=` because
+        // browsers can't set custom headers on a WebSocket handshake.
+        // Cookie mode is a no-op (the cookie jar carries the JWT on
+        // same-origin upgrade automatically). Token is read from the
+        // AuthenticationClient at upgrade time so reconnects pick up
+        // the latest token automatically.
+        let effectiveUrl = this.wsUrl;
+        if (this.authTransport) {
+          const token = this.auth?.getToken?.() ?? null;
+          effectiveUrl = this.authTransport.prepareWebSocketUrl(this.wsUrl, token);
+        }
+        this.ws = new WebSocketImpl(effectiveUrl, this.protocols);
         this.ws!.binaryType = 'arraybuffer';
 
         const ws = this.ws!; // Capture ws in local variable to avoid null checks

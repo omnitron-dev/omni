@@ -101,6 +101,8 @@ export class AuthenticationClient {
   private refreshPromise?: Promise<AuthResult>;
   private storageListener?: (event: StorageEvent) => void;
   private activityListener?: () => void;
+  /** Optional client-side token-transport strategy (T#176). */
+  private transport?: import('./client-token-transport.js').IClientTokenTransport;
 
   constructor(options: AuthOptions = {}) {
     // Initialize storage with custom key if provided
@@ -129,6 +131,8 @@ export class AuthenticationClient {
     this.state = {
       authenticated: false,
     };
+
+    this.transport = options.transport;
 
     // Try to restore auth state from storage
     this.restoreFromStorage();
@@ -430,16 +434,47 @@ export class AuthenticationClient {
   }
 
   /**
-   * Get auth headers for requests
+   * Get auth headers for requests.
+   *
+   * When a {@link IClientTokenTransport} is configured, delegates to its
+   * `prepareRequest()` — Bearer adds Authorization, Cookie adds nothing
+   * (relies on the cookie jar), Hybrid does both. When no transport
+   * is configured, falls back to the historical Bearer behaviour.
    */
   getAuthHeaders(): Record<string, string> {
+    if (this.transport) {
+      const headers: Record<string, string> = {};
+      this.transport.prepareRequest({ headers }, this.state.token ?? null);
+      return headers;
+    }
     if (!this.state.token) {
       return {};
     }
-
     return {
       Authorization: `Bearer ${this.state.token}`,
     };
+  }
+
+  /**
+   * Get the fetch credentials policy that the configured transport
+   * wants to apply to outgoing requests. Bearer mode → undefined
+   * (browser default). Cookie / hybrid mode → 'include' (browser ships
+   * cookie jar even on cross-origin). HTTP transport consumers
+   * forward this to fetch's `credentials` option.
+   */
+  getRequestCredentials(): RequestCredentials | undefined {
+    if (!this.transport) return undefined;
+    const prep: { headers: Record<string, string>; credentials?: RequestCredentials } = { headers: {} };
+    this.transport.prepareRequest(prep, this.state.token ?? null);
+    return prep.credentials;
+  }
+
+  /**
+   * Get the configured client-side token transport, if any. Used by
+   * BackendClient to wire the same transport into the WS upgrade URL.
+   */
+  getTransport(): import('./client-token-transport.js').IClientTokenTransport | undefined {
+    return this.transport;
   }
 
   /**

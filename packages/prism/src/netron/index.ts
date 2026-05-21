@@ -126,6 +126,14 @@ export {
   // Auth (per-backend token management)
   AuthenticationClient,
   SessionTokenStorage,
+  NoopTokenStorage,
+  // Client-side token transport strategies (T#176)
+  BearerClientTokenTransport,
+  CookieClientTokenTransport,
+  HybridClientTokenTransport,
+  type IClientTokenTransport,
+  // CSRF middleware factory (cookie mode)
+  createCsrfMiddleware,
 
   // WebSocket client for direct realtime connections
   WebSocketClient,

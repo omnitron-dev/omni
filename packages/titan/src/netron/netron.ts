@@ -20,6 +20,8 @@ import type {
 import type { NetronOptions, TransportConfig } from './types.js';
 import type { IAuthenticationManager, ILocalPeerInternal } from './interfaces/internal-types.js';
 import type { IAuthorizationManager } from './interfaces/core-types.js';
+import type { ITokenTransport } from './auth/token-transport.js';
+import { BearerTokenTransport } from './auth/token-transports/bearer.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
 import { HttpRemotePeer } from './transport/http/peer.js';
@@ -254,6 +256,27 @@ export class Netron extends EventEmitter implements INetron {
   public authorizationManager?: IAuthorizationManager;
 
   /**
+   * Token transport strategy — how the JWT travels between client and
+   * server. Default is `BearerTokenTransport` (Authorization header +
+   * `?token=` WS fallback), matching pre-T#176 behaviour. Swap via
+   * `configureAuth(..., { tokenTransport })` to switch to cookie or
+   * composite modes without touching service code.
+   *
+   * Always non-null after construction; transport servers (HTTP/WS)
+   * dereference it directly.
+   */
+  public tokenTransport: ITokenTransport = new BearerTokenTransport();
+
+  /**
+   * Allowed Origin policy for WebSocket upgrades — passed straight to
+   * the WS auth handler. `undefined` disables Origin enforcement
+   * (default; safe in bearer-only deployments). Cookie / composite
+   * deployments SHOULD set this via `configureAuth(..., { allowedOrigins })`.
+   * @internal
+   */
+  public wsAllowedOrigins?: true | string[];
+
+  /**
    * Per-peer inbound packet rate limiter (T#39). Initialized when
    * `options.inboundRateLimit` is provided. Keyed by `peer.id`.
    *
@@ -369,21 +392,54 @@ export class Netron extends EventEmitter implements INetron {
    * This method sets up the authentication and authorization managers that will be used
    * by transport servers and core-tasks for user authentication and access control.
    *
+   * Optionally accepts a {@link ITokenTransport} to control how JWTs are
+   * exchanged with clients (Authorization header vs HttpOnly cookie vs
+   * composite). When omitted, the existing `tokenTransport` field (default
+   * {@link BearerTokenTransport}) is preserved — so the public API remains
+   * backwards-compatible with pre-T#176 callsites.
+   *
    * @param authenticationManager - The authentication manager instance for user authentication
    * @param authorizationManager - Optional authorization manager for method-level access control
+   * @param options - Optional transport-level config (tokenTransport)
    * @example
    * ```typescript
-   * const authManager = new AuthenticationManager(userRepository);
-   * const authzManager = new AuthorizationManager(policyEngine);
+   * // Bearer (default — unchanged behaviour)
    * netron.configureAuth(authManager, authzManager);
+   *
+   * // Cookie mode
+   * netron.configureAuth(authManager, authzManager, {
+   *   tokenTransport: new CookieTokenTransport({ accessCookie: { name: 'omni_access' } }),
+   * });
    * ```
    */
-  configureAuth(authenticationManager: IAuthenticationManager, authorizationManager?: IAuthorizationManager): void {
+  configureAuth(
+    authenticationManager: IAuthenticationManager,
+    authorizationManager?: IAuthorizationManager,
+    options?: {
+      tokenTransport?: ITokenTransport;
+      /**
+       * Origin policy for WebSocket upgrades. See
+       * {@link WebSocketAuthOptions.allowedOrigins}. Strongly
+       * recommended when tokenTransport uses cookies — cookie WS auth
+       * is vulnerable to cross-origin upgrade forgery without it.
+       */
+      allowedOrigins?: true | string[];
+    }
+  ): void {
     this.authenticationManager = authenticationManager;
     if (authorizationManager) {
       this.authorizationManager = authorizationManager;
     }
-    this.logger.info('Authentication and authorization configured');
+    if (options?.tokenTransport) {
+      this.tokenTransport = options.tokenTransport;
+    }
+    if (options?.allowedOrigins !== undefined) {
+      this.wsAllowedOrigins = options.allowedOrigins;
+    }
+    this.logger.info(
+      { transport: this.tokenTransport.name, originPolicy: this.wsAllowedOrigins === true ? 'same-host' : this.wsAllowedOrigins ? 'whitelist' : 'off' },
+      'Authentication and authorization configured',
+    );
   }
 
   /**
@@ -578,6 +634,10 @@ export class Netron extends EventEmitter implements INetron {
       // Wire authentication into WebSocket server if auth is configured
       // allowAnonymous defaults to true — WebSocket is typically used for event push,
       // not RPC. Auth is enforced per-invocation via invocationWrapper, not at connection level.
+      //
+      // tokenTransport propagates from netron-level config so cookie /
+      // composite modes apply identically to WS upgrade and HTTP RPC
+      // (single source of truth for the deployment).
       if (name === 'websocket' && this.authenticationManager && (server as any).configureAuth) {
         const { AuthorizationManager } = await import('./auth/authorization-manager.js');
         const authzManager = (this.authorizationManager as any) || new AuthorizationManager(this.logger);
@@ -586,8 +646,10 @@ export class Netron extends EventEmitter implements INetron {
           authorizationManager: authzManager,
           logger: this.logger,
           allowAnonymous: true,
+          tokenTransport: this.tokenTransport,
+          ...(this.wsAllowedOrigins !== undefined ? { allowedOrigins: this.wsAllowedOrigins } : {}),
         });
-        this.logger.info('WebSocket server auth configured');
+        this.logger.info({ transport: this.tokenTransport.name }, 'WebSocket server auth configured');
       }
 
       // Cast to extended interface for optional service registration methods

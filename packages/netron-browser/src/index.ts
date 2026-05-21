@@ -188,7 +188,27 @@ export { uuid } from './utils/uuid.js';
 export { Uid } from './utils/uid.js';
 
 // Authentication exports
-export { AuthenticationClient, LocalTokenStorage, SessionTokenStorage, MemoryTokenStorage } from './auth/index.js';
+export {
+  AuthenticationClient,
+  LocalTokenStorage,
+  SessionTokenStorage,
+  MemoryTokenStorage,
+  NoopTokenStorage,
+  // T#176 — client-side token-transport strategies
+  BearerClientTokenTransport,
+  CookieClientTokenTransport,
+  HybridClientTokenTransport,
+} from './auth/index.js';
+export type {
+  IClientTokenTransport,
+  BearerClientTokenTransportOptions,
+  CookieClientTokenTransportOptions,
+  HybridClientTokenTransportOptions,
+} from './auth/index.js';
+
+// CSRF middleware factory (browser side, cookie mode)
+export { createCsrfMiddleware } from './middleware/built-in/csrf.js';
+export type { CsrfMiddlewareOptions } from './middleware/built-in/csrf.js';
 
 export type {
   AuthCredentials,

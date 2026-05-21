@@ -121,7 +121,18 @@ export class CookieTokenTransport implements ITokenTransport {
     // Rotate the CSRF token on every successful auth event. A new
     // token invalidates anything captured earlier (defense in depth
     // against session-fixation-style attacks).
+    //
+    // T#176-sec — defence-in-depth against pre-signin cookie planting:
+    // emit a Max-Age=0 clear for the SAME-Path csrf cookie BEFORE
+    // setting the new value. The browser processes Set-Cookie headers
+    // in order; the clear evicts any same-path attacker-planted cookie
+    // and the subsequent set installs the legitimate rotated token.
+    // Cookies planted at a NARROWER path (e.g. /api/admin) survive
+    // this clear, but they don't grant any auth privilege either —
+    // the HttpOnly omni_access cookie is the only credential that
+    // authenticates, and the attacker can't write that one.
     if (this.csrf) {
+      res.appendHeader('Set-Cookie', this.csrf.buildClearCookie());
       res.appendHeader('Set-Cookie', this.csrf.buildCookie(this.csrf.generateToken()));
     }
     return { stripFromBody: [...this.stripFields] };

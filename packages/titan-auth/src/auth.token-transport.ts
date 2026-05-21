@@ -85,6 +85,20 @@ export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {})
   const secure = opts.secure ?? process.env['NODE_ENV'] === 'production';
   const domain = opts.domain;
 
+  // T#176-sec — fail-fast on production + insecure cookies. The
+  // failure mode without this guard is silent: the browser receives
+  // Set-Cookie without Secure, attaches it on subsequent HTTP requests,
+  // and an on-path attacker between the user and the gateway can steal
+  // the session. We refuse to construct the transport in that shape so
+  // a misconfig surfaces at boot rather than mid-traffic.
+  if (process.env['NODE_ENV'] === 'production' && opts.secure === false) {
+    throw new Error(
+      'createOmniCookieTransport: refusing to emit non-Secure cookies in production. ' +
+        'Either deploy behind HTTPS (and set X-Forwarded-Proto correctly so the cookie attribute matches) ' +
+        'or override NODE_ENV. Never run cookie-mode auth over plain HTTP in production.',
+    );
+  }
+
   // CSRF manager (optional — strongly recommended for cookie mode).
   let csrf: CsrfManager | undefined;
   if (opts.csrf === false) {

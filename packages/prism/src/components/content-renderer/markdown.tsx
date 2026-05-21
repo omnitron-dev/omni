@@ -6,6 +6,7 @@ import type { Options } from 'react-markdown';
 import { useId, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 
@@ -52,7 +53,35 @@ function isExternalLink(href: string): boolean {
 // Default plugins
 // ---------------------------------------------------------------------------
 
-const defaultRehypePlugins: NonNullable<Options['rehypePlugins']> = [rehypeRaw, rehypeHighlight];
+// T#347 — XSS hardening: the spoiler remark plugin emits raw HTML
+// (`<span class="…">…</span>`) which rehype-raw then re-parses into the
+// DOM tree. Without rehype-sanitize, ANY raw HTML the user types into
+// markdown (`<img src=x onerror=alert(...)>`) would also pass through —
+// catastrophic under cookie-mode auth because the inline script runs
+// in the portal origin with access to the non-HttpOnly CSRF cookie.
+//
+// We extend hast-util-sanitize's defaultSchema (which already strips
+// <script>, on* handlers, javascript:/data: URIs, etc.) to allow the
+// one tag the spoiler plugin emits: `<span class="<spoiler-class>">`.
+// Order matters: rehypeRaw → rehypeSanitize → rehypeHighlight, so the
+// sanitizer sees the fully-expanded tree before highlighting decorates
+// trusted code-fence children with extra <span class="hljs-…"> wrappers.
+const SAFE_CLASS_RE = /^(prism-content__[a-z0-9_-]+|hljs(-[a-z0-9-]+)?|language-[a-z0-9+#-]+)$/i;
+const spoilerSanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    span: [...(defaultSchema.attributes?.['span'] ?? []), ['className', SAFE_CLASS_RE]],
+    code: [...(defaultSchema.attributes?.['code'] ?? []), ['className', SAFE_CLASS_RE]],
+    div: [...(defaultSchema.attributes?.['div'] ?? []), ['className', SAFE_CLASS_RE]],
+  },
+};
+
+const defaultRehypePlugins: NonNullable<Options['rehypePlugins']> = [
+  rehypeRaw,
+  [rehypeSanitize, spoilerSanitizeSchema],
+  rehypeHighlight,
+];
 
 const defaultRemarkPlugins: NonNullable<Options['remarkPlugins']> = [
   [remarkGfm, { singleTilde: false }],

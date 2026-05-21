@@ -431,6 +431,8 @@ export function resolveGateway(
       UPSTREAM_MESSAGING_PORT: '3005',
       UPSTREAM_MESSAGING_WS_HOST: upstreamHost,
       UPSTREAM_MESSAGING_WS_PORT: '3006',
+      UPSTREAM_GEO_HOST: upstreamHost,
+      UPSTREAM_GEO_PORT: '3007',
     },
     volumes: [
       // nginx.conf template — rendered by entrypoint via envsubst

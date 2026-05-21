@@ -36,6 +36,8 @@ import { generateUuidV7 } from '../../../utils/id.js';
 import { AuthorizationManager } from '../../auth/authorization-manager.js';
 import type { PolicyEngine } from '../../auth/policy-engine.js';
 import { extractBearerToken } from '../../auth/utils.js';
+import { TOKEN_ISSUANCE_METADATA_KEYS, runWithTokenIssuanceContext } from '../../auth/token-issuance.js';
+import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transport.js';
 import { isAsyncGenerator } from '@omnitron-dev/common';
 import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
 
@@ -292,39 +294,61 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
   /**
    * Create HTTP auth middleware
-   * Extracts authentication information from HTTP headers
+   * Extracts authentication information via the configured
+   * {@link ITokenTransport} (Bearer by default; cookie / composite via
+   * `configureAuth(..., { tokenTransport })`).
+   *
+   * The middleware no longer hard-codes Authorization-header parsing —
+   * it builds a header snapshot from the request and delegates token
+   * extraction to the transport strategy. This is the load-bearing
+   * change for T#176 (HttpOnly-cookie auth support): swapping
+   * transports does not require touching this middleware.
    */
   private createHttpAuthMiddleware(): any {
     return async (ctx: any, next: () => Promise<void>) => {
-      // Extract Authorization header
-      const authHeader = ctx.metadata?.get('authorization');
+      // Snapshot request headers as a plain record so the transport
+      // interface stays decoupled from the Web Fetch Headers object.
+      // Reading from ctx.request gives us authoritative case-normalized
+      // headers (the metadata Map mixes headers with framework keys
+      // like requestId/serviceName, so we can't safely scan it).
+      const reqObj = ctx.request as Request | undefined;
+      const headers: Record<string, string> = {};
+      if (reqObj?.headers) {
+        reqObj.headers.forEach((value, key) => {
+          headers[key.toLowerCase()] = value;
+        });
+      } else {
+        // No live Request (older test fixtures): fall back to metadata —
+        // the auth path was the only header consulted historically.
+        const fallback = ctx.metadata?.get('authorization');
+        if (typeof fallback === 'string') headers['authorization'] = fallback;
+      }
+      const url: string | undefined = reqObj?.url;
 
-      if (authHeader) {
-        // Parse Bearer token using consolidated utility
-        const token = extractBearerToken(authHeader);
+      const netron = this.netronPeer?.netron as INetronInternal | undefined;
+      const transport = netron?.tokenTransport;
+      // Fallback only if no netron is wired up yet (test fixtures); in
+      // production tokenTransport always exists (BearerTokenTransport default).
+      const token = transport
+        ? transport.extract({ headers, url })
+        : extractBearerToken(typeof headers['authorization'] === 'string' ? headers['authorization'] : undefined);
 
-        if (token) {
-          // Try to validate token if AuthenticationManager is available
-          const netron = this.netronPeer?.netron as INetronInternal | undefined;
-          const authManager = netron?.authenticationManager;
-          if (authManager) {
-            try {
-              const result = await authManager.validateToken(token);
-              if (result.success && result.context) {
-                // Store auth context in metadata for downstream middleware
-                // Use 'authContext' (no hyphen) to match what auth middleware expects
-                ctx.metadata.set('authContext', result.context);
-                ctx.metadata.set('authenticated', true);
-              }
-            } catch (_error) {
-              // Token validation failed - continue without auth context
-              ctx.metadata.set('authenticated', false);
+      if (token) {
+        const authManager = netron?.authenticationManager;
+        if (authManager) {
+          try {
+            const result = await authManager.validateToken(token);
+            if (result.success && result.context) {
+              // Use 'authContext' (no hyphen) to match what auth middleware expects
+              ctx.metadata.set('authContext', result.context);
+              ctx.metadata.set('authenticated', true);
             }
-          } else {
-            // No auth manager - just store token info
-            ctx.metadata.set('auth-token', token);
-            ctx.metadata.set('auth-scheme', 'Bearer');
+          } catch (_error) {
+            ctx.metadata.set('authenticated', false);
           }
+        } else {
+          ctx.metadata.set('auth-token', token);
+          ctx.metadata.set('auth-scheme', transport?.name ?? 'Bearer');
         }
       }
 
@@ -1144,7 +1168,23 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
         // Execute method with timing using validated input (includes defaults)
         const methodStart = performance.now();
-        const callHandler = () => method.handler(validatedInput, handlerContext);
+        // T#176 — wrap handler in an AsyncLocalStorage frame so the
+        // ambient `issueTokens()` / `clearTokens()` helpers can locate
+        // ctx.metadata without the user method having to receive a
+        // framework context arg. Composes with the existing
+        // invocationWrapper (RLS) by stacking ALS frames.
+        const rawCallHandler = () => method.handler(validatedInput, handlerContext);
+        // Snapshot request headers into the ALS frame so service code
+        // can use `readRequestCookie()` to extract cookie-only inputs
+        // (e.g. cookie-mode refresh-token).
+        const requestHeaders: Record<string, string> = {};
+        if (request?.headers) {
+          request.headers.forEach((value, key) => {
+            requestHeaders[key.toLowerCase()] = value;
+          });
+        }
+        const callHandler = () =>
+          runWithTokenIssuanceContext(context.metadata, rawCallHandler, { requestHeaders }) as Promise<unknown>;
 
         // Wrap in invocationWrapper if configured (for AsyncLocalStorage contexts like RLS)
         let result = this.options.invocationWrapper
@@ -1169,6 +1209,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Execute POST_INVOKE middleware (result caching, response transformation)
       await this.globalPipeline.execute(context, MiddlewareStage.POST_INVOKE);
+
+      // T#176 — Apply the configured token transport to any tokens the
+      // handler issued/cleared via auth/token-issuance helpers. Cookie
+      // mode emits Set-Cookie headers (queued in metadata, flushed to
+      // responseHeaders below) and strips token fields from context.output;
+      // bearer mode is a no-op and the body keeps its tokens.
+      this.applyTokenTransport(context);
 
       // Build response with hints
       const hints: {
@@ -1246,6 +1293,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Execute POST_PROCESS middleware (final header injection, compression)
       await this.globalPipeline.execute(context, MiddlewareStage.POST_PROCESS);
+
+      // T#176 — Flush queued Set-Cookie values from token-transport into
+      // the live responseHeaders. Done AFTER POST_PROCESS so any custom
+      // middleware ordering can still observe / amend the queue.
+      this.flushIssuedSetCookies(context, responseHeaders);
 
       // Apply CORS headers if needed
       this.applyCorsHeaders(responseHeaders, request);
@@ -1835,7 +1887,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     // Convert Web API Response to Node.js response
     res.statusCode = response.status;
+    // Set-Cookie requires special handling: a single response can carry
+    // multiple Set-Cookie headers, but `res.setHeader('set-cookie', x)`
+    // REPLACES rather than appends. And Headers.forEach() yields a
+    // comma-joined string for Set-Cookie on some implementations, which
+    // is wrong (commas are valid inside cookie values). Use the
+    // standardized getSetCookie() accessor (Node 20+/undici) to fetch
+    // the array form, then pass it to setHeader (Node's http server
+    // expands array values into N separate header lines).
+    const setCookies = (response.headers as any).getSetCookie?.() ?? [];
+    if (setCookies.length > 0) {
+      res.setHeader('set-cookie', setCookies);
+    }
     response.headers.forEach((value: string, key: string) => {
+      if (key.toLowerCase() === 'set-cookie') return; // already emitted above
       res.setHeader(key, value);
     });
 
@@ -2181,6 +2246,77 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Rate limiter stats
       rateLimit: this.rateLimiter.getStats(),
     };
+  }
+
+  /**
+   * T#176 — Apply the configured ITokenTransport to any tokens the
+   * service handler issued or cleared. Mutates `context.output` (strips
+   * sensitive token fields in cookie mode) and queues Set-Cookie values
+   * in metadata for later flush into responseHeaders.
+   *
+   * This is a no-op when:
+   *  - the netron has no token transport (anonymous-only deployments);
+   *  - the handler didn't call issueTokens()/clearTokens();
+   *  - or the transport is bearer (bearer.issue() returns no Set-Cookie
+   *    and no stripFromBody, so nothing happens).
+   */
+  private applyTokenTransport(context: NetronMiddlewareContext & { output?: unknown }): void {
+    const issued = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.issued) as IssuedTokens | undefined;
+    const cleared = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.cleared) === true;
+    if (!issued && !cleared) return;
+
+    const netron = this.netronPeer?.netron as INetronInternal | undefined;
+    const transport = netron?.tokenTransport;
+    if (!transport) return;
+
+    // Collect Set-Cookie strings — they're applied to the live
+    // responseHeaders in flushIssuedSetCookies() AFTER all POST_PROCESS
+    // middleware (compression, custom headers) has run.
+    const existing = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.setCookies) as string[] | undefined;
+    const collected: string[] = existing ? [...existing] : [];
+
+    const adapter: TokenIssueResponse = {
+      appendHeader(name, value) {
+        // We only care about Set-Cookie here; any other header a custom
+        // transport wants to set could be supported by extending this
+        // shim later, but the public ITokenTransport contract today
+        // only emits Set-Cookie.
+        if (name.toLowerCase() === 'set-cookie') collected.push(value);
+      },
+    };
+
+    if (issued) {
+      const result = transport.issue(adapter, issued);
+      if (result.stripFromBody && context.output && typeof context.output === 'object' && context.output !== null) {
+        // Strip the listed fields from the response body BEFORE
+        // createSuccessResponse wraps it. We mutate in-place because
+        // POST_INVOKE may have stored aliases elsewhere; deleting on
+        // the same reference ensures every alias sees the strip.
+        for (const field of result.stripFromBody) {
+          delete (context.output as Record<string, unknown>)[field];
+        }
+      }
+    }
+    if (cleared) {
+      transport.clear(adapter);
+    }
+
+    if (collected.length > 0) {
+      context.metadata.set(TOKEN_ISSUANCE_METADATA_KEYS.setCookies, collected);
+    }
+  }
+
+  /**
+   * T#176 — Append queued Set-Cookie values from token-transport into the
+   * live Headers object before the Response is constructed. Headers.append
+   * preserves multi-value semantics (Set-Cookie is the canonical example).
+   */
+  private flushIssuedSetCookies(context: NetronMiddlewareContext, responseHeaders: Headers): void {
+    const queued = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.setCookies) as string[] | undefined;
+    if (!queued || queued.length === 0) return;
+    for (const value of queued) {
+      responseHeaders.append('Set-Cookie', value);
+    }
   }
 
   /**

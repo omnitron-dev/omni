@@ -167,3 +167,38 @@ export class MemoryTokenStorage implements TokenStorage {
     this.values.delete(key);
   }
 }
+
+/**
+ * No-op token storage: every read returns null, every write is dropped.
+ *
+ * Used by cookie-mode {@link AuthenticationClient}: the access JWT lives
+ * inside an HttpOnly cookie that the JS layer can't see, so any storage
+ * the client tried to maintain would be either redundant (a duplicate of
+ * the cookie) or stale (out of sync with server-driven rotation).
+ *
+ * Pair with `tokenless: true` on the AuthenticationClient — or pass this
+ * as `storage` to make the intent explicit at the storage level.
+ */
+export class NoopTokenStorage implements TokenStorage {
+  getToken(): string | null {
+    return null;
+  }
+  setToken(_token: string): void {
+    /* intentional no-op */
+  }
+  removeToken(): void {
+    /* intentional no-op */
+  }
+  hasToken(): boolean {
+    return false;
+  }
+  getValue(_key: string): string | null {
+    return null;
+  }
+  setValue(_key: string, _value: string): void {
+    /* intentional no-op */
+  }
+  removeValue(_key: string): void {
+    /* intentional no-op */
+  }
+}

@@ -105,3 +105,6 @@ export * from './auth.guards.js';
 
 // Module
 export * from './auth.module.js';
+
+// Token transport factories (T#176)
+export * from './auth.token-transport.js';

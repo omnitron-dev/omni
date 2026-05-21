@@ -22,4 +22,8 @@ export { AuthenticationClient } from './client.js';
 export type { AuthEventType, AuthEventHandler } from './client.js';
 
 // Storage implementations
-export { LocalTokenStorage, SessionTokenStorage, MemoryTokenStorage } from './storage.js';
+export { LocalTokenStorage, SessionTokenStorage, MemoryTokenStorage, NoopTokenStorage } from './storage.js';
+
+// Token transport strategies (T#176)
+export * from './client-token-transport.js';
+export * from './client-token-transports/index.js';

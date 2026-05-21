@@ -17,8 +17,9 @@ import type { PolicyEngine } from '../../auth/policy-engine.js';
 import type { AuthContext, AuthResult, ExecutionContext, PolicyExpression } from '../../auth/types.js';
 import type { MethodOptions } from '../../../decorators/types.js';
 import type { ILogger } from '../../../types/logger.js';
-import { extractBearerToken } from '../../auth/utils.js';
 import { METADATA_KEYS } from '../../../decorators/core.js';
+import type { ITokenTransport } from '../../auth/token-transport.js';
+import { BearerTokenTransport } from '../../auth/token-transports/bearer.js';
 
 /**
  * Options for WebSocket auth handler
@@ -36,6 +37,39 @@ export interface WebSocketAuthOptions {
   allowAnonymous?: boolean;
   /** Custom header name for auth token (default: 'authorization') */
   authHeaderName?: string;
+  /**
+   * Token transport strategy. When provided, the upgrade handshake
+   * uses `tokenTransport.extract(req)` to read the token (cookie /
+   * bearer / composite, configurable per deployment). When omitted,
+   * the handler falls back to a default {@link BearerTokenTransport}
+   * — preserving the historical "Authorization header or ?token="
+   * behaviour exactly.
+   */
+  tokenTransport?: ITokenTransport;
+  /**
+   * Allowed Origin header values for WebSocket upgrade. Required for
+   * cookie-mode deployments: browsers ship the auth cookie on any
+   * upgrade from a context that holds the cookie, INCLUDING upgrades
+   * initiated by a malicious cross-origin page. Without an Origin
+   * check, the server can't tell the legitimate same-origin upgrade
+   * from a forged one.
+   *
+   * Semantics:
+   *  - `undefined` (default): NO Origin enforcement (legacy behaviour
+   *    — fine for bearer-only deployments because the attacker would
+   *    also need a JWT, which they don't have cross-origin).
+   *  - `true`: REQUIRE that the Origin header matches the host of
+   *    the upgrade request. Use when you only ever expect same-origin
+   *    upgrades (the standard cookie-mode deployment).
+   *  - `string[]`: whitelist of exact origins to allow. Use when
+   *    legitimate clients live on multiple known origins (e.g., a
+   *    portal subdomain + an admin subdomain on the same root).
+   *
+   * Missing Origin header (non-browser clients) is treated as a
+   * pass — only browsers send Origin, and S2S clients that hit the
+   * WS endpoint must use bearer-token auth which is CSRF-immune.
+   */
+  allowedOrigins?: true | string[];
 }
 
 /**
@@ -123,6 +157,8 @@ export class WebSocketAuthHandler {
   private readonly logger?: ILogger;
   private readonly allowAnonymous: boolean;
   private readonly authHeaderName: string;
+  private readonly tokenTransport: ITokenTransport;
+  private readonly allowedOrigins: true | string[] | undefined;
 
   constructor(options: WebSocketAuthOptions) {
     this.authManager = options.authenticationManager;
@@ -131,6 +167,42 @@ export class WebSocketAuthHandler {
     this.logger = options.logger;
     this.allowAnonymous = options.allowAnonymous ?? false;
     this.authHeaderName = options.authHeaderName ?? 'authorization';
+    // Default to bearer-with-?token=-fallback so existing tests / WS
+    // clients keep working when this handler is constructed without
+    // an explicit transport (which is what the legacy ws/server code
+    // does today). The Netron-wired pathway passes the netron-level
+    // tokenTransport so cookie/composite modes propagate automatically.
+    this.tokenTransport =
+      options.tokenTransport ??
+      new BearerTokenTransport({ headerName: this.authHeaderName, queryParamName: 'token' });
+    this.allowedOrigins = options.allowedOrigins;
+  }
+
+  /**
+   * Check that the upgrade's Origin header matches the configured
+   * policy. Returns true when no policy is configured (legacy mode)
+   * or when the origin matches.
+   *
+   * Policy semantics:
+   *  - undefined: pass (origin not enforced)
+   *  - true:      require same-host (origin's host equals request.headers.host)
+   *  - string[]:  exact-match against the whitelist
+   */
+  private isOriginAllowed(origin: string, request: IncomingMessage): boolean {
+    if (this.allowedOrigins === undefined) return true;
+    let originHost: string;
+    try {
+      const u = new URL(origin);
+      originHost = u.host;
+    } catch {
+      return false; // malformed origin
+    }
+    if (this.allowedOrigins === true) {
+      const reqHost = Array.isArray(request.headers.host) ? request.headers.host[0] : request.headers.host;
+      return originHost === reqHost;
+    }
+    // Whitelist mode — match the full origin string OR its host.
+    return this.allowedOrigins.some((allowed) => allowed === origin || allowed === originHost);
   }
 
   /**
@@ -141,29 +213,35 @@ export class WebSocketAuthHandler {
    * @returns Authentication result with context if successful
    */
   async authenticateConnection(request: IncomingMessage): Promise<AuthResult> {
-    const authHeader = request.headers[this.authHeaderName.toLowerCase()] as string | undefined;
-
-    // Try to extract token from: 1) Authorization header, 2) query param ?token=
-    let token: string | null = null;
-
-    if (authHeader) {
-      token = extractBearerToken(authHeader);
+    // Origin guard (T#176-sec): cookies are sent on any same-host
+    // upgrade, so a malicious cross-origin page can forge an upgrade
+    // request and inherit the victim's session if the server doesn't
+    // verify the Origin header. Browsers always send Origin on WS
+    // upgrades; non-browser clients (S2S) lack it and use bearer
+    // tokens that are CSRF-immune — so a missing Origin is a soft
+    // pass, while a present-but-mismatched Origin is a hard reject.
+    const originHeader = request.headers['origin'];
+    const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+    if (origin && !this.isOriginAllowed(origin, request)) {
+      this.logger?.warn?.({ origin, host: request.headers.host }, '[WS Auth] Origin not allowed — rejecting upgrade');
+      return { success: false, error: 'Origin not allowed' };
     }
 
-    // Fallback: extract from query parameter (WebSocket clients can't set headers in browsers)
-    if (!token && request.url) {
-      try {
-        const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
-        const queryToken = url.searchParams.get('token');
-        if (queryToken) {
-          token = queryToken;
-        }
-      } catch {
-        // Ignore URL parse errors
-      }
-    }
-
-    // No token found
+    // Delegate token extraction to the configured transport: bearer
+    // looks at the Authorization header (+ ?token= fallback), cookie
+    // reads the Cookie header, composite tries both in order. Browsers
+    // send cookies automatically on same-origin WS upgrade, so cookie
+    // mode needs no client-side URL trickery.
+    const token = this.tokenTransport.extract({
+      headers: request.headers as Record<string, string | string[] | undefined>,
+      url: request.url,
+    });
+    // Keep the legacy verbatim error message so existing assertions /
+    // logged-error grep patterns continue to match. We can't be sure
+    // which transport rejected (composite has multiple), and the
+    // message remains accurate: cookie & bearer are both header-based
+    // from the client's perspective, and the query-param hint
+    // remains valid for the bearer + WS fallback case.
     if (!token) {
       if (this.allowAnonymous) {
         this.logger?.debug?.('[WS Auth] Anonymous connection allowed');

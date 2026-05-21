@@ -85,7 +85,16 @@ export {
 export { createMultiBackendClient, MultiBackendClient } from '@omnitron-dev/netron-browser';
 
 // Re-export authentication client for per-backend JWT auth
-export { AuthenticationClient, SessionTokenStorage } from '@omnitron-dev/netron-browser';
+export { AuthenticationClient, SessionTokenStorage, NoopTokenStorage } from '@omnitron-dev/netron-browser';
+
+// Re-export client-side token transports + CSRF (T#176)
+export {
+  BearerClientTokenTransport,
+  CookieClientTokenTransport,
+  HybridClientTokenTransport,
+  createCsrfMiddleware,
+} from '@omnitron-dev/netron-browser';
+export type { IClientTokenTransport } from '@omnitron-dev/netron-browser';
 
 // Re-export WebSocket client for direct realtime connections
 export { WebSocketClient } from '@omnitron-dev/netron-browser';

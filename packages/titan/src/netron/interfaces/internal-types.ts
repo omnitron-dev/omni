@@ -9,6 +9,7 @@
 import type { INetron, ILocalPeer, IAuthorizationManager } from './core-types.js';
 import type { ServiceStub } from '../service-stub.js';
 import type { AuthCredentials, AuthResult } from '../auth/types.js';
+import type { ITokenTransport } from '../auth/token-transport.js';
 
 /**
  * Internal interface for AuthenticationManager.
@@ -73,6 +74,17 @@ export interface INetronInternal extends INetron {
    * @internal
    */
   authorizationManager?: IAuthorizationManager;
+
+  /**
+   * Token transport strategy. The `Netron` class always initializes
+   * this to a {@link BearerTokenTransport} default — but at the
+   * interface level we leave it optional to match the existing
+   * `authenticationManager` / `authorizationManager` pattern and keep
+   * structural type compatibility with `LocalPeer.netron` casts. All
+   * callers must use optional chaining (`netron?.tokenTransport`).
+   * @internal
+   */
+  tokenTransport?: ITokenTransport;
 }
 
 /**

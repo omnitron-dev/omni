@@ -38,6 +38,12 @@ export interface BatchOptions {
   headers?: Record<string, string>;
   /** Path prefix for all endpoints (e.g., '/api/v1', '/core') */
   pathPrefix?: string;
+  /**
+   * Fetch credentials policy for batched calls. Cookie-mode deployments
+   * set 'include' so the browser ships its cookie jar. Default
+   * (undefined) preserves browser default 'same-origin'.
+   */
+  credentials?: RequestCredentials;
 }
 
 /**
@@ -121,10 +127,14 @@ export class RequestBatcher extends EventEmitter {
       'Content-Type': 'application/json',
       ...options.headers,
     };
+    this.credentials = options.credentials;
 
     // Start age checking timer
     this.startAgeChecker();
   }
+
+  /** Optional fetch credentials policy (cookie-mode deployments use 'include'). */
+  private readonly credentials?: RequestCredentials;
 
   /**
    * Build a full URL by combining baseUrl, pathPrefix, and endpoint.
@@ -246,6 +256,7 @@ export class RequestBatcher extends EventEmitter {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(batchRequest),
+        ...(this.credentials !== undefined ? { credentials: this.credentials } : {}),
       });
 
       if (!response.ok) {

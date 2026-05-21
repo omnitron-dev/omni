@@ -304,7 +304,7 @@ describe('Netron auth — cookie token transport (integration)', () => {
       const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'f', password: 'x' });
       const setCookies = parseSetCookies(signin);
       const accessKv = setCookies.find((c) => c.startsWith('omni_access='))!.split(';')[0];
-      const csrfKv = setCookies.find((c) => c.startsWith('omni_csrf='))!.split(';')[0];
+      const csrfKv = setCookies.filter((c) => c.startsWith('omni_csrf=') && !c.includes('Max-Age=0')).pop()!.split(';')[0];
       const csrfToken = csrfKv!.split('=')[1];
 
       const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
@@ -317,7 +317,7 @@ describe('Netron auth — cookie token transport (integration)', () => {
       const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'f', password: 'x' });
       const setCookies = parseSetCookies(signin);
       const accessKv = setCookies.find((c) => c.startsWith('omni_access='))!.split(';')[0];
-      const csrfKv = setCookies.find((c) => c.startsWith('omni_csrf='))!.split(';')[0];
+      const csrfKv = setCookies.filter((c) => c.startsWith('omni_csrf=') && !c.includes('Max-Age=0')).pop()!.split(';')[0];
 
       const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
         headers: { Cookie: `${accessKv}; ${csrfKv}` },
@@ -331,7 +331,7 @@ describe('Netron auth — cookie token transport (integration)', () => {
       const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'f', password: 'x' });
       const setCookies = parseSetCookies(signin);
       const accessKv = setCookies.find((c) => c.startsWith('omni_access='))!.split(';')[0];
-      const csrfKv = setCookies.find((c) => c.startsWith('omni_csrf='))!.split(';')[0];
+      const csrfKv = setCookies.filter((c) => c.startsWith('omni_csrf=') && !c.includes('Max-Age=0')).pop()!.split(';')[0];
 
       const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
         headers: {

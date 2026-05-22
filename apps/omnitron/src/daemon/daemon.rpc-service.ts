@@ -301,6 +301,10 @@ export class DaemonRpcService implements IDaemonService {
       restarts: handle.restarts,
       services,
       config: appConfig,
+      // Surface the crash context when the app is dead so
+      // `omnitron inspect` can render exit code + signal +
+      // stderr tail without a separate RPC round-trip.
+      ...(handle.lastExit && { lastExit: { ...handle.lastExit } }),
     };
   }
 

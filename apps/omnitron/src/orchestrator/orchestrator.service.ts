@@ -1699,6 +1699,11 @@ export class OrchestratorService extends EventEmitter {
   private wireSupervisorEvents(entry: IEcosystemAppEntry, handle: AppHandle, supervisor: any): void {
     supervisor.on('child:started', (childName: string) => {
       this.attachLogCapture(entry.name, childName, handle);
+      this.attachExitCapture(entry.name, childName, handle);
+      // The app re-entered a live state — drop the previous crash
+      // context so a future `omnitron inspect` shows the *next*
+      // crash, not the last one.
+      handle.clearLastExit();
     });
 
     supervisor.on('child:crash', (childName: string, error: Error) => {
@@ -1708,9 +1713,44 @@ export class OrchestratorService extends EventEmitter {
       } else {
         handle.markCrashed();
       }
+      // Stash the supervisor-provided error message onto whatever
+      // exit context the workerHandle.onExit hook already wrote. If
+      // the exit event hasn't fired yet (race) we still need to
+      // persist *something* — record a synthetic entry that the
+      // exit hook below will overwrite when it does fire.
+      if (handle.lastExit) {
+        handle.lastExit.message = error.message;
+      } else {
+        handle.recordExit({ code: null, signal: null, expected: false, message: error.message });
+      }
       this.logger.error({ app: entry.name, child: childName, error: error.message }, 'Process crashed');
       this.persistState();
       this.emit('app:crash', entry.name, error);
+    });
+
+    // T#60 — startup failures (child throws/rejects in waitForReady
+    // before ever reporting ready) come through this event, NOT
+    // child:crash. Without a handler the orchestrator just sees
+    // status='errored' with no clue what went wrong. titan-pm
+    // already stuffs the captured stderr into `error.details.stderr`
+    // so we surface it on `lastExit.stderrTail`.
+    supervisor.on('child:start-failed', (childName: string, error: Error) => {
+      const details = (error as { details?: { stderr?: string } }).details;
+      const stderrTail = typeof details?.stderr === 'string'
+        ? details.stderr.split('\n').filter((l: string) => l.length > 0).slice(-80)
+        : [];
+      for (const line of stderrTail) handle.appendStderr(line);
+      handle.recordExit({
+        code: null,
+        signal: null,
+        expected: false,
+        message: error.message,
+      });
+      this.logger.error(
+        { app: entry.name, child: childName, err: error.message },
+        'Process failed to start',
+      );
+      this.persistState();
     });
 
     supervisor.on('child:restart', (childName: string, attempt: number) => {
@@ -1741,9 +1781,16 @@ export class OrchestratorService extends EventEmitter {
     const workerHandle = this.pm.getWorkerHandle(processId);
     if (!workerHandle?.onLog) return;
 
-    workerHandle.onLog((line: string, _stream: 'stdout' | 'stderr') => {
+    workerHandle.onLog((line: string, stream: 'stdout' | 'stderr') => {
       // In-memory ring buffer (for live CLI tailing)
       handle.appendLog(line);
+
+      // Separate stderr ring — feeds `lastExit.stderrTail` on death.
+      // Without this, the operator running `omnitron inspect` after
+      // a crash sees no hint at WHY (the in-flight pipe is gone).
+      if (stream === 'stderr') {
+        handle.appendStderr(line);
+      }
 
       // Persist to disk via registered log handlers (LogManager)
       for (const handler of this.appLogHandlers) {
@@ -1753,6 +1800,43 @@ export class OrchestratorService extends EventEmitter {
           // Log handler failure must not break the app
         }
       }
+    });
+  }
+
+  /**
+   * Subscribe to the WorkerHandle's `exit` event so the orchestrator
+   * keeps the exit code / signal / "expected" flag past the
+   * WorkerHandle's GC. Pre-fix the supervisor's `child:crash` event
+   * fired with an Error but never surfaced the underlying
+   * code/signal — operators had no way to tell SIGKILL from a
+   * thrown TypeError. The captured info lands on
+   * `handle.lastExit` and is surfaced by `omnitron inspect`.
+   */
+  private attachExitCapture(appName: string, childName: string, handle: AppHandle): void {
+    const supervisor = handle.supervisor;
+    if (!supervisor) return;
+
+    const processId = supervisor.getChildProcessId(childName);
+    if (!processId) return;
+
+    const workerHandle = this.pm.getWorkerHandle(processId);
+    if (!workerHandle?.onExit) return;
+
+    workerHandle.onExit((info: { code: number | null; signal: NodeJS.Signals | null; expected: boolean }) => {
+      // Preserve the supervisor's error message if `child:crash`
+      // already fired before us. recordExit overwrites the synthetic
+      // entry with the authoritative code/signal.
+      const message = handle.lastExit?.message;
+      handle.recordExit({
+        code: info.code,
+        signal: info.signal,
+        expected: info.expected,
+        ...(message !== undefined && { message }),
+      });
+      this.logger.debug(
+        { app: appName, child: childName, code: info.code, signal: info.signal, expected: info.expected },
+        'Captured worker exit context',
+      );
     });
   }
 

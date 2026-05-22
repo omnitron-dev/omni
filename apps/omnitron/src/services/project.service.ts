@@ -21,6 +21,7 @@ import { ProjectRegistry } from '../project/registry.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type {
   IEcosystemConfig,
+  IEcosystemAppEntry,
   IStackConfig,
   ISeedProject,
   DaemonRole,
@@ -42,6 +43,7 @@ import type {
 } from '../shared/dto/project.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
+import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
 import { RemoteDeployer } from './remote-deployer.service.js';
 import type { FleetService } from './fleet.service.js';
@@ -986,27 +988,32 @@ export class ProjectService extends EventEmitter {
       normalizedSvcs ?? undefined,
     );
 
-    // 4. Start each app with namespaced handle key and resolved infra config
-    for (const entry of appEntries) {
+    // 4. Start apps in dependency-aware parallel batches.
+    //
+    // Pre-fix this was a serial `for ... await` loop in declaration
+    // order. For the daos stack that meant geo + priceverse (zero
+    // deps) waited 30+ seconds for unrelated apps to finish booting
+    // before they themselves were even spawned — every app paid
+    // the cumulative cold-start cost. The dependency-aware batched
+    // start that `OrchestratorService.startAll` uses was bypassed
+    // entirely because stack-mode goes through this code path
+    // instead of startAll.
+    //
+    // resolveStartupOrder returns waves: every app in wave N has
+    // all its `dependsOn` already in wave 0..N-1. We start each
+    // wave with Promise.all so apps without deps run truly in
+    // parallel, and a wave can't start until every member of the
+    // previous wave is online. Same skip-on-failed-dep semantics
+    // as startAll.
+    const appConfigBuilder = (entry: IEcosystemAppEntry) => {
       const appConfig = resolvedStack.appConfigs.get(entry.name);
-
-      // Build environment variables from resolved infrastructure config
       const infraEnv = appConfig ? resolvedConfigToEnv(appConfig, entry.name, stackName) : {};
-      this.logger.info(
-        { app: entry.name, envKeys: Object.keys(infraEnv), hasS3: !!infraEnv['S3_ENDPOINT'], hasDb: !!infraEnv['DATABASE_URL'] },
-        'Infrastructure env vars for app'
-      );
-
-      const namespacedEntry = {
+      return {
         ...entry,
         name: ProjectService.handleKey(projectName, stackName, entry.name),
-        // Resolve bootstrap to absolute path using project root — the orchestrator's
-        // cwd may differ from the project directory (e.g. daemon running from webapp/).
         ...(entry.bootstrap && project
           ? { bootstrap: path.resolve(project.path, entry.bootstrap) }
           : {}),
-        // Set CWD to project root so child processes can resolve relative config paths
-        // (e.g., apps/storage/config/default.json) correctly.
         ...(project ? { cwd: project.path } : {}),
         env: {
           ...entry.env,
@@ -1017,15 +1024,53 @@ export class ProjectService extends EventEmitter {
           OMNITRON_STACK_TYPE: 'local',
         },
       };
+    };
 
-      try {
-        await this.orchestrator.startApp(namespacedEntry, ecosystemConfig);
-      } catch (err) {
-        this.logger.error(
-          { app: entry.name, project: projectName, stack: stackName, error: (err as Error).message },
-          'Failed to start app in stack'
-        );
-      }
+    const failed = new Set<string>();
+    const blocked = new Set<string>();
+
+    for (const wave of resolveStartupOrder(appEntries)) {
+      await Promise.all(
+        wave.map(async (entry) => {
+          const blockingDep = (entry.dependsOn ?? []).find((d) => failed.has(d) || blocked.has(d));
+          if (blockingDep) {
+            blocked.add(entry.name);
+            this.logger.warn(
+              { app: entry.name, project: projectName, stack: stackName, blockedBy: blockingDep },
+              'Skipping app — dependency failed or was blocked',
+            );
+            return;
+          }
+          const namespacedEntry = appConfigBuilder(entry);
+          const envMap = namespacedEntry.env as Record<string, string | undefined> | undefined;
+          this.logger.info(
+            {
+              app: entry.name,
+              wave: 'parallel',
+              envKeys: envMap ? Object.keys(envMap) : [],
+              hasS3: !!envMap?.['S3_ENDPOINT'],
+              hasDb: !!envMap?.['DATABASE_URL'],
+            },
+            'Infrastructure env vars for app',
+          );
+          try {
+            await this.orchestrator.startApp(namespacedEntry, ecosystemConfig);
+          } catch (err) {
+            failed.add(entry.name);
+            this.logger.error(
+              { app: entry.name, project: projectName, stack: stackName, error: (err as Error).message },
+              'Failed to start app in stack',
+            );
+          }
+        }),
+      );
+    }
+
+    if (failed.size > 0 || blocked.size > 0) {
+      this.logger.warn(
+        { project: projectName, stack: stackName, failed: [...failed], blocked: [...blocked] },
+        'Stack startup finished with failures — some apps did not launch',
+      );
     }
   }
 

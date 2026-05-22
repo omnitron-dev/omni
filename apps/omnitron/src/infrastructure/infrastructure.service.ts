@@ -186,23 +186,42 @@ export class InfrastructureService {
       'Provisioning app infrastructure'
     );
 
-    // 3. Reconcile each app service
-    for (const desired of this.desiredContainers) {
-      try {
-        await this.reconcileService(desired);
-      } catch (err) {
-        this.logger.error(
-          { service: desired.name, error: (err as Error).message },
-          'Failed to provision service'
-        );
-        this.state.services[desired.name] = {
-          name: desired.name,
-          image: desired.image,
-          status: 'exited',
-          error: (err as Error).message,
-        };
-      }
-    }
+    // 3. Reconcile every app service in parallel.
+    //
+    // Pre-fix this was a serial `for await` loop over up to a dozen
+    // containers. For an already-healthy stack (the common cold-boot
+    // case where Docker preserved containers across a daemon
+    // restart) each reconcileService is a single `docker inspect`
+    // round-trip — but doing nine of them serially still costs
+    // multiple seconds of latency on the critical path before
+    // apps can even start spawning.
+    //
+    // Safety: `reconcileService` holds a per-name lock
+    // (`this.reconciling`), so parallel calls for the SAME
+    // container still serialise. Cross-container ordering (e.g.
+    // monero-wallet-rpc must talk to monero-daemon) is enforced
+    // by each container's own healthcheck loop — the wallet's
+    // health probe retries until the daemon's RPC accepts
+    // connections, so launching them in parallel just extends the
+    // wallet's first-try wait, not its end state.
+    await Promise.all(
+      this.desiredContainers.map(async (desired) => {
+        try {
+          await this.reconcileService(desired);
+        } catch (err) {
+          this.logger.error(
+            { service: desired.name, error: (err as Error).message },
+            'Failed to provision service'
+          );
+          this.state.services[desired.name] = {
+            name: desired.name,
+            image: desired.image,
+            status: 'exited',
+            error: (err as Error).message,
+          };
+        }
+      }),
+    );
 
     // 4. Post-provisioning setup (create databases, buckets, etc.)
     await this.postProvision();

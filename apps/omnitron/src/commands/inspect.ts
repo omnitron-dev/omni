@@ -42,6 +42,30 @@ export async function inspectCommand(appName: string): Promise<void> {
       `Restarts:   ${diag.restarts > 0 ? prism.yellow(String(diag.restarts)) : '0'}`,
     ];
 
+    // Crash diagnosis — the whole point of this command for an
+    // operator landing here because an app died. Render the exit
+    // code/signal + stderr tail when present so we never again
+    // have to tell someone "logs show nothing, sorry".
+    if (diag.lastExit) {
+      const exitColor = diag.lastExit.expected ? prism.dim : prism.red;
+      const exitReason = formatExitReason(diag.lastExit.code, diag.lastExit.signal);
+      lines.push('', prism.bold('Last Exit:'));
+      lines.push(`  At:       ${prism.dim(diag.lastExit.atIso)}`);
+      lines.push(`  Reason:   ${exitColor(exitReason)}`);
+      lines.push(`  Expected: ${diag.lastExit.expected ? prism.green('yes') : prism.red('no')}`);
+      if (diag.lastExit.message) {
+        lines.push(`  Message:  ${prism.yellow(diag.lastExit.message)}`);
+      }
+      if (diag.lastExit.stderrTail.length > 0) {
+        lines.push('', prism.bold(`Last stderr (${diag.lastExit.stderrTail.length} lines):`));
+        for (const line of diag.lastExit.stderrTail) {
+          lines.push(`  ${prism.red('|')} ${prism.dim(line)}`);
+        }
+      } else {
+        lines.push(`  ${prism.dim('(no stderr captured before exit)')}`);
+      }
+    }
+
     // Config section
     if (diag.config && Object.keys(diag.config).length > 0) {
       lines.push('', prism.bold('Config:'));
@@ -100,4 +124,22 @@ function formatConfigValue(key: string, value: unknown): string {
   if (typeof value === 'boolean') return value ? prism.green('true') : 'false';
   if (typeof value === 'number') return prism.cyan(String(value));
   return String(value);
+}
+
+/**
+ * Format the exit reason for human eyes. POSIX puts code XOR signal
+ * — code=0 + signal=null is the canonical "clean exit"; everything
+ * else is some flavour of "look at the stderr tail".
+ */
+function formatExitReason(code: number | null, signal: string | null): string {
+  if (signal) {
+    return `killed by ${signal}`;
+  }
+  if (code === null) {
+    return 'unknown (no code, no signal)';
+  }
+  if (code === 0) {
+    return 'clean exit (code 0)';
+  }
+  return `exit code ${code}`;
 }

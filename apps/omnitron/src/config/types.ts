@@ -844,6 +844,30 @@ export interface LogEntryDto {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Crash diagnostic context attached to `AppDiagnosticsDto` when
+ * the app died. Mirrors `LastExitInfo` on the orchestrator side
+ * — exposed verbatim so the CLI (and future Console UI) can
+ * render it without re-modelling the shape.
+ */
+export interface LastExitDto {
+  /** ISO timestamp of the exit. */
+  atIso: string;
+  /** Exit code (null when killed by a signal). */
+  code: number | null;
+  /** POSIX signal name when killed by signal (e.g. 'SIGKILL'). */
+  signal: string | null;
+  /** True for deliberate terminate() calls, false for crashes. */
+  expected: boolean;
+  /**
+   * Last N stderr lines captured before exit — the single most
+   * useful diagnostic when an app dies mid-bootstrap.
+   */
+  stderrTail: string[];
+  /** Supervisor-provided summary (typically the underlying Error). */
+  message?: string;
+}
+
 export interface AppDiagnosticsDto {
   name: string;
   pid: number | null;
@@ -859,4 +883,11 @@ export interface AppDiagnosticsDto {
   restarts: number;
   services: string[];
   config: Record<string, unknown>;
+  /**
+   * Populated when the app's last lifecycle event was a death
+   * (status='errored' or 'crashed'). Cleared the moment a fresh
+   * start brings the app back online — see
+   * `AppHandle.clearLastExit`.
+   */
+  lastExit?: LastExitDto;
 }

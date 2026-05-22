@@ -154,4 +154,66 @@ describe('AppHandle', () => {
       expect(handle.getLogs(10)).toEqual([]);
     });
   });
+
+  describe('crash diagnostics — recordExit / lastExit / stderr ring', () => {
+    it('starts with no lastExit', () => {
+      expect(handle.lastExit).toBeNull();
+    });
+
+    it('records exit code + signal + expected + ISO timestamp', () => {
+      handle.recordExit({ code: 1, signal: null, expected: false, message: 'boom' });
+      expect(handle.lastExit).not.toBeNull();
+      expect(handle.lastExit!.code).toBe(1);
+      expect(handle.lastExit!.signal).toBeNull();
+      expect(handle.lastExit!.expected).toBe(false);
+      expect(handle.lastExit!.message).toBe('boom');
+      // ISO-8601 with Z suffix
+      expect(handle.lastExit!.atIso).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
+
+    it('coerces signal to string (NodeJS.Signals is a string union but kept normalized)', () => {
+      handle.recordExit({ code: null, signal: 'SIGKILL', expected: false });
+      expect(handle.lastExit!.signal).toBe('SIGKILL');
+    });
+
+    it('snapshots the current stderr ring into lastExit.stderrTail', () => {
+      handle.appendStderr('FATAL: JWT_SECRET missing');
+      handle.appendStderr('  at bootstrap (/app/src/index.ts:42)');
+      handle.recordExit({ code: 1, signal: null, expected: false });
+      expect(handle.lastExit!.stderrTail).toEqual([
+        'FATAL: JWT_SECRET missing',
+        '  at bootstrap (/app/src/index.ts:42)',
+      ]);
+    });
+
+    it('stderrTail is a snapshot — later appendStderr does not mutate it', () => {
+      handle.appendStderr('a');
+      handle.recordExit({ code: 1, signal: null, expected: false });
+      handle.appendStderr('b');
+      expect(handle.lastExit!.stderrTail).toEqual(['a']);
+    });
+
+    it('stderr ring is bounded (default 80)', () => {
+      for (let i = 0; i < 100; i++) handle.appendStderr(`err ${i}`);
+      handle.recordExit({ code: 1, signal: null, expected: false });
+      expect(handle.lastExit!.stderrTail).toHaveLength(80);
+      expect(handle.lastExit!.stderrTail[0]).toBe('err 20');
+      expect(handle.lastExit!.stderrTail[79]).toBe('err 99');
+    });
+
+    it('clearLastExit drops both lastExit AND the stderr ring', () => {
+      handle.appendStderr('x');
+      handle.recordExit({ code: 1, signal: null, expected: false });
+      handle.clearLastExit();
+      expect(handle.lastExit).toBeNull();
+      // Subsequent recordExit captures an empty tail.
+      handle.recordExit({ code: 2, signal: null, expected: false });
+      expect(handle.lastExit!.stderrTail).toEqual([]);
+    });
+
+    it('omits message when not provided', () => {
+      handle.recordExit({ code: 0, signal: null, expected: true });
+      expect(handle.lastExit!.message).toBeUndefined();
+    });
+  });
 });

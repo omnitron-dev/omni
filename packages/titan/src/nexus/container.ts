@@ -502,6 +502,42 @@ export class Container implements IContainer {
   }
 
   /**
+   * Boot-time guard against positional-inject drift. For useClass
+   * providers, compare the resolved-dependency count against the
+   * constructor's declared arity (JS `.length` — excludes default-
+   * valued params but NOT TS-only `?:` optionals). When fewer deps
+   * were resolved than the constructor expects, extra parameters
+   * arrive as `undefined` and the first method call on one of them
+   * throws a confusing "Cannot read properties of undefined" deep
+   * in application code.
+   *
+   * We log a loud warn rather than throwing — TS-optional (`?:`) and
+   * `@Optional` decorator params are indistinguishable from real
+   * drift at runtime, so a hard throw would block legitimate boots.
+   * The warning names the class, the indices, and the suspected
+   * missing token so a real drift is obvious in the boot log; real
+   * `undefined` deps still crash at first use, but the trail back is
+   * one boot-log line away.
+   */
+  private validateConstructorArity(registration: Registration, dependencies: readonly unknown[]): void {
+    const provider = registration.provider;
+    if (!provider || !('useClass' in provider) || !provider.useClass) return;
+    const ctor = provider.useClass as Constructor;
+    const required = ctor.length;
+    if (dependencies.length >= required) return;
+    const tokenName = getTokenName(registration.token);
+    const depNames = registration.dependencies?.map((d) => getTokenName(d)) ?? [];
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Nexus] DI arity mismatch for ${tokenName} → ${ctor.name}: ` +
+        `constructor declares ${required} parameters but inject array supplied ${dependencies.length}. ` +
+        `Resolved deps (in order): [${depNames.join(', ') || 'none'}]. ` +
+        `If parameter ${dependencies.length} is required, the module's inject:[...] is missing a token. ` +
+        `If it is @Optional or TS-optional (?:), this warning is benign.`
+    );
+  }
+
+  /**
    * Create an instance from registration
    */
   private createInstance(registration: Registration): unknown {
@@ -524,6 +560,8 @@ export class Container implements IContainer {
         (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
         (dep) => this.resolveDependency(dep)
       );
+
+      this.validateConstructorArity(registration, dependencies);
 
       // Create instance
       const instance = registration.factory(...dependencies);
@@ -998,6 +1036,7 @@ export class Container implements IContainer {
               (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
               (dep) => this.resolveDependency(dep)
             );
+            this.validateConstructorArity(registration, freshDependencies);
             let result = registration.factory!(...freshDependencies);
 
             // Apply timeout to individual attempts if specified
@@ -1015,6 +1054,7 @@ export class Container implements IContainer {
           );
         } else {
           // Single attempt with optional timeout
+          this.validateConstructorArity(registration, dependencies);
           let factoryResult = registration.factory!(...dependencies);
 
           if (asyncProvider.timeout && asyncProvider.timeout > 0) {
@@ -1025,6 +1065,7 @@ export class Container implements IContainer {
         }
       } else {
         // Synchronous factory
+        this.validateConstructorArity(registration, dependencies);
         instance = registration.factory!(...dependencies);
       }
 

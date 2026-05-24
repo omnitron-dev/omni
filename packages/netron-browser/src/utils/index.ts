@@ -108,17 +108,37 @@ export function sleep(ms: number): Promise<void> {
 /**
  * Calculate exponential backoff delay with jitter.
  *
- * Uses decorrelated jitter to prevent thundering herd:
- *   delay = min(maxDelay, random_between(baseDelay, prevDelay * 3))
+ * Uses **full jitter** per AWS's "Exponential Backoff And Jitter"
+ * recommendation (Marc Brooker, 2015) — see
+ * https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/.
  *
- * Falls back to capped exponential with ±25% random jitter.
+ *   exp   = min(baseDelay * 2^(attempt-1), maxDelay)
+ *   delay = random_between(baseDelay, exp)
+ *
+ * Why full jitter (NOT the previous capped-exp ± 25%):
+ *   The pre-fix algorithm clustered every retry inside a 50% wide
+ *   window around the exponential — fine in isolation, lethal at
+ *   scale. With N clients disconnecting on a server restart and
+ *   computing attempt=1 (1s base): the old code spread them across
+ *   [750ms, 1250ms] — a 500ms thundering-herd window. N=10000 →
+ *   20k retries/sec hits the rebooting server. Full jitter
+ *   spreads the same retries across [1s, 1s] up to [1s, maxDelay]
+ *   as `attempt` grows, dramatically lowering peak request rate
+ *   while preserving the same expected completion time.
+ *
+ *   The `Math.max(baseDelay, …)` floor ensures the first retry
+ *   never fires faster than `baseDelay` even when the random
+ *   draw lands at the lower bound — the only way a true zero
+ *   could appear is if `baseDelay <= 0`, which is a caller bug.
  */
 export function calculateBackoff(attempt: number, baseDelay: number = 1000, maxDelay: number = 30000): number {
-  // Exponential: baseDelay * 2^(attempt-1)
-  const exponential = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
-  // Add ±25% jitter to prevent synchronized reconnection storms
-  const jitter = exponential * 0.25 * (Math.random() * 2 - 1);
-  return Math.max(baseDelay, Math.min(exponential + jitter, maxDelay));
+  const safeBase = Math.max(1, baseDelay);
+  const safeMax = Math.max(safeBase, maxDelay);
+  const exponential = Math.min(safeBase * Math.pow(2, Math.max(0, attempt - 1)), safeMax);
+  // Full jitter: uniform draw from [safeBase, exponential].
+  const span = Math.max(0, exponential - safeBase);
+  const delay = safeBase + Math.random() * span;
+  return Math.floor(delay);
 }
 
 /**

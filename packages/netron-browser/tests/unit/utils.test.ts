@@ -51,23 +51,64 @@ describe('Utils', () => {
     });
   });
 
-  describe('calculateBackoff', () => {
-    it('should calculate exponential backoff with jitter', () => {
-      // Function adds ±25% jitter, so check ranges
-      expect(calculateBackoff(1, 1000)).toBeGreaterThanOrEqual(750);
-      expect(calculateBackoff(1, 1000)).toBeLessThanOrEqual(1250);
-      expect(calculateBackoff(2, 1000)).toBeGreaterThanOrEqual(1500);
-      expect(calculateBackoff(2, 1000)).toBeLessThanOrEqual(2500);
-      expect(calculateBackoff(3, 1000)).toBeGreaterThanOrEqual(3000);
-      expect(calculateBackoff(3, 1000)).toBeLessThanOrEqual(5000);
+  describe('calculateBackoff (full jitter — AWS Brooker 2015)', () => {
+    it('first attempt returns exactly baseDelay (zero jitter span)', () => {
+      // attempt=1 → exp = baseDelay * 2^0 = baseDelay → span = 0
+      for (let i = 0; i < 50; i += 1) {
+        expect(calculateBackoff(1, 1000)).toBe(1000);
+      }
     });
 
-    it('should cap at maximum delay', () => {
-      // With jitter, result is in [maxDelay*0.75, maxDelay]
-      expect(calculateBackoff(10, 1000)).toBeLessThanOrEqual(30000);
-      expect(calculateBackoff(10, 1000)).toBeGreaterThanOrEqual(1000);
-      expect(calculateBackoff(20, 1000)).toBeLessThanOrEqual(30000);
-      expect(calculateBackoff(20, 1000)).toBeGreaterThanOrEqual(1000);
+    it('subsequent attempts draw uniformly from [baseDelay, exp(attempt)]', () => {
+      for (let i = 0; i < 200; i += 1) {
+        const d2 = calculateBackoff(2, 1000);
+        expect(d2).toBeGreaterThanOrEqual(1000);
+        expect(d2).toBeLessThanOrEqual(2000);
+        const d3 = calculateBackoff(3, 1000);
+        expect(d3).toBeGreaterThanOrEqual(1000);
+        expect(d3).toBeLessThanOrEqual(4000);
+        const d4 = calculateBackoff(4, 1000);
+        expect(d4).toBeGreaterThanOrEqual(1000);
+        expect(d4).toBeLessThanOrEqual(8000);
+      }
+    });
+
+    it('caps the upper bound at maxDelay', () => {
+      for (let i = 0; i < 200; i += 1) {
+        const d = calculateBackoff(20, 1000);
+        expect(d).toBeGreaterThanOrEqual(1000);
+        expect(d).toBeLessThanOrEqual(30000);
+      }
+    });
+
+    it('caller-supplied maxDelay overrides the default', () => {
+      const d = calculateBackoff(30, 1000, 5000);
+      expect(d).toBeGreaterThanOrEqual(1000);
+      expect(d).toBeLessThanOrEqual(5000);
+    });
+
+    it('spreads high-attempt retries across most of [base, max] — anti thundering-herd invariant', () => {
+      // The whole point of full jitter: at attempt=10+ the spread
+      // should cover most of the [base, max] window.
+      const samples: number[] = [];
+      for (let i = 0; i < 1000; i += 1) {
+        samples.push(calculateBackoff(10, 1000, 30000));
+      }
+      samples.sort((a, b) => a - b);
+      const span = samples[samples.length - 1]! - samples[0]!;
+      // Window is 29000ms wide. 1000 uniform samples cover ~99%.
+      expect(span).toBeGreaterThan(29000 * 0.9);
+    });
+
+    it('clamps attempt=0 to the same as attempt=1 (no negative power)', () => {
+      expect(calculateBackoff(0, 1000)).toBe(1000);
+    });
+
+    it('handles degenerate inputs without producing zero/NaN', () => {
+      expect(calculateBackoff(1, 0)).toBe(1);
+      expect(calculateBackoff(1, -1)).toBe(1);
+      // maxDelay < baseDelay: max promoted to base — delay still ≥ base.
+      expect(calculateBackoff(5, 1000, 100)).toBe(1000);
     });
   });
 

@@ -747,7 +747,7 @@ export class OmnitronDaemon {
     // stack auto-detection upstream); the daemon does not provision it
     // again here.
     const { ProjectRegistry } = await import('../project/registry.js');
-    const projects = new ProjectRegistry().list();
+    const projects = ProjectRegistry.open().list();
     const projectModeActive = projects.some(
       (p) => Array.isArray(p.enabledStacks) && p.enabledStacks.length > 0,
     );

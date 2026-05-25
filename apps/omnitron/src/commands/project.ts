@@ -36,7 +36,7 @@ export async function projectAddCommand(name: string, projectPath: string): Prom
     const project = await withProjectService(
       (svc) => svc.addProject({ name, path: projectPath }),
       () => {
-        const added = new ProjectRegistry().add(name, projectPath);
+        const added = ProjectRegistry.open().add(name, projectPath);
         return {
           name: added.name,
           displayName: added.name,
@@ -59,7 +59,7 @@ export async function projectListCommand(): Promise<void> {
     const { projects, online } = await withProjectService(
       async (svc) => ({ projects: await svc.listProjects(), online: true }),
       () => {
-        const seeds = new ProjectRegistry().list();
+        const seeds = ProjectRegistry.open().list();
         const projects = seeds.map<IProjectInfo>((p) => ({
           name: p.name,
           displayName: p.name,
@@ -106,7 +106,7 @@ export async function projectRemoveCommand(name: string): Promise<void> {
     await withProjectService(
       (svc) => svc.removeProject({ name }),
       () => {
-        new ProjectRegistry().remove(name);
+        ProjectRegistry.open().remove(name);
         return { success: true };
       },
     );

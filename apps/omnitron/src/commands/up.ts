@@ -182,7 +182,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
   }
 
   // 1.5. Resolve ecosystem config
-  const registry = new ProjectRegistry();
+  const registry = ProjectRegistry.open();
   let configPath: string | undefined;
 
   if (options?.configPath) {

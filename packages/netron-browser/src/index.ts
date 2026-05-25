@@ -327,3 +327,21 @@ export type {
   ErrorTransformer,
   ErrorHandler,
 } from './middleware/index.js';
+
+// ---------------------------------------------------------------------------
+// Multi-tab leader election (T#64) — Web Locks + BroadcastChannel primitive
+// for consolidating one WebSocket across many open tabs.
+// ---------------------------------------------------------------------------
+export {
+  createLeaderElection,
+  createWebLocksAdapter,
+  createBroadcastChannelAdapter,
+  LeaderElectionUnavailableError,
+} from './leader-election/index.js';
+export type {
+  ILeaderLock,
+  ILeaderChannel,
+  LeaderElectionHandle,
+  LeaderElectionOptions,
+  LeaderRole,
+} from './leader-election/index.js';

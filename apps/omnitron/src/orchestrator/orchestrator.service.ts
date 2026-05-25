@@ -100,6 +100,29 @@ function effectiveAppName(key: string): string {
   return idx >= 0 ? key.slice(idx + 1) : key;
 }
 
+/**
+ * Auto-promote a bare `entry.name` to canonical `${project}/${stack}/${name}`
+ * form when the env carries OMNITRON_PROJECT + OMNITRON_STACK. The stack-mode
+ * boot path (ProjectService.startStack) already prefixes the name explicitly;
+ * this helper closes every other entry point that could otherwise register a
+ * bare-name handle which then becomes invisible to the stack-prefix-based
+ * UI lookup (ProjectService.toStackInfo filters on `${project}/${stack}/`).
+ *
+ * Idempotent: if the entry already looks namespaced (or env lacks the keys),
+ * the input is returned unchanged. An entry qualified under a DIFFERENT
+ * project/stack is preserved too — that's operator intent (cross-project
+ * administrative run), not a bug.
+ */
+export function ensureNamespacedEntry(entry: IEcosystemAppEntry): IEcosystemAppEntry {
+  const project = entry.env?.['OMNITRON_PROJECT'];
+  const stack = entry.env?.['OMNITRON_STACK'];
+  if (!project || !stack) return entry;
+  const canonicalPrefix = `${project}/${stack}/`;
+  if (entry.name.startsWith(canonicalPrefix)) return entry;
+  if (entry.name.includes('/')) return entry;
+  return { ...entry, name: `${canonicalPrefix}${entry.name}` };
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class OrchestratorService extends EventEmitter {
@@ -370,15 +393,20 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
-    // T#57: coalesce concurrent calls for the same app name. Without
-    // this, two near-simultaneous `startApp({ name: 'main' })` calls
-    // both see `this.handles.get('main')` as undefined-or-not-online
-    // (the first one's handle is in status='starting'), both fall
-    // through to `launchBootstrapMode`, and we spawn two parallel
-    // worker pools competing for the same port. Promise coalescing
-    // — return the in-flight promise to the second caller — gives
-    // both callers the same handle and ensures only one launch
-    // actually runs.
+    // Defensive auto-namespacing — promotes a bare entry.name to the
+    // canonical `${project}/${stack}/${name}` form when the env carries
+    // OMNITRON_PROJECT + OMNITRON_STACK. Catches every code path that
+    // bypasses ProjectService.startStack:
+    //   - direct CLI `omnitron start <name>` (no stack context)
+    //   - legacy ecosystem configs without per-app namespace
+    //   - daemon startAll() flows over a not-yet-namespaced config
+    //
+    // Without this, bare-name handles slip through and become invisible
+    // to ProjectService.toStackInfo's prefix-based lookup, leaving the
+    // webapp showing a perfectly healthy app as "stopped". The dedup
+    // logic further down in startAppInternal then has the correct
+    // canonical name to compare against existing bare handles.
+    entry = ensureNamespacedEntry(entry);
     const inflight = this.startingApps.get(entry.name);
     if (inflight) {
       this.logger.debug({ app: entry.name }, 'Coalescing concurrent startApp into in-flight launch (T#57)');

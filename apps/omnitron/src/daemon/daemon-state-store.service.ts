@@ -250,6 +250,138 @@ export class DaemonStateStore {
     db.prepare('DELETE FROM projects WHERE name = ?').run(name);
   }
 
+  // ===========================================================================
+  // Backups — typed helpers backing backup.service.ts
+  // ===========================================================================
+
+  /**
+   * Insert a backup metadata row. Called by `BackupService.createBackup`
+   * after the .sql.gz file is on disk. Atomic — the row is durable as
+   * soon as this returns, no .meta.json torn-write window.
+   */
+  insertBackupSync(row: {
+    id: string;
+    app: string;
+    path: string;
+    size_bytes: number;
+    created_at?: string;
+    metadata?: Record<string, unknown> | null;
+  }): void {
+    const db = this.rawSqlite ?? this.initSync();
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO backups (id, app, path, size_bytes, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(
+      row.id,
+      row.app,
+      row.path,
+      row.size_bytes,
+      row.created_at ?? now,
+      row.metadata ? JSON.stringify(row.metadata) : null,
+    );
+  }
+
+  /** List backup rows, optionally filtered by app. Newest first. */
+  selectBackupsSync(app?: string): Array<{
+    id: string;
+    app: string;
+    path: string;
+    size_bytes: number;
+    created_at: string;
+    metadata: string | null;
+  }> {
+    const db = this.rawSqlite ?? this.initSync();
+    if (app) {
+      return db
+        .prepare('SELECT id, app, path, size_bytes, created_at, metadata FROM backups WHERE app = ? ORDER BY created_at DESC')
+        .all(app) as ReturnType<DaemonStateStore['selectBackupsSync']>;
+    }
+    return db
+      .prepare('SELECT id, app, path, size_bytes, created_at, metadata FROM backups ORDER BY created_at DESC')
+      .all() as ReturnType<DaemonStateStore['selectBackupsSync']>;
+  }
+
+  /** Sync delete of a backup row. Idempotent. */
+  deleteBackupSync(id: string): void {
+    const db = this.rawSqlite ?? this.initSync();
+    db.prepare('DELETE FROM backups WHERE id = ?').run(id);
+  }
+
+  // ===========================================================================
+  // Nodes — typed helpers backing node-manager.service.ts
+  // ===========================================================================
+
+  /** Upsert a fleet node row. INSERT … ON CONFLICT(id) DO UPDATE. */
+  upsertNodeSync(row: {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    role: string;
+    status?: string;
+    last_heartbeat?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): void {
+    const db = this.rawSqlite ?? this.initSync();
+    const now = new Date().toISOString();
+    const meta = row.metadata ? JSON.stringify(row.metadata) : null;
+    db.prepare(
+      'INSERT INTO nodes (id, name, host, port, role, status, last_heartbeat, metadata, added_at, updated_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+        'ON CONFLICT (id) DO UPDATE SET ' +
+        '  name = excluded.name, host = excluded.host, port = excluded.port, ' +
+        '  role = excluded.role, status = excluded.status, ' +
+        '  last_heartbeat = excluded.last_heartbeat, metadata = excluded.metadata, ' +
+        '  updated_at = excluded.updated_at',
+    ).run(
+      row.id,
+      row.name,
+      row.host,
+      row.port,
+      row.role,
+      row.status ?? 'unknown',
+      row.last_heartbeat ?? null,
+      meta,
+      now,
+      now,
+    );
+  }
+
+  /** List every persisted fleet node. */
+  selectNodesSync(): Array<{
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    role: string;
+    status: string;
+    last_heartbeat: string | null;
+    metadata: string | null;
+    added_at: string;
+    updated_at: string;
+  }> {
+    const db = this.rawSqlite ?? this.initSync();
+    return db
+      .prepare(
+        'SELECT id, name, host, port, role, status, last_heartbeat, metadata, added_at, updated_at FROM nodes ORDER BY added_at ASC',
+      )
+      .all() as ReturnType<DaemonStateStore['selectNodesSync']>;
+  }
+
+  /** Sync delete of a node row. Idempotent. */
+  deleteNodeSync(id: string): void {
+    const db = this.rawSqlite ?? this.initSync();
+    db.prepare('DELETE FROM nodes WHERE id = ?').run(id);
+  }
+
+  /** Update only the heartbeat + status — cheaper than a full upsert. */
+  touchNodeHeartbeatSync(id: string, status: string, timestamp: string = new Date().toISOString()): void {
+    const db = this.rawSqlite ?? this.initSync();
+    db.prepare(
+      'UPDATE nodes SET status = ?, last_heartbeat = ?, updated_at = ? WHERE id = ?',
+    ).run(status, timestamp, timestamp, id);
+  }
+
   /**
    * Lazy-init. The first caller pays the open + auto-create cost
    * (~5 ms cold). Subsequent calls return the cached handle.

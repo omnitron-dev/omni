@@ -1984,6 +1984,44 @@ export class OrchestratorService extends EventEmitter {
       handle.status = 'crashed';
       this.logger.error({ app: entry.name }, 'Max restarts exceeded');
       this.emit('app:escalated', entry.name);
+      // P1-I — auto-recovery after a cool-down. pm2 has this as
+      // `restart_delay` + a fresh attempt window; pre-fix omnitron
+      // left the app permanently 'crashed' until human intervention.
+      // We reset the counter + schedule one fresh attempt 10 minutes
+      // out. If THAT attempt also crashes through maxRestarts we
+      // land back here and pause another 10 minutes — bounded
+      // self-healing without thrashing. Cool-down is keyed to the
+      // app name; explicit operator stop preempts it via the
+      // lifecycle queue.
+      const COOL_DOWN_MS = 10 * 60_000;
+      this.lifecycleQueue.enqueue(
+        entry.name,
+        'crash-restart',
+        () => new Promise<void>((resolve) => {
+          let timer: ReturnType<typeof setTimeout> | null = setTimeout(async () => {
+            timer = null;
+            if (handle.status === 'stopping' || handle.status === 'stopped') return resolve();
+            this.logger.info({ app: entry.name }, 'Cool-down elapsed — attempting fresh recovery');
+            handle.restarts = 0; // fresh attempt window
+            handle.status = 'stopped';
+            try {
+              await this.startApp(entry, config);
+            } catch (err) {
+              this.logger.error({ app: entry.name, err: (err as Error).message }, 'Cool-down recovery failed');
+            }
+            resolve();
+          }, COOL_DOWN_MS);
+          // Tag for the preempt-hook path below.
+          (handle as unknown as { _coolDownTimer: typeof timer })._coolDownTimer = timer;
+        }),
+        () => {
+          const t = (handle as unknown as { _coolDownTimer?: ReturnType<typeof setTimeout> })._coolDownTimer;
+          if (t) clearTimeout(t);
+        },
+      ).catch((err) => {
+        if (err instanceof LifecyclePreempted) return;
+        this.logger.warn({ app: entry.name, err: (err as Error).message }, 'Cool-down task rejected');
+      });
       return;
     }
 

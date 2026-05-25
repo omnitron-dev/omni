@@ -25,6 +25,7 @@ import { OmnitronDaemon } from '../daemon/daemon.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { DaemonRole } from '../config/types.js';
+import { expandPath } from '../shared/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -220,8 +221,8 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
     role: savedConfig.role,
     ...(savedConfig.master ? { master: savedConfig.master } : {}),
   };
-  const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-  const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+  const pidFile = expandPath(dc.pidFile);
+  const socketPath = expandPath(dc.socketPath);
   const pidManager = new PidManager(pidFile);
 
   if (pidManager.cleanupStale(socketPath)) {

@@ -17,6 +17,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import type { LogEntryDto } from '../config/types.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import { expandPath } from '../shared/paths.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,12 +73,12 @@ export class LogManager {
   ) {
     // Support both new and legacy config shapes
     if ('baseDir' in config) {
-      this.baseDir = config.baseDir.replace('~', process.env['HOME'] ?? '');
+      this.baseDir = expandPath(config.baseDir);
       this.defaults = config.defaults;
       this.perApp = config.perApp ?? new Map();
     } else {
       // Legacy compat: directory pointed to ~/.omnitron/logs
-      this.baseDir = config.directory.replace('~', process.env['HOME'] ?? '').replace(/\/logs\/?$/, '');
+      this.baseDir = expandPath(config.directory).replace(/\/logs\/?$/, '');
       this.defaults = { maxSize: config.maxSize, maxFiles: config.maxFiles, compress: config.compress };
       this.perApp = new Map();
     }

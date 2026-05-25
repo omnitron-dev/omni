@@ -11,13 +11,14 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
 import { formatUptime } from '../shared/format.js';
+import { expandPath } from '../shared/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function daemonStart(options: { foreground?: boolean; config?: string } = {}): Promise<void> {
   const dc = DEFAULT_DAEMON_CONFIG;
-  const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-  const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+  const pidFile = expandPath(dc.pidFile);
+  const socketPath = expandPath(dc.socketPath);
   const pidManager = new PidManager(pidFile);
 
   if (pidManager.isRunning()) {
@@ -83,8 +84,8 @@ export async function daemonStop(): Promise<void> {
   if (!(await client.isReachable())) {
     // Socket not responding — try PID-based cleanup as fallback
     const dc = DEFAULT_DAEMON_CONFIG;
-    const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-    const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+    const pidFile = expandPath(dc.pidFile);
+    const socketPath = expandPath(dc.socketPath);
     const pidManager = new PidManager(pidFile);
     const pid = pidManager.getPid();
 
@@ -115,7 +116,7 @@ export async function daemonStop(): Promise<void> {
   }
 
   const dc = DEFAULT_DAEMON_CONFIG;
-  const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
+  const pidFile = expandPath(dc.pidFile);
   const pidManager = new PidManager(pidFile);
   const pid = pidManager.getPid();
 
@@ -166,8 +167,8 @@ export async function daemonPing(): Promise<void> {
 
 export async function daemonKill(): Promise<void> {
   const dc = DEFAULT_DAEMON_CONFIG;
-  const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-  const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+  const pidFile = expandPath(dc.pidFile);
+  const socketPath = expandPath(dc.socketPath);
   const pidManager = new PidManager(pidFile);
   const rawPid = pidManager.readPid();
 

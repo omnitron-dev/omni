@@ -9,6 +9,7 @@ import { log, spinner } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { expandPath } from '../shared/paths.js';
 
 export async function stopCommand(appName?: string, options: { force?: boolean } = {}): Promise<void> {
   const client = createDaemonClient();
@@ -16,8 +17,8 @@ export async function stopCommand(appName?: string, options: { force?: boolean }
   if (!(await client.isReachable())) {
     // Fall back: try to find and kill daemon via PID file
     const dc = DEFAULT_DAEMON_CONFIG;
-    const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-    const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+    const pidFile = expandPath(dc.pidFile);
+    const socketPath = expandPath(dc.socketPath);
     const pidManager = new PidManager(pidFile);
     const pid = pidManager.getPid();
 

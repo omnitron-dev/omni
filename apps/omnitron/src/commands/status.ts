@@ -11,6 +11,7 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { formatUptime, formatMemoryColored } from '../shared/format.js';
+import { expandPath } from '../shared/paths.js';
 
 export async function statusCommand(): Promise<void> {
   const client = createDaemonClient();
@@ -19,8 +20,8 @@ export async function statusCommand(): Promise<void> {
     // Socket not responding — check PID file for diagnostics
     try {
       const dc = DEFAULT_DAEMON_CONFIG;
-      const pidFile = dc.pidFile.replace('~', process.env['HOME'] ?? '');
-      const socketPath = dc.socketPath.replace('~', process.env['HOME'] ?? '');
+      const pidFile = expandPath(dc.pidFile);
+      const socketPath = expandPath(dc.socketPath);
       const pidManager = new PidManager(pidFile);
 
       const rawPid = pidManager.readPid();

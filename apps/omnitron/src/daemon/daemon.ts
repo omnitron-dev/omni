@@ -648,6 +648,10 @@ export class OmnitronDaemon {
     if (!this.app) return;
 
     const stateStore = await this.app.container.resolveAsync<StateStore>(STATE_STORE_TOKEN);
+    // First-touch init reads from SQLite (and migrates the legacy
+    // JSON snapshot in-place if one exists). Subsequent reads via
+    // `load()` are synchronous from the in-memory cache.
+    await stateStore.init();
     const previousState = stateStore.load();
     if (previousState) {
       const runningApps = previousState.apps.filter((a) => a.status === 'online' || a.status === 'starting');

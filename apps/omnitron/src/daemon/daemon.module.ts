@@ -18,11 +18,13 @@ import { TitanMetricsModule } from '@omnitron-dev/titan-metrics';
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { LogManager } from '../monitoring/log-manager.js';
 import { StateStore } from './state-store.js';
+import { DaemonStateStore } from './daemon-state-store.service.js';
 import { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
 import {
   ORCHESTRATOR_TOKEN,
   LOG_MANAGER_TOKEN,
   STATE_STORE_TOKEN,
+  DAEMON_STATE_STORE_TOKEN,
   ECOSYSTEM_CONFIG_TOKEN,
   OMNITRON_DB_TOKEN,
   AUTH_SERVICE_TOKEN,
@@ -311,11 +313,33 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // State persistence
+      // Unified daemon state store — SQLite-backed, transactional,
+      // co-located persistence for everything that must survive a
+      // daemon restart without depending on PostgreSQL being up
+      // (T-7 in the audit). State-store, pid-lock, project /node
+      // /backup registries all back onto this via typed kysera
+      // queries.
+      [
+        DAEMON_STATE_STORE_TOKEN,
+        {
+          useFactory: (loggerModule: ILoggerModule) =>
+            new DaemonStateStore(loggerModule.logger),
+          inject: [LOGGER_SERVICE_TOKEN],
+          scope: Scope.Singleton,
+        },
+      ],
+
+      // State persistence — thin wrapper that hands writes to the
+      // DaemonStateStore. The legacy JSON path is passed through
+      // for one-shot migration of pre-T-7 deployments; after the
+      // first boot the file is removed and the SQLite row is the
+      // source of truth.
       [
         STATE_STORE_TOKEN,
         {
-          useFactory: () => new StateStore(expandPath(dc.stateFile)),
+          useFactory: (store: DaemonStateStore) =>
+            new StateStore(store, expandPath(dc.stateFile)),
+          inject: [DAEMON_STATE_STORE_TOKEN],
           scope: Scope.Singleton,
         },
       ],

@@ -7,6 +7,7 @@ import type { Kysely } from 'kysely';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { StateStore } from '../daemon/state-store.js';
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { IEcosystemConfig } from '../config/types.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { AuthService } from '../services/auth.service.js';
@@ -31,6 +32,12 @@ type Token<T> = ReturnType<typeof createToken<T>>;
 export const ORCHESTRATOR_TOKEN: Token<OrchestratorService> = createToken<OrchestratorService>('Orchestrator');
 export const LOG_MANAGER_TOKEN: Token<LogManager> = createToken<LogManager>('LogManager');
 export const STATE_STORE_TOKEN: Token<StateStore> = createToken<StateStore>('StateStore');
+/**
+ * Unified SQLite-backed daemon state. Backs StateStore, pid-lock,
+ * project / node / backup registries — anything that must survive
+ * a daemon restart WITHOUT requiring PostgreSQL to be up first.
+ */
+export const DAEMON_STATE_STORE_TOKEN: Token<DaemonStateStore> = createToken<DaemonStateStore>('DaemonStateStore');
 export const ECOSYSTEM_CONFIG_TOKEN: Token<IEcosystemConfig> = createToken<IEcosystemConfig>('EcosystemConfig');
 
 /** Kysely connection to omnitron-pg (port 5480) */

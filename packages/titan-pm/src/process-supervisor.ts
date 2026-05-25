@@ -66,6 +66,17 @@ export class ProcessSupervisor extends EventEmitter {
    * whole tree down. (T#59)
    */
   private isStopping = false;
+  /**
+   * `true` for the duration of an ONE_FOR_ALL / REST_FOR_ONE escalation
+   * teardown. Mirrors `isStopping` semantics but scoped to the
+   * escalation loop — once escalation finishes, regular crash-handling
+   * resumes. Without this gate, `stopChild(sibling)` inside the
+   * escalation loop synthesises a `process:crash` event from the
+   * manager when SIGTERM lands, the crash handler re-enters
+   * `performRestart`, and the supervisor restarts a sibling we're
+   * trying to kill. (T#62)
+   */
+  private isEscalating = false;
   private crashHandler: ((info: IProcessInfo, error: Error) => Promise<void>) | null = null;
 
   /**
@@ -464,7 +475,7 @@ export class ProcessSupervisor extends EventEmitter {
         // being killed again moments later. Emitting `child:crash`
         // (without restart) preserves observability for tests that
         // assert on the event.
-        if (this.isStopping || !this.isStarted) {
+        if (this.isStopping || this.isEscalating || !this.isStarted) {
           const name = this.processIdToName.get(info.id);
           if (name) this.emit('child:crash', name, error);
           return;
@@ -590,7 +601,11 @@ export class ProcessSupervisor extends EventEmitter {
       this.logger.debug({ child: name, count, recentCount, delayMs }, 'Backing off before restart');
       await this.sleepCancellableOnStop(delayMs);
     }
-    if (this.isStopping || !this.isStarted) {
+    // T#62: also bail if escalation woke this sleep early — the sibling
+    // is being torn down by the escalation loop and must not be
+    // brought back up by a stale restart we scheduled before the
+    // escalation began.
+    if (this.isStopping || this.isEscalating || !this.isStarted) {
       this.logger.debug(
         { child: name, count },
         'Skipping post-backoff restart — supervisor is stopping',
@@ -687,35 +702,66 @@ export class ProcessSupervisor extends EventEmitter {
     this.emit('escalate', name, error);
 
     const strategy = this.options.strategy ?? SupervisionStrategy.ONE_FOR_ONE;
-    if (strategy === SupervisionStrategy.ONE_FOR_ALL) {
-      // T#59: snapshot the names BEFORE the stop loop. `stopChild`
-      // calls `this.children.delete(name)`, which mutates the map
-      // the legacy `for (const [siblingName] of this.children)` loop
-      // was iterating — JS Map iteration with concurrent deletion
-      // skips the entry that was just removed AND any entry the
-      // iterator advanced past while the previous stopChild was
-      // awaiting. Result: siblings silently survived an escalation
-      // that was supposed to stop them.
-      const siblings = Array.from(this.children.keys());
-      this.logger.warn({ child: name, strategy, stopping: siblings }, 'Stopping all siblings per ONE_FOR_ALL escalation');
-      for (const siblingName of siblings) {
-        await this.stopChild(siblingName).catch((err) =>
-          this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
-        );
-      }
-    } else if (strategy === SupervisionStrategy.REST_FOR_ONE) {
-      const order = Array.from(this.children.keys());
-      const failedIndex = order.indexOf(name);
-      if (failedIndex === -1) return;
-      const tail = order.slice(failedIndex);
-      this.logger.warn({ child: name, strategy, stopping: tail }, 'Stopping failed + later siblings per REST_FOR_ONE escalation');
-      for (const siblingName of tail) {
-        await this.stopChild(siblingName).catch((err) =>
-          this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
-        );
-      }
+    // ONE_FOR_ONE / SIMPLE_ONE_FOR_ONE never touch siblings, so the
+    // race the `isEscalating` flag closes (T#62) doesn't exist for
+    // them — exit early before paying the flag-flip cost.
+    if (strategy !== SupervisionStrategy.ONE_FOR_ALL &&
+        strategy !== SupervisionStrategy.REST_FOR_ONE) {
+      return;
     }
-    // ONE_FOR_ONE / SIMPLE_ONE_FOR_ONE: nothing else to do — emit was enough.
+
+    // T#62: gate the crash handler off for the duration of the
+    // sibling teardown. Without this flag, every `stopChild(sibling)`
+    // call below makes the manager emit `process:crash` when the
+    // SIGTERM lands, the still-armed crash handler re-enters
+    // `handleChildCrash` → `performRestart`, and the supervisor
+    // restarts a sibling we're trying to kill (and may even race
+    // a second escalation off the second crash). Also wake any
+    // in-flight `performRestart` backoff sleeps so a sibling that
+    // was about to restart from an earlier crash exits via the
+    // post-sleep `isEscalating` check instead of waking into a
+    // partially-stopped tree. Mirrors the `stop()` cancellation
+    // pattern from T#60.
+    this.isEscalating = true;
+    for (const sleep of this.pendingBackoffSleeps) {
+      clearTimeout(sleep.timer);
+      sleep.resolve();
+    }
+    this.pendingBackoffSleeps.clear();
+
+    try {
+      if (strategy === SupervisionStrategy.ONE_FOR_ALL) {
+        // T#59: snapshot the names BEFORE the stop loop. `stopChild`
+        // calls `this.children.delete(name)`, which mutates the map
+        // the legacy `for (const [siblingName] of this.children)` loop
+        // was iterating — JS Map iteration with concurrent deletion
+        // skips the entry that was just removed AND any entry the
+        // iterator advanced past while the previous stopChild was
+        // awaiting. Result: siblings silently survived an escalation
+        // that was supposed to stop them.
+        const siblings = Array.from(this.children.keys());
+        this.logger.warn({ child: name, strategy, stopping: siblings }, 'Stopping all siblings per ONE_FOR_ALL escalation');
+        for (const siblingName of siblings) {
+          await this.stopChild(siblingName).catch((err) =>
+            this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
+          );
+        }
+      } else {
+        // REST_FOR_ONE
+        const order = Array.from(this.children.keys());
+        const failedIndex = order.indexOf(name);
+        if (failedIndex === -1) return;
+        const tail = order.slice(failedIndex);
+        this.logger.warn({ child: name, strategy, stopping: tail }, 'Stopping failed + later siblings per REST_FOR_ONE escalation');
+        for (const siblingName of tail) {
+          await this.stopChild(siblingName).catch((err) =>
+            this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
+          );
+        }
+      }
+    } finally {
+      this.isEscalating = false;
+    }
   }
 
   private async shutdownAll(): Promise<void> {

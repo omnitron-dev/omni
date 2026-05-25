@@ -223,6 +223,72 @@ describe('T#59 — supervisor T2 regressions', () => {
     });
   });
 
+  // ─── T#62: crash during escalation must not restart a sibling ──────
+  describe('ProcessSupervisor.escalateFailure — crashes mid-loop do not restart siblings', () => {
+    it('drops crash events that arrive while ONE_FOR_ALL teardown is in flight', async () => {
+      const { manager } = createMockManager();
+      const m = manager as any;
+      class FakeProcess {}
+      // Stateful crash handler: child 'a' escalates (kicking off
+      // ONE_FOR_ALL teardown); every other crash returns RESTART so
+      // it WOULD respawn the sibling if not gated by the
+      // isEscalating flag we're testing. The custom handler also
+      // sidesteps the framework default's `maxRestarts || 3` 0-falsy
+      // fallback.
+      const handler = async (child: any) =>
+        child.name === 'a' ? RestartDecision.ESCALATE : RestartDecision.RESTART;
+      const supervisor = ProcessSupervisor.fromConfig(
+        m,
+        {
+          strategy: SupervisionStrategy.ONE_FOR_ALL,
+          onChildCrash: handler,
+          backoff: { type: 'none' as any, baseMs: 0 }, // no backoff sleep — fail fast in test
+          children: [
+            { name: 'a', process: FakeProcess as any, critical: true },
+            { name: 'b', process: FakeProcess as any },
+            { name: 'c', process: FakeProcess as any },
+          ],
+        } as any,
+        noopLogger,
+      );
+      await supervisor.start();
+
+      // Track restart events — pre-fix the mid-escalation crash for
+      // sibling C would fire `child:restart` for C as the crash
+      // handler ran `performRestart` against a child the escalation
+      // loop was about to stop. Post-fix, the isEscalating flag
+      // drops the crash before handleChildCrash runs.
+      const restartEvents: string[] = [];
+      supervisor.on('child:restart', (name: string) => restartEvents.push(name));
+
+      // Inject a re-entrant crash: as soon as the supervisor calls
+      // `kill(pm-2)` for sibling B, the manager emits process:crash
+      // for sibling C (still in the children map at that point —
+      // stopChild only deletes AFTER kill resolves).
+      let injected = false;
+      const originalKill = m.kill;
+      m.kill = vi.fn(async (processId: string) => {
+        const result = await originalKill(processId);
+        if (!injected && processId === 'pm-2') {
+          injected = true;
+          m.emit('process:crash', { id: 'pm-3' }, new Error('mid-escalation crash'));
+        }
+        return result;
+      });
+
+      // Trigger the cascade.
+      m.emit('process:crash', { id: 'pm-1' }, new Error('boom'));
+
+      // Drain microtasks + queued asyncs.
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+
+      // No restart was attempted during the escalation. Pre-fix this
+      // array would contain ['c'] (the mid-escalation crash for
+      // sibling C drove the supervisor to performRestart it).
+      expect(restartEvents).toEqual([]);
+    });
+  });
+
   // ─── Defect 8: getWorkerHandle uses public API ─────────────────────
   describe('ProcessPool.getWorkerHandle — uses public ProcessManager API', () => {
     it('calls manager.getWorkerHandle() instead of reaching into manager.workers', async () => {

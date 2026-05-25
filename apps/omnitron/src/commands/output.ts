@@ -13,9 +13,10 @@
  */
 
 import { log } from '@xec-sh/kit';
+import { isJsonOutput } from '../shared/env-config.js';
 
 export function isJsonMode(): boolean {
-  return process.env['OMNITRON_OUTPUT'] === 'json';
+  return isJsonOutput();
 }
 
 /**

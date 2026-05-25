@@ -9,6 +9,7 @@
 
 import { Command } from 'commander';
 import { CLI_VERSION } from '../config/defaults.js';
+import { setEnvOverride } from '../shared/env-config.js';
 
 const program = new Command();
 
@@ -21,7 +22,11 @@ program.option('--json', 'Emit machine-readable JSON output (no spinners, no sty
 program.hook('preAction', (cmd) => {
   const opts = cmd.opts();
   if (opts['json'] || process.env['OMNITRON_OUTPUT'] === 'json') {
+    // Update both the actual env (for child processes / subprocess
+    // inheritance) and the cached snapshot in env-config so
+    // subsequent getEnv() readers in this process see the flag.
     process.env['OMNITRON_OUTPUT'] = 'json';
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
   }
 });
 

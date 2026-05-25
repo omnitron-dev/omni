@@ -15,8 +15,9 @@ import { createMigrationRunner } from '@kysera/migrations';
 import * as m001 from './migrations/001_initial_schema.js';
 import * as m002 from './migrations/002_metrics_raw.js';
 import * as m003 from './migrations/003_pipelines_traces.js';
+import { getEnv } from '../shared/env-config.js';
 
-const DATABASE_URL = process.env['OMNITRON_DATABASE_URL'] || 'postgresql://omnitron:omnitron@localhost:5480/omnitron';
+const DATABASE_URL = getEnv().OMNITRON_DATABASE_URL || 'postgresql://omnitron:omnitron@localhost:5480/omnitron';
 const url = new URL(DATABASE_URL);
 
 const db = new Kysely<unknown>({

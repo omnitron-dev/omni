@@ -108,6 +108,7 @@ import {
   type AuthContext,
 } from '@omnitron-dev/titan/netron/auth';
 import { createAuthContextWrapper } from '../services/auth-context.js';
+import { expandPath } from '../shared/paths.js';
 
 export interface DaemonStartOptions {
   /** Enable file watching — restarts apps on source file changes */
@@ -142,7 +143,7 @@ export class OmnitronDaemon {
   async start(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<void> {
     this.dc = daemonConfig ?? DEFAULT_DAEMON_CONFIG;
 
-    const pidFile = this.dc.pidFile.replace('~', process.env['HOME'] ?? '');
+    const pidFile = expandPath(this.dc.pidFile);
     this.pidManager = new PidManager(pidFile);
 
     if (this.pidManager.isRunning()) {
@@ -223,7 +224,7 @@ export class OmnitronDaemon {
     {
       const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
       if (this.app.netron) {
-        const socketPath = this.dc.socketPath.replace('~', process.env['HOME'] ?? '');
+        const socketPath = expandPath(this.dc.socketPath);
         orchestrator.setDaemonNetron(this.app.netron, socketPath);
       }
 
@@ -309,7 +310,7 @@ export class OmnitronDaemon {
     this.app.netron.registerTransportServer('unix', {
       name: 'daemon-local',
       options: {
-        path: dc.socketPath.replace('~', process.env['HOME'] ?? ''),
+        path: expandPath(dc.socketPath),
         force: true,
         mode: 0o600, // Owner-only access for security
       },

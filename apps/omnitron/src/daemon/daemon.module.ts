@@ -61,6 +61,7 @@ import { Writable } from 'node:stream';
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
+import { expandPath } from '../shared/paths.js';
 
 /**
  * Writable stream that can reopen its underlying file descriptor.
@@ -193,7 +194,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         destinations: (() => {
           // Write daemon's own logs to ~/.omnitron/logs/omnitron.log (alongside stdout).
           // Uses ReopenableFileStream so LogManager can reopen after rotation.
-          const logDir = dc.logDir.replace('~', process.env['HOME'] ?? '');
+          const logDir = expandPath(dc.logDir);
           fs.mkdirSync(logDir, { recursive: true });
           daemonLogStream = new ReopenableFileStream(`${logDir}/omnitron.log`);
 
@@ -314,7 +315,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       [
         STATE_STORE_TOKEN,
         {
-          useFactory: () => new StateStore(dc.stateFile.replace('~', process.env['HOME'] ?? '')),
+          useFactory: () => new StateStore(expandPath(dc.stateFile)),
           scope: Scope.Singleton,
         },
       ],
@@ -347,7 +348,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
                 });
               }
             }
-            const baseDir = dc.logDir.replace('~', process.env['HOME'] ?? '').replace(/\/logs\/?$/, '');
+            const baseDir = expandPath(dc.logDir).replace(/\/logs\/?$/, '');
             return new LogManager(
               {
                 baseDir,

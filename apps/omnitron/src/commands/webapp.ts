@@ -10,6 +10,7 @@
 
 import { log, prism } from '@xec-sh/kit';
 import { WebappService } from '../webapp/webapp.service.js';
+import { expandPath } from '../shared/paths.js';
 
 function createWebappService(): WebappService {
   const cliLogger = {
@@ -39,7 +40,7 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
   // Check if daemon is running
   const { PidManager } = await import('../daemon/pid-manager.js');
   const { DEFAULT_DAEMON_CONFIG } = await import('../config/defaults.js');
-  const pidFile = DEFAULT_DAEMON_CONFIG.pidFile.replace('~', process.env['HOME'] ?? '');
+  const pidFile = expandPath(DEFAULT_DAEMON_CONFIG.pidFile);
   const pidManager = new PidManager(pidFile);
 
   if (!pidManager.isRunning()) {

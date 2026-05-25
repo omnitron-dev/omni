@@ -17,6 +17,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { expandPath } from '../shared/paths.js';
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 
 // =============================================================================
 // Types
@@ -44,13 +46,73 @@ interface ScheduleEntry {
 export class BackupService {
   private readonly backupDir: string;
   private schedules = new Map<string, ScheduleEntry>();
+  /**
+   * True once the legacy .meta.json scan + import has run for this
+   * process. Subsequent list/restore calls skip the directory walk.
+   */
+  private legacyMigrated = false;
 
   constructor(
     private readonly logger: ILogger,
+    /**
+     * T-7 — backup metadata persistence moved off side-car .meta.json
+     * files onto the SQLite-backed `backups` table in
+     * DaemonStateStore. The .sql.gz bytes themselves stay on disk
+     * (large + streaming pg_restore needs random access), but the
+     * INDEX of `which backup exists, for which app, when, how big`
+     * lives in SQLite — atomic upserts, no torn-write window on
+     * kill -9 mid-write. One-shot migration of legacy .meta.json
+     * files happens on the first list/restore call.
+     */
+    private readonly store: DaemonStateStore,
     backupDir?: string
   ) {
-    this.backupDir = backupDir ?? path.join(process.env['HOME'] ?? '/tmp', '.omnitron', 'backups');
+    this.backupDir = backupDir ?? expandPath('~/.omnitron/backups');
     fs.mkdirSync(this.backupDir, { recursive: true });
+  }
+
+  /**
+   * Lazy one-shot import of legacy .meta.json side-cars into the
+   * SQLite `backups` table. Idempotent — flag-guarded so multiple
+   * concurrent listBackups() calls don't double-import. After this
+   * runs the .meta.json files are unlinked (the SQLite row is
+   * authoritative).
+   */
+  private migrateLegacyMetaIfPresent(): void {
+    if (this.legacyMigrated) return;
+    this.legacyMigrated = true;
+    try {
+      const files = fs.readdirSync(this.backupDir).filter((f) => f.endsWith('.meta.json'));
+      for (const file of files) {
+        try {
+          const content = fs.readFileSync(path.join(this.backupDir, file), 'utf-8');
+          const info = JSON.parse(content) as BackupInfo;
+          const backupFile = path.join(this.backupDir, info.filename);
+          if (!fs.existsSync(backupFile)) continue;
+          const stats = fs.statSync(backupFile);
+          // upsert isn't available; insert is — but the migration
+          // can run multiple times across crashes, so swallow
+          // duplicate-id errors (better-sqlite3 throws on UNIQUE).
+          try {
+            this.store.insertBackupSync({
+              id: info.id,
+              app: info.database,
+              path: backupFile,
+              size_bytes: stats.size,
+              created_at: info.createdAt,
+              metadata: { filename: info.filename, compressed: info.compressed },
+            });
+          } catch {
+            // Already imported — skip.
+          }
+          try { fs.unlinkSync(path.join(this.backupDir, file)); } catch { /* */ }
+        } catch (err) {
+          this.logger.warn({ file, err: (err as Error).message }, 'Backup metadata migration: skipping corrupt entry');
+        }
+      }
+    } catch {
+      // backup dir doesn't exist or unreadable — nothing to migrate.
+    }
   }
 
   // ===========================================================================
@@ -87,11 +149,18 @@ export class BackupService {
         compressed: compress,
       };
 
-      // Write metadata
-      fs.writeFileSync(
-        path.join(this.backupDir, `${filename}.meta.json`),
-        JSON.stringify(info, null, 2)
-      );
+      // Persist metadata transactionally to SQLite. Pre-T-7 this
+      // was a side-car .meta.json fs.writeFileSync — torn-write
+      // risk if the daemon was SIGKILL'd between the dump and the
+      // meta write.
+      this.store.insertBackupSync({
+        id: info.id,
+        app: info.database,
+        path: filepath,
+        size_bytes: stats.size,
+        created_at: info.createdAt,
+        metadata: { filename: info.filename, compressed: info.compressed },
+      });
 
       this.logger.info({ database, filename, size: stats.size }, 'Backup created');
       return info;
@@ -107,26 +176,32 @@ export class BackupService {
   // ===========================================================================
 
   async listBackups(database?: string): Promise<BackupInfo[]> {
-    const files = fs.readdirSync(this.backupDir).filter((f) => f.endsWith('.meta.json'));
+    this.migrateLegacyMetaIfPresent();
+    const rows = this.store.selectBackupsSync(database);
     const backups: BackupInfo[] = [];
-
-    for (const file of files) {
-      try {
-        const content = fs.readFileSync(path.join(this.backupDir, file), 'utf-8');
-        const info = JSON.parse(content) as BackupInfo;
-        if (!database || info.database === database) {
-          // Verify the actual backup file still exists
-          const backupFile = path.join(this.backupDir, info.filename);
-          if (fs.existsSync(backupFile)) {
-            backups.push(info);
-          }
-        }
-      } catch {
-        // Skip corrupt metadata files
+    for (const row of rows) {
+      // The .sql.gz bytes still live on disk; if they were deleted
+      // externally, drop the row (self-cleaning index) so a stale
+      // entry doesn't haunt the listing.
+      if (!fs.existsSync(row.path)) {
+        try { this.store.deleteBackupSync(row.id); } catch { /* best-effort */ }
+        continue;
       }
+      let meta: { filename?: string; compressed?: boolean } = {};
+      if (row.metadata) {
+        try { meta = JSON.parse(row.metadata); } catch { /* */ }
+      }
+      const filename = meta.filename ?? path.basename(row.path);
+      backups.push({
+        id: row.id,
+        database: row.app,
+        filename,
+        size: row.size_bytes,
+        createdAt: row.created_at,
+        compressed: meta.compressed ?? filename.endsWith('.gz'),
+      });
     }
-
-    return backups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return backups;
   }
 
   // ===========================================================================
@@ -164,10 +239,13 @@ export class BackupService {
     if (!backup) throw new Error(`Backup '${backupId}' not found`);
 
     const filepath = path.join(this.backupDir, backup.filename);
-    const metapath = path.join(this.backupDir, `${backup.filename}.meta.json`);
 
+    // Drop the SQLite row first so a concurrent listBackups call
+    // doesn't return a record whose .sql.gz file is about to be
+    // unlinked. Backup-file unlink is best-effort — a missing
+    // file just means the operator already removed it.
+    this.store.deleteBackupSync(backup.id);
     try { fs.unlinkSync(filepath); } catch { /* ignore */ }
-    try { fs.unlinkSync(metapath); } catch { /* ignore */ }
 
     this.logger.info({ database: backup.database, filename: backup.filename }, 'Backup deleted');
   }

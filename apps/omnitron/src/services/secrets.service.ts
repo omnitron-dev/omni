@@ -2,11 +2,19 @@
  * Secrets Service — Encrypted Secrets Storage
  *
  * Stores secrets (API keys, DB passwords, signing keys) encrypted at rest
- * in a JSON file using AES-256-GCM.
+ * using AES-256-GCM.
  *
  * Key derivation: scrypt(passphrase + machineId, salt, 64) → 32-byte key
  * Encryption: AES-256-GCM with random IV per encryption
- * Storage: ~/.omnitron/secrets.enc (JSON envelope with salt, iv, ciphertext, tag)
+ * Storage: SQLite-backed `state_kv` row keyed by `secrets:envelope` via
+ *   DaemonStateStore. The encrypted envelope (salt+iv+ciphertext+tag) is
+ *   serialised to JSON exactly as before — the DB swap is transparent to
+ *   the on-wire format. T-7 in the audit.
+ *
+ * One-shot legacy migration: when an existing `~/.omnitron/secrets.enc`
+ * file is present on first load, its envelope is imported into the
+ * `state_kv` row and the file is unlinked. Operators don't have to
+ * re-enter the passphrase or lose secrets across the upgrade.
  *
  * Zero external dependencies — uses Node.js native crypto.
  */
@@ -18,9 +26,9 @@ import {
   scrypt,
 } from 'node:crypto';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -61,12 +69,27 @@ const IV_LENGTH = 16;
 // Service
 // =============================================================================
 
+/** state_kv row key holding the encrypted envelope. */
+const SECRETS_KV_KEY = 'secrets:envelope';
+
 export class SecretsService {
   private cache: SecretsMap | null = null;
 
+  /**
+   * @param store — DaemonStateStore handle. The encrypted envelope is
+   *   persisted as a single JSON row in the `state_kv` table.
+   * @param passphrase — operator-supplied passphrase. Combined with the
+   *   machine ID via scrypt to derive the 256-bit AES key. Same crypto
+   *   contract as before.
+   * @param legacyFilePath — optional path to the pre-T-7 encrypted
+   *   file. When present + the SQLite row is empty on first load, the
+   *   file is imported into the row and unlinked. Pass null to skip
+   *   the migration probe (tests, ephemeral storage).
+   */
   constructor(
-    private readonly filePath: string,
-    private passphrase: string
+    private readonly store: DaemonStateStore,
+    private passphrase: string,
+    private readonly legacyFilePath?: string | null
   ) {}
 
   // ===========================================================================
@@ -117,24 +140,30 @@ export class SecretsService {
    * The old passphrase must match the current encryption.
    */
   async rotate(oldPassphrase: string, newPassphrase: string): Promise<void> {
-    // Decrypt with old passphrase
-    const oldService = new SecretsService(this.filePath, oldPassphrase);
+    // Decrypt with the old passphrase via a transient service that
+    // shares the same store + legacy-path so the import side-effect
+    // (if it hasn't happened yet) lands on the disk we expect.
+    const oldService = new SecretsService(this.store, oldPassphrase, this.legacyFilePath ?? null);
     const secrets = await oldService.load();
 
-    // Re-encrypt with new passphrase
-    const newService = new SecretsService(this.filePath, newPassphrase);
-    await newService.save(secrets);
-
-    // Update our own passphrase reference
+    // Re-encrypt under the new passphrase. Same store, so the
+    // upsert below replaces the row atomically — readers either
+    // see the old or the new envelope, never a mix.
     this.passphrase = newPassphrase;
-    this.cache = secrets;
+    this.cache = null;
+    await this.save(secrets);
   }
 
   /**
-   * Check if the secrets file exists.
+   * Check if any encrypted envelope exists (in SQLite or the legacy
+   * file). Pre-T-7 this only checked the filesystem; the SQLite
+   * check is async so this method is now async too.
    */
-  exists(): boolean {
-    return existsSync(this.filePath);
+  async exists(): Promise<boolean> {
+    const envelope = await this.store.kvGet<SecretsEnvelope>(SECRETS_KV_KEY);
+    if (envelope) return true;
+    if (this.legacyFilePath && existsSync(this.legacyFilePath)) return true;
+    return false;
   }
 
   // ===========================================================================
@@ -191,37 +220,57 @@ export class SecretsService {
   private async load(): Promise<SecretsMap> {
     if (this.cache) return this.cache;
 
-    if (!existsSync(this.filePath)) {
+    // Try the SQLite row first. If it's empty AND the legacy
+    // `secrets.enc` file exists, one-shot migrate the file in-place.
+    // After the first migration boot the file is gone and the
+    // SQLite row is the source of truth.
+    let envelope = await this.store.kvGet<SecretsEnvelope>(SECRETS_KV_KEY);
+
+    if (!envelope && this.legacyFilePath && existsSync(this.legacyFilePath)) {
+      try {
+        const raw = await readFile(this.legacyFilePath, 'utf8');
+        envelope = JSON.parse(raw) as SecretsEnvelope;
+        // Persist the imported envelope to SQLite BEFORE unlinking
+        // — a crash between read and write would otherwise lose
+        // the secrets.
+        await this.store.kvSet(SECRETS_KV_KEY, envelope);
+        try { await unlink(this.legacyFilePath); } catch { /* best-effort */ }
+      } catch (err) {
+        // Failed to read or parse — leave the legacy file in place
+        // and surface the error as an empty store; the operator
+        // will see "wrong passphrase" or similar from the next
+        // decrypt attempt and can recover manually.
+        throw new Error(
+          `Failed to import legacy secrets file (${this.legacyFilePath}): ${(err as Error).message}`,
+          { cause: err },
+        );
+      }
+    }
+
+    if (!envelope) {
       this.cache = {};
       return this.cache;
     }
 
+    if (envelope.version !== 1) {
+      throw new Error(`Unsupported secrets envelope version: ${envelope.version}`);
+    }
+
     try {
-      const raw = await readFile(this.filePath, 'utf8');
-      const envelope = JSON.parse(raw) as SecretsEnvelope;
-
-      if (envelope.version !== 1) {
-        throw new Error(`Unsupported secrets envelope version: ${envelope.version}`);
-      }
-
       this.cache = await this.decrypt(envelope);
       return this.cache;
     } catch (err) {
-      if ((err as Error).message.includes('Unsupported')) throw err;
-      throw new Error(`Failed to decrypt secrets file: ${(err as Error).message}. Wrong passphrase?`, { cause: err });
+      throw new Error(`Failed to decrypt secrets: ${(err as Error).message}. Wrong passphrase?`, { cause: err });
     }
   }
 
   private async save(secrets: SecretsMap): Promise<void> {
-    // Ensure directory exists
-    const dir = path.dirname(this.filePath);
-    await mkdir(dir, { recursive: true });
-
     const envelope = await this.encrypt(secrets);
-    await writeFile(this.filePath, JSON.stringify(envelope, null, 2), {
-      mode: 0o600, // Owner-only read/write
-    });
-
+    // Single atomic SQLite upsert — no torn-write window, no
+    // directory creation, no chmod dance. WAL mode + the
+    // store's per-key UPSERT covers concurrent writers (CLI +
+    // daemon) safely.
+    await this.store.kvSet(SECRETS_KV_KEY, envelope);
     this.cache = secrets;
   }
 

@@ -147,11 +147,29 @@ async function invokeSecretsRpc(client: any, method: string, data?: any): Promis
 
 async function createDirectService(): Promise<import('../services/secrets.service.js').SecretsService> {
   const { SecretsService } = await import('../services/secrets.service.js');
+  const { DaemonStateStore } = await import('../daemon/daemon-state-store.service.js');
   const { DEFAULT_DAEMON_CONFIG } = await import('../config/defaults.js');
+  const { expandPath } = await import('../shared/paths.js');
   const dc = DEFAULT_DAEMON_CONFIG;
 
-  const path = (dc.secrets?.path ?? '~/.omnitron/secrets.enc').replace('~', process.env['HOME'] ?? '');
+  // T-7 — the CLI doesn't have a daemon DI container, so we
+  // construct a DaemonStateStore inline against the same SQLite
+  // file the daemon uses. WAL mode + busy_timeout means a
+  // concurrent daemon writer is safe; the CLI just waits up to 5s.
+  const noopLogger = {
+    trace: () => undefined,
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+    fatal: () => undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  noopLogger.child = () => noopLogger;
+  const store = new DaemonStateStore(noopLogger);
+
+  const legacyPath = expandPath(dc.secrets?.path ?? '~/.omnitron/secrets.enc');
   const passphrase = dc.secrets?.passphrase ?? 'omnitron-default-passphrase';
 
-  return new SecretsService(path, passphrase);
+  return new SecretsService(store, passphrase, legacyPath);
 }

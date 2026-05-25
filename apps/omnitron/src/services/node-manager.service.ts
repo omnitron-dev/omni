@@ -131,6 +131,15 @@ export class NodeManagerService extends EventEmitter {
 
   constructor(
     private readonly logger: ILogger,
+    /**
+     * T-7 — fleet node registry persistence moved off
+     * ~/.omnitron/nodes.json (single fs.writeFileSync per mutation)
+     * onto the SQLite-backed `nodes` table in DaemonStateStore.
+     * Canonical name/host/port are denormalised into typed columns
+     * for queries; the full INode payload (SSH config, tags, etc.)
+     * lives in the `metadata` column as JSON.
+     */
+    private readonly store: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     private readonly secrets?: SecretsService,
   ) {
     super();
@@ -598,26 +607,71 @@ export class NodeManagerService extends EventEmitter {
 
   private load(): void {
     try {
-      if (fs.existsSync(NODES_FILE)) {
-        const data = JSON.parse(fs.readFileSync(NODES_FILE, 'utf-8'));
-        if (Array.isArray(data.nodes)) {
-          for (const node of data.nodes) {
-            this.nodes.set(node.id, node);
+      // First-pass: read from SQLite. Each row's `metadata` column
+      // holds the full INode JSON; the denormalised columns are for
+      // future queries (status filters, by-host lookups, etc.).
+      const rows = this.store.selectNodesSync();
+      for (const row of rows) {
+        if (!row.metadata) continue;
+        try {
+          const node = JSON.parse(row.metadata) as INode;
+          this.nodes.set(node.id, node);
+        } catch {
+          // Corrupt row — skip and let the next mutation overwrite.
+        }
+      }
+
+      // One-shot legacy import. If the SQLite table is empty but the
+      // pre-T-7 nodes.json file exists, migrate it in-place. The
+      // existing file is then unlinked so subsequent boots skip the
+      // branch.
+      if (this.nodes.size === 0 && fs.existsSync(NODES_FILE)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(NODES_FILE, 'utf-8'));
+          if (Array.isArray(data.nodes)) {
+            for (const node of data.nodes) {
+              this.nodes.set(node.id, node);
+              this.persistNode(node);
+            }
           }
+          try { fs.unlinkSync(NODES_FILE); } catch { /* best-effort */ }
+        } catch (err) {
+          this.logger.warn({ error: (err as Error).message }, 'Legacy nodes.json migration failed — leaving file in place');
         }
       }
     } catch (err) {
-      this.logger.warn({ error: (err as Error).message }, 'Failed to load nodes file');
+      this.logger.warn({ error: (err as Error).message }, 'Failed to load nodes from store');
     }
   }
 
-  private save(): void {
+  /**
+   * Persist a single node to SQLite. Called on add / update /
+   * status-touch. Pre-T-7 every mutation rewrote the entire
+   * registry JSON file; now it's a single atomic UPSERT.
+   */
+  private persistNode(node: INode): void {
     try {
-      fs.mkdirSync(path.dirname(NODES_FILE), { recursive: true });
-      const data = { nodes: Array.from(this.nodes.values()) };
-      fs.writeFileSync(NODES_FILE, JSON.stringify(data, null, 2));
+      this.store.upsertNodeSync({
+        id: node.id,
+        name: node.name,
+        host: node.host,
+        port: node.daemonPort,
+        role: node.isLocal ? 'master' : 'slave',
+        metadata: node as unknown as Record<string, unknown>,
+      });
     } catch (err) {
-      this.logger.warn({ error: (err as Error).message }, 'Failed to save nodes file');
+      this.logger.warn({ id: node.id, error: (err as Error).message }, 'Failed to persist node');
+    }
+  }
+
+  /**
+   * Persist every node currently held in memory. Used after a
+   * batch mutation that affected multiple rows (the previous
+   * fs.writeFileSync semantics).
+   */
+  private save(): void {
+    for (const node of this.nodes.values()) {
+      this.persistNode(node);
     }
   }
 

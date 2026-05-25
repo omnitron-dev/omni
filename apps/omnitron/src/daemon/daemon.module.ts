@@ -412,29 +412,44 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // Backup/restore automation (no DB dependency)
+      // Backup/restore automation. T-7 — backup INDEX persisted in
+      // SQLite via DaemonStateStore (atomic upserts; the .sql.gz
+      // bytes still live on disk under ~/.omnitron/backups/).
       [
         BACKUP_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule) => new BackupService(loggerModule.logger),
-          inject: [LOGGER_SERVICE_TOKEN],
+          useFactory: (loggerModule: ILoggerModule, store: DaemonStateStore) =>
+            new BackupService(loggerModule.logger, store),
+          inject: [LOGGER_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN],
           scope: Scope.Singleton,
         },
       ],
 
-      // Secrets management (encrypted at rest, file-based)
+      // Secrets management — encrypted envelope persisted under the
+      // `secrets:envelope` state_kv row of DaemonStateStore. Same
+      // AES-256-GCM crypto + scrypt key derivation as before; only
+      // the at-rest container changed. T-7 in the audit.
       [
         SECRETS_SERVICE_TOKEN,
         {
-          useFactory: () => {
-            const secretsPath = (dc.secrets?.path ?? '~/.omnitron/secrets.enc')
-              .replace('~', process.env['HOME'] ?? '');
+          useFactory: (store: DaemonStateStore) => {
             const secretsPassphrase = dc.secrets?.passphrase;
             if (!secretsPassphrase && process.env['NODE_ENV'] === 'production') {
               throw new Error('secrets.passphrase must be configured in production mode');
             }
-            return new SecretsService(secretsPath, secretsPassphrase ?? 'omnitron-dev-passphrase');
+            // Legacy file path is passed through so the one-shot
+            // import in SecretsService.load() can find any
+            // pre-T-7 envelope and migrate it in-place.
+            const legacyPath = dc.secrets?.path
+              ? expandPath(dc.secrets.path)
+              : expandPath('~/.omnitron/secrets.enc');
+            return new SecretsService(
+              store,
+              secretsPassphrase ?? 'omnitron-dev-passphrase',
+              legacyPath,
+            );
           },
+          inject: [DAEMON_STATE_STORE_TOKEN],
           scope: Scope.Singleton,
         },
       ],

@@ -77,6 +77,7 @@ import {
   TRACE_COLLECTOR_TOKEN,
   BACKUP_SERVICE_TOKEN,
   SECRETS_SERVICE_TOKEN,
+  DAEMON_STATE_STORE_TOKEN,
   TELEMETRY_RELAY_TOKEN,
   DEPLOY_SERVICE_TOKEN,
   INFRASTRUCTURE_GATE_TOKEN,
@@ -526,7 +527,13 @@ export class OmnitronDaemon {
       const { NodeManagerService } = await import('../services/node-manager.service.js');
       const { NodeManagerRpcService } = await import('../services/node-manager.rpc-service.js');
       const secretsService = await container.resolveAsync(SECRETS_SERVICE_TOKEN);
-      const nodeManager = new NodeManagerService(loggerModule.logger.child({ component: 'nodes' }), secretsService as any);
+      const { DaemonStateStore: DaemonStateStoreCls } = await import('./daemon-state-store.service.js');
+      const daemonStateStore = await container.resolveAsync<InstanceType<typeof DaemonStateStoreCls>>(DAEMON_STATE_STORE_TOKEN);
+      const nodeManager = new NodeManagerService(
+        loggerModule.logger.child({ component: 'nodes' }),
+        daemonStateStore,
+        secretsService as any,
+      );
       this.nodeManagerService = nodeManager;
       const nodeManagerRpcService = new NodeManagerRpcService(nodeManager);
       this.nodeManagerRpcService = nodeManagerRpcService;

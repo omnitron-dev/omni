@@ -32,6 +32,7 @@ import {
   LifecyclePreempted,
   computeBackoff,
   isAlive,
+  discoverManagedProcesses,
   type ProcessManager,
   type ISupervisorConfig,
   type ISupervisorChildConfig,
@@ -340,6 +341,39 @@ export class OrchestratorService extends EventEmitter {
 
   async startAll(config: IEcosystemConfig): Promise<void> {
     this.config = config;
+
+    // Cross-daemon-restart reconciliation. After a hard restart
+    // (daemon crash, kill -9, host reboot recovery), in-memory
+    // handles are gone but the children the previous daemon spawned
+    // may still be alive. Discovery walks the OS process tree for
+    // env-tagged Omnitron processes — when one matches a configured
+    // app whose effective name we recognise, log it so the operator
+    // sees the adoption opportunity. Full re-adoption (rebuilding
+    // the supervisor's child map) requires the typed ChildContract
+    // snapshot-request handshake, which is a follow-up; for now
+    // the discovery surfaces the gap visibly instead of letting the
+    // janitor reap them as "orphans" 60s later. P2-A in the audit.
+    try {
+      const discovered = discoverManagedProcesses();
+      const adopted: string[] = [];
+      const knownApps = new Set(config.apps.map((a) => a.name));
+      for (const proc of discovered) {
+        if (proc.ppid === process.pid) continue; // our own freshly-spawned child
+        const fqn = proc.fullyQualifiedName;
+        const bare = proc.appName;
+        if (knownApps.has(fqn) || knownApps.has(bare)) {
+          adopted.push(`${fqn}#${proc.pid}`);
+        }
+      }
+      if (adopted.length > 0) {
+        this.logger.warn(
+          { discovered: adopted.length, apps: adopted },
+          'Found pre-existing managed processes — they will be reaped by the janitor in 60s unless adopted',
+        );
+      }
+    } catch (err) {
+      this.logger.debug({ err: (err as Error).message }, 'Process discovery failed — proceeding without reconcile');
+    }
 
     // Reap any fork-workers left over from a previous daemon BEFORE
     // launching apps. Without this, a hard-killed daemon's children

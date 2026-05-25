@@ -1,30 +1,89 @@
 /**
- * Project Registry — Manages seed projects registered with omnitron
+ * Project Registry — Manages seed projects registered with omnitron.
  *
  * A seed project is a monorepo with `omnitron.config.ts` at the root.
  * Omnitron can manage multiple projects simultaneously.
  *
- * Registry stored in ~/.omnitron/projects/registry.json
+ * T-7 migration (this file): persistence moved from
+ * `~/.omnitron/projects/registry.json` (single fs.writeFileSync per
+ * mutation) onto the SQLite-backed `projects` table in
+ * DaemonStateStore. Same crash-safe + transactional guarantees as
+ * the unified daemon state, no torn-write risk on kill -9
+ * mid-flush. One-shot migration: if the legacy JSON file exists on
+ * first construction, its rows are imported into the table and
+ * the file is unlinked.
+ *
+ * API is unchanged — synchronous CRUD via better-sqlite3 prepared
+ * statements (the `..Sync` helpers on DaemonStateStore). Callers
+ * that did `new ProjectRegistry()` keep working; the only contract
+ * change is the constructor now requires the store handle.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { expandPath } from '../shared/paths.js';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 
-const OMNITRON_HOME = path.join(process.env['HOME'] ?? '/tmp', '.omnitron');
-const PROJECTS_DIR = path.join(OMNITRON_HOME, 'projects');
-const REGISTRY_FILE = path.join(PROJECTS_DIR, 'registry.json');
+// CJS-style require for the open() factory's lazy DaemonStateStore
+// load. The module shape is ESM but we need a synchronous import
+// inside a static method that callers can't `await`.
+const requireCjs = createRequire(import.meta.url);
+
+const PROJECTS_DIR = expandPath('~/.omnitron/projects');
+const LEGACY_REGISTRY_FILE = path.join(PROJECTS_DIR, 'registry.json');
+const ENABLED_STACKS_KV_KEY = (name: string) => `project:${name}:enabled-stacks`;
 
 export class ProjectRegistry {
-  private registry: IProjectRegistry;
+  /**
+   * In-memory cache mirroring the persisted state. Reads (list/get)
+   * serve from here so legacy callers don't pay an SQLite round-
+   * trip per call; mutations write through to SQLite synchronously
+   * and update the cache on success.
+   */
+  private projects = new Map<string, ISeedProject>();
 
-  constructor() {
+  constructor(private readonly store: DaemonStateStore) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-    this.registry = this.load();
+    this.loadFromStore();
+    this.migrateLegacyJsonIfPresent();
+  }
+
+  /**
+   * Stand-alone factory for CLI commands that don't have a running
+   * daemon's DI container (e.g. `omnitron project add` invoked
+   * before `omnitron up`). Constructs a DaemonStateStore inline
+   * with a no-op logger and opens the registry against it. The
+   * SQLite file is shared with the daemon — both writers use
+   * WAL-mode locking so concurrent access is safe.
+   */
+  static open(): ProjectRegistry {
+    // We can't do dynamic ESM `import()` synchronously, and the
+    // entry-point code path can't be `async`. Use createRequire to
+    // get a CJS-style require inside ESM and load the store
+    // synchronously. Same module the daemon's DI resolves; the
+    // SQLite handle is opened against the same path (WAL-mode
+    // locking makes concurrent access safe).
+    const { DaemonStateStore } = requireCjs('../daemon/daemon-state-store.service.js') as {
+      DaemonStateStore: new (logger: unknown) => DaemonStateStore;
+    };
+    const noopLogger = {
+      trace: () => undefined,
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+      fatal: () => undefined,
+      child: () => noopLogger,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const store = new DaemonStateStore(noopLogger);
+    return new ProjectRegistry(store);
   }
 
   // ===========================================================================
-  // CRUD
+  // CRUD — synchronous through-write
   // ===========================================================================
 
   add(name: string, projectPath: string): ISeedProject {
@@ -35,7 +94,7 @@ export class ProjectRegistry {
       throw new Error(`No omnitron.config.ts found at ${absPath}`);
     }
 
-    if (this.registry.projects.some((p) => p.name === name)) {
+    if (this.projects.has(name)) {
       throw new Error(`Project '${name}' already registered. Use 'omnitron project remove ${name}' first.`);
     }
 
@@ -45,8 +104,13 @@ export class ProjectRegistry {
       registeredAt: new Date().toISOString(),
     };
 
-    this.registry.projects.push(project);
-    this.persist();
+    this.store.upsertProjectSync({
+      name: project.name,
+      path: project.path,
+      added_at: project.registeredAt,
+      last_seen: project.registeredAt,
+    });
+    this.projects.set(name, project);
 
     const projectDir = path.join(PROJECTS_DIR, name);
     fs.mkdirSync(projectDir, { recursive: true });
@@ -55,14 +119,14 @@ export class ProjectRegistry {
   }
 
   remove(name: string): void {
-    const idx = this.registry.projects.findIndex((p) => p.name === name);
-    if (idx === -1) throw new Error(`Project '${name}' not found`);
-    this.registry.projects.splice(idx, 1);
-    this.persist();
+    if (!this.projects.has(name)) throw new Error(`Project '${name}' not found`);
+    this.store.deleteProjectSync(name);
+    this.store.kvDeleteSync?.(ENABLED_STACKS_KV_KEY(name));
+    this.projects.delete(name);
   }
 
   updatePath(name: string, newPath: string): ISeedProject {
-    const project = this.registry.projects.find((p) => p.name === name);
+    const project = this.projects.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
 
     const absPath = path.resolve(newPath);
@@ -73,7 +137,7 @@ export class ProjectRegistry {
 
     // Derive new registry name from directory basename
     const newName = path.basename(absPath);
-    if (newName !== name && this.registry.projects.some((p) => p.name === newName)) {
+    if (newName !== name && this.projects.has(newName)) {
       throw new Error(`Project '${newName}' already registered`);
     }
 
@@ -86,20 +150,32 @@ export class ProjectRegistry {
       } else {
         fs.mkdirSync(newDir, { recursive: true });
       }
+      // Rewrite under the new key — drop the old row, insert the new.
+      this.store.deleteProjectSync(name);
+      this.projects.delete(name);
     }
 
-    project.name = newName;
-    project.path = absPath;
-    this.persist();
-    return project;
+    const updated: ISeedProject = {
+      ...project,
+      name: newName,
+      path: absPath,
+    };
+    this.store.upsertProjectSync({
+      name: updated.name,
+      path: updated.path,
+      added_at: updated.registeredAt,
+      last_seen: new Date().toISOString(),
+    });
+    this.projects.set(newName, updated);
+    return updated;
   }
 
   get(name: string): ISeedProject | null {
-    return this.registry.projects.find((p) => p.name === name) ?? null;
+    return this.projects.get(name) ?? null;
   }
 
   list(): ISeedProject[] {
-    return [...this.registry.projects];
+    return Array.from(this.projects.values());
   }
 
   getConfigPath(name: string): string | null {
@@ -113,11 +189,24 @@ export class ProjectRegistry {
   }
 
   /**
-   * Persist current in-memory state to disk.
-   * Called by ProjectService when updating enabledStacks etc.
+   * Persist the cache to SQLite. Pre-fix this serialised the entire
+   * registry to JSON and overwrote the file; now it's a no-op
+   * because each mutation already writes through. Kept on the API
+   * so external callers (ProjectService.updateProject) compile
+   * unchanged.
    */
   persist(): void {
-    this.save();
+    // Mutations already wrote through. Touch last_seen on every
+    // project so an external "I'm still here" ping is cheap to
+    // record without restructuring callers.
+    for (const project of this.projects.values()) {
+      this.store.upsertProjectSync({
+        name: project.name,
+        path: project.path,
+        added_at: project.registeredAt,
+        last_seen: new Date().toISOString(),
+      });
+    }
   }
 
   // ===========================================================================
@@ -128,7 +217,7 @@ export class ProjectRegistry {
     const configPath = path.join(cwd, 'omnitron.config.ts');
     if (!fs.existsSync(configPath)) return null;
 
-    const existing = this.registry.projects.find((p) => p.path === cwd);
+    const existing = Array.from(this.projects.values()).find((p) => p.path === cwd);
     if (existing) return existing;
 
     const name = path.basename(cwd);
@@ -143,27 +232,61 @@ export class ProjectRegistry {
   // Private
   // ===========================================================================
 
-  private load(): IProjectRegistry {
+  private loadFromStore(): void {
     try {
-      if (fs.existsSync(REGISTRY_FILE)) {
-        const raw = JSON.parse(fs.readFileSync(REGISTRY_FILE, 'utf-8'));
-        // Migration: strip deprecated fields
-        return {
-          projects: (raw.projects ?? []).map((p: any) => ({
-            name: p.name,
-            path: p.path,
-            registeredAt: p.registeredAt,
-            enabledStacks: p.enabledStacks,
-          })),
+      const rows = this.store.selectProjectsSync();
+      for (const row of rows) {
+        // Rebuild ISeedProject from the row. enabledStacks lives in
+        // state_kv (not the projects table) so each project's
+        // optional list is fetched separately.
+        const enabledStacks = this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(row.name)) ?? undefined;
+        const project: ISeedProject = {
+          name: row.name,
+          path: row.path,
+          registeredAt: row.added_at,
+          ...(enabledStacks && { enabledStacks }),
         };
+        this.projects.set(row.name, project);
       }
     } catch {
-      // Corrupted — start fresh
+      // First boot — table empty.
     }
-    return { projects: [] };
   }
 
-  private save(): void {
-    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(this.registry, null, 2), 'utf-8');
+  /**
+   * One-shot migration: if the legacy JSON registry exists, import
+   * it into the SQLite store and unlink. Idempotent — running the
+   * new code against an already-migrated host is a no-op.
+   */
+  private migrateLegacyJsonIfPresent(): void {
+    if (!fs.existsSync(LEGACY_REGISTRY_FILE)) return;
+    try {
+      const raw = JSON.parse(fs.readFileSync(LEGACY_REGISTRY_FILE, 'utf-8')) as IProjectRegistry;
+      for (const p of raw.projects ?? []) {
+        if (!p?.name || !p?.path) continue;
+        if (!this.projects.has(p.name)) {
+          this.store.upsertProjectSync({
+            name: p.name,
+            path: p.path,
+            added_at: p.registeredAt ?? new Date().toISOString(),
+            last_seen: new Date().toISOString(),
+          });
+          this.projects.set(p.name, {
+            name: p.name,
+            path: p.path,
+            registeredAt: p.registeredAt ?? new Date().toISOString(),
+            ...(p.enabledStacks && { enabledStacks: p.enabledStacks }),
+          });
+          if (p.enabledStacks) {
+            this.store.kvSetSync(ENABLED_STACKS_KV_KEY(p.name), p.enabledStacks);
+          }
+        }
+      }
+      // Done — drop the file so subsequent boots skip this branch.
+      try { fs.unlinkSync(LEGACY_REGISTRY_FILE); } catch { /* best-effort */ }
+    } catch {
+      // Corrupted legacy file — leave it in place, log nothing here
+      // (the constructor caller has no logger handle).
+    }
   }
 }

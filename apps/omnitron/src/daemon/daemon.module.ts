@@ -541,20 +541,21 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       // Project + Stack management
       // On master: receives FleetService for remote/cluster stacks
       // On slave: FleetService is null — only local stack management
+      // T-7 — registry persistence routes through DaemonStateStore
       ...(!isSlave ? [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, fleet: any) =>
-            new ProjectService(loggerModule.logger, orchestrator, fleet),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, FLEET_SERVICE_TOKEN],
+          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any) =>
+            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet),
+          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any] : [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService) =>
-            new ProjectService(loggerModule.logger, orchestrator),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN],
+          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore) =>
+            new ProjectService(loggerModule.logger, orchestrator, dStore),
+          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any]),

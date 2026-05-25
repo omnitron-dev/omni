@@ -91,11 +91,16 @@ export class ProjectService extends EventEmitter {
   constructor(
     private readonly logger: ILogger,
     private readonly orchestrator: OrchestratorService,
+    daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     private readonly fleetService?: FleetService,
     private readonly syncService?: SyncService,
   ) {
     super();
-    this.registry = new ProjectRegistry();
+    // T-7 — registry persistence routed through DaemonStateStore
+    // (SQLite, transactional, co-located with daemon-state-kv,
+    // pid-lock, etc.). The registry itself is unchanged in API;
+    // only its backing storage moved.
+    this.registry = new ProjectRegistry(daemonStateStore);
     this.infraManager = new StackInfrastructureManager(logger);
     this.deployer = new RemoteDeployer(logger);
   }

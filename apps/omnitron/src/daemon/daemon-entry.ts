@@ -30,7 +30,7 @@ async function main() {
   const cwd = process.env['OMNITRON_CWD'] ?? process.cwd();
   process.chdir(cwd);
 
-  const registry = new ProjectRegistry();
+  const registry = ProjectRegistry.open();
 
   // Try auto-detect from CWD, then first registered project, then defaults
   const detected = registry.autoDetect(cwd);

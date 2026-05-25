@@ -38,9 +38,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { expandPath } from '../shared/paths.js';
+
+// `better-sqlite3` is loaded sync via createRequire because `initSync()`
+// can't `await import()`. The dynamic `await import()` in `getDb()`
+// still works because Node resolves both paths to the same module
+// graph entry.
+const requireCjs = createRequire(import.meta.url);
 
 // =============================================================================
 // Schema
@@ -114,6 +121,14 @@ export interface DaemonStateDatabase {
 
 export class DaemonStateStore {
   private db: Kysely<DaemonStateDatabase> | null = null;
+  /**
+   * Raw better-sqlite3 Database — exposed for callers that need
+   * synchronous reads (ProjectRegistry's constructor-time load,
+   * pid-manager's pre-DI bootstrap, etc.). Same connection the
+   * Kysely instance wraps; same WAL settings; same lifetime.
+   * `null` until the first `init()` / `getDb()`.
+   */
+  private rawSqlite: import('better-sqlite3').Database | null = null;
   private initialized = false;
   /** Resolved absolute path — cached so callers can log/probe it. */
   public readonly dbPath: string;
@@ -123,6 +138,116 @@ export class DaemonStateStore {
     dbPath: string = expandPath('~/.omnitron/data/daemon-state.db'),
   ) {
     this.dbPath = dbPath;
+  }
+
+  /**
+   * Force-open the database synchronously and return the raw
+   * better-sqlite3 handle. Callable from constructor-style code
+   * paths that can't await (legacy ProjectRegistry, pid-manager).
+   * Uses `require` instead of dynamic `import` to stay sync.
+   * Idempotent — subsequent calls return the cached handle.
+   */
+  initSync(): import('better-sqlite3').Database {
+    if (this.rawSqlite) return this.rawSqlite;
+    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+    const BetterSqlite3 = requireCjs('better-sqlite3') as typeof import('better-sqlite3');
+    const database: import('better-sqlite3').Database = new BetterSqlite3(this.dbPath);
+    database.pragma('journal_mode = WAL');
+    database.pragma('busy_timeout = 5000');
+    database.pragma('synchronous = NORMAL');
+    this.rawSqlite = database;
+    // Apply DDL synchronously via raw exec — Kysely's sql tagged
+    // template requires the async wrapper. The schema is small
+    // enough that we can inline the CREATE TABLE statements here.
+    this.createTablesSync(database);
+    this.initialized = true;
+    this.logger.info({ path: this.dbPath }, 'Daemon state store initialized (sync)');
+    return database;
+  }
+
+  /**
+   * Sync KV read. Requires `initSync()` or `getDb()` to have
+   * completed at least once. Returns null on missing key or
+   * parse failure.
+   */
+  kvGetSync<T>(key: string): T | null {
+    const db = this.rawSqlite ?? this.initSync();
+    const row = db.prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
+    if (!row) return null;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch (err) {
+      this.logger.warn({ key, err: (err as Error).message }, 'state_kv: JSON parse failed (sync)');
+      return null;
+    }
+  }
+
+  /** Sync KV write. Same atomicity as kvSet via SQLite WAL. */
+  kvSetSync<T>(key: string, value: T): void {
+    const db = this.rawSqlite ?? this.initSync();
+    const payload = JSON.stringify(value);
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO state_kv (key, value, updated_at) VALUES (?, ?, ?) ' +
+        'ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+    ).run(key, payload, now);
+  }
+
+  /** Sync KV delete. Idempotent — silent on missing key. */
+  kvDeleteSync(key: string): void {
+    const db = this.rawSqlite ?? this.initSync();
+    db.prepare('DELETE FROM state_kv WHERE key = ?').run(key);
+  }
+
+  /**
+   * Sync select-all from `projects`. ProjectRegistry calls this in
+   * its constructor — keeps the legacy synchronous API while the
+   * actual persistence is transactional under the hood.
+   */
+  selectProjectsSync(): Array<{
+    name: string;
+    path: string;
+    config_hash: string | null;
+    added_at: string;
+    last_seen: string;
+  }> {
+    const db = this.rawSqlite ?? this.initSync();
+    return db
+      .prepare('SELECT name, path, config_hash, added_at, last_seen FROM projects ORDER BY added_at ASC')
+      .all() as ReturnType<DaemonStateStore['selectProjectsSync']>;
+  }
+
+  /**
+   * Sync upsert into `projects`. ProjectRegistry's add/persist
+   * paths route through here so the row is durable as soon as the
+   * caller's function returns — no fire-and-forget queue, no race
+   * between persist() and the next list() reader.
+   */
+  upsertProjectSync(row: {
+    name: string;
+    path: string;
+    config_hash?: string | null;
+    added_at?: string;
+    last_seen?: string;
+  }): void {
+    const db = this.rawSqlite ?? this.initSync();
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO projects (name, path, config_hash, added_at, last_seen) VALUES (?, ?, ?, ?, ?) ' +
+        'ON CONFLICT (name) DO UPDATE SET path = excluded.path, config_hash = excluded.config_hash, last_seen = excluded.last_seen',
+    ).run(
+      row.name,
+      row.path,
+      row.config_hash ?? null,
+      row.added_at ?? now,
+      row.last_seen ?? now,
+    );
+  }
+
+  /** Sync delete from `projects`. Idempotent. */
+  deleteProjectSync(name: string): void {
+    const db = this.rawSqlite ?? this.initSync();
+    db.prepare('DELETE FROM projects WHERE name = ?').run(name);
   }
 
   /**
@@ -218,6 +343,50 @@ export class DaemonStateStore {
   // ===========================================================================
   // Private — Schema Creation
   // ===========================================================================
+
+  /**
+   * Synchronous DDL for the `initSync()` path. Same statements as
+   * `createTables()`, but issued through better-sqlite3's
+   * `database.exec()` instead of Kysera's async `sql` template.
+   */
+  private createTablesSync(db: import('better-sqlite3').Database): void {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS state_kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS projects (
+        name TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        config_hash TEXT,
+        added_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_seen TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS nodes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'unknown',
+        last_heartbeat TEXT,
+        metadata TEXT,
+        added_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes (status);
+      CREATE TABLE IF NOT EXISTS backups (
+        id TEXT PRIMARY KEY,
+        app TEXT NOT NULL,
+        path TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        metadata TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_backups_app_created ON backups (app, created_at);
+    `);
+  }
 
   private async createTables(): Promise<void> {
     if (!this.db) return;

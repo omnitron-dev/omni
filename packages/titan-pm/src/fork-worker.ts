@@ -93,6 +93,38 @@ process.on('disconnect', () => {
   process.exit(130);
 });
 
+// Heartbeat — periodic liveness ping the supervisor uses to detect
+// "wedged child" cases (sync infinite loop, deadlock) that an OS
+// signal-0 check can't catch because the process technically still
+// exists. Cadence + timeout values live in @omnitron-dev/titan-pm/
+// child-contract; we inline them here to keep fork-worker zero-dep
+// (we can't `import` from the parent package because this file is
+// itself part of titan-pm).
+let heartbeatSeq = 0;
+let beat = 0;
+const HEARTBEAT_INTERVAL_MS = 5_000;
+const heartbeatTimer = setInterval(() => {
+  if (!process.connected || !process.send) return;
+  beat += 1;
+  heartbeatSeq += 1;
+  const msg = {
+    type: 'heartbeat' as const,
+    seq: heartbeatSeq,
+    beat,
+    uptimeSeconds: Math.round(process.uptime()),
+    rssBytes: process.memoryUsage().rss,
+  };
+  try {
+    const accepted = process.send(msg, (err) => {
+      if (err) noteDropped('heartbeat send error', err);
+    });
+    if (!accepted) noteDropped('heartbeat channel full');
+  } catch (err) {
+    noteDropped('heartbeat throw', err as Error);
+  }
+}, HEARTBEAT_INTERVAL_MS);
+heartbeatTimer.unref();
+
 // Diagnostic catch-all. Operational errors (network/db disconnects)
 // are logged at WARN and the worker keeps running — its underlying
 // clients reconnect on their own. Programming errors trigger exit(1)

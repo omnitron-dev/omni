@@ -38,6 +38,25 @@ export { ProcessSupervisor } from './process-supervisor.js';
 export { ProcessMetricsCollector } from './process-metrics.js';
 export { ProcessHealthChecker } from './process-health.js';
 export { ProcessLifecycleQueue, LifecyclePreempted, type LifecycleOp } from './lifecycle-queue.js';
+export { computeBackoff, backoffSchedule, sleepBackoff, type BackoffConfig, type BackoffType } from './backoff.js';
+export { getLiveness, isAlive, verifyPidIdentity, type Liveness } from './liveness.js';
+export { discoverManagedProcesses, type DiscoveredProcess } from './discovery.js';
+export {
+  isChildToParent,
+  isParentToChild,
+  HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_TIMEOUT_MS,
+  type ChildToParentMessage,
+  type ParentToChildMessage,
+  type ChildReadyMessage,
+  type ChildHeartbeatMessage,
+  type ChildSnapshotResponseMessage,
+  type ChildShutdownIntentMessage,
+  type ChildErrorReportMessage,
+  type ParentSnapshotRequestMessage,
+  type ParentDrainMessage,
+  type ParentConfigUpdateMessage,
+} from './child-contract.js';
 
 // ============================================================================
 // Decorators

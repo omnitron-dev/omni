@@ -16,7 +16,9 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
+import { DAEMON_STATE_STORE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 
@@ -43,8 +45,10 @@ interface ScheduleEntry {
 // Service
 // =============================================================================
 
+@Injectable()
 export class BackupService {
   private readonly backupDir: string;
+  private readonly logger: ILogger;
   private schedules = new Map<string, ScheduleEntry>();
   /**
    * True once the legacy .meta.json scan + import has run for this
@@ -52,8 +56,10 @@ export class BackupService {
    */
   private legacyMigrated = false;
 
+  // T-2 — @Inject decorators bind tokens to ctor positions; framework
+  // reads metadata directly, no inject:[] array drift possible.
   constructor(
-    private readonly logger: ILogger,
+    @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
     /**
      * T-7 — backup metadata persistence moved off side-car .meta.json
      * files onto the SQLite-backed `backups` table in
@@ -64,10 +70,10 @@ export class BackupService {
      * kill -9 mid-write. One-shot migration of legacy .meta.json
      * files happens on the first list/restore call.
      */
-    private readonly store: DaemonStateStore,
-    backupDir?: string
+    @Inject(DAEMON_STATE_STORE_TOKEN) private readonly store: DaemonStateStore,
   ) {
-    this.backupDir = backupDir ?? expandPath('~/.omnitron/backups');
+    this.logger = loggerModule.logger;
+    this.backupDir = expandPath('~/.omnitron/backups');
     fs.mkdirSync(this.backupDir, { recursive: true });
   }
 

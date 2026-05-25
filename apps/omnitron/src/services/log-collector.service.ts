@@ -12,6 +12,8 @@ import { randomUUID } from 'node:crypto';
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { EventEmitter } from 'node:events';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { OMNITRON_DB_TOKEN } from '../shared/tokens.js';
 
 // =============================================================================
 // Types
@@ -93,13 +95,14 @@ function escapeLike(str: string): string {
 const FLUSH_INTERVAL_MS = 1_000;
 const FLUSH_THRESHOLD = 100;
 
+@Injectable()
 export class LogCollectorService extends EventEmitter {
   private buffer: LogEntry[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
   private flushing = false;
   private disposed = false;
 
-  constructor(private readonly db: Kysely<OmnitronDatabase>) {
+  constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
     super();
     this.startFlushTimer();
   }

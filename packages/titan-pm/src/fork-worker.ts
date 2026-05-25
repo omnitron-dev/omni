@@ -8,6 +8,7 @@
 import 'reflect-metadata';
 import type { MessageHandler } from './common-types.js';
 import { isOperationalError } from '@omnitron-dev/titan/utils';
+import { startParentDeathWatchdog } from './parent-death-watchdog.js';
 
 // Get configuration from environment (spawner passes TITAN_WORKER_CONTEXT)
 const config = JSON.parse(process.env['TITAN_WORKER_CONTEXT'] || process.env['WORKER_DATA'] || '{}');
@@ -92,6 +93,20 @@ process.on('disconnect', () => {
   noteDropped('parent disconnected — terminating worker');
   process.exit(130);
 });
+
+// Parent-death watchdog (T#65 — belt-and-braces).
+//
+// `process.on('disconnect')` above is the PRIMARY defence — when
+// Node's IPC channel between the daemon and this worker closes,
+// 'disconnect' fires and we exit. But it has known failure modes
+// (macOS late delivery on SIGKILL, event-loop starvation, pre-fix
+// daemon generations that spawned children without the handler).
+//
+// Today's incident: orphan fork-workers from previous daemon
+// generations held listen ports for HOURS after their parent died.
+//
+// See `parent-death-watchdog.ts` for the full rationale.
+startParentDeathWatchdog();
 
 // Heartbeat — periodic liveness ping the supervisor uses to detect
 // "wedged child" cases (sync infinite loop, deadlock) that an OS

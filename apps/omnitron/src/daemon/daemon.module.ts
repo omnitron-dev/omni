@@ -43,6 +43,12 @@ import {
   INFRASTRUCTURE_GATE_TOKEN,
   PROJECT_SERVICE_TOKEN,
   SLAVE_STORAGE_TOKEN,
+  JWT_SECRET_TOKEN,
+  FLEET_SELF_NODE_ID_TOKEN,
+  SECRETS_PASSPHRASE_TOKEN,
+  SECRETS_LEGACY_PATH_TOKEN,
+  INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN,
+  INFRA_STATE_ACCESSOR_TOKEN,
 } from '../shared/tokens.js';
 import { AuthService } from '../services/auth.service.js';
 import { LogCollectorService } from '../services/log-collector.service.js';
@@ -392,15 +398,20 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // Health check service (composable checks for apps + infra)
+      // Health check service (composable checks for apps + infra).
+      // T-2 part 2 — useClass via @Injectable + @Inject. The infra-
+      // service accessor lambda is wired below as a useValue token
+      // (INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN).
       [
         HEALTH_CHECK_SERVICE_TOKEN,
         {
-          useFactory: (orchestrator: OrchestratorService) =>
-            new HealthCheckService(orchestrator, () => null),
-          inject: [ORCHESTRATOR_TOKEN],
+          useClass: HealthCheckService,
           scope: Scope.Singleton,
         },
+      ],
+      [
+        INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN,
+        { useValue: () => null },
       ],
 
       // Kubernetes management (no DB dependency).
@@ -426,32 +437,37 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // Secrets management — encrypted envelope persisted under the
-      // `secrets:envelope` state_kv row of DaemonStateStore. Same
-      // AES-256-GCM crypto + scrypt key derivation as before; only
-      // the at-rest container changed. T-7 in the audit.
+      // Secrets management. T-7 + T-2 part 2 —
+      // - encrypted envelope persisted as a state_kv row in
+      //   DaemonStateStore (T-7), same AES-256-GCM crypto;
+      // - service constructed via @Injectable + @Inject + useClass
+      //   (T-2 part 2), with passphrase/legacy-path arriving through
+      //   dedicated useValue tokens registered below.
       [
         SECRETS_SERVICE_TOKEN,
         {
-          useFactory: (store: DaemonStateStore) => {
-            const secretsPassphrase = dc.secrets?.passphrase;
-            if (!secretsPassphrase && isProduction()) {
+          useClass: SecretsService,
+          scope: Scope.Singleton,
+        },
+      ],
+      [
+        SECRETS_PASSPHRASE_TOKEN,
+        {
+          useValue: (() => {
+            const pass = dc.secrets?.passphrase;
+            if (!pass && isProduction()) {
               throw new Error('secrets.passphrase must be configured in production mode');
             }
-            // Legacy file path is passed through so the one-shot
-            // import in SecretsService.load() can find any
-            // pre-T-7 envelope and migrate it in-place.
-            const legacyPath = dc.secrets?.path
-              ? expandPath(dc.secrets.path)
-              : expandPath('~/.omnitron/secrets.enc');
-            return new SecretsService(
-              store,
-              secretsPassphrase ?? 'omnitron-dev-passphrase',
-              legacyPath,
-            );
-          },
-          inject: [DAEMON_STATE_STORE_TOKEN],
-          scope: Scope.Singleton,
+            return pass ?? 'omnitron-dev-passphrase';
+          })(),
+        },
+      ],
+      [
+        SECRETS_LEGACY_PATH_TOKEN,
+        {
+          useValue: dc.secrets?.path
+            ? expandPath(dc.secrets.path)
+            : expandPath('~/.omnitron/secrets.enc'),
         },
       ],
 
@@ -505,21 +521,20 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       // rejected by the daemon's own auth middleware as "Authentication
       // required". The factory-level secret resolution is the single
       // source of truth.
+      // T-2 part 2 — AuthService becomes useClass; jwtSecret is
+      // routed through the JWT_SECRET_TOKEN useValue (same resolved
+      // value `resolvedJwtSecret` the TitanAuthModule consumes, so
+      // mint + verify keep using the identical key).
       ...(!isSlave ? [[
         AUTH_SERVICE_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule) => {
-            if (!dc.auth?.jwtSecret) {
-              loggerModule.logger.warn(
-                'No auth.jwtSecret configured — using insecure default. ' +
-                'Set auth.jwtSecret in omnitron.config.ts for production.'
-              );
-            }
-            return new AuthService(db, resolvedJwtSecret);
-          },
-          inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
+          useClass: AuthService,
           scope: Scope.Singleton,
         },
+      ] as any] : []),
+      ...(!isSlave ? [[
+        JWT_SECRET_TOKEN,
+        { useValue: resolvedJwtSecret },
       ] as any] : []),
 
       // Log collector — master: PG, slave: SQLite (same column schema).
@@ -545,15 +560,21 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any]),
 
-      // Fleet management (master only — requires PG for node registry)
+      // Fleet management (master only — requires PG for node registry).
+      // T-2 part 2 — useClass; selfNodeId arrives via the
+      // FLEET_SELF_NODE_ID_TOKEN useValue (undefined here for the
+      // default daemon path — set by tests / multi-master deployments
+      // that need an explicit ID).
       ...(!isSlave ? [[
         FLEET_SERVICE_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule) =>
-            new FleetService(db, loggerModule.logger),
-          inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
+          useClass: FleetService,
           scope: Scope.Singleton,
         },
+      ] as any] : []),
+      ...(!isSlave ? [[
+        FLEET_SELF_NODE_ID_TOKEN,
+        { useValue: undefined },
       ] as any] : []),
 
       // Project + Stack management
@@ -578,24 +599,29 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any]),
 
-      // Alert evaluation engine (master only)
+      // Alert evaluation engine (master only).
+      // T-2 part 2 — useClass; infraState accessor lambda lives
+      // behind INFRA_STATE_ACCESSOR_TOKEN (useValue), late-bound to
+      // avoid the circular dep with InfrastructureService.
       ...(!isSlave ? [[
         ALERT_SERVICE_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>, orchestrator: OrchestratorService) =>
-            new AlertService(db, orchestrator, () => ({})),
-          inject: [OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN],
+          useClass: AlertService,
           scope: Scope.Singleton,
         },
       ] as any] : []),
+      ...(!isSlave ? [[
+        INFRA_STATE_ACCESSOR_TOKEN,
+        { useValue: () => ({}) },
+      ] as any] : []),
 
-      // Deploy service (master only)
+      // Deploy service (master only). T-2 part 2 — useClass; the
+      // optional HealthCheckService dep is wired via @Inject +
+      // @Optional on the constructor.
       ...(!isSlave ? [[
         DEPLOY_SERVICE_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>, orchestrator: OrchestratorService, loggerModule: ILoggerModule, healthCheck: HealthCheckService) =>
-            new DeployService(db, orchestrator, loggerModule.logger, healthCheck),
-          inject: [OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, LOGGER_SERVICE_TOKEN, HEALTH_CHECK_SERVICE_TOKEN],
+          useClass: DeployService,
           scope: Scope.Singleton,
         },
       ] as any] : []),

@@ -14,7 +14,9 @@
  */
 
 import type { Kysely } from 'kysely';
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
+import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, HEALTH_CHECK_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { HealthCheckService } from './health-check.service.js';
@@ -69,13 +71,20 @@ import { loadXecOps } from '../shared/xec-loader.js';
 // Service
 // =============================================================================
 
+@Injectable()
 export class DeployService {
+  private readonly logger: ILogger;
+
+  // T-2 part 2 — @Inject + @Optional for the late-bound HealthCheckService.
+  // useClass replaces useFactory; ctor positions are pinned by metadata.
   constructor(
-    private readonly db: Kysely<OmnitronDatabase>,
-    private readonly orchestrator: OrchestratorService,
-    private readonly logger: ILogger,
-    private readonly healthCheck?: HealthCheckService | undefined
-  ) {}
+    @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
+    @Inject(ORCHESTRATOR_TOKEN) private readonly orchestrator: OrchestratorService,
+    @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
+    @Optional() @Inject(HEALTH_CHECK_SERVICE_TOKEN) private readonly healthCheck?: HealthCheckService | undefined,
+  ) {
+    this.logger = loggerModule.logger;
+  }
 
   /**
    * Deploy an application with the specified strategy.

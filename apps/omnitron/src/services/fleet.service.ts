@@ -17,7 +17,9 @@
  */
 
 import type { Kysely } from 'kysely';
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
+import { OMNITRON_DB_TOKEN, FLEET_SELF_NODE_ID_TOKEN } from '../shared/tokens.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 
 // =============================================================================
@@ -60,14 +62,20 @@ export interface NodeRegistration {
 // Service
 // =============================================================================
 
+@Injectable()
 export class FleetService {
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private readonly logger: ILogger;
 
+  // T-2 part 2 — @Inject + useClass; selfNodeId arrives via the
+  // FLEET_SELF_NODE_ID_TOKEN useValue provider (string | undefined).
   constructor(
-    private readonly db: Kysely<OmnitronDatabase>,
-    private readonly logger: ILogger,
-    readonly selfNodeId?: string
-  ) {}
+    @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
+    @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
+    @Inject(FLEET_SELF_NODE_ID_TOKEN) readonly selfNodeId?: string,
+  ) {
+    this.logger = loggerModule.logger;
+  }
 
   // ===========================================================================
   // Node Registration

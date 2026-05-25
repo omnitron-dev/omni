@@ -28,6 +28,12 @@ import {
 import { promisify } from 'node:util';
 import { readFile, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
+import {
+  DAEMON_STATE_STORE_TOKEN,
+  SECRETS_PASSPHRASE_TOKEN,
+  SECRETS_LEGACY_PATH_TOKEN,
+} from '../shared/tokens.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 
 const scryptAsync = promisify(scrypt);
@@ -72,24 +78,29 @@ const IV_LENGTH = 16;
 /** state_kv row key holding the encrypted envelope. */
 const SECRETS_KV_KEY = 'secrets:envelope';
 
+@Injectable()
 export class SecretsService {
   private cache: SecretsMap | null = null;
 
   /**
-   * @param store — DaemonStateStore handle. The encrypted envelope is
-   *   persisted as a single JSON row in the `state_kv` table.
-   * @param passphrase — operator-supplied passphrase. Combined with the
-   *   machine ID via scrypt to derive the 256-bit AES key. Same crypto
-   *   contract as before.
+   * T-2 part 2 — @Inject + useClass. Passphrase + legacy-path
+   * arrive via dedicated config-value tokens (useValue providers
+   * registered in DaemonModule) so the framework's DI metadata is
+   * authoritative for every ctor position. The crypto contract
+   * (AES-256-GCM + scrypt + machine-id binding) is unchanged.
+   *
+   * @param store — DaemonStateStore handle (state_kv row holds the
+   *   encrypted envelope).
+   * @param passphrase — operator-supplied passphrase. Combined
+   *   with the machine ID via scrypt to derive the 256-bit AES key.
    * @param legacyFilePath — optional path to the pre-T-7 encrypted
-   *   file. When present + the SQLite row is empty on first load, the
-   *   file is imported into the row and unlinked. Pass null to skip
-   *   the migration probe (tests, ephemeral storage).
+   *   file. When present + the SQLite row is empty on first load,
+   *   the file is imported into the row and unlinked.
    */
   constructor(
-    private readonly store: DaemonStateStore,
-    private passphrase: string,
-    private readonly legacyFilePath?: string | null
+    @Inject(DAEMON_STATE_STORE_TOKEN) private readonly store: DaemonStateStore,
+    @Inject(SECRETS_PASSPHRASE_TOKEN) private passphrase: string,
+    @Optional() @Inject(SECRETS_LEGACY_PATH_TOKEN) private readonly legacyFilePath?: string | null
   ) {}
 
   // ===========================================================================

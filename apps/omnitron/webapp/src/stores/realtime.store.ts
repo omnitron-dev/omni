@@ -58,6 +58,17 @@ interface RealtimeState {
   initialize: () => () => void;
 }
 
+// Module-level refcount for the shared WebSocket. Pre-fix every page
+// that called `initialize()` returned a cleanup that called
+// `ws.disconnect()` — when Dashboard unmounted, the singleton WS
+// went down even though StatusBar + a freshly-mounted Apps page
+// still needed it. Other pages then reported `connected=false`
+// until something re-mounted Dashboard. The refcount fixes this: the
+// last consumer's cleanup is the only one that actually tears down
+// the socket; intermediate cleanups just decrement.
+let activeConsumers = 0;
+let teardown: (() => void) | null = null;
+
 export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   connected: false,
   appEvents: [],
@@ -68,6 +79,18 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   deployProgress: [],
 
   initialize: () => {
+    activeConsumers += 1;
+    if (teardown) {
+      // Already initialised by an earlier consumer; reuse the live
+      // socket and just hand back a refcount-aware cleanup.
+      return () => {
+        activeConsumers = Math.max(0, activeConsumers - 1);
+        if (activeConsumers === 0 && teardown) {
+          teardown();
+          teardown = null;
+        }
+      };
+    }
     const ws: DaemonWsClient = getDaemonWsClient();
     const unsubscribers: Array<() => void> = [];
 
@@ -190,10 +213,19 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     // Connect
     ws.connect();
 
-    // Return cleanup function
-    return () => {
+    // Register the real teardown once. Per-consumer cleanups decrement
+    // the refcount; only the last one drives `teardown()`.
+    teardown = () => {
       for (const unsub of unsubscribers) unsub();
       ws.disconnect();
+    };
+
+    return () => {
+      activeConsumers = Math.max(0, activeConsumers - 1);
+      if (activeConsumers === 0 && teardown) {
+        teardown();
+        teardown = null;
+      }
     };
   },
 }));

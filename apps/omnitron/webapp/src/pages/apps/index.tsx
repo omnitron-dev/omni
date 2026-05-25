@@ -23,6 +23,7 @@ import { formatUptime, formatMemoryMb } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useActiveProject } from 'src/stores/project.store';
+import { useRealtimeStore } from 'src/stores/realtime.store';
 
 import type { ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
@@ -76,11 +77,33 @@ export default function AppsListPage() {
   // In project mode, no namespace filtering needed — getProjectApps returns clean names
   const apps = activeProject ? allApps : filterApps(allApps);
 
+  // Subscribe to the realtime WS — same pattern as Dashboard. The
+  // store's refcount keeps the shared socket alive across page
+  // changes; the Apps page no longer has to wait up to 5s for the
+  // next poll to surface a crashed/restarted app.
+  const wsConnected = useRealtimeStore((s) => s.connected);
+  const lastEvent = useRealtimeStore((s) => s.lastEvent);
+  const initializeRealtime = useRealtimeStore((s) => s.initialize);
+
+  useEffect(() => {
+    const cleanup = initializeRealtime();
+    return cleanup;
+  }, [initializeRealtime]);
+
   useEffect(() => {
     fetchApps();
-    const interval = setInterval(fetchApps, 5000);
+    // When WS is up, push events trigger refreshes — slow the poll
+    // down to 15s as a safety net. When WS is down, fall back to the
+    // 5s polling cadence Dashboard uses.
+    const interval = setInterval(fetchApps, wsConnected ? 15_000 : 5_000);
     return () => clearInterval(interval);
-  }, [fetchApps]);
+  }, [fetchApps, wsConnected]);
+
+  // Any app-lifecycle event → refetch immediately so the table
+  // reflects the new state without waiting for the next interval.
+  useEffect(() => {
+    if (lastEvent) fetchApps();
+  }, [lastEvent, fetchApps]);
 
   const handleRestart = async (name: string) => {
     setActionLoading(name);

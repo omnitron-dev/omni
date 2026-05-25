@@ -102,7 +102,11 @@ import {
   type StackErrorEvent,
 } from '../shared/events.js';
 import { JWT_SERVICE_TOKEN, type IJWTService } from '@omnitron-dev/titan-auth';
-import { AuthenticationManager, type AuthContext } from '@omnitron-dev/titan/netron/auth';
+import {
+  AuthenticationManager,
+  AuthorizationManager,
+  type AuthContext,
+} from '@omnitron-dev/titan/netron/auth';
 import { createAuthContextWrapper } from '../services/auth-context.js';
 
 export interface DaemonStartOptions {
@@ -146,6 +150,11 @@ export class OmnitronDaemon {
       throw new Error(`Omnitron daemon already running (PID: ${existingPid})`);
     }
 
+    // Stale file from a previous crash is normal — clean it up so the
+    // atomic `O_EXCL` write below succeeds. P1-L: doing this AFTER
+    // isRunning() returned false means we only delete known-dead
+    // markers; live daemons get the conflict error above.
+    this.pidManager.remove();
     this.pidManager.write();
 
     // 1. Create Titan Application (the daemon itself)
@@ -154,6 +163,20 @@ export class OmnitronDaemon {
     this.app = await Application.create(DaemonModule, {
       name: 'omnitron',
       version: CLI_VERSION,
+    });
+
+    // P1-M — install our own SIGHUP handler BEFORE Application's
+    // default shutdown handlers attach, so `kill -HUP <daemon>`
+    // triggers a config reload (the Unix convention for long-running
+    // daemons) instead of terminating the supervisor. We don't bind
+    // this through the Application's signal manager because that
+    // path is wired to `runShutdownTasks()`; we install at the
+    // process level and the listener runs first.
+    process.on('SIGHUP', () => {
+      this.reloadConfigOnHup().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[omnitron] SIGHUP config reload failed: ${(err as Error).message}`);
+      });
     });
 
     // 2. Register transports (Unix, TCP, HTTP, WebSocket)
@@ -292,13 +315,21 @@ export class OmnitronDaemon {
       },
     });
 
-    // TCP — remote fleet communication (cross-server)
+    // TCP — remote fleet communication (cross-server). Defaults to
+    // 127.0.0.1 so a single-host deployment never exposes daemon
+    // control to the LAN. Multi-host fleet operators must opt in
+    // explicitly via `daemon.host: '0.0.0.0'` (or a specific bind
+    // address) in the ecosystem config. Pre-fix `dc.host` defaulted
+    // to `'0.0.0.0'`, which combined with the missing
+    // `AuthorizationManager` below (P0-B in the audit) gave any
+    // host on the LAN unauthenticated `stopAll({force:true})`.
+    const tcpHost = dc.host && dc.host !== '0.0.0.0' ? dc.host : '127.0.0.1';
     this.app.netron.registerTransport('tcp', () => new TcpTransport());
     this.app.netron.registerTransportServer('tcp', {
       name: 'daemon-fleet',
       options: {
         port: dc.port,
-        host: dc.host,
+        host: tcpHost,
       },
     });
 
@@ -353,9 +384,25 @@ export class OmnitronDaemon {
       },
       tokenCache: { enabled: true, ttl: 10_000 },
     });
-    this.app.netron.configureAuth(authManager);
+    // Wire the AuthorizationManager so the `@Public({ auth: { roles } })`
+    // decorators on DaemonRpcService are actually enforced on the wire.
+    // Without an authzManager, `remote-peer.ts:enforceMethodAccess`
+    // early-returns and every method is reachable by anyone who can
+    // mint a valid JWT, regardless of `roles`. The WS origin policy
+    // (`allowedOrigins: true` → same-host) closes the cross-origin
+    // upgrade attack against cookie-mode auth.
+    const authzManager = new AuthorizationManager(authLogger);
+    this.app.netron.configureAuth(authManager, authzManager, {
+      allowedOrigins: true,
+    });
 
     const authContextWrapper = createAuthContextWrapper();
+
+    // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to
+    // these over the same loopback; nginx fronts the public surface.
+    // Operators who proxy in from another host must opt in via
+    // `daemon.host` (same knob that controls TCP).
+    const localHost = dc.host && dc.host !== '0.0.0.0' ? dc.host : '127.0.0.1';
 
     // HTTP — Netron RPC API (internal port, nginx proxies from public port)
     const internalHttpPort = (dc.httpPort ?? 9800) + 1;
@@ -364,7 +411,7 @@ export class OmnitronDaemon {
       name: 'daemon-http',
       options: {
         port: internalHttpPort,
-        host: '0.0.0.0',
+        host: localHost,
         cors: true,
         invocationWrapper: authContextWrapper,
       },
@@ -377,7 +424,7 @@ export class OmnitronDaemon {
       name: 'daemon-ws',
       options: {
         port: wsPort,
-        host: '0.0.0.0',
+        host: localHost,
         invocationWrapper: authContextWrapper,
       },
     });
@@ -1413,6 +1460,38 @@ export class OmnitronDaemon {
     await this.app.shutdown(ShutdownReason.Manual);
     // Application doesn't process.exit() for Manual reason — do it explicitly
     process.exit(0);
+  }
+
+  /**
+   * SIGHUP handler — reload the ecosystem config without taking the
+   * daemon down. Follows the Unix convention (`man 7 signal`: "many
+   * daemons interpret SIGHUP as a request to reread their configs").
+   * Reloads via the same code path the `reloadConfig` RPC uses so
+   * orchestrator + RPC service both pick up the new entries.
+   */
+  private async reloadConfigOnHup(): Promise<void> {
+    if (!this.app) return;
+    try {
+      const { loadEcosystemConfig } = await import('../config/loader.js');
+      const newConfig = await loadEcosystemConfig();
+      const { ORCHESTRATOR_TOKEN } = await import('../shared/tokens.js');
+      const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+      orchestrator.setConfig(newConfig);
+      // Also refresh the DaemonRpcService's snapshot if resolvable.
+      // (It's exposed under DAEMON_SERVICE_ID; reloadConfig RPC path
+      // mutates `this.config` directly so we mirror the same write.)
+      const { DAEMON_SERVICE_ID } = await import('../config/defaults.js');
+      const daemonRpc = await this.app.container
+        .resolveAsync<DaemonRpcService>(DAEMON_SERVICE_ID)
+        .catch(() => null);
+      if (daemonRpc) {
+        (daemonRpc as unknown as { config: typeof newConfig }).config = newConfig;
+      }
+      // eslint-disable-next-line no-console
+      console.info('[omnitron] SIGHUP — config reloaded');
+    } catch (err) {
+      throw err;
+    }
   }
 
   /**

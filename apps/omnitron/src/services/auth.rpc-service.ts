@@ -15,6 +15,7 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+import { Errors } from '@omnitron-dev/titan/errors';
 import { getCurrentAuth, requireAuth } from './auth-context.js';
 import type {
   AuthService,
@@ -81,7 +82,7 @@ export class AuthRpcService {
     if (auth) {
       const sessionOwner = await this.authService.validateSession(data.sessionId);
       if (sessionOwner && sessionOwner.id !== auth.userId) {
-        throw new Error('Forbidden: cannot revoke another user\'s session');
+        throw Errors.forbidden('Cannot revoke another user\'s session');
       }
     }
     await this.authService.signOut(data.sessionId);

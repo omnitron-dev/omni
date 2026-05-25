@@ -37,6 +37,7 @@ export { ProcessPool } from './process-pool.js';
 export { ProcessSupervisor } from './process-supervisor.js';
 export { ProcessMetricsCollector } from './process-metrics.js';
 export { ProcessHealthChecker } from './process-health.js';
+export { ProcessLifecycleQueue, LifecyclePreempted, type LifecycleOp } from './lifecycle-queue.js';
 
 // ============================================================================
 // Decorators

@@ -349,7 +349,18 @@ export class ProcessSupervisor extends EventEmitter {
       }
 
       this.children.set(name, { info: childDef, proxy });
-      this.restartCounts.set(name, 0);
+      // P1-D — DO NOT reset `restartCounts` on successful start.
+      // Pre-fix this zeroed the counter every time a child came back
+      // up, so a crash → quick-restart → 2s of life → crash → restart
+      // loop never tripped `maxRestarts` because the counter never
+      // accumulated. The sliding-window `restartTimestamps` (below)
+      // is the source of truth for the circuit-breaker; the lifetime
+      // counter is for reporting (UI "restarts since boot"). Keep
+      // the lifetime view monotonic so operators see the real
+      // history. Only initialise when missing (first start).
+      if (!this.restartCounts.has(name)) {
+        this.restartCounts.set(name, 0);
+      }
 
       // Add to reverse lookup map for O(1) crash handling
       const processId = (proxy as any).__processId;

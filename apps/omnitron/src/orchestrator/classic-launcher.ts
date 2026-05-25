@@ -47,10 +47,22 @@ export async function launchClassic(
 
   handle.markStarting();
 
+  // `detached: true` puts the child in its own process group with
+  // pgid === pid. On stop we send the signal to `-pid` so the entire
+  // group (the child plus any grandchildren it forks: ffmpeg, docker,
+  // worker pools, etc.) is reaped together. Without this, a classic-
+  // mode app that itself spawns long-lived helpers leaves orphans
+  // holding ports after `omnitron stop`. The janitor only sweeps
+  // `fork-worker.js`, so classic-mode grandchildren survive forever.
+  //
+  // We do NOT call `child.unref()` — the daemon must remain
+  // responsible for the child's lifecycle, so it should keep
+  // appearing in `daemon.pid` accounting.
   const child = fork(scriptPath, [], {
     cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    detached: true,
     // No tsx execArgv — script is either pre-compiled .js or bundled via esbuild
     ...(scriptPath.endsWith('.ts') ? { execArgv: ['--import', 'tsx/esm'] } : {}),
   });

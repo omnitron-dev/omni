@@ -91,13 +91,36 @@ export class PidManager {
   }
 
   /**
-   * Write current process PID + signature.
+   * Write current process PID + signature using an atomic
+   * `open(O_CREAT|O_EXCL)` — fails fast if another daemon already
+   * holds the file. Pre-fix `isRunning()` then `writeFileSync` was a
+   * TOCTOU race: two `omnitron daemon start` invocations a millisecond
+   * apart both passed the liveness check, the second overwrote the
+   * first's marker, and then both tried to bind the Unix socket —
+   * one died with EADDRINUSE, the other was left orphaned with no
+   * legitimate caller. P1-L in the audit.
+   *
+   * Callers that want overwrite semantics (e.g., after the liveness
+   * check confirmed the previous owner is dead and `cleanup()` has
+   * run) should call `write({ overwrite: true })`.
    */
-  write(): void {
+  write(options?: { overwrite?: boolean }): void {
     const dir = path.dirname(this.pidFile);
     fs.mkdirSync(dir, { recursive: true });
     const signature = PidManager.currentSignature();
-    fs.writeFileSync(this.pidFile, `${process.pid}\n${signature}\n`, 'utf-8');
+    const content = `${process.pid}\n${signature}\n`;
+    const flag = options?.overwrite ? 'w' : 'wx'; // 'wx' = O_CREAT | O_EXCL — fails if file exists
+    try {
+      fs.writeFileSync(this.pidFile, content, { encoding: 'utf-8', flag });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') {
+        throw new Error(
+          `PID file ${this.pidFile} already exists — another daemon is starting or crashed without cleanup. Run \`omnitron daemon stop\` or remove the file manually.`,
+        );
+      }
+      throw err;
+    }
   }
 
   /**

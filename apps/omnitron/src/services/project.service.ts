@@ -19,6 +19,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
   IEcosystemConfig,
   IEcosystemAppEntry,
@@ -526,7 +527,19 @@ export class ProjectService extends EventEmitter {
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found`);
 
     const prefix = `${projectName}/${stackName}/`;
-    const apps = this.orchestrator.list().filter((a) => a.name.startsWith(prefix));
+    // Match by namespaced prefix OR by bare-name when the bare entry's
+    // effective name is part of this stack's configured app set. See
+    // toStackInfo for the full rationale; we keep the same rule here so
+    // CLI `omnitron list` and the webapp's stack status agree.
+    const configForStatus = this.getLoadedConfig(projectName);
+    const configuredNames = configForStatus
+      ? new Set(this.resolveStackApps(stackConfig, configForStatus).map((a) => a.name))
+      : new Set<string>();
+    const apps = this.orchestrator.list().filter((a) => {
+      if (a.name.startsWith(prefix)) return true;
+      if (a.name.includes('/')) return false;
+      return configuredNames.has(effectiveAppName(a.name));
+    });
     const onlineApps = apps.filter((a) => a.status === 'online');
 
     // Derive status from app health if running
@@ -1483,13 +1496,37 @@ export class ProjectService extends EventEmitter {
     const state = this.stackStates.get(stateKey);
     const prefix = `${projectName}/${stackName}/`;
 
-    // Get apps running in this stack
-    const stackApps = this.orchestrator.list({ prefix });
-    const runningByName = new Map(stackApps.map((a) => [a.name.replace(prefix, ''), a]));
-
-    // Build app list from config — include both running and stopped apps
+    // Build app list from config — include both running and stopped apps.
     const ecosystemConfig = this.getLoadedConfig(projectName);
     const configuredApps = ecosystemConfig ? this.resolveStackApps(config, ecosystemConfig) : [];
+    const configuredNames = new Set(configuredApps.map((a) => a.name));
+
+    // Match running handles by effective (un-prefixed) name. Two
+    // registration paths can land an app in the orchestrator's handle
+    // map: the namespaced stack-mode path (`omni/dev/main`) and the
+    // bare-name daemon-RPC path (`main`). Pre-fix the UI only saw the
+    // first; a CLI `omnitron start main` (or any ecosystem.config entry
+    // started before the stack-mode env vars were known) registered
+    // bare and silently disappeared from the project/stack view, even
+    // though `omnitron list` happily reported it online. By keying off
+    // `effectiveAppName` we accept either form so the UI matches the
+    // CLI's worldview. Cross-stack collisions on the same effective
+    // name still resolve via the namespaced handle's prefix; the bare
+    // fallback only applies when that name appears in this stack's
+    // configured-app set, so an unrelated bare handle in another stack
+    // never bleeds in.
+    const runningByName = new Map<string, ReturnType<OrchestratorService['list']>[number]>();
+    for (const a of this.orchestrator.list()) {
+      const effective = effectiveAppName(a.name);
+      const inThisPrefix = a.name.startsWith(prefix);
+      const inThisStackByName = !a.name.includes('/') && configuredNames.has(effective);
+      if (!inThisPrefix && !inThisStackByName) continue;
+      // Namespaced wins over bare on collision.
+      const existing = runningByName.get(effective);
+      if (!existing || a.name.startsWith(prefix)) {
+        runningByName.set(effective, a);
+      }
+    }
 
     const apps: IStackAppStatus[] = configuredApps.map((entry) => {
       const running = runningByName.get(entry.name);

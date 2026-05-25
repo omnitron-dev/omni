@@ -25,11 +25,46 @@ if (!config || !config.processId || !config.processPath) {
 }
 
 // Mock parentPort for compatibility with worker runtime
+// IPC backpressure tracking. `process.send` returns false when Node's
+// channel buffer is full (typically because the parent is paused or
+// the receiver hasn't drained recent frames). Pre-fix every postMessage
+// fired without a callback or buffer check, so a frame storm (metrics
+// drain, log forwarding) silently dropped messages — the parent would
+// see counters freeze with no indication why. Now we count drops and
+// log periodically so the symptom is observable.
+let droppedFrames = 0;
+let lastDropLogAt = 0;
+const DROP_LOG_INTERVAL_MS = 30_000;
+
+function noteDropped(reason: string, err?: Error): void {
+  droppedFrames++;
+  const now = Date.now();
+  if (now - lastDropLogAt < DROP_LOG_INTERVAL_MS) return;
+  lastDropLogAt = now;
+  process.stderr.write(
+    JSON.stringify({
+      level: 40,
+      time: new Date().toISOString(),
+      pid: process.pid,
+      msg: 'IPC frame dropped',
+      reason,
+      droppedTotal: droppedFrames,
+      ...(err && { err: { message: err.message, type: err.name } }),
+    }) + '\n',
+  );
+}
+
 const parentPort = {
   postMessage: (message: any) => {
-    if (process.send) {
-      process.send(message);
+    if (!process.send) return;
+    if (!process.connected) {
+      noteDropped('parent disconnected');
+      return;
     }
+    const accepted = process.send(message, (err) => {
+      if (err) noteDropped('callback error', err);
+    });
+    if (!accepted) noteDropped('channel full (process.send returned false)');
   },
   on: (event: string, handler: MessageHandler) => {
     if (event === 'message') {
@@ -45,9 +80,17 @@ const workerData = config;
 (global as any).parentPort = parentPort;
 (global as any).workerData = workerData;
 
-// Exit when parent process disconnects (prevents orphaned processes)
+// IPC disconnect handling. Pre-fix the worker called `process.exit(0)`,
+// which the supervisor reads as a clean stop (expected: true) — so an
+// IPC-channel break (parent killed -9, OS killed the socket, the
+// daemon crashed) looked indistinguishable from a successful
+// terminate. Now we exit with 130 (shell convention for "killed by
+// parent"), so the supervisor's crash path runs and respawns per
+// restart policy instead of marking the worker cleanly stopped and
+// going silent.
 process.on('disconnect', () => {
-  process.exit(0);
+  noteDropped('parent disconnected — terminating worker');
+  process.exit(130);
 });
 
 // Diagnostic catch-all. Operational errors (network/db disconnects)

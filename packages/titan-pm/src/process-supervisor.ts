@@ -25,6 +25,7 @@ import type {
   IHealthStatus,
 } from './types.js';
 import { SupervisionStrategy, RestartDecision } from './types.js';
+import { computeBackoff } from './backoff.js';
 
 import { SUPERVISOR_METADATA_KEY } from './decorators.js';
 
@@ -629,34 +630,14 @@ export class ProcessSupervisor extends EventEmitter {
    * sliding-window budget has time to trip.
    */
   private computeBackoffDelay(restartCount: number): number {
-    const cfg = this.options.backoff;
-    if (!cfg) {
-      // T#53 (scoped): the audit's "ignores backoff config" complaint
-      // is specifically about a configured backoff being silently
-      // skipped. With no backoff configured we keep the historical
-      // zero-delay behaviour — callers who care about respawn pacing
-      // must opt in via `options.backoff`. This avoids surprising
-      // existing tests/deployments that drove their own timing.
-      return 0;
-    }
-    const initial = cfg.initial ?? 300;
-    const max = cfg.max ?? 30_000;
-    const factor = cfg.factor ?? (cfg.type === 'linear' ? 1 : 2);
-    const n = Math.max(0, restartCount - 1);
-
-    let delay: number;
-    switch (cfg.type ?? 'exponential') {
-      case 'fixed':
-        delay = initial;
-        break;
-      case 'linear':
-        delay = initial + factor * n * initial;
-        break;
-      case 'exponential':
-      default:
-        delay = initial * Math.pow(factor, n);
-    }
-    return Math.min(delay, max);
+    // Delegate to the shared backoff library so supervisor +
+    // classic-mode + any other consumer use the same math. Pre-fix
+    // an inline copy here diverged from OrchestratorService's
+    // version (different `initial` defaults — 300 vs 1000 ms — so a
+    // classic-mode crash waited 3.3× longer than a bootstrap-mode
+    // crash for the same config).
+    if (!this.options.backoff) return 0;
+    return computeBackoff(restartCount, this.options.backoff);
   }
 
   private async restartAll(): Promise<void> {

@@ -30,6 +30,8 @@ import {
   SupervisionStrategy,
   ProcessLifecycleQueue,
   LifecyclePreempted,
+  computeBackoff,
+  isAlive,
   type ProcessManager,
   type ISupervisorConfig,
   type ISupervisorChildConfig,
@@ -2083,13 +2085,12 @@ export class OrchestratorService extends EventEmitter {
     attempt: number,
     backoff: { type?: string; initial?: number; max?: number; factor?: number }
   ): number {
-    const initial = backoff.initial ?? 1000;
-    const max = backoff.max ?? 30_000;
-    const factor = backoff.factor ?? 2;
-
-    if (backoff.type === 'exponential') return Math.min(initial * Math.pow(factor, attempt), max);
-    if (backoff.type === 'linear') return Math.min(initial * (attempt + 1), max);
-    return initial;
+    // Delegate to the shared backoff library in titan-pm. Pre-fix the
+    // inline impl here defaulted `initial=1000` while supervisor's
+    // copy defaulted to 300 — same config produced 3.3× longer
+    // delays in classic-mode than bootstrap-mode. Now both routes
+    // run the same math.
+    return computeBackoff(attempt + 1, backoff as Parameters<typeof computeBackoff>[1]);
   }
 
   /** Sample CPU/memory for a single OS process via `ps` (async — does not block event loop) */
@@ -2138,10 +2139,24 @@ export class OrchestratorService extends EventEmitter {
   // ============================================================================
 
   private toProcessInfo(handle: AppHandle): ProcessInfoDto {
+    // Ghost-online guard. The in-memory `handle.status` reflects the
+    // last event the supervisor observed. If a child died between
+    // the last sweep and now (kill -9 by an operator, OOM kill,
+    // container restart) the handle still claims 'online' until the
+    // next event lands. A cheap signal-0 verification at DTO-mapping
+    // time keeps `omnitron list` honest: when the OS reports the pid
+    // is gone, surface 'crashed' instead of lying to the operator.
+    // `isAlive` covers EPERM as alive (correct — process exists, we
+    // just can't signal it).
+    let status = handle.status;
+    if (status === 'online' && handle.pid != null && !isAlive(handle.pid)) {
+      status = 'crashed';
+    }
+
     const info: ProcessInfoDto = {
       name: handle.name,
       pid: handle.pid,
-      status: handle.status,
+      status,
       cpu: handle.cpu,
       memory: handle.memory,
       uptime: handle.uptime,

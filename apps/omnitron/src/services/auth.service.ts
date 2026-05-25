@@ -14,6 +14,8 @@ import { promisify } from 'node:util';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { OMNITRON_DB_TOKEN, JWT_SECRET_TOKEN } from '../shared/tokens.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -70,12 +72,19 @@ const JWT_EXPIRY = '1h';
 // Auth Service
 // =============================================================================
 
+@Injectable()
 export class AuthService {
   private readonly jwtSecret: Uint8Array;
 
+  // T-2 part 2 — @Inject + useClass replaces the prior useFactory.
+  // The jwtSecret string used to ride a non-DI ctor param; it now
+  // flows through JWT_SECRET_TOKEN registered as useValue in the
+  // module, so the framework reads the dependency contract from the
+  // decorator metadata. The DI guard catches both length AND
+  // order-swap drift in one path.
   constructor(
-    private readonly db: Kysely<OmnitronDatabase>,
-    jwtSecret?: string
+    @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
+    @Inject(JWT_SECRET_TOKEN) jwtSecret: string
   ) {
     // Derive JWT signing key from secret. The default string MUST
     // match the one TitanAuthModule uses for token verification (set
@@ -85,8 +94,7 @@ export class AuthService {
     // for callers to always pass the resolved secret; the default
     // here exists only as a fail-safe for unit tests that construct
     // AuthService directly.
-    const secret = jwtSecret ?? 'omnitron-dev-jwt-secret';
-    this.jwtSecret = new TextEncoder().encode(secret);
+    this.jwtSecret = new TextEncoder().encode(jwtSecret || 'omnitron-dev-jwt-secret');
   }
 
   // ===========================================================================

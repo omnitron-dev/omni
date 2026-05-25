@@ -12,6 +12,8 @@
 
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { ORCHESTRATOR_TOKEN, INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN } from '../shared/tokens.js';
 
 // =============================================================================
 // Types
@@ -113,9 +115,15 @@ function mapXecReport(report: XecHealthReport): HealthCheckResult[] {
 // Service
 // =============================================================================
 
+@Injectable()
 export class HealthCheckService {
+  // T-2 part 2 — late-binding InfrastructureService accessor lives
+  // behind INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN (useValue) so the
+  // circular dep stays decoupled but the framework still pins both
+  // ctor positions through @Inject metadata.
   constructor(
-    private readonly orchestrator: OrchestratorService,
+    @Inject(ORCHESTRATOR_TOKEN) private readonly orchestrator: OrchestratorService,
+    @Inject(INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN)
     private readonly getInfraService: () => InfrastructureService | null
   ) {}
 

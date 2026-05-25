@@ -15,6 +15,8 @@
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, INFRA_STATE_ACCESSOR_TOKEN } from '../shared/tokens.js';
 
 // =============================================================================
 // Types
@@ -136,13 +138,22 @@ function evaluateExpression(expr: string, ctx: EvalContext): { firing: boolean; 
 // Service
 // =============================================================================
 
+@Injectable()
 export class AlertService {
   private evaluationTimer: NodeJS.Timeout | null = null;
 
+  // T-2 part 2 — @Inject + useClass. The infra-state getter is
+  // injected via INFRA_STATE_ACCESSOR_TOKEN (useValue) so the
+  // circular dep with InfrastructureService stays late-bound, but
+  // the framework still validates every position via decorator
+  // metadata. Pre-fix the lambda was the third ctor arg with no
+  // type tag — silent swap risk with the orchestrator (also a ref-
+  // typed dep) was real.
   constructor(
-    private readonly db: Kysely<OmnitronDatabase>,
-    private readonly orchestrator: OrchestratorService,
-    private readonly infraState: () => Record<string, { status: string; health: string }>
+    @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
+    @Inject(ORCHESTRATOR_TOKEN) private readonly orchestrator: OrchestratorService,
+    @Inject(INFRA_STATE_ACCESSOR_TOKEN)
+    private readonly infraState: () => Record<string, { status: string; health: string }>,
   ) {}
 
   /**

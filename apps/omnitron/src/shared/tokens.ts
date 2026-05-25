@@ -78,6 +78,44 @@ export const INFRASTRUCTURE_SERVICE_TOKEN: Token<InfrastructureService> = create
 /** Project + Stack management service */
 export const PROJECT_SERVICE_TOKEN: Token<ProjectService> = createToken<ProjectService>('ProjectService');
 
+// =============================================================================
+// Config-value tokens (T-2 part 2)
+// =============================================================================
+//
+// Services that historically needed `useFactory` because their
+// constructors took config strings/numbers/lambdas alongside their
+// DI deps now consume those values via dedicated `useValue` tokens.
+// This unlocks the @Injectable + @Inject + useClass migration —
+// the framework reads ctor metadata directly, eliminating the
+// parallel inject:[] array drift surface.
+
+/** JWT signing secret used by the daemon's portal AuthService. */
+export const JWT_SECRET_TOKEN: Token<string> = createToken<string>('JwtSecret');
+/** Self-identifying node ID stamped on every fleet heartbeat. */
+export const FLEET_SELF_NODE_ID_TOKEN: Token<string | undefined> =
+  createToken<string | undefined>('FleetSelfNodeId');
+/** Passphrase + legacy file path for the encrypted secrets store. */
+export const SECRETS_PASSPHRASE_TOKEN: Token<string> = createToken<string>('SecretsPassphrase');
+export const SECRETS_LEGACY_PATH_TOKEN: Token<string | undefined> =
+  createToken<string | undefined>('SecretsLegacyPath');
+/**
+ * Late-binding accessor for InfrastructureService. AlertService and
+ * HealthCheckService consumed an `() => InfrastructureService | null`
+ * lambda historically to avoid a circular module dependency
+ * (alerts + health-check live in daemon-core; infrastructure-service
+ * depends on the orchestrator which depends on log-manager which
+ * may reach back into telemetry). The lambda is now an injectable
+ * token that resolves to a getter callable.
+ */
+export const INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN: Token<() => InfrastructureService | null> =
+  createToken<() => InfrastructureService | null>('InfrastructureServiceAccessor');
+/**
+ * Late-binding accessor for the live infra state snapshot used by
+ * AlertService's evaluation loop. Returns `Record<service, {status, health}>`.
+ */
+export const INFRA_STATE_ACCESSOR_TOKEN: Token<() => Record<string, { status: string; health: string }>> =
+  createToken<() => Record<string, { status: string; health: string }>>('InfraStateAccessor');
+
 /** SQLite storage for slave daemons (replaces OMNITRON_DB_TOKEN on slaves) */
 export { SlaveStorageService } from '../services/slave-storage.service.js';
 import type { SlaveStorageService } from '../services/slave-storage.service.js';

@@ -218,10 +218,24 @@ export class OrchestratorService extends EventEmitter {
   private static readonly POST_ONLINE_COOLDOWN_MS = 3_000;
 
   /**
-   * Orphan-process reaper. Lazily created on first `startAll` so unit
-   * tests that hit `startApp` directly don't get a periodic timer.
+   * Orphan-process reaper. Lazily created on first reconcile so unit
+   * tests that hit `startApp` directly don't get a periodic timer
+   * until the first real reconcile runs (which they bypass by
+   * stubbing `bootReconciled = true`).
    */
   private janitor: ProcessJanitor | null = null;
+
+  /**
+   * One-shot guard for cold-start reconciliation. T#63 — every code
+   * path that lands an app on this orchestrator goes through
+   * `ensureBootReconciled()`, regardless of whether the entry-point
+   * is `startAll` (daemon-config) or `startApp` (project/stack
+   * mode). Pre-T#63 the cold-start sweep only fired inside
+   * `startAll`, so project-mode boots silently inherited orphans
+   * from the previous daemon generation.
+   */
+  private bootReconciled = false;
+  private bootReconcilePromise: Promise<void> | null = null;
 
   /** Daemon's Netron instance for native service routing */
   private daemonNetron: Netron | null = null;
@@ -339,47 +353,84 @@ export class OrchestratorService extends EventEmitter {
     this.config = config;
   }
 
+  /**
+   * One-shot cold-start reconciliation: discover pre-existing managed
+   * processes, reap fork-workers left over from a previous daemon
+   * generation, and arm the periodic janitor sweep. Idempotent —
+   * concurrent callers join the in-flight promise; subsequent calls
+   * after success are no-ops.
+   *
+   * Called from BOTH `startAll` (top-level daemon-config boot) and
+   * `startApp` (project/stack mode boot), so every code path that
+   * lands an app on this orchestrator runs the cleanup. Pre-T#63 the
+   * cold-start sweep was gated on `startAll` and never ran in
+   * project mode, so an orphan from a previous daemon survived
+   * silently and held the listen port hostage from its successor.
+   */
+  private async ensureBootReconciled(config?: IEcosystemConfig): Promise<void> {
+    if (this.bootReconciled) return;
+    if (this.bootReconcilePromise) {
+      await this.bootReconcilePromise;
+      return;
+    }
+    this.bootReconcilePromise = (async () => {
+      // Discovery: surface OMNITRON_MANAGED-tagged processes that match
+      // a configured app so the operator can see what's about to be
+      // reaped (or — once the ChildContract handshake lands — adopted).
+      // P2-A in the audit.
+      try {
+        const discovered = discoverManagedProcesses();
+        const adopted: string[] = [];
+        const knownApps = new Set(config?.apps.map((a) => a.name) ?? []);
+        for (const proc of discovered) {
+          if (proc.ppid === process.pid) continue; // our own freshly-spawned child
+          const fqn = proc.fullyQualifiedName;
+          const bare = proc.appName;
+          if (knownApps.has(fqn) || knownApps.has(bare)) {
+            adopted.push(`${fqn}#${proc.pid}`);
+          }
+        }
+        if (adopted.length > 0) {
+          this.logger.warn(
+            { discovered: adopted.length, apps: adopted },
+            'Found pre-existing managed processes — they will be reaped by the janitor in 60s unless adopted',
+          );
+        }
+      } catch (err) {
+        this.logger.debug(
+          { err: (err as Error).message },
+          'Process discovery failed — proceeding without reconcile',
+        );
+      }
+
+      // Reap any fork-workers left over from a previous daemon BEFORE
+      // launching apps. Without this, a hard-killed daemon's children
+      // are still alive (now reparented to init); they hold DB
+      // connections and listen ports that the new apps will fight
+      // for. The reap is bounded by `gracefulMs` (default 3s).
+      await this.ensureJanitor().coldStartSweep();
+
+      // Arm the periodic sweep so runtime leaks from partially-failed
+      // restart cycles (esbuild-rebuild → spawn-fail → orphan) get
+      // collected on every interval.
+      this.ensureJanitor().start();
+    })();
+    try {
+      await this.bootReconcilePromise;
+      this.bootReconciled = true;
+    } finally {
+      this.bootReconcilePromise = null;
+    }
+  }
+
   async startAll(config: IEcosystemConfig): Promise<void> {
     this.config = config;
 
-    // Cross-daemon-restart reconciliation. After a hard restart
-    // (daemon crash, kill -9, host reboot recovery), in-memory
-    // handles are gone but the children the previous daemon spawned
-    // may still be alive. Discovery walks the OS process tree for
-    // env-tagged Omnitron processes — when one matches a configured
-    // app whose effective name we recognise, log it so the operator
-    // sees the adoption opportunity. Full re-adoption (rebuilding
-    // the supervisor's child map) requires the typed ChildContract
-    // snapshot-request handshake, which is a follow-up; for now
-    // the discovery surfaces the gap visibly instead of letting the
-    // janitor reap them as "orphans" 60s later. P2-A in the audit.
-    try {
-      const discovered = discoverManagedProcesses();
-      const adopted: string[] = [];
-      const knownApps = new Set(config.apps.map((a) => a.name));
-      for (const proc of discovered) {
-        if (proc.ppid === process.pid) continue; // our own freshly-spawned child
-        const fqn = proc.fullyQualifiedName;
-        const bare = proc.appName;
-        if (knownApps.has(fqn) || knownApps.has(bare)) {
-          adopted.push(`${fqn}#${proc.pid}`);
-        }
-      }
-      if (adopted.length > 0) {
-        this.logger.warn(
-          { discovered: adopted.length, apps: adopted },
-          'Found pre-existing managed processes — they will be reaped by the janitor in 60s unless adopted',
-        );
-      }
-    } catch (err) {
-      this.logger.debug({ err: (err as Error).message }, 'Process discovery failed — proceeding without reconcile');
-    }
-
-    // Reap any fork-workers left over from a previous daemon BEFORE
-    // launching apps. Without this, a hard-killed daemon's children
-    // are still alive (now adopted by init); they hold DB connections
-    // and sockets that the new apps will fight for.
-    await this.ensureJanitor().coldStartSweep();
+    // Cold-start orphan reap + periodic janitor arming. Idempotent —
+    // safe to call on every boot path. Project-mode flows that call
+    // `startApp` directly trigger the same one-shot reconcile, so
+    // every boot path lands in the same post-condition. (T#63)
+    await this.ensureBootReconciled(config);
 
     // Dependency-aware skip: if app A fails to start, every app that
     // declares A in `dependsOn` (transitively) is skipped instead of
@@ -422,10 +473,8 @@ export class OrchestratorService extends EventEmitter {
       );
     }
 
-    // Periodic sweep handles runtime leaks from partially-failed
-    // restart cycles (esbuild-rebuild → spawn-fail → orphan).
-    this.ensureJanitor().start();
-
+    // Periodic sweep was armed by `ensureBootReconciled` above —
+    // no second call needed here.
     this.startMetricsPolling(config.monitoring.metrics.interval);
     this.persistState();
   }
@@ -466,6 +515,15 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
+    // T#63: run the one-shot cold-start reconcile (orphan reap +
+    // janitor arming) before ANY app spawns. Project-mode boots flow
+    // through `projectService.startStack → orchestrator.startApp`
+    // and historically bypassed the reap entirely — a previous
+    // daemon's children (now reparented to init) kept their HTTP
+    // listen ports and the fresh child failed to bind silently.
+    // No-op after first call thanks to `bootReconciled`.
+    await this.ensureBootReconciled(config);
+
     // Defensive auto-namespacing — promotes a bare entry.name to the
     // canonical `${project}/${stack}/${name}` form when the env carries
     // OMNITRON_PROJECT + OMNITRON_STACK. Catches every code path that

@@ -32,11 +32,23 @@ const noopLogger: any = {
   child: () => noopLogger,
 };
 
+// Janitor stub helper — T#63's `ensureBootReconciled` now fires
+// before `startApp` enters its body, so the test must short-circuit
+// the real `ps` shell-out and periodic-timer arming.
+function stubJanitor(svc: OrchestratorService) {
+  (svc as any).janitor = {
+    coldStartSweep: vi.fn().mockResolvedValue(0),
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
+}
+
 describe('OrchestratorService.startApp — per-name coalescing (T#57)', () => {
   it('coalesces concurrent calls for the same app into a single launch', async () => {
     const stateStore = { save: () => undefined, load: () => null, clear: () => undefined } as unknown as StateStore;
     const pm = {} as ProcessManager;
     const svc = new OrchestratorService(noopLogger, pm, stateStore, process.cwd());
+    stubJanitor(svc);
 
     // Replace the heavy internal launch with a controllable stub.
     // We can't run a real launch here without spinning up a child
@@ -90,6 +102,7 @@ describe('OrchestratorService.startApp — per-name coalescing (T#57)', () => {
     const stateStore = { save: () => undefined, load: () => null, clear: () => undefined } as unknown as StateStore;
     const pm = {} as ProcessManager;
     const svc = new OrchestratorService(noopLogger, pm, stateStore, process.cwd());
+    stubJanitor(svc);
 
     const failingInternal = vi.fn().mockRejectedValueOnce(new Error('boom'));
     (svc as any).startAppInternal = failingInternal;

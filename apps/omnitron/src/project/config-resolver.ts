@@ -27,6 +27,7 @@ import type {
 } from '../config/types.js';
 import type { IServiceRequirement, IResolvedServiceAddress } from '../infrastructure/types.js';
 import type { StackPortAllocation } from '../infrastructure/stack-infra-manager.js';
+import { getEnv } from '../shared/env-config.js';
 
 // =============================================================================
 // Types
@@ -556,7 +557,7 @@ function resolveStackAddresses(
   // The env-var fallback means production deployments can override without touching config files.
   const defaultPgPassword =
     (typeof infra?.postgres?.password === 'string' ? infra.postgres.password : undefined) ??
-    process.env['POSTGRES_PASSWORD'] ??
+    getEnv().POSTGRES_PASSWORD ??
     'postgres';
   const defaultMinioAccessKey =
     infra?.minio?.accessKey ?? process.env['MINIO_ACCESS_KEY'] ?? 'minioadmin';
@@ -566,7 +567,7 @@ function resolveStackAddresses(
     'minioadmin';
   const defaultRedisPassword =
     (typeof infra?.redis?.password === 'string' ? infra.redis.password : undefined) ??
-    process.env['REDIS_PASSWORD'];
+    getEnv().REDIS_PASSWORD;
 
   if (stackConfig.type === 'local') {
     // Local stack: all services on localhost with port allocation (or defaults).
@@ -577,7 +578,7 @@ function resolveStackAddresses(
       postgres: {
         host: 'localhost',
         port: portAllocation?.postgresPort ?? infra?.postgres?.port ?? 5432,
-        user: infra?.postgres?.user ?? process.env['POSTGRES_USER'] ?? 'postgres',
+        user: infra?.postgres?.user ?? getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: {
@@ -599,7 +600,7 @@ function resolveStackAddresses(
       postgres: {
         host: node.host,
         port: 5432,
-        user: process.env['POSTGRES_USER'] ?? 'postgres',
+        user: getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: { host: node.host, port: 6379, password: defaultRedisPassword },
@@ -620,7 +621,7 @@ function resolveStackAddresses(
       postgres: {
         host: dbNode?.host ?? 'localhost',
         port: dbNode?.port ?? 5432,
-        user: process.env['POSTGRES_USER'] ?? 'postgres',
+        user: getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: {
@@ -637,7 +638,7 @@ function resolveStackAddresses(
     postgres: {
       host: 'localhost',
       port: 5432,
-      user: process.env['POSTGRES_USER'] ?? 'postgres',
+      user: getEnv().POSTGRES_USER ?? 'postgres',
       password: defaultPgPassword,
     },
     redis: { host: 'localhost', port: 6379, password: defaultRedisPassword },

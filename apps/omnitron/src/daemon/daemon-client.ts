@@ -24,6 +24,7 @@ import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { getEnv } from '../shared/env-config.js';
 import type {
   IDaemonService,
   ProcessInfoDto,
@@ -300,7 +301,7 @@ export class RemoteDaemonClient {
 // =============================================================================
 
 export function createDaemonClient(socketPath?: string): DaemonClient {
-  return new DaemonClient(socketPath ?? process.env['OMNITRON_SOCKET'] ?? DEFAULT_SOCKET_PATH);
+  return new DaemonClient(socketPath ?? getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH);
 }
 
 export function createRemoteDaemonClient(host: string, port: number): RemoteDaemonClient {

@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { getEnv } from '../shared/env-config.js';
 
 /**
  * `omnitron kb mcp` — Start MCP server for AI assistants.
@@ -25,7 +26,7 @@ export async function kbMcpCommand(): Promise<void> {
       '.omnitron',
       'kb.db',
     );
-    const root = process.env['OMNITRON_ROOT'] ?? process.cwd();
+    const root = getEnv().OMNITRON_ROOT ?? process.cwd();
 
     const store = new SurrealKbStore({ url: `surrealkv://${dbPath}` });
     const kb = new KnowledgeBase({ store, root });
@@ -82,7 +83,7 @@ export async function kbIndexCommand(options: {
     '.omnitron',
     'kb.db',
   );
-  const root = process.env['OMNITRON_ROOT'] ?? process.cwd();
+  const root = getEnv().OMNITRON_ROOT ?? process.cwd();
 
   const s = spinner();
   s.start('Initializing knowledge base...');
@@ -125,7 +126,7 @@ export async function kbStatusCommand(): Promise<void> {
     '.omnitron',
     'kb.db',
   );
-  const root = process.env['OMNITRON_ROOT'] ?? process.cwd();
+  const root = getEnv().OMNITRON_ROOT ?? process.cwd();
 
   const store = new SurrealKbStore({ url: `surrealkv://${dbPath}` });
   const kb = new KnowledgeBase({ store, root });
@@ -163,7 +164,7 @@ export async function kbQueryCommand(question: string): Promise<void> {
     '.omnitron',
     'kb.db',
   );
-  const root = process.env['OMNITRON_ROOT'] ?? process.cwd();
+  const root = getEnv().OMNITRON_ROOT ?? process.cwd();
 
   const store = new SurrealKbStore({ url: `surrealkv://${dbPath}` });
   const kb = new KnowledgeBase({ store, root });

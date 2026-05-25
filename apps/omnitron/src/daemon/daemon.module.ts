@@ -64,6 +64,7 @@ import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import { expandPath } from '../shared/paths.js';
+import { isProduction } from '../shared/env-config.js';
 
 /**
  * Writable stream that can reopen its underlying file descriptor.
@@ -177,7 +178,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
   // dev mode (which uses the default) was silently broken.
   const resolvedJwtSecret: string = (() => {
     const jwtSecret = dc.auth?.jwtSecret;
-    if (!jwtSecret && process.env['NODE_ENV'] === 'production') {
+    if (!jwtSecret && isProduction()) {
       throw new Error('auth.jwtSecret must be configured in production mode');
     }
     return jwtSecret ?? 'omnitron-dev-jwt-secret';
@@ -434,7 +435,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         {
           useFactory: (store: DaemonStateStore) => {
             const secretsPassphrase = dc.secrets?.passphrase;
-            if (!secretsPassphrase && process.env['NODE_ENV'] === 'production') {
+            if (!secretsPassphrase && isProduction()) {
               throw new Error('secrets.passphrase must be configured in production mode');
             }
             // Legacy file path is passed through so the one-shot

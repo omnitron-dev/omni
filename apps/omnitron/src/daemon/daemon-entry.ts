@@ -13,6 +13,7 @@ import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig } from '../commands/up.js';
+import { getEnv } from '../shared/env-config.js';
 
 /** Load config from a registry config path, falling back to CWD or defaults */
 async function loadConfigSafe(configPath: string | null, cwd: string) {
@@ -27,7 +28,8 @@ async function loadConfigSafe(configPath: string | null, cwd: string) {
 }
 
 async function main() {
-  const cwd = process.env['OMNITRON_CWD'] ?? process.cwd();
+  const env = getEnv();
+  const cwd = env.OMNITRON_CWD ?? process.cwd();
   process.chdir(cwd);
 
   const registry = ProjectRegistry.open();
@@ -50,9 +52,9 @@ async function main() {
 
   const daemon = new OmnitronDaemon();
   await daemon.start(config, {
-    noInfra: process.env['OMNITRON_NO_INFRA'] === '1',
-    noWatch: process.env['OMNITRON_NO_WATCH'] === '1',
-    watch: process.env['OMNITRON_NO_WATCH'] !== '1',
+    noInfra: env.OMNITRON_NO_INFRA,
+    noWatch: env.OMNITRON_NO_WATCH,
+    watch: !env.OMNITRON_NO_WATCH,
   }, dc);
 }
 

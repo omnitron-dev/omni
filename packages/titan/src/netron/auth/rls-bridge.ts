@@ -22,15 +22,40 @@ export interface AuthToRLSOptions {
 }
 
 /**
- * Map a Netron AuthContext to a @kysera/rls RLSAuthContext
+ * Map a Netron AuthContext to a @kysera/rls RLSAuthContext.
+ *
+ * The JWT payload (`auth.claims`) is merged into the RLS
+ * `attributes` field alongside `auth.metadata` so downstream
+ * readers reconstructing an IAuthContext via `getCurrentAuth()`
+ * see the original custom claims (username, displayName,
+ * avatarUrl, etc.). Skipping the claims previously meant
+ * `username` was lost on every HTTP-RPC call and forced the
+ * messaging identity service to round-trip main for any user
+ * whose identity row had not been cached yet — manifesting as
+ * `IdentityResolveError: main unreachable or user not found`
+ * on first sign-up. Metadata wins on collision (titan-auth's
+ * explicit per-request metadata is more authoritative than
+ * static JWT claims).
+ *
+ * The Netron `AuthContext` interface doesn't formally declare
+ * `claims`, but `createSharedSessionAuthManager` attaches the
+ * raw JWT payload there at runtime so downstream consumers
+ * (messaging's `readProfileClaims`, etc.) can read it via the
+ * titan-auth `IAuthContext` shape they use.
  */
 export function mapAuthToRLSAuthContext(auth: AuthContext, options?: AuthToRLSOptions): RLSAuthContext {
+  const claims = (auth as AuthContext & { claims?: Record<string, unknown> }).claims;
+  const metadata = auth.metadata as Record<string, unknown> | undefined;
+  const attributes: Record<string, unknown> | undefined =
+    claims || metadata
+      ? { ...(claims ?? {}), ...(metadata ?? {}) }
+      : undefined;
   return {
     userId: auth.userId,
     roles: auth.roles,
     permissions: auth.permissions,
     tenantId: options?.defaultTenantId,
-    attributes: auth.metadata as Record<string, unknown> | undefined,
+    attributes,
     isSystem: false,
   };
 }

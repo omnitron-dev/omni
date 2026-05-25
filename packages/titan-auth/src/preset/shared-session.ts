@@ -447,6 +447,15 @@ export function createSharedSessionAuthManager(
             ? [payload['role'] as string]
             : [];
 
+      // Attach the raw payload as `claims` so downstream consumers
+      // (titan-auth IAuthContext readers, messaging's
+      // `readProfileClaims`, etc.) can read JWT custom claims —
+      // `username`, `displayName`, `avatarUrl`, etc. — without a
+      // second main RTT. Stripping these here previously meant the
+      // messaging identity service fell through to `ensureIdentity`
+      // for every fresh user, surfacing as
+      // `cannot resolve canonical username: main unreachable or
+      // user not found` on first sign-up.
       return {
         userId: sub,
         roles,
@@ -458,7 +467,8 @@ export function createSharedSessionAuthManager(
           isServiceRole:
             roles.includes('service_role') || payload['role'] === 'service_role',
         },
-      };
+        claims: payload as unknown as Record<string, unknown>,
+      } as unknown as AuthContext;
     },
 
     // When cnf.fp is enforced, the AuthenticationManager-level cache

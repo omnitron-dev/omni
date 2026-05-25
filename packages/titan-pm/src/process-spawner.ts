@@ -320,14 +320,53 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
         }
       }, GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT);
 
-      // Final timeout - resolve even if process didn't exit cleanly
+      // Final timeout — resolve even if process didn't exit cleanly,
+      // but T#65: VERIFY whether the child is actually dead after
+      // the SIGKILL ladder. Pre-T#65 we'd resolve silently with just
+      // a 'process may be zombie' log, leaving callers (orchestrator,
+      // supervisor) thinking the kill worked — and the orphan held
+      // its listen port indefinitely. Now we probe the PID with
+      // signal 0 and, if still alive, escalate to one more SIGKILL
+      // and surface the leak as a structured error so the operator
+      // sees something is wrong (and downstream paths can route to
+      // the janitor's cold-start sweep).
       finalTimer = setTimeout(
         () => {
-          if (!resolved) {
-            cleanup();
-            this.logger.error({ workerId: this.id }, 'Process termination timeout - process may be zombie');
-            resolve(); // Resolve anyway to not block shutdown
+          if (resolved) return;
+          cleanup();
+          if (child.pid == null) {
+            // Child never had a pid — nothing to verify.
+            resolve();
+            return;
           }
+          let stillAlive = false;
+          try {
+            process.kill(child.pid, 0);
+            stillAlive = true;
+          } catch (err) {
+            // ESRCH = process gone (the expected case after SIGKILL).
+            // EPERM = exists but we can't signal it; treat as alive.
+            stillAlive = (err as NodeJS.ErrnoException).code === 'EPERM';
+          }
+          if (!stillAlive) {
+            resolve();
+            return;
+          }
+          // Surviving SIGKILL is rare but possible (uninterruptible
+          // syscall, kernel hang, PID reused by an unrelated process
+          // we shouldn't touch). Send one more SIGKILL as a last
+          // attempt; either way, log a structured error so the
+          // condition is observable.
+          this.logger.error(
+            { workerId: this.id, pid: child.pid },
+            'Process survived SIGKILL — escalating one more SIGKILL and logging the leak',
+          );
+          try {
+            process.kill(child.pid, 'SIGKILL');
+          } catch {
+            // Best-effort — the kernel will reap soon or never.
+          }
+          resolve();
         },
         GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT + SIGKILL_TIMEOUT
       );

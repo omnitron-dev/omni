@@ -28,6 +28,8 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import {
   PoolStrategy,
   SupervisionStrategy,
+  ProcessLifecycleQueue,
+  LifecyclePreempted,
   type ProcessManager,
   type ISupervisorConfig,
   type ISupervisorChildConfig,
@@ -95,7 +97,7 @@ function mapStrategy(strategy: string): SupervisionStrategy {
  *   effectiveAppName('paysys')           === 'paysys'
  *   effectiveAppName('a/b/c/paysys')     === 'paysys'  (last segment)
  */
-function effectiveAppName(key: string): string {
+export function effectiveAppName(key: string): string {
   const idx = key.lastIndexOf('/');
   return idx >= 0 ? key.slice(idx + 1) : key;
 }
@@ -139,6 +141,25 @@ export class OrchestratorService extends EventEmitter {
    * for the same name isn't permanently locked out.
    */
   private readonly startingApps = new Map<string, Promise<AppHandle>>();
+
+  /**
+   * Per-app async serial-execution queue covering start / stop / restart
+   * / crash-restart-timer (P0-E + P0-I + P2-B in the audit). Pre-this-
+   * queue each path had its own coalescer:
+   *   - startingApps: same-name start coalescing only — `stopApp` did
+   *     NOT consult it, so stop racing in-flight start left an orphan
+   *     supervisor when stop arrived before start wrote childProcess.
+   *   - restartCoalescer: same-name restart coalescing; independent of
+   *     stop+start.
+   *   - handleClassicCrash setTimeout: a raw timer that could fire
+   *     during the `await stopChild(...)` window and spawn a zombie
+   *     against an app the operator just stopped.
+   * The queue collapses all four into one primitive ordered by
+   * priority (stop > restart > start > crash-restart). The same-key
+   * mutex means stop ALWAYS observes a completed start, and an
+   * explicit stop ALWAYS preempts a pending crash-restart timer.
+   */
+  private readonly lifecycleQueue = new ProcessLifecycleQueue();
   private config: IEcosystemConfig | null = null;
   private readonly cwd: string;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -299,6 +320,22 @@ export class OrchestratorService extends EventEmitter {
   // Lifecycle
   // ============================================================================
 
+  /**
+   * Refresh the orchestrator's view of the ecosystem config. Called
+   * from `daemon.reloadConfig` so a subsequent `restartApp` reads the
+   * new entry definition (mode, env, dependsOn, restart policy)
+   * instead of the stale copy captured at first `startAll`. Pre-fix
+   * the two refs diverged silently after every reload — operators
+   * editing ecosystem.config.ts and running `omnitron reload`
+   * believed the daemon picked up the changes; in fact only daemon's
+   * own RPC service did, and individual app restarts kept running
+   * against the pre-reload definition until the daemon itself
+   * restarted. P0-G in the audit.
+   */
+  setConfig(config: IEcosystemConfig): void {
+    this.config = config;
+  }
+
   async startAll(config: IEcosystemConfig): Promise<void> {
     this.config = config;
 
@@ -400,19 +437,19 @@ export class OrchestratorService extends EventEmitter {
     //   - direct CLI `omnitron start <name>` (no stack context)
     //   - legacy ecosystem configs without per-app namespace
     //   - daemon startAll() flows over a not-yet-namespaced config
-    //
-    // Without this, bare-name handles slip through and become invisible
-    // to ProjectService.toStackInfo's prefix-based lookup, leaving the
-    // webapp showing a perfectly healthy app as "stopped". The dedup
-    // logic further down in startAppInternal then has the correct
-    // canonical name to compare against existing bare handles.
     entry = ensureNamespacedEntry(entry);
     const inflight = this.startingApps.get(entry.name);
     if (inflight) {
       this.logger.debug({ app: entry.name }, 'Coalescing concurrent startApp into in-flight launch (T#57)');
       return inflight;
     }
-    const promise = this.startAppInternal(entry, config).finally(() => {
+    // Serialise against stop/restart for the same app via the
+    // lifecycle queue. A stopApp arriving while this start is queued
+    // (or in-flight) now waits its turn instead of racing through
+    // and leaving an orphan supervisor.
+    const promise = this.lifecycleQueue.enqueue(entry.name, 'start', () =>
+      this.startAppInternal(entry, config),
+    ).finally(() => {
       this.startingApps.delete(entry.name);
     });
     this.startingApps.set(entry.name, promise);
@@ -521,32 +558,34 @@ export class OrchestratorService extends EventEmitter {
 
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
     const canonical = this.resolveAppName(name) ?? name;
-    const handle = this.handles.get(canonical);
-    if (!handle || handle.status === 'stopped') return;
+    return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
+      const handle = this.handles.get(canonical);
+      if (!handle || handle.status === 'stopped') return;
 
-    handle.markStopping();
+      handle.markStopping();
 
-    // Unexpose topology services from daemon Netron before stopping processes
-    if (handle.serviceRouter) {
-      try {
-        for (const svcName of handle.serviceRouter.getServiceNames()) {
-          await handle.serviceRouter.unexposeService(svcName);
+      // Unexpose topology services from daemon Netron before stopping processes
+      if (handle.serviceRouter) {
+        try {
+          for (const svcName of handle.serviceRouter.getServiceNames()) {
+            await handle.serviceRouter.unexposeService(svcName);
+          }
+        } catch {
+          // Best-effort cleanup
         }
-      } catch {
-        // Best-effort cleanup
+        handle.serviceRouter = null;
       }
-      handle.serviceRouter = null;
-    }
 
-    if (handle.mode === 'bootstrap' && handle.supervisor) {
-      await handle.supervisor.stop();
-    } else if (handle.childProcess) {
-      await this.stopChildProcess(handle, force, timeout);
-    }
+      if (handle.mode === 'bootstrap' && handle.supervisor) {
+        await handle.supervisor.stop();
+      } else if (handle.childProcess) {
+        await this.stopChildProcess(handle, force, timeout);
+      }
 
-    handle.markStopped();
-    this.persistState();
-    this.logger.info({ app: name }, 'App stopped');
+      handle.markStopped();
+      this.persistState();
+      this.logger.info({ app: name }, 'App stopped');
+    });
   }
 
   async stopAll(force = false): Promise<number> {
@@ -635,7 +674,23 @@ export class OrchestratorService extends EventEmitter {
   private async restartAppCoalesced(name: string, fromExternal: boolean): Promise<AppHandle> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
-    if (!handle) throw new Error(`Unknown app: ${name}`);
+    // P1-F — fall through to startApp when there's no live handle but
+    // the ecosystem config declares the app. Operators expect
+    // `omnitron restart foo` to work even when `foo` was never started
+    // (or was stopped, or crashed and was reaped). Previously this
+    // threw "Unknown app", forcing the operator to first run start
+    // explicitly.
+    if (!handle) {
+      const effective = effectiveAppName(name);
+      const entry = this.config?.apps.find(
+        (a) => a.name === name || a.name === effective || effectiveAppName(a.name) === effective,
+      );
+      if (entry) {
+        this.logger.info({ app: name }, 'restartApp: no live handle — falling through to startApp');
+        return this.startApp(entry);
+      }
+      throw new Error(`Unknown app: ${name}`);
+    }
     name = canonical;
 
     const state = this.getCoalescerState(name);
@@ -1877,14 +1932,34 @@ export class OrchestratorService extends EventEmitter {
   private async stopChildProcess(handle: AppHandle, force: boolean, timeout: number): Promise<void> {
     const child = handle.childProcess;
     if (!child || !child.pid) return;
+    const pid = child.pid;
+
+    // P0-D — Signal the whole process group, not just the direct
+    // child. classic-launcher spawns with `detached: true` so the
+    // child becomes group leader (pgid === pid). `process.kill(-pid)`
+    // delivers the signal to every process in the group, reaping
+    // grandchildren (ffmpeg, docker, worker pools …) that ignore the
+    // direct-child kill. Falls back to `child.kill` when the negative-
+    // pid call fails (test environments, restricted permissions, the
+    // child wasn't started detached — bootstrap-mode currently isn't).
+    const sendSignal = (sig: NodeJS.Signals): void => {
+      try {
+        process.kill(-pid, sig);
+        return;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ESRCH' && code !== 'EPERM') {
+          // ESRCH/EPERM = group already gone or not a group leader.
+          // Anything else (EINVAL etc.) → log via best-effort.
+          this.logger.debug({ app: handle.name, pid, sig, code }, 'process.kill(-pid) fallback');
+        }
+      }
+      try { child.kill(sig); } catch { /* best-effort */ }
+    };
 
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          // SIGKILL send is best-effort
-        }
+        sendSignal('SIGKILL');
         resolve();
       }, timeout);
 
@@ -1893,12 +1968,7 @@ export class OrchestratorService extends EventEmitter {
         resolve();
       });
 
-      try {
-        child.kill(force ? 'SIGKILL' : 'SIGTERM');
-      } catch {
-        clearTimeout(timer);
-        resolve();
-      }
+      sendSignal(force ? 'SIGKILL' : 'SIGTERM');
     });
   }
 
@@ -1921,18 +1991,53 @@ export class OrchestratorService extends EventEmitter {
     const delay = this.calculateBackoff(handle.restarts, backoff);
     this.logger.info({ app: entry.name, delay, attempt: handle.restarts + 1 }, 'Scheduling restart');
 
-    const timer = setTimeout(async () => {
-      // Guard: don't restart if orchestrator was stopped during backoff
-      if (handle.status === 'stopping' || handle.status === 'stopped') return;
-      try {
-        handle.status = 'stopped';
-        await this.startApp(entry, config);
-      } catch (err) {
-        this.logger.error({ app: entry.name, error: (err as Error).message }, 'Restart failed');
-      }
-    }, delay);
+    // P0-I — schedule the crash-restart through the lifecycle queue
+    // so an explicit stop preempts the pending restart before it
+    // fires. The setTimeout is still the timing source, but the
+    // queue.enqueue with `onPreempt` guarantees the timer is cleared
+    // (and the promise rejected with LifecyclePreempted) the moment a
+    // higher-priority op for the same app arrives. Pre-fix the timer
+    // could fire during stopApp's `await stopChild(...)` window and
+    // spawn a zombie under the same handle.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const restartPromise = this.lifecycleQueue.enqueue(
+      entry.name,
+      'crash-restart',
+      () => new Promise<void>((resolve, reject) => {
+        timer = setTimeout(async () => {
+          timer = null;
+          // Guard: don't restart if orchestrator was stopped during backoff
+          if (handle.status === 'stopping' || handle.status === 'stopped') {
+            resolve();
+            return;
+          }
+          try {
+            handle.status = 'stopped';
+            await this.startApp(entry, config);
+            resolve();
+          } catch (err) {
+            this.logger.error({ app: entry.name, error: (err as Error).message }, 'Restart failed');
+            reject(err);
+          }
+        }, delay);
+      }),
+      () => {
+        // onPreempt — explicit stop / restart arrived. Cancel the
+        // pending timer so the restart never fires.
+        if (timer) { clearTimeout(timer); timer = null; }
+      },
+    );
 
-    // Allow cleanup on explicit stop
+    // Swallow LifecyclePreempted — that's the explicit-stop happy
+    // path, not an error. Anything else gets logged.
+    restartPromise.catch((err) => {
+      if (err instanceof LifecyclePreempted) return;
+      this.logger.warn({ app: entry.name, err: (err as Error).message }, 'Crash restart task rejected');
+    });
+
+    // Legacy field — callers still poke handle.crashRestartTimer to
+    // check "is a restart pending"; keep it in sync with the queued
+    // timer so existing inspect / status code paths don't break.
     handle.crashRestartTimer = timer;
   }
 

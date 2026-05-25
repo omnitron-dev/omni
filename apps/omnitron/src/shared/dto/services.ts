@@ -31,7 +31,7 @@ export interface IDaemonService {
   // --- Process Management ---
   startApp(data: { name: string }): Promise<ProcessInfoDto>;
   startAll(): Promise<ProcessInfoDto[]>;
-  stopApp(data: { name: string; force?: boolean; timeout?: number }): Promise<{ success: boolean }>;
+  stopApp(data: { name: string; force?: boolean; timeout?: number }): Promise<{ success: boolean; error?: string }>;
   stopAll(data: { force?: boolean }): Promise<{ count: number }>;
   restartApp(data: { name: string }): Promise<ProcessInfoDto>;
   restartAll(): Promise<ProcessInfoDto[]>;

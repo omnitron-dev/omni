@@ -54,6 +54,18 @@ export class LogManager {
   private readonly perApp: Map<string, Partial<LogRotationConfig>>;
   private rotationCheckTimer: NodeJS.Timeout | null = null;
 
+  /**
+   * Async write-stream cache keyed by absolute log path. Pre-fix
+   * `appendToFile` issued `fs.appendFileSync` per line — under a
+   * managed app spamming 100k log lines/sec the daemon's event loop
+   * blocked on disk every iteration; `omnitron list` timed out, WS
+   * clients disconnected, the file watcher debounce fired repeatedly.
+   * Streams hand the writes to Node's threadpool with native
+   * backpressure (`write()` returns false when the buffer fills,
+   * callers can pause or queue). P1-K.
+   */
+  private readonly writeStreams = new Map<string, fs.WriteStream>();
+
   constructor(
     config: LogManagerConfig | LegacyLogManagerConfig,
     private readonly orchestrator: OrchestratorService,
@@ -86,6 +98,12 @@ export class LogManager {
       clearInterval(this.rotationCheckTimer);
       this.rotationCheckTimer = null;
     }
+    // Flush + close every active write stream so no buffered log
+    // lines are lost on daemon shutdown. `end()` is idempotent.
+    for (const stream of this.writeStreams.values()) {
+      try { stream.end(); } catch { /* best-effort */ }
+    }
+    this.writeStreams.clear();
   }
 
   // -------------------------------------------------------------------------
@@ -160,17 +178,50 @@ export class LogManager {
    * - If the line is error or fatal, also writes to `error.log`.
    */
   appendToFile(appName: string, line: string): void {
-    // All levels → app.log
+    // All levels → app.log (async stream, native backpressure)
     const appPath = this.getLogFilePath(appName, 'app');
-    fs.appendFileSync(appPath, line + '\n', 'utf-8');
+    this.writeLine(appPath, line);
     this.checkAndRotate(appName, 'app', appPath);
 
     // error + fatal → error.log
     if (this.isErrorOrFatal(line)) {
       const errorPath = this.getLogFilePath(appName, 'error');
-      fs.appendFileSync(errorPath, line + '\n', 'utf-8');
+      this.writeLine(errorPath, line);
       this.checkAndRotate(appName, 'error', errorPath);
     }
+  }
+
+  /**
+   * Async append to a cached write stream. `write()` returns false
+   * when Node's internal buffer is full — we don't pause callers
+   * (logs are fire-and-forget), but the kernel-level buffer absorbs
+   * bursts and the event loop is never blocked on the syscall.
+   */
+  private writeLine(filePath: string, line: string): void {
+    let stream = this.writeStreams.get(filePath);
+    if (!stream) {
+      // Lazy-create the dir + stream. `flags: 'a'` = append + create.
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      stream = createWriteStream(filePath, { flags: 'a', encoding: 'utf-8' });
+      stream.on('error', (err) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[LogManager] write stream error on ${filePath}: ${err.message}`);
+        this.writeStreams.delete(filePath);
+      });
+      this.writeStreams.set(filePath, stream);
+    }
+    stream.write(line + '\n');
+  }
+
+  /**
+   * Close + drop a cached stream. Called before rotating so the
+   * `renameSync` doesn't race a live writer.
+   */
+  private closeStream(filePath: string): void {
+    const stream = this.writeStreams.get(filePath);
+    if (!stream) return;
+    this.writeStreams.delete(filePath);
+    stream.end();
   }
 
   /**
@@ -233,6 +284,12 @@ export class LogManager {
     const basePath = this.getLogFilePath(appName, type);
     const config = this.getRotationConfig(appName);
     const ext = config.compress ? '.gz' : '';
+
+    // Close any open write stream pointing at `basePath` before the
+    // rename, so the stream's fd doesn't keep writing into the now-
+    // .1 file. The next writeLine() lazily re-opens a fresh stream
+    // on the new `basePath`.
+    this.closeStream(basePath);
 
     // Shift rotated files: .{maxFiles-1} removed, .{i-1} → .{i}
     for (let i = config.maxFiles - 1; i >= 1; i--) {

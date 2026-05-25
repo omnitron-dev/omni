@@ -1,11 +1,30 @@
 /**
- * State Store — Persist/recover process state across daemon restarts
+ * State Store — Persist/recover process state across daemon restarts.
+ *
+ * T-7 migration (this file): backing storage switched from a single
+ * atomically-renamed JSON file to a SQLite-backed `state_kv` row via
+ * DaemonStateStore. The new path:
+ *
+ *   - Transactional writes (WAL mode) — no torn-write risk; the
+ *     legacy fsync+rename recipe at T#55 is now SQLite's problem,
+ *     not ours.
+ *   - Co-located with the other 4 daemon-state surfaces (pid-lock,
+ *     project registry, node registry, backup index) — one file to
+ *     back up, one schema to evolve.
+ *   - Same sync API the orchestrator has always used. The legacy
+ *     `save/load/clear` signatures are preserved by buffering the
+ *     SQLite calls onto a queued promise: writes are fire-and-forget
+ *     from the caller's perspective, errors land in the logger.
+ *
+ * Back-compat path: when the legacy JSON file (`stateFile`) exists
+ * on first `load()`, we one-shot migrate its contents into the SQLite
+ * row and unlink the file. After the first migration boot, the JSON
+ * file never reappears.
  */
 
 import fs from 'node:fs';
-import path from 'node:path';
-import { randomBytes } from 'node:crypto';
 import type { AppStatus } from '../config/types.js';
+import type { DaemonStateStore } from './daemon-state-store.service.js';
 
 export interface PersistedAppState {
   name: string;
@@ -23,63 +42,94 @@ export interface PersistedState {
   apps: PersistedAppState[];
 }
 
+const STATE_KV_KEY = 'orchestrator:persisted-state';
+
 export class StateStore {
-  constructor(private readonly stateFile: string) {}
+  /** Cached snapshot for synchronous `load()` after `init()` ran. */
+  private cached: PersistedState | null = null;
+  /** True once `init()` has read from SQLite (or attempted the legacy JSON migration). */
+  private initialized = false;
+  /**
+   * In-flight write so a back-to-back save+save serialises through
+   * one SQLite transaction at a time. Callers don't see the queueing
+   * — they call `save()` synchronously and the promise resolves in
+   * the background. Errors are logged via the store's own logger.
+   */
+  private writeChain: Promise<void> = Promise.resolve();
 
-  save(state: PersistedState): void {
-    const dir = path.dirname(this.stateFile);
-    fs.mkdirSync(dir, { recursive: true });
+  constructor(
+    private readonly store: DaemonStateStore,
+    /**
+     * Legacy JSON path — only consulted ONCE during init() for the
+     * pre-SQLite migration. Pass the same path the daemon used
+     * historically so existing deployments don't lose their state
+     * on the first boot of the new code.
+     */
+    private readonly legacyJsonPath?: string,
+  ) {}
 
-    // T#55: write atomically — `writeFileSync(stateFile, ...)` was a
-    // direct overwrite that left the file half-written if the
-    // daemon was SIGKILL'd mid-flush. The next boot's `load()` then
-    // saw truncated JSON, `JSON.parse` threw, and the daemon lost
-    // the entire process registry (returned `null` and started from
-    // scratch — every supervised app was treated as new).
-    //
-    // The standard POSIX recipe is:
-    //   1. write payload to a SIBLING temp file in the same dir;
-    //   2. fsync(tmp) so the bytes reach disk, not just page cache;
-    //   3. rename(tmp, stateFile) — POSIX-atomic on one filesystem.
-    //
-    // Pick a unique temp suffix per call so concurrent calls (and
-    // stale temp files from a crashed earlier write) don't collide.
-    const payload = JSON.stringify(state, null, 2);
-    const tmp = `${this.stateFile}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
-    let fd: number | undefined;
+  /**
+   * Read the persisted snapshot from SQLite. If the legacy JSON file
+   * exists and the SQLite row doesn't, migrate it in-place and
+   * unlink. Must be awaited at least once before the synchronous
+   * `load()` returns useful data.
+   */
+  async init(): Promise<PersistedState | null> {
+    if (this.initialized) return this.cached;
+    this.initialized = true;
     try {
-      fd = fs.openSync(tmp, 'w');
-      fs.writeFileSync(fd, payload, 'utf-8');
-      // Force the data + metadata to disk before the rename so the
-      // post-crash visible state is "either old contents or new
-      // contents", never "renamed link to half-written bytes".
-      fs.fsyncSync(fd);
-      fs.closeSync(fd);
-      fd = undefined;
-      fs.renameSync(tmp, this.stateFile);
-    } catch (err) {
-      // Best-effort cleanup of the temp file if anything went wrong;
-      // we already failed the save, no point hiding the failure.
-      if (fd !== undefined) try { fs.closeSync(fd); } catch { /* */ }
-      try { fs.unlinkSync(tmp); } catch { /* already gone */ }
-      throw err;
-    }
-  }
-
-  load(): PersistedState | null {
-    try {
-      const data = fs.readFileSync(this.stateFile, 'utf-8');
-      return JSON.parse(data) as PersistedState;
+      const fromSqlite = await this.store.kvGet<PersistedState>(STATE_KV_KEY);
+      if (fromSqlite) {
+        this.cached = fromSqlite;
+        return this.cached;
+      }
+      if (this.legacyJsonPath && fs.existsSync(this.legacyJsonPath)) {
+        try {
+          const raw = fs.readFileSync(this.legacyJsonPath, 'utf-8');
+          const parsed = JSON.parse(raw) as PersistedState;
+          await this.store.kvSet(STATE_KV_KEY, parsed);
+          // Best-effort unlink — keep going even if it fails (perms,
+          // file already gone). The kvSet is what matters.
+          try { fs.unlinkSync(this.legacyJsonPath); } catch { /* */ }
+          this.cached = parsed;
+          return this.cached;
+        } catch {
+          /* legacy file unreadable / corrupt — caller starts from scratch */
+        }
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
+  /**
+   * Persist a snapshot. Synchronous API for back-compat with callers
+   * that don't await; the actual SQLite write is awaited on the
+   * internal `writeChain` so back-to-back saves never interleave.
+   */
+  save(state: PersistedState): void {
+    this.cached = state;
+    this.writeChain = this.writeChain
+      .catch(() => undefined)
+      .then(() => this.store.kvSet(STATE_KV_KEY, state));
+  }
+
+  /** Synchronous read of the snapshot loaded by the most recent `init()` / `save()`. */
+  load(): PersistedState | null {
+    return this.cached;
+  }
+
+  /** Drop the persisted snapshot. Used by crash-recovery acknowledgement. */
   clear(): void {
-    try {
-      fs.unlinkSync(this.stateFile);
-    } catch {
-      // File may not exist
-    }
+    this.cached = null;
+    this.writeChain = this.writeChain
+      .catch(() => undefined)
+      .then(() => this.store.kvDelete(STATE_KV_KEY));
+  }
+
+  /** Block until every queued write has reached disk. Called on shutdown. */
+  async flush(): Promise<void> {
+    await this.writeChain.catch(() => undefined);
   }
 }

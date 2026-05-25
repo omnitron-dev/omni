@@ -402,25 +402,25 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // Kubernetes management (no DB dependency)
+      // Kubernetes management (no DB dependency).
+      // T-2 — @Injectable + @Inject ctor decorators on the service
+      // class; Nexus reads the metadata directly so no parallel
+      // inject:[] array can drift out of sync with the ctor.
       [
         KUBERNETES_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule) => new KubernetesService(loggerModule.logger),
-          inject: [LOGGER_SERVICE_TOKEN],
+          useClass: KubernetesService,
           scope: Scope.Singleton,
         },
       ],
 
       // Backup/restore automation. T-7 — backup INDEX persisted in
-      // SQLite via DaemonStateStore (atomic upserts; the .sql.gz
-      // bytes still live on disk under ~/.omnitron/backups/).
+      // SQLite via DaemonStateStore. T-2 — @Injectable + @Inject
+      // ctor decorators replace the prior useFactory/inject array.
       [
         BACKUP_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, store: DaemonStateStore) =>
-            new BackupService(loggerModule.logger, store),
-          inject: [LOGGER_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN],
+          useClass: BackupService,
           scope: Scope.Singleton,
         },
       ],
@@ -521,12 +521,14 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any] : []),
 
-      // Log collector — master: PG, slave: SQLite (same column schema)
+      // Log collector — master: PG, slave: SQLite (same column schema).
+      // Master uses useClass via @Injectable + @Inject(OMNITRON_DB_TOKEN);
+      // slave needs the async SlaveStorageService.getDb() call so the
+      // factory pattern remains.
       ...(!isSlave ? [[
         LOG_COLLECTOR_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>) => new LogCollectorService(db),
-          inject: [OMNITRON_DB_TOKEN],
+          useClass: LogCollectorService,
           scope: Scope.Singleton,
         },
       ] as any] : [[
@@ -597,12 +599,12 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any] : []),
 
-      // Discovery service (master only — depends on Fleet)
+      // Discovery service (master only — depends on Fleet).
+      // T-2 — useClass via @Injectable + @Inject(FLEET_SERVICE_TOKEN).
       ...(!isSlave ? [[
         DISCOVERY_SERVICE_TOKEN,
         {
-          useFactory: (fleet: FleetService) => new DiscoveryService(fleet),
-          inject: [FLEET_SERVICE_TOKEN],
+          useClass: DiscoveryService,
           scope: Scope.Singleton,
         },
       ] as any] : []),

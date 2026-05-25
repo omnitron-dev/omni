@@ -8,6 +8,8 @@
  * Falls back to basic Docker CLI + TCP probe when @xec-sh/ops is not installed.
  */
 
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { FLEET_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { FleetService } from './fleet.service.js';
 
 // =============================================================================
@@ -141,9 +143,13 @@ async function fallbackSshDiscovery(hosts: string[], port = 9700, timeout = 3000
 // Service
 // =============================================================================
 
+@Injectable()
 export class DiscoveryService {
+  // T-2 — @Inject decorator pins the DI token to the param position;
+  // the framework reads metadata directly so no inject:[] array can
+  // drift out of sync with constructor order.
   constructor(
-    private readonly fleetService: FleetService
+    @Inject(FLEET_SERVICE_TOKEN) private readonly fleetService: FleetService
   ) {}
 
   /**

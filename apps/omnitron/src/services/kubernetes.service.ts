@@ -11,7 +11,8 @@
  * when the adapter is not installed.
  */
 
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 
 // =============================================================================
 // Types
@@ -98,10 +99,18 @@ function computeAge(creationTimestamp: string): string {
 // Service
 // =============================================================================
 
+@Injectable()
 export class KubernetesService {
   private adapter: any | null = null;
+  private readonly logger: ILogger;
 
-  constructor(private readonly logger: ILogger) {}
+  // T-2 — @Injectable + @Inject closes the order-swap drift the
+  // framework arity guard can't catch. The DI container reads
+  // metadata directly from the decorator; no parallel inject:[]
+  // array can drift out of sync with constructor positions.
+  constructor(@Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule) {
+    this.logger = loggerModule.logger;
+  }
 
   private async getAdapter(): Promise<any | null> {
     if (this.adapter) return this.adapter;

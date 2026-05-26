@@ -23,6 +23,28 @@ import { LAYOUT_CSS_VARS, HEADER_HEIGHTS, type HeaderSlots } from '../types.js';
 
 /**
  * Hook to detect scroll offset for header effects.
+ *
+ * Uses **hysteresis** (a small deadband around the threshold) to
+ * prevent the boolean from flipping on every micro-pixel of
+ * scroll. Without it, the header `::before` blur-layer opacity
+ * (transitioning over `theme.transitions.duration.shorter`) was
+ * observed to "blink" when:
+ *
+ *   1. The page is just-barely taller than the viewport — at the
+ *      bottom of the document, browser address-bar collapses
+ *      (mobile) or sticky-element layout shifts (e.g. a Collapse
+ *      animation finishing on the DescriptionCard) cause
+ *      `window.scrollY` to oscillate by a handful of pixels
+ *      across the 10px threshold, triggering 4–10 visible
+ *      opacity transitions per second.
+ *   2. Any rAF / ResizeObserver downstream of `isOffset` adjusts
+ *      layout in response → scrollY changes again → feedback
+ *      loop.
+ *
+ * Hysteresis breaks the loop: enabling requires crossing the
+ * upper bound (`threshold`); disabling requires falling back
+ * below the lower bound (`threshold / 2`). Once `isOffset` is
+ * true, a 5px wobble around 10 no longer flips it.
  */
 function useScrollOffset(threshold = 10): boolean {
   const [isOffset, setIsOffset] = useState(false);
@@ -30,12 +52,16 @@ function useScrollOffset(threshold = 10): boolean {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
+    const upper = threshold;
+    const lower = Math.max(0, threshold / 2);
+
     let ticking = false;
     const handleScroll = () => {
       if (!ticking) {
         ticking = true;
         requestAnimationFrame(() => {
-          setIsOffset(window.scrollY > threshold);
+          const y = window.scrollY;
+          setIsOffset((prev) => (prev ? y > lower : y > upper));
           ticking = false;
         });
       }

@@ -79,7 +79,36 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   ) {}
 
   protected get executor(): Executor<DB> {
-    return getExecutor(this.db);
+    const e = getExecutor(this.db);
+    // T#84 — defensive shape check. T#70 surfaced a production
+    // case where `e.selectFrom` was undefined at call time —
+    // every repo query crashed inside one specific RPC method
+    // (Delivery.getActiveOrgPgpKey). Without context on WHAT the
+    // executor actually was, root cause was unreachable. The
+    // check below makes the next occurrence self-diagnosing
+    // (cost: one typeof + one `in` check per query, both O(1)).
+    if (e == null || typeof (e as { selectFrom?: unknown }).selectFrom !== 'function') {
+      const inTransaction = isInTransactionContext();
+      const sample = {
+        type: typeof e,
+        constructorName: e?.constructor?.name ?? 'null',
+        ownKeys: e ? Object.getOwnPropertyNames(e).slice(0, 10) : [],
+        protoKeys: e
+          ? Object.getOwnPropertyNames(Object.getPrototypeOf(e) ?? {}).slice(0, 10)
+          : [],
+        hasSelect: typeof (e as { selectFrom?: unknown })?.selectFrom,
+        inTransaction,
+        tableName: this.tableName,
+      };
+      const err = new Error(
+        `[TransactionAwareRepository] executor has no selectFrom — diagnostic: ${JSON.stringify(sample)}`,
+      );
+      // Attach diagnostic on the error itself so error.log captures
+      // the shape via T#70's structured stack/error fields.
+      Object.assign(err, { diagnostic: sample });
+      throw err;
+    }
+    return e;
   }
 
   protected get inTransaction(): boolean {

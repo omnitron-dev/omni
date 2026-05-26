@@ -65,6 +65,32 @@ describe('RLS Bridge', () => {
       expect(result.claims).toBeUndefined();
       expect(result.tenantId).toBeUndefined();
     });
+
+    it('should lift metadata.isServiceRole into RLS isSystem (S2S privileged invariant)', () => {
+      const auth = {
+        userId: 'main-service-account',
+        roles: ['service_role'],
+        permissions: [],
+        metadata: { isServiceRole: true, tenantId: 'default' },
+      };
+
+      const result = mapAuthToRLSAuthContext(auth);
+
+      expect(result.isSystem).toBe(true);
+    });
+
+    it('should keep isSystem=false for ordinary user tokens', () => {
+      const auth = {
+        userId: 'user-1',
+        roles: ['user'],
+        permissions: [],
+        metadata: { isServiceRole: false },
+      };
+
+      const result = mapAuthToRLSAuthContext(auth);
+
+      expect(result.isSystem).toBe(false);
+    });
   });
 
   describe('mapAuthToRLSContext', () => {

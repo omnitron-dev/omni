@@ -1422,18 +1422,40 @@ export class ProcessPool<T> {
    * overrunning tick would race subsequent ticks and double-scale.
    */
   private autoScaleRunning = false;
+  /**
+   * T#80 — consecutive failure counter for exponential auto-scale
+   * backoff. When `scale()` throws (spawn refuses, dist missing,
+   * worker init crashes etc.), pre-T#80 the pool kept retrying
+   * every `checkInterval` (10s default) forever — generating
+   * thousands of failed spawn attempts per hour, swamping the
+   * janitor with orphan churn and burying the actually-actionable
+   * first-error log under repetition. Counter resets on any
+   * successful scale OR on a tick where no scaling was needed.
+   */
+  private autoScaleConsecutiveFailures = 0;
+  private autoScaleNextRetryAt = 0;
   private setupAutoScaling(): void {
     if (!this.poolOptions.autoScale?.enabled) return;
 
     const checkInterval = this.poolOptions.autoScale?.checkInterval ?? 10_000;
+    /**
+     * Max backoff cap on the auto-scale failure path. 5 min keeps
+     * the operator's intervention window short (they'll notice the
+     * problem) without log-spamming during transient outages.
+     */
+    const FAILURE_BACKOFF_MAX_MS = 5 * 60_000;
 
     this.autoScaleTimer = setInterval(async () => {
       if (this.isShuttingDown || this.isDraining) return;
       if (this.autoScaleRunning) return;
+
+      // T#80: skip the tick if we're in a failure-backoff window.
+      const now = Date.now();
+      if (now < this.autoScaleNextRetryAt) return;
+
       this.autoScaleRunning = true;
 
       try {
-        const now = Date.now();
         const cooldownPeriod = this.poolOptions.autoScale?.cooldownPeriod || 60000;
 
         if (now - this.lastScaleCheck < cooldownPeriod) return;
@@ -1465,13 +1487,37 @@ export class ProcessPool<T> {
           const newSize = Math.min(this.workers.size + scaleStep, maxWorkers);
           await this.scale(newSize);
           this.lastScaleCheck = now;
+          // T#80: success — reset failure counter.
+          this.autoScaleConsecutiveFailures = 0;
         } else if (shouldScaleDown && this.workers.size > (config.min || 1)) {
           const newSize = Math.max(this.workers.size - 1, config.min || 1);
           await this.scale(newSize);
           this.lastScaleCheck = now;
+          this.autoScaleConsecutiveFailures = 0;
+        } else {
+          // No-op tick (within thresholds) — reset failures so a
+          // post-recovery period of quiet doesn't keep us in
+          // backoff for a future failure.
+          this.autoScaleConsecutiveFailures = 0;
         }
       } catch (error) {
-        this.logger.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Error during auto-scaling check');
+        // T#80: exponential backoff on consecutive scaling failures.
+        // Counter increments per FAILED call; the timer keeps firing
+        // at `checkInterval` but we skip every tick until
+        // `autoScaleNextRetryAt` passes.
+        this.autoScaleConsecutiveFailures += 1;
+        const failures = this.autoScaleConsecutiveFailures;
+        const backoffMultiplier = Math.min(2 ** (failures - 1), Math.ceil(FAILURE_BACKOFF_MAX_MS / checkInterval));
+        const backoffMs = Math.min(checkInterval * backoffMultiplier, FAILURE_BACKOFF_MAX_MS);
+        this.autoScaleNextRetryAt = Date.now() + backoffMs;
+        this.logger.error(
+          {
+            err: error instanceof Error ? error : new Error(String(error)),
+            consecutiveFailures: failures,
+            nextRetryInMs: backoffMs,
+          },
+          'Error during auto-scaling check',
+        );
       } finally {
         this.autoScaleRunning = false;
       }

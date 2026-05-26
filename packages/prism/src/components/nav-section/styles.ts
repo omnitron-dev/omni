@@ -77,11 +77,17 @@ export const navSectionCssVars = {
     '--nav-icon-active-color': theme.palette.primary.main,
     // Colors - disabled
     '--nav-item-disabled-color': theme.palette.text.disabled,
-    // Subheader
+    // Subheader. Asymmetric vertical padding (top < bottom) tightens
+    // the gap to the previous section's last item while preserving
+    // the visual grouping with the items belonging to THIS section.
+    // Pre-fix `8px 8px 8px 12px` summed with the parent `gap: 4px`
+    // and the previous item's `padding-bottom: 4px` to ~16px above
+    // the title, which read as a disconnect rather than a section
+    // boundary.
     '--nav-subheader-font-size': '0.6875rem',
     '--nav-subheader-font-weight': '700',
     '--nav-subheader-color': theme.palette.text.disabled,
-    '--nav-subheader-padding': '8px 8px 8px 12px',
+    '--nav-subheader-padding': '4px 8px 8px 12px',
     // Sub-item adjustments
     '--nav-sub-item-padding': '4px 8px 4px 12px',
     '--nav-sub-item-margin-left': '40px',

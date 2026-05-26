@@ -229,6 +229,28 @@ export interface SharedSessionAuthManagerOptions {
    * if you want belt-and-suspenders.
    */
   cnfHmacSecret?: string;
+  /**
+   * Optional role-hierarchy expander applied DEFENSIVELY to the
+   * roles resolved from the JWT before they reach the
+   * AuthorizationManager.
+   *
+   * The platform's role hierarchy (e.g. admin → user|boss|moderator|
+   * security|admin) is baked into the JWT at mint time, but legacy
+   * tokens, service-to-service tokens, or any caller that forgot
+   * to expand can still hit this validate path with only the
+   * singular `role`. Without re-expansion here, a JWT carrying
+   * just `roles: ['admin']` fails a `@Public({ roles: ['user'] })`
+   * gate with "Missing required role" — the netron authorization
+   * manager does flat `roles.includes(required)` and knows
+   * nothing about hierarchy.
+   *
+   * Caller-supplied so titan-auth stays tenant-/platform-agnostic
+   * — the daos `createJwtAuthManager` wrapper injects the canonical
+   * `expandRoleSet` from `@daos/auth-utils`.
+   *
+   * Unset → roles pass through verbatim (back-compat).
+   */
+  roleExpander?: (roles: readonly string[]) => string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -440,12 +462,26 @@ export function createSharedSessionAuthManager(
       // back to wrapping the legacy singular `role` for back-compat
       // with tokens issued before the schema upgrade.
       const claimedRoles = payload['roles'];
-      const roles =
+      const claimedRoleSet =
         Array.isArray(claimedRoles) && claimedRoles.length > 0
           ? (claimedRoles as string[])
           : payload['role']
             ? [payload['role'] as string]
             : [];
+      // Apply the platform-specific role hierarchy expansion when
+      // wired. This is the validate-side counterpart of the
+      // mint-side expansion in the JWT signer — every code path
+      // that produces a token doesn't necessarily remember to
+      // expand, so we do it again here as a fundamental invariant
+      // of the auth boundary. Without it, ANY token carrying only
+      // a singular `role: 'admin'` (legacy / service / fixture)
+      // fails RPC gates that require the implicit lower-tier
+      // (`@Public({ roles: ['user'] })`) because the netron auth
+      // manager has no hierarchy concept of its own.
+      const roles =
+        opts.roleExpander && claimedRoleSet.length > 0
+          ? opts.roleExpander(claimedRoleSet)
+          : claimedRoleSet;
 
       // Attach the raw payload as `claims` so downstream consumers
       // (titan-auth IAuthContext readers, messaging's

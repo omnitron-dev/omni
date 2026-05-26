@@ -2,7 +2,7 @@
  * useMutation - Hook for data mutations
  */
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
 import { useNetronClient } from '../core/context.js';
 import type { MutationOptions, MutationResult, MutationStatus, RetryConfig } from '../core/types.js';
@@ -64,6 +64,19 @@ export function useMutation<TData = unknown, TError = NetronError, TVariables = 
   // Refs
   const mutationId = useRef<string | null>(null);
   const isMounted = useRef(true);
+
+  // Mount/unmount tracking — required so `setState` calls inside
+  // the async mutation pipeline are silently dropped after unmount
+  // instead of triggering React's "update on unmounted component"
+  // warning, and so the ref is reset on StrictMode remounts (it
+  // would otherwise stay `false` after the first cleanup). Mirrors
+  // the pattern in useQuery/useInfiniteQuery.
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Execute mutation
   const executeMutation = useCallback(

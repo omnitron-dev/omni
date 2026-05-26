@@ -166,6 +166,7 @@ export {
 // Hooks
 export {
   useNetronQuery,
+  useNetronInfiniteQuery,
   useNetronMutation,
   useNetronSubscription,
   useNetronService,

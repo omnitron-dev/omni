@@ -10,6 +10,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { BackendSchema, IBackendClient } from '@omnitron-dev/netron-browser';
 import { MultiBackendContext, MultiBackendConnectionContext } from './context.js';
+import { NetronContext, DefaultsContext, type DefaultsContextValue } from '../core/context.js';
+import { MultiBackendQueryEngine, asNetronReactClient } from './query-engine.js';
 import type {
   MultiBackendProviderProps,
   MultiBackendContextValue,
@@ -62,9 +64,47 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
   onConnect,
   onDisconnect,
   onError,
+  defaultOptions,
+  cacheOptions,
 }: MultiBackendProviderProps<T>): React.JSX.Element {
   // Track mount state
   const isMounted = useRef(true);
+
+  // Query engine owns the QueryCache + MutationCache for the whole
+  // multi-backend app. One per mount; torn down on unmount so HMR
+  // doesn't leak cache instances across React fast-refresh cycles.
+  // We DO NOT recreate it on `client` reference changes — the
+  // engine is bound to the client only via `wireTransportEvents`,
+  // and recreating it would silently flush cached data on every
+  // re-render where the parent reconstructs the client. If the
+  // calling code legitimately wants a fresh cache (e.g. after
+  // logout) it should remount this provider.
+  const engineRef = useRef<MultiBackendQueryEngine<T> | null>(null);
+  if (engineRef.current === null) {
+    engineRef.current = new MultiBackendQueryEngine<T>(client, {
+      maxEntries: cacheOptions?.maxEntries,
+      defaultCacheTime: cacheOptions?.defaultCacheTime,
+    });
+  }
+  const engine = engineRef.current;
+  useEffect(() => () => {
+    engineRef.current?.destroy();
+    engineRef.current = null;
+  }, []);
+
+  // Defaults context value — mirrors `<NetronProvider defaultOptions>`
+  // so a multi-backend app gets the same staleTime/cacheTime knobs
+  // without a nested provider.
+  const defaultsValue = useMemo<DefaultsContextValue>(
+    () => ({
+      staleTime: defaultOptions?.queries?.staleTime ?? 0,
+      cacheTime: defaultOptions?.queries?.cacheTime ?? 5 * 60 * 1000,
+      retry: defaultOptions?.queries?.retry ?? 3,
+      refetchOnWindowFocus: defaultOptions?.queries?.refetchOnWindowFocus ?? true,
+      refetchOnReconnect: defaultOptions?.queries?.refetchOnReconnect ?? true,
+    }),
+    [defaultOptions],
+  );
 
   // Get backend names from client
   const backendNames = useMemo(() => {
@@ -268,7 +308,19 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
   return (
     <MultiBackendContext.Provider value={contextValue as MultiBackendContextValue}>
       <MultiBackendConnectionContext.Provider value={connectionState}>
-        {children}
+        {/*
+          Bridge the engine into the same `NetronContext` /
+          `DefaultsContext` that `<NetronProvider>` populates so
+          downstream data hooks (`useQuery`, `useMutation`,
+          `useInfiniteQuery`, `useBackendQuery`, …) read from a
+          single, shared cache through the standard
+          `useNetronClient()` call. The engine is a focused
+          adapter — see `query-engine.ts` for why we don't ship a
+          full `NetronReactClient` here.
+        */}
+        <NetronContext.Provider value={asNetronReactClient(engine)}>
+          <DefaultsContext.Provider value={defaultsValue}>{children}</DefaultsContext.Provider>
+        </NetronContext.Provider>
       </MultiBackendConnectionContext.Provider>
     </MultiBackendContext.Provider>
   );

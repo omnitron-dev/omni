@@ -12,6 +12,8 @@
 // ============================================================================
 
 export { MultiBackendProvider } from './provider.js';
+export { MultiBackendQueryEngine, asNetronReactClient } from './query-engine.js';
+export type { MultiBackendQueryEngineConfig } from './query-engine.js';
 
 // ============================================================================
 // Context & Context Hooks

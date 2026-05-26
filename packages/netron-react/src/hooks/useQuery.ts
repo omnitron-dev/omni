@@ -62,21 +62,31 @@ export function useQuery<TData = unknown, TError = NetronError>(
     initialDataUpdatedAt,
   } = options;
 
-  // Reserved for future cache implementation
-  void cacheTime;
+  // Note: per-query `cacheTime` is wired through the subscribe
+  // call below as a per-observer hint (see QueryCache.subscribe).
 
-  // State
+  // State — initialised from the shared QueryCache so a remount
+  // inside the `staleTime` window hydrates synchronously
+  // (`data` + `dataUpdatedAt` + `status='success'`) without firing
+  // a refetch. Before this, `dataUpdatedAt` started at 0 on every
+  // mount and `isStale` always evaluated true → tab-switch remounts
+  // round-tripped to the network even when the cache was warm.
+  const cachedQueryOnInit = useMemo(
+    () => client.getQueryCache().getQuery<TData, TError>(queryKey),
+    // We intentionally only read the cache once on the first
+    // render — subsequent updates come through the subscription
+    // effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const [data, setData] = useState<TData | undefined>(() => {
-    // Check cache first
-    const cached = client.getQueryCache().get<TData>(queryKey);
-    if (cached !== undefined) return cached;
+    if (cachedQueryOnInit?.state.data !== undefined) return cachedQueryOnInit.state.data;
 
-    // Use initial data
     if (initialData !== undefined) {
       return typeof initialData === 'function' ? (initialData as () => TData)() : initialData;
     }
 
-    // Use placeholder
     if (placeholderData !== undefined) {
       return typeof placeholderData === 'function' ? (placeholderData as () => TData | undefined)() : placeholderData;
     }
@@ -84,14 +94,25 @@ export function useQuery<TData = unknown, TError = NetronError>(
     return undefined;
   });
 
-  const [error, setError] = useState<TError | null>(null);
+  const [error, setError] = useState<TError | null>(
+    cachedQueryOnInit?.state.error ?? null,
+  );
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(() => {
+    // Cache hit → success. `placeholderData` / `initialData` also
+    // mean we have data to show before fetching, so status='success'
+    // mirrors TanStack's semantics (consumers branch on isLoading vs
+    // isFetching, not on raw status).
     if (data !== undefined) return 'success';
+    if (cachedQueryOnInit?.state.status === 'error') return 'error';
     return 'idle';
   });
   const [isFetching, setIsFetching] = useState(false);
-  const [dataUpdatedAt, setDataUpdatedAt] = useState(initialDataUpdatedAt ?? 0);
-  const [errorUpdatedAt, setErrorUpdatedAt] = useState(0);
+  const [dataUpdatedAt, setDataUpdatedAt] = useState(
+    cachedQueryOnInit?.state.dataUpdatedAt ?? initialDataUpdatedAt ?? 0,
+  );
+  const [errorUpdatedAt, setErrorUpdatedAt] = useState(
+    cachedQueryOnInit?.state.errorUpdatedAt ?? 0,
+  );
 
   // Refs for stable callbacks
   const queryKeyHash = useMemo(() => hashQueryKey(queryKey), [queryKey]);
@@ -284,17 +305,41 @@ export function useQuery<TData = unknown, TError = NetronError>(
     }
   }, [queryKeyHash, enabled, isHydrating]);
 
-  // Cache subscription
+  // Cache subscription. Observers see every cache mutation
+  // (write, error, invalidate, evict) and must keep all of local
+  // {data, status, error, dataUpdatedAt} in lockstep with the
+  // shared store — not just `data`. Without the full sync, an
+  // `invalidateQueries` call from elsewhere only updates one
+  // mounted observer's data while leaving its `status` /
+  // `dataUpdatedAt` frozen at the values from the original fetch,
+  // making isStale lie. Pass per-observer `cacheTime` so the
+  // shared GC respects the most-permissive caller's preference.
   useEffect(() => {
-    const unsubscribe = client.getQueryCache().subscribe(queryKey, () => {
-      const cached = client.getQueryCache().get<TData>(queryKey);
-      if (cached !== undefined) {
-        setData(cached);
-      }
-    });
+    const cache = client.getQueryCache();
+    const unsubscribe = cache.subscribe(
+      queryKey,
+      () => {
+        const query = cache.getQuery<TData, TError>(queryKey);
+        if (!query) {
+          // Entry GC'd while we were still mounted (rare race);
+          // clear local mirror so isStale re-evaluates correctly.
+          setData(undefined);
+          setStatus('idle');
+          setDataUpdatedAt(0);
+          return;
+        }
+        const s = query.state;
+        setData(s.data);
+        setError(s.error);
+        setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
+        setDataUpdatedAt(s.dataUpdatedAt);
+        setErrorUpdatedAt(s.errorUpdatedAt);
+      },
+      cacheTime,
+    );
 
     return unsubscribe;
-  }, [client, queryKeyHash]);
+  }, [client, queryKeyHash, cacheTime]);
 
   // Refetch interval
   useEffect(() => {
@@ -337,12 +382,19 @@ export function useQuery<TData = unknown, TError = NetronError>(
   }, [enabled, refetchOnReconnect, isStale, fetchData, client]);
 
   // Cleanup
-  useEffect(
-    () => () => {
+  // Mount/unmount tracking. React.StrictMode in dev runs every
+  // effect mount→cleanup→remount; without the explicit
+  // `isMounted.current = true` on the mount path, the ref stays
+  // `false` after the first cleanup and every subsequent
+  // `setStatus('success')` / `setData()` call in `fetchData` is
+  // silently dropped — the query never finalises and consumers
+  // stay stuck on `isLoading: true` indefinitely.
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
       isMounted.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   // Return result
   return useMemo(

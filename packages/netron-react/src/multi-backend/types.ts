@@ -15,7 +15,14 @@ import type {
   TypedServiceProxy,
   NetronError,
 } from '@omnitron-dev/netron-browser';
-import type { QueryOptions, QueryResult, MutationOptions, MutationResult, ServiceOptions } from '../core/types.js';
+import type {
+  DefaultOptions,
+  QueryOptions,
+  QueryResult,
+  MutationOptions,
+  MutationResult,
+  ServiceOptions,
+} from '../core/types.js';
 
 // ============================================================================
 // Provider Types
@@ -39,6 +46,24 @@ export interface MultiBackendProviderProps<T extends BackendSchema = BackendSche
   onDisconnect?: (backend: string) => void;
   /** Callback on backend error */
   onError?: (backend: string, error: Error) => void;
+  /**
+   * Default options for queries + mutations executed under this
+   * provider. Equivalent to `<NetronProvider defaultOptions>`;
+   * exposed here so callers wiring a multi-backend client get
+   * the same tuning surface (staleTime / cacheTime / retry /
+   * refetchOnWindowFocus / refetchOnReconnect) without needing
+   * to nest `<NetronProvider>` underneath.
+   */
+  defaultOptions?: DefaultOptions;
+  /**
+   * Cache tuning. Sets the soft cap on cached entries (LRU
+   * eviction threshold) and the default GC duration for queries
+   * that lose their last observer.
+   */
+  cacheOptions?: {
+    maxEntries?: number;
+    defaultCacheTime?: number;
+  };
 }
 
 // ============================================================================

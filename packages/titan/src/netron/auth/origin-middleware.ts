@@ -77,15 +77,62 @@ function parseHost(origin: string): string | null {
   }
 }
 
+/**
+ * Split the allow-list into exact-match Set and wildcard pattern
+ * list. Wildcards use `*` as a single-label placeholder anywhere
+ * in the host portion of the pattern: `*.onion`, `*.example.com`,
+ * `prefix-*.example.com`. Matches are case-insensitive.
+ *
+ * Why wildcards: Tor-hosted platforms generate the `.onion` address
+ * at first run (or rotate it). Hard-coding it into
+ * AUTH_ALLOWED_ORIGINS means a config edit + backend restart on
+ * every onion rotation. `*.onion` covers the entire Tor case in
+ * one entry. (T#68)
+ *
+ * A wildcard entry MUST contain a `*` and start with either `*` or
+ * `<scheme>://`. Entries without `*` are exact-match and stay in
+ * the Set.
+ */
+function compilePatterns(entries: string[]): { exact: Set<string>; patterns: RegExp[] } {
+  const exact = new Set<string>();
+  const patterns: RegExp[] = [];
+  for (const raw of entries) {
+    const value = raw.toLowerCase();
+    if (!value.includes('*')) {
+      exact.add(value);
+      continue;
+    }
+    // Build a RegExp by escaping every literal character and
+    // replacing `*` with `[^.]+` (single label, no dots — same
+    // semantics as DNS wildcards: `*.onion` matches `abc.onion`
+    // but NOT `abc.def.onion`, matching what an operator expects).
+    const escaped = value
+      .split('*')
+      .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[^.]+');
+    patterns.push(new RegExp('^' + escaped + '$'));
+  }
+  return { exact, patterns };
+}
+
+function matchesAllowList(
+  candidate: string,
+  exact: Set<string>,
+  patterns: RegExp[],
+): boolean {
+  if (exact.has(candidate)) return true;
+  return patterns.some((p) => p.test(candidate));
+}
+
 export function createOriginMiddleware(opts: OriginMiddlewareOptions): MiddlewareFunction {
   const { allowedOrigins, exempt = [], alwaysEnforce = false } = opts;
   const exemptSet = new Set(exempt.map((q) => q.toLowerCase()));
-  // Pre-compute a Set for O(1) full-Origin lookup; the host fallback
-  // remains O(n) since hosts and origins are different shapes.
-  const allowedSet =
-    allowedOrigins === true
-      ? null
-      : new Set(allowedOrigins.map((o) => o.toLowerCase()));
+  // Pre-compile the allow-list into an exact-match Set + a RegExp
+  // list for wildcard patterns like `*.onion` (T#68). Entries
+  // without `*` stay in the Set for O(1) lookup; wildcards fall
+  // through to a linear scan against the compiled patterns.
+  const compiled =
+    allowedOrigins === true ? null : compilePatterns(allowedOrigins);
 
   return async (ctx: NetronMiddlewareContext & { request?: Request }, next: () => Promise<void>) => {
     // Bypass when not in cookie mode (bearer is Origin-immune).
@@ -138,9 +185,9 @@ export function createOriginMiddleware(opts: OriginMiddlewareOptions): Middlewar
     if (allowedOrigins === true) return await next();
 
     const lower = origin.toLowerCase();
-    if (allowedSet!.has(lower)) return await next();
     const host = parseHost(origin)?.toLowerCase();
-    if (host && allowedSet!.has(host)) return await next();
+    if (matchesAllowList(lower, compiled!.exact, compiled!.patterns)) return await next();
+    if (host && matchesAllowList(host, compiled!.exact, compiled!.patterns)) return await next();
 
     // T#369 — log the rejected origin so an operator can spot
     // typo'd whitelists vs. real cross-origin attacks.

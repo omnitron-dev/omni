@@ -1084,6 +1084,15 @@ export class OrchestratorService extends EventEmitter {
     return this.pm.getWorkerHandle(processId);
   }
 
+  /**
+   * Surface the underlying IProcessInfo for a titan-pm processId
+   * so callers (e.g. the daemon's `inspect` RPC) can read uptime
+   * + status without reaching into the process-manager directly.
+   */
+  getChildProcessInfo(processId: string) {
+    return this.pm.getProcess(processId);
+  }
+
   // ============================================================================
   // Monitoring — async, delegates to PM supervisor for bootstrap mode
   // ============================================================================

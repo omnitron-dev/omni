@@ -86,12 +86,38 @@ export async function inspectCommand(appName: string): Promise<void> {
     if (diag.memory.external > 0) lines.push(`  External:     ${formatBytes(diag.memory.external)}`);
     if (diag.memory.arrayBuffers > 0) lines.push(`  ArrayBuffers: ${formatBytes(diag.memory.arrayBuffers)}`);
 
-    // Services section
-    if (diag.services.length > 0) {
+    // Children section — T#66 per-child breakdown (replaces the
+    // legacy aggregated `Services:` list which de-duplicated to
+    // useless "BootstrapApp@1.0.0" repeats when multiple supervisor
+    // children all exposed Titan's default service name).
+    if (diag.children && diag.children.length > 0) {
+      lines.push('', prism.bold('Children:'));
+      for (const child of diag.children) {
+        const pid = child.pid != null ? prism.cyan(String(child.pid)) : prism.dim('-');
+        const svc = child.serviceName
+          ? `${child.serviceName}@${child.serviceVersion ?? '?'}`
+          : prism.dim('(no service)');
+        const up = child.uptimeSeconds != null ? ` ${prism.dim('up')} ${formatUptime(child.uptimeSeconds)}` : '';
+        lines.push(`  ${prism.green('+')} ${prism.bold(child.name)}  pid=${pid}  ${prism.dim(svc)}${up}`);
+      }
+    } else if (diag.services.length > 0) {
+      // Backwards-compatible fallback for older daemons that only
+      // surface the flat services list (no `children` field).
       lines.push('', prism.bold('Services:'));
       for (const s of diag.services) {
         lines.push(`  ${prism.green('+')} ${s}`);
       }
+    }
+
+    // Logs section — T#66 surfaces the on-disk diagnostic layout
+    // so operators don't need to memorise the project-mode vs
+    // standalone path conventions, or grep the LogManager source
+    // to find where logs land.
+    if (diag.logPaths) {
+      lines.push('', prism.bold('Logs:'));
+      lines.push(`  app:    ${prism.cyan(diag.logPaths.app)}`);
+      lines.push(`  error:  ${prism.cyan(diag.logPaths.error)}`);
+      lines.push(`  ${prism.dim('Tip: omnitron logs ' + appName + ' [-f] [-e]')}`);
     }
 
     // Environment section

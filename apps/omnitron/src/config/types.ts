@@ -868,6 +868,47 @@ export interface LastExitDto {
   message?: string;
 }
 
+/**
+ * Per-child diagnostic surface — T#66. A bootstrap-mode app can
+ * spawn multiple children (http, workers, schedulers); operators
+ * need to see each child's identity, OS pid, uptime, listen port,
+ * and the service it exposes. Pre-T#66 `services: string[]`
+ * collapsed all children to a single "name@version" string,
+ * indistinguishable when several children expose `BootstrapApp`
+ * (the default Titan Application service name). The flat list
+ * also hid which child crashed inside a multi-child app.
+ */
+export interface ChildDiagnosticsDto {
+  /** Supervisor name (e.g. "http", "captcha-generator"). */
+  name: string;
+  /** OS process id (or null if the child hasn't started / has exited). */
+  pid: number | null;
+  /** Service the child exposes via Netron, e.g. "BootstrapApp". */
+  serviceName?: string;
+  /** Semantic version reported by the service. */
+  serviceVersion?: string;
+  /** Seconds since the child's last successful start. */
+  uptimeSeconds?: number;
+  /** Titan-PM internal processId — useful for cross-referencing daemon logs. */
+  processId?: string;
+}
+
+/**
+ * Where to find on-disk diagnostics for this app. Surfaced by
+ * `omnitron inspect` so an operator landing on a hot incident
+ * doesn't need to grep the source tree to learn the log layout.
+ * Project-mode apps live at
+ * `~/.omnitron/projects/{project}/{stack}/logs/{app}/`; standalone
+ * apps live at `~/.omnitron/logs/{app}/`. The exact paths are
+ * resolved by `LogManager.getLogFilePath`.
+ */
+export interface LogPathsDto {
+  /** Absolute path to app.log (stdout + non-error stderr lines). */
+  app: string;
+  /** Absolute path to error.log (level≥50 lines). */
+  error: string;
+}
+
 export interface AppDiagnosticsDto {
   name: string;
   pid: number | null;
@@ -881,7 +922,25 @@ export interface AppDiagnosticsDto {
   };
   uptime: number;
   restarts: number;
+  /**
+   * @deprecated T#66 — use `children[].serviceName` for the
+   *   per-child breakdown. This flat list is kept for backwards
+   *   compatibility with older webapp builds; new consumers
+   *   should read `children`.
+   */
   services: string[];
+  /**
+   * Per-child diagnostic surface (T#66). Empty for non-bootstrap
+   * apps; populated for bootstrap-mode apps with one entry per
+   * supervisor child.
+   */
+  children: ChildDiagnosticsDto[];
+  /**
+   * Absolute log paths (T#66). Surfaces the on-disk diagnostic
+   * layout so operators don't need to memorise the project-mode
+   * vs standalone path conventions.
+   */
+  logPaths: LogPathsDto;
   config: Record<string, unknown>;
   /**
    * Populated when the app's last lifecycle event was a death

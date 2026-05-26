@@ -23,6 +23,8 @@ import type {
   AggregatedHealthDto,
   LogEntryDto,
   AppDiagnosticsDto,
+  ChildDiagnosticsDto,
+  LogPathsDto,
 } from '../config/types.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { IHealthService } from '@omnitron-dev/titan-health';
@@ -339,19 +341,50 @@ export class DaemonRpcService implements IDaemonService {
       memory.rss = appMetrics.memory;
     }
 
+    // T#66: per-child diagnostic surface. The legacy `services`
+    // flat list collapsed every child's service name into a single
+    // dedupe-less array — when 4 bootstrap children all exposed
+    // `BootstrapApp` (Titan's default Application service name)
+    // operators saw `BootstrapApp@1.0.0` four times with no way to
+    // tell which child each entry referred to. The new `children`
+    // array is keyed by supervisor child name (e.g. "http",
+    // "captcha-generator") and carries OS pid + processId + uptime.
+    const children: ChildDiagnosticsDto[] = [];
     const services: string[] = [];
     if (handle.mode === 'bootstrap' && handle.supervisor) {
       const childNames = handle.supervisor.getChildNames();
       for (const childName of childNames) {
         const processId = handle.supervisor.getChildProcessId(childName);
-        if (processId) {
-          const workerHandle = this.orchestrator.getWorkerHandle(processId);
-          if (workerHandle?.serviceName) {
-            services.push(`${workerHandle.serviceName}@${workerHandle.serviceVersion}`);
-          }
+        const workerHandle = processId ? this.orchestrator.getWorkerHandle(processId) : undefined;
+        const procInfo = processId ? this.orchestrator.getChildProcessInfo(processId) : undefined;
+        const uptimeSeconds =
+          typeof procInfo?.startTime === 'number'
+            ? Math.floor((Date.now() - procInfo.startTime) / 1000)
+            : undefined;
+        const entry: ChildDiagnosticsDto = {
+          name: childName,
+          pid: workerHandle?.pid ?? null,
+          ...(processId && { processId }),
+          ...(workerHandle?.serviceName && { serviceName: workerHandle.serviceName }),
+          ...(workerHandle?.serviceVersion && { serviceVersion: workerHandle.serviceVersion }),
+          ...(uptimeSeconds !== undefined && { uptimeSeconds }),
+        };
+        children.push(entry);
+        if (workerHandle?.serviceName) {
+          services.push(`${workerHandle.serviceName}@${workerHandle.serviceVersion}`);
         }
       }
     }
+
+    // T#66: log paths. Project-mode apps live under
+    // ~/.omnitron/projects/{project}/{stack}/logs/{app}/, standalone
+    // apps under ~/.omnitron/logs/{app}/. The exact resolution is
+    // LogManager's responsibility — we just surface the result so
+    // operators don't have to memorise which layout an app uses.
+    const logPaths: LogPathsDto = {
+      app: this.logManager.getLogFilePath(data.name, 'app'),
+      error: this.logManager.getLogFilePath(data.name, 'error'),
+    };
 
     const appConfig: Record<string, unknown> = {};
     const entry = this.config?.apps?.find((a) => a.name === data.name);
@@ -371,6 +404,8 @@ export class DaemonRpcService implements IDaemonService {
       uptime: handle.uptime,
       restarts: handle.restarts,
       services,
+      children,
+      logPaths,
       config: appConfig,
       // Surface the crash context when the app is dead so
       // `omnitron inspect` can render exit code + signal +

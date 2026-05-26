@@ -592,6 +592,75 @@ describe('WebSocketAuthHandler', () => {
         expect(result.success).toBe(false);
       });
 
+      // T#68 — wildcard support for Tor / multi-onion deployments.
+      it('wildcard *.onion matches any single-label onion origin', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['*.onion'],
+        });
+        const req = createMockRequest({
+          authorization: `Bearer ${validToken}`,
+          origin: 'http://3g2upl4pq6kufc4m.onion',
+          host: '3g2upl4pq6kufc4m.onion',
+        });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('wildcard *.onion does NOT match dotted subdomains (DNS-style)', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['*.onion'],
+        });
+        // The wildcard `*` matches a single host label (no dots).
+        // `abc.def.onion` would require `*.*.onion` to match.
+        const req = createMockRequest({
+          authorization: `Bearer ${validToken}`,
+          origin: 'http://abc.def.onion',
+          host: 'abc.def.onion',
+        });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(false);
+      });
+
+      it('wildcard *.example.com matches portal.example.com', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['https://*.example.com'],
+        });
+        const req = createMockRequest({
+          authorization: `Bearer ${validToken}`,
+          origin: 'https://portal.example.com',
+          host: 'gateway.local',
+        });
+        const result = await handler.authenticateConnection(req);
+        expect(result.success).toBe(true);
+      });
+
+      it('mixed exact + wildcard entries both work in the same allow-list', async () => {
+        const handler = new WebSocketAuthHandler({
+          authenticationManager: authManager,
+          authorizationManager: authzManager,
+          allowedOrigins: ['http://localhost:7080', '*.onion'],
+        });
+        const exactReq = createMockRequest({
+          authorization: `Bearer ${validToken}`,
+          origin: 'http://localhost:7080',
+          host: 'localhost:8080',
+        });
+        expect((await handler.authenticateConnection(exactReq)).success).toBe(true);
+
+        const onionReq = createMockRequest({
+          authorization: `Bearer ${validToken}`,
+          origin: 'http://xyz.onion',
+          host: 'xyz.onion',
+        });
+        expect((await handler.authenticateConnection(onionReq)).success).toBe(true);
+      });
+
       it('missing Origin header passes (non-browser/S2S clients)', async () => {
         const handler = new WebSocketAuthHandler({
           authenticationManager: authManager,

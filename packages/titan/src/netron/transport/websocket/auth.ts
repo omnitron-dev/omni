@@ -201,8 +201,28 @@ export class WebSocketAuthHandler {
       const reqHost = Array.isArray(request.headers.host) ? request.headers.host[0] : request.headers.host;
       return originHost === reqHost;
     }
-    // Whitelist mode — match the full origin string OR its host.
-    return this.allowedOrigins.some((allowed) => allowed === origin || allowed === originHost);
+    // Whitelist mode — match the full origin string OR its host
+    // against the exact + wildcard entries. T#68: wildcard support
+    // (e.g. `*.onion`) means a Tor-hosted platform doesn't need to
+    // edit config every time the onion address rotates.
+    const lowerOrigin = origin.toLowerCase();
+    const lowerHost = originHost.toLowerCase();
+    for (const allowed of this.allowedOrigins) {
+      const lowerAllowed = allowed.toLowerCase();
+      if (!lowerAllowed.includes('*')) {
+        if (lowerAllowed === lowerOrigin || lowerAllowed === lowerHost) return true;
+        continue;
+      }
+      // Wildcard: `*` matches a single host label (no dots) —
+      // same DNS-wildcard semantics as the HTTP middleware.
+      const escaped = lowerAllowed
+        .split('*')
+        .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[^.]+');
+      const re = new RegExp('^' + escaped + '$');
+      if (re.test(lowerOrigin) || re.test(lowerHost)) return true;
+    }
+    return false;
   }
 
   /**

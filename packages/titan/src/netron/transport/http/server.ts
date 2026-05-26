@@ -1351,19 +1351,39 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Apply CORS headers if needed
       this.applyCorsHeaders(errorHeaders, request);
 
-      // Log error response if logging enabled
-      if (this.options.logging && this.netronPeer?.logger) {
+      // T#70: server-side error logging policy.
+      //
+      // 5xx responses are ALWAYS logged at error level — they represent
+      // server-side failures that operators MUST see. Pre-T#70 a stale
+      // DI dep, an unhandled DB driver throw, or any other unexpected
+      // crash returned a 500 to the client but left ZERO trace in
+      // app.log / error.log unless the operator had opted in via
+      // `options.logging`. Today's incident: user hit a 500 at
+      // /shops/fitoshop, cascaded into forceLogout, and the daemon
+      // logs had no record of what failed.
+      //
+      // 4xx responses stay opt-in via `options.logging` — they're
+      // client errors (validation, auth, missing methods) and a chatty
+      // production system can generate thousands per second, drowning
+      // out the actually-actionable 5xx signal.
+      if (this.netronPeer?.logger) {
         const duration = Math.round(performance.now() - requestStartTime);
-        this.netronPeer.logger.error(
-          {
-            service: message.service,
-            method: message.method,
-            duration,
-            status: httpError.status,
-            error: titanError.message,
-          },
-          'Netron error'
-        );
+        const logFields = {
+          service: message.service,
+          method: message.method,
+          duration,
+          status: httpError.status,
+          errorCode,
+          error: titanError.message,
+          // Include stack on 5xx for post-incident triage. Pino's
+          // serializer truncates safely at the default level.
+          ...(httpError.status >= 500 && titanError.stack && { stack: titanError.stack }),
+        };
+        if (httpError.status >= 500) {
+          this.netronPeer.logger.error(logFields, 'Netron error');
+        } else if (this.options.logging) {
+          this.netronPeer.logger.warn(logFields, 'Netron error');
+        }
       }
 
       return new Response(JSON.stringify(errorResponse), {
@@ -1459,15 +1479,30 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         } catch (error) {
           const titanError = error instanceof TitanError ? error : null;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          const code = String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR);
+
+          // T#70: unconditional 5xx logging (parallel batch branch).
+          // A batched 500 was previously silently returned — same
+          // diagnostic blackhole as the single-invoke path.
+          if (this.netronPeer?.logger && this.isServerError(code, titanError)) {
+            this.netronPeer.logger.error(
+              {
+                service: req.service,
+                method: req.method,
+                errorCode: code,
+                error: errorMessage,
+                ...(error instanceof Error && error.stack && { stack: error.stack }),
+                batchMode: 'parallel',
+              },
+              'Netron batch error',
+            );
+          }
 
           batchHints.failureCount++;
           return {
             id: req.id,
             success: false,
-            error: {
-              code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
-              message: errorMessage,
-            },
+            error: { code, message: errorMessage },
           };
         }
       });
@@ -1508,15 +1543,28 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         } catch (error) {
           const titanError = error instanceof TitanError ? error : null;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          const code = String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR);
+
+          // T#70: unconditional 5xx logging (sequential batch branch).
+          if (this.netronPeer?.logger && this.isServerError(code, titanError)) {
+            this.netronPeer.logger.error(
+              {
+                service: req.service,
+                method: req.method,
+                errorCode: code,
+                error: errorMessage,
+                ...(error instanceof Error && error.stack && { stack: error.stack }),
+                batchMode: 'sequential',
+              },
+              'Netron batch error',
+            );
+          }
 
           batchHints.failureCount++;
           batchResponse.responses.push({
             id: req.id,
             success: false,
-            error: {
-              code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
-              message: errorMessage,
-            },
+            error: { code, message: errorMessage },
           });
 
           if (stopOnError) {
@@ -2412,6 +2460,40 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         headers.set('Access-Control-Allow-Credentials', 'true');
       }
     }
+  }
+
+  /**
+   * T#70: classifier for "this error is a server fault, log it
+   * unconditionally". The catch sites in the batch handler don't
+   * compute httpError.status (mapToHttp is single-invoke-only), so
+   * we infer 5xx from the code string + the underlying TitanError.
+   *
+   * Conservative: anything that looks like a 5xx status code OR a
+   * TitanError with a 5xx-typed `code` field counts. We err on the
+   * side of MORE logging — a stray warn-level event is far cheaper
+   * than a silent 500 that costs an operator an hour of triage.
+   */
+  private isServerError(code: string, titanError: TitanError | null): boolean {
+    // Numeric HTTP code form ("500", "502", "503", "504", "507"…).
+    if (/^5\d{2}$/.test(code)) return true;
+    // String error code forms emitted by the typed error library.
+    if (
+      code === 'INTERNAL_SERVER_ERROR' ||
+      code === 'BAD_GATEWAY' ||
+      code === 'SERVICE_UNAVAILABLE' ||
+      code === 'GATEWAY_TIMEOUT' ||
+      code === 'INTERNAL' ||
+      code === 'UNKNOWN'
+    ) {
+      return true;
+    }
+    // TitanError carries its own typed code that might already be a
+    // 5xx — check that as the final fallback.
+    if (titanError) {
+      const tcode = String((titanError as { code?: unknown }).code ?? '');
+      if (/^5\d{2}$/.test(tcode)) return true;
+    }
+    return false;
   }
 
   /**

@@ -157,25 +157,34 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     onError,
   } = options;
 
-  // Reserved for future cache implementation
-  void cacheTime;
+  // State — initialised from the shared QueryCache so a remount
+  // inside the `staleTime` window hydrates synchronously
+  // (`data` + `dataUpdatedAt` + `status='success'`) without
+  // refetching. See useQuery for the full rationale.
+  const cachedQueryOnInit = useMemo(
+    () => client.getQueryCache().getQuery<InfiniteData<TData>, TError>(queryKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
-  // State
-  const [data, setData] = useState<InfiniteData<TData> | undefined>(() => {
-    // Check cache first
-    const cached = client.getQueryCache().get<InfiniteData<TData>>(queryKey);
-    return cached;
-  });
+  const [data, setData] = useState<InfiniteData<TData> | undefined>(
+    cachedQueryOnInit?.state.data,
+  );
 
-  const [error, setError] = useState<TError | null>(null);
+  const [error, setError] = useState<TError | null>(
+    cachedQueryOnInit?.state.error ?? null,
+  );
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(() => {
     if (data !== undefined) return 'success';
+    if (cachedQueryOnInit?.state.status === 'error') return 'error';
     return 'idle';
   });
   const [isFetching, setIsFetching] = useState(false);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
   const [isFetchingPreviousPage, setIsFetchingPreviousPage] = useState(false);
-  const [dataUpdatedAt, setDataUpdatedAt] = useState(0);
+  const [dataUpdatedAt, setDataUpdatedAt] = useState(
+    cachedQueryOnInit?.state.dataUpdatedAt ?? 0,
+  );
 
   // Refs for stable callbacks and preventing race conditions
   const queryKeyHash = useMemo(() => hashQueryKey(queryKey), [queryKey]);
@@ -534,26 +543,44 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     }
   }, [queryKeyHash, enabled, isHydrating]);
 
-  // Cache subscription
+  // Cache subscription — keep local mirror in lockstep with the
+  // shared store on every mutation (write/error/invalidate/evict)
+  // and forward the per-observer cacheTime hint for GC.
   useEffect(() => {
-    const unsubscribe = client.getQueryCache().subscribe(queryKey, () => {
-      const cached = client.getQueryCache().get<InfiniteData<TData>>(queryKey);
-      if (cached !== undefined) {
-        setData(cached);
-      }
-    });
+    const cache = client.getQueryCache();
+    const unsubscribe = cache.subscribe(
+      queryKey,
+      () => {
+        const query = cache.getQuery<InfiniteData<TData>, TError>(queryKey);
+        if (!query) {
+          setData(undefined);
+          setStatus('idle');
+          setDataUpdatedAt(0);
+          return;
+        }
+        const s = query.state;
+        setData(s.data);
+        setError(s.error);
+        setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
+        setDataUpdatedAt(s.dataUpdatedAt);
+      },
+      cacheTime,
+    );
 
     return unsubscribe;
-  }, [client, queryKeyHash]);
+  }, [client, queryKeyHash, cacheTime]);
 
-  // Cleanup
-  useEffect(
-    () => () => {
+  // Mount/unmount tracking. See useQuery for the StrictMode
+  // rationale — without explicit `isMounted.current = true` on
+  // the mount path the ref stays `false` after the dev double-
+  // mount cleanup and every subsequent state update is dropped.
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
       isMounted.current = false;
       abortControllerRef.current?.abort();
-    },
-    []
-  );
+    };
+  }, []);
 
   // Return result
   return useMemo(

@@ -34,6 +34,12 @@ interface QueryState<TData = unknown, TError = unknown> {
   isInvalidated: boolean;
   fetchStatus: 'idle' | 'fetching' | 'paused';
   observers: Set<() => void>;
+  /** Per-observer cacheTime hints. The cache's effective GC delay
+   *  is `max(values)` so the most-permissive observer's preference
+   *  wins, with `config.defaultCacheTime` as the floor. Removing
+   *  an observer drops its entry; this prevents a long-lived
+   *  cache hint from outliving the component that asked for it. */
+  observerCacheTimes?: Map<() => void, number>;
   gcTimeout?: ReturnType<typeof setTimeout>;
   promise?: Promise<TData>;
   abortController?: AbortController;
@@ -269,8 +275,13 @@ export class QueryCache {
 
   /**
    * Subscribe to query changes
+   *
+   * @param cacheTime - Optional GC hint. Each observer may declare
+   *   how long the entry should survive after it unsubscribes; the
+   *   effective GC delay is the max across observers (floor =
+   *   `config.defaultCacheTime`).
    */
-  subscribe(queryKey: QueryKey, observer: () => void): () => void {
+  subscribe(queryKey: QueryKey, observer: () => void, cacheTime?: number): () => void {
     const hash = hashQueryKey(queryKey);
     let state = this.cache.get(hash);
 
@@ -292,6 +303,10 @@ export class QueryCache {
     }
 
     state.observers.add(observer);
+    if (cacheTime !== undefined) {
+      if (!state.observerCacheTimes) state.observerCacheTimes = new Map();
+      state.observerCacheTimes.set(observer, cacheTime);
+    }
 
     // Cancel GC timer when observers exist
     if (state.gcTimeout) {
@@ -301,6 +316,7 @@ export class QueryCache {
 
     return () => {
       state!.observers.delete(observer);
+      state!.observerCacheTimes?.delete(observer);
       this.scheduleGC(hash);
     };
   }
@@ -470,7 +486,11 @@ export class QueryCache {
   // ============================================================================
 
   /**
-   * Schedule GC for a query
+   * Schedule GC for a query. Effective delay is the max
+   * cacheTime declared by any observer that ever subscribed,
+   * falling back to `config.defaultCacheTime`. Per-observer
+   * hints are dropped on unsubscribe so the GC window doesn't
+   * outlive the components that requested it.
    */
   private scheduleGC(hash: string): void {
     if (!this.config.gcEnabled) return;
@@ -489,7 +509,21 @@ export class QueryCache {
       if (state.observers.size === 0) {
         this.cache.delete(hash);
       }
-    }, this.config.defaultCacheTime);
+    }, this.resolveCacheTime(state));
+  }
+
+  /**
+   * Compute the effective cacheTime for a state entry — the max
+   * across all observers' hints, floored at the cache's default.
+   */
+  private resolveCacheTime(state: QueryState): number {
+    const hints = state.observerCacheTimes;
+    if (!hints || hints.size === 0) return this.config.defaultCacheTime;
+    let max = this.config.defaultCacheTime;
+    for (const value of hints.values()) {
+      if (value > max) max = value;
+    }
+    return max;
   }
 
   /**

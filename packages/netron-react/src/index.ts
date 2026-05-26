@@ -43,6 +43,7 @@ export {
 export {
   // Data fetching
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useSubscription,
 

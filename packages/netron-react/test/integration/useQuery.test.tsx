@@ -1415,4 +1415,125 @@ describe('useQuery Integration Tests', () => {
       expect((results[2].result.current as any).data.name).toBe('Charlie');
     });
   });
+
+  // ============================================================================
+  // 9. StrictMode + Remount (regression coverage)
+  // ============================================================================
+
+  describe('StrictMode + Remount', () => {
+    it('should finalise status="success" under StrictMode double-mount', async () => {
+      // React.StrictMode in dev mounts every effect mount→cleanup→
+      // remount. A previous bug parked `isMounted.current = false`
+      // after the first cleanup and never reset it on remount, so
+      // every subsequent `setStatus('success')` was silently
+      // dropped — consumers stayed stuck on `isLoading: true`
+      // indefinitely. This test covers that exact flow.
+      const strictWrapper: React.FC<{ children: ReactNode }> = ({ children }) =>
+        React.createElement(
+          React.StrictMode,
+          null,
+          React.createElement(NetronProvider, { client, autoConnect: false, children }),
+        );
+
+      const { result } = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '1'],
+            queryFn: () => client.invoke('user', 'getUser', ['1']),
+          }),
+        { wrapper: strictWrapper },
+      );
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.status).toBe('success');
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.data).toEqual({ id: '1', name: 'Alice', email: 'alice@example.com' });
+    });
+
+    it('should hydrate from cache on remount inside staleTime without refetching', async () => {
+      // First mount: populate the cache.
+      const first = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '2'],
+            queryFn: () => client.invoke('user', 'getUser', ['2']),
+            staleTime: 60_000,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => {
+        expect(first.result.current.isSuccess).toBe(true);
+      });
+
+      const requestsAfterFirst = requestCount;
+      expect(requestsAfterFirst).toBe(1);
+      first.unmount();
+
+      // Second mount with the same queryKey, well inside staleTime.
+      // Should hydrate synchronously from cache: success status,
+      // data immediately present, no extra network request.
+      const second = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '2'],
+            queryFn: () => client.invoke('user', 'getUser', ['2']),
+            staleTime: 60_000,
+          }),
+        { wrapper },
+      );
+
+      expect(second.result.current.isSuccess).toBe(true);
+      expect(second.result.current.status).toBe('success');
+      expect(second.result.current.isLoading).toBe(false);
+      expect(second.result.current.data).toEqual({
+        id: '2',
+        name: 'Bob',
+        email: 'bob@example.com',
+      });
+
+      // Give the effects a tick to confirm no background refetch fires.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(requestCount).toBe(requestsAfterFirst);
+    });
+
+    it('should propagate invalidate-from-elsewhere to mounted observers', async () => {
+      // A second observer of the same queryKey should see status
+      // flip to stale + refetch when an external caller invalidates
+      // the cache. Before the subscription was changed to mirror
+      // the full Query state, the observer only saw setData calls
+      // and `isStale` lied because local `dataUpdatedAt` was frozen.
+      const view = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '3'],
+            queryFn: () => client.invoke('user', 'getUser', ['3']),
+            staleTime: 60_000,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => {
+        expect(view.result.current.isSuccess).toBe(true);
+      });
+      expect(view.result.current.data?.name).toBe('Charlie');
+      const before = requestCount;
+
+      // External invalidate. After this, a remount or refetch
+      // call should observe `isStale === true` and re-execute the
+      // query function.
+      act(() => {
+        client.getQueryCache().invalidate(['user', '3']);
+      });
+
+      const refetched = await view.result.current.refetch();
+      expect(refetched.data?.name).toBe('Charlie');
+      expect(requestCount).toBeGreaterThan(before);
+    });
+  });
 });

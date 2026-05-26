@@ -61,6 +61,14 @@ import type { IMiddlewareManager, MiddlewareFunction, MiddlewareConfig, Middlewa
  * const user = await client.core.users.getById('123');
  * ```
  */
+/**
+ * Events emitted by `MultiBackendClient`. The set is intentionally
+ * narrow today — the only consumer is the React layer's query
+ * cache, which uses `'reconnect'` to revalidate stale entries.
+ */
+export type MultiBackendClientEvent = 'reconnect' | 'disconnect';
+type MultiBackendEventHandler = (backend: string) => void;
+
 export class MultiBackendClient<T extends BackendSchema = BackendSchema> implements IMultiBackendClient<T> {
   private baseUrl: string;
   private pool: BackendPool;
@@ -68,6 +76,13 @@ export class MultiBackendClient<T extends BackendSchema = BackendSchema> impleme
   private middleware: IMiddlewareManager;
   private defaultBackend: string;
   private backendNames: string[];
+  /** Per-event subscriber sets. Lazily allocated so consumers
+   *  that never wire `on()` don't pay for an empty map. */
+  private eventListeners: Map<MultiBackendClientEvent, Set<MultiBackendEventHandler>> = new Map();
+  /** Cleanup callbacks for per-backend transport listeners. We
+   *  wire reconnect listeners lazily on first `on()` so HTTP-only
+   *  deployments (no WS to reconnect to) pay nothing. */
+  private transportUnsubs: Array<() => void> = [];
 
   constructor(options: MultiBackendClientOptions<T>) {
     this.baseUrl = options.baseUrl.endsWith('/') ? options.baseUrl.slice(0, -1) : options.baseUrl;
@@ -210,9 +225,98 @@ export class MultiBackendClient<T extends BackendSchema = BackendSchema> impleme
   }
 
   /**
+   * Subscribe to client-level events.
+   *
+   * Currently emits:
+   *  - `'reconnect'` — fired with `(backendName)` when any
+   *    WebSocket-backed backend in the pool re-establishes its
+   *    connection after a drop. React Query consumers use this to
+   *    revalidate stale entries (`refetchOnReconnect`).
+   *  - `'disconnect'` — fired with `(backendName)` when a backend
+   *    drops. Forwarded for observability; not consumed by the
+   *    cache layer today.
+   *
+   * Listeners are wired lazily — the first `on()` call attaches
+   * underlying transport listeners across every backend in the
+   * pool. HTTP-only deployments still receive no events (HTTP has
+   * no reconnect semantic), which is correct: there's nothing to
+   * revalidate against.
+   *
+   * @returns Unsubscribe function.
+   */
+  on(event: MultiBackendClientEvent, handler: MultiBackendEventHandler): () => void {
+    let set = this.eventListeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.eventListeners.set(event, set);
+      // First subscriber for this event class — make sure the
+      // transport layer is forwarding to us. wireTransportEvents
+      // is idempotent: subsequent calls are no-ops.
+      this.wireTransportEvents();
+    }
+    set.add(handler);
+    return () => {
+      this.eventListeners.get(event)?.delete(handler);
+    };
+  }
+
+  /** Symmetric `off()` for callers that don't want to keep the
+   *  unsubscribe handle around. */
+  off(event: MultiBackendClientEvent, handler: MultiBackendEventHandler): void {
+    this.eventListeners.get(event)?.delete(handler);
+  }
+
+  private emitEvent(event: MultiBackendClientEvent, backend: string): void {
+    const set = this.eventListeners.get(event);
+    if (!set || set.size === 0) return;
+    for (const fn of set) {
+      try {
+        fn(backend);
+      } catch {
+        // listener exceptions don't propagate; one bad listener
+        // shouldn't break the rest of the pipeline
+      }
+    }
+  }
+
+  /**
+   * Wire per-backend transport reconnect/disconnect events into
+   * the client-level event bus. Idempotent: only the first call
+   * attaches listeners; later calls short-circuit. WebSocket
+   * backends expose `.on('reconnect' | 'disconnect')`; HTTP
+   * backends don't, and are silently skipped — there's no
+   * "reconnect" to forward.
+   */
+  private wireTransportEvents(): void {
+    if (this.transportUnsubs.length > 0) return;
+    for (const name of this.backendNames) {
+      const backendClient = this.pool.get(name) as unknown as {
+        getTransportType?: () => string;
+        on?: (event: string, handler: (...args: unknown[]) => void) => (() => void) | void;
+      };
+      if (typeof backendClient.on !== 'function') continue;
+      const onReconnect = () => this.emitEvent('reconnect', name);
+      const onDisconnect = () => this.emitEvent('disconnect', name);
+      const u1 = backendClient.on('reconnect', onReconnect);
+      const u2 = backendClient.on('disconnect', onDisconnect);
+      if (typeof u1 === 'function') this.transportUnsubs.push(u1);
+      if (typeof u2 === 'function') this.transportUnsubs.push(u2);
+    }
+  }
+
+  /**
    * Destroy client and release all resources
    */
   async destroy(): Promise<void> {
+    for (const unsub of this.transportUnsubs) {
+      try {
+        unsub();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.transportUnsubs.length = 0;
+    this.eventListeners.clear();
     await this.pool.destroy();
     this.middleware.clear();
   }

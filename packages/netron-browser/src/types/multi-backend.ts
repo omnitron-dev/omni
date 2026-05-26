@@ -461,6 +461,20 @@ export interface IMultiBackendClient<T extends BackendSchema = BackendSchema> {
   use(middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>, stage?: MiddlewareStage): this;
 
   /**
+   * Subscribe to client-level events. Today only `'reconnect'` and
+   * `'disconnect'` are emitted (with the backend name as the
+   * payload), aggregated across every WebSocket-backed backend in
+   * the pool. HTTP-only deployments emit nothing.
+   *
+   * @returns Unsubscribe function.
+   */
+  on(event: 'reconnect' | 'disconnect', handler: (backend: string) => void): () => void;
+
+  /** Symmetric `off()` — equivalent to invoking the unsubscribe
+   *  function returned by `on()`. */
+  off(event: 'reconnect' | 'disconnect', handler: (backend: string) => void): void;
+
+  /**
    * Destroy client and release all resources
    */
   destroy(): Promise<void>;

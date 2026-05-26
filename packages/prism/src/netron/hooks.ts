@@ -12,6 +12,7 @@
 export {
   // Data fetching
   useQuery as useNetronQuery,
+  useInfiniteQuery as useNetronInfiniteQuery,
   useMutation as useNetronMutation,
   useSubscription as useNetronSubscription,
 

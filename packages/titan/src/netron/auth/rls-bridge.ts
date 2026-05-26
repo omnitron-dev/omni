@@ -50,13 +50,24 @@ export function mapAuthToRLSAuthContext(auth: AuthContext, options?: AuthToRLSOp
     claims || metadata
       ? { ...(claims ?? {}), ...(metadata ?? {}) }
       : undefined;
+  // S2S service-role tokens carry `metadata.isServiceRole === true`
+  // (set by `createSharedSessionAuthManager` when the JWT claims
+  // `service_role`). Cross-backend privileged traffic is semantically
+  // equivalent to the in-process system context (`withSystemRLSContext`)
+  // — propagate the flag so downstream consumers reading
+  // `getCurrentAuth().isServiceRole` (and RLS policies checking
+  // `ctx.auth.isSystem`) recognise the privileged caller. Without
+  // this lift, every admin-or-service gate that reads `isServiceRole`
+  // through the RLS bridge silently denies all S2S traffic even
+  // though the JWT validates cleanly.
+  const isSystem = (metadata as { isServiceRole?: unknown } | undefined)?.isServiceRole === true;
   return {
     userId: auth.userId,
     roles: auth.roles,
     permissions: auth.permissions,
     tenantId: options?.defaultTenantId,
     attributes,
-    isSystem: false,
+    isSystem,
   };
 }
 

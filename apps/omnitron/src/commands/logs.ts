@@ -151,6 +151,53 @@ function buildFilter(options: LogsOptions): (entry: LogEntryDto) => boolean {
 // File-based log reading (offline mode)
 // ---------------------------------------------------------------------------
 
+/** Test-only — exposes the path resolver for unit tests. */
+export const __test = { resolveCandidateLogPaths };
+
+/**
+ * Resolve candidate log file paths for an app, probing both the
+ * standalone and project-mode layouts produced by LogManager
+ * (`apps/omnitron/src/monitoring/log-manager.ts:getLogDir`).
+ *
+ *   - standalone app `messaging`:
+ *       ~/.omnitron/logs/messaging/app.log              ← directory layout
+ *       ~/.omnitron/logs/messaging.log                  ← legacy flat layout
+ *   - project-mode app `omni/dev/messaging`:
+ *       ~/.omnitron/projects/omni/dev/logs/messaging/app.log
+ *
+ * T#76 — pre-fix, the offline fallback only checked the legacy
+ * flat `<app>.log`. Project-mode apps and modern standalone apps
+ * silently fell through to "no logs found" even when the files
+ * were sitting right there on disk.
+ */
+function resolveCandidateLogPaths(appName: string): string[] {
+  const candidates: string[] = [];
+
+  // Project-mode: `omni/dev/messaging` →
+  // ~/.omnitron/projects/omni/dev/logs/messaging/app.log
+  const parts = appName.split('/');
+  if (parts.length >= 3) {
+    const [project, stack, ...rest] = parts;
+    const app = rest.join('/');
+    candidates.push(
+      path.join(OMNITRON_HOME, 'projects', project!, stack!, 'logs', app, 'app.log'),
+    );
+  }
+
+  // Standalone: directory layout used by current LogManager.
+  candidates.push(path.join(LOG_DIR, appName, 'app.log'));
+
+  // Legacy: flat <app>.log file layout. Kept for compatibility
+  // with pre-LogManager-refactor deployments.
+  candidates.push(path.join(LOG_DIR, `${appName}.log`));
+
+  // Last resort: the daemon's own log — operators often expect
+  // app activity to surface here too.
+  candidates.push(path.join(LOG_DIR, 'omnitron.log'));
+
+  return candidates;
+}
+
 /**
  * Read logs from ~/.omnitron/logs/ on disk.
  * Uses reverse reading for large files to avoid loading everything into memory.
@@ -164,28 +211,38 @@ function readLogsFromFile(appName?: string, lines = 50, filter: (e: LogEntryDto)
   const logFiles: Array<{ app: string; filePath: string }> = [];
 
   if (appName) {
-    // Check both app-specific and main omnitron log
-    const filePath = path.join(LOG_DIR, `${appName}.log`);
-    const omnitronPath = path.join(LOG_DIR, 'omnitron.log');
-
-    if (fs.existsSync(filePath)) {
-      logFiles.push({ app: appName, filePath });
-    } else if (fs.existsSync(omnitronPath)) {
-      // Filter omnitron.log by app name via childProcess field
-      logFiles.push({ app: appName, filePath: omnitronPath });
+    // T#76: probe project-mode + standalone-dir + legacy-flat
+    // layouts in order; use the FIRST one that exists.
+    const candidates = resolveCandidateLogPaths(appName);
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (found) {
+      logFiles.push({ app: appName, filePath: found });
     } else {
-      log.info(`No log file found for app "${appName}"`);
+      log.info(`No log file found for app "${appName}" — checked: ${candidates.join(', ')}`);
       return;
     }
   } else {
-    const files = fs.readdirSync(LOG_DIR).filter((f) => f.endsWith('.log'));
-    if (files.length === 0) {
+    // No appName — list every standalone log file in LOG_DIR
+    // (both the new directory layout and the legacy flat one).
+    // Project-mode apps live under ~/.omnitron/projects/ and are
+    // not listed in the no-appName case to keep output bounded.
+    const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
+    for (const ent of entries) {
+      if (ent.isFile() && ent.name.endsWith('.log')) {
+        // Legacy flat layout — strip the .log extension.
+        const app = path.basename(ent.name, '.log');
+        logFiles.push({ app, filePath: path.join(LOG_DIR, ent.name) });
+      } else if (ent.isDirectory()) {
+        // Directory layout — app.log inside per-app folder.
+        const candidate = path.join(LOG_DIR, ent.name, 'app.log');
+        if (fs.existsSync(candidate)) {
+          logFiles.push({ app: ent.name, filePath: candidate });
+        }
+      }
+    }
+    if (logFiles.length === 0) {
       log.info(`No log files found in ${LOG_DIR}`);
       return;
-    }
-    for (const file of files) {
-      const app = path.basename(file, '.log');
-      logFiles.push({ app, filePath: path.join(LOG_DIR, file) });
     }
   }
 

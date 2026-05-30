@@ -575,3 +575,18 @@ export { DurationPicker, type DurationPickerProps, type DurationPickerLabels } f
 
 // Changelog
 export { ChangelogTimeline, ChangelogEntry } from './changelog/index.js';
+
+// Map (MapLibre GL + react-map-gl)
+export {
+  Map,
+  type MapProps,
+  type MapViewport,
+  MapMarker,
+  type MapMarkerProps,
+  MapPointPicker,
+  type MapPointPickerProps,
+  type MapPointPickerValue,
+  MapCoverageLayer,
+  type MapCoverageLayerProps,
+  type CoveragePoint,
+} from './map/index.js';

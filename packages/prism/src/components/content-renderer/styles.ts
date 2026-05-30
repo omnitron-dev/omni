@@ -22,20 +22,21 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     scrollMarginTop: 100, // Account for sticky header on anchor jump
   },
-  // First heading in content should not have excessive top margin.
-  // `:first-child:is(h1, h2, h3)` matches the heading ONLY when it's
-  // the very first child of the container — semantically tighter
-  // than the previous `& > hN:first-of-type` chain which also fired
-  // for "the first hN in the article" even if paragraphs preceded it.
-  '& > :first-child:is(h1, h2, h3)': {
-    marginTop: 0,
-  },
-  h1: { ...theme.typography.h1, marginTop: 40, marginBottom: 12 },
-  h2: { ...theme.typography.h2, marginTop: 40, marginBottom: 12 },
-  h3: { ...theme.typography.h3, marginTop: 32, marginBottom: 8 },
-  h4: { ...theme.typography.h4, marginTop: 24, marginBottom: 8 },
-  h5: { ...theme.typography.h5, marginTop: 24, marginBottom: 8 },
-  h6: { ...theme.typography.h6, marginTop: 24, marginBottom: 8 },
+  // Heading margins. Top margins are applied via the adjacent-sibling
+  // combinator (`* + hN`) rather than a `:first-child` reset: a heading
+  // takes its top margin ONLY when it follows another element, so a
+  // heading at the very top of its container carries none. This is
+  // SSR-safe (avoids Emotion's `:first-child` warning) and yields the
+  // same result the previous `& > :first-child:is(h1,h2,h3)` reset did.
+  h1: { ...theme.typography.h1, marginTop: 0, marginBottom: 12 },
+  h2: { ...theme.typography.h2, marginTop: 0, marginBottom: 12 },
+  h3: { ...theme.typography.h3, marginTop: 0, marginBottom: 8 },
+  h4: { ...theme.typography.h4, marginTop: 0, marginBottom: 8 },
+  h5: { ...theme.typography.h5, marginTop: 0, marginBottom: 8 },
+  h6: { ...theme.typography.h6, marginTop: 0, marginBottom: 8 },
+  '& * + h1, & * + h2': { marginTop: 40 },
+  '& * + h3': { marginTop: 32 },
+  '& * + h4, & * + h5, & * + h6': { marginTop: 24 },
 
   // ─── Paragraph ──────────────────────────────────────────────
   p: {
@@ -237,10 +238,10 @@ export const ContentRoot = styled('div')(({ theme }) => ({
       fontWeight: 700,
       backgroundColor: alpha(theme.palette.grey[500], 0.08),
     },
-    // Zebra rows — child-position over of-type for the same
-    // reason elsewhere: row replacements (skeleton placeholders,
-    // empty-state cells) don't break the alternation pattern.
-    '& tbody tr:nth-child(odd)': {
+    // Zebra rows. `:nth-of-type` (not `:nth-child`) is SSR-safe and
+    // exactly equivalent here — a `<tbody>` contains only `<tr>`
+    // children, so type-position and child-position coincide.
+    '& tbody tr:nth-of-type(odd)': {
       backgroundColor: alpha(theme.palette.grey[500], 0.04),
     },
   },
@@ -422,7 +423,10 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   },
   [`& .${contentClasses.tabsPanel}`]: {
     padding: theme.spacing(2),
-    '& > :first-child': { marginTop: 0 },
+    // No `:first-child` reset needed: headings only take a top margin
+    // when preceded by a sibling (see heading rules above) and
+    // paragraphs carry only a bottom margin, so the panel's first
+    // child never has an excess top margin. (SSR-safe.)
     '& > :last-child': { marginBottom: 0 },
   },
 
@@ -482,7 +486,9 @@ export const ContentRoot = styled('div')(({ theme }) => ({
   // ─── Compact mode (chat messages, comments, etc.) ─────────
   [`&.${contentClasses.compact}`]: {
     '> * + *': { marginTop: 0, marginBottom: 2 },
-    '& > :first-child:not(p)': { marginTop: 4 },
+    // (Dropped an SSR-unsafe `& > :first-child:not(p)` 4px top-margin
+    // tweak — cosmetically negligible in compact mode, and `:first-child`
+    // triggered Emotion's SSR warning.)
     '& h1, & h2, & h3, & h4, & h5, & h6': { marginTop: 0, marginBottom: 2 },
     h1: { fontSize: '1.25rem', fontWeight: 600, marginTop: 0, marginBottom: 2 },
     h2: { fontSize: '1.125rem', fontWeight: 600, marginTop: 0, marginBottom: 2 },

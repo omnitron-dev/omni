@@ -17,6 +17,32 @@ import { TitanError } from '../errors/core.js';
 export const serializer = new Serializer();
 
 /**
+ * SECURITY (NB-1; mirrors titan T#38) — stack-trace transmission policy.
+ *
+ * Default `false` (omit). The browser client occasionally encodes errors TOWARD
+ * the server (rejected stream callbacks, client-thrown errors on a duplex
+ * stream). A browser stack leaks bundle paths, source structure and dependency
+ * shape, and is useless context in the server's logs. The titan server
+ * serializer already defaults to omitting stacks — the browser must match.
+ * Tests/dev tooling can opt in via `setSerializerErrorOptions({ includeStackTraces: true })`.
+ */
+let includeStackTraces = false;
+
+export interface SerializerErrorOptions {
+  includeStackTraces?: boolean;
+}
+
+export function setSerializerErrorOptions(opts: SerializerErrorOptions): void {
+  if (typeof opts?.includeStackTraces === 'boolean') {
+    includeStackTraces = opts.includeStackTraces;
+  }
+}
+
+export function getSerializerErrorOptions(): Required<SerializerErrorOptions> {
+  return { includeStackTraces };
+}
+
+/**
  * Base TitanError fields the encoder writes explicitly (or derives on decode).
  * Everything a subclass sets as its OWN enumerable property beyond this set is
  * "extras" and must travel too — otherwise `serviceId`, `transport`,
@@ -90,8 +116,9 @@ serializer.register(
     buf.write(serializer.encode(obj.spanId));
     buf.write(serializer.encode(obj.traceId));
 
-    // Encode stack trace (optional)
-    buf.write(serializer.encode(obj.stack || null));
+    // Encode stack trace — gated (NB-1): omitted by default so the browser does
+    // not leak its stack to the server, matching the titan server serializer.
+    buf.write(serializer.encode(includeStackTraces ? obj.stack || null : null));
 
     // Encode cause chain - serialize as plain error info to avoid deep nesting
     if ((obj as any).cause) {
@@ -106,7 +133,7 @@ serializer.register(
             __errorType: 'Error',
             name: cause.name,
             message: cause.message,
-            stack: cause.stack,
+            stack: includeStackTraces ? cause.stack : undefined,
           })
         );
       } else {

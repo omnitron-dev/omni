@@ -56,6 +56,37 @@ describe('Cache Decorators', () => {
       expect(service.callCount).toBe(1);
     });
 
+    it('deduplicates concurrent misses — stampede protection [CA-1]', async () => {
+      class UserService {
+        cacheService = cacheService;
+        callCount = 0;
+
+        @Cacheable({ keyPrefix: 'user', ttl: 60 })
+        async getUser(id: string): Promise<{ id: string; n: number }> {
+          this.callCount++;
+          // Simulate an expensive backend call so concurrent callers overlap.
+          await new Promise((r) => setTimeout(r, 20));
+          return { id, n: this.callCount };
+        }
+      }
+
+      const service = new UserService();
+
+      // 20 concurrent callers for the SAME cold key. Without single-flight all
+      // 20 would miss and run the method (stampede on the backing store).
+      const results = await Promise.all(Array.from({ length: 20 }, () => service.getUser('hot')));
+
+      // The method body ran exactly once; every caller got that single result.
+      expect(service.callCount).toBe(1);
+      for (const r of results) {
+        expect(r).toEqual({ id: 'hot', n: 1 });
+      }
+
+      // A subsequent call is served from cache (still one execution).
+      await service.getUser('hot');
+      expect(service.callCount).toBe(1);
+    });
+
     it('should cache with different keys for different arguments', async () => {
       class UserService {
         cacheService = cacheService;

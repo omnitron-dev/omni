@@ -90,6 +90,20 @@ export class SchedulerService implements ILifecycle {
       return; // Already started (e.g., via onInit auto-start) — idempotent
     }
 
+    // SC-1: `distributed` mode is configured (interfaces + defaults) but NOT
+    // implemented — node-cron fires on EVERY node, and nothing consults a lock,
+    // so enabling it silently runs every job on every node (duplicate execution
+    // at scale). Fail fast rather than pretend: this is opt-in (defaults to
+    // false), so normal single-node usage is unaffected. Distributed scheduling
+    // (per-fire-window lock over a shared store) is tracked as scheduler-hardening.
+    if (this.config?.distributed?.enabled) {
+      throw Errors.badRequest(
+        'Scheduler distributed mode is enabled but not implemented: jobs would execute on ' +
+          'every node (duplicate execution). Run the scheduler on a single node or set ' +
+          'config.distributed.enabled = false until distributed coordination is implemented.'
+      );
+    }
+
     this.isStarted = true;
 
     // Start all registered jobs

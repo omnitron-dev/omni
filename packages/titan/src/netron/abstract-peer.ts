@@ -360,10 +360,20 @@ export abstract class AbstractPeer implements IPeer {
     if (iInfo.refCount === 0) {
       this.interfaces.delete(defId);
 
+      // NET-2: snapshot the child interfaces BEFORE recursing. Each recursive
+      // release mutates `this.interfaces` (deletes entries), so iterating the
+      // live map would skip entries / behave unpredictably. Thread the shared
+      // `released` set so a cyclic parentId can't recurse forever, and AWAIT
+      // each child release so failures surface instead of becoming
+      // fire-and-forget unhandled rejections.
+      const children: any[] = [];
       for (const i of this.interfaces.values()) {
         if ((i.instance as any).$def?.parentId === defId) {
-          this.releaseInterface(i.instance);
+          children.push(i.instance);
         }
+      }
+      for (const child of children) {
+        await this.releaseInterface(child, released);
       }
 
       await this.releaseInterfaceInternal(iInstance);

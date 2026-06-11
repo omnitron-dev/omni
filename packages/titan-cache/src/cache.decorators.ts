@@ -22,6 +22,7 @@
 import 'reflect-metadata';
 import type { ICache, ICacheSetOptions, ICacheService } from './cache.types.js';
 import { CACHE_SERVICE_TOKEN } from './cache.tokens.js';
+import { Singleflight } from './cache.utils.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 /**
@@ -250,6 +251,11 @@ export function Cacheable(options: CacheableOptions = {}): MethodDecorator {
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
 
+    // CA-1: one Singleflight per decorated method, shared across all calls so
+    // concurrent misses for the SAME cache key are deduplicated (stampede
+    // protection). Keyed by the computed cacheKey (which encodes the args).
+    const singleflight = new Singleflight<unknown>();
+
     // Store metadata for inspection
     Reflect.defineMetadata(CACHE_METADATA_KEY, { type: 'cacheable', options } as CacheMetadata, target, propertyKey);
 
@@ -277,41 +283,54 @@ export function Cacheable(options: CacheableOptions = {}): MethodDecorator {
 
       const cache: ICache<unknown> = cacheService.getCache(options.cacheName);
 
-      // Try to get from cache
+      // Try to get from cache (fast path — no flight needed on a hit)
       const cached = await cache.get(cacheKey);
       if (cached !== undefined) {
         return cached;
       }
 
-      // Execute method
-      const result = await originalMethod.apply(this, args);
+      // CA-1: stampede protection. Without single-flight, N concurrent callers
+      // all miss and all run originalMethod, hammering the backing store on
+      // hot-key expiry. Dedupe concurrent misses for the same key so exactly
+      // one call executes the method + populates the cache; the rest await it.
+      return singleflight.do(cacheKey, async () => {
+        // Re-check inside the flight: a previous flight may have populated the
+        // key between our get above and entering the flight.
+        const fresh = await cache.get(cacheKey);
+        if (fresh !== undefined) {
+          return fresh;
+        }
 
-      // Check unless condition
-      if (options.unless && options.unless(result)) {
+        // Execute method
+        const result = await originalMethod.apply(this, args);
+
+        // Check unless condition
+        if (options.unless && options.unless(result)) {
+          return result;
+        }
+
+        // Don't cache null/undefined
+        if (result === null || result === undefined) {
+          return result;
+        }
+
+        // Build cache options
+        const cacheOptions: ICacheSetOptions = {};
+        if (options.ttl !== undefined) {
+          cacheOptions.ttl = options.ttl;
+        }
+        if (options.compress !== undefined) {
+          cacheOptions.compress = options.compress;
+        }
+        if (options.tags) {
+          cacheOptions.tags = typeof options.tags === 'function' ? options.tags(...args) : options.tags;
+        }
+
+        // Store in cache
+        await cache.set(cacheKey, result, cacheOptions);
+
         return result;
-      }
-
-      // Don't cache null/undefined
-      if (result === null || result === undefined) {
-        return result;
-      }
-
-      // Build cache options
-      const cacheOptions: ICacheSetOptions = {};
-      if (options.ttl !== undefined) {
-        cacheOptions.ttl = options.ttl;
-      }
-      if (options.compress !== undefined) {
-        cacheOptions.compress = options.compress;
-      }
-      if (options.tags) {
-        cacheOptions.tags = typeof options.tags === 'function' ? options.tags(...args) : options.tags;
-      }
-
-      // Store in cache
-      await cache.set(cacheKey, result, cacheOptions);
-
-      return result;
+      });
     };
 
     return descriptor;

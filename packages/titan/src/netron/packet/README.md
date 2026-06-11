@@ -388,9 +388,9 @@ serializer.register(
 
 #### StreamReference (Extension Type 107)
 
-Stream connection reference with **lazy registration** to avoid circular dependencies.
+Stream connection reference with **eager, synchronous registration** (WIRE-13).
 
-**Lazy Registration Pattern**: StreamReference uses asynchronous lazy registration via `ensureStreamReferenceRegistered()` to break circular import dependencies between the packet serializer and stream implementation.
+**Registration**: the StreamReference codec (type 107) is registered eagerly + synchronously at module load by `streams/register-stream-reference.ts`, imported for side-effect from `netron.ts`. That module sits ABOVE the serializer↔stream import cycle, so it statically wires both without a dynamic import. (Previously this was an async lazy registration kicked off fire-and-forget from an encode monkey-patch — under which the *first* StreamReference encoded as a plain object.)
 
 **From `serializer.ts:110-172`:**
 ```typescript
@@ -482,23 +482,21 @@ const logger = createLogger({ name: 'serializer' });
 setSerializerLogger(logger);
 ```
 
-#### `ensureStreamReferenceRegistered()`
+#### `registerStreamReference()`
 
-Ensures StreamReference type is registered with the serializer. This function uses lazy registration to avoid circular dependencies between the packet serializer and stream implementation modules.
+Idempotently registers the StreamReference codec (type 107) with the serializer. Runs eagerly + synchronously at module load (`streams/register-stream-reference.ts`); also invoked once from `Netron.start()` as a belt-and-suspenders guard against tree-shaking.
 
-**Returns**: `Promise<void>`
+**Returns**: `void`
 
 **Usage**:
-- Called automatically during encode/decode when StreamReference is encountered
-- Can be called manually to force early registration
+- Runs automatically at module load (side-effect import from `netron.ts`)
 - Safe to call multiple times (idempotent)
 
 **Example**:
 ```typescript
-import { ensureStreamReferenceRegistered } from '@omnitron-dev/titan/netron/packet/serializer';
+import { registerStreamReference } from '@omnitron-dev/titan/netron/streams/register-stream-reference';
 
-// Force early registration if needed
-await ensureStreamReferenceRegistered();
+registerStreamReference(); // idempotent — already done at import
 ```
 
 **Implementation Details** (`serializer.ts:271-326`):
@@ -649,7 +647,7 @@ The following features were **documented in older versions but are not implement
 2. **Binary Detection Heuristic**: `base-transport.ts:78-83` uses simple heuristics to detect text vs binary data
 3. **No Packet Size Limits**: No MAX_PACKET_SIZE validation - relies on MessagePack limits and transport constraints
 4. **ID Collision Risk**: `Packet.resetId()` can cause ID collisions if packets are in flight (use with extreme caution)
-5. **StreamReference Lazy Registration**: Requires async `ensureStreamReferenceRegistered()` to avoid circular import dependencies
+5. **StreamReference Eager Registration**: `registerStreamReference()` runs synchronously at module load (above the serializer↔stream cycle) — no async, no first-encode race (WIRE-13)
 6. **StreamType Enum Unused**: The `StreamType` enum (FIRST, MIDDLE, LAST) is defined but not used - implementation uses `isLast` boolean flag instead
 
 ### ✅ Working Features
@@ -726,7 +724,7 @@ If you were relying on the old README documentation:
    - TitanError: 110 (new, registered before common types)
    - Definition: 109 (not 3)
    - Reference: 108 (not 2)
-   - StreamReference: 107 (not 4, uses lazy registration)
+   - StreamReference: 107 (registered eagerly at module load)
 4. **No protocol versioning** - all peers must use same version
 5. **Use @omnitron-dev/msgpack** not @msgpack/msgpack
 6. **Payload structure is flexible** - not restricted to arrays

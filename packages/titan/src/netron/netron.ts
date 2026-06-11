@@ -41,7 +41,7 @@ import {
   RECONNECT_JITTER_FACTOR,
 } from './constants.js';
 import { ConnectionManager, type ConnectionManagerConfig } from './connection-manager.js';
-import { ensureStreamReferenceRegistered } from './packet/serializer.js';
+import { registerStreamReference } from './streams/register-stream-reference.js';
 
 // Import transport layer
 import { TransportRegistry } from './transport/transport-registry.js';
@@ -571,8 +571,10 @@ export class Netron extends EventEmitter implements INetron {
 
     this.logger.info('Starting Netron instance');
 
-    // Ensure StreamReference is registered with serializer
-    await ensureStreamReferenceRegistered();
+    // StreamReference is registered eagerly + synchronously at module load by
+    // ./streams/register-stream-reference.js (imported above); this idempotent
+    // call is belt-and-suspenders so registration can't be tree-shaken away.
+    registerStreamReference();
 
     // Start connection manager for pooling and health monitoring
     this.connectionManager.start();

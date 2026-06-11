@@ -10,7 +10,22 @@
 ## Audit phase status
 - [x] **Phase 1** — Titan core (Nexus DI, application, cross-cutting) + Netron (RPC core, wire, auth red-team) + netron-browser + netron-react. (8 agents)
 - [x] **Phase 2** — 14× titan-* modules (data/redis/cache/lock, events/scheduler, pm, notifications/ratelimit/telemetry, auth/metrics/health/discovery). (5 agents)
-- [ ] **Phase 3** — omnitron app + how titan/omnitron/netron are used across the 8 downstream apps (legacy / dedup / reuse / best-practice conformance). (deferred until after critical framework fixes land)
+- [x] **Phase 3 AUDIT done** — downstream Backends Architecture Uniformity Blueprint produced (bg agent). Backends are already ~85% uniform (shared `@acme/auth-utils` + `defineSystem` bootstrap; ZERO `@ts-nocheck`/legacy shims; ZERO version-suffixed service names). Canonical app = `apps/main`. Blueprint + roadmap below. **downstream-app changes commit to the separate `internal/downstream` repo.**
+
+### PHASE 3 — UNIFICATION ROADMAP (from blueprint)
+- [ ] **U-P0 cleanup (trivial):** delete `apps/payments/Oops.rej` (merge artifact); delete `apps/storage/AUTH_MODULE_README.md` (stale); geo: add `src/config/config.schema.ts`+`index.ts` (only app missing a zod config schema); storage: add `./bootstrap` to package.json exports.
+- [ ] **U-P1 extract shared infra (biggest win, ~1000 lines dedup) — DESIGNED, ready to build:** create `@acme/titan-kit` (mirror auth-utils scaffold: type:module, peerDeps on titan-*, src/index.ts; downstream workspace globs `packages/*`). API from the survey:
+  - `parseRedisUrl`/`parseDatabaseUrl` — pure, BYTE-IDENTICAL across all 6 backends (+ payments deposit-worker = 7 copies).
+  - `createConfigModuleOptions({ app, envPrefix, schema, transform=true })` — varies only by prefix (MAIN_/STORAGE_/PAYMENTS_/PRICING_/MSG_/GEO_) + path `apps/{app}/config/default.json` + schema.
+  - `createRedisModuleOptions({ sessionsClient?, extraClients? })` — shared `sessions` client (SESSION_REDIS_URL||REDIS_URL db0) used by 5 apps; main adds gateway, payments adds pricing client.
+  - `createDatabaseModuleOptions({ poolOverrides?, timestamps=true, audit? })` — geo timestamps:false; main ENABLE_DATA_AUDIT.
+  - ALSO unify the inconsistent exported names (messaging: `createRedisModule` vs others' `createRedisModuleOptions`).
+  - Migrate 6 apps → thin wrappers; needs `pnpm install` (downstream) + per-app `tsc` verify. Then `wireNetronAuth()` in auth-utils + pin Redis DB via shared `ACME_REDIS_DB` map.
+  - **Execution note:** cross-repo + build-system + 6-app + per-app-verify → do as a focused build (not rushed), each app kept green.
+- **PROPAGATION (verified):** downstream apps consume titan via `link:.../omni/packages/titan*` (pnpm filesystem links) → ALL framework fixes in this session are ALREADY live in the 8 backends; no republish/bump needed.
+- [ ] **U-P2 module-consumption uniformity (sensible default = unify on Titan):** ONE `createHealthRpcService()` on titan-health (replace 5 bespoke `modules/health`); `createDomainMetrics(prefix, defs)` (converge storage/payments/pricing/geo `XMetricsService`); storage: remove `auth/context.ts` request-paradigm shims → ALS `actorId()`; reconcile optional deps (messaging titan-discovery, payments declared-unused titan-pm).
+- [ ] **U-P3 naming/docs:** one `@Service` naming convention (recommend bare domain nouns, drop `Service` suffix + `OmnitronStorage*`/`Payments*` prefixes); portal-seed read DB creds from env.
+- Reference skeleton + per-app conformance matrix captured in the blueprint (session history).
 
 ---
 

@@ -255,11 +255,34 @@ export class TelemetryRelayService extends EventEmitter {
         if (!this.transport.isConnected()) {
           await this.transport.connect();
         }
-        const ackd = await this.transport.send(entries);
+
+        // TR-1: send everything durably buffered (this batch plus any un-acked
+        // backlog) and TRUNCATE the WAL on full ack. The happy path previously
+        // appended to the WAL but NEVER cleared it, so the WAL grew without
+        // bound and `start()` re-sent every entry ever buffered on each restart
+        // (duplicate telemetry — defeating the "zero data loss" + dedup design).
+        // Sending the full WAL contents (rather than just `entries`) makes clear()
+        // safe even when a prior send failed and left a backlog.
+        //
+        // append() schedules its write asynchronously (T#69 write chain) and
+        // readAll() reads segment files from disk, so flush() FIRST to guarantee
+        // the just-appended batch is on disk before we read+clear — otherwise we
+        // could read a stale view and clear() entries that were still in flight.
+        let pending = entries;
+        if (this.wal) {
+          await this.wal.flush();
+          pending = await this.wal.readAll();
+        }
+        const ackd = await this.transport.send(pending);
         this.totalSent += ackd;
 
-        // If all ack'd, we can clear these entries from WAL
-        // (In practice, WAL segments are truncated after full replay)
+        if (this.wal && ackd === pending.length) {
+          // All durably-buffered entries acknowledged → drop them.
+          this.wal.clear();
+        } else if (ackd < pending.length) {
+          // Partial ack — keep the WAL and retry the remainder.
+          this.scheduleRetry();
+        }
       } catch {
         this.totalFailed += entries.length;
         // Entries are safe in WAL — will be replayed on reconnect
@@ -269,6 +292,11 @@ export class TelemetryRelayService extends EventEmitter {
       // Self-contained mode: directly feed to aggregator
       const ackd = await this.aggregator.ingest(this.nodeId, entries);
       this.totalSent += ackd;
+      // Drain the WAL too — in self-contained mode the aggregator IS the sink,
+      // so a successful ingest is a durable ack.
+      if (this.wal && ackd === entries.length) {
+        this.wal.clear();
+      }
     }
   }
 

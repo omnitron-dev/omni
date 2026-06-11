@@ -28,6 +28,17 @@ export interface ILockOptions {
 export interface IWithLockOptions extends ILockOptions {
   /** Skip execution instead of throwing when lock cannot be acquired (default: false) */
   skipOnLockFailure?: boolean;
+  /**
+   * Auto-renew the lock while `fn` runs so it cannot expire mid-execution
+   * (default: true). Without renewal, a function that runs longer than `ttl`
+   * lets the lock expire and another node can acquire it — breaking the mutual
+   * exclusion the lock exists to provide. Renewal happens every
+   * `renewIntervalMs` (default: floor(ttl/3), so one missed renewal still
+   * leaves margin before expiry).
+   */
+  autoRenew?: boolean;
+  /** Interval between auto-renewals in ms (default: floor(ttl/3)). */
+  renewIntervalMs?: number;
 }
 
 /**

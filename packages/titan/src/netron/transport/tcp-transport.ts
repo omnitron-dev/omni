@@ -13,7 +13,8 @@ import {
   ITransportServer,
   ConnectionState,
 } from './types.js';
-import { NetronErrors, Errors } from '../../errors/index.js';
+import { NetronErrors, Errors, TitanError, ErrorCode } from '../../errors/index.js';
+import { DEFAULT_MAX_PACKET_SIZE } from '../packet/index.js';
 
 /**
  * TCP-specific options
@@ -137,6 +138,30 @@ export class TcpConnection extends BaseConnection {
 
       // Read packet length (first 4 bytes, big-endian)
       const packetLength = buffer.readUInt32BE(0);
+
+      // WIRE-1 (DoS): reject an oversized DECLARED length before buffering the
+      // body. The `decodePacket` size cap only fires once a full frame is
+      // assembled, so without this gate a peer could pin up to ~4 GiB of memory
+      // by declaring a huge length (`readUInt32BE` is unbounded) and dribbling —
+      // or never completing — the frame. Bound the framing layer to the same
+      // maxPacketSize and drop the connection immediately.
+      const maxPacketSize = this.options.maxPacketSize ?? DEFAULT_MAX_PACKET_SIZE;
+      if (packetLength > maxPacketSize) {
+        this.bufferChunks = [];
+        this.bufferLength = 0;
+        this.setState(ConnectionState.ERROR);
+        this.emit(
+          'error',
+          new TitanError({
+            code: ErrorCode.PAYLOAD_TOO_LARGE,
+            message: `Declared packet length exceeds maximum allowed size: ${packetLength} > ${maxPacketSize}`,
+            details: { declared: packetLength, max: maxPacketSize },
+          }),
+        );
+        this.socket.destroy();
+        return;
+      }
+
       const totalPacketSize = packetLength + HEADER_SIZE;
 
       // Check if we have the full packet

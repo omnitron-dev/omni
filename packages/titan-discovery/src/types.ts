@@ -185,8 +185,15 @@ import type { Redis } from 'ioredis';
 export { LOGGER_TOKEN } from '@omnitron-dev/titan/module/logger';
 
 /**
- * Tokens for dependency injection
+ * Tokens for dependency injection.
+ *
+ * DI-1: names are namespaced. createToken() caches by bare name in a global
+ * (Symbol.for) registry, so generic names like 'Redis' / 'DiscoveryService'
+ * collide across packages — omnitron, for instance, defines its own
+ * createToken('DiscoveryService') for an unrelated service, and they would
+ * resolve to the SAME token. Consumers import these CONSTANTS, so namespacing
+ * the string is transparent; only the underlying symbol identity changes.
  */
-export const DISCOVERY_SERVICE_TOKEN: Token<IDiscoveryService> = createToken<IDiscoveryService>('DiscoveryService');
-export const REDIS_TOKEN: Token<Redis> = createToken<Redis>('Redis');
-export const DISCOVERY_OPTIONS_TOKEN: Token<DiscoveryOptions> = createToken<DiscoveryOptions>('DiscoveryOptions');
+export const DISCOVERY_SERVICE_TOKEN: Token<IDiscoveryService> = createToken<IDiscoveryService>('TitanDiscovery:Service');
+export const REDIS_TOKEN: Token<Redis> = createToken<Redis>('TitanDiscovery:Redis');
+export const DISCOVERY_OPTIONS_TOKEN: Token<DiscoveryOptions> = createToken<DiscoveryOptions>('TitanDiscovery:Options');

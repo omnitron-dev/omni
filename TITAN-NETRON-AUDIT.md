@@ -14,6 +14,20 @@
 
 ---
 
+## ★ NORTH STAR (user directive): UNIFIED ARCHITECTURE ACROSS ALL BACKENDS
+Bring all 8 daos backends to ONE consistent Titan-based architecture — demonstrating Titan's
+conceptual power for building manageable systems. This is the headline goal; framework
+hardening (P0/P1/P2) is the foundation that makes the unified pattern trustworthy.
+- **Phase 3 audit RUNNING (bg)**: per-app conformance matrix vs canonical pattern (service
+  triplet, `@Service`/`@Public`, DI bootstrap, titan-module consumption, DTO exports) +
+  cross-app duplication → shared package + prioritized unification roadmap.
+- **Sequencing**: (1) finish high-value framework P1/P2 that the unified pattern depends on
+  (AUTH-CONSOLIDATE, SHARED-PROTO, RESILIENCE-UNIFY, RATELIMIT-UNIFY — the canonical building
+  blocks); (2) drive each backend to the reference pattern (likely `apps/main`), eliminating
+  legacy/redundancy; (3) extract cross-app duplication to shared packages.
+- **Repo note**: daos-app changes commit to the SEPARATE `internal/daos` git repo; framework
+  changes to omni `main`.
+
 ## EXECUTION PRIORITY TIERS
 
 ### ✅ SESSION LOG (2026-06-11)

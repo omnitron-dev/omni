@@ -5,6 +5,8 @@
 
 import { timingSafeEqual } from 'node:crypto';
 
+import type { AuthContext, AccessValidationResult } from './types.js';
+
 /**
  * Constant-time string comparison to prevent timing attacks.
  * Should be used when comparing security-sensitive strings like user IDs, tenant IDs, etc.
@@ -70,6 +72,67 @@ export function permissionMatches(granted: string, required: string): boolean {
  */
 export function hasPermission(grantedPermissions: string[], required: string): boolean {
   return grantedPermissions.some((granted) => permissionMatches(granted, required));
+}
+
+/**
+ * Required roles/permissions/scopes for a guarded operation.
+ */
+export interface AccessRequirements {
+  /** ANY of these roles grants access. */
+  roles?: string[];
+  /** ALL of these permissions are required (wildcards supported). */
+  permissions?: string[];
+  /** ALL of these OAuth2 scopes are required. */
+  scopes?: string[];
+}
+
+/**
+ * Pure, transport-agnostic access check for roles / permissions / scopes.
+ *
+ * Single source of truth shared by {@link AuthorizationManager.validateAccess}
+ * and the wire/HTTP `enforceMethodAuthorization` path, so the two can never
+ * drift (the divergence between them was the root of SEC-1). Semantics:
+ *   - roles       → ANY-of (caller needs at least one)
+ *   - permissions → ALL-of (wildcard matching via {@link hasPermission})
+ *   - scopes      → ALL-of
+ */
+export function validateAccessRequirements(
+  authContext: Pick<AuthContext, 'roles' | 'permissions' | 'scopes'>,
+  requirements: AccessRequirements,
+): AccessValidationResult {
+  const roles = authContext.roles ?? [];
+
+  // Roles — ANY of the required roles.
+  if (requirements.roles && requirements.roles.length > 0) {
+    const hasRole = requirements.roles.some((role) => roles.includes(role));
+    if (!hasRole) {
+      return {
+        allowed: false,
+        reason: 'Missing required role',
+        details: { missingRoles: requirements.roles.filter((r) => !roles.includes(r)) },
+      };
+    }
+  }
+
+  // Permissions — ALL required (wildcard-aware).
+  if (requirements.permissions && requirements.permissions.length > 0) {
+    const granted = authContext.permissions ?? [];
+    const missingPermissions = requirements.permissions.filter((required) => !hasPermission(granted, required));
+    if (missingPermissions.length > 0) {
+      return { allowed: false, reason: 'Missing required permissions', details: { missingPermissions } };
+    }
+  }
+
+  // Scopes — ALL required.
+  if (requirements.scopes && requirements.scopes.length > 0) {
+    const granted = authContext.scopes ?? [];
+    const missingScopes = requirements.scopes.filter((scope) => !granted.includes(scope));
+    if (missingScopes.length > 0) {
+      return { allowed: false, reason: 'Missing required scopes', details: { missingScopes } };
+    }
+  }
+
+  return { allowed: true };
 }
 
 /**

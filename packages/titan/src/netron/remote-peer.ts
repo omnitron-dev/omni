@@ -9,7 +9,7 @@ import { TimedMap } from '@omnitron-dev/common';
 // Use type-only import for INetron to break circular dependency
 import type { INetron, INetronOptions, EventSubscriber, RemotePeerSocket } from './interfaces/core-types.js';
 import { STATEFUL_PEER } from './interfaces/core-types.js';
-import type { ILocalPeerInternal } from './interfaces/internal-types.js';
+import type { ILocalPeerInternal, INetronInternal } from './interfaces/internal-types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { getQualifiedName } from './utils.js';
@@ -39,6 +39,7 @@ import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
+import { enforceMethodAuthorization } from './auth/method-authorization.js';
 
 /**
  * Security constants for input validation in packet handlers.
@@ -849,7 +850,7 @@ export class RemotePeer extends AbstractPeer {
           // through `canAccessMethod`. Without this gate, a client that
           // knows or guesses a property name bypasses ACLs entirely on
           // every non-HTTP transport.
-          this.enforceMethodAccess(stub, name);
+          await this.enforceMethodAccess(stub, name, [value]);
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: unknown) {
@@ -877,7 +878,7 @@ export class RemotePeer extends AbstractPeer {
           const localPeer = this.netron.peer as ILocalPeerInternal;
           const stub = localPeer.getStubByDefinitionId(defId);
           // SECURITY (T#34): see SET branch.
-          this.enforceMethodAccess(stub, name);
+          await this.enforceMethodAccess(stub, name, []);
           // SECURITY (T#49): pass `this` so a property getter returning
           // a nested service can be authz-filtered before the leak.
           await this.sendResponse(packet, await stub.get(name, this));
@@ -908,7 +909,7 @@ export class RemotePeer extends AbstractPeer {
           // SECURITY (T#34): see SET branch — this is the most-exercised
           // entry point on the wire, and the one that mattered most in
           // the audit (RPC method invocations).
-          this.enforceMethodAccess(stub, method);
+          await this.enforceMethodAccess(stub, method, args);
           await this.sendResponse(packet, await stub.call(method, args, this));
         } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error calling method:');
@@ -1280,26 +1281,57 @@ export class RemotePeer extends AbstractPeer {
    * client that knows or guesses a method name bypasses the ACL on
    * every persistent transport (WS / TCP / Unix).
    */
-  private enforceMethodAccess(stub: { definition?: Definition } | undefined, methodName: string): void {
-    const authzManager = this.netron.authorizationManager;
-    if (!authzManager) return;
+  private async enforceMethodAccess(
+    stub: { definition?: Definition; instance?: unknown } | undefined,
+    methodName: string,
+    args: unknown[] = [],
+  ): Promise<void> {
+    const netron = this.netron as INetronInternal;
+    const authzManager = netron.authorizationManager;
+    const authnManager = netron.authenticationManager;
+    // Auth-less deployment (neither manager wired) → nothing to enforce.
+    // Preserves the historical "Netron without auth works unchanged" contract.
+    if (!authzManager && !authnManager) return;
+
     // The stub MUST exist and carry a versioned definition for the guard
     // to even apply — without it we cannot form the qualified service
-    // name that ACLs are keyed by, so we let the call through and rely
-    // on downstream not-found errors. This keeps unit-test mocks that
-    // bypass `localPeer.getStubByDefinitionId` working unchanged.
+    // name, so we let the call through and rely on downstream not-found
+    // errors. Keeps unit-test mocks that bypass `getStubByDefinitionId` working.
     const meta = stub?.definition?.meta;
     if (!meta) return;
     const serviceName = getQualifiedName(meta.name, meta.version);
     const auth = this.getAuthContext();
-    if (authzManager.canAccessMethod(serviceName, methodName, auth)) return;
-    this.logger.warn(
-      { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
-      'Method access denied by authorization manager',
-    );
-    throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
-      service: serviceName,
-      method: methodName,
+
+    // (1) ACL check (T#34) — registered AuthorizationManager ACLs. Runs first so
+    // ACL-protected methods keep their existing "Access denied to method …"
+    // error contract. Skipped when no AuthorizationManager is wired.
+    if (authzManager && !authzManager.canAccessMethod(serviceName, methodName, auth)) {
+      this.logger.warn(
+        { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
+        'Method access denied by authorization manager (ACL)',
+      );
+      throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
+        service: serviceName,
+        method: methodName,
+      });
+    }
+
+    // (2) SEC-1 FIX: enforce the `@Public({ auth })` decorator on the wire path,
+    // exactly as the HTTP middleware does. Without this, decorator-only-protected
+    // methods (roles/permissions/scopes/policies, no ACL) were callable by any —
+    // or no — authenticated peer over WS/TCP/Unix because the ACL check above
+    // is default-allow when no ACL is registered. Shared with HTTP via
+    // `enforceMethodAuthorization` so the two transports cannot diverge.
+    await enforceMethodAuthorization({
+      serviceInstance: (stub?.instance as object | undefined) ?? undefined,
+      serviceName,
+      serviceVersion: meta.version,
+      methodName,
+      args,
+      authContext: auth,
+      policyEngine: netron.policyEngine,
+      logger: this.logger,
+      transport: 'netron',
     });
   }
 

@@ -7,7 +7,7 @@
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthContext, ServiceACL, AccessValidationResult } from './types.js';
-import { hasPermission } from './utils.js';
+import { hasPermission, validateAccessRequirements } from './utils.js';
 
 /**
  * Options for pattern matching
@@ -367,44 +367,10 @@ export class AuthorizationManager {
       scopes?: string[];
     }
   ): AccessValidationResult {
-    // Check roles (ANY of the required roles)
-    if (requirements.roles && requirements.roles.length > 0) {
-      const hasRole = requirements.roles.some((role) => authContext.roles.includes(role));
-      if (!hasRole) {
-        return {
-          allowed: false,
-          reason: 'Missing required role',
-          details: { missingRoles: requirements.roles.filter((r) => !authContext.roles.includes(r)) },
-        };
-      }
-    }
-
-    // Check permissions (ALL required permissions) — supports wildcard matching
-    if (requirements.permissions && requirements.permissions.length > 0) {
-      const granted = authContext.permissions ?? [];
-      const missingPermissions = requirements.permissions.filter((required) => !hasPermission(granted, required));
-      if (missingPermissions.length > 0) {
-        return {
-          allowed: false,
-          reason: 'Missing required permissions',
-          details: { missingPermissions },
-        };
-      }
-    }
-
-    // Check scopes (ALL required scopes)
-    if (requirements.scopes && requirements.scopes.length > 0) {
-      const scopeResult = this.validateScopes(requirements.scopes, authContext.scopes);
-      if (!scopeResult.valid) {
-        return {
-          allowed: false,
-          reason: 'Missing required scopes',
-          details: { missingScopes: scopeResult.missing },
-        };
-      }
-    }
-
-    return { allowed: true };
+    // Delegates to the shared `validateAccessRequirements` so role/permission/
+    // scope semantics are identical here and on the wire/HTTP enforcement path
+    // (the single source of truth that closes the SEC-1 transport divergence).
+    return validateAccessRequirements(authContext, requirements);
   }
 
   /**

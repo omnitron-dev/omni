@@ -21,6 +21,7 @@ import type { NetronOptions, TransportConfig } from './types.js';
 import type { IAuthenticationManager, ILocalPeerInternal } from './interfaces/internal-types.js';
 import type { IAuthorizationManager } from './interfaces/core-types.js';
 import type { ITokenTransport } from './auth/token-transport.js';
+import type { PolicyEngine } from './auth/policy-engine.js';
 import { BearerTokenTransport } from './auth/token-transports/bearer.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
@@ -254,6 +255,15 @@ export class Netron extends EventEmitter implements INetron {
    * @internal
    */
   public authorizationManager?: IAuthorizationManager;
+
+  /**
+   * Policy engine for evaluating `@Public({ auth: { policies } })` expressions.
+   * Optional — when a method declares `policies` but no engine is configured,
+   * enforcement FAILS CLOSED (the request is denied) on every transport.
+   * Set by the application/auth wiring layer.
+   * @internal
+   */
+  public policyEngine?: PolicyEngine;
 
   /**
    * Token transport strategy — how the JWT travels between client and

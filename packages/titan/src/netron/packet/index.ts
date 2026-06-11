@@ -216,22 +216,34 @@ export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAUL
 
   const buffer = SmartBuffer.wrap(buf);
 
-  const pkt = new Packet(buffer.readUInt32BE());
-  pkt.flags = buffer.readUInt8()!;
-
-  // Attempt to decode the packet's data using the serializer.
-  // decode() throws Error if buffer is incomplete
+  // WIRE-6: decode the ENTIRE frame inside one try/catch so a truncated packet
+  // — whether the header, the msgpack payload, OR the trailing stream metadata
+  // is short — always surfaces as a TitanError, never a raw RangeError from
+  // SmartBuffer.read*. Previously the stream-info reads sat outside the try.
+  let pkt: Packet;
   try {
+    pkt = new Packet(buffer.readUInt32BE());
+    pkt.flags = buffer.readUInt8()!;
+
+    // decode() throws if the buffer is incomplete.
     pkt.data = serializer.decode(buffer);
+
+    // Stream packets carry 8 trailing bytes of metadata (streamId + index).
+    if (pkt.isStreamChunk()) {
+      pkt.streamId = buffer.readUInt32BE();
+      pkt.streamIndex = buffer.readUInt32BE();
+    }
+
+    // A well-formed frame is fully consumed. Leftover bytes indicate a
+    // malformed/ambiguous packet (or smuggled trailing data) and are rejected
+    // rather than silently ignored. `SmartBuffer.length` is the unread span.
+    if (buffer.length > 0) {
+      throw new Error(`malformed packet: ${buffer.length} unconsumed trailing byte(s)`);
+    }
   } catch (error) {
     throw NetronErrors.serializeDecode(buf, error instanceof Error ? error : new Error(String(error)));
   }
 
-  // If the packet is part of a stream, read the stream-specific information.
-  if (pkt.isStreamChunk()) {
-    pkt.streamId = buffer.readUInt32BE();
-    pkt.streamIndex = buffer.readUInt32BE();
-  }
   return pkt;
 };
 

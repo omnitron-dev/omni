@@ -12,6 +12,7 @@ import {
   encodePacket,
   decodePacket,
 } from '../../src/netron';
+import { TitanError } from '../../src/errors/core.js';
 
 describe('Packet', () => {
   let pkt: Packet;
@@ -285,5 +286,36 @@ describe('Packet', () => {
       const decoded2 = decodePacket(encoded2);
       expect(decoded1).toEqual(decoded2);
     });
+  });
+});
+
+describe('WIRE-6: decodePacket robustness', () => {
+  it('round-trips a valid stream packet (id, stream info, data)', () => {
+    const decoded = decodePacket(encodePacket(createStreamPacket(7, 42, 3, true, false, { chunk: 'hello' })));
+    expect(decoded.id).toBe(7);
+    expect(decoded.streamId).toBe(42);
+    expect(decoded.streamIndex).toBe(3);
+    expect(decoded.isStreamChunk()).toBe(true);
+    expect(decoded.data).toEqual({ chunk: 'hello' });
+  });
+
+  it('throws a TitanError (not a raw RangeError) on a truncated stream packet', () => {
+    const encoded = encodePacket(createStreamPacket(7, 42, 3, true, false, { chunk: 'x' }));
+    // Stream metadata is the trailing 8 bytes; drop 4 so the streamIndex read underflows.
+    const truncated = encoded.subarray(0, encoded.length - 4);
+    let err: unknown;
+    try {
+      decodePacket(truncated);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(TitanError);
+    expect((err as Error).name).not.toBe('RangeError');
+  });
+
+  it('rejects a packet with unconsumed trailing bytes', () => {
+    const encoded = encodePacket(createPacket(9, 1, TYPE_PING, { t: 1 }));
+    const withTrailing = Buffer.concat([Buffer.from(encoded), Buffer.from([0xde, 0xad])]);
+    expect(() => decodePacket(withTrailing)).toThrow(TitanError);
   });
 });

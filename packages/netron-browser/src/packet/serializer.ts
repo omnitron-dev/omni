@@ -17,6 +17,49 @@ import { TitanError } from '../errors/core.js';
 export const serializer = new Serializer();
 
 /**
+ * Base TitanError fields the encoder writes explicitly (or derives on decode).
+ * Everything a subclass sets as its OWN enumerable property beyond this set is
+ * "extras" and must travel too — otherwise `serviceId`, `transport`,
+ * `requiredPermission`, `retryAfter`, `domainCode`, … are dropped on the wire.
+ * MUST mirror the titan server serializer (the format is duplicated across the
+ * two packages; both add/read this trailing field together). [XC-1]
+ */
+const BASE_TITAN_ERROR_KEYS = new Set<string>([
+  'name',
+  'code',
+  'category',
+  'httpStatus',
+  'message',
+  'details',
+  'context',
+  'timestamp',
+  'requestId',
+  'correlationId',
+  'spanId',
+  'traceId',
+  'stack',
+  'cause',
+  'stats',
+]);
+
+/**
+ * Collect a TitanError subclass's own enumerable properties beyond the base
+ * shape. Returns `null` when there are none.
+ */
+function extractTitanErrorExtras(err: TitanError): Record<string, unknown> | null {
+  const extras: Record<string, unknown> = {};
+  let has = false;
+  for (const key of Object.keys(err)) {
+    if (BASE_TITAN_ERROR_KEYS.has(key)) continue;
+    const value = (err as unknown as Record<string, unknown>)[key];
+    if (value === undefined || typeof value === 'function') continue;
+    extras[key] = value;
+    has = true;
+  }
+  return has ? extras : null;
+}
+
+/**
  * Register TitanError BEFORE common types to ensure it takes precedence over generic Error.
  * This is critical because TitanError extends Error, and we need the more specific handler
  * to be checked first.
@@ -73,6 +116,10 @@ serializer.register(
     } else {
       buf.write(serializer.encode(null));
     }
+
+    // [XC-1] round-trip subclass-specific fields the base encoding omits.
+    // Encoded last, mirroring the titan server serializer.
+    buf.write(serializer.encode(extractTitanErrorExtras(obj)));
   },
   /**
    * Decodes a TitanError object from a binary buffer.
@@ -101,6 +148,8 @@ serializer.register(
 
     // Decode cause
     const causeData = serializer.decode(buf);
+    // [XC-1] subclass extras are encoded immediately after the cause.
+    const errorExtras = serializer.decode(buf);
     let cause: Error | undefined;
 
     if (causeData) {
@@ -138,6 +187,11 @@ serializer.register(
 
     // Override timestamp with the original value
     (error as any).timestamp = timestamp;
+
+    // [XC-1] restore subclass-specific fields dropped by base reconstruction.
+    if (errorExtras && typeof errorExtras === 'object') {
+      Object.assign(error, errorExtras);
+    }
 
     return error;
   }

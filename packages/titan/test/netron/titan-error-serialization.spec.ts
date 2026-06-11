@@ -7,8 +7,8 @@ import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 import { serializer, setSerializerErrorOptions } from '../../src/netron/packet/serializer.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
-import { NetronError, RpcError } from '../../src/errors/netron.js';
-import { HttpError } from '../../src/errors/http.js';
+import { NetronError, RpcError, TransportError } from '../../src/errors/netron.js';
+import { HttpError, PermissionError, RateLimitError } from '../../src/errors/http.js';
 import { ValidationError } from '../../src/errors/validation.js';
 
 describe('TitanError Serialization', () => {
@@ -120,6 +120,57 @@ describe('TitanError Serialization', () => {
       expect(decoded.name).toBe('NetronError');
       expect(decoded.code).toBe(original.code);
       expect(decoded.message).toBe(original.message);
+      // XC-1: subclass-specific fields MUST survive the round-trip. Before the
+      // fix the serializer wrote only base fields, so these were silently lost.
+      expect((decoded as any).serviceId).toBe('auth@1.0.0');
+      expect((decoded as any).methodName).toBe('login');
+      expect((decoded as any).peerId).toBe('peer-123');
+    });
+
+    it('preserves TransportError fields (transport, address) over the wire [XC-1]', () => {
+      const original = new TransportError({
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'connection refused',
+        transport: 'tcp',
+        address: 'localhost:7000',
+      });
+      const buffer = new SmartBuffer();
+      serializer.encode(original, buffer);
+      buffer.roffset = 0;
+      const decoded: any = serializer.decode(buffer);
+      expect(decoded.name).toBe('TransportError');
+      expect(decoded.transport).toBe('tcp');
+      expect(decoded.address).toBe('localhost:7000');
+    });
+
+    it('preserves PermissionError fields (requiredPermission, userPermissions) over the wire [XC-1]', () => {
+      const original = new PermissionError('denied', { resource: 'vault' }, {
+        requiredPermission: 'vault:rotate',
+        userPermissions: ['vault:read'],
+      });
+      const buffer = new SmartBuffer();
+      serializer.encode(original, buffer);
+      buffer.roffset = 0;
+      const decoded: any = serializer.decode(buffer);
+      expect(decoded.name).toBe('PermissionError');
+      expect(decoded.requiredPermission).toBe('vault:rotate');
+      expect(decoded.userPermissions).toEqual(['vault:read']);
+    });
+
+    it('preserves RateLimitError fields (limit, remaining, retryAfter) over the wire [XC-1]', () => {
+      const original = new RateLimitError('slow down', undefined, {
+        limit: 100,
+        remaining: 0,
+        retryAfter: 30,
+      });
+      const buffer = new SmartBuffer();
+      serializer.encode(original, buffer);
+      buffer.roffset = 0;
+      const decoded: any = serializer.decode(buffer);
+      expect(decoded.name).toBe('RateLimitError');
+      expect(decoded.limit).toBe(100);
+      expect(decoded.remaining).toBe(0);
+      expect(decoded.retryAfter).toBe(30);
     });
 
     it('should serialize and deserialize RpcError', () => {

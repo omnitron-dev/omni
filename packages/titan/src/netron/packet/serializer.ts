@@ -62,6 +62,50 @@ export function getSerializerErrorOptions(): Required<SerializerErrorOptions> {
 }
 
 /**
+ * Base TitanError fields the encoder writes explicitly above, or derives on
+ * decode (category/httpStatus from code; stats is process-local). Everything a
+ * subclass sets as its OWN enumerable property beyond this set is "extras" and
+ * must travel too — otherwise `serviceId`, `methodName`, `peerId`, `transport`,
+ * `address`, `requiredPermission`, `userPermissions`, `limit`/`retryAfter`,
+ * `domainCode`, `validationErrors`, … are silently dropped on the wire (XC-1).
+ */
+const BASE_TITAN_ERROR_KEYS = new Set<string>([
+  'name',
+  'code',
+  'category',
+  'httpStatus',
+  'message',
+  'details',
+  'context',
+  'timestamp',
+  'requestId',
+  'correlationId',
+  'spanId',
+  'traceId',
+  'stack',
+  'cause',
+  'stats',
+]);
+
+/**
+ * Collect a TitanError subclass's own enumerable properties beyond the base
+ * shape so they can be round-tripped. Returns `null` when there are none (the
+ * common base-`TitanError` case), keeping the wire payload minimal.
+ */
+function extractTitanErrorExtras(err: TitanError): Record<string, unknown> | null {
+  const extras: Record<string, unknown> = {};
+  let has = false;
+  for (const key of Object.keys(err)) {
+    if (BASE_TITAN_ERROR_KEYS.has(key)) continue;
+    const value = (err as unknown as Record<string, unknown>)[key];
+    if (value === undefined || typeof value === 'function') continue;
+    extras[key] = value;
+    has = true;
+  }
+  return has ? extras : null;
+}
+
+/**
  * Register TitanError BEFORE common types to ensure it takes precedence over generic Error.
  * This is critical because TitanError extends Error, and we need the more specific handler
  * to be checked first.
@@ -135,6 +179,13 @@ serializer
       } else {
         buf.write(serializer.encode(null));
       }
+
+      // XC-1: round-trip subclass-specific fields (serviceId, transport,
+      // requiredPermission, retryAfter, domainCode, …) that the fixed base
+      // field set above omits. Encoded last so the wire layout is a pure
+      // append — both the titan and netron-browser serializers must add/read
+      // this field together (the format is currently duplicated across them).
+      buf.write(serializer.encode(extractTitanErrorExtras(obj)));
     },
     /**
      * Decodes a TitanError object from a binary buffer.
@@ -163,6 +214,8 @@ serializer
 
       // Decode cause
       const causeData = serializer.decode(buf);
+      // XC-1: subclass extras are encoded immediately after the cause.
+      const errorExtras = serializer.decode(buf);
       let cause: Error | undefined;
 
       if (causeData) {
@@ -200,6 +253,13 @@ serializer
 
       // Override timestamp with the original value
       (error as any).timestamp = timestamp;
+
+      // XC-1: restore subclass-specific fields dropped by the base
+      // reconstruction (the `name` already identifies the subclass for
+      // consumers; this restores the data those subclasses carry).
+      if (errorExtras && typeof errorExtras === 'object') {
+        Object.assign(error, errorExtras);
+      }
 
       return error;
     }

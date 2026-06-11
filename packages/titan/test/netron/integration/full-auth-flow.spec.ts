@@ -182,8 +182,34 @@ describe('Full Auth Flow Integration', () => {
       },
     });
 
-    // Configure policy engine
+    // Configure policy engine.
     const policyEngine = new PolicyEngine(serverLogger);
+
+    // Register the policies the @Public decorators on UserService declare.
+    // Their names (requireRole:admin, requirePermission:read:own-profile) are the
+    // exact ids the service methods reference. The persistent-transport wire path
+    // now actually evaluates these — previously policies were silently ignored on
+    // WS/TCP/Unix (SEC-1), so these declared-but-unregistered policies were dead
+    // and the methods "worked" only by accident.
+    policyEngine.registerPolicy({
+      name: 'requireRole:admin',
+      description: 'Requires admin role',
+      evaluate: (context) => {
+        const allowed = context.auth?.roles?.includes('admin') ?? false;
+        return { allowed, reason: allowed ? 'Has admin role' : 'Missing role: admin' };
+      },
+    });
+    policyEngine.registerPolicy({
+      name: 'requirePermission:read:own-profile',
+      description: 'Requires read:own-profile permission',
+      evaluate: (context) => {
+        const allowed = context.auth?.permissions?.includes('read:own-profile') ?? false;
+        return {
+          allowed,
+          reason: allowed ? 'Has read:own-profile permission' : 'Missing permission: read:own-profile',
+        };
+      },
+    });
 
     // Register auth components
     (serverNetron as any).authenticationManager = authManager;

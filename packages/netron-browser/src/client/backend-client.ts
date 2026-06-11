@@ -19,6 +19,14 @@ import type {
 import { ConnectionState, type ConnectionMetrics, type RequestContext, type RequestHints } from '../types/index.js';
 import type { AuthenticationClient } from '../auth/client.js';
 import type { IMiddlewareManager } from '../middleware/types.js';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
+
+/**
+ * Transport-level lifecycle events forwarded from the underlying WebSocketClient
+ * so consumers (e.g. the multi-backend client's reconnect→refetch bridge) can
+ * subscribe via `BackendClient.on(...)`. HTTP backends emit none of these.
+ */
+const BACKEND_TRANSPORT_EVENTS = ['connect', 'disconnect', 'reconnect', 'reconnecting', 'reconnect-failed'] as const;
 
 /**
  * Options for creating a BackendClient
@@ -92,6 +100,8 @@ export class BackendClient implements IBackendClient {
   private defaultTimeout: number;
   private defaultHeaders: Record<string, string>;
   private connected = false;
+  /** Own emitter that re-emits the underlying transport's lifecycle events (NB-8). */
+  private readonly events = new EventEmitter();
 
   constructor(options: BackendClientOptions) {
     this.name = options.name;
@@ -133,6 +143,9 @@ export class BackendClient implements IBackendClient {
         ...(authTransport ? { authTransport } : {}),
         middleware: this.middleware,
       });
+      // NB-8: bridge the WS transport's reconnect/disconnect lifecycle so
+      // consumers can subscribe via BackendClient.on(...).
+      this.forwardTransportEvents(this.client);
     } else {
       this.client = new HttpClient({
         url: this.fullUrl,
@@ -155,6 +168,32 @@ export class BackendClient implements IBackendClient {
     const client = await this.initializeClient();
     await client.connect();
     this.connected = true;
+  }
+
+  /**
+   * Subscribe to a transport-level event (`reconnect` / `disconnect` / `connect`
+   * / `reconnecting` / `reconnect-failed`). Returns an unsubscribe function.
+   *
+   * NB-8: previously BackendClient exposed no event surface, so the multi-backend
+   * client's `wireTransportEvents` found nothing to attach (`typeof on !==
+   * 'function'`) and React's refetchOnReconnect never fired. HTTP backends emit
+   * none of these (no reconnect to forward), so the handler simply never runs.
+   */
+  on(event: string, handler: (...args: any[]) => void): () => void {
+    this.events.on(event, handler);
+    return () => {
+      this.events.off(event, handler);
+    };
+  }
+
+  /**
+   * Re-emit the underlying WebSocket transport's lifecycle events on this
+   * client's own emitter so `on(...)` subscribers receive them.
+   */
+  private forwardTransportEvents(client: WebSocketClient): void {
+    for (const event of BACKEND_TRANSPORT_EVENTS) {
+      client.on(event, (...args: any[]) => this.events.emit(event, ...args));
+    }
   }
 
   /**

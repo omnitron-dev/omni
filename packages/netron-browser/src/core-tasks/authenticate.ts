@@ -18,9 +18,15 @@ export interface AuthenticateRequest {
 export interface AuthenticateResponse extends AuthResult {}
 
 /**
- * Core task name for authentication
+ * Core task name for authentication.
+ *
+ * MUST be the BARE task name — the server's TaskManager routes by `fn.name`
+ * (`export async function authenticate(...)` → `'authenticate'`) and matches it
+ * exactly via `tasks.get(name)`. A `netron.`-prefixed value never matched, so
+ * this constant was dead (NB-2). (Long-term these live in @omnitron-dev/
+ * netron-protocol shared with the server — see SHARED-PROTO.)
  */
-export const CORE_TASK_AUTHENTICATE = 'netron.authenticate';
+export const CORE_TASK_AUTHENTICATE = 'authenticate';
 
 /**
  * Create an authenticate request

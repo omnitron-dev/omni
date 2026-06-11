@@ -52,9 +52,15 @@ export interface InvalidateCacheResponse {
 }
 
 /**
- * Core task name for cache invalidation
+ * Core task name for cache invalidation.
+ *
+ * MUST be the BARE task name — the server's TaskManager routes by `fn.name`
+ * (`export async function invalidate_cache(...)` → `'invalidate_cache'`) and
+ * matches it exactly via `tasks.get(name)`. A `netron.`-prefixed value never
+ * matched, so this constant was dead (NB-2). (Long-term shared via
+ * @omnitron-dev/netron-protocol — see SHARED-PROTO.)
  */
-export const CORE_TASK_INVALIDATE_CACHE = 'netron.invalidate_cache';
+export const CORE_TASK_INVALIDATE_CACHE = 'invalidate_cache';
 
 /**
  * Create an invalidate cache request

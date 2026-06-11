@@ -13,13 +13,20 @@ import type {
   SessionMetadata,
   TokenStorage,
 } from './types.js';
-import { LocalTokenStorage } from './storage.js';
+import { LocalTokenStorage, MemoryTokenStorage } from './storage.js';
 
 /**
  * Default options
  */
 const DEFAULT_OPTIONS = {
-  storage: new LocalTokenStorage(),
+  // NB-3: secure-by-default. Previously the default was LocalTokenStorage, which
+  // persisted BOTH the access token AND the long-lived refresh token to
+  // localStorage — readable by any same-origin XSS (the refresh token being the
+  // highest-value exfil target), and contradicting the closed platform's
+  // HttpOnly-cookie auth model. The default is now MemoryTokenStorage (tokens
+  // live only in JS memory for the session; nothing is written to web storage).
+  // Apps that explicitly want persistence opt in via `storage`/`storageKey`.
+  storage: new MemoryTokenStorage(),
   storageKey: 'netron_auth_token',
   autoRefresh: true,
   refreshThreshold: 5 * 60 * 1000, // 5 minutes

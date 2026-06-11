@@ -173,6 +173,13 @@ export class NetronWritableStream extends Writable {
       return;
     }
 
+    // WIRE-11: claim teardown BEFORE the async final-chunk send. The EOS chunk
+    // (this graceful path) and the STREAM_CLOSE packet (destroy()) are mutually
+    // exclusive wire signals; setting `isClosed` up front means a destroy()
+    // racing this in-flight send bails out instead of ALSO emitting a
+    // STREAM_CLOSE — i.e. the peer never sees both a final chunk and a close.
+    this.isClosed = true;
+
     this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Sending final chunk');
     this.peer
       .sendStreamChunk(this.id, null, this.index, true, this.isLive)
@@ -181,7 +188,9 @@ export class NetronWritableStream extends Writable {
         this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending final chunk');
         callback(err);
       })
-      .finally(() => this.closeStream());
+      // Clean up directly — `isClosed` is already set, so routing through
+      // closeStream() (which would early-return on the guard) is unnecessary.
+      .finally(() => this.cleanup());
   }
 
   /**

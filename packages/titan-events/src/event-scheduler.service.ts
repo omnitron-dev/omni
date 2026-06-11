@@ -5,10 +5,10 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 
-import { EVENT_EMITTER_TOKEN } from './tokens.js';
+import { EVENT_EMITTER_TOKEN, LOGGER_TOKEN } from './tokens.js';
 
 import type { IEventSchedulerJob } from './types.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -26,7 +26,13 @@ export class EventSchedulerService {
   private destroyed = false;
   private logger: ILogger | null = null;
 
-  constructor(@Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter) {}
+  constructor(
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
+    @Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null
+  ) {
+    // EV-2: wire the logger so this service's error/warn logging is not dead.
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

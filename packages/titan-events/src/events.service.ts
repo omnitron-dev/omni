@@ -15,11 +15,11 @@
 import type { EmitOptions, EventRecord, EventFilter, EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 
 import { EventMetadataService } from './event-metadata.service.js';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
+import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, LOGGER_TOKEN } from './tokens.js';
 
 import type {
   IEventContext,
@@ -86,8 +86,13 @@ export class EventsService implements ILifecycle {
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
-  ) {}
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
+    @Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null
+  ) {
+    // EV-2: wire the logger so this service's 14 error/warn log calls are not
+    // silently swallowed (the `logger` field was declared but never assigned).
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

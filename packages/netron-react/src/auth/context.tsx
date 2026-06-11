@@ -84,6 +84,15 @@ export interface AuthProviderProps {
   onLogout?: () => void;
   /** Called on auth error */
   onError?: (error: Error) => void;
+  /**
+   * Authenticate handler. Receives the credentials passed to `login()` and must
+   * return an AuthResult — e.g. by running the `authenticate` core-task on your
+   * Netron client. Without it, `login()` throws a clear configuration error
+   * rather than the old always-throwing "Login not implemented" placeholder
+   * (NR-9). On success the provider calls `client.setAuth(result)`, which drives
+   * the `authenticated` event → state update.
+   */
+  onLogin?: (credentials: AuthCredentials) => Promise<AuthResult>;
   /** Children */
   children: ReactNode;
 }
@@ -111,6 +120,7 @@ export function AuthProvider({
   onAuthenticated,
   onLogout,
   onError,
+  onLogin,
   children,
 }: AuthProviderProps): React.JSX.Element {
   // Create or use provided client
@@ -176,22 +186,25 @@ export function AuthProvider({
     };
   }, [authClient, onAuthenticated, onLogout, onError]);
 
-  // Login
+  // Login — delegates to the consumer-supplied `onLogin` handler (the provider
+  // doesn't own a Netron connection, so it can't run the `authenticate`
+  // core-task itself). On success it calls `setAuth`, which fires the
+  // `authenticated` event and updates this provider's state (NR-9).
   const login = useCallback(
-    async (_credentials: AuthCredentials): Promise<AuthResult> => {
+    async (credentials: AuthCredentials): Promise<AuthResult> => {
+      if (!onLogin) {
+        throw new Error(
+          'AuthProvider.login requires an `onLogin` handler. Pass one that authenticates ' +
+            'with your Netron client (e.g. runs the `authenticate` core-task) and returns an ' +
+            'AuthResult — or call `client.setAuth(result)` directly after authenticating elsewhere.'
+        );
+      }
+
       setIsLoading(true);
       setError(null);
 
       try {
-        // This would typically call your auth endpoint
-        // For now, we simulate by directly setting auth
-        // In real usage, you'd call an auth service
-
-        // Placeholder - replace with actual auth logic
-        const result: AuthResult = {
-          success: false,
-          error: 'Login not implemented - use setAuth directly or provide login endpoint',
-        };
+        const result = await onLogin(credentials);
 
         if (!result.success) {
           throw new Error(result.error ?? 'Login failed');
@@ -207,7 +220,7 @@ export function AuthProvider({
         setIsLoading(false);
       }
     },
-    [authClient]
+    [authClient, onLogin]
   );
 
   // Logout

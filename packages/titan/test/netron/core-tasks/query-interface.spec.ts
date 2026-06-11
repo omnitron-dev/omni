@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { query_interface } from '../../../src/netron/core-tasks/query-interface.js';
-import type { Definition } from '../../../src/netron/definition.js';
+import { Definition } from '../../../src/netron/definition.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 
@@ -130,6 +130,36 @@ describe('query_interface core-task', () => {
       await query_interface(remotePeer, serviceName);
 
       expect(mockAuthzManager.canAccessService).toHaveBeenCalledWith(serviceName, authContext);
+    });
+
+    it('returns a real Definition instance on the auth-filtered path [NET-1]', async () => {
+      const serviceName = 'vault@1.0.0';
+      const meta = {
+        name: 'vault',
+        version: '1.0.0',
+        properties: {},
+        methods: { read: { type: 'function', transports: [] } },
+        transports: [],
+      };
+      // A REAL Definition instance — production service stubs always hold one.
+      const definition = new Definition('def-net1', 'peer-net1', meta as any);
+      definition.parentId = 'parent-net1';
+
+      servicesMap.set(serviceName, createMockServiceStub(definition));
+      remotePeer.getAuthContext.mockReturnValue({ userId: 'u1', roles: ['admin'], permissions: [] });
+      mockAuthzManager.canAccessService.mockReturnValue(true);
+      mockAuthzManager.filterDefinition.mockReturnValue(meta);
+
+      const result = await query_interface(remotePeer, serviceName);
+
+      // Before the fix this was a plain-object spread → NOT instanceof Definition,
+      // so the msgpack type-109 class encoder silently fell back to a generic map
+      // on the auth-filtered (production) path.
+      expect(result).toBeInstanceOf(Definition);
+      expect(result!.id).toBe('def-net1');
+      expect(result!.peerId).toBe('peer-net1');
+      expect(result!.parentId).toBe('parent-net1');
+      expect(result!.meta).toEqual(meta);
     });
 
     it('should deny access when user lacks permissions', async () => {

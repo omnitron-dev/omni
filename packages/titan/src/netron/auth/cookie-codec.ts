@@ -104,6 +104,20 @@ export function buildSetCookie(name: string, value: string, attrs: CookieAttribu
   if (!isValidCookieName(name)) {
     throw new Error(`Invalid cookie name: ${JSON.stringify(name)}`);
   }
+  // RFC 6265bis cookie-name prefixes carry browser-enforced invariants — a
+  // Set-Cookie that violates them is silently dropped by the browser, so we
+  // fail fast at construction time (mirrors the production-Secure guard).
+  //   __Host-  → must be Secure, Path=/, and NO Domain (host-only)
+  //   __Secure- → must be Secure
+  if (name.startsWith('__Host-')) {
+    if (attrs.secure === false) throw new Error(`__Host- cookie "${name}" must be Secure`);
+    if (attrs.domain) throw new Error(`__Host- cookie "${name}" must not set a Domain`);
+    if (attrs.path !== undefined && attrs.path !== '/') {
+      throw new Error(`__Host- cookie "${name}" must use Path=/`);
+    }
+  } else if (name.startsWith('__Secure-') && attrs.secure === false) {
+    throw new Error(`__Secure- cookie "${name}" must be Secure`);
+  }
   const parts: string[] = [`${name}=${encodeURIComponent(value)}`];
 
   if (typeof attrs.maxAge === 'number' && Number.isFinite(attrs.maxAge)) {
@@ -140,8 +154,16 @@ export function buildClearCookie(name: string, attrs: Pick<CookieAttributes, 'pa
   if (!isValidCookieName(name)) {
     throw new Error(`Invalid cookie name: ${JSON.stringify(name)}`);
   }
-  const parts: string[] = [`${name}=`, 'Max-Age=0', `Path=${attrs.path ?? '/'}`];
-  if (attrs.domain) parts.push(`Domain=${attrs.domain}`);
+  // A __Host-/__Secure- cookie can only be (re)written with a Secure attribute,
+  // and __Host- additionally pins Path=/ + no Domain. The CLEAR Set-Cookie MUST
+  // satisfy the same invariants or the browser rejects it and never deletes the
+  // cookie — i.e. signout would silently leave the session cookie in place.
+  const isHost = name.startsWith('__Host-');
+  const isSecure = isHost || name.startsWith('__Secure-');
+  const path = isHost ? '/' : (attrs.path ?? '/');
+  const parts: string[] = [`${name}=`, 'Max-Age=0', `Path=${path}`];
+  if (!isHost && attrs.domain) parts.push(`Domain=${attrs.domain}`);
+  if (isSecure) parts.push('Secure');
   return parts.join('; ');
 }
 

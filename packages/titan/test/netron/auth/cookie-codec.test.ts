@@ -138,6 +138,55 @@ describe('cookie-codec', () => {
     });
   });
 
+  describe('__Host- / __Secure- prefix invariants (RFC 6265bis)', () => {
+    it('buildSetCookie accepts a valid __Host- cookie (Secure, Path=/, no Domain)', () => {
+      const value = buildSetCookie('__Host-omni_access', 'jwt', { maxAge: 900 });
+      expect(value).toContain('__Host-omni_access=jwt');
+      expect(value).toContain('Path=/;');
+      expect(value).toContain('Secure');
+      expect(value).not.toContain('Domain=');
+    });
+
+    it('buildSetCookie rejects a __Host- cookie with a Domain', () => {
+      expect(() => buildSetCookie('__Host-omni_access', 'v', { domain: 'omni.example' })).toThrow(/__Host-.*Domain/);
+    });
+
+    it('buildSetCookie rejects a __Host- cookie with a non-/ Path', () => {
+      expect(() => buildSetCookie('__Host-omni_access', 'v', { path: '/api' })).toThrow(/__Host-.*Path/);
+    });
+
+    it('buildSetCookie rejects a non-Secure __Host- / __Secure- cookie', () => {
+      expect(() => buildSetCookie('__Host-omni_access', 'v', { secure: false })).toThrow(/__Host-.*Secure/);
+      expect(() => buildSetCookie('__Secure-omni_access', 'v', { secure: false })).toThrow(/__Secure-.*Secure/);
+    });
+
+    it('buildClearCookie keeps a __Host- clear valid (Secure + Path=/ + no Domain) so signout deletes it', () => {
+      // A __Host- cookie can ONLY be (re)written Secure / Path=/ / no-Domain; a
+      // clear that violates this is silently dropped by the browser and the
+      // session cookie SURVIVES signout. Pin the invariant — even when the
+      // caller passes a path/domain that would otherwise break it.
+      const value = buildClearCookie('__Host-omni_access', { path: '/api', domain: 'omni.example' });
+      expect(value).toContain('__Host-omni_access=');
+      expect(value).toContain('Max-Age=0');
+      expect(value).toContain('Path=/;'); // forced to / regardless of attrs
+      expect(value).toContain('Secure');
+      expect(value).not.toContain('Domain='); // forced host-only
+    });
+
+    it('buildClearCookie adds Secure for a __Secure- cookie (path not pinned)', () => {
+      const value = buildClearCookie('__Secure-omni_access', { path: '/api' });
+      expect(value).toContain('Secure');
+      expect(value).toContain('Path=/api');
+    });
+
+    it('buildClearCookie leaves unprefixed cookies unchanged (no forced Secure)', () => {
+      const value = buildClearCookie('omni_access', { path: '/api', domain: 'omni.example' });
+      expect(value).not.toContain('Secure');
+      expect(value).toContain('Path=/api');
+      expect(value).toContain('Domain=omni.example');
+    });
+  });
+
   describe('round-trip', () => {
     it('build then parse yields the original value', () => {
       const set = buildSetCookie('omni', 'hello world!');

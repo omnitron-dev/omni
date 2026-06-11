@@ -948,6 +948,27 @@ export class RemotePeer extends AbstractPeer {
 
         let stream = this.readableStreams.get(packet.streamId);
         if (!stream) {
+          // WIRE-10: gate the per-direction stream cap BEFORE allocating. The
+          // stream constructor enforces the same cap by THROWING, but we are
+          // inside the fire-and-forget async handlePacket — a throw here would
+          // surface as an unhandled rejection. Reject the new stream gracefully
+          // instead: tell the sender to stop, and drop the packet without
+          // constructing anything.
+          if (this.readableStreams.size >= RemotePeer.MAX_STREAMS_PER_DIRECTION) {
+            this.logger.error(
+              { streamId: packet.streamId, count: this.readableStreams.size },
+              `Max readable streams (${RemotePeer.MAX_STREAMS_PER_DIRECTION}) reached; rejecting new stream`,
+            );
+            this.sendPacket(
+              createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
+                streamId: packet.streamId,
+                reason: 'stream-limit-reached',
+              }),
+            ).catch(() => {
+              /* best-effort notify; the sender may already be gone */
+            });
+            return;
+          }
           this.logger.debug({ streamId: packet.streamId }, 'Creating new readable stream');
           stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
           this.events.emit('stream', stream);

@@ -5,8 +5,12 @@
  * with sensible defaults for the omnitron-platform conventions:
  *
  *  - access-cookie  = 'omni_access'  / 15-min TTL / Path '/'
- *  - refresh-cookie = 'omni_refresh' / 7-day TTL / Path '/api/main/auth'
+ *  - refresh-cookie = 'omni_refresh' / 7-day TTL / Path '/'
  *  - csrf-cookie    = 'omni_csrf'    / 15-min TTL / non-HttpOnly
+ *
+ * In Secure host-only deployments the access/refresh cookies additionally get
+ * the RFC 6265bis '__Host-' name prefix (browser-enforced Secure + host-only +
+ * Path=/), which defeats subdomain cookie-tossing / session fixation.
  *
  * Apps that want different naming / scoping should call the underlying
  * constructors directly (via `@omnitron-dev/titan/netron/auth`).
@@ -81,6 +85,8 @@ export interface OmniCookieTransportOptions {
 export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {}): {
   transport: CookieTokenTransport;
   csrf: CsrfManager | undefined;
+  /** Resolved access-cookie name (carries the `__Host-` prefix when applied). */
+  accessCookieName: string;
 } {
   const secure = opts.secure ?? process.env['NODE_ENV'] === 'production';
   const domain = opts.domain;
@@ -119,8 +125,22 @@ export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {})
     });
   }
 
+  // __Host- prefix (RFC 6265bis): the gold-standard hardening for session
+  // cookies — the browser GUARANTEES the cookie is Secure, host-only (no
+  // Domain) and Path=/, so a sibling subdomain (or a network attacker pivoting
+  // through one) cannot set or overwrite it (cookie-tossing / fixation). It is
+  // only valid for Secure host-only cookies, so we apply it exactly when both
+  // hold. Access/refresh are HttpOnly server-internal credentials, so the
+  // prefix is transparent to clients (they never read these by name).
+  const refreshPath = opts.refreshPath ?? '/';
+  const canHostPrefix = secure && !domain;
+  const accessName = (canHostPrefix ? '__Host-' : '') + (opts.accessCookieName ?? 'omni_access');
+  // The refresh cookie additionally needs Path=/ to qualify for __Host-.
+  const refreshName =
+    (canHostPrefix && refreshPath === '/' ? '__Host-' : '') + (opts.refreshCookieName ?? 'omni_refresh');
+
   const accessCookie: CookieSpec = {
-    name: opts.accessCookieName ?? 'omni_access',
+    name: accessName,
     path: '/',
     domain,
     secure,
@@ -129,13 +149,12 @@ export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {})
     maxAgeSec: opts.accessMaxAgeSec ?? 15 * 60,
   };
   const refreshCookie: CookieSpec = {
-    name: opts.refreshCookieName ?? 'omni_refresh',
-    // Path scoping: the netron RPC dispatcher is single-endpoint
-    // (`/netron/invoke`) per backend; narrowing the refresh-cookie
-    // path beyond `/` would mean the browser doesn't ship it on the
-    // refresh RPC. The defense the narrow path used to provide is
-    // already covered by HttpOnly + SameSite=Strict.
-    path: opts.refreshPath ?? '/',
+    // Path scoping: the netron RPC dispatcher is single-endpoint per backend;
+    // narrowing the refresh-cookie path beyond `/` would mean the browser
+    // doesn't ship it on the refresh RPC. The defense a narrow path used to
+    // provide is already covered by HttpOnly + SameSite=Strict (+ __Host-).
+    name: refreshName,
+    path: refreshPath,
     domain,
     secure,
     sameSite: 'Strict',
@@ -144,7 +163,7 @@ export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {})
   };
 
   const transport = new CookieTokenTransport({ accessCookie, refreshCookie, csrf });
-  return { transport, csrf };
+  return { transport, csrf, accessCookieName: accessName };
 }
 
 /**
@@ -157,8 +176,10 @@ export function createOmniCookieTransport(opts: OmniCookieTransportOptions = {})
 export function createOmniCompositeCookieBearer(opts: OmniCookieTransportOptions = {}): {
   transport: CompositeTokenTransport;
   csrf: CsrfManager | undefined;
+  /** Resolved access-cookie name (carries the `__Host-` prefix when applied). */
+  accessCookieName: string;
 } {
-  const { transport: cookie, csrf } = createOmniCookieTransport(opts);
+  const { transport: cookie, csrf, accessCookieName } = createOmniCookieTransport(opts);
   const composite = new CompositeTokenTransport([cookie, new BearerTokenTransport()]);
-  return { transport: composite, csrf };
+  return { transport: composite, csrf, accessCookieName };
 }

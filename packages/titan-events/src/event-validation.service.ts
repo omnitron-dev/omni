@@ -4,9 +4,10 @@
  * Validates event data against schemas
  */
 
-import { Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 import { z, type ZodSchema } from 'zod';
 
+import { LOGGER_TOKEN } from './tokens.js';
 import type { EventData, EventValidator, EventTransformer } from './event.types.js';
 import type { IEventValidationResult } from './types.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -50,7 +51,10 @@ export class EventValidationService {
   private destroyed = false;
   private logger: ILogger | null = null;
 
-  constructor() {}
+  constructor(@Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null) {
+    // EV-2: wire the logger so this service's error/warn logging is not dead.
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

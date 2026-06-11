@@ -533,6 +533,47 @@ describe('DistributedLockService', () => {
     });
   });
 
+  describe('withLock auto-renew watchdog (LK-1)', () => {
+    it('auto-renews the lock while a long-running fn executes', async () => {
+      (mockRedis.eval as Mock).mockResolvedValue('OK'); // acquire succeeds
+      (mockRedis.evalsha as Mock).mockResolvedValue(1); // extend + release succeed
+      const extendSpy = vi.spyOn(lockService, 'extendLock');
+
+      // ttl=30ms → renewIntervalMs = 10ms; fn runs ~45ms → renewals fire.
+      await lockService.withLock(
+        'long-key',
+        async () => {
+          await new Promise((r) => setTimeout(r, 45));
+        },
+        { ttl: 30 }
+      );
+
+      expect(extendSpy).toHaveBeenCalled();
+      // Every renewal targets the locked key.
+      expect(extendSpy.mock.calls.every((c) => c[0] === 'long-key')).toBe(true);
+    });
+
+    it('does NOT renew for a fast fn, nor when autoRenew is disabled', async () => {
+      (mockRedis.eval as Mock).mockResolvedValue('OK');
+      (mockRedis.evalsha as Mock).mockResolvedValue(1);
+      const extendSpy = vi.spyOn(lockService, 'extendLock');
+
+      // Fast fn → the renewal timer (ttl/3 = 10ms) never fires.
+      await lockService.withLock('fast', async () => {}, { ttl: 30 });
+      expect(extendSpy).not.toHaveBeenCalled();
+
+      // autoRenew:false → no renewal even for a long fn.
+      await lockService.withLock(
+        'no-renew',
+        async () => {
+          await new Promise((r) => setTimeout(r, 45));
+        },
+        { ttl: 30, autoRenew: false }
+      );
+      expect(extendSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('isLocked', () => {
     it('should return true when key is locked', async () => {
       (mockRedis.exists as Mock).mockResolvedValue(1);

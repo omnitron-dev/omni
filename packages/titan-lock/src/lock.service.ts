@@ -314,14 +314,47 @@ export class DistributedLockService implements IDistributedLockService {
     const retryDelay = options?.retryDelay ?? this.options.defaultRetryDelay;
     const exponentialBackoff = options?.exponentialBackoff ?? true;
     const skipOnLockFailure = options?.skipOnLockFailure ?? false;
+    const autoRenew = options?.autoRenew ?? true;
+    const renewIntervalMs = options?.renewIntervalMs ?? Math.max(1, Math.floor(ttl / 3));
 
     for (let i = 0; i < retries; i++) {
       const lockId = await this.acquireLock(key, ttl);
 
       if (lockId) {
+        // LK-1: auto-renew watchdog. Without renewal a function that outlives
+        // `ttl` lets the lock expire, another node acquires it, and the critical
+        // section runs concurrently on two nodes — defeating mutual exclusion.
+        // Renew every ttl/3 so a single missed renewal still leaves margin.
+        let renewTimer: ReturnType<typeof setInterval> | undefined;
+        if (autoRenew) {
+          renewTimer = setInterval(() => {
+            this.extendLock(key, lockId, ttl)
+              .then((extended) => {
+                if (!extended && renewTimer) {
+                  // Lock no longer owned (expired + reacquired elsewhere, or a
+                  // sustained Redis failure). Mutual exclusion may already be
+                  // violated; stop renewing and surface it loudly. JS can't
+                  // preempt `fn`, so this is the strongest signal available.
+                  this.logger.error(
+                    { key, lockId },
+                    '[DistributedLock] Auto-renew failed — lock lost while critical section is still running'
+                  );
+                  clearInterval(renewTimer);
+                  renewTimer = undefined;
+                }
+              })
+              .catch(() => {
+                // extendLock already routes errors through its failure tracker.
+              });
+          }, renewIntervalMs);
+          // Never keep the event loop alive solely for the renewal timer.
+          renewTimer.unref?.();
+        }
+
         try {
           return await fn();
         } finally {
+          if (renewTimer) clearInterval(renewTimer);
           await this.releaseLock(key, lockId);
         }
       }

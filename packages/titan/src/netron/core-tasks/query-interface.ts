@@ -5,7 +5,7 @@
 
 import semver from 'semver';
 import type { RemotePeer } from '../remote-peer.js';
-import type { Definition } from '../definition.js';
+import { Definition } from '../definition.js';
 import type { ServiceStub } from '../service-stub.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 
@@ -153,9 +153,13 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
     'Service interface queried successfully'
   );
 
-  // Return a new Definition with filtered metadata
-  return {
-    ...definition,
-    meta: filteredMeta,
-  };
+  // NET-1: return a real Definition INSTANCE, not a plain-object spread.
+  // The msgpack serializer selects the Definition class encoder (wire type 109)
+  // via `instanceof Definition`; a spread `{ ...definition }` is a plain Object,
+  // so on this auth-filtered path the result was silently encoded as an untyped
+  // map and the receiver never reconstructed a Definition (it limped only
+  // because Interface.create reads .id/.meta). Construct the real instance.
+  const filtered = new Definition(definition.id, definition.peerId, filteredMeta);
+  filtered.parentId = definition.parentId;
+  return filtered;
 }

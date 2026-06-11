@@ -5,7 +5,7 @@
  * Supports custom headers, HMAC signing, timeouts, and retries.
  */
 
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import type { NotificationPayload, NotificationRecipient } from '../../notifications.types.js';
@@ -365,5 +365,15 @@ export function verifyWebhookSignature(
   const hmac = createHmac(algorithm, secret);
   hmac.update(body);
   const expectedSignature = `${algorithm}=${hmac.digest('hex')}`;
-  return signature === expectedSignature;
+
+  // NT-3: constant-time comparison. `===` on strings short-circuits at the
+  // first differing byte, leaking HMAC-match progress to an attacker who can
+  // measure response timing. The length check is safe here: the expected
+  // signature length is fixed for a given algorithm and not secret.
+  const provided = Buffer.from(signature);
+  const expected = Buffer.from(expectedSignature);
+  if (provided.length !== expected.length) {
+    return false;
+  }
+  return timingSafeEqual(provided, expected);
 }

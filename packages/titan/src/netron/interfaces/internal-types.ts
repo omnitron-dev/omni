@@ -10,6 +10,7 @@ import type { INetron, ILocalPeer, IAuthorizationManager } from './core-types.js
 import type { ServiceStub } from '../service-stub.js';
 import type { AuthCredentials, AuthResult } from '../auth/types.js';
 import type { ITokenTransport } from '../auth/token-transport.js';
+import type { PolicyEngine } from '../auth/policy-engine.js';
 
 /**
  * Internal interface for AuthenticationManager.
@@ -74,6 +75,14 @@ export interface INetronInternal extends INetron {
    * @internal
    */
   authorizationManager?: IAuthorizationManager;
+
+  /**
+   * Policy engine for `@Public({ auth: { policies } })` evaluation. Optional —
+   * when a method declares `policies` but no engine is configured, the wire/HTTP
+   * enforcement FAILS CLOSED. Read by `RemotePeer.enforceMethodAccess`.
+   * @internal
+   */
+  policyEngine?: PolicyEngine;
 
   /**
    * Token transport strategy. The `Netron` class always initializes

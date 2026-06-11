@@ -4,13 +4,13 @@
  */
 
 import type { NetronMiddlewareContext, MiddlewareFunction } from './types.js';
-import type { AuthContext, ExecutionContext, PolicyExpression } from '../../../auth/types.js';
+import type { AuthContext, ExecutionContext } from '../../../auth/types.js';
 import type { MethodOptions } from '../../../../decorators/types.js';
 import type { PolicyEngine } from '../../../auth/policy-engine.js';
 import type { AuthorizationManager } from '../../../auth/authorization-manager.js';
 import type { ILogger } from '../../../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../../../decorators/core.js';
-import { TitanError, ErrorCode } from '../../../../errors/index.js';
+import { enforceMethodAuthorization } from '../../../auth/method-authorization.js';
 import type { RemotePeer } from '../../../remote-peer.js';
 
 /**
@@ -152,7 +152,7 @@ function getAuthContext(ctx: NetronMiddlewareContext): AuthContext | undefined {
  * Evaluates auth configuration from @Public decorator
  */
 export function createAuthMiddleware(options: AuthMiddlewareOptions): MiddlewareFunction {
-  const { policyEngine, authorizationManager, logger, skipServices = [], skipMethods = [] } = options;
+  const { policyEngine, logger, skipServices = [], skipMethods = [] } = options;
 
   return async (ctx, next) => {
     // Skip if no service/method specified
@@ -173,167 +173,36 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
       return next();
     }
 
-    // Read @Public metadata
-    const methodMetadata = readMethodMetadata(serviceInstance, ctx.methodName);
-    if (!methodMetadata?.auth) {
-      // No auth configured for this method
-      return next();
-    }
-
     // Get auth context from peer
     const authContext = getAuthContext(ctx);
 
-    // Check if auth is required
-    if (typeof methodMetadata.auth === 'boolean') {
-      if (methodMetadata.auth && !authContext) {
-        throw new TitanError({
-          code: ErrorCode.UNAUTHORIZED,
-          message: 'Authentication required',
-          details: {
-            service: ctx.serviceName,
-            method: ctx.methodName,
-          },
-        });
-      }
-      return next();
-    }
-
-    // Handle object-based auth configuration
-    const authConfig = methodMetadata.auth;
-
-    // Check if anonymous access is allowed
-    if (authConfig.allowAnonymous && !authContext) {
-      logger.debug({ service: ctx.serviceName, method: ctx.methodName }, 'Anonymous access allowed');
-      return next();
-    }
-
-    // Authentication required if not anonymous
-    if (!authContext) {
-      throw new TitanError({
-        code: ErrorCode.UNAUTHORIZED,
-        message: 'Authentication required',
-        details: {
-          service: ctx.serviceName,
-          method: ctx.methodName,
-        },
-      });
-    }
-
-    // Build execution context for policy evaluation
-    const execContext = buildExecutionContext(ctx, authContext);
-
-    // Validate access using AuthorizationManager (single source of truth)
-    const accessResult = authorizationManager.validateAccess(authContext, {
-      roles: authConfig.roles,
-      permissions: authConfig.permissions,
-      scopes: authConfig.scopes,
+    // Delegate the authorization decision to the shared, transport-agnostic
+    // enforcement that the persistent-transport wire path uses too. This is the
+    // SINGLE source of truth for `@Public({ auth })` (roles/permissions/scopes +
+    // policies, fail-closed) — so HTTP and WS/TCP/Unix can never diverge again
+    // (the divergence was the SEC-1 root cause). Throws UNAUTHORIZED/FORBIDDEN
+    // on denial; resolves (no-op) when the method declares no auth.
+    const headers = ctx.metadata?.get('headers');
+    const transport = ctx.metadata?.get('transport');
+    const clientIp = ctx.metadata?.get('clientIp') || ctx.metadata?.get('ip');
+    await enforceMethodAuthorization({
+      serviceInstance,
+      serviceName: ctx.serviceName,
+      methodName: ctx.methodName,
+      args: Array.isArray(ctx.input) ? ctx.input : [ctx.input],
+      authContext,
+      policyEngine,
+      logger,
+      transport: typeof transport === 'string' ? transport : 'http',
+      ...(typeof clientIp === 'string' ? { clientIp } : {}),
+      ...(typeof headers === 'object' && headers !== null ? { headers: headers as Record<string, string> } : {}),
     });
-
-    if (!accessResult.allowed) {
-      logger.warn(
-        {
-          service: ctx.serviceName,
-          method: ctx.methodName,
-          reason: accessResult.reason,
-          details: accessResult.details,
-        },
-        'Access validation failed'
-      );
-
-      throw new TitanError({
-        code: ErrorCode.FORBIDDEN,
-        message: accessResult.reason || 'Access denied',
-        details: {
-          service: ctx.serviceName,
-          method: ctx.methodName,
-          ...accessResult.details,
-        },
-      });
-    }
-
-    // Evaluate policies
-    if (authConfig.policies) {
-      if (!policyEngine) {
-        // Method declares `policies` but no PolicyEngine is wired —
-        // fail closed. Silently allowing would convert a policy guard
-        // into an open door, which is the opposite of the decorator's
-        // intent.
-        logger.error(
-          {
-            service: ctx.serviceName,
-            method: ctx.methodName,
-          },
-          'Method declares policies but no PolicyEngine is configured — denying',
-        );
-        throw new TitanError({
-          code: ErrorCode.FORBIDDEN,
-          message: 'Policy enforcement unavailable',
-          details: {
-            service: ctx.serviceName,
-            method: ctx.methodName,
-          },
-        });
-      }
-      let policyDecision;
-
-      if (Array.isArray(authConfig.policies)) {
-        // Array of policy names - evaluate all (AND logic)
-        policyDecision = await policyEngine.evaluateAll(authConfig.policies, execContext);
-      } else if (
-        typeof authConfig.policies === 'object' &&
-        'all' in authConfig.policies &&
-        Array.isArray(authConfig.policies.all)
-      ) {
-        // Explicit AND logic
-        policyDecision = await policyEngine.evaluateAll(authConfig.policies.all as string[], execContext);
-      } else if (
-        typeof authConfig.policies === 'object' &&
-        'any' in authConfig.policies &&
-        Array.isArray(authConfig.policies.any)
-      ) {
-        // Explicit OR logic
-        policyDecision = await policyEngine.evaluateAny(authConfig.policies.any as string[], execContext);
-      } else {
-        // Policy expression (complex AND/OR/NOT)
-        policyDecision = await policyEngine.evaluateExpression(authConfig.policies as PolicyExpression, execContext);
-      }
-
-      if (!policyDecision.allowed) {
-        logger.warn(
-          {
-            service: ctx.serviceName,
-            method: ctx.methodName,
-            reason: policyDecision.reason,
-            userId: authContext.userId,
-          },
-          'Policy evaluation failed'
-        );
-
-        throw new TitanError({
-          code: ErrorCode.FORBIDDEN,
-          message: policyDecision.reason || 'Access denied by policy',
-          details: {
-            service: ctx.serviceName,
-            method: ctx.methodName,
-            policyDecision,
-          },
-        });
-      }
-
-      logger.debug(
-        {
-          service: ctx.serviceName,
-          method: ctx.methodName,
-          userId: authContext.userId,
-          evaluationTime: policyDecision.evaluationTime,
-        },
-        'Policy evaluation succeeded'
-      );
-    }
 
     // Store authContext in metadata for business logic access
     // Business logic can retrieve it with: ctx.metadata?.get('authContext')
-    ctx.metadata.set('authContext', authContext);
+    if (authContext) {
+      ctx.metadata.set('authContext', authContext);
+    }
 
     // All checks passed, proceed to next middleware
     return next();

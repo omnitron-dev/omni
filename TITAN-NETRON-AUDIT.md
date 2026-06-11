@@ -1,0 +1,284 @@
+# Titan / Netron / DAOS — Deep Audit & Remediation Tracker
+
+> Mandate: industrial-grade reference architecture. Eliminate redundancy, inconsistency, legacy.
+> Maximize reuse across all levels. Netron fully consistent + tested + red-teamed.
+> **Process (MANDATORY):** investigate root cause → reproduce with test → root-cause fix → verify (no regressions). Never skip the test.
+> Status legend: `[ ]` todo · `[~]` in-progress · `[x]` done · `[!]` blocked/needs-decision
+
+---
+
+## Audit phase status
+- [x] **Phase 1** — Titan core (Nexus DI, application, cross-cutting) + Netron (RPC core, wire, auth red-team) + netron-browser + netron-react. (8 agents)
+- [x] **Phase 2** — 14× titan-* modules (data/redis/cache/lock, events/scheduler, pm, notifications/ratelimit/telemetry, auth/metrics/health/discovery). (5 agents)
+- [ ] **Phase 3** — omnitron app + how titan/omnitron/netron are used across the 8 daos apps (legacy / dedup / reuse / best-practice conformance). (deferred until after critical framework fixes land)
+
+---
+
+## EXECUTION PRIORITY TIERS
+
+### ✅ SESSION LOG (2026-06-11)
+- **Phase 1 + Phase 2 audits COMPLETE** — ~130 findings catalogued below (titan core, Nexus, netron core/wire/auth, netron-browser/react, 14 titan-* modules). Architecture/structure defects are the P2 tier (god objects, duplication, dead code) + flagged inline.
+- **MEM-FIX ✅** — corrected `daos_infra_invariants` memory (Nexus default is **Singleton**, not Transient — was inverted; verified registration.ts:69).
+- **SEC-1 ✅ DONE + VERIFIED** — critical wire-path auth bypass fixed. New shared `auth/method-authorization.ts::enforceMethodAuthorization()` is the single source of truth; `RemotePeer.enforceMethodAccess` now enforces `@Public({auth})` on WS/TCP/Unix (was ACL-only/default-allow); HTTP middleware delegates to the same function (SEC-7 core). `AuthorizationManager.validateAccess` + new `validateAccessRequirements` (auth/utils) deduped. **3 reproducing tests** (wire-level-decorator-authz.spec.ts — confirmed RED before, GREEN after). **2292 auth/transport tests pass, tsc clean.**
+- **SEC-3 ✅** — policy fail-closed now enforced on ALL transports via the shared function (was WS fail-open).
+- **SEC-7 (core) ✅** — HTTP + wire enforcement unified into one function. Remaining: delete dead `websocket/auth.ts::authorizeMessage` + its duplicate readMethodMetadata/buildExecutionContext (cleanup).
+- **NX-1 verified** — Singleton default confirmed; `defaults.spec.ts` pinning test still TODO (P3).
+
+### P0 — Critical (security / data-loss correctness). Do first.
+- [x] **SEC-1** ✅ FIXED+VERIFIED — `@Public({auth})` now enforced on WS/TCP/Unix via shared `enforceMethodAuthorization`. (method-authorization.ts, remote-peer.ts, utils.ts, authorization-manager.ts, http/middleware/auth.ts; test wire-level-decorator-authz.spec.ts)
+- [ ] **SEC-2** `AuthorizationManager` is default-ALLOW when no ACL matches. → Add/force `defaultPolicy:'deny'` for closed platform. **Partially mitigated by SEC-1** (decorator now enforced regardless of ACL); residual: services with NEITHER decorator NOR ACL are open. Still TODO: opt-in default-deny.
+- [x] **SEC-3** ✅ FIXED — policy fail-closed on all transports (shared function throws FORBIDDEN when policies declared but no PolicyEngine). Verified via http-auth tests + wire path.
+- [ ] **XC-1** Netron binary serializer silently DROPS all `TitanError` subclass fields over RPC (serviceId, retryAfter, requiredPermission, domainCode, …). Test codifies the loss. → Serialize via `toJSON()` + name→ctor registry; strengthen test.
+- [ ] **NET-1** `query_interface` returns a plain object, not a `Definition` instance → breaks msgpack class-encoder (type-109) on the auth-filtered path (prod-only, auth-on). → Construct real `Definition`.
+- [ ] **WIRE-1** TCP/Unix framing accumulates UNBOUNDED memory from attacker-controlled 4-byte length prefix (DoS); maxPacketSize enforced only AFTER full frame assembled. → Cap length prefix before buffering.
+- [ ] **NB-1** Browser serializer transmits error STACK TRACES to server (ignores titan T#38 suppression). → Port `includeStackTraces=false` gate / share serializer.
+- [ ] **NB-3** Default browser auth storage writes raw JWT + refresh token to `localStorage` (XSS exfil; contradicts cookie-mode invariant). → Default to cookie transport + NoopTokenStorage; never persist refresh token.
+
+### P1 — High (correctness / availability / broken features)
+- [ ] **NET-2** `releaseInterface` recursion drops the `released` dedup set + fire-and-forget (unbounded recursion on cyclic parentId, unhandled rejections, mutation-during-iteration). → Thread set, await, snapshot.
+- [ ] **WIRE-2** Readable-stream reorder buffer kills stream on a single gap ("backpressure" error) + no HOL gap timeout. Transports are ordered/reliable → reorder machinery is wrong/dead. → Assert in-order, drop reorder buffer (or fix gap semantics).
+- [ ] **WIRE-6** `decodePacket` stream-info reads sit OUTSIDE try/catch (truncated stream packet → raw RangeError, not TitanError); no full-buffer-consumption check (trailing bytes ignored). → Wrap + assert consumption.
+- [ ] **WIRE-10** Stream count limit checked AFTER allocation + throws from constructor in async `handlePacket` → unhandled rejection. → Check before create in handlePacket.
+- [ ] **WIRE-11** WritableStream `_final`/`closeStream`/`destroy` double-teardown → can emit both EOS chunk + STREAM_CLOSE. → Single guarded teardown.
+- [ ] **WIRE-13** `serializer.encode` monkey-patch registers StreamReference async then encodes sync → first-ever StreamReference encodes as plain object (race). → Register eagerly at init.
+- [ ] **SEC-4** Token-cache revocation lag (cached AuthResult honored up to TTL after logout/ban); WS auth resolved once at connect, never refreshed for socket lifetime. → Document + force revoke on signout/ban; drop/re-auth live WS on revoke.
+- [ ] **SEC-5** `unref_service` core-task is unauthenticated/uncapped/not owner-checked → cross-peer stub eviction DoS (contradicts its own "can't de-register" comment). → `enforceOwnership`.
+- [ ] **NB-2** `CORE_TASK_AUTHENTICATE`/`CORE_TASK_INVALIDATE_CACHE` carry `netron.` prefix that doesn't match server bare task names → dead/broken constants. → Fix values to bare names; share constants.
+- [ ] **NB-4** ConnectionManager auto-reconnect broken (throwing factory + backoff never escalates from stale per-peer state). → Per-peer factory + surviving attempt counter.
+- [ ] **NB-6** 401 refresh/retry path inert (`attemptTokenRefresh` never refreshes; request never re-sent). → Implement re-invoke hook or remove.
+- [ ] **NB-7** Client token extraction reads `metadata.token` but server sends body `accessToken`/`refreshToken` → bearer never set, refresh never scheduled. → Align extractor + canonical signin envelope.
+- [ ] **NB-8** `BackendClient` never forwards reconnect/disconnect events → `wireTransportEvents` dead → React `refetchOnReconnect` never fires. → Add `on()` forwarding.
+- [ ] **NB-9** Leader-election: no liveness for frozen-but-alive leader; documented single-tab/always-leader fallback unimplemented (hard-throws on missing API). → Heartbeat + degraded fallback.
+- [ ] **NR-2** netron-react multi-backend test suite FULLY RED (33 failures) — GC `setInterval` runs unbounded under fake timers; newest MultiBackend bridge ships unverified. → Lazy/injectable GC; fix tests. **(release blocker)**
+- [ ] **NR-3** Shared dedup cache stores POST-`select`/transform data → two observers w/ different `select` poison each other; infinite vs regular key collision. → Cache raw, project per-observer; namespace infinite entries.
+- [ ] **NR-9** `AuthProvider.login` is a stub that always throws (public via prism). → Implement or remove from type.
+- [ ] **NR-13** `matchQueryFilters` stale check always-true → `invalidateQueries({stale:true})` invalidates ENTIRE cache on every focus/reconnect. → Compare `now > dataUpdatedAt + staleTime`.
+- [ ] **APP-1** Dual shutdown engines (manual loop in `_doStop` vs `ShutdownCoordinator`/`LifecycleController`) with divergent ordering/parallelism/reason depending on entry point. → Collapse to one (coordinator).
+- [ ] **APP-2** Shutdown tasks run via different engine on `stop()` vs `shutdown()`; correctness hinges on one mutable bool. → Folds into APP-1.
+- [ ] **APP-3** Event listeners leak across `restart()` — `EventBus.clear()` documents itself as called on teardown but has ZERO callers. → Wire `clear()` in `_doStop` after terminal emits.
+- [ ] **NB-5** HTTP RetryManager retries non-idempotent RPCs → double-execution (shared w/ titan). → opt-in `.idempotent()` gate.
+
+### P2 — Architecture / redundancy / reuse (high value, larger). Design once with full picture (await Phase 2/3).
+- [ ] **SHARED-PROTO** Extract dependency-free `@omnitron-dev/netron-protocol` (packet types+Packet+encode/decode, serializer, Uid, Definition/Reference/StreamReference, error codes+hierarchy+factories, HTTP envelope/hint types, auth context types, core-task name constants, wire constants) consumed by BOTH titan & netron-browser. Kills NB-1, NB-2, NB-12, NB-15, NB-16, NB-17, XC-2 structurally. (Covers netron-browser duplication table — ~12 byte-identical/divergent units.)
+- [ ] **SHARED-HTTP-CORE** Extract `@omnitron-dev/netron-http-core` (fluent query-builder, configurable-proxy, cache-manager, retry-manager, request-batcher) — 4 byte-identical files + NB-5/NB-13.
+- [ ] **RESILIENCE-UNIFY** ONE CircuitBreaker (3 copies: utils/resilience, errors/utils, nexus/mesh) + ONE backoff/retry primitive (4 copies: utils/retry, utils/backoff, utils/resilience, errors/utils) + ONE `HeartbeatMonitor` (3 health-check loops: ConnectionManager, BackendPool, KeepAliveManager) + ONE reconnect strategy (WIRE-4: BaseConnection vs ConnectionManager vs backend-pool). Covers XC-4, XC-5, WIRE-4, WIRE-8.
+- [ ] **ERROR-TABLE** ONE `{code,name,message,httpStatus,grpc,retryable,category}` table driving getErrorName/getDefaultMessage/isRetryableError/getErrorCategory/httpStatusMap/grpcStatusMap (6 drifting hand-maps). Covers XC-3, XC-9. Separate string identity from HTTP status.
+- [ ] **SEC-7** Unify the 3 parallel authz implementations (HTTP middleware / WS authorizeMessage(dead) / binary ACL) into one — root cause of SEC-1/SEC-3. Delete dead `authorizeMessage` or make it the shared impl.
+- [ ] **NET-5** ONE direction-aware `Marshaller` (encode/decode value) replacing 4 processValue/Args/Result pipelines (interface, service-stub, remote-peer, local-peer). Home for authz hooks so they can't be forgotten on a new path.
+- [ ] **NET-3** Decompose `Netron` god object (1411 LOC): extract `PeerConnector`/handshake + move reconnect into ConnectionManager + `SequentialEmitter` for `emitSpecial`.
+- [ ] **WIRE-3** Packet-native receive path: stop decode→re-encode→re-decode every packet (BinaryTransportAdapter round-trip). Forward decoded Packet directly.
+- [ ] **WIRE-9** Fold multi-backend connection mgmt onto ConnectionManager; keep only routing+circuit-breaker+failover at multi-backend layer (two parallel connection stacks today).
+- [ ] **NX-9/NX-11** Introduce typed `ContainerStore` injected into Nexus services (kills 8–11 positional-callback signatures; turns extracted procedures into real collaborators). 2488-LOC god object.
+- [ ] **NX-2/NX-3** Collapse 2 parallel scoping impls (`resolveWithScope` vs `resolveRegistration`); fixes scoped multi-token cache-key bug (keyed by `context.scope` not `scopeId`).
+- [ ] **NX-4** Scope-qualify `pendingPromises` key (cross-scope async resolution leaks one instance across scopes).
+- [ ] **NX-5** Move/delete dead nexus `mesh`/`tracing`/`devtools` (3145 LOC, ~66 exports, zero internal consumers) off the main barrel; relocate the one needed `DependencyGraph` type.
+- [ ] **NX-7/NX-8** Single conditional-provider model: keep context-aware `when`, default it Transient (else condition evaluated once & cached), promote to public `Provider` union; reconcile half-wired `condition`.
+- [ ] **APP-4/APP-5** ONE metadata-key constants module (3 copies: core.METADATA_KEYS `nexus:*`, constants.DECORATOR_METADATA `titan:*`, injection-plan.KEYS); delete dead `titan:di:*`/`titan:service:*`; unify split-brained injection decorators.
+- [ ] **NR-1** netron-react reimplements TanStack Query + Zustand + Jotai (~6 KLOC). → Adapter over `@tanstack/react-query` OR raise bespoke cache to TanStack bar (closes NR-3/4/5/6/11/13). Strategic — decide with user.
+- [ ] **XC-8** Unify the 2 `ValidationError` + 2 `ServiceError` classes (one extends TitanError, one extends Error); ValidationEngine should throw canonical TitanError.
+- [ ] **XC-2** netron-browser errors clone (folds into SHARED-PROTO).
+
+### P3 — Medium/Low (cleanups, dead code, perf, tests, docs, memory)
+- [ ] **MEM-FIX** Correct `daos-dev-principles` memory: Nexus defaults providers to **Singleton**, not Transient (NX-1). (verify first)
+- [ ] **NX-1** Pin scope-default with tests (`defaults.spec.ts`); document default in JSDoc + README.
+- [ ] **NX-6** Emit or prune ~19 declared-but-never-emitted LifecycleEvents; fix `addHook('onDispose')` never firing (ContainerDisposing).
+- [ ] **NX-10/12/13/14/15/16** instances-cache scope guard; dup Middleware/ConfigToken types; clearCache leaks pendingPromises/lifecycle sets; isConstructor non-boolean; console.warn bypasses logger; untested guards.
+- [ ] **APP-6** `@Service` instantiates class at decoration/import time (side effects, silent ctor failure). → Read metadata without instantiation.
+- [ ] **APP-7/8/9/10/11/12/13** metrics uptime-unit divergence; replaceModule stale dedup; `off()` removes-all divergence; logger topo exclusion coupling; dual process-handler owners; simple.ts dup; minor dead exports.
+- [ ] **NET-4** `refService` divergent signatures across peers (rename RemotePeer's → `registerRemoteDefinition`).
+- [ ] **NET-6/7/8/9/10/11/12/13** dead no-op processArgs; wrong reflect key; dead exports/orphan JSDoc; interfaces barrel omits internal-types; disconnect not awaited; unexposeAll ignores async; methodCache not cleared; inline metadata read.
+- [ ] **WIRE-5/7/12/14/15/16/17/18** binary heuristic misclassify; inconsistent close/error semantics across transports; KeepAliveManager global-singleton config collision; server send monkey-patch; byteLength probe; server close races; dead NamedPipe/NativeWS/bit-helpers; parseAddress IPv6.
+- [ ] **SEC-6** Error messages distinguish not-found vs forbidden → service/method enumeration oracle. → Uniform responses; names to logs only.
+- [ ] **XC-3/6/7/10/11/12** ErrorCode httpStatus wrong for custom codes; prune dead error API (ErrorPool/Matcher/Logger/HandlerChain/adapters); unbounded static stats in ctor; AggregateError shadows global; untested domain/contract/formatting; getAvailablePort ignores startPort + UUID doc.
+- [ ] **NB-10..NB-19** BroadcastChannel unvalidated; shared AbortController; envelope drift; dead request-batcher/services/pendingRequests; Uid triplicated; error hierarchy drift; packet impl drift; router dead branch; then-trap proxy.
+- [ ] **NR-4..NR-14** subscription resync flood/no structural sharing; fetchData status-closure; useQueries stale closure; dead state/ + replaceEqualDeep + Stream types + dup InfiniteQueryOptions + QueryClientContext + netronClient + devtools placeholder; test gaps (subscriptions/SSR/middleware); barrel omits useQueries; GC ignores cacheTime; useSubscription cleanup setState; transport `as any`.
+- [ ] **Test additions** across all areas (negative/adversarial): Nexus scope/disposal; netron auth cross-transport parity; TCP partial-read/framing; stream gap/reorder/limit; reconnect jitter; cross-transport wire-format; error subclass round-trip; titan↔browser enum equality.
+
+---
+
+## DETAILED FINDINGS BY AREA
+(compact reference; full detail in session history. Format: ID · sev · file · problem → fix)
+
+### Nexus DI (`packages/titan/src/nexus/`) — NX
+- NX-1 high — registration.ts:69 — default scope is Singleton (memory says Transient — WRONG); untested → pin + doc + fix memory.
+- NX-2 high — scoping.ts:175 — `resolveRegistration` scoped cache keyed by `context.scope` not `metadata.scopeId` → all scopes collapse to one bucket → fix key / delete method.
+- NX-3 med — scoping.ts:22 vs :151 — two parallel scoping impls → collapse, route resolveAll through resolveWithScope.
+- NX-4 med — container.ts:943,980 — pendingPromises keyed by token only → cross-scope async leak → scope-qualify key.
+- NX-5 med — index.ts:29/41/53 — mesh/tracing/devtools (3145 LOC) dead on public barrel → subpath or delete; relocate DependencyGraph type.
+- NX-6 low — lifecycle.ts:27 — ~19 events never emitted; `onDispose` hook never fires → emit or prune.
+- NX-7 med — types.ts:218 vs :740 — two conditional-provider mechanisms (`condition` half-wired vs `when`) → unify.
+- NX-8 med — registration.ts:69 — `when` provider defaults Singleton → condition evaluated once & cached → default Transient.
+- NX-9 med — container.ts:88 — 2488-LOC god object, services self-constructed, 11-arg callbacks → typed ContainerStore + DIP.
+- NX-10..16 low — instances short-circuit scope guard; getRegistration[0]; clearCache leaks; isConstructor non-bool; console.warn; dup Middleware/ConfigToken; untested guards.
+
+### Titan application core (`application/`,`lifecycle/`,`modules/`,`decorators/`) — APP
+- APP-1 high — application.ts:578 vs shutdown-coordinator.ts:257 — dual shutdown engines.
+- APP-2 high — application.ts:578 — stop() vs shutdown() task divergence.
+- APP-3 high — event-bus.ts:113 — clear() dead → listener leak across restart.
+- APP-4 high — core.ts:106 vs constants.ts:20 vs injection-plan.ts:23 — 3 metadata-key copies; dead `titan:di:*`/`titan:service:*`.
+- APP-5 med — injection.ts:53 — injection decorators split across both key systems.
+- APP-6 med — core.ts:606 — `@Service` does `new target()` at decoration time.
+- APP-7..13 low/med — metrics uptime units; replaceModule dedup; off() removes-all; logger topo coupling; dual process handlers; simple.ts dup; minor dead exports.
+
+### Cross-cutting (`errors/`,`validation/`,`utils/`,`tracing/`) — XC
+- XC-1 **critical** — netron/packet/serializer.ts:91-205 — drops ALL TitanError subclass fields; test :105 codifies loss.
+- XC-2 high — netron-browser/src/errors/* — clone of titan errors (manual-sync) → SHARED-PROTO.
+- XC-3 high — codes.ts:62 + core.ts:105 — ErrorCode conflates HTTP status w/ identity; httpStatus wrong (600/601) for custom codes.
+- XC-4 high — resilience.ts:148 + errors/utils.ts:227 + mesh.ts:579 — 3 CircuitBreakers.
+- XC-5 med — retry.ts + backoff.ts + resilience.ts:629 + errors/utils.ts:173 — 4 backoff/retry impls.
+- XC-6 med — errors/utils.ts + core.ts — dead API (ErrorPool/HandlerChain/Logger/Matcher/adapters/documentContractErrors).
+- XC-7 med — core.ts:85,128 — unbounded static statistics mutated in every ctor; pool mutates readonly via `as any`.
+- XC-8 med — errors/validation.ts:59 vs validation-engine.ts:53 — two ValidationError + two ServiceError classes.
+- XC-9..12 low — non-exhaustive name/message maps; AggregateError shadows global; untested domain/contract/formatting; getAvailablePort ignores startPort, UUIDv7 doc says v4.
+
+### Netron RPC core (`netron/` peer model) — NET
+- NET-1 high — core-tasks/query-interface.ts:157 — returns `{...definition}` plain object not Definition → breaks type-109 encode on auth-filtered path.
+- NET-2 high — abstract-peer.ts:342 (+local:196,remote:319) — releaseInterface drops released set, un-awaited, mutation-during-iteration.
+- NET-3 med — netron.ts (1411) — god object (transport+connect/reconnect+registry+events).
+- NET-4 med — local-peer.ts:287 vs remote-peer.ts:1024 — refService divergent signatures.
+- NET-5 med — interface.ts:241 + service-stub.ts:175 + remote-peer.ts:1063 + local-peer.ts:507 — 4 marshaling pipelines.
+- NET-6..13 low — no-op processArgs; wrong reflect key 'service:metadata'; dead exports/orphan JSDoc; barrel omits internal-types; disconnect not awaited; unexposeAll async; methodCache leak; inline metadata read.
+
+### Netron wire (transport/packet/streams/multi-backend) — WIRE
+- WIRE-1 **critical** — tcp-transport.ts:127 — unbounded buffer from length prefix; cap only after assembly.
+- WIRE-2 high — readable-stream.ts:116 — reorder buffer kills stream on gap; no HOL timeout; reorder is dead complexity (ordered transports).
+- WIRE-3 high — transport-adapter.ts:120 — decode→re-encode→re-decode every packet.
+- WIRE-4 high — base-transport.ts:233 vs connection-manager.ts:666 vs backend-pool.ts:286 — 3 reconnect impls (only one jittered → thundering herd).
+- WIRE-5 med — base-transport.ts:88 — text/binary heuristic misclassifies packets whose id high-byte is 0x7b/0x5b.
+- WIRE-6 med — packet/index.ts:222 — stream reads outside try/catch; no full-consumption check.
+- WIRE-7 med — tcp 500ms vs ws 5000ms force-close; HTTP disconnect emits object not string reason.
+- WIRE-8 med — connection-manager.ts:830 + backend-pool.ts:261 + keep-alive-manager.ts:182 — 3 health-check loops (T#50 guard copied 3×).
+- WIRE-9 med — multi-backend/* reimplements connection mgmt, doesn't use ConnectionManager.
+- WIRE-10 med — writable/readable-stream ctor:75 — stream limit after alloc + throws in async handlePacket.
+- WIRE-11 med — writable-stream.ts:169 — _final/closeStream/destroy double-teardown.
+- WIRE-12 med — keep-alive-manager.ts:51 — global singleton ignores per-conn config; pong-timeout leaks listener.
+- WIRE-13 med — packet/serializer.ts:368 — StreamReference async-register race on first encode.
+- WIRE-14..18 low — server send monkey-patch; byteLength probe; server close races; dead NamedPipe/NativeWS/bit-helpers/handleError; parseAddress IPv6.
+
+### Netron auth red-team — SEC
+- SEC-1 **critical** — remote-peer.ts:1283 + websocket/auth.ts:363(dead) — decorator auth unenforced on WS/TCP/Unix.
+- SEC-2 high — authorization-manager.ts:140,201 — default-allow on no-ACL.
+- SEC-3 high — websocket/auth.ts:487 — policy fail-open (HTTP fails-closed at http/middleware/auth.ts:256).
+- SEC-4 med — authentication-manager.ts:438 — token-cache revocation lag; WS auth never refreshed.
+- SEC-5 med — core-tasks/unref-service.ts:19 — unauthenticated/uncapped/no owner-check → cross-peer eviction.
+- SEC-6 low — query-interface.ts:84 vs :121 + remote-peer.ts:1300 — not-found vs forbidden enumeration oracle.
+- SEC-7 low — 3 parallel authz impls (root cause of SEC-1/3); dead authorizeMessage w/ passing tests = false confidence.
+
+### netron-browser — NB
+- NB-1 **critical** — packet/serializer.ts:51 — sends error stack traces to server.
+- NB-3 **critical** — auth/client.ts:22 + storage.ts:26 — localStorage JWT+refresh token default.
+- NB-2 high — core-tasks/authenticate.ts:23 — `netron.`-prefixed task names don't match server.
+- NB-4 high — transport/connection-manager.ts:729 — broken auto-reconnect.
+- NB-5 high — retry-manager.ts:282 — retries non-idempotent RPCs.
+- NB-6 high — auth-error-handler.ts:341 + http-client.ts:183 — inert 401 refresh/retry.
+- NB-7 high — auth/client.ts:201 — token extraction shape mismatch vs server.
+- NB-8 high — multi-backend-client.ts:290 + backend-client.ts — reconnect events never forwarded.
+- NB-9 high — leader-election/election.ts:81 — no frozen-leader liveness; fallback unimplemented.
+- NB-10 med — election.ts:70 — unvalidated BroadcastChannel messages.
+- NB-11 med — http/connection.ts:68 — single shared AbortController cross-cancels concurrent requests.
+- NB-12 med — http/types.ts:27 — envelope types drifted (no conditional hints; lastModified type).
+- NB-13 med — request-batcher.ts — fully impl + exported but never instantiated (dead, ~454 LOC).
+- NB-14..19 low — dead services/pendingRequests maps; Uid triplicated; error hierarchy/factories drift + legacy.ts; packet impl drift; router dead branch+greedy prefix; then-trap proxy.
+
+### netron-react — NR
+- NR-1 high — package reimplements TanStack/Zustand/Jotai (~6 KLOC, zero deps on them).
+- NR-2 high — cache/query-cache.ts:533 — multi-backend suite RED (GC setInterval under fake timers); newest bridge unverified.
+- NR-3 high — hooks/useQuery.ts:159 — shared cache stores post-select data → cross-observer poison; infinite/regular key collision.
+- NR-4 med — useQuery.ts:331 — subscription resync floods (no equality gate / structural sharing).
+- NR-5 med — useQuery.ts:237 — fetchData closes over status → listener thrash, unstable refetch.
+- NR-6 med — useQueries.ts:298 — refetch resolves with pre-fetch state (stale closure).
+- NR-7 med — state/* + replaceEqualDeep + Stream* + dup InfiniteQueryOptions + QueryClientContext + netronClient + devtools — dead code.
+- NR-8 med — tests missing for subscriptions/SubscriptionManager/SSR/useService/middleware/state.
+- NR-9 med — auth/context.tsx:180 — login() always throws (public via prism).
+- NR-10 low — index.ts barrel omits useQueries.
+- NR-11 low — query-cache.ts:541 — periodic GC ignores per-observer cacheTime.
+- NR-12 low — useSubscription.ts:135 — cleanup setState after unmount (no isMounted guard).
+- NR-13 low — cache/utils.ts:103 — stale check always-true → invalidate-all on focus/reconnect.
+- NR-14 low — core/client.ts:474 — transport `as any` on RPC hot path.
+
+---
+
+## PHASE 2 — TITAN MODULES (added to priority tiers below; detail here)
+
+### NEW P0 — Critical (from Phase 2)
+- [ ] **SC-1** titan-scheduler "distributed execution" is ENTIRELY unimplemented (config exists, never read) → every node runs every cron = duplicate execution at scale. → Implement lock gate in executeJob OR remove the config + docs claim. (scheduler.service.ts:183; distributed/lockProvider never read)
+- [ ] **SC-2** titan-scheduler persistence NEVER calls `saveJob` on registration → "restart recovery" recovers nothing; recovered jobs have `target:null` → crash on trigger. Test works around it with manual saveJob. → Wire saveJob in addCron/Interval/Timeout + rebind target on load. (scheduler.service.ts:65,341-432)
+- [ ] **TR-1** titan-telemetry-relay WAL never cleared on happy path → unbounded growth + FULL duplicate replay on every restart (contradicts "zero data loss" + dedup). `truncateBefore()` dead. → clear/advance offset after acked send; per-entry seq for dedup. (telemetry-relay.service.ts:246-273)
+- [ ] **DI-1** `createToken()` keys global registry by BARE name → **LIVE collision**: titan-discovery `createToken('DiscoveryService')` + `createToken('Redis')` collide with omnitron's own `createToken('DiscoveryService')` → wrong instance returned. → Namespace all tokens (`TitanDiscovery:Service`); warn on dup-name+different-type. (titan-discovery types.ts:190; apps/omnitron/src/shared/tokens.ts:59)
+- [ ] **NT-3** titan-notifications webhook signature verify uses `===` (non-constant-time) → timing attack on HMAC. → `crypto.timingSafeEqual`. (webhook.channel.ts:368)
+- [ ] **NT-4** titan-notifications 9× raw `new Redis()` bypasses titan-redis DI + app Redis-DB config (Invariant #3 FAIL → defaults DB 0). → inject `getRedisClientToken()` like titan-ratelimit does. (notifications.module.ts:333..572, rotif.ts:140,759,868)
+
+### NEW P1 — High (from Phase 2)
+- [ ] **LK-1** titan-lock: no auto-renewal/watchdog → lock silently expires mid-critical-section → mutual exclusion broken under load. → renew at ttl/3 in withLock. (lock.service.ts:311)
+- [ ] **CA-1** titan-cache `@Cacheable` decorator has NO single-flight → stampede on hot-key expiry (Singleflight util exists in-package, unused by decorator). → route miss through Singleflight. (cache.decorators.ts:281)
+- [ ] **RD-1** titan-redis ships `redis.health.ts` (210 LOC, @deprecated "remove in v1.0.0") but module STILL registers it live → consumers get wrong-format indicator. → delete + use canonical health module. (redis.health.ts:6; redis.module.ts:53-58)
+- [ ] **EV-1** titan-events ships a SECOND inferior cron/scheduler (`EventSchedulerService`) duplicating eventemitter's own EventScheduler; its cron parser is FAKE (only `*/n` field-0, else falls back to "every hour" → `0 9 * * 1` becomes hourly). → delete, route through EnhancedEventEmitter scheduler / node-cron. (event-scheduler.service.ts:394)
+- [ ] **EV-2** titan-events: logger never injected into 6/7 services → ALL error/warn logging silently dead (constructors don't accept it; providers' inject arrays disagree). → wire LOGGER_TOKEN into each. (events.service.ts:76 etc.)
+- [ ] **SC-3** titan-scheduler `updateNextExecution` for cron is faked (`now+60000`); feeds health + sort key. → derive from node-cron task. (scheduler.service.ts:320)
+- [ ] **SC-4** titan-scheduler `preventOverlap` guard racy/ineffective (isRunning set after dispatch) → overlapping interval/cron ticks both run. → set flag atomically at top of executor.executeJob. (scheduler.executor.ts:80)
+- [ ] **RL-1** titan-ratelimit has ZERO tests over 3164 LOC incl. 3 algorithms with confirmed bugs. → full test suite (injected clock).
+- [ ] **RL-2** titan-ratelimit token-bucket refill starvation (lastRefill reset on consume discards sub-token elapsed time) → under-admits. Mirror bug in netron auth/rate-limiter.ts:611. → carry fractional remainder / atomic Lua.
+- [ ] **RL-3** titan-ratelimit sliding-window check-then-act race (4 separate awaits) → limit overshoot (`limit+N-1`); FixedWindow too. → single Redis Lua script (ZREMRANGEBYSCORE+ZCARD+ZADD+PEXPIRE).
+- [ ] **RL-5** netron HTTP limiter `trustProxy:true` default → spoofed `X-Forwarded-For` = trivial limit bypass (titan-ratelimit correctly defaults false). → default false + trusted-CIDR. (http/rate-limiter.ts:118)
+- [ ] **NT-1** titan-notifications `NotificationsEventEmitter` dead: injects string `'EVENTS_SERVICE_TOKEN'` (real token id is `'EventsService'`) + never injected into service → no events ever fire. → fix token + wire. (notifications.events.ts:107)
+- [ ] **NT-2** titan-notifications InAppChannel `REDIS_CLIENT` never provided → in-app notifications permanently non-functional via module path. → provide/inject client. (inapp.channel.ts:72)
+- [ ] **NT-6** titan-notifications RedisRateLimiter in-memory fallback enforces ONLY per-minute → burst/hour/day silently bypassed when Redis down. → enforce all tiers or fail-closed. (redis-rate-limiter.ts:238)
+- [ ] **PM-1** titan core has orphaned duplicate PM test suite (~38k LOC) importing DELETED `src/modules/pm` (excluded via vitest). → delete `packages/titan/test/modules/pm/` + excludes.
+- [ ] **PM-2** titan-pm `test/enterprise/` (15k LOC, 38% of test LOC) imports non-existent `src/enterprise/*` → fake coverage for saga/CQRS/actor. → delete or move to examples.
+- [ ] **PM-3** titan-pm has 4 backoff impls + exports `computeBackoff` whose signature COLLIDES with titan core's `computeBackoff`. → standardize on RESILIENCE-UNIFY.
+- [ ] **AU-1** netron AuthorizationManager ACL fail-OPEN while PolicyEngine fail-CLOSED (confirms SEC-2/SEC-3). → align fail-closed for closed platform.
+- [ ] **MT-1** titan-metrics unbounded label cardinality via `pid` label + no series cap → memory growth / Prometheus blowup on flapping app. → drop pid label + LRU series cap + evict stale (app,pid).
+
+### NEW P2 — Architecture (from Phase 2; merge with existing)
+- [ ] **RATELIMIT-UNIFY** FOUR rate-limiter implementations (titan-ratelimit + netron auth/rate-limiter + netron http/rate-limiter + notifications RedisRateLimiter) → titan-ratelimit canonical; others become adapters. ~1500 LOC deletion; fixes RL-5 trustProxy + NT-6 fallback inconsistency. (folds RL-4)
+- [ ] **AUTH-CONSOLIDATE** titan-auth boundary: KEEP JWTService + shared-session preset (used core); DELETE/relocate the ~840-LOC HTTP-auth stack (middleware/guards/decorators — AU-3, unused in omni, duplicates netron authz); pick ONE AuthContext (netron's `roles[]` vs titan-auth's `role`); move constant-time-compare/bearer-extract/isServiceRole (dup'd ~7×, AU-4) into one shared util.
+- [ ] **EVENTS-CONSOLIDATE** 3 emitter layers (eventemitter EnhancedEventEmitter → EventsService → EventBusService) with byte-identical `compileWildcardPattern` dup'd 2× + scheduler subsystems each `new EventEmitter()` privately. → collapse; emit scheduler events through injected emitter. (EV-5 module 3× provider dup; EV-6)
+- [ ] **HEARTBEAT-UNIFY (expanded)** Now 5+ periodic-probe/health loops (netron ×3 + titan-database health + titan-discovery heartbeat + titan-pm pool RPC + dead PM IPC heartbeat). Extract ONE `PeriodicProbe`/`withTimeout` primitive (re-entrancy guard + unref interval). Note: keep transport-liveness (socket ping) separate from titan-health indicator model — unify the SCAFFOLDING not the concern. (DB-2, DI-3, HE-3, PM-5)
+- [ ] **RESILIENCE-UNIFY (expanded)** Backoff now reimplemented in: titan-redis (RD-2), titan-database (DB-1), titan-lock, titan-events ×2, titan-pm ×4 (PM-3), netron ×3. ONE backoff/retry primitive in titan/utils. CircuitBreaker now 5 copies (+ titan-pm decorator + pool). Unify.
+- [ ] **DI-TOKEN-NAMING** Namespace ALL `createToken` names across shared packages (collision class — DI-1 is live proof); add dup-name-different-type warning to `createToken`. Also: titan-events bare `Symbol()` at events.module.ts:430-431 (only Symbol.for violation found); titan-pm un-namespaced `Symbol.for('process:metadata')` + plain-string metadata keys (PM-6).
+
+### NEW P3 — Med/Low (from Phase 2)
+- [ ] LK-2 fencing tokens; LK-3 withLock retry naming/release-race; LK-4 lock uses bare Error not titan errors.
+- [ ] CA-2 write-back flush data-loss + unhandled rejection; CA-3 non-deterministic object-arg cache key; CA-4 auto-promote TTL skew; CA-5 no cross-instance L1 invalidation (doc); CA-6 dispose not lifecycle-wired (timer leak).
+- [ ] RD-2 createRetryStrategy dual sentinel; RD-3 dead connectionPromises/createDynamicClientProviders; RD-4/5 destroyClient closeClient inconsistency, NOSCRIPT double-work.
+- [ ] DB-2 health-check reentrancy guard; DB-3 nested-tx savepoints; DB-4 snake_case bookkeeping tables.
+- [ ] SC-5 node-cron v4 double-start + task leak on restart; SC-6 empty-catch swallowing in executor/persistence/discovery; SC-7 metrics double-count + cancelled jobs uncounted; SC-8 timeout-job registry leak + decorator inheritance; SC-9/10 dead constants/events + forFeature dead Symbol tokens.
+- [ ] EV-3 @EmitEvent decorator dead (never emits — `__eventEmitter__` never assigned); EV-4 empty-catch; EV-7 beginTransaction fake mock-handler; EV-8 dead constants/unfired events.
+- [ ] PM-4 declare scope:singleton explicitly (relies on implicit default); PM-5 IPC heartbeat dead/unfinished wedged-child detection; PM-6 metadata-key namespacing; PM-7 onMessage/onLog no unsubscribe; PM-8 dead waitForProcessReady poll; PM-9 sanitizeEnv blocklist heuristic (strips legit AUTH*/leaks DATABASE_URL) → allowlist; PM-10 restartChild bypasses budget.
+- [ ] NT-7 send() mutates caller options.channels; NT-8 double-delivery (transport+inline); NT-9 dead code (skipSuccessful/Failed no-op, cancel/getStatus stubs, validateSSL unusable, webhook bespoke retry); NT-10 KEYS blocking scan; NT-11 rate-limit consume-before-execute double-consumes on retry.
+- [ ] MT-2 mutating metrics RPCs @Public(); MT-3 define() silent type-conflict.
+- [ ] HE-1 all health endpoints anonymous incl check() probing Redis/DB (info-leak/DoS); HE-2 HealthService logger always undefined + @Injectable bypassed by useValue; HE-3 dup timeout-wrapper; HE-4 DatabaseHealthIndicator Kysely `raw()` API doesn't exist.
+- [ ] AU-2 AuthMiddleware authenticate/required contract ambiguity; AU-4 triplicated constant-time-compare + dup bearer-extract; titan-auth ~7% test coverage (shared-session preset — most security-critical — ZERO tests).
+- [ ] DI-2 health indicator `Token<any>`; DI-3 discovery heartbeat stale doc + no reentrancy guard; DI-4 eval vs evalsha per heartbeat.
+- [ ] titan-metrics uses string `scope:'singleton'` instead of `Scope.Singleton` enum (style).
+
+## PHASE 2 DETAILED FINDINGS BY MODULE
+(format: ID · sev · file · problem → fix)
+
+### titan-database/redis/cache/lock — DB/RD/CA/LK
+All 5 invariants (Singleton, Symbol.for, bigint→Number, no-hardcoded-Redis-DB, camelCase) **PASS** for these 4. Severity order: LK-1 > CA-1 > RD-1 > CA-2 > DB-1/DB-2/DB-3, RD-2, CA-3, LK-2.
+- LK-1 high — lock.service.ts:311 — no watchdog → expiry mid-section. LK-2 med — no fencing tokens. LK-3 low — retry naming/release race. LK-4 low — bare Error.
+- CA-1 high — cache.decorators.ts:281 — no single-flight. CA-2 med — multi-tier-cache.ts:761 — write-back partial-fail loss + unhandled rejection. CA-3 med — :202 — JSON.stringify unsorted keys. CA-4 low — :330 — promote drops TTL. CA-5 low — no pubsub L1 invalidation. CA-6 low — dispose not lifecycle-wired.
+- RD-1 high — redis.health.ts — deprecated dead but wired live. RD-2 med — redis.utils.ts:102 — own backoff + null/undefined dual sentinel. RD-3 low — dead connectionPromises:32 + createDynamicClientProviders:197. RD-4/5 low.
+- DB-1 med — database.manager.ts:463 — own retry loop (no jitter) dup's @kysera/infra withRetry. DB-2 med — :259 — health setInterval no reentrancy guard. DB-3 med — transaction.context.ts:120 — nested tx no savepoint. DB-4 info — snake_case migration tables.
+
+### titan-events + scheduler — EV/SC
+- SC-1 CRIT, SC-2 CRIT, SC-3 high, SC-4 high (above). SC-5 med — scheduler.service.ts:193 — node-cron v4 double start + startJob leaks old task. SC-6 med — empty catch everywhere. SC-7 med — metrics.ts:63 double-count + cancelled uncounted. SC-8 low. SC-9/10 low — dead constants/unfired events (PAUSED/RESUMED/CANCELLED), forFeature dead Symbol().
+- EV-1 high, EV-2 high (above). EV-3 med — events.decorators.ts:196 — @EmitEvent dead. EV-4 med — empty catch. EV-5 med — events.module.ts — providers declared 3× (decorator/forRoot/forRootAsync) with drift (async omits schemas+onError). EV-6 med — EventsService 1260-LOC re-wrap of EnhancedEventEmitter; compileWildcardPattern byte-identical to event-bus.service.ts:771. EV-7 low — beginTransaction fake. EV-8 low.
+
+### titan-pm — PM
+Core spawn/supervision/IPC is near industrial-grade (T#52-80 fixes real). Invariants 1 (worker/child_process) + 3 (Symbol.for) PASS; 2 (Singleton) implicit-only.
+- PM-1 high, PM-2 high, PM-3 high (above). PM-4 med — pm.module.ts no explicit scope. PM-5 med — child-contract.ts IPC heartbeat fully spec'd, never consumed (wedged-child detection doesn't exist). PM-6 low — metadata namespacing. PM-7 low — onMessage/onLog no unsubscribe. PM-8 low — dead waitForProcessReady. PM-9 low/med — process-spawner.ts:541 sanitizeEnv blocklist (strips AUTH*/leaks DATABASE_URL) → allowlist. PM-10 low — restartChild bypasses budget. Verified SAFE: execSync pid interpolation (finiteness-guarded), replaceWorker spawn-before-kill, no shell:true.
+
+### titan-notifications/ratelimit/telemetry — NT/RL/TR
+- TR-1 CRIT, NT-1/2/3/4 high, NT-6 high, RL-1/2/3 high, RL-5 high (above). TR-2 low — truncateBefore/rotate dead.
+- NT-5=RATELIMIT-UNIFY. NT-7 med — service.ts:117 mutates options.channels. NT-8 med — :156 double-delivery. NT-9 low — dead code. NT-10 low — KEYS scan. NT-11 low — retry double-consume.
+- RL-4=RATELIMIT-UNIFY. RL-6 low — boundary edge cases. RL: titan-ratelimit CORRECTLY injects getRedisClientToken (the model). Bespoke `RateLimitExceededError extends Error` should be framework RateLimitError.
+
+### titan-auth/metrics/health/discovery — AU/MT/HE/DI
+Boundary map: titan-auth = JWTService(used) + shared-session preset(the bridge, daos-facing) + DEAD HTTP stack(AU-3). netron/auth = the RPC engine (Authn/Authz/Policy). Two incompatible AuthContext models (`role` vs `roles[]`).
+- AU-1 high, AU-3 high, DI-1 high, MT-1 high (above). AU-2 high — middleware authenticate/required contract ambiguity (mooted if AU-3 removes). AU-4 med — 3× constant-time compare + 2× extractBearerToken + isServiceRole ×7.
+- MT-2 med — rpc-service.ts:51 mutating RPCs @Public(). MT-3 low — registry.ts:128 silent type-conflict. (metrics-bridge↔titan-metrics verified CLEAN — the reuse model; APP-7 uptime units verified consistent.)
+- HE-1 med — health.rpc-service.ts all anonymous incl check(). HE-2 med — health.service.ts:61 logger always undefined + useValue bypasses @Injectable. HE-3 low — dup withTimeout. HE-4 low — database.indicator.ts:162 Kysely raw() nonexistent.
+- DI-2 low — Token<any>. DI-3 low — discovery.service.ts:37 stale doc + heartbeat no reentrancy. DI-4 low — eval not evalsha.
+- titan-health NOT used by netron's 3 loops; titan-discovery duplicates omnitron discovery (DI-1 collision). titan-metrics is the clean reuse exemplar.

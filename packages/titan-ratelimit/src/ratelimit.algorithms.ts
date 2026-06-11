@@ -341,10 +341,12 @@ export class TokenBucketAlgorithm implements IRateLimitAlgorithm {
     const timeToRefill = tokensNeeded > 0 ? (tokensNeeded / refillRate) * windowMs : 0;
     const resetAt = now + timeToRefill;
 
-    // Remaining tokens (floor to avoid fractional tokens)
-    const remaining = Math.floor(
-      consume && allowed ? availableTokens : allowed ? availableTokens - 1 : availableTokens
-    );
+    // Remaining tokens (floor to avoid fractional tokens). `availableTokens` is
+    // already post-decrement when a token was consumed this call, and the current
+    // balance otherwise — so a non-consuming peek reports the TRUE available count
+    // (consistent with the sliding/fixed-window algorithms), not one less. The
+    // previous `availableTokens - 1` on the peek path under-reported by one.
+    const remaining = Math.max(0, Math.floor(availableTokens));
 
     return {
       allowed,

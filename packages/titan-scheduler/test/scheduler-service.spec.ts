@@ -41,6 +41,25 @@ describe('Scheduler Service', () => {
     }
   });
 
+  describe('SC-1: distributed mode is not silently accepted', () => {
+    it('fails fast when config.distributed.enabled is true (would duplicate execution)', async () => {
+      const distConfig: ISchedulerConfig = { ...config, distributed: { enabled: true } };
+      const svc = new SchedulerService(
+        new SchedulerRegistry(distConfig),
+        new SchedulerExecutor(distConfig),
+        distConfig
+      );
+      await expect(svc.onStart()).rejects.toThrow(/distributed/i);
+      expect(svc.isRunning()).toBe(false);
+    });
+
+    it('starts normally when distributed is disabled (default)', async () => {
+      const svc = new SchedulerService(new SchedulerRegistry(config), new SchedulerExecutor(config), config);
+      await expect(svc.onStart()).resolves.not.toThrow();
+      await svc.onStop();
+    });
+  });
+
   describe('Lifecycle Management', () => {
     it('should initialize and start scheduler', async () => {
       expect(scheduler.isRunning()).toBe(false);

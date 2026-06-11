@@ -206,7 +206,7 @@
 - [ ] **SC-2** titan-scheduler persistence NEVER calls `saveJob` on registration → "restart recovery" recovers nothing; recovered jobs have `target:null` → crash on trigger. Test works around it with manual saveJob. → Wire saveJob in addCron/Interval/Timeout + rebind target on load. (scheduler.service.ts:65,341-432)
 - [ ] **TR-1** titan-telemetry-relay WAL never cleared on happy path → unbounded growth + FULL duplicate replay on every restart (contradicts "zero data loss" + dedup). `truncateBefore()` dead. → clear/advance offset after acked send; per-entry seq for dedup. (telemetry-relay.service.ts:246-273)
 - [ ] **DI-1** `createToken()` keys global registry by BARE name → **LIVE collision**: titan-discovery `createToken('DiscoveryService')` + `createToken('Redis')` collide with omnitron's own `createToken('DiscoveryService')` → wrong instance returned. → Namespace all tokens (`TitanDiscovery:Service`); warn on dup-name+different-type. (titan-discovery types.ts:190; apps/omnitron/src/shared/tokens.ts:59)
-- [ ] **NT-3** titan-notifications webhook signature verify uses `===` (non-constant-time) → timing attack on HMAC. → `crypto.timingSafeEqual`. (webhook.channel.ts:368)
+- [x] **NT-3** ✅ FIXED+VERIFIED — `verifyWebhookSignature` now uses `crypto.timingSafeEqual` (length-guarded) instead of `===`. New test webhook-signature.spec.ts (valid/tampered-equal-length/different-length-no-throw/wrong-secret). 4 tests pass.
 - [ ] **NT-4** titan-notifications 9× raw `new Redis()` bypasses titan-redis DI + app Redis-DB config (Invariant #3 FAIL → defaults DB 0). → inject `getRedisClientToken()` like titan-ratelimit does. (notifications.module.ts:333..572, rotif.ts:140,759,868)
 
 ### NEW P1 — High (from Phase 2)

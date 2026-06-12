@@ -235,6 +235,8 @@ export interface IAuthorizationManager {
   canAccessMethod(serviceName: string, methodName: string, auth?: IAuthContext): boolean;
   /** Filter a service definition based on user permissions */
   filterDefinition(serviceName: string, definition: ServiceMetadata, auth?: IAuthContext): ServiceMetadata | null;
+  /** SEC-2: whether a registered ACL (exact or wildcard) covers this service. */
+  hasACL(serviceName: string): boolean;
 }
 
 // ============================================================================
@@ -660,6 +662,27 @@ export interface INetronOptions {
    * registry entries owned by others.
    */
   allowRemoteServiceExposure?: boolean;
+
+  /**
+   * Fail-closed authorization for methods that declare NO access control at
+   * all — neither a registered `AuthorizationManager` ACL nor a `@Public({ auth })`
+   * decorator (SEC-2). Bytes nothing about methods that DO declare a gate.
+   *
+   * Default: `false` (back-compat — historical Netron is default-ALLOW: a
+   * method with no ACL and no decorator is callable by any peer once it holds
+   * the service's definition id, because `AuthorizationManager.canAccessMethod`
+   * returns `true` when no ACL matches and `enforceMethodAuthorization` returns
+   * early when no decorator is present).
+   *
+   * When `true`, the wire path (`RemotePeer.enforceMethodAccess`) and the HTTP
+   * auth middleware DENY any method gated by neither mechanism. ACL-protected,
+   * decorator-protected, and explicitly `allowAnonymous` methods are unaffected
+   * — they continue to be evaluated on their own terms. Enable this on
+   * deployments that want "deny unless explicitly allowed" as the default
+   * posture; pair it with explicit `@Public({ auth })` / ACLs on every method
+   * intended to be reachable.
+   */
+  authDefaultDeny?: boolean;
 }
 
 // ============================================================================

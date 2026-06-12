@@ -11,6 +11,7 @@ import type { AuthorizationManager } from '../../../auth/authorization-manager.j
 import type { ILogger } from '../../../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../../../decorators/core.js';
 import { enforceMethodAuthorization } from '../../../auth/method-authorization.js';
+import { TitanError, ErrorCode } from '../../../../errors/index.js';
 import type { RemotePeer } from '../../../remote-peer.js';
 
 /**
@@ -37,6 +38,15 @@ export interface AuthMiddlewareOptions {
 
   /** Skip authentication for specific methods */
   skipMethods?: string[];
+
+  /**
+   * SEC-2 opt-in default-deny. When `true`, a method gated by NEITHER a
+   * registered ACL NOR a `@Public({ auth })` decorator is denied (FORBIDDEN)
+   * instead of allowed. Mirrors `RemotePeer.enforceMethodAccess` step (3) so the
+   * HTTP and persistent-transport paths share the same fail-closed posture.
+   * Threaded from `Netron` options (`authDefaultDeny`). Default: `false`.
+   */
+  defaultDeny?: boolean;
 }
 
 /**
@@ -152,7 +162,8 @@ function getAuthContext(ctx: NetronMiddlewareContext): AuthContext | undefined {
  * Evaluates auth configuration from @Public decorator
  */
 export function createAuthMiddleware(options: AuthMiddlewareOptions): MiddlewareFunction {
-  const { policyEngine, logger, skipServices = [], skipMethods = [] } = options;
+  const { policyEngine, logger, authorizationManager, defaultDeny = false, skipServices = [], skipMethods = [] } =
+    options;
 
   return async (ctx, next) => {
     // Skip if no service/method specified
@@ -197,6 +208,28 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
       ...(typeof clientIp === 'string' ? { clientIp } : {}),
       ...(typeof headers === 'object' && headers !== null ? { headers: headers as Record<string, string> } : {}),
     });
+
+    // (SEC-2) opt-in default-deny — mirror of `RemotePeer.enforceMethodAccess`
+    // step (3). `enforceMethodAuthorization` above returned without throwing,
+    // which means the method declared no `@Public({ auth })` gate (a declared
+    // gate that failed would have thrown). If it ALSO has no registered ACL, it
+    // carries no access-control decision at all — fail closed when the
+    // deployment opted into `authDefaultDeny`.
+    if (defaultDeny) {
+      const hasAcl = authorizationManager?.hasACL(ctx.serviceName) ?? false;
+      const hasDecoratorAuth = readMethodMetadata(serviceInstance, ctx.methodName)?.auth !== undefined;
+      if (!hasAcl && !hasDecoratorAuth) {
+        logger.warn(
+          { service: ctx.serviceName, method: ctx.methodName, userId: authContext?.userId },
+          'Method access denied by default-deny policy (no ACL, no @Public auth gate)'
+        );
+        throw new TitanError({
+          code: ErrorCode.FORBIDDEN,
+          message: `Access denied to method ${ctx.serviceName}.${ctx.methodName}`,
+          details: { service: ctx.serviceName, method: ctx.methodName },
+        });
+      }
+    }
 
     // Store authContext in metadata for business logic access
     // Business logic can retrieve it with: ctx.metadata?.get('authContext')

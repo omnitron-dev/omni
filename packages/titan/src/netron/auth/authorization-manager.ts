@@ -182,6 +182,17 @@ export class AuthorizationManager {
   }
 
   /**
+   * SEC-2: does a registered ACL cover this service (exact or wildcard)?
+   *
+   * Used by the wire/HTTP enforcement to decide whether a method is gated by an
+   * ACL at all. A method covered by NEITHER an ACL NOR a `@Public` decorator is
+   * the "no gate" hole that opt-in default-deny closes.
+   */
+  hasACL(serviceName: string): boolean {
+    return this.findMatchingACL(serviceName) !== undefined;
+  }
+
+  /**
    * Check if user can access a specific method
    * @param serviceName Service name
    * @param methodName Method name

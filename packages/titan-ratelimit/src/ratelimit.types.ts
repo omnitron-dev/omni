@@ -122,6 +122,36 @@ export interface IRateLimitStorage {
   ): Promise<{ allowed: boolean; count: number }>;
 
   /**
+   * RL-3c: atomic token-bucket refill + check + consume.
+   *
+   * Reads the bucket state (tokens, lastRefill), refills by `elapsed/windowMs *
+   * refillRate` capped at `capacity`, consumes `cost` if available, and writes
+   * the new state — ALL atomically (Redis Lua / synchronous memory). This is the
+   * race-free primitive for token-bucket limiting: the separate get + get +
+   * compute + set + set sequence has a TOCTOU window AND, on Redis, lost the
+   * FRACTIONAL token balance to integer truncation (RL-2 under-admit). Token
+   * balances are kept as floats so sub-token refill accrues exactly.
+   *
+   * @param key - Storage key (the bucket state is namespaced under it)
+   * @param capacity - Bucket capacity (max tokens)
+   * @param refillRate - Tokens refilled per `windowMs`
+   * @param windowMs - Refill window in milliseconds
+   * @param now - Current timestamp (ms) — passed in for deterministic testing
+   * @param cost - Tokens this request consumes (usually 1)
+   * @param ttl - Idle TTL in milliseconds for the bucket state
+   * @returns `allowed` (whether `cost` tokens were available) and the resulting `tokens` balance
+   */
+  checkAndConsumeTokenBucket(
+    key: string,
+    capacity: number,
+    refillRate: number,
+    windowMs: number,
+    now: number,
+    cost: number,
+    ttl?: number
+  ): Promise<{ allowed: boolean; tokens: number }>;
+
+  /**
    * Get the time-to-live of a key in milliseconds.
    *
    * @param key - Storage key

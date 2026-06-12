@@ -340,6 +340,52 @@ export class MemoryRateLimitStorage implements IRateLimitStorage {
   }
 
   /**
+   * RL-3c: atomic token-bucket refill + check + consume. Read-compute-write run
+   * with NO `await` between them (atomic on the single JS thread). Token balance
+   * is a FLOAT so sub-token refill accrues exactly.
+   */
+  async checkAndConsumeTokenBucket(
+    key: string,
+    capacity: number,
+    refillRate: number,
+    windowMs: number,
+    now: number,
+    cost: number,
+    ttl?: number
+  ): Promise<{ allowed: boolean; tokens: number }> {
+    const tokenKey = `${key}:tokens`;
+    const tsKey = `${key}:ts`;
+    const realNow = Date.now();
+
+    const tokensEntry = this.store.get(tokenKey);
+    const tsEntry = this.store.get(tsKey);
+    const tokensValid = !!tokensEntry && !(tokensEntry.expiresAt !== undefined && tokensEntry.expiresAt < realNow);
+    const tsValid = !!tsEntry && !(tsEntry.expiresAt !== undefined && tsEntry.expiresAt < realNow);
+
+    const tokens = tokensValid ? tokensEntry!.value : capacity;
+    const lastRefill = tsValid ? tsEntry!.value : now;
+
+    const elapsed = Math.max(0, now - lastRefill);
+    let balance = Math.min(capacity, tokens + (elapsed / windowMs) * refillRate);
+
+    let allowed = false;
+    if (balance >= cost) {
+      balance -= cost;
+      allowed = true;
+    }
+
+    const expiresAt = ttl ? realNow + ttl : undefined;
+    this.store.set(tokenKey, { value: balance, expiresAt });
+    this.store.set(tsKey, { value: now, expiresAt });
+
+    if (this.store.size > this.maxKeys) {
+      this.cleanup();
+    }
+
+    return { allowed, tokens: balance };
+  }
+
+  /**
    * Delete a key (counter or sorted set)
    *
    * @param key - Storage key to delete
@@ -809,6 +855,72 @@ return {1, count + 1}
     } catch (error) {
       this.redisAvailable = false;
       throw new Error(`Redis checkAndConsumeSlidingWindow failed for key ${key}: ${error}`, { cause: error });
+    }
+  }
+
+  /**
+   * RL-3c Lua: atomic token-bucket refill + check + consume over a HASH
+   * {tokens, ts}. Token balance is stored/returned as a STRING so the FRACTIONAL
+   * value survives (RESP would truncate a Lua float to an int, and the old
+   * GET→parseInt path lost sub-token refill — the RL-2 under-admit). One
+   * round-trip eliminates the get+get+set+set TOCTOU.
+   */
+  private static readonly TOKEN_BUCKET_LUA = `
+local now = tonumber(ARGV[1])
+local capacity = tonumber(ARGV[2])
+local refillRate = tonumber(ARGV[3])
+local windowMs = tonumber(ARGV[4])
+local cost = tonumber(ARGV[5])
+local ttl = tonumber(ARGV[6])
+local data = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
+local tokens = tonumber(data[1])
+local lastRefill = tonumber(data[2])
+if tokens == nil then tokens = capacity end
+if lastRefill == nil then lastRefill = now end
+local elapsed = now - lastRefill
+if elapsed < 0 then elapsed = 0 end
+local balance = tokens + (elapsed / windowMs) * refillRate
+if balance > capacity then balance = capacity end
+local allowed = 0
+if balance >= cost then
+  balance = balance - cost
+  allowed = 1
+end
+redis.call('HSET', KEYS[1], 'tokens', tostring(balance), 'ts', tostring(now))
+if ttl > 0 then
+  redis.call('PEXPIRE', KEYS[1], ttl)
+end
+return {allowed, tostring(balance)}
+`.trim();
+
+  async checkAndConsumeTokenBucket(
+    key: string,
+    capacity: number,
+    refillRate: number,
+    windowMs: number,
+    now: number,
+    cost: number,
+    ttl?: number
+  ): Promise<{ allowed: boolean; tokens: number }> {
+    const fullKey = this.buildKey(key);
+
+    try {
+      const result = (await this.redis.eval(
+        RedisRateLimitStorage.TOKEN_BUCKET_LUA,
+        1,
+        fullKey,
+        now,
+        capacity,
+        refillRate,
+        windowMs,
+        cost,
+        ttl ?? 0
+      )) as [number, string];
+
+      return { allowed: result[0] === 1, tokens: parseFloat(result[1]) };
+    } catch (error) {
+      this.redisAvailable = false;
+      throw new Error(`Redis checkAndConsumeTokenBucket failed for key ${key}: ${error}`, { cause: error });
     }
   }
 

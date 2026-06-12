@@ -198,20 +198,30 @@ export class FixedWindowAlgorithm implements IRateLimitAlgorithm {
     const currentWindow = Math.floor(now / windowMs);
     const windowStart = currentWindow * windowMs;
     const windowEnd = windowStart + windowMs;
-    const ttl = Math.ceil(windowMs / 1000) + 1;
+    // TTL must outlive the window; the windowKey already self-expires by its
+    // window id, so a small buffer past windowMs suffices. (NOTE: this value is
+    // milliseconds — the previous `Math.ceil(windowMs/1000)+1` produced SECONDS
+    // but was passed to the milliseconds storage API, expiring memory entries
+    // almost immediately.)
+    const ttlMs = windowMs + 1000;
 
     // Include window ID in key for automatic cleanup
     const windowKey = `${key}:${currentWindow}`;
 
-    // Get current count for this window
-    let currentCount = (await storage.get(windowKey)) ?? 0;
-
-    // Check if under limit
-    const allowed = currentCount < limit;
-
-    // Increment if consuming and allowed
-    if (consume && allowed) {
-      currentCount = await storage.increment(windowKey, ttl);
+    let currentCount: number;
+    let allowed: boolean;
+    if (consume) {
+      // RL-atomicity: race-free check-and-consume. The old get()+increment()
+      // sequence let N concurrent callers all read `count < limit` and all then
+      // increment, admitting well over `limit`. checkAndConsume does the
+      // compare-and-increment atomically (Redis Lua / single-threaded memory).
+      const res = await storage.checkAndConsume(windowKey, limit, ttlMs);
+      allowed = res.allowed;
+      currentCount = res.count;
+    } else {
+      // Peek only — no slot consumed.
+      currentCount = (await storage.get(windowKey)) ?? 0;
+      allowed = currentCount < limit;
     }
 
     // Calculate remaining slots

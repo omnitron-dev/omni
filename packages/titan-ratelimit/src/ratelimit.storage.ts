@@ -110,6 +110,42 @@ export class MemoryRateLimitStorage implements IRateLimitStorage {
   }
 
   /**
+   * Atomically check against `limit` and consume one slot if under it.
+   *
+   * In-memory storage runs on a single JS thread, so reading the current value
+   * and writing the incremented value WITHOUT any intervening `await` is
+   * inherently atomic — no concurrent task can interleave between the check and
+   * the increment (which the old `get()` + `increment()` sequence allowed).
+   */
+  async checkAndConsume(key: string, limit: number, ttl?: number): Promise<{ allowed: boolean; count: number }> {
+    const now = Date.now();
+
+    const entry = this.store.get(key);
+    if (entry && entry.expiresAt && entry.expiresAt < now) {
+      this.store.delete(key);
+    }
+
+    const current = this.store.get(key);
+    const currentValue = current?.value ?? 0;
+
+    if (currentValue >= limit) {
+      return { allowed: false, count: currentValue };
+    }
+
+    const newValue = currentValue + 1;
+    // Set TTL only when the counter is first created so a fixed window isn't
+    // continually extended by later hits within the same window.
+    const expiresAt = current ? current.expiresAt : ttl ? now + ttl : undefined;
+    this.store.set(key, { value: newValue, expiresAt });
+
+    if (this.store.size > this.maxKeys) {
+      this.cleanup();
+    }
+
+    return { allowed: true, count: newValue };
+  }
+
+  /**
    * Get the current value for a key
    *
    * @param key - Storage key
@@ -473,6 +509,57 @@ export class RedisRateLimitStorage implements IRateLimitStorage {
     } catch (error) {
       this.redisAvailable = false;
       throw new Error(`Redis increment failed for key ${key}: ${error}`, { cause: error });
+    }
+  }
+
+  /**
+   * Lua: atomic check-against-limit + conditional increment. Returns
+   * `{allowed, count}` as a two-element array. The counter is incremented ONLY
+   * when below the limit, and PEXPIRE is applied only on first creation so a
+   * fixed window is not continually extended. Keeping this in ONE round-trip
+   * eliminates the get()+increment() TOCTOU race across concurrent callers.
+   */
+  private static readonly CHECK_AND_CONSUME_LUA = `
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+local limit = tonumber(ARGV[1])
+if current >= limit then
+  return {0, current}
+end
+local newval = redis.call('INCR', KEYS[1])
+if newval == 1 then
+  local ttl = tonumber(ARGV[2])
+  if ttl > 0 then
+    redis.call('PEXPIRE', KEYS[1], ttl)
+  end
+end
+return {1, newval}
+`.trim();
+
+  /**
+   * Atomically check against `limit` and consume one slot if under it (Lua).
+   *
+   * @param key - Storage key
+   * @param limit - Maximum allowed count in the window
+   * @param ttl - Time-to-live in milliseconds, applied when the counter is created
+   * @returns `allowed` + resulting `count`
+   * @throws Error if Redis operation fails
+   */
+  async checkAndConsume(key: string, limit: number, ttl?: number): Promise<{ allowed: boolean; count: number }> {
+    const fullKey = this.buildKey(key);
+
+    try {
+      const result = (await this.redis.eval(
+        RedisRateLimitStorage.CHECK_AND_CONSUME_LUA,
+        1,
+        fullKey,
+        limit,
+        ttl ?? 0
+      )) as [number, number];
+
+      return { allowed: result[0] === 1, count: result[1] };
+    } catch (error) {
+      this.redisAvailable = false;
+      throw new Error(`Redis checkAndConsume failed for key ${key}: ${error}`, { cause: error });
     }
   }
 

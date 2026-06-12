@@ -28,6 +28,24 @@ export interface IRateLimitStorage {
   increment(key: string, ttl?: number): Promise<number>;
 
   /**
+   * Atomically check a counter against a limit and consume one slot IF under it.
+   *
+   * This is the race-free primitive for fixed-window / counter rate limiting:
+   * the separate `get()` (check) + `increment()` (consume) sequence has a
+   * TOCTOU window where N concurrent callers all read `count < limit` and all
+   * then increment, admitting far more than `limit` requests. Implementations
+   * MUST perform the read-compare-increment as a single atomic step (Redis: a
+   * Lua `EVAL`; in-memory: synchronously, with no `await` between read and
+   * write). The counter is incremented ONLY when the request is allowed.
+   *
+   * @param key - Storage key
+   * @param limit - Maximum allowed count in the window
+   * @param ttl - Time-to-live in milliseconds, applied when the counter is first created
+   * @returns `allowed` (whether this request was within the limit) and the resulting `count`
+   */
+  checkAndConsume(key: string, limit: number, ttl?: number): Promise<{ allowed: boolean; count: number }>;
+
+  /**
    * Get the current value of a counter.
    *
    * @param key - Storage key

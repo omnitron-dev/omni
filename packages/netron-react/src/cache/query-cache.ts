@@ -64,14 +64,15 @@ const DEFAULT_CONFIG: Required<QueryCacheConfig> = {
 export class QueryCache {
   private config: Required<QueryCacheConfig>;
   private cache = new Map<string, QueryState>();
-  private gcIntervalId?: ReturnType<typeof setInterval>;
+  private gcTimer?: ReturnType<typeof setTimeout>;
 
   constructor(config?: QueryCacheConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-
-    if (this.config.gcEnabled) {
-      this.startGarbageCollection();
-    }
+    // NR-2: GC is started LAZILY (on the first cached entry) rather than here,
+    // and stops itself once the cache drains — see `ensureGcScheduled`. A cache
+    // that never holds an entry (e.g. a multi-backend provider used only for
+    // connection state) therefore has NO pending timer, so it can neither trip
+    // fake-timer "infinite loop" aborts in tests nor leak a forever-interval.
   }
 
   // ============================================================================
@@ -133,6 +134,7 @@ export class QueryCache {
     this.cache.set(hash, state as QueryState);
     this.notifyObservers(hash);
     this.enforceMaxEntries();
+    this.ensureGcScheduled(); // NR-2: lazy-start periodic GC now that an entry exists
   }
 
   /**
@@ -157,6 +159,7 @@ export class QueryCache {
 
     this.cache.set(hash, state);
     this.notifyObservers(hash);
+    this.ensureGcScheduled(); // NR-2: lazy-start periodic GC now that an entry exists
   }
 
   /**
@@ -224,6 +227,12 @@ export class QueryCache {
       if (state.gcTimeout) clearTimeout(state.gcTimeout);
     }
     this.cache.clear();
+    // NR-2: cache is now empty — cancel any pending periodic GC pass; it re-arms
+    // automatically on the next insert via ensureGcScheduled().
+    if (this.gcTimer !== undefined) {
+      clearTimeout(this.gcTimer);
+      this.gcTimer = undefined;
+    }
   }
 
   // ============================================================================
@@ -527,11 +536,23 @@ export class QueryCache {
   }
 
   /**
-   * Start periodic garbage collection
+   * NR-2: schedule the next garbage-collection pass IF one is warranted — GC is
+   * enabled, the cache is non-empty, and no pass is already scheduled. Each pass
+   * re-arms itself only while entries remain, so an empty cache settles to ZERO
+   * pending timers (no recurring `setInterval` that runs forever and trips
+   * fake-timer "infinite loop" aborts). Idempotent — safe to call after every
+   * cache insert.
    */
-  private startGarbageCollection(): void {
-    this.gcIntervalId = setInterval(() => {
+  private ensureGcScheduled(): void {
+    if (!this.config.gcEnabled) return;
+    if (this.gcTimer !== undefined) return;
+    if (this.cache.size === 0) return;
+
+    this.gcTimer = setTimeout(() => {
+      this.gcTimer = undefined;
       this.runGarbageCollection();
+      // Re-arm only while there is still something left to collect.
+      this.ensureGcScheduled();
     }, this.config.gcInterval);
   }
 
@@ -620,6 +641,7 @@ export class QueryCache {
         observers: new Set(),
       });
     }
+    this.ensureGcScheduled(); // NR-2: lazy-start periodic GC for hydrated (SSR) entries
   }
 
   // ============================================================================
@@ -630,8 +652,9 @@ export class QueryCache {
    * Destroy the cache
    */
   destroy(): void {
-    if (this.gcIntervalId) {
-      clearInterval(this.gcIntervalId);
+    if (this.gcTimer !== undefined) {
+      clearTimeout(this.gcTimer);
+      this.gcTimer = undefined;
     }
     this.clear();
   }

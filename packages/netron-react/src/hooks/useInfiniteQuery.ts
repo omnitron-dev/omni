@@ -288,7 +288,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData);
+      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -352,7 +352,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData);
+      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -429,7 +429,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData);
+      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -506,7 +506,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData);
+      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
 
       onSuccess?.(infiniteData);
     } catch (err) {

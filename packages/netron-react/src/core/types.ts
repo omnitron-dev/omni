@@ -558,6 +558,9 @@ export interface Query<TData = unknown, TError = NetronError> {
     dataUpdatedAt: number;
     errorUpdatedAt: number;
     isInvalidated: boolean;
+    /** NR-13: effective staleTime (ms) used by `matchQueryFilters({ stale })`.
+     *  `0` ⇒ immediately stale, `Infinity` ⇒ never, undefined ⇒ treated as 0. */
+    staleTime?: number;
   };
 }
 

@@ -44,6 +44,47 @@ export class ServiceStub {
   public transports?: string[];
 
   /**
+   * SEC-5: per-remote-peer reference counts for DYNAMIC sub-service stubs.
+   *
+   * A nested service returned by a method call is deduped into ONE shared stub
+   * (refService keys by instance) that may be referenced by many remote peers.
+   * `unref_service` is an ungated core-task, so without per-peer accounting a
+   * malicious peer A could call it to evict a shared dynamic stub that peer B
+   * still uses (cross-peer eviction DoS). Each remote caller's references are
+   * tracked here; a remote unref decrements only that caller's own count, and
+   * the stub is evicted only when the total across all peers reaches zero. The
+   * LOCAL authoritative release path (unexposeService / local releaseInterface,
+   * which call unrefService with no peer id) bypasses this and force-removes —
+   * the parent service is going away regardless of remote references.
+   */
+  private refsByPeer = new Map<string, number>();
+
+  /** SEC-5: record that `peerId` holds a reference to this (dynamic) stub. */
+  addRef(peerId: string): void {
+    this.refsByPeer.set(peerId, (this.refsByPeer.get(peerId) ?? 0) + 1);
+  }
+
+  /**
+   * SEC-5: release ONE reference held by `peerId`. Returns whether the peer
+   * actually held a reference — `false` means over-decrement / never-referenced,
+   * and the caller MUST NOT treat it as an eviction trigger.
+   */
+  releaseRef(peerId: string): boolean {
+    const current = this.refsByPeer.get(peerId);
+    if (!current) return false;
+    if (current <= 1) this.refsByPeer.delete(peerId);
+    else this.refsByPeer.set(peerId, current - 1);
+    return true;
+  }
+
+  /** SEC-5: total outstanding references across all remote peers. */
+  totalRefs(): number {
+    let total = 0;
+    for (const n of this.refsByPeer.values()) total += n;
+    return total;
+  }
+
+  /**
    * Creates a new ServiceStub instance.
    *
    * @param {LocalPeer} peer - Local peer associated with this service
@@ -175,7 +216,11 @@ export class ServiceStub {
   private processResult(result: any, callerPeer?: any) {
     if (isNetronService(result) || result instanceof Interface) {
       this.enforceNestedServiceAccess(result, callerPeer);
-      return this.peer.refService(result, this.definition);
+      // SEC-5: attribute the dynamic-stub reference to the calling remote peer
+      // (when there is one) so unref_service can refcount per-peer. Local/trusted
+      // calls (no callerPeer) create an un-attributed stub torn down by the local
+      // release path.
+      return this.peer.refService(result, this.definition, callerPeer?.id);
     } else if (isNetronStream(result)) {
       return StreamReference.from(result);
     }

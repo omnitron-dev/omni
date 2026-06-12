@@ -367,11 +367,11 @@ export interface ILocalPeer extends IPeer {
   /** Unexpose remote service - LocalPeer specific method */
   unexposeRemoteService(peer: unknown, serviceName: string): void;
 
-  /** Reference a service */
-  refService(instance: unknown, parentDef: unknown): unknown;
+  /** Reference a service. `callerPeerId` (SEC-5) tracks per-remote-peer refs on shared dynamic stubs. */
+  refService(instance: unknown, parentDef: unknown, callerPeerId?: string): unknown;
 
-  /** Unref service */
-  unrefService(defId?: string): void;
+  /** Unref service. `callerPeerId` (SEC-5): a remote unref releases only that peer's own reference. */
+  unrefService(defId?: string, callerPeerId?: string): void;
 
   /** Get stub by definition ID */
   getStubByDefinitionId(defId: string): unknown;

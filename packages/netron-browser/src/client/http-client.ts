@@ -138,60 +138,76 @@ export class HttpClient {
 
     const skipAuth = options?.skipAuth ?? false;
 
-    try {
-      // Execute pre-request middleware
-      await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
+    // Execute pre-request middleware (once — not re-run on an auth retry).
+    await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
 
-      // Check if middleware wants to skip remaining
-      if (ctx.skipRemaining) {
-        return ctx.response?.data;
-      }
+    // Check if middleware wants to skip remaining
+    if (ctx.skipRemaining) {
+      return ctx.response?.data;
+    }
 
-      // Create request message with middleware-modified data
-      const message = createRequestMessage(service, method, args, {
-        context: ctx.request?.metadata as any,
-        hints: {
-          ...options?.hints,
-          timeout: ctx.request?.timeout,
-        },
-      });
+    // NB-6: a single auth re-invoke. When an ERROR-stage middleware (the auth
+    // error handler) refreshes the token after a 401 and signals `auth:retry`,
+    // we re-send the request ONCE with the refreshed headers/cookies instead of
+    // failing — previously the request was never re-sent (the flag was set but
+    // nothing consumed it, and invoke always re-threw the original error).
+    const MAX_AUTH_REINVOKES = 1;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // Create request message with (possibly refreshed) middleware data.
+        const message = createRequestMessage(service, method, args, {
+          context: ctx.request?.metadata as any,
+          hints: {
+            ...options?.hints,
+            timeout: ctx.request?.timeout,
+          },
+        });
 
-      // Send request — credentials threaded through so cookie-mode
-      // transport ('include') reaches the fetch layer. The AuthenticationClient's
-      // configured transport is the source of truth; middleware may
-      // override per-request via ctx.request.credentials.
-      const credentials = ctx.request?.credentials ?? this.auth?.getRequestCredentials();
-      const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth, credentials);
+        // Send request — credentials threaded through so cookie-mode transport
+        // ('include') reaches the fetch layer. The AuthenticationClient's
+        // configured transport is the source of truth; middleware may override
+        // per-request via ctx.request.credentials.
+        const credentials = ctx.request?.credentials ?? this.auth?.getRequestCredentials();
+        const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth, credentials);
 
-      if (!response.success) {
-        const error = new Error(response.error?.message || 'Method invocation failed');
-        (error as any).code = response.error?.code;
+        if (!response.success) {
+          const error = new Error(response.error?.message || 'Method invocation failed');
+          (error as any).code = response.error?.code;
+          throw error;
+        }
+
+        // Store response in context
+        ctx.response = {
+          data: response.data,
+          headers: {},
+          metadata: {},
+        };
+
+        // Execute post-response middleware
+        await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
+
+        return ctx.response.data;
+      } catch (error: any) {
+        // Store error in context
+        ctx.error = error;
+        ctx.metadata.delete('auth:retry');
+
+        // Execute error middleware
+        try {
+          await this.middleware.execute(ctx, MiddlewareStage.ERROR);
+        } catch {
+          // Ignore middleware errors during error handling
+        }
+
+        // NB-6: re-invoke once if a middleware refreshed auth and asked to retry.
+        if (attempt < MAX_AUTH_REINVOKES && ctx.metadata.get('auth:retry')) {
+          ctx.metadata.delete('auth:retry');
+          ctx.error = undefined;
+          continue;
+        }
+
         throw error;
       }
-
-      // Store response in context
-      ctx.response = {
-        data: response.data,
-        headers: {},
-        metadata: {},
-      };
-
-      // Execute post-response middleware
-      await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
-
-      return ctx.response.data;
-    } catch (error: any) {
-      // Store error in context
-      ctx.error = error;
-
-      // Execute error middleware
-      try {
-        await this.middleware.execute(ctx, MiddlewareStage.ERROR);
-      } catch {
-        // Ignore middleware errors during error handling
-      }
-
-      throw error;
     }
   }
 

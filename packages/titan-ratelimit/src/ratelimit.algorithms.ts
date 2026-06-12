@@ -99,26 +99,31 @@ export class SlidingWindowAlgorithm implements IRateLimitAlgorithm {
   ): Promise<IRateLimitResult> {
     const now = Date.now();
     const windowStart = now - windowMs;
-    const ttl = Math.ceil(windowMs / 1000) + 1;
+    // TTL must outlive the window. (NOTE: milliseconds — the previous
+    // `Math.ceil(windowMs/1000)+1` produced SECONDS but was passed to the
+    // milliseconds storage API, expiring the set almost immediately in memory.)
+    const ttlMs = windowMs + 1000;
 
-    // Remove expired entries (older than windowStart)
-    await storage.removeFromSortedSetByScore(key, -Infinity, windowStart);
-
-    // Count current requests in window
-    const currentCount = await storage.countSortedSet(key);
-
-    // Check if under limit
-    const allowed = currentCount < limit;
-
-    // Add timestamp if consuming and allowed
-    // Use timestamp + random suffix for uniqueness to handle concurrent requests
-    if (consume && allowed) {
+    let allowed: boolean;
+    let count: number;
+    if (consume) {
+      // RL-3b: race-free prune + count + conditional-add. The old
+      // removeFromSortedSetByScore + countSortedSet + addToSortedSet sequence let
+      // N concurrent callers all observe `count < limit` then all add,
+      // overshooting to limit+N-1. checkAndConsumeSlidingWindow does it atomically.
       const uniqueMember = `${now}-${Math.random().toString(36).substring(2, 9)}`;
-      await storage.addToSortedSet(key, now, uniqueMember, ttl);
+      const res = await storage.checkAndConsumeSlidingWindow(key, limit, windowStart, now, uniqueMember, ttlMs);
+      allowed = res.allowed;
+      count = res.count;
+    } else {
+      // Peek only — prune + count, no slot consumed.
+      await storage.removeFromSortedSetByScore(key, -Infinity, windowStart);
+      count = await storage.countSortedSet(key);
+      allowed = count < limit;
     }
 
     // Calculate remaining slots
-    const remaining = Math.max(0, limit - (consume && allowed ? currentCount + 1 : currentCount));
+    const remaining = Math.max(0, limit - count);
 
     // Reset time is one full window from now
     const resetAt = now + windowMs;

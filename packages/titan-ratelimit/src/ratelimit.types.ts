@@ -97,6 +97,31 @@ export interface IRateLimitStorage {
   countSortedSet(key: string): Promise<number>;
 
   /**
+   * RL-3b: atomic sliding-window check + consume. Prunes entries older than
+   * `windowStart`, counts the survivors, and — only if under `limit` — adds
+   * `(score, member)` with `ttl`, all as ONE atomic step (Redis Lua / synchronous
+   * in memory). This is the race-free primitive for sliding-window limiting: the
+   * separate prune + count + add sequence has a TOCTOU window where N concurrent
+   * callers all observe `count < limit` and all add, overshooting to `limit+N-1`.
+   *
+   * @param key - Storage key
+   * @param limit - Maximum allowed entries in the window
+   * @param windowStart - Scores <= this are pruned as expired
+   * @param score - Score (timestamp) for the new entry
+   * @param member - Unique member id for the new entry
+   * @param ttl - Time-to-live in milliseconds for the set
+   * @returns `allowed` (whether this request was admitted) and the resulting `count`
+   */
+  checkAndConsumeSlidingWindow(
+    key: string,
+    limit: number,
+    windowStart: number,
+    score: number,
+    member: string,
+    ttl?: number
+  ): Promise<{ allowed: boolean; count: number }>;
+
+  /**
    * Get the time-to-live of a key in milliseconds.
    *
    * @param key - Storage key

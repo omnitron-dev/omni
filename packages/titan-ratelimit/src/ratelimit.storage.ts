@@ -291,6 +291,55 @@ export class MemoryRateLimitStorage implements IRateLimitStorage {
   }
 
   /**
+   * RL-3b: atomic sliding-window check + consume.
+   *
+   * Prune-count-add run with NO `await` between them, so on the single JS thread
+   * no concurrent task can interleave (the old prune + count + add sequence
+   * could, letting concurrent callers overshoot the limit).
+   */
+  async checkAndConsumeSlidingWindow(
+    key: string,
+    limit: number,
+    windowStart: number,
+    score: number,
+    member: string,
+    ttl?: number
+  ): Promise<{ allowed: boolean; count: number }> {
+    // Prune entries older than the window (score <= windowStart), matching
+    // removeFromSortedSetByScore(-Infinity, windowStart).
+    const existing = this.sortedSets.get(key);
+    if (existing) {
+      for (const [m, s] of existing.entries()) {
+        if (s <= windowStart) existing.delete(m);
+      }
+      if (existing.size === 0) {
+        this.sortedSets.delete(key);
+        this.store.delete(`${key}:ttl`);
+      }
+    }
+
+    const current = this.sortedSets.get(key)?.size ?? 0;
+    if (current >= limit) {
+      return { allowed: false, count: current };
+    }
+
+    if (!this.sortedSets.has(key)) {
+      this.sortedSets.set(key, new Map());
+    }
+    this.sortedSets.get(key)!.set(member, score);
+    if (ttl) {
+      const expiresAt = Date.now() + ttl;
+      this.store.set(`${key}:ttl`, { value: expiresAt, expiresAt });
+    }
+
+    if (this.sortedSets.size > this.maxKeys) {
+      this.cleanup();
+    }
+
+    return { allowed: true, count: current + 1 };
+  }
+
+  /**
    * Delete a key (counter or sorted set)
    *
    * @param key - Storage key to delete
@@ -709,6 +758,57 @@ return {1, newval}
     } catch (error) {
       this.redisAvailable = false;
       throw new Error(`Redis ZCARD failed for key ${key}: ${error}`, { cause: error });
+    }
+  }
+
+  /**
+   * RL-3b Lua: atomic sliding-window prune + count + conditional add. Returns
+   * `{allowed, count}`. ZADD happens ONLY when below the limit; PEXPIRE keeps the
+   * set alive for the window. One round-trip eliminates the
+   * prune+count+add TOCTOU across concurrent callers.
+   */
+  private static readonly SLIDING_WINDOW_LUA = `
+local windowStart = ARGV[1]
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', windowStart)
+local count = redis.call('ZCARD', KEYS[1])
+local limit = tonumber(ARGV[2])
+if count >= limit then
+  return {0, count}
+end
+redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+local ttl = tonumber(ARGV[5])
+if ttl > 0 then
+  redis.call('PEXPIRE', KEYS[1], ttl)
+end
+return {1, count + 1}
+`.trim();
+
+  async checkAndConsumeSlidingWindow(
+    key: string,
+    limit: number,
+    windowStart: number,
+    score: number,
+    member: string,
+    ttl?: number
+  ): Promise<{ allowed: boolean; count: number }> {
+    const fullKey = this.buildKey(key);
+
+    try {
+      const result = (await this.redis.eval(
+        RedisRateLimitStorage.SLIDING_WINDOW_LUA,
+        1,
+        fullKey,
+        windowStart,
+        limit,
+        score,
+        member,
+        ttl ?? 0
+      )) as [number, number];
+
+      return { allowed: result[0] === 1, count: result[1] };
+    } catch (error) {
+      this.redisAvailable = false;
+      throw new Error(`Redis checkAndConsumeSlidingWindow failed for key ${key}: ${error}`, { cause: error });
     }
   }
 

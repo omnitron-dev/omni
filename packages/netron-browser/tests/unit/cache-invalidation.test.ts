@@ -15,7 +15,10 @@ import {
 describe('Cache Invalidation Core Task', () => {
   describe('Constants', () => {
     it('should export the correct task name', () => {
-      expect(CORE_TASK_INVALIDATE_CACHE).toBe('netron.invalidate_cache');
+      // NB-2: the constant must be the BARE server task name (the server
+      // TaskManager routes by exact fn.name), not the old `netron.`-prefixed
+      // value that never matched any registered task.
+      expect(CORE_TASK_INVALIDATE_CACHE).toBe('invalidate_cache');
     });
   });
 

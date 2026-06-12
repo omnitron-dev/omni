@@ -850,7 +850,7 @@ export class RemotePeer extends AbstractPeer {
           // through `canAccessMethod`. Without this gate, a client that
           // knows or guesses a property name bypasses ACLs entirely on
           // every non-HTTP transport.
-          await this.enforceMethodAccess(stub, name, [value]);
+          await this.enforceMethodAccess(stub, name, [value], 'set');
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: unknown) {
@@ -878,7 +878,7 @@ export class RemotePeer extends AbstractPeer {
           const localPeer = this.netron.peer as ILocalPeerInternal;
           const stub = localPeer.getStubByDefinitionId(defId);
           // SECURITY (T#34): see SET branch.
-          await this.enforceMethodAccess(stub, name, []);
+          await this.enforceMethodAccess(stub, name, [], 'get');
           // SECURITY (T#49): pass `this` so a property getter returning
           // a nested service can be authz-filtered before the leak.
           await this.sendResponse(packet, await stub.get(name, this));
@@ -909,7 +909,7 @@ export class RemotePeer extends AbstractPeer {
           // SECURITY (T#34): see SET branch — this is the most-exercised
           // entry point on the wire, and the one that mattered most in
           // the audit (RPC method invocations).
-          await this.enforceMethodAccess(stub, method, args);
+          await this.enforceMethodAccess(stub, method, args, 'call');
           await this.sendResponse(packet, await stub.call(method, args, this));
         } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error calling method:');
@@ -1306,21 +1306,49 @@ export class RemotePeer extends AbstractPeer {
     stub: { definition?: Definition; instance?: unknown } | undefined,
     methodName: string,
     args: unknown[] = [],
+    kind: 'call' | 'get' | 'set' = 'call',
   ): Promise<void> {
     const netron = this.netron as INetronInternal;
     const authzManager = netron.authorizationManager;
     const authnManager = netron.authenticationManager;
-    // Auth-less deployment (neither manager wired) → nothing to enforce.
-    // Preserves the historical "Netron without auth works unchanged" contract.
-    if (!authzManager && !authnManager) return;
 
-    // The stub MUST exist and carry a versioned definition for the guard
-    // to even apply — without it we cannot form the qualified service
-    // name, so we let the call through and rely on downstream not-found
-    // errors. Keeps unit-test mocks that bypass `getStubByDefinitionId` working.
+    // The stub MUST exist and carry a versioned definition for any guard to
+    // apply — without it we cannot form the qualified service name, so we let
+    // the call through and rely on downstream not-found errors. Keeps unit-test
+    // mocks that bypass `getStubByDefinitionId` working.
     const meta = stub?.definition?.meta;
     if (!meta) return;
     const serviceName = getQualifiedName(meta.name, meta.version);
+
+    // (0) NET-14: PUBLIC-SURFACE whitelist for method CALLS. `meta.methods` is
+    // built EXCLUSIVELY from `@Public`-annotated members (decorators/core.ts
+    // skips everything else) and is always reliable for methods (read from the
+    // prototype — no instantiation). `ServiceStub.call` dispatches by name
+    // straight to `instance[method]` with NO such check, so an UNDECORATED
+    // instance method (a lifecycle hook like `onDestroy`, a private helper, …)
+    // was wire-callable by ANY peer holding the service's definition id. Reject
+    // anything outside the published method surface with a uniform NOT_FOUND
+    // (SEC-6 posture — do not reveal whether the member exists). `Object.hasOwn`
+    // (not `in`) so inherited names like `toString`/`hasOwnProperty` can't slip
+    // through the prototype chain. Runs regardless of whether auth is configured:
+    // a non-`@Public` method is simply not part of the service's API.
+    //
+    // Scoped to CALLs: property GET/SET are intentionally NOT whitelisted here
+    // because `meta.properties` is empty for services whose constructor needs
+    // arguments (extracted via `new target()` at decoration time), so a property
+    // whitelist would wrongly reject legitimate DI-service properties (NET-14b).
+    if (kind === 'call' && !Object.hasOwn(meta.methods ?? {}, methodName)) {
+      this.logger.warn(
+        { serviceName, methodName, userId: this.getAuthContext()?.userId },
+        'NET-14: call to a method outside the @Public surface rejected',
+      );
+      throw Errors.notFound(`Method '${serviceName}.${methodName}'`);
+    }
+
+    // Auth-less deployment (neither manager wired) → no further enforcement.
+    // Preserves the historical "Netron without auth works unchanged" contract.
+    if (!authzManager && !authnManager) return;
+
     const auth = this.getAuthContext();
 
     // (1) ACL check (T#34) — registered AuthorizationManager ACLs. Runs first so

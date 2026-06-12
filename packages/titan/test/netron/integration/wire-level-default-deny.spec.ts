@@ -14,10 +14,17 @@
  * `@Public({ auth })` decorator (including `auth: false` / `allowAnonymous`) —
  * are evaluated on their own terms and are unaffected.
  *
- * This suite proves both the back-compat default (everything callable) and the
- * opt-in posture (un-gated methods denied, gated methods still work) on the
- * persistent (WebSocket) wire path, plus the `hasACL` predicate the enforcement
- * relies on.
+ * This suite proves both the back-compat default (every @Public method callable)
+ * and the opt-in posture (un-gated methods denied, gated methods still work) on
+ * the persistent (WebSocket) wire path, plus the `hasACL` predicate the
+ * enforcement relies on.
+ *
+ * It also covers NET-14, the ALWAYS-ON companion to default-deny: calls to a
+ * method outside the published `@Public` surface (`meta.methods`) are rejected
+ * with a uniform NOT_FOUND regardless of `authDefaultDeny`, because
+ * `ServiceStub.call` otherwise dispatches by name with no whitelist. NET-14
+ * runs before the default-deny gate, so an undecorated method is NOT_FOUND (not
+ * FORBIDDEN) in both modes.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -133,15 +140,27 @@ describe('AuthorizationManager.hasACL (SEC-2 predicate)', () => {
 });
 
 describe('Netron wire-level — default-ALLOW (back-compat, authDefaultDeny unset)', () => {
-  it('allows decorator-gated, explicitly-open, bare-@Public AND undecorated methods', async () => {
+  it('allows every @Public method shape (decorator-gated / explicitly-open / bare-@Public)', async () => {
     const { server, port } = await bootServer(false);
     const { peer, defId } = await connectAuthed(server, port);
 
     expect(await peer.call(defId, 'getSecret', [])).toBe('the-secret'); // @Public({auth:true}) + authed
     expect(await peer.call(defId, 'ping', [])).toBe('pong'); // @Public({auth:false})
     expect(await peer.call(defId, 'listKeys', [])).toEqual(['k1', 'k2']); // bare @Public()
-    // The hole: an undecorated instance method is reachable by name.
-    expect(await peer.call(defId, 'internalReset', [])).toBe('reset');
+
+    await peer.disconnect();
+  });
+
+  it('NET-14: an UNDECORATED instance method is NOT_FOUND even in default-allow mode', async () => {
+    // The public-surface whitelist is ALWAYS on (independent of authDefaultDeny):
+    // `internalReset` is not in `meta.methods`, so the wire path rejects it
+    // with a uniform NOT_FOUND rather than dispatching to `instance.internalReset`.
+    const { server, port } = await bootServer(false);
+    const { peer, defId } = await connectAuthed(server, port);
+
+    await expect(peer.call(defId, 'internalReset', [])).rejects.toMatchObject({
+      message: expect.stringMatching(/not found/i),
+    });
 
     await peer.disconnect();
   });
@@ -171,12 +190,14 @@ describe('Netron wire-level — default-DENY (authDefaultDeny: true)', () => {
     await peer.disconnect();
   });
 
-  it('denies an undecorated instance method (closes the call-any-method hole)', async () => {
+  it('rejects an undecorated instance method as NOT_FOUND (NET-14 whitelist precedes default-deny)', async () => {
     const { server, port } = await bootServer(true);
     const { peer, defId } = await connectAuthed(server, port);
 
+    // `internalReset` is outside the @Public surface, so NET-14's whitelist
+    // rejects it with NOT_FOUND before the default-deny FORBIDDEN gate is reached.
     await expect(peer.call(defId, 'internalReset', [])).rejects.toMatchObject({
-      message: expect.stringMatching(/denied|forbidden|access/i),
+      message: expect.stringMatching(/not found/i),
     });
 
     await peer.disconnect();

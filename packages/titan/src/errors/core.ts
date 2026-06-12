@@ -9,6 +9,7 @@ import {
   getErrorName,
   getDefaultMessage,
   isRetryableError,
+  toHttpStatus,
 } from './codes.js';
 
 /**
@@ -102,7 +103,7 @@ export class TitanError extends Error {
     this.name = 'TitanError';
     this.code = options.code;
     this.category = getErrorCategory(options.code);
-    this.httpStatus = options.code;
+    this.httpStatus = toHttpStatus(options.code); // XC-3: custom 600/601 → 500 (valid HTTP)
     this.details = options.details || {};
     this.context = options.context || {};
     this.timestamp = Date.now();
@@ -377,7 +378,7 @@ export class ErrorPool {
       // Reset the error by modifying its properties
       const titanError = error as any;
       titanError.code = code;
-      titanError.httpStatus = code;
+      titanError.httpStatus = toHttpStatus(code); // XC-3
       titanError.message = message || getDefaultMessage(code);
       titanError.category = getErrorCategory(code);
       titanError.details = {};

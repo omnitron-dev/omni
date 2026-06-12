@@ -33,13 +33,16 @@ describe('Port Utilities', () => {
       expect(port).toBeLessThanOrEqual(65535);
     });
 
-    it('should return a port in the specified range', async () => {
+    it('should return a port at or after startPort (XC-12)', async () => {
+      // Previously this returned a random OS-assigned port, ignoring startPort —
+      // the assertion was loosened to `>= 0` to tolerate that bug.
       const port = await getAvailablePort(20000, 30000);
-      expect(port).toBeGreaterThanOrEqual(0); // OS might assign any port when using 0
+      expect(port).toBeGreaterThanOrEqual(20000);
+      expect(port).toBeLessThanOrEqual(30000);
     });
 
-    it('should find next available port when start port is in use', async () => {
-      // Occupy a port in the range
+    it('should find next available port when start port is in use (XC-12)', async () => {
+      // Occupy the start port in the range
       const server = createServer();
       servers.push(server);
 
@@ -47,11 +50,12 @@ describe('Port Utilities', () => {
         server.listen(15000, () => resolve());
       });
 
-      // Request port starting from the occupied one
+      // Request a port starting from the occupied one → must skip to a free one
+      // within the range, not return a random OS port.
       const port = await getAvailablePort(15000, 15010);
 
-      // Should get either the random port (from OS) or sequential search result
-      expect(port).toBeGreaterThan(0);
+      expect(port).toBeGreaterThan(15000);
+      expect(port).toBeLessThanOrEqual(15010);
     });
 
     it('should reject when no ports available in range', async () => {

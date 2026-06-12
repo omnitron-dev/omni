@@ -6,7 +6,14 @@ import net from 'node:net';
 import { Errors } from '../errors/index.js';
 
 /**
- * Get an available port
+ * Get an available port at or after `startPort`.
+ *
+ * XC-12: the previous implementation tried a RANDOM OS-assigned port first and
+ * only fell back to `startPort` on error — so `getAvailablePort(8080)` almost
+ * always returned some unrelated random port, silently ignoring the argument.
+ * It now searches sequentially upward from `startPort` (binding each candidate
+ * to verify it is free, advancing on EADDRINUSE), honouring the documented
+ * contract. Callers who want any free port can still pass `0` (OS-assigned).
  */
 export async function getAvailablePort(startPort = 10000, maxPort = 65535): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -37,23 +44,7 @@ export async function getAvailablePort(startPort = 10000, maxPort = 65535): Prom
       server.listen(port);
     };
 
-    // Try finding a random port first
-    const server = net.createServer();
-    server.once('listening', () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-
-    server.once('error', () => {
-      // Fallback to sequential search
-      tryPort(startPort);
-    });
-
-    // Listen on random port (0 means OS assigns)
-    server.listen(0);
+    tryPort(startPort);
   });
 }
 

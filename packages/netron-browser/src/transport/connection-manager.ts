@@ -257,6 +257,23 @@ export class ConnectionManager extends EventEmitter {
   /** Pending reconnection timers by peer ID */
   private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /**
+   * NB-4: per-peer connection factory used to re-establish a dropped
+   * connection. Registered via `addConnection(..., factory)` (or the first
+   * `scheduleReconnect` call) so a disconnect can reconnect WITHOUT the old
+   * always-throwing placeholder factory.
+   */
+  private peerFactories = new Map<string, () => Promise<WebSocketConnection>>();
+
+  /**
+   * NB-4: surviving per-peer reconnect attempt counter. The attempt count must
+   * outlive the dropped connection — the old code read it from the just-removed
+   * `ManagedConnection`, so it was always 0, the backoff never escalated, and
+   * `maxAttempts` never tripped (infinite baseDelay reconnect loop). Reset on a
+   * successful (re)connect, cleared on give-up / cancel / stop.
+   */
+  private reconnectAttemptsByPeer = new Map<string, number>();
+
   /** Health check timer */
   private healthCheckTimer?: ReturnType<typeof setInterval>;
 
@@ -336,6 +353,9 @@ export class ConnectionManager extends EventEmitter {
       clearTimeout(timerId);
       this.reconnectTimers.delete(peerId);
     }
+    // NB-4: drop per-peer reconnect state so a restart doesn't resume stale backoff.
+    this.peerFactories.clear();
+    this.reconnectAttemptsByPeer.clear();
 
     // Close all connections
     const closePromises: Promise<void>[] = [];
@@ -353,9 +373,16 @@ export class ConnectionManager extends EventEmitter {
    *
    * @param peerId - Associated peer ID
    * @param connection - WebSocket connection to manage
+   * @param reconnectFactory - Optional factory to re-establish this peer's
+   *   connection on disconnect (NB-4). Registering it enables automatic
+   *   reconnection; without it a dropped connection is simply removed.
    * @returns Managed connection or null if limits reached
    */
-  addConnection(peerId: string, connection: WebSocketConnection): ManagedConnection | null {
+  addConnection(
+    peerId: string,
+    connection: WebSocketConnection,
+    reconnectFactory?: () => Promise<WebSocketConnection>
+  ): ManagedConnection | null {
     // Check global limit
     if (this.connections.size >= this.config.maxTotalConnections) {
       this.emit('pool:limit_reached', peerId, this.config.maxTotalConnections);
@@ -394,6 +421,13 @@ export class ConnectionManager extends EventEmitter {
       this.peerConnections.set(peerId, new Set());
     }
     this.peerConnections.get(peerId)!.add(id);
+
+    // NB-4: remember how to re-establish this peer's connection, and reset the
+    // surviving reconnect backoff now that the peer has a live connection again.
+    if (reconnectFactory) {
+      this.peerFactories.set(peerId, reconnectFactory);
+    }
+    this.reconnectAttemptsByPeer.delete(peerId);
 
     this.emit('connection:added', managed);
     return managed;
@@ -634,44 +668,50 @@ export class ConnectionManager extends EventEmitter {
       return;
     }
 
+    // NB-4: remember the factory so disconnect-triggered reconnects and the
+    // recursive retry below reuse the REAL factory (not a throwing placeholder).
+    this.peerFactories.set(peerId, connectionFactory);
+
     // Cancel existing timer
     const existingTimer = this.reconnectTimers.get(peerId);
     if (existingTimer !== undefined) {
       clearTimeout(existingTimer);
     }
 
-    // Find max attempts for this peer
-    let currentMaxAttempts = 0;
-    const peerConns = this.peerConnections.get(peerId);
-    if (peerConns) {
-      for (const connId of peerConns) {
-        const managed = this.connections.get(connId);
-        if (managed) {
-          currentMaxAttempts = Math.max(currentMaxAttempts, managed.reconnectAttempts);
-        }
-      }
-    }
+    // NB-4: read the SURVIVING per-peer attempt count. The old code scanned
+    // `peerConnections` for the dropped connection's `reconnectAttempts`, but the
+    // connection was already removed → always 0 → backoff never escalated and
+    // maxAttempts never fired. This counter persists across the removal.
+    const attempt = this.reconnectAttemptsByPeer.get(peerId) ?? 0;
 
     // Check max attempts limit
-    if (maxAttempts > 0 && currentMaxAttempts >= maxAttempts) {
+    if (maxAttempts > 0 && attempt >= maxAttempts) {
+      this.reconnectAttemptsByPeer.delete(peerId);
+      this.peerFactories.delete(peerId);
       this.emit('connection:reconnect_failed', peerId, new Error('Max reconnection attempts reached'));
       return;
     }
 
-    const delay = this.calculateReconnectDelay(currentMaxAttempts);
-    this.emit('connection:reconnecting', peerId, currentMaxAttempts + 1);
+    const delay = this.calculateReconnectDelay(attempt);
+    this.emit('connection:reconnecting', peerId, attempt + 1);
 
     const timer = setTimeout(async () => {
       this.reconnectTimers.delete(peerId);
+      // Count this attempt up front so a failed factory escalates the backoff and
+      // eventually trips maxAttempts (a success resets the counter via addConnection).
+      this.reconnectAttemptsByPeer.set(peerId, attempt + 1);
       try {
         const newConnection = await connectionFactory();
-        const managed = this.addConnection(peerId, newConnection);
+        const managed = this.addConnection(peerId, newConnection, connectionFactory);
         if (managed) {
-          managed.reconnectAttempts = currentMaxAttempts + 1;
+          managed.reconnectAttempts = attempt + 1;
           this.emit('connection:reconnected', managed);
+        } else {
+          // Pool limit reached — treat as a failed attempt and back off again.
+          this.scheduleReconnect(peerId, connectionFactory);
         }
       } catch {
-        // Recursive: schedule next attempt
+        // Recursive: schedule next attempt (the surviving counter escalates).
         this.scheduleReconnect(peerId, connectionFactory);
       }
     }, delay);
@@ -688,6 +728,8 @@ export class ConnectionManager extends EventEmitter {
       clearTimeout(timer);
       this.reconnectTimers.delete(peerId);
     }
+    // NB-4: a manual cancel resets the backoff so a later reconnect starts fresh.
+    this.reconnectAttemptsByPeer.delete(peerId);
   }
 
   /**
@@ -730,12 +772,16 @@ export class ConnectionManager extends EventEmitter {
     const peerId = managed.peerId;
     this.removeConnection(managed.id, 'disconnected');
 
-    // Schedule reconnection if enabled
+    // NB-4: reconnect using the factory the consumer registered for this peer
+    // (via addConnection/scheduleReconnect). The old code scheduled a hardcoded
+    // always-throwing factory here, so disconnect-triggered reconnection could
+    // NEVER succeed — it just looped on the throw. With no registered factory we
+    // simply leave the connection removed (nothing to reconnect with).
     if (this.config.reconnect.enabled && this.state === ConnectionManagerState.RUNNING) {
-      this.scheduleReconnect(peerId, async () => {
-        // This should be overridden by the consumer
-        throw new Error('Connection factory not provided');
-      });
+      const factory = this.peerFactories.get(peerId);
+      if (factory) {
+        this.scheduleReconnect(peerId, factory);
+      }
     }
   }
 

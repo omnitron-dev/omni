@@ -153,9 +153,11 @@ export function createAuthErrorMiddleware(options: AuthErrorMiddlewareOptions): 
     onAccessDenied,
     onRateLimited,
     maxRetries = 1,
-    refreshMethod = 'auth.refresh',
     emitEvents = true,
   } = options;
+  // NB-6: `refreshMethod` is superseded by the AuthenticationClient's own
+  // configured refresh transport (cookie/bearer); kept in the options type only
+  // for back-compat and intentionally not used here.
 
   // Track retry attempts per context
   const retryAttempts = new WeakMap<ClientMiddlewareContext, number>();
@@ -340,22 +342,13 @@ export function createAuthErrorMiddleware(options: AuthErrorMiddlewareOptions): 
    */
   async function attemptTokenRefresh(): Promise<boolean> {
     try {
-      // Parse refresh method
-      const [service, method] = refreshMethod.split('.');
-
-      if (!service || !method) {
-        console.warn('[AuthErrorMiddleware] Invalid refresh method format:', refreshMethod);
-        return false;
-      }
-
-      // The refresh should be handled by the application
-      // We just check if the token needs refresh and emit an event
-      if (authClient.needsRefresh()) {
-        // Let the auth client handle the refresh via its event system
-        return false;
-      }
-
-      return true;
+      // NB-6: actually perform the refresh. The AuthenticationClient owns the
+      // refresh endpoint/transport (cookie- or bearer-mode) and updates its
+      // stored token + auth headers on success. The old implementation never
+      // called it — it returned `false` PRECISELY when a refresh was needed and
+      // `true` (a no-op) otherwise — so the 401 path could never recover.
+      const result = await authClient.refreshToken();
+      return result.success === true;
     } catch (error) {
       console.error('[AuthErrorMiddleware] Token refresh failed:', error);
       return false;

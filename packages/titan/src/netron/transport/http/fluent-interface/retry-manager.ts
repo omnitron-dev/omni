@@ -36,6 +36,19 @@ export interface RetryOptions {
   attemptTimeout?: number;
   /** Factor for exponential backoff */
   factor?: number;
+  /**
+   * NB-5: mark the operation idempotent (safe to execute more than once).
+   *
+   * The default retry condition only retries AMBIGUOUS failures — where the
+   * request may already have been processed server-side (connection reset /
+   * timeout, HTTP 5xx / 408) — when this is `true`, so a non-idempotent RPC
+   * (e.g. a mutation) can't be double-executed by an automatic retry. Failures
+   * that prove the request never reached the server (connection refused / DNS)
+   * and an explicit 429 are retried regardless. A custom `shouldRetry` bypasses
+   * this gate entirely. Default: `false`. (Kept in lockstep with the
+   * netron-browser RetryManager — NB-5.)
+   */
+  idempotent?: boolean;
 }
 
 /**
@@ -130,11 +143,21 @@ export class RetryManager extends EventEmitter {
       initialDelay: options.initialDelay || this.options.defaultOptions?.initialDelay || 1000,
       maxDelay: options.maxDelay || this.options.defaultOptions?.maxDelay || 30000,
       jitter: options.jitter ?? this.options.defaultOptions?.jitter ?? 0.1,
+      // NB-5: a CUSTOM shouldRetry bypasses the idempotency gate (caller owns the
+      // decision); the default gate consults `idempotent` for ambiguous failures.
       shouldRetry:
-        options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
+        options.shouldRetry ||
+        this.options.defaultOptions?.shouldRetry ||
+        ((error: any, attempt: number) =>
+          this.defaultShouldRetry(
+            error,
+            attempt,
+            options.idempotent ?? this.options.defaultOptions?.idempotent ?? false
+          )),
       onRetry: options.onRetry || this.options.defaultOptions?.onRetry || (() => {}),
       attemptTimeout: options.attemptTimeout || this.options.defaultOptions?.attemptTimeout || 0,
       factor: options.factor || this.options.defaultOptions?.factor || 2,
+      idempotent: options.idempotent ?? this.options.defaultOptions?.idempotent ?? false,
     };
 
     // Check circuit breaker
@@ -282,42 +305,41 @@ export class RetryManager extends EventEmitter {
   /**
    * Default retry condition
    */
-  private defaultShouldRetry(error: any, attempt: number): boolean {
+  private defaultShouldRetry(error: any, attempt: number, idempotent: boolean): boolean {
     // Don't retry on programming errors
     if (error instanceof TypeError || error instanceof ReferenceError) {
       return false;
     }
 
-    // Network errors are retryable
-    if (
-      error.code === 'ECONNREFUSED' ||
-      error.code === 'ECONNRESET' ||
-      error.code === 'ETIMEDOUT' ||
-      error.code === 'ENOTFOUND' ||
-      error.code === 'ENETUNREACH'
-    ) {
+    // NB-5: connection NEVER established → the request provably did not reach the
+    // server, so retrying is safe even for a non-idempotent call.
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ENETUNREACH') {
       return true;
+    }
+
+    // NB-5: connection established then failed → the request MAY have reached and
+    // been processed server-side (AMBIGUOUS). Retry only when idempotent, so a
+    // mutation isn't silently double-executed.
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      return idempotent;
     }
 
     // HTTP status-based retry logic
     if (error.status) {
-      // 5xx errors are retryable
-      if (error.status >= 500) {
-        return true;
-      }
-
-      // 429 (Rate Limit) is retryable - check for Retry-After header
+      // 429 (Rate Limit): server REJECTED the request WITHOUT processing it and
+      // explicitly asks us to retry — safe regardless of idempotency.
       if (error.status === 429) {
         this.extractRetryAfter(error);
         return true;
       }
 
-      // 408 (Request Timeout) is retryable
-      if (error.status === 408) {
-        return true;
+      // 5xx / 408: the server may have partially processed the request
+      // (ambiguous) — retry only when idempotent (NB-5).
+      if (error.status >= 500 || error.status === 408) {
+        return idempotent;
       }
 
-      // 4xx errors (except above) are not retryable
+      // Other 4xx are deterministic client errors — never retry.
       if (error.status >= 400 && error.status < 500) {
         return false;
       }
@@ -326,13 +348,9 @@ export class RetryManager extends EventEmitter {
     // TitanError-based retry logic
     if (error instanceof TitanError) {
       switch (error.code) {
-        case ErrorCode.SERVICE_UNAVAILABLE:
-        case ErrorCode.REQUEST_TIMEOUT:
         case ErrorCode.TOO_MANY_REQUESTS:
-          // Check for Retry-After in error details
-          if (error.code === ErrorCode.TOO_MANY_REQUESTS) {
-            this.extractRetryAfter(error);
-          }
+          // Explicit rate-limit retry invitation — safe regardless of idempotency.
+          this.extractRetryAfter(error);
           return true;
         case ErrorCode.INVALID_ARGUMENT:
         case ErrorCode.NOT_FOUND:
@@ -340,15 +358,19 @@ export class RetryManager extends EventEmitter {
         case ErrorCode.FORBIDDEN:
         case ErrorCode.CONFLICT:
           return false;
+        case ErrorCode.SERVICE_UNAVAILABLE:
+        case ErrorCode.REQUEST_TIMEOUT:
         case ErrorCode.INTERNAL_ERROR:
-          return true;
+          // Ambiguous server-side failures — retry only when idempotent (NB-5).
+          return idempotent;
         default:
-          return attempt < 2; // Retry once for unknown errors
+          // Unknown errors are ambiguous — retry once, and only when idempotent.
+          return idempotent && attempt < 2;
       }
     }
 
-    // Default: retry for unknown errors
-    return true;
+    // Unknown non-Titan error → ambiguous → retry only when idempotent (NB-5).
+    return idempotent;
   }
 
   /**

@@ -398,9 +398,10 @@ describe('Advanced Features Tests - Phase 3', () => {
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
-      // Multiple concurrent requests with retry
+      // Multiple concurrent requests with retry. NB-5: getUser is a read
+      // (idempotent), so mark it so the ambiguous-error retry is permitted.
       const promises = Array.from({ length: 3 }, () => {
-        const proxy = service.retry(5).cache(10000) as any;
+        const proxy = service.retry({ attempts: 5, idempotent: true }).cache(10000) as any;
         return proxy.getUser('123');
       });
 

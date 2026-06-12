@@ -190,11 +190,22 @@ export class LocalPeer extends AbstractPeer {
     this.logger.info({ serviceName }, 'Unexposing service');
     const def = this.getDefinitionByServiceName(serviceName);
     const defId = def.id;
+    // Snapshot the direct child interfaces BEFORE releasing: releaseInterface
+    // recursively releases grandchildren and MUTATES `this.interfaces`, so
+    // iterating it live would skip entries (same hazard NET-2 fixed in
+    // AbstractPeer). AWAIT each release so the full cascade — and its stub
+    // deletions — completes before this async unexpose resolves and before we
+    // drop the parent's own stub below. (Previously fire-and-forget, which left
+    // grandchild stubs un-deleted once NET-2 made the recursion properly async.)
+    const childInstances: Interface[] = [];
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
-        this.logger.debug({ defId }, 'Releasing interface');
-        this.releaseInterface(i.instance);
+        childInstances.push(i.instance);
       }
+    }
+    for (const childInstance of childInstances) {
+      this.logger.debug({ defId }, 'Releasing child interface');
+      await this.releaseInterface(childInstance);
     }
     this.netron.services.delete(serviceName);
     const stub = this.stubs.get(defId);
@@ -239,10 +250,15 @@ export class LocalPeer extends AbstractPeer {
   async unexposeRemoteService(peer: RemotePeer, serviceName: string) {
     const def = this.getDefinitionByServiceName(serviceName);
     const defId = def.id;
+    // Snapshot + await the child-interface cascade (see unexposeService).
+    const childInstances: Interface[] = [];
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
-        this.releaseInterface(i.instance);
+        childInstances.push(i.instance);
       }
+    }
+    for (const childInstance of childInstances) {
+      await this.releaseInterface(childInstance);
     }
     peer.definitions.delete(defId);
     this.netron.services.delete(serviceName);

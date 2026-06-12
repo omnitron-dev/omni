@@ -312,7 +312,12 @@ describe('Full Auth Flow Integration', () => {
         await peer.runTask('query_interface', 'userService@1.0.0');
         throw new Error('Should have thrown error');
       } catch (error: any) {
-        expect(error.message).toContain('Access denied');
+        // SEC-6: service discovery returns a UNIFORM not-found for both "absent"
+        // and "exists but unauthorized", so existence cannot be probed via a
+        // 403-vs-404 oracle. The denial must NOT leak "Access denied"; the real
+        // reason is recorded only in server-side logs.
+        expect(error.message).toMatch(/not found/i);
+        expect(error.message).not.toContain('Access denied');
       }
 
       await peer.disconnect();

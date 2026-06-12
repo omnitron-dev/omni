@@ -298,14 +298,19 @@ describe('NetronWritableStream', () => {
   });
 
   describe('Final Chunk Handling', () => {
-    it('should call closeStream after final chunk', async () => {
+    it('sends the EOS final chunk and tears down WITHOUT routing through closeStream (WIRE-11)', async () => {
       const stream = new NetronWritableStream({ peer, streamId: 220 });
 
       stream.end();
 
       await new Promise((resolve) => stream.on('finish', resolve));
 
-      expect(peer.logger.info).toHaveBeenCalledWith({ streamId: 220 }, 'Closing stream');
+      // WIRE-11: `_final` sends the end-of-stream chunk (null payload, eos=true)
+      // and tears down directly — it must NOT route through closeStream(), so the
+      // graceful EOS chunk and a STREAM_CLOSE packet are never both emitted to the
+      // peer. The old 'Closing stream' info log (closeStream-only) must NOT appear.
+      expect(peer.sendStreamChunk).toHaveBeenCalledWith(220, null, expect.any(Number), true, false);
+      expect(peer.logger.info).not.toHaveBeenCalledWith({ streamId: 220 }, 'Closing stream');
     });
 
     it('should handle final chunk error', async () => {

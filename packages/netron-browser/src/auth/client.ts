@@ -656,17 +656,19 @@ export class AuthenticationClient {
    * Extract token value from auth result
    */
   private extractTokenValue(result: AuthResult): string | undefined {
-    // Try to find token in metadata
-    if (result.metadata?.token) {
-      return result.metadata.token;
-    }
-
-    // Try to find token in context metadata
-    if (result.context?.metadata?.token) {
-      return result.context.metadata.token;
-    }
-
-    return undefined;
+    // NB-7: the canonical signin/refresh envelope carries the bearer token as
+    // `accessToken` (mirroring the `refreshToken` field read in setAuth). The
+    // extractor previously looked ONLY for `metadata.token`, which the server
+    // never sends — so the bearer token was never stored and neither the
+    // Authorization header nor auto-refresh ever engaged. Read `accessToken`
+    // first, falling back to the legacy `token` shapes for back-compat. In
+    // cookie mode the server sends NEITHER (the token is an HttpOnly cookie),
+    // so this correctly returns undefined and the client relies on cookies.
+    return (
+      (result.metadata?.accessToken as string | undefined) ??
+      (result.metadata?.token as string | undefined) ??
+      (result.context?.metadata?.token as string | undefined)
+    );
   }
 
   /**

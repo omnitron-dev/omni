@@ -191,6 +191,10 @@ export class BackendClient implements IBackendClient {
    * client's own emitter so `on(...)` subscribers receive them.
    */
   private forwardTransportEvents(client: WebSocketClient): void {
+    // Defensive: only wire forwarding when the underlying transport client is an
+    // event emitter. Some transport variants (and test doubles) don't expose
+    // `on(...)`; a missing emitter must degrade gracefully, not crash connect().
+    if (typeof (client as { on?: unknown }).on !== 'function') return;
     for (const event of BACKEND_TRANSPORT_EVENTS) {
       client.on(event, (...args: any[]) => this.events.emit(event, ...args));
     }

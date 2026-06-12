@@ -10,6 +10,20 @@ import type { ServiceStub } from '../service-stub.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 
 /**
+ * SEC-6: a remote peer must not be able to distinguish "service does not exist"
+ * from "service exists but you lack access" — that distinction is a service
+ * ENUMERATION ORACLE (a 404-vs-403 probe). Every denial returns an IDENTICAL
+ * NOT_FOUND on the wire; the real reason (absent vs denied) is recorded only in
+ * the server logs. Same posture as GitHub 404-ing private repos.
+ */
+const serviceNotFound = (serviceName: string): TitanError =>
+  new TitanError({
+    code: ErrorCode.NOT_FOUND,
+    message: `Service '${serviceName}' not found`,
+    details: { serviceName },
+  });
+
+/**
  * Query interface of a service with authorization checks
  *
  * This core-task:
@@ -81,13 +95,7 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
       'query_interface: service not found in registry'
     );
 
-    throw new TitanError({
-      code: ErrorCode.NOT_FOUND,
-      message: `Service '${serviceName}' not found`,
-      details: {
-        serviceName,
-      },
-    });
+    throw serviceNotFound(serviceName);
   }
 
   // Get definition from stub
@@ -118,29 +126,22 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
       'Access denied to service'
     );
 
-    throw new TitanError({
-      code: ErrorCode.FORBIDDEN,
-      message: `Access denied to service '${serviceName}'`,
-      details: {
-        serviceName,
-        reason: 'User lacks required roles or permissions',
-      },
-    });
+    // SEC-6: the warn above records the real reason; the wire gets a uniform
+    // NOT_FOUND so existence isn't leaked via a 403-vs-404 oracle.
+    throw serviceNotFound(serviceName);
   }
 
   // Filter the definition based on user permissions
   const filteredMeta = authzManager.filterDefinition(serviceName, definition.meta, authContext);
 
-  // If filtering resulted in null (no access at all), throw error
+  // If filtering resulted in null (no access at all), deny.
   if (filteredMeta === null) {
-    throw new TitanError({
-      code: ErrorCode.FORBIDDEN,
-      message: `Access denied to service '${serviceName}'`,
-      details: {
-        serviceName,
-        reason: 'User has no access to any methods',
-      },
-    });
+    // SEC-6: log the real reason server-side; return a uniform NOT_FOUND.
+    peer.logger.warn(
+      { serviceName, userId: authContext?.userId },
+      'Access denied to service (no accessible methods)'
+    );
+    throw serviceNotFound(serviceName);
   }
 
   peer.logger.info(

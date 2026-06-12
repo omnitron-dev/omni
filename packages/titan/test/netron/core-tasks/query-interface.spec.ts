@@ -192,8 +192,13 @@ describe('query_interface core-task', () => {
       try {
         await query_interface(remotePeer, serviceName);
       } catch (error: any) {
-        expect(error.code).toBe(ErrorCode.FORBIDDEN);
-        expect(error.message).toContain('Access denied');
+        // SEC-6: a denied service returns a UNIFORM NOT_FOUND (no 403-vs-404
+        // enumeration oracle); the real "access denied" reason lives only in the
+        // server logs, never on the wire.
+        expect(error.code).toBe(ErrorCode.NOT_FOUND);
+        expect(error.message).toContain('not found');
+        expect(error.message).not.toContain('Access denied');
+        expect(error.details?.reason).toBeUndefined();
         expect(mockLogger.warn).toHaveBeenCalled();
       }
     });
@@ -306,8 +311,11 @@ describe('query_interface core-task', () => {
       try {
         await query_interface(remotePeer, serviceName);
       } catch (error: any) {
-        expect(error.code).toBe(ErrorCode.FORBIDDEN);
-        expect(error.details.reason).toContain('no access to any methods');
+        // SEC-6: uniform NOT_FOUND; the "no accessible methods" reason is logged
+        // server-side, not exposed on the wire.
+        expect(error.code).toBe(ErrorCode.NOT_FOUND);
+        expect(error.details?.reason).toBeUndefined();
+        expect(mockLogger.warn).toHaveBeenCalled();
       }
     });
   });

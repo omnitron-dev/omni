@@ -325,31 +325,27 @@ export class TokenBucketAlgorithm implements IRateLimitAlgorithm {
   ): Promise<IRateLimitResult> {
     const now = Date.now();
     const refillRate = this.refillRate ?? limit;
+    // Idle TTL: a window + the time to fully refill from empty. Once idle that
+    // long the bucket is full (≡ the default), so the key can expire safely. (The
+    // old code set NO ttl, leaking a key per limiter subject.)
+    const ttlMs = windowMs + Math.ceil((limit / refillRate) * windowMs);
 
-    // Storage keys for bucket state
-    const tokenKey = `${key}:tokens`;
-    const lastRefillKey = `${key}:lastRefill`;
-
-    // Get current bucket state (defaults: full bucket, refill time = now)
-    const currentTokens = (await storage.get(tokenKey)) ?? limit;
-    const lastRefill = (await storage.get(lastRefillKey)) ?? now;
-
-    // Calculate tokens to add based on elapsed time
-    const timePassed = now - lastRefill;
-    const tokensToAdd = timePassed > 0 ? (timePassed / windowMs) * refillRate : 0;
-
-    // Calculate available tokens (capped at bucket capacity)
-    let availableTokens = Math.min(limit, currentTokens + tokensToAdd);
-
-    // Check if we have at least 1 token available
-    const allowed = availableTokens >= 1;
-
-    // Consume token if requested and allowed
-    if (consume && allowed) {
-      availableTokens -= 1;
-      await storage.set(tokenKey, availableTokens);
-      await storage.set(lastRefillKey, now);
-    }
+    // RL-3c: refill + check + (optional) consume ATOMICALLY — closing the
+    // get+get+set+set TOCTOU and preserving the FRACTIONAL token balance (Redis
+    // previously truncated it via parseInt — the RL-2 under-admit). A peek
+    // (consume=false) passes cost 0: it refills the stored balance without
+    // spending a token, and `allowed` is derived from the refilled balance.
+    const res = await storage.checkAndConsumeTokenBucket(
+      key,
+      limit,
+      refillRate,
+      windowMs,
+      now,
+      consume ? 1 : 0,
+      ttlMs
+    );
+    const availableTokens = res.tokens;
+    const allowed = consume ? res.allowed : availableTokens >= 1;
 
     // Calculate when bucket will be full again
     const tokensNeeded = limit - availableTokens;

@@ -12,6 +12,12 @@ describe('RetryManager', () => {
   beforeEach(() => {
     retryManager = new RetryManager({
       debug: false,
+      // NB-5: these suites exercise retry MECHANICS (backoff, callbacks, stats,
+      // events) on ambiguous/generic failures, which now retry only for
+      // idempotent operations. Mark the manager's default idempotent so the
+      // mechanics tests still drive retries; the dedicated gate tests below
+      // construct their own manager to verify the non-idempotent default.
+      defaultOptions: { idempotent: true },
     });
   });
 
@@ -658,6 +664,7 @@ describe('RetryManager', () => {
       await debugManager.execute(fn, {
         attempts: 3,
         initialDelay: 10,
+        idempotent: true, // NB-5: retries on a generic/ambiguous error require idempotent
       });
 
       // Should log attempt messages (structured JSON with msg "Retry attempt")
@@ -697,6 +704,7 @@ describe('RetryManager', () => {
         await debugManager.execute(fn, {
           attempts: 1,
           initialDelay: 10,
+          idempotent: true, // NB-5: retries on a generic/ambiguous error require idempotent
         });
       } catch {
         // Expected
@@ -1092,6 +1100,52 @@ describe('RetryManager', () => {
       const newManager = new RetryManager();
       const stats = newManager.getStats();
       expect(stats.avgRetryDelay).toBe(0);
+    });
+  });
+
+  describe('idempotency gate (NB-5)', () => {
+    const err = (props: Record<string, unknown>) => Object.assign(new Error('fail'), props);
+    // Fresh manager WITHOUT the idempotent default, to verify the gate itself.
+    const gate = () => new RetryManager({ debug: false });
+
+    it('does NOT retry an ambiguous 5xx for a non-idempotent call (default)', async () => {
+      const fn = vi.fn(async () => {
+        throw err({ status: 500 });
+      });
+      await expect(gate().execute(fn, { attempts: 3, initialDelay: 1, jitter: 0 })).rejects.toThrow();
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('DOES retry an ambiguous 5xx when marked idempotent', async () => {
+      const fn = vi.fn(async () => {
+        throw err({ status: 500 });
+      });
+      await expect(gate().execute(fn, { attempts: 2, initialDelay: 1, jitter: 0, idempotent: true })).rejects.toThrow();
+      expect(fn).toHaveBeenCalledTimes(3);
+    });
+
+    it('retries never-reached (ECONNREFUSED) and explicit 429 regardless of idempotency', async () => {
+      const refused = vi.fn(async () => {
+        throw err({ code: 'ECONNREFUSED' });
+      });
+      await expect(gate().execute(refused, { attempts: 1, initialDelay: 1, jitter: 0 })).rejects.toThrow();
+      expect(refused).toHaveBeenCalledTimes(2);
+
+      const tooMany = vi.fn(async () => {
+        throw err({ status: 429 });
+      });
+      await expect(gate().execute(tooMany, { attempts: 1, initialDelay: 1, jitter: 0 })).rejects.toThrow();
+      expect(tooMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('honors a custom shouldRetry, bypassing the gate', async () => {
+      const fn = vi.fn(async () => {
+        throw err({ status: 500 });
+      });
+      await expect(
+        gate().execute(fn, { attempts: 1, initialDelay: 1, jitter: 0, shouldRetry: () => true })
+      ).rejects.toThrow();
+      expect(fn).toHaveBeenCalledTimes(2);
     });
   });
 });

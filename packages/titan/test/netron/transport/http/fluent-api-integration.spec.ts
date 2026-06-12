@@ -208,8 +208,9 @@ describe('Fluent API Integration', () => {
         return { id: '123', name: 'John', email: 'john@example.com' };
       });
 
-      // Should retry and eventually succeed
-      const user = await service.retry(5).getUser('123');
+      // Should retry and eventually succeed. NB-5: getUser is a read (idempotent),
+      // so mark it so the ambiguous network-error retry is permitted.
+      const user = await service.retry({ attempts: 5, idempotent: true }).getUser('123');
 
       expect(user).toEqual({ id: '123', name: 'John', email: 'john@example.com' });
       expect(attempts).toBe(3);

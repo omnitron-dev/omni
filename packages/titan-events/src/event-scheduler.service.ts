@@ -7,6 +7,7 @@
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
+import * as cron from 'node-cron';
 
 import { EVENT_EMITTER_TOKEN, LOGGER_TOKEN } from './tokens.js';
 
@@ -21,6 +22,8 @@ export class EventSchedulerService {
   private jobs: Map<string, IEventSchedulerJob> = new Map();
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private intervals: Map<string, NodeJS.Timeout> = new Map();
+  /** Real node-cron tasks for recurring (cron) jobs (EV-1). */
+  private cronTasks: Map<string, cron.ScheduledTask> = new Map();
   private jobIdCounter = 0;
   private initialized = false;
   private destroyed = false;
@@ -184,6 +187,13 @@ export class EventSchedulerService {
     if (interval) {
       clearInterval(interval);
       this.intervals.delete(jobId);
+    }
+
+    // EV-1: stop the real cron task if this was a recurring (cron) job.
+    const cronTask = this.cronTasks.get(jobId);
+    if (cronTask) {
+      cronTask.stop();
+      this.cronTasks.delete(jobId);
     }
 
     // Update job status
@@ -353,14 +363,21 @@ export class EventSchedulerService {
   private scheduleCronJob(job: IEventSchedulerJob): void {
     if (!job.cron) return;
 
-    // Parse cron expression and calculate next run time
-    const interval = this.parseCronInterval(job.cron);
+    // EV-1: schedule with the REAL node-cron engine (the same one titan-scheduler
+    // uses), not the old parseCronInterval→setInterval approximation — which
+    // fired every fixed N ms from scheduling time instead of at the cron's
+    // wall-clock occurrences (e.g. '0 9 * * *' fell through to the "every hour"
+    // default; '0 0 * * *' fired every 24h from when it was scheduled).
+    if (!cron.validate(job.cron)) {
+      throw Errors.badRequest(`Invalid cron expression: ${job.cron}`);
+    }
 
-    const intervalId = setInterval(() => {
+    const task = cron.schedule(job.cron, () => {
       this.runJob({ ...job, id: `${job.id}_${Date.now()}` });
-    }, interval);
+    });
+    task.start(); // idempotent in node-cron v4 (no-op if already running)
 
-    this.intervals.set(job.id, intervalId);
+    this.cronTasks.set(job.id, task);
   }
 
   /**
@@ -397,41 +414,6 @@ export class EventSchedulerService {
   /**
    * Parse cron expression to interval
    */
-  private parseCronInterval(cron: string): number {
-    // Simplified cron parsing - in production, use a proper cron library
-    const parts = cron.split(' ');
-
-    // Support both 5-field (minute precision) and 6-field (second precision) cron
-    if (parts.length === 6) {
-      // Second-based cron expression
-      const secondPart = parts[0];
-      if (secondPart && secondPart.startsWith('*/')) {
-        const seconds = parseInt(secondPart.slice(2));
-        return seconds * 1000;
-      }
-      if (secondPart === '*') return 1000; // Every second
-    } else if (parts.length === 5) {
-      // Minute-based cron expression
-      const minutePart = parts[0];
-      if (minutePart && minutePart.startsWith('*/')) {
-        const minutes = parseInt(minutePart.slice(2));
-        return minutes * 60000;
-      }
-      if (minutePart === '*') return 60000; // Every minute
-
-      // For now, support simple intervals
-      if (cron === '* * * * *') return 60000; // Every minute
-      if (cron === '*/5 * * * *') return 300000; // Every 5 minutes
-      if (cron === '0 * * * *') return 3600000; // Every hour
-      if (cron === '0 0 * * *') return 86400000; // Every day
-    } else {
-      throw Errors.badRequest('Invalid cron expression');
-    }
-
-    // Default to every hour
-    return 3600000;
-  }
-
   /**
    * Generate unique job ID
    */
@@ -455,6 +437,12 @@ export class EventSchedulerService {
       clearInterval(interval);
     }
     this.intervals.clear();
+
+    // EV-1: stop all real cron tasks.
+    for (const task of this.cronTasks.values()) {
+      task.stop();
+    }
+    this.cronTasks.clear();
 
     // Clear jobs
     this.jobs.clear();

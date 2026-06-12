@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@omnitron-dev/eventemitter": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "node-cron": "^4.2.1"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"

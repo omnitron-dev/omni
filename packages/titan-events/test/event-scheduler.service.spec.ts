@@ -6,6 +6,32 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import 'reflect-metadata';
 import { EventSchedulerService } from '../src/event-scheduler.service';
 
+// EV-1: mock node-cron so we can verify the cron EXPRESSION that gets scheduled
+// and simulate fires deterministically (real node-cron's timing isn't driven by
+// vitest fake timers, unlike the old parseCronInterval→setInterval fake-cron).
+const { cronState } = vi.hoisted(() => ({
+  cronState: { tasks: [] as Array<{ expr: string; fn: () => void; started: boolean; stopped: boolean }> },
+}));
+vi.mock('node-cron', () => ({
+  validate: (expr: string) => typeof expr === 'string' && expr.trim().split(/\s+/).length >= 5,
+  schedule: (expr: string, fn: () => void) => {
+    const task = {
+      expr,
+      fn,
+      started: false,
+      stopped: false,
+      start() {
+        this.started = true;
+      },
+      stop() {
+        this.stopped = true;
+      },
+    };
+    cronState.tasks.push(task);
+    return task;
+  },
+}));
+
 describe('EventSchedulerService', () => {
   let schedulerService: EventSchedulerService;
   let mockEmitter: any;
@@ -42,6 +68,7 @@ describe('EventSchedulerService', () => {
     };
 
     schedulerService = new EventSchedulerService(mockEmitter);
+    cronState.tasks.length = 0;
     vi.useFakeTimers();
   });
 
@@ -65,30 +92,46 @@ describe('EventSchedulerService', () => {
     expect(handler).toHaveBeenCalledWith({ data: 'test' });
   });
 
-  it('should schedule recurring events', () => {
+  it('should schedule recurring events as a real node-cron task', () => {
     const handler = vi.fn();
     schedulerService.onScheduledEvent('recurring.event', handler);
 
     const jobId = schedulerService.scheduleRecurring('recurring.event', { data: 'test' }, 1000);
 
-    vi.advanceTimersByTime(3500);
+    // scheduleRecurring converts the interval to a cron expr scheduled via node-cron.
+    expect(cronState.tasks).toHaveLength(1);
+    expect(cronState.tasks[0]!.started).toBe(true);
+
+    // Simulate three cron fires → the handler receives the event each time.
+    cronState.tasks[0]!.fn();
+    cronState.tasks[0]!.fn();
+    cronState.tasks[0]!.fn();
     expect(handler).toHaveBeenCalledTimes(3);
 
+    // cancel stops the underlying cron task.
     schedulerService.cancelJob(jobId);
-    vi.advanceTimersByTime(2000);
-    expect(handler).toHaveBeenCalledTimes(3);
+    expect(cronState.tasks[0]!.stopped).toBe(true);
   });
 
-  it('should schedule cron-based events', () => {
+  it('should schedule cron-based events with the real cron expression', () => {
     const handler = vi.fn();
     schedulerService.onScheduledEvent('cron.event', handler);
 
-    // Every minute
     schedulerService.scheduleCron('cron.event', { data: 'test' }, '* * * * *');
 
-    // Simulate 3 minutes passing
-    vi.advanceTimersByTime(3 * 60 * 1000);
+    // Scheduled with the REAL cron expression (not a fixed-interval approximation).
+    expect(cronState.tasks).toHaveLength(1);
+    expect(cronState.tasks[0]!.expr).toBe('* * * * *');
+
+    cronState.tasks[0]!.fn();
+    cronState.tasks[0]!.fn();
+    cronState.tasks[0]!.fn();
     expect(handler).toHaveBeenCalledTimes(3);
+    expect(handler).toHaveBeenCalledWith({ data: 'test' });
+  });
+
+  it('rejects an invalid cron expression', () => {
+    expect(() => schedulerService.scheduleCron('bad.event', {}, 'not-a-cron')).toThrow();
   });
 
   it('should cancel scheduled jobs', () => {

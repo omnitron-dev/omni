@@ -230,8 +230,8 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
                 isFetching: false,
               });
 
-              // Update cache with RAW data (NR-3).
-              queryCache.set(query.queryKey, raw);
+              // Update cache with RAW data (NR-3) + the writer's staleTime (NR-13).
+              queryCache.set(query.queryKey, raw, query.staleTime ?? defaults.staleTime);
             }
 
             // Callbacks

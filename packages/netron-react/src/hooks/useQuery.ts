@@ -215,7 +215,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
     try {
       // Use getOrCreateFetch for deduplication
       // This ensures multiple components with the same queryKey share one network request
-      const raw = await queryCache.getOrCreateFetch<TData>(queryKey, executeFetch);
+      const raw = await queryCache.getOrCreateFetch<TData>(queryKey, executeFetch, staleTime);
       // NR-3: the shared dedup/cache holds RAW data; project for THIS observer.
       const result = projectData(raw) as TData;
 
@@ -251,7 +251,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setIsFetching(false);
       }
     }
-  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, status, projectData]);
+  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, status, projectData, staleTime]);
 
   // Refetch function
   const refetch = useCallback(async (): Promise<QueryResult<TData, TError>> => {

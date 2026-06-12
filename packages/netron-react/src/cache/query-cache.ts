@@ -32,6 +32,12 @@ interface QueryState<TData = unknown, TError = unknown> {
   dataUpdatedAt: number;
   errorUpdatedAt: number;
   isInvalidated: boolean;
+  /** NR-13: effective `staleTime` (ms) captured from the fetching/writing
+   *  observer, so `matchQueryFilters({ stale })` can compute staleness as
+   *  `now > dataUpdatedAt + staleTime` instead of the old always-true
+   *  `now > dataUpdatedAt`. `0` ⇒ immediately stale (TanStack default),
+   *  `Infinity` ⇒ never stale. Undefined (legacy/SSR entries) ⇒ treated as 0. */
+  staleTime?: number;
   fetchStatus: 'idle' | 'fetching' | 'paused';
   observers: Set<() => void>;
   /** Per-observer cacheTime hints. The cache's effective GC delay
@@ -107,6 +113,7 @@ export class QueryCache {
         dataUpdatedAt: state.dataUpdatedAt,
         errorUpdatedAt: state.errorUpdatedAt,
         isInvalidated: state.isInvalidated,
+        staleTime: state.staleTime, // NR-13
       },
     };
   }
@@ -114,7 +121,7 @@ export class QueryCache {
   /**
    * Set data in cache
    */
-  set<T>(queryKey: QueryKey, data: T): void {
+  set<T>(queryKey: QueryKey, data: T, staleTime?: number): void {
     const hash = hashQueryKey(queryKey);
     const existing = this.cache.get(hash);
 
@@ -127,6 +134,9 @@ export class QueryCache {
       dataUpdatedAt: timeUtils.now(),
       errorUpdatedAt: existing?.errorUpdatedAt ?? 0,
       isInvalidated: false,
+      // NR-13: remember the writer's staleTime (fall back to any previously
+      // known value) so the stale-filter can evaluate freshness correctly.
+      staleTime: staleTime ?? existing?.staleTime,
       fetchStatus: 'idle',
       observers: existing?.observers ?? new Set(),
     };
@@ -256,6 +266,7 @@ export class QueryCache {
           dataUpdatedAt: state.dataUpdatedAt,
           errorUpdatedAt: state.errorUpdatedAt,
           isInvalidated: state.isInvalidated,
+          staleTime: state.staleTime, // NR-13: needed by the { stale } filter
         },
       };
 
@@ -402,7 +413,11 @@ export class QueryCache {
    * Otherwise, create a new promise from fetchFn and store it.
    * The promise reference is cleaned up when settled.
    */
-  getOrCreateFetch<T>(queryKey: QueryKey, fetchFn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  getOrCreateFetch<T>(
+    queryKey: QueryKey,
+    fetchFn: (signal: AbortSignal) => Promise<T>,
+    staleTime?: number
+  ): Promise<T> {
     const hash = hashQueryKey(queryKey);
     let state = this.cache.get(hash);
 
@@ -450,6 +465,7 @@ export class QueryCache {
           currentState.status = 'success';
           currentState.dataUpdatedAt = timeUtils.now();
           currentState.isInvalidated = false;
+          if (staleTime !== undefined) currentState.staleTime = staleTime; // NR-13
           currentState.fetchStatus = 'idle';
           currentState.promise = undefined;
           currentState.abortController = undefined;

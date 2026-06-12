@@ -99,9 +99,20 @@ export function matchQueryFilters(query: Query, filters?: QueryFilters): boolean
     return false;
   }
 
-  // Filter by stale state
+  // Filter by stale state.
+  // NR-13: the old check `Date.now() > dataUpdatedAt` is ALWAYS true (now is
+  // always after the last write), so `{ stale: true }` matched EVERY query —
+  // turning a focus/reconnect `invalidateQueries({ stale: true })` into a
+  // whole-cache invalidation. Compare against the query's effective staleTime:
+  // `now > dataUpdatedAt + staleTime` (staleTime 0 ⇒ always stale, the TanStack
+  // default; Infinity ⇒ never; undefined ⇒ treated as 0). Invalidated queries
+  // are always stale.
   if (filters.stale !== undefined) {
-    const isStale = query.state.isInvalidated || Date.now() > query.state.dataUpdatedAt;
+    const staleTime = query.state.staleTime ?? 0;
+    const isStale =
+      query.state.isInvalidated ||
+      staleTime === 0 || // default: immediately stale (matches QueryCache.isStale)
+      (staleTime !== Infinity && Date.now() > query.state.dataUpdatedAt + staleTime);
     if (filters.stale !== isStale) {
       return false;
     }

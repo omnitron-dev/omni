@@ -1536,4 +1536,60 @@ describe('useQuery Integration Tests', () => {
       expect(requestCount).toBeGreaterThan(before);
     });
   });
+
+  // ============================================================================
+  // Per-observer select projection (NR-3)
+  // ============================================================================
+
+  describe('Per-observer select projection (NR-3)', () => {
+    it('two observers of one queryKey with different select each get their OWN projection (no poisoning)', async () => {
+      const { result } = renderHook(
+        () => ({
+          name: useQuery({
+            queryKey: ['user', '1'],
+            queryFn: () => client.invoke('user', 'getUser', ['1']),
+            select: (u: any) => u.name as string,
+          }),
+          email: useQuery({
+            queryKey: ['user', '1'],
+            queryFn: () => client.invoke('user', 'getUser', ['1']),
+            select: (u: any) => u.email as string,
+          }),
+        }),
+        { wrapper }
+      );
+
+      await waitFor(() => {
+        expect(result.current.name.isSuccess).toBe(true);
+        expect(result.current.email.isSuccess).toBe(true);
+      });
+
+      // Each observer projects the SAME shared/deduped raw entry through its own
+      // select — neither poisons the other (pre-NR-3 the cache held whichever
+      // observer fetched first, so both saw the same wrong projection).
+      expect(result.current.name.data).toBe('Alice');
+      expect(result.current.email.data).toBe('alice@example.com');
+      // ...and the underlying fetch was deduplicated to a single network call.
+      expect(requestCount).toBe(1);
+    });
+
+    it('stores RAW data in the shared cache, not the projected value', async () => {
+      const { result } = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '2'],
+            queryFn: () => client.invoke('user', 'getUser', ['2']),
+            select: (u: any) => u.name as string,
+          }),
+        { wrapper }
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toBe('Bob'); // projected for THIS observer
+
+      // The shared cache retains the RAW object, not the 'Bob' projection.
+      const rawCached = client.getQueryCache().get(['user', '2']);
+      expect(rawCached).toEqual({ id: '2', name: 'Bob', email: 'bob@example.com' });
+    });
+  });
 });

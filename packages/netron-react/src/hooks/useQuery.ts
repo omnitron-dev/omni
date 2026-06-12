@@ -62,6 +62,22 @@ export function useQuery<TData = unknown, TError = NetronError>(
     initialDataUpdatedAt,
   } = options;
 
+  // NR-3: `select` is a PER-OBSERVER projection — it must NOT be baked into the
+  // SHARED QueryCache. Two observers of the same queryKey with different
+  // `select`s would otherwise poison each other (the cache would hold whichever
+  // observer fetched first), and a cache read would double-apply `select`. So we
+  // cache RAW query data and project it for THIS observer at every read. A ref
+  // keeps the projector stable so the cache-subscription effect never
+  // re-subscribes when an inline `select` changes identity, while always using
+  // the latest `select`.
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  const projectData = useCallback(
+    (raw: TData | undefined): TData | undefined =>
+      raw !== undefined && selectRef.current ? (selectRef.current(raw) as TData) : raw,
+    [],
+  );
+
   // Note: per-query `cacheTime` is wired through the subscribe
   // call below as a per-observer hint (see QueryCache.subscribe).
 
@@ -81,7 +97,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
   );
 
   const [data, setData] = useState<TData | undefined>(() => {
-    if (cachedQueryOnInit?.state.data !== undefined) return cachedQueryOnInit.state.data;
+    // NR-3: the shared cache holds RAW data — project it through this observer's select.
+    if (cachedQueryOnInit?.state.data !== undefined) return projectData(cachedQueryOnInit.state.data);
 
     if (initialData !== undefined) {
       return typeof initialData === 'function' ? (initialData as () => TData)() : initialData;
@@ -154,13 +171,10 @@ export function useQuery<TData = unknown, TError = NetronError>(
             signal,
           };
 
+          // NR-3: return RAW data. `select` is a per-observer projection applied
+          // via projectData, NOT here — so the deduped/cached value stays raw and
+          // cannot poison observers that use a different `select`.
           result = await queryFn(context);
-
-          // Apply selector if provided
-          if (select) {
-            result = select(result) as TData;
-          }
-
           return result;
         } catch (err) {
           lastError = err as TError;
@@ -186,7 +200,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
       // All retries failed
       throw lastError;
     },
-    [queryKey, queryFn, retry, retryDelay, select]
+    // NR-3: `select` intentionally removed — executeFetch produces raw data only.
+    [queryKey, queryFn, retry, retryDelay]
   );
 
   // Fetch function using deduplication
@@ -200,7 +215,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
     try {
       // Use getOrCreateFetch for deduplication
       // This ensures multiple components with the same queryKey share one network request
-      const result = await queryCache.getOrCreateFetch<TData>(queryKey, executeFetch);
+      const raw = await queryCache.getOrCreateFetch<TData>(queryKey, executeFetch);
+      // NR-3: the shared dedup/cache holds RAW data; project for THIS observer.
+      const result = projectData(raw) as TData;
 
       // Update local state if still mounted and current fetch
       if (isMounted.current && currentFetch === fetchCount.current) {
@@ -234,7 +251,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setIsFetching(false);
       }
     }
-  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, status]);
+  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, status, projectData]);
 
   // Refetch function
   const refetch = useCallback(async (): Promise<QueryResult<TData, TError>> => {
@@ -299,8 +316,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
         // Error already handled in fetchData
       });
     } else if (cached !== undefined && data === undefined) {
-      // Sync from cache
-      setData(cached);
+      // Sync from cache (NR-3: project the raw shared entry through this observer's select).
+      setData(projectData(cached));
       setStatus('success');
     }
   }, [queryKeyHash, enabled, isHydrating]);
@@ -329,7 +346,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
           return;
         }
         const s = query.state;
-        setData(s.data);
+        setData(projectData(s.data)); // NR-3: project the raw shared entry per-observer
         setError(s.error);
         setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
         setDataUpdatedAt(s.dataUpdatedAt);

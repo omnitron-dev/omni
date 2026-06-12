@@ -53,13 +53,24 @@ interface QueryState<TData, TError> {
 }
 
 /**
+ * NR-3: `select` is a PER-QUERY projection — the SHARED QueryCache must hold RAW
+ * data so two observers of the same key with different `select`s don't poison
+ * each other (and a cache read doesn't double-apply `select`). Project the raw
+ * cache/fetch value for THIS query here; the cache itself always stores raw.
+ */
+function projectQueryData(query: QueriesOptions<any, any>, raw: unknown): unknown {
+  return raw !== undefined && query.select ? query.select(raw as never) : raw;
+}
+
+/**
  * Create initial state for a query
  */
 function createInitialState<TData, TError>(
   query: QueriesOptions<TData, TError>,
   cached: TData | undefined
 ): QueryState<TData, TError> {
-  let initialData = cached;
+  // NR-3: the shared cache holds RAW data — project it for this query.
+  let initialData = projectQueryData(query, cached) as TData | undefined;
   if (initialData === undefined && query.initialData !== undefined) {
     initialData = typeof query.initialData === 'function' ? (query.initialData as () => TData)() : query.initialData;
   }
@@ -203,12 +214,10 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
               throw new Error('Query was cancelled');
             }
 
-            result = await query.queryFn(context);
-
-            // Apply selector if provided
-            if (query.select) {
-              result = query.select(result as never);
-            }
+            const raw = await query.queryFn(context);
+            // NR-3: project for THIS query; the SHARED cache keeps RAW data so
+            // observers with a different `select` aren't poisoned.
+            result = projectQueryData(query, raw);
 
             // Update state if still mounted and current fetch
             if (isMounted.current && currentFetch === fetchCounts.current[index]) {
@@ -221,8 +230,8 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
                 isFetching: false,
               });
 
-              // Update cache
-              queryCache.set(query.queryKey, result);
+              // Update cache with RAW data (NR-3).
+              queryCache.set(query.queryKey, raw);
             }
 
             // Callbacks
@@ -345,9 +354,9 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
       if (needsFetch) {
         fetchPromises.push(fetchQuery(index));
       } else if (cached !== undefined && states[index]?.data === undefined) {
-        // Sync from cache
+        // Sync from cache (NR-3: project the raw shared entry for this query).
         updateState(index, {
-          data: cached,
+          data: projectQueryData(query, cached),
           status: 'success',
         });
       }
@@ -367,7 +376,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
       client.getQueryCache().subscribe(query.queryKey, () => {
         const cached = client.getQueryCache().get(query.queryKey);
         if (cached !== undefined) {
-          updateState(index, { data: cached });
+          updateState(index, { data: projectQueryData(query, cached) }); // NR-3: project per-query
         }
       })
     );

@@ -412,6 +412,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           ...(optsPolicyEngine ? { policyEngine: optsPolicyEngine } : {}),
           authorizationManager: resolvedAuthorizationManager,
           logger: peer.logger,
+          // SEC-2: mirror the wire path's opt-in default-deny on HTTP so the two
+          // transports share one fail-closed posture.
+          defaultDeny: netron?.options?.authDefaultDeny ?? false,
         }),
         { name: 'netron-auth', priority: 20 },
         MiddlewareStage.PRE_INVOKE

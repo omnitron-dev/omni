@@ -39,7 +39,7 @@ import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
-import { enforceMethodAuthorization } from './auth/method-authorization.js';
+import { enforceMethodAuthorization, readMethodMetadata } from './auth/method-authorization.js';
 
 /**
  * Security constants for input validation in packet handlers.
@@ -1354,6 +1354,34 @@ export class RemotePeer extends AbstractPeer {
       logger: this.logger,
       transport: 'netron',
     });
+
+    // (3) SEC-2 opt-in default-deny. A method that reaches this point was gated
+    // by NEITHER a registered ACL (step 1 passed because none matched) NOR a
+    // `@Public({ auth })` decorator (step 2 returned early because none was
+    // present) — it carries NO access-control decision at all. Historically
+    // that means "allow": any peer holding the service's definition id can
+    // invoke it, including non-`@Public` instance methods, because the stub
+    // dispatches by name with no public-surface whitelist. Deployments that opt
+    // into `authDefaultDeny` fail closed here instead. Methods that declared a
+    // gate already returned/threw above on their own terms, so they are
+    // unaffected (a bare `@Public()` with no `auth` key is intentionally denied:
+    // under this posture exposure must be explicit — `@Public({ auth: false })`
+    // / `{ allowAnonymous: true }` / an ACL).
+    if (netron.options?.authDefaultDeny) {
+      const hasAcl = authzManager?.hasACL(serviceName) ?? false;
+      const hasDecoratorAuth =
+        readMethodMetadata(stub?.instance as object | undefined, methodName)?.auth !== undefined;
+      if (!hasAcl && !hasDecoratorAuth) {
+        this.logger.warn(
+          { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
+          'Method access denied by default-deny policy (no ACL, no @Public auth gate)',
+        );
+        throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
+          service: serviceName,
+          method: methodName,
+        });
+      }
+    }
   }
 
   /**

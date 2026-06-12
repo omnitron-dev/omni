@@ -300,9 +300,13 @@ export class LocalPeer extends AbstractPeer {
    * @returns {Definition} The definition of the referenced service.
    * @throws {Error} If the service instance is invalid or if metadata cannot be retrieved.
    */
-  refService(instance: any, parentDef: Definition) {
+  refService(instance: any, parentDef: Definition, callerPeerId?: string) {
     const existingStub = this.serviceInstances.get(instance);
     if (existingStub) {
+      // SEC-5: a second remote caller reaching the SAME deduped dynamic stub
+      // must still record its own reference, so a later unref by one peer does
+      // not evict the stub out from under the other.
+      if (callerPeerId) existingStub.addRef(callerPeerId);
       return existingStub.definition;
     }
 
@@ -314,6 +318,7 @@ export class LocalPeer extends AbstractPeer {
     stub.definition.parentId = parentDef.id;
     this.serviceInstances.set(instance, stub);
     this.stubs.set(stub.definition.id, stub);
+    if (callerPeerId) stub.addRef(callerPeerId); // SEC-5
     return stub.definition;
   }
 
@@ -323,16 +328,42 @@ export class LocalPeer extends AbstractPeer {
    *
    * @param {string} [defId] - The definition ID of the service to unreference.
    */
-  unrefService(defId?: string) {
-    if (defId) {
-      const stub = this.stubs.get(defId);
-      if (stub) {
-        this.serviceInstances.delete(stub.instance);
+  unrefService(defId?: string, callerPeerId?: string) {
+    if (!defId) return;
+    const stub = this.stubs.get(defId);
+    if (!stub) return;
 
-        if (!this.netron.services.has(getQualifiedName(stub.definition.meta.name, stub.definition.meta.version))) {
-          this.stubs.delete(stub.definition.id);
-        }
+    const isPublic = this.netron.services.has(
+      getQualifiedName(stub.definition.meta.name, stub.definition.meta.version)
+    );
+
+    // SEC-5: a REMOTE `unref_service` (callerPeerId set) may release ONLY its
+    // own reference, and the shared dynamic stub is evicted only once no peer
+    // references it. A peer that never referenced this defId cannot evict it —
+    // closing the cross-peer eviction DoS. Public (exposed) services are never
+    // evicted by unref regardless (their lifecycle is exposeService/unexpose).
+    if (callerPeerId) {
+      const held = stub.releaseRef(callerPeerId);
+      if (!held) {
+        this.logger.warn(
+          { defId, callerPeerId },
+          'unref_service: peer released a defId it never referenced — ignored (SEC-5)'
+        );
+        return;
       }
+      if (isPublic || stub.totalRefs() > 0) return;
+      this.serviceInstances.delete(stub.instance);
+      this.stubs.delete(stub.definition.id);
+      return;
+    }
+
+    // LOCAL authoritative release (no caller peer): unexposeService / local
+    // releaseInterface. Drop the per-instance mapping and evict the stub unless
+    // it is a public (exposed) service — the parent is being torn down, so any
+    // outstanding remote refs to this dynamic stub are intentionally discarded.
+    this.serviceInstances.delete(stub.instance);
+    if (!isPublic) {
+      this.stubs.delete(stub.definition.id);
     }
   }
 

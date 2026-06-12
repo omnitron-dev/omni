@@ -37,14 +37,16 @@ describe('unref-service core task', () => {
     }
   });
 
-  it('should delegate to peer.netron.peer.unrefService', () => {
+  it('should delegate to peer.netron.peer.unrefService with the CALLING peer id (SEC-5)', () => {
     const defId = 'service-def-123';
 
     const unrefServiceSpy = vi.spyOn(netron.peer, 'unrefService').mockReturnValue(undefined);
 
     unref_service(remotePeer, defId);
 
-    expect(unrefServiceSpy).toHaveBeenCalledWith(defId);
+    // SEC-5: the calling peer's id is threaded so unrefService can release only
+    // this peer's reference to a shared dynamic stub.
+    expect(unrefServiceSpy).toHaveBeenCalledWith(defId, 'remote-peer-id');
     expect(unrefServiceSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -67,8 +69,8 @@ describe('unref-service core task', () => {
     unref_service(remotePeer, defId1);
     unref_service(remotePeer, defId2);
 
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, defId1);
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, defId2);
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, defId1, 'remote-peer-id');
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, defId2, 'remote-peer-id');
     expect(unrefServiceSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -81,8 +83,8 @@ describe('unref-service core task', () => {
     unref_service(remotePeer, defId);
 
     expect(unrefServiceSpy).toHaveBeenCalledTimes(2);
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, defId);
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, defId);
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, defId, 'remote-peer-id');
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, defId, 'remote-peer-id');
   });
 
   it('should handle UUIDs and complex IDs', () => {
@@ -94,8 +96,8 @@ describe('unref-service core task', () => {
     unref_service(remotePeer, uuid);
     unref_service(remotePeer, complexId);
 
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, uuid);
-    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, complexId);
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(1, uuid, 'remote-peer-id');
+    expect(unrefServiceSpy).toHaveBeenNthCalledWith(2, complexId, 'remote-peer-id');
     expect(unrefServiceSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -104,7 +106,7 @@ describe('unref-service core task', () => {
 
     unref_service(remotePeer, '');
 
-    expect(unrefServiceSpy).toHaveBeenCalledWith('');
+    expect(unrefServiceSpy).toHaveBeenCalledWith('', 'remote-peer-id');
     expect(unrefServiceSpy).toHaveBeenCalledTimes(1);
   });
 });

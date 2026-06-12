@@ -374,7 +374,7 @@ describe('LocalPeer', () => {
     expect(peer.netron.services.size).toBe(1);
     expect(peer.stubs.size).toBe(3);
 
-    peer.unexposeService('service3');
+    await peer.unexposeService('service3');
     expect(peer.netron.services.size).toBe(0);
     expect(peer.stubs.size).toBe(0);
   });

@@ -63,6 +63,18 @@ export class NetronWritableStream extends Writable {
   private isClosed: boolean = false;
 
   /**
+   * WIRE-11: set when a graceful `_final` has claimed the close signal (the EOS
+   * final-chunk). While set, a racing/subsequent `destroy()` still tears the
+   * stream down but must NOT ALSO emit a STREAM_CLOSE packet — the EOS chunk is
+   * the close signal and the two are mutually exclusive on the wire. Crucially,
+   * unlike `isClosed`, this does NOT make `destroy()` bail on its guard: if the
+   * final-chunk send FAILS, the `destroy(err)` Node triggers from our `_final`
+   * error callback must still run `super.destroy()` so 'error'/'close' fire
+   * (otherwise the stream hangs forever, never emitting 'close').
+   */
+  private finalizing: boolean = false;
+
+  /**
    * Creates a new NetronWritableStream instance.
    *
    * @constructor
@@ -173,12 +185,15 @@ export class NetronWritableStream extends Writable {
       return;
     }
 
-    // WIRE-11: claim teardown BEFORE the async final-chunk send. The EOS chunk
-    // (this graceful path) and the STREAM_CLOSE packet (destroy()) are mutually
-    // exclusive wire signals; setting `isClosed` up front means a destroy()
-    // racing this in-flight send bails out instead of ALSO emitting a
-    // STREAM_CLOSE — i.e. the peer never sees both a final chunk and a close.
-    this.isClosed = true;
+    // WIRE-11: claim the graceful close signal BEFORE the async final-chunk
+    // send, so a destroy() racing this in-flight send does NOT also emit a
+    // STREAM_CLOSE packet (the EOS chunk IS the close signal; the two are
+    // mutually exclusive on the wire). We set `finalizing` — NOT `isClosed` —
+    // deliberately: if the final-chunk send FAILS, the destroy(err) Node
+    // triggers from the error callback below must still run `super.destroy()`
+    // and emit 'error'/'close'. Setting `isClosed` here would make destroy()
+    // bail on its guard and the stream would hang, never emitting 'close'.
+    this.finalizing = true;
 
     this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Sending final chunk');
     this.peer
@@ -232,18 +247,23 @@ export class NetronWritableStream extends Writable {
     // Immediately call super.destroy to set the destroyed property and emit error if needed
     super.destroy(error);
 
-    // Send explicit close packet for immediate notification (best effort)
-    const closeReason = error ? error.message : 'Stream destroyed';
-    this.peer
-      .sendPacket(
-        createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
-          streamId: this.id,
-          reason: closeReason,
-        })
-      )
-      .catch((sendError) => {
-        this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send stream close packet');
-      });
+    // Send explicit close packet for immediate notification (best effort) —
+    // UNLESS a graceful `_final` already claimed the close signal via the EOS
+    // final-chunk (WIRE-11). Emitting both an EOS chunk and a STREAM_CLOSE would
+    // show the peer a double teardown; they are mutually exclusive wire signals.
+    if (!this.finalizing) {
+      const closeReason = error ? error.message : 'Stream destroyed';
+      this.peer
+        .sendPacket(
+          createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
+            streamId: this.id,
+            reason: closeReason,
+          })
+        )
+        .catch((sendError) => {
+          this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send stream close packet');
+        });
+    }
 
     return this;
   }

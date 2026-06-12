@@ -12,6 +12,7 @@ import {
   isRetryableError,
   getErrorName,
   getDefaultMessage,
+  toHttpStatus,
 } from '../../src/errors/codes.js';
 
 describe('Error Codes', () => {
@@ -209,6 +210,22 @@ describe('Error Codes', () => {
 
     it('should handle special codes', () => {
       expect(getDefaultMessage(418)).toBe("I'm a teapot");
+    });
+  });
+
+  describe('toHttpStatus() (XC-3)', () => {
+    it('maps standard HTTP codes to themselves', () => {
+      expect(toHttpStatus(ErrorCode.BAD_REQUEST)).toBe(400);
+      expect(toHttpStatus(ErrorCode.NOT_FOUND)).toBe(404);
+      expect(toHttpStatus(ErrorCode.INTERNAL_SERVER_ERROR)).toBe(500);
+      expect(toHttpStatus(ErrorCode.SERVICE_UNAVAILABLE)).toBe(503);
+    });
+
+    it('maps custom Titan codes (600/601) to 500 — not invalid HTTP statuses', () => {
+      expect(toHttpStatus(ErrorCode.MULTIPLE_ERRORS)).toBe(500); // 600 → 500
+      expect(toHttpStatus(ErrorCode.UNKNOWN_ERROR)).toBe(500); // 601 → 500
+      expect(toHttpStatus(700)).toBe(500); // any out-of-range code
+      expect(toHttpStatus(0)).toBe(500);
     });
   });
 });

@@ -114,6 +114,19 @@ export function isServerError(code: ErrorCode | number): boolean {
 }
 
 /**
+ * Map an error code to a VALID HTTP status (XC-3).
+ *
+ * Standard codes (100–599) map to themselves; the custom Titan codes
+ * (`MULTIPLE_ERRORS` = 600, `UNKNOWN_ERROR` = 601) and anything outside the HTTP
+ * range fall back to 500 — 600/601 are NOT valid HTTP statuses and previously
+ * leaked straight out of `TitanError.httpStatus` (and any HTTP response built
+ * from it).
+ */
+export function toHttpStatus(code: ErrorCode | number): number {
+  return code >= 100 && code < 600 ? code : 500;
+}
+
+/**
  * Check if an error is retryable based on its code
  */
 export function isRetryableError(code: ErrorCode | number): boolean {

@@ -17,18 +17,6 @@
 import { Container } from './container.js';
 
 // ============================================================================
-// Experimental Features - Service Mesh
-// ============================================================================
-
-/**
- * Service Mesh integration for service discovery, load balancing, and distributed communication.
- *
- * @experimental
- * @since 0.1.0
- */
-export * from './mesh.js';
-
-// ============================================================================
 // Experimental Features - Tracing
 // ============================================================================
 
@@ -292,7 +280,6 @@ export const NEXUS_FEATURES = {
  * Phase 3 features are available but require separate imports:
  *
  * - Decorators: import from '@nexus/decorators'
- * - Service Mesh: import from '@nexus/mesh'
  * - Tracing: import from '@nexus/tracing'
  * - DevTools: import from '@nexus/devtools'
  */

@@ -11,6 +11,26 @@ function createMockOrchestrator(logsData: Array<{ app: string; lines: string[] }
   } as unknown as OrchestratorService;
 }
 
+/**
+ * Reads a log file once the async write stream has flushed. appendToFile writes
+ * via createWriteStream (flushed by dispose()), so a fixed sleep is flaky under
+ * load — poll until the expected content lands instead.
+ */
+async function readWhenReady(file: string, expected: string, timeoutMs = 2000): Promise<string> {
+  const start = Date.now();
+  let last = '';
+  while (Date.now() - start < timeoutMs) {
+    try {
+      last = fs.readFileSync(file, 'utf-8');
+      if (last === expected) return last;
+    } catch {
+      /* file not created yet */
+    }
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  return last;
+}
+
 describe('LogManager', () => {
   let tmpDir: string;
   let config: LogManagerConfig;
@@ -68,57 +88,61 @@ describe('LogManager', () => {
     });
   });
 
+  // Per-app log layout is now {baseDir}/logs/{app}/app.log (was a flat {app}.log).
   describe('appendToFile', () => {
-    it('creates and appends to log file', () => {
+    it('creates and appends to log file', async () => {
       const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('main', 'hello world');
       lm.appendToFile('main', 'second line');
+      lm.dispose(); // flush + close the async write streams before reading
 
-      const content = fs.readFileSync(path.join(tmpDir, 'main.log'), 'utf-8');
+      const content = await readWhenReady(path.join(tmpDir, 'logs', 'main', 'app.log'), 'hello world\nsecond line\n');
       expect(content).toBe('hello world\nsecond line\n');
     });
 
-    it('creates separate files per app', () => {
+    it('creates separate files per app', async () => {
       const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('main', 'main log');
       lm.appendToFile('storage', 'storage log');
+      lm.dispose();
 
-      expect(fs.existsSync(path.join(tmpDir, 'main.log'))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, 'storage.log'))).toBe(true);
+      expect(await readWhenReady(path.join(tmpDir, 'logs', 'main', 'app.log'), 'main log\n')).toBe('main log\n');
+      expect(await readWhenReady(path.join(tmpDir, 'logs', 'storage', 'app.log'), 'storage log\n')).toBe('storage log\n');
     });
   });
 
   describe('getLogFilePath', () => {
     it('returns correct path', () => {
       const lm = new LogManager(config, createMockOrchestrator());
-      expect(lm.getLogFilePath('main')).toBe(path.join(tmpDir, 'main.log'));
+      expect(lm.getLogFilePath('main')).toBe(path.join(tmpDir, 'logs', 'main', 'app.log'));
     });
   });
 
   describe('rotateLog', () => {
     it('rotates current log to .1', () => {
       const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
-      const logFile = path.join(tmpDir, 'main.log');
+      const logFile = lm.getLogFilePath('main'); // also creates the logs/main/ dir
       fs.writeFileSync(logFile, 'original content');
 
       lm.rotateLog('main');
 
-      expect(fs.existsSync(logFile)).toBe(false);
-      expect(fs.readFileSync(path.join(tmpDir, 'main.log.1'), 'utf-8')).toBe('original content');
+      // The current file is recreated empty (so the write stream can keep going);
+      // the content is what moved to .1.
+      expect(fs.readFileSync(logFile, 'utf-8')).toBe('');
+      expect(fs.readFileSync(`${logFile}.1`, 'utf-8')).toBe('original content');
     });
 
     it('cascades rotation: .1 -> .2, current -> .1', () => {
       const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
-      const logFile = path.join(tmpDir, 'main.log');
+      const logFile = lm.getLogFilePath('main');
 
-      // Create .1 file
-      fs.writeFileSync(path.join(tmpDir, 'main.log.1'), 'old content');
+      fs.writeFileSync(`${logFile}.1`, 'old content');
       fs.writeFileSync(logFile, 'current content');
 
       lm.rotateLog('main');
 
-      expect(fs.readFileSync(path.join(tmpDir, 'main.log.1'), 'utf-8')).toBe('current content');
-      expect(fs.readFileSync(path.join(tmpDir, 'main.log.2'), 'utf-8')).toBe('old content');
+      expect(fs.readFileSync(`${logFile}.1`, 'utf-8')).toBe('current content');
+      expect(fs.readFileSync(`${logFile}.2`, 'utf-8')).toBe('old content');
     });
   });
 
@@ -130,12 +154,13 @@ describe('LogManager', () => {
 
     it('returns current and rotated files', () => {
       const lm = new LogManager(config, createMockOrchestrator());
-      fs.writeFileSync(path.join(tmpDir, 'main.log'), 'current');
-      fs.writeFileSync(path.join(tmpDir, 'main.log.1'), 'rotated1');
+      const logFile = lm.getLogFilePath('main');
+      fs.writeFileSync(logFile, 'current');
+      fs.writeFileSync(`${logFile}.1`, 'rotated1');
 
       const files = lm.getRotatedFiles('main');
       expect(files).toHaveLength(2);
-      expect(files[0]).toContain('main.log');
+      expect(files[0]).toContain('app.log');
     });
   });
 

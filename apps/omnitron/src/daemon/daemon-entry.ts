@@ -12,7 +12,7 @@ import { defineEcosystem } from '../config/define-ecosystem.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
-import { readSavedDaemonConfig } from '../commands/up.js';
+import { readSavedDaemonConfig, ensurePersistedJwtSecret } from '../commands/up.js';
 import { getEnv } from '../shared/env-config.js';
 
 /** Load config from a registry config path, falling back to CWD or defaults */
@@ -40,15 +40,22 @@ async function main() {
   const configPath = projectName ? registry.getConfigPath(projectName) : null;
   const config = await loadConfigSafe(configPath, cwd);
 
-  // Read saved daemon config for role/master settings
+  // Read saved daemon config for role/master settings.
   const savedConfig = readSavedDaemonConfig();
-  const dc = savedConfig
-    ? {
-        ...DEFAULT_DAEMON_CONFIG,
-        role: savedConfig.role,
-        ...(savedConfig.master ? { master: savedConfig.master } : {}),
-      }
-    : DEFAULT_DAEMON_CONFIG;
+  // Resolve (and on first boot generate+persist) the JWT signing secret so the
+  // console's sessions survive daemon restarts instead of 401-ing every RPC.
+  // An explicit env/config-supplied secret still wins in daemon.module.ts.
+  const jwtSecret = ensurePersistedJwtSecret();
+  const dc = {
+    ...DEFAULT_DAEMON_CONFIG,
+    ...(savedConfig
+      ? {
+          role: savedConfig.role,
+          ...(savedConfig.master ? { master: savedConfig.master } : {}),
+        }
+      : {}),
+    auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },
+  };
 
   const daemon = new OmnitronDaemon();
   await daemon.start(config, {

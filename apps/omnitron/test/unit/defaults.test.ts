@@ -5,6 +5,7 @@ import {
   DAEMON_SERVICE_ID,
   DEFAULT_PORTS,
   DEFAULT_ECOSYSTEM,
+  DEFAULT_DAEMON_CONFIG,
 } from '../../src/config/defaults.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,7 +20,8 @@ describe('Defaults', () => {
   });
 
   it('DAEMON_SERVICE_ID has correct format', () => {
-    expect(DAEMON_SERVICE_ID).toBe('OmnitronDaemon@1.0.0');
+    // Service naming carries no version suffix (project decision: unversioned Titan service ids).
+    expect(DAEMON_SERVICE_ID).toBe('OmnitronDaemon');
   });
 
   it('DEFAULT_PORTS covers all 5 apps', () => {
@@ -51,17 +53,17 @@ describe('Defaults', () => {
     expect(DEFAULT_ECOSYSTEM.logging.maxSize).toBe('50mb');
     expect(DEFAULT_ECOSYSTEM.logging.maxFiles).toBe(10);
     expect(DEFAULT_ECOSYSTEM.logging.compress).toBe(true);
-    expect(DEFAULT_ECOSYSTEM.logging.format).toBe('json');
+    // `format` was removed from the ecosystem logging shape; `level` replaced it.
+    expect(DEFAULT_ECOSYSTEM.logging.level).toBe('info');
   });
 
-  it('DEFAULT_ECOSYSTEM has correct daemon defaults', () => {
-    expect(DEFAULT_ECOSYSTEM.daemon.port).toBe(9700);
-    expect(DEFAULT_ECOSYSTEM.daemon.host).toBe('127.0.0.1');
-    expect(DEFAULT_ECOSYSTEM.daemon.pidFile).toContain('.omnitron');
-    expect(DEFAULT_ECOSYSTEM.daemon.stateFile).toContain('.omnitron');
-  });
-
-  it('DEFAULT_ECOSYSTEM env is development', () => {
-    expect(DEFAULT_ECOSYSTEM.env).toBe('development');
+  it('DEFAULT_DAEMON_CONFIG has correct daemon defaults', () => {
+    // Daemon settings moved out of the project ecosystem config into the
+    // dedicated DEFAULT_DAEMON_CONFIG (the daemon manages its own paths/ports).
+    expect(DEFAULT_DAEMON_CONFIG.port).toBe(9700);
+    // Daemon binds all interfaces by design (slave nodes / nginx reach it).
+    expect(DEFAULT_DAEMON_CONFIG.host).toBe('0.0.0.0');
+    expect(DEFAULT_DAEMON_CONFIG.pidFile).toContain('.omnitron');
+    expect(DEFAULT_DAEMON_CONFIG.stateFile).toContain('.omnitron');
   });
 });

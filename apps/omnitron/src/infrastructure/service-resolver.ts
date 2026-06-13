@@ -503,8 +503,13 @@ export function resolveOmnitronNginx(options?: {
     // base image, so the previous CMD-SHELL test was permanently
     // unhealthy on a vanilla alpine nginx until someone bind-mounted curl
     // in. wget is always present.
+    //
+    // Probe 127.0.0.1 (not `localhost`): musl resolves `localhost` to ::1
+    // first, but nginx only `listen 80;` on IPv4, so an IPv6 probe gets
+    // ECONNREFUSED and the container is reported permanently unhealthy even
+    // though the console is serving fine over IPv4.
     healthCheck: {
-      test: ['CMD-SHELL', 'wget -q --spider http://localhost/ || exit 1'],
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1/ || exit 1'],
       interval: '10s',
       timeout: '5s',
       retries: 3,

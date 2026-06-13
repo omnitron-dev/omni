@@ -35,9 +35,12 @@ function mkStubs() {
   return { metrics, bridge };
 }
 
+// Bind an OS-assigned ephemeral port (0) — every server then reports its real
+// port via start(). The previous worker-id + random-offset scheme collided when
+// vitest ran files in parallel (JEST_WORKER_ID is unset under vitest, so every
+// file drew from the same 25_000-25_180 range), making the suite flaky.
 function basePort() {
-  const w = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  return 25_000 + (w - 1) * 200 + Math.floor(Math.random() * 180);
+  return 0;
 }
 
 async function get(port: number, path: string, headers?: Record<string, string>): Promise<{ status: number; body: string }> {

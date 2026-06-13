@@ -15,6 +15,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { log, spinner, select, isCancel } from '@xec-sh/kit';
@@ -40,6 +41,11 @@ export interface SavedDaemonConfig {
   initializedAt: string;
   /** Whether to auto-start webapp (Console UI) with daemon. Set via `omnitron up --webapp`. */
   webapp?: boolean;
+  /**
+   * Daemon auth settings. `jwtSecret` is generated once and persisted so the
+   * console's JWT sessions survive daemon restarts (see ensurePersistedJwtSecret).
+   */
+  auth?: { jwtSecret: string };
 }
 
 const DAEMON_CONFIG_PATH = path.join(OMNITRON_HOME, 'config.json');
@@ -55,7 +61,33 @@ export function readSavedDaemonConfig(): SavedDaemonConfig | null {
 
 export function writeSavedDaemonConfig(config: SavedDaemonConfig): void {
   fs.mkdirSync(OMNITRON_HOME, { recursive: true });
-  fs.writeFileSync(DAEMON_CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  // 0600 — the file now carries the JWT signing secret, so keep it owner-only.
+  fs.writeFileSync(DAEMON_CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 });
+  try {
+    fs.chmodSync(DAEMON_CONFIG_PATH, 0o600); // tighten perms even if the file pre-existed world-readable
+  } catch {
+    /* best-effort on platforms without chmod semantics */
+  }
+}
+
+/**
+ * Read the daemon's persisted JWT signing secret, generating and storing a
+ * random 32-byte one on first use.
+ *
+ * Without this the secret falls back to a hardcoded dev constant (or, in
+ * production, the daemon refuses to boot). Persisting a per-install secret
+ * keeps console sessions (rows in `omnitron_sessions`) valid across daemon
+ * restarts — otherwise every `/netron/invoke` 401s after a restart and the
+ * operator is silently logged out.
+ */
+export function ensurePersistedJwtSecret(): string {
+  const existing = readSavedDaemonConfig();
+  if (existing?.auth?.jwtSecret) return existing.auth.jwtSecret;
+  const jwtSecret = randomBytes(32).toString('hex');
+  const base: SavedDaemonConfig =
+    existing ?? { role: 'master', initialized: true, initializedAt: new Date().toISOString() };
+  writeSavedDaemonConfig({ ...base, auth: { ...existing?.auth, jwtSecret } });
+  return jwtSecret;
 }
 
 // =============================================================================

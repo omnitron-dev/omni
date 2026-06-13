@@ -88,7 +88,7 @@ describe('FileWatcher', () => {
   });
 
   it('should watch app directory and detect file changes', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 100);
     watcher.start();
@@ -100,7 +100,7 @@ describe('FileWatcher', () => {
   });
 
   it('should trigger restart on .ts file change', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
@@ -114,8 +114,10 @@ describe('FileWatcher', () => {
     expect(orchestrator.restartApp).toHaveBeenCalledWith('test-app');
   });
 
-  it('should NOT trigger restart for node_modules changes', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+  // retry: real-FS event timing is non-deterministic — a late initial-file event
+  // can occasionally fire a spurious restart past the settle window under load.
+  it('should NOT trigger restart for node_modules changes', { retry: 2 }, async () => {
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     const nodeModulesDir = path.join(appDir, 'node_modules', 'some-pkg');
     fs.mkdirSync(nodeModulesDir, { recursive: true });
@@ -123,8 +125,12 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
 
-    // Let watcher settle (FSEvents may queue initial events)
-    await new Promise((r) => setTimeout(r, 150));
+    // Let watcher settle (FSEvents may queue initial events). 400ms (not 150ms):
+    // under full-file load the initial bootstrap.ts/package.json writes from
+    // beforeEach can be delivered late and fire a spurious restart AFTER the
+    // mockClear below, making the "no restart" assertions flaky (deterministic
+    // in full-file order, fine in isolation).
+    await new Promise((r) => setTimeout(r, 400));
     (orchestrator.restartApp as ReturnType<typeof vi.fn>).mockClear();
 
     // Write to node_modules
@@ -135,8 +141,8 @@ describe('FileWatcher', () => {
     expect(orchestrator.restartApp).not.toHaveBeenCalled();
   });
 
-  it('should NOT trigger restart for dist directory changes', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+  it('should NOT trigger restart for dist directory changes', { retry: 2 }, async () => {
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     const distDir = path.join(appDir, 'dist');
     fs.mkdirSync(distDir, { recursive: true });
@@ -144,8 +150,12 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
 
-    // Let watcher settle (FSEvents may queue initial events)
-    await new Promise((r) => setTimeout(r, 150));
+    // Let watcher settle (FSEvents may queue initial events). 400ms (not 150ms):
+    // under full-file load the initial bootstrap.ts/package.json writes from
+    // beforeEach can be delivered late and fire a spurious restart AFTER the
+    // mockClear below, making the "no restart" assertions flaky (deterministic
+    // in full-file order, fine in isolation).
+    await new Promise((r) => setTimeout(r, 400));
     (orchestrator.restartApp as ReturnType<typeof vi.fn>).mockClear();
 
     fs.writeFileSync(path.join(distDir, 'index.js'), 'exports = {}');
@@ -155,14 +165,18 @@ describe('FileWatcher', () => {
     expect(orchestrator.restartApp).not.toHaveBeenCalled();
   });
 
-  it('should NOT trigger restart for non-watched extensions', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+  it('should NOT trigger restart for non-watched extensions', { retry: 2 }, async () => {
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
 
-    // Let watcher settle (FSEvents may queue initial events)
-    await new Promise((r) => setTimeout(r, 150));
+    // Let watcher settle (FSEvents may queue initial events). 400ms (not 150ms):
+    // under full-file load the initial bootstrap.ts/package.json writes from
+    // beforeEach can be delivered late and fire a spurious restart AFTER the
+    // mockClear below, making the "no restart" assertions flaky (deterministic
+    // in full-file order, fine in isolation).
+    await new Promise((r) => setTimeout(r, 400));
     (orchestrator.restartApp as ReturnType<typeof vi.fn>).mockClear();
 
     // Write a .png file
@@ -174,7 +188,7 @@ describe('FileWatcher', () => {
   });
 
   it('should debounce rapid file changes into single restart', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 100);
     watcher.start();
@@ -200,8 +214,8 @@ describe('FileWatcher', () => {
     fs.writeFileSync(path.join(app2Src, 'main.ts'), 'export {}');
 
     const config = createTestConfig([
-      { name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') },
-      { name: 'other-app', bootstrap: path.join(app2Src, 'main.ts') },
+      { name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') },
+      { name: 'other-app', script: path.join(app2Src, 'main.ts') },
     ]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
@@ -228,7 +242,7 @@ describe('FileWatcher', () => {
 
   it('should skip disabled apps', () => {
     const config = createTestConfig([
-      { name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts'), enabled: false },
+      { name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts'), enabled: false },
     ]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
@@ -246,7 +260,7 @@ describe('FileWatcher', () => {
     expect(watcher.getWatchedApps()).toHaveLength(0);
 
     // Dynamically add
-    watcher.addApp({ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') });
+    watcher.addApp({ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') });
     expect(watcher.getWatchedApps()).toHaveLength(1);
 
     // Dynamically remove
@@ -255,7 +269,7 @@ describe('FileWatcher', () => {
   });
 
   it('should stop all watchers on stop()', () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
@@ -266,7 +280,7 @@ describe('FileWatcher', () => {
   });
 
   it('should handle restart failure gracefully', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     (orchestrator.restartApp as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('restart failed'));
 
@@ -285,7 +299,7 @@ describe('FileWatcher', () => {
   });
 
   it('should detect .json file changes', async () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();
@@ -298,7 +312,7 @@ describe('FileWatcher', () => {
   });
 
   it('should resolve app root from bootstrap path using package.json', () => {
-    const config = createTestConfig([{ name: 'test-app', bootstrap: path.join(appDir, 'src', 'bootstrap.ts') }]);
+    const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
 
     watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher.start();

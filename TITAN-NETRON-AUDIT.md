@@ -199,7 +199,7 @@ Closed (fix + tests + commit, all suites green): **SEC-2** (opt-in default-deny,
 - NET-1 high — core-tasks/query-interface.ts:157 — returns `{...definition}` plain object not Definition → breaks type-109 encode on auth-filtered path.
 - NET-2 high — abstract-peer.ts:342 (+local:196,remote:319) — releaseInterface drops released set, un-awaited, mutation-during-iteration.
 - NET-3 med — netron.ts (1411) — god object (transport+connect/reconnect+registry+events).
-- NET-4 med — local-peer.ts:287 vs remote-peer.ts:1024 — refService divergent signatures.
+- NET-4 ✅ DONE — `refService` lived on both peers with divergent signatures: `ILocalPeer.refService(instance, parentDef, callerPeerId)` (ref-count a local stub by instance) vs RemotePeer's `(def, parentDef)` (register a remote Definition by id). RemotePeer doesn't implement ILocalPeer (it extends AbstractPeer→IPeer base, which omits refService), so the shared name only type-checked via method-param bivariance. Renamed RemotePeer's → `registerRemoteDefinition` (+ internal caller in processResult + 2 tests). No interface change. titan tsc 0-err, peer tests 59/59.
 - NET-5 med — interface.ts:241 + service-stub.ts:175 + remote-peer.ts:1063 + local-peer.ts:507 — 4 marshaling pipelines.
 - NET-6..13 low — no-op processArgs; wrong reflect key 'service:metadata'; dead exports/orphan JSDoc; barrel omits internal-types; disconnect not awaited; unexposeAll async; methodCache leak; inline metadata read.
 

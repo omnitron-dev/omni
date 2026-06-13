@@ -3,6 +3,7 @@
  */
 
 import { MiddlewareContext } from './types.js';
+import type { Middleware } from './types.js';
 import { Errors, ValidationError, TitanError, ErrorCode } from '../errors/index.js';
 import { createNullLogger, type ILogger } from '../types/logger.js';
 
@@ -30,34 +31,17 @@ export type MiddlewareFunction<T = unknown> = (
 ) => T | Promise<T>;
 
 /**
- * Middleware interface
+ * Middleware interface.
+ *
+ * NX-12: this was a second, byte-identical declaration of the `Middleware`
+ * interface that already lives in `./types.ts` (the foundational module
+ * middleware.ts depends on). The duplicate is removed; `Middleware` is now
+ * imported from `./types.ts` and re-exported here so the public nexus barrel
+ * surface (`export { type Middleware } from './middleware'`) is unchanged.
+ * `execute: MiddlewareFunction<T>` equals the inline signature types.ts uses,
+ * so this is a pure de-duplication with no shape change.
  */
-export interface Middleware<T = unknown> {
-  /**
-   * Middleware name
-   */
-  name: string;
-
-  /**
-   * Execute the middleware
-   */
-  execute: MiddlewareFunction<T>;
-
-  /**
-   * Priority (higher executes first)
-   */
-  priority?: number;
-
-  /**
-   * Condition to apply middleware
-   */
-  condition?: (context: MiddlewareContext<T>) => boolean;
-
-  /**
-   * Error handler
-   */
-  onError?: (error: Error, context: MiddlewareContext<T>) => void;
-}
+export type { Middleware };
 
 /**
  * Middleware pipeline for executing middleware in sequence

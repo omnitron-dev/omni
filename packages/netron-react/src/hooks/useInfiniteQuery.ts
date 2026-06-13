@@ -162,7 +162,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
   // (`data` + `dataUpdatedAt` + `status='success'`) without
   // refetching. See useQuery for the full rationale.
   const cachedQueryOnInit = useMemo(
-    () => client.getQueryCache().getQuery<InfiniteData<TData>, TError>(queryKey),
+    () => client.getQueryCache().getQuery<InfiniteData<TData>, TError>(queryKey, true),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -288,7 +288,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
+      queryCache.set(queryKey, infiniteData, staleTime, true); // NR-13: staleTime; NR-3b: isInfinite
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -352,7 +352,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
+      queryCache.set(queryKey, infiniteData, staleTime, true); // NR-13: staleTime; NR-3b: isInfinite
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -429,7 +429,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
+      queryCache.set(queryKey, infiniteData, staleTime, true); // NR-13: staleTime; NR-3b: isInfinite
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -506,7 +506,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setDataUpdatedAt(timeUtils.now());
 
       // Update cache
-      queryCache.set(queryKey, infiniteData, staleTime); // NR-13: record staleTime for the stale-filter
+      queryCache.set(queryKey, infiniteData, staleTime, true); // NR-13: staleTime; NR-3b: isInfinite
 
       onSuccess?.(infiniteData);
     } catch (err) {
@@ -529,7 +529,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     if (!enabled || isHydrating) return;
 
     // Check if we need to fetch
-    const cached = client.getQueryCache().get<InfiniteData<TData>>(queryKey);
+    const cached = client.getQueryCache().get<InfiniteData<TData>>(queryKey, true);
     const needsFetch = cached === undefined || isStale;
 
     if (needsFetch && !data) {
@@ -551,7 +551,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     const unsubscribe = cache.subscribe(
       queryKey,
       () => {
-        const query = cache.getQuery<InfiniteData<TData>, TError>(queryKey);
+        const query = cache.getQuery<InfiniteData<TData>, TError>(queryKey, true);
         if (!query) {
           setData(undefined);
           setStatus('idle');
@@ -565,6 +565,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
         setDataUpdatedAt(s.dataUpdatedAt);
       },
       cacheTime,
+      true, // NR-3b: subscribe to the infinite-query variant
     );
 
     return unsubscribe;

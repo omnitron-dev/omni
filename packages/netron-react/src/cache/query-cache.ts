@@ -62,6 +62,21 @@ const DEFAULT_CONFIG: Required<QueryCacheConfig> = {
 };
 
 /**
+ * NR-3b: infinite queries store `InfiniteData<T>` ({pages, pageParams}) — a
+ * different shape than a regular query's `T`. A consumer that (mis)uses the
+ * SAME queryKey for both an `useInfiniteQuery` and a `useQuery` would otherwise
+ * collide in this single map, each reading the other's wrong shape. Infinite
+ * entries are stored under a marked variant of the hash so the two coexist.
+ *
+ * The marker is a NUL byte — it can never appear in a JSON-stringified query
+ * hash, so `hash` and `hash + INFINITE_MARKER` are guaranteed distinct and a
+ * regular hash is never mistaken for an infinite one. `invalidate()`/`remove()`
+ * act on BOTH variants so a consumer can still invalidate their infinite query
+ * by its public key.
+ */
+const INFINITE_MARKER = '\u0000infinite';
+
+/**
  * QueryCache
  *
  * Centralized cache for query data with automatic garbage collection,
@@ -81,15 +96,27 @@ export class QueryCache {
     // fake-timer "infinite loop" aborts in tests nor leak a forever-interval.
   }
 
+  /**
+   * NR-3b: resolve the internal map key for a query. Regular queries use the
+   * bare hash (unchanged); infinite queries use a marked variant so the two
+   * never collide under the same public key. Stored as `state.queryHash`, so
+   * every internal lookup/notify/delete keyed off it stays consistent.
+   */
+  private resolveHash(queryKey: QueryKey, isInfinite = false): string {
+    const hash = hashQueryKey(queryKey);
+    return isInfinite ? hash + INFINITE_MARKER : hash;
+  }
+
   // ============================================================================
   // Core Operations
   // ============================================================================
 
   /**
-   * Get data from cache
+   * Get data from cache. Pass `isInfinite` to read the infinite-query variant
+   * (see {@link resolveHash}); regular reads are unaffected.
    */
-  get<T>(queryKey: QueryKey): T | undefined {
-    const hash = hashQueryKey(queryKey);
+  get<T>(queryKey: QueryKey, isInfinite = false): T | undefined {
+    const hash = this.resolveHash(queryKey, isInfinite);
     const state = this.cache.get(hash);
     return state?.data as T | undefined;
   }
@@ -97,8 +124,8 @@ export class QueryCache {
   /**
    * Get full query state
    */
-  getQuery<T, E = unknown>(queryKey: QueryKey): Query<T, E> | undefined {
-    const hash = hashQueryKey(queryKey);
+  getQuery<T, E = unknown>(queryKey: QueryKey, isInfinite = false): Query<T, E> | undefined {
+    const hash = this.resolveHash(queryKey, isInfinite);
     const state = this.cache.get(hash);
 
     if (!state) return undefined;
@@ -121,8 +148,8 @@ export class QueryCache {
   /**
    * Set data in cache
    */
-  set<T>(queryKey: QueryKey, data: T, staleTime?: number): void {
-    const hash = hashQueryKey(queryKey);
+  set<T>(queryKey: QueryKey, data: T, staleTime?: number, isInfinite = false): void {
+    const hash = this.resolveHash(queryKey, isInfinite);
     const existing = this.cache.get(hash);
 
     const state: QueryState<T> = {
@@ -205,12 +232,15 @@ export class QueryCache {
    * Invalidate query
    */
   invalidate(queryKey: QueryKey): void {
-    const hash = hashQueryKey(queryKey);
-    const state = this.cache.get(hash);
-
-    if (state) {
-      state.isInvalidated = true;
-      this.notifyObservers(hash);
+    // NR-3b: a public key may have a regular AND an infinite entry — invalidate
+    // both so `invalidate(['k'])` still reaches an infinite query stored at ['k'].
+    const base = hashQueryKey(queryKey);
+    for (const hash of [base, base + INFINITE_MARKER]) {
+      const state = this.cache.get(hash);
+      if (state) {
+        state.isInvalidated = true;
+        this.notifyObservers(hash);
+      }
     }
   }
 
@@ -218,13 +248,15 @@ export class QueryCache {
    * Remove query from cache
    */
   remove(queryKey: QueryKey): void {
-    const hash = hashQueryKey(queryKey);
-    const state = this.cache.get(hash);
-
-    if (state) {
-      state.abortController?.abort();
-      if (state.gcTimeout) clearTimeout(state.gcTimeout);
-      this.cache.delete(hash);
+    // NR-3b: remove both the regular and infinite variant under this key.
+    const base = hashQueryKey(queryKey);
+    for (const hash of [base, base + INFINITE_MARKER]) {
+      const state = this.cache.get(hash);
+      if (state) {
+        state.abortController?.abort();
+        if (state.gcTimeout) clearTimeout(state.gcTimeout);
+        this.cache.delete(hash);
+      }
     }
   }
 
@@ -301,8 +333,8 @@ export class QueryCache {
    *   effective GC delay is the max across observers (floor =
    *   `config.defaultCacheTime`).
    */
-  subscribe(queryKey: QueryKey, observer: () => void, cacheTime?: number): () => void {
-    const hash = hashQueryKey(queryKey);
+  subscribe(queryKey: QueryKey, observer: () => void, cacheTime?: number, isInfinite = false): () => void {
+    const hash = this.resolveHash(queryKey, isInfinite);
     let state = this.cache.get(hash);
 
     if (!state) {

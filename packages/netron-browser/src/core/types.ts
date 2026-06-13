@@ -9,88 +9,17 @@
  */
 export type EventSubscriber = (...args: any[]) => void;
 
-/**
- * Interface representing information about a method argument.
- * This metadata is used for type checking and documentation.
- */
-export interface ArgumentInfo {
-  /**
-   * The zero-based index of the argument in the method signature.
-   */
-  index: number;
-
-  /**
-   * The type of the argument as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-}
-
-/**
- * Interface representing information about a method.
- * This metadata describes the method's return type and arguments.
- */
-export interface MethodInfo {
-  /**
-   * The return type of the method as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-
-  /**
-   * Array of argument information objects.
-   * Each object describes an argument's position and type.
-   */
-  arguments: ArgumentInfo[];
-}
-
-/**
- * Interface representing information about a property.
- * This metadata describes the property's type and mutability.
- */
-export interface PropertyInfo {
-  /**
-   * The type of the property as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-
-  /**
-   * Whether the property is read-only.
-   * If true, attempts to modify the property will result in an error.
-   */
-  readonly: boolean;
-}
-
-/**
- * Interface representing metadata for a service.
- * This metadata describes the service's name, version, properties, and methods.
- */
-export interface ServiceMetadata {
-  /**
-   * The name of the service.
-   * Must be a valid identifier containing only alphanumeric characters and dots.
-   */
-  name: string;
-
-  /**
-   * The version of the service.
-   * Must follow semantic versioning (semver) format if specified.
-   */
-  version: string;
-
-  /**
-   * Map of property names to their metadata.
-   * Only public properties are included in this map.
-   */
-  properties: Record<string, PropertyInfo>;
-
-  /**
-   * Map of method names to their metadata.
-   * Only public methods are included in this map.
-   */
-  methods: Record<string, MethodInfo>;
-}
+// SHARED-PROTO: the service-definition shape types are defined once in
+// @omnitron-dev/netron-protocol (shared with the titan server) and re-exported
+// here so existing `core/types.js` importers are unchanged and the shape can't
+// drift from the wire contract.
+import type {
+  ArgumentInfo,
+  MethodInfo,
+  PropertyInfo,
+  ServiceMetadata,
+} from '@omnitron-dev/netron-protocol';
+export type { ArgumentInfo, MethodInfo, PropertyInfo, ServiceMetadata };
 
 /**
  * Core peer interface for browser client

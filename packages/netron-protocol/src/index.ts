@@ -14,6 +14,17 @@ export { MAX_UID_VALUE } from './constants.js';
 export { Uid } from './uid.js';
 export { uuid } from './uuid.js';
 
+// Service-definition shape types + the Definition class.
+export type {
+  ArgumentInfo,
+  MethodInfo,
+  PropertyInfo,
+  ServiceMetadata,
+  ServiceContract,
+  ServiceMetadataWithContract,
+} from './definition-types.js';
+export { Definition } from './definition.js';
+
 // Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
 // the StreamType enum. These define the binary protocol's opcode space and must
 // be identical on both ends.

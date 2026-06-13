@@ -6,7 +6,7 @@
  */
 
 import { Injectable, Optional, Inject } from '@omnitron-dev/titan/decorators';
-import type { EventsService } from '@omnitron-dev/titan-events';
+import { EVENTS_SERVICE_TOKEN, type EventsService } from '@omnitron-dev/titan-events';
 import type { NotificationPayload, NotificationRecipient, SendResult, BroadcastResult } from './notifications.types.js';
 
 // Event names
@@ -104,7 +104,11 @@ export interface InAppNotificationEvent {
  */
 @Injectable()
 export class NotificationsEventEmitter {
-  constructor(@Optional() @Inject('EVENTS_SERVICE_TOKEN') private readonly events?: EventsService) {}
+  // NT-1: inject the real EventsService Token, not the bare string
+  // 'EVENTS_SERVICE_TOKEN' — the string never matched the token created via
+  // createToken('EventsService'), so this emitter silently never received the
+  // service and every lifecycle event was dropped.
+  constructor(@Optional() @Inject(EVENTS_SERVICE_TOKEN) private readonly events?: EventsService) {}
 
   /**
    * Check if events are available

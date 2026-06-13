@@ -35,7 +35,13 @@ export {
   getErrorCategory,
   isClientError,
   isServerError,
+  toHttpStatus,
+  ERROR_METADATA,
+  isRetryableError,
+  getErrorName,
+  getDefaultMessage,
 } from './error-codes.js';
+export type { ErrorMetadata } from './error-codes.js';
 
 // Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
 // the StreamType enum. These define the binary protocol's opcode space and must

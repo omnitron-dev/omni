@@ -8,21 +8,27 @@ import { Errors } from '../errors/index.js';
 /**
  * Get an available port at or after `startPort`.
  *
- * XC-12: the previous implementation tried a RANDOM OS-assigned port first and
- * only fell back to `startPort` on error — so `getAvailablePort(8080)` almost
- * always returned some unrelated random port, silently ignoring the argument.
- * It now searches sequentially upward from `startPort` (binding each candidate
- * to verify it is free, advancing on EADDRINUSE), honouring the documented
- * contract. Callers who want any free port can still pass `0` (OS-assigned).
+ * XC-12: an EXPLICIT `startPort` is honoured by searching sequentially upward
+ * from it (binding each candidate to verify it is free, advancing on
+ * EADDRINUSE) — the previous code tried a random port first and ignored the
+ * argument.
+ *
+ * XC-12-fix: with NO argument, bind port `0` so the OS assigns a unique free
+ * port. The interim default of `10000` made consecutive no-arg calls all return
+ * 10000 (each probe binds+closes, freeing it for the next call), so callers that
+ * grab several ports in a row — e.g. a server registering ws + tcp transports —
+ * got the SAME port for both and collided with EADDRINUSE on start. "Any free
+ * port" must be unique per call, which only `listen(0)` guarantees.
  */
-export async function getAvailablePort(startPort = 10000, maxPort = 65535): Promise<number> {
+export async function getAvailablePort(startPort?: number, maxPort = 65535): Promise<number> {
   return new Promise((resolve, reject) => {
     const tryPort = (port: number) => {
       const server = net.createServer();
 
       server.once('error', (err: any) => {
-        if (err.code === 'EADDRINUSE') {
-          // Port in use, try next
+        // Only walk upward when searching an explicit range; port 0 is
+        // OS-assigned and should never EADDRINUSE.
+        if (err.code === 'EADDRINUSE' && port !== 0) {
           if (port < maxPort) {
             tryPort(port + 1);
           } else {
@@ -44,7 +50,7 @@ export async function getAvailablePort(startPort = 10000, maxPort = 65535): Prom
       server.listen(port);
     };
 
-    tryPort(startPort);
+    tryPort(startPort ?? 0);
   });
 }
 

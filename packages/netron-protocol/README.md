@@ -17,7 +17,8 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 
 - ✅ `MAX_UID_VALUE` — UID upper bound (32-bit unsigned)
 - ✅ `Uid` — sequential, wrap-around UID generator for packet correlation
-- ⏳ packet types + `Packet` + encode/decode
+- ✅ packet wire types — `PacketImpulse`, `TYPE_*` opcodes, `PacketType`, `StreamType`
+- ⏳ `Packet` + encode/decode
 - ⏳ serializer
 - ⏳ `Definition` / `Reference` / `StreamReference`
 - ⏳ shared error codes

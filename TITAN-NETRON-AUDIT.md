@@ -253,11 +253,11 @@ Closed (fix + tests + commit, all suites green): **SEC-2** (opt-in default-deny,
 - NR-7 med — state/* + replaceEqualDeep + Stream* + dup InfiniteQueryOptions + QueryClientContext + netronClient + devtools — dead code.
 - NR-8 med — tests missing for subscriptions/SubscriptionManager/SSR/useService/middleware/state.
 - NR-9 med — auth/context.tsx:180 — login() always throws (public via prism).
-- NR-10 low — index.ts barrel omits useQueries.
-- NR-11 low — query-cache.ts:541 — periodic GC ignores per-observer cacheTime.
-- NR-12 low — useSubscription.ts:135 — cleanup setState after unmount (no isMounted guard).
+- NR-10 ✅ DONE — public `index.ts` barrel now re-exports `useQueries` (+ its types); was reachable only via the deep `./hooks` path.
+- NR-11 ✅ DONE (via NR-2) — GC now honours per-observer cacheTime (`observerCacheTimes` + `getEffectiveCacheTime`).
+- NR-12 ✅ DONE — `useSubscription` guards the deferred state writes (`handleData` event callback + buffered-flush timer) with an `isMounted` ref and clears the pending flush timer on cleanup, so a late event/timer can't setState after unmount. (Dedicated unmount test belongs to NR-8's missing subscription harness; verified by inspection + full suite 313/313.)
 - NR-13 low — cache/utils.ts:103 — stale check always-true → invalidate-all on focus/reconnect.
-- NR-14 low — core/client.ts:474 — transport `as any` on RPC hot path.
+- NR-14 ✅ DONE — `getActiveClient()` drops the two `as any` casts; locals make the null-narrowing survive the `isConnected()` call (the fields are already typed `HttpClient|null`/`WebSocketClient|null`). tsc clean confirms the casts were noise.
 
 ---
 

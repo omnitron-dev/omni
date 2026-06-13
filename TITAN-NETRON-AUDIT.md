@@ -250,7 +250,7 @@ Closed (fix + tests + commit, all suites green): **SEC-2** (opt-in default-deny,
 - NR-3 high — hooks/useQuery.ts:159 — shared cache stores post-select data → cross-observer poison; infinite/regular key collision.
 - NR-4 med — useQuery.ts:331 — subscription resync floods (no equality gate / structural sharing).
 - NR-5 med — useQuery.ts:237 — fetchData closes over status → listener thrash, unstable refetch.
-- NR-6 med — useQueries.ts:298 — refetch resolves with pre-fetch state (stale closure).
+- NR-6 ✅ DONE — `useQueries` `createRefetch(index)` read `states[index]` AFTER `await fetchQuery(index)`, but `states` is the closure snapshot — stale, since fetchQuery's `updateState` hadn't committed. The returned `QueryResult` therefore carried PRE-fetch data. Now reads the fresh result straight from the cache (`getQuery(queryKey)`, the source of truth fetchQuery just wrote) and projects it via `projectQueryData` (NR-3); `isFetching/isRefetching` are `false` (the awaited refetch completed). Deps dropped `states`. Test added (use-queries "refetch resolves with the FRESH post-fetch result … (NR-6)" — counter queryFn, refetch must return 2 not 1). netron-react 314/314, tsc 0-err.
 - NR-7 med — state/* + replaceEqualDeep + Stream* + dup InfiniteQueryOptions + QueryClientContext + netronClient + devtools — dead code.
 - NR-8 med — tests missing for subscriptions/SubscriptionManager/SSR/useService/middleware/state.
 - NR-9 med — auth/context.tsx:180 — login() always throws (public via prism).

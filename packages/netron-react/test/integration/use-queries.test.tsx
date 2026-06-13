@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import React, { ReactNode } from 'react';
 import { useQueries } from '../../src/hooks/useQueries.js';
 import { NetronProvider } from '../../src/core/provider.js';
@@ -104,6 +104,32 @@ describe('useQueries Hook', () => {
     expect((result.current[0].data as { name: string }).name).toBe('Alice');
     expect((result.current[1].data as { name: string }).name).toBe('Bob');
     expect((result.current[2].data as { name: string }).name).toBe('Charlie');
+  });
+
+  it('refetch resolves with the FRESH post-fetch result, not a stale snapshot (NR-6)', async () => {
+    let n = 0;
+    const { result } = renderHook(
+      () =>
+        useQueries({
+          queries: [{ queryKey: ['nr6-counter'], queryFn: async () => ++n }],
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current[0].isSuccess).toBe(true));
+    expect(result.current[0].data).toBe(1);
+
+    // The promise returned by refetch() must carry the value from THIS fetch (2),
+    // not the closure's stale pre-fetch snapshot (1). Pre-NR-6 it read states[index]
+    // captured before the await and returned 1.
+    let refetched: { data?: unknown; status?: string; isSuccess?: boolean; isFetching?: boolean } = {};
+    await act(async () => {
+      refetched = await result.current[0].refetch();
+    });
+    expect(refetched.data).toBe(2);
+    expect(refetched.status).toBe('success');
+    expect(refetched.isSuccess).toBe(true);
+    expect(refetched.isFetching).toBe(false);
   });
 
   it('should use combine function to transform results', async () => {

@@ -307,13 +307,18 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   const createRefetch = useCallback(
     (index: number) => async (): Promise<QueryResult<unknown, unknown>> => {
       await fetchQuery(index);
-      const state = states[index];
-      const stateData = state?.data;
-      const stateError = state?.error ?? null;
-      const stateStatus = state?.status ?? 'idle';
-      const stateIsFetching = state?.isFetching ?? false;
-      const stateDataUpdatedAt = state?.dataUpdatedAt ?? 0;
-      const stateErrorUpdatedAt = state?.errorUpdatedAt ?? 0;
+      // NR-6: read the FRESH result from the cache — the source of truth that
+      // fetchQuery just wrote. The `states` array captured in this closure is a
+      // stale snapshot after the await (the updateState fetchQuery triggered has
+      // not been committed yet), so the returned result used to be pre-fetch.
+      const query = queries[index];
+      const cached = query ? client.getQueryCache().getQuery(query.queryKey) : undefined;
+      const s = cached?.state;
+      const stateStatus = s?.status ?? 'idle';
+      const stateData = query && s ? projectQueryData(query, s.data) : undefined; // NR-3: project raw
+      const stateError = s?.error ?? null;
+      const stateDataUpdatedAt = s?.dataUpdatedAt ?? 0;
+      const stateErrorUpdatedAt = s?.errorUpdatedAt ?? 0;
 
       return {
         data: stateData,
@@ -323,8 +328,9 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         isError: stateStatus === 'error',
         isSuccess: stateStatus === 'success',
         isIdle: stateStatus === 'idle',
-        isFetching: stateIsFetching,
-        isRefetching: stateIsFetching && stateStatus !== 'loading',
+        // The refetch awaited above has completed, so the query is no longer fetching.
+        isFetching: false,
+        isRefetching: false,
         isStale: true,
         dataUpdatedAt: stateDataUpdatedAt,
         errorUpdatedAt: stateErrorUpdatedAt,
@@ -332,7 +338,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         remove: createRemove(index),
       };
     },
-    [fetchQuery, states, createRemove]
+    [fetchQuery, queries, client, createRemove]
   );
 
   // Initial fetch effect - runs all queries in parallel

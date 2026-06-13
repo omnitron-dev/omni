@@ -19,7 +19,9 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ `Uid` — sequential, wrap-around UID generator for packet correlation
 - ✅ packet wire types — `PacketImpulse`, `TYPE_*` opcodes, `PacketType`, `StreamType`
 - ✅ `uuid` — UUIDv7 generator (Web Crypto; was a node:crypto-pooled variant in titan and a getRandomValues variant in netron-browser of the same algorithm)
-- ⏳ `Definition` / `Reference` / `StreamReference` (need a shared `ServiceMetadata` type + error-type reconciliation)
+- ✅ service-definition shape types — `ArgumentInfo`, `MethodInfo`, `PropertyInfo`, `ServiceMetadata`, `ServiceContract`, `ServiceMetadataWithContract`
+- ✅ `Definition` — the service-definition class
+- ⏳ `Reference` / `StreamReference` (Reference needs error-type reconciliation: titan throws TitanError, browser plain Error)
 - ⏳ `Packet` + encode/decode + serializer (the wire CODEC — needs byte-compat verification)
 - ⏳ shared error codes
 - ⏳ core-task name + wire constants

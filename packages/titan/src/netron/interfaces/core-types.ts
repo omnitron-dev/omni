@@ -9,105 +9,29 @@
 import type { ILogger } from '../../types/logger.js';
 
 // ============================================================================
-// Service Metadata Types (Pure types, no class dependencies)
+// Service Metadata Types
 // ============================================================================
-
-/**
- * Interface representing information about a method argument.
- * This metadata is used for type checking and documentation.
- */
-export interface ArgumentInfo {
-  /**
-   * The zero-based index of the argument in the method signature.
-   */
-  index: number;
-
-  /**
-   * The type of the argument as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-}
-
-/**
- * Interface representing information about a method.
- * This metadata describes the method's return type and arguments.
- */
-export interface MethodInfo {
-  /**
-   * The return type of the method as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-
-  /**
-   * Array of argument information objects.
-   * Each object describes an argument's position and type.
-   */
-  arguments: ArgumentInfo[];
-}
-
-/**
- * Interface representing information about a property.
- * This metadata describes the property's type and mutability.
- */
-export interface PropertyInfo {
-  /**
-   * The type of the property as a string.
-   * This can be a primitive type, class name, or interface name.
-   */
-  type: string;
-
-  /**
-   * Whether the property is read-only.
-   * If true, attempts to modify the property will result in an error.
-   */
-  readonly: boolean;
-}
-
-/**
- * Interface representing metadata for a service.
- * This metadata describes the service's name, version, properties, and methods.
- */
-export interface ServiceMetadata {
-  /**
-   * The name of the service.
-   * Must be a valid identifier containing only alphanumeric characters and dots.
-   */
-  name: string;
-
-  /**
-   * The version of the service.
-   * Must follow semantic versioning (semver) format if specified.
-   */
-  version: string;
-
-  /**
-   * Map of property names to their metadata.
-   * Only public properties are included in this map.
-   */
-  properties: Record<string, PropertyInfo>;
-
-  /**
-   * Map of method names to their metadata.
-   * Only public methods are included in this map.
-   */
-  methods: Record<string, MethodInfo>;
-}
-
-/**
- * Service contract type for validation.
- * Represents the expected interface of a service.
- */
-export type ServiceContract = Record<string, unknown>;
-
-/**
- * Extended metadata type that includes the service contract.
- * Used internally by service stubs.
- */
-export interface ServiceMetadataWithContract extends ServiceMetadata {
-  contract?: ServiceContract;
-}
+//
+// SHARED-PROTO: the service-definition shape types are defined once in
+// @omnitron-dev/netron-protocol (shared with netron-browser) and re-exported
+// here so titan's many `interfaces/core-types.js` importers are unchanged. The
+// titan-only `ServiceMetadataExtended` (transport associations) stays below.
+import type {
+  ArgumentInfo,
+  MethodInfo,
+  PropertyInfo,
+  ServiceMetadata,
+  ServiceContract,
+  ServiceMetadataWithContract,
+} from '@omnitron-dev/netron-protocol';
+export type {
+  ArgumentInfo,
+  MethodInfo,
+  PropertyInfo,
+  ServiceMetadata,
+  ServiceContract,
+  ServiceMetadataWithContract,
+};
 
 /**
  * Extended metadata type that includes transport configuration.

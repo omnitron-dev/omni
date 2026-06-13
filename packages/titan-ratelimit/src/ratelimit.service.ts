@@ -235,7 +235,11 @@ export class RateLimitService implements IRateLimitService {
    */
   async reset(key: string, tier?: string): Promise<void> {
     const storageKey = this.buildKey(key, tier);
-    await this.algorithm.reset(this.storage, storageKey);
+    // Resolve the effective window (same precedence as check) so the
+    // fixed-window algorithm can target the current window-suffixed key.
+    const tierConfig = this.resolveTier(tier);
+    const windowMs = tierConfig?.windowMs ?? this.options.defaultWindowMs;
+    await this.algorithm.reset(this.storage, storageKey, windowMs);
   }
 
   /**

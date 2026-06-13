@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@omnitron-dev/eventemitter": "workspace:*",
+    "cron-parser": "^5.5.0",
     "node-cron": "^4.2.1"
   },
   "peerDependencies": {

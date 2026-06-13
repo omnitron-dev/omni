@@ -194,6 +194,25 @@ describe('Scheduler Service', () => {
       expect(job?.nextExecution).toBeDefined();
       expect(job?.nextExecution).toBeInstanceOf(Date);
     });
+
+    it('should compute the REAL next execution time for cron jobs (SC-3)', async () => {
+      const handler = vi.fn();
+      // Daily at 09:00. The old faked `now + 60000` reported "in ~1 minute" with
+      // the current minute/second; the real cron parse lands exactly on the next
+      // 09:00:00 — which is what the health view / sort key should show.
+      scheduler.addCronJob('next-exec-cron', '0 9 * * *', handler);
+
+      await scheduler.onStart();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const job = registry.getJob('next-exec-cron');
+      expect(job?.nextExecution).toBeInstanceOf(Date);
+      const next = job!.nextExecution!;
+      expect(next.getHours()).toBe(9);
+      expect(next.getMinutes()).toBe(0);
+      expect(next.getSeconds()).toBe(0);
+      expect(next.getTime()).toBeGreaterThan(Date.now());
+    });
   });
 
   describe('Timeout Job Management', () => {

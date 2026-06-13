@@ -34,7 +34,7 @@ describe('Remote Service Publication', () => {
   });
 
   afterEach(async () => {
-    netron.peer.unexposeAllServices();
+    await netron.peer.unexposeAllServices();
     await netron.stop();
   });
 

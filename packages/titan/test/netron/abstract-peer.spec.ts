@@ -891,7 +891,9 @@ describe('AbstractPeer', () => {
 
       expect(peer.getServiceNames().length).toBe(6); // 3 services x 2 keys each
 
-      peer.unexposeAllServices();
+      // NET-11: unexposeAllServices is async and awaits each unexpose
+      // sequentially, so callers must await to observe completion.
+      await peer.unexposeAllServices();
 
       expect(peer.unexposeServiceCallCount).toBe(6);
     });

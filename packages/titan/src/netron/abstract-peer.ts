@@ -198,10 +198,19 @@ export abstract class AbstractPeer implements IPeer {
   /**
    * Removes all services exposed by this peer.
    * Iterates through all service names and unexposes each one.
+   *
+   * NET-11: `unexposeService` is async — it awaits a child-interface
+   * release cascade and map deletions. Each call is now awaited
+   * sequentially, so this method resolves only once every service is
+   * fully torn down, and a rejection surfaces to the caller instead of
+   * escaping as an unhandled promise. Sequential (not Promise.all)
+   * because the cascade mutates shared per-peer state. Service names are
+   * snapshotted (getServiceNames() returns a fresh array), so deleting
+   * from the underlying map as we iterate is safe.
    */
-  unexposeAllServices() {
+  async unexposeAllServices(): Promise<void> {
     for (const ctxId of this.getServiceNames()) {
-      this.unexposeService(ctxId);
+      await this.unexposeService(ctxId);
     }
   }
 

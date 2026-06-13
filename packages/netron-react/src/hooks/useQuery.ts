@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
 import { useNetronClient, useDefaults, useHydration } from '../core/context.js';
 import type { QueryOptions, QueryResult, QueryFunctionContext, RetryConfig } from '../core/types.js';
-import { hashQueryKey, calculateRetryDelay, timeUtils } from '../cache/utils.js';
+import { hashQueryKey, calculateRetryDelay, timeUtils, replaceEqualDeep } from '../cache/utils.js';
 
 /**
  * Default retry configuration
@@ -355,7 +355,13 @@ export function useQuery<TData = unknown, TError = NetronError>(
           return;
         }
         const s = query.state;
-        setData(projectData(s.data)); // NR-3: project the raw shared entry per-observer
+        // NR-3: project the raw shared entry per-observer.
+        // NR-4: structural sharing — every cache notify (incl. ones triggered by
+        // OTHER observers of this key) ran this resync, and `projectData` mints a
+        // fresh reference each time, so React always re-rendered even when the
+        // data was deeply unchanged. replaceEqualDeep returns the PREVIOUS
+        // reference when deeply equal, letting React bail out of the update.
+        setData((prev) => replaceEqualDeep(prev, projectData(s.data) as TData | undefined));
         setError(s.error);
         setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
         setDataUpdatedAt(s.dataUpdatedAt);

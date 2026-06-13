@@ -99,6 +99,33 @@ describe('useQuery Integration Tests', () => {
   // ============================================================================
 
   describe('Basic Functionality', () => {
+    it('keeps the data reference stable across a deeply-equal cache resync (NR-4)', async () => {
+      const { result } = renderHook(
+        () =>
+          useQuery({
+            queryKey: ['user', '1'],
+            queryFn: () => client.invoke('user', 'getUser', ['1']),
+          }),
+        { wrapper }
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      const firstRef = result.current.data;
+      expect(firstRef).toBeTruthy();
+
+      // Another observer (or any cache write) re-sets a deeply-EQUAL but
+      // new-reference value, firing the subscription resync. Structural sharing
+      // must return the previous reference so React bails — pre-NR-4 the resync
+      // minted a fresh reference every time and forced a re-render.
+      await act(async () => {
+        // Deeply-equal to the fetched value, but a fresh object reference.
+        client.getQueryCache().set(['user', '1'], { id: '1', name: 'Alice', email: 'alice@example.com' });
+        await Promise.resolve();
+      });
+
+      expect(result.current.data).toBe(firstRef); // same reference → no churn
+    });
+
     it('should start with loading state', async () => {
       const { result } = renderHook(
         () =>

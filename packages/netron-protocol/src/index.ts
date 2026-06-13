@@ -76,3 +76,8 @@ export {
   StreamType,
 } from './packet-types.js';
 export type { PacketImpulse, PacketType } from './packet-types.js';
+
+// The Packet class (binary wire frame) + its convenience constructor. The
+// per-package serializers (which bind env-specific StreamReference codecs)
+// operate on this shared class.
+export { Packet, createPacket } from './packet.js';

@@ -110,6 +110,7 @@
     "@omnitron-dev/cuid": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/msgpack": "workspace:*",
+    "@omnitron-dev/netron-protocol": "workspace:*",
     "buffer": "^6.0.3"
   },
   "sideEffects": false

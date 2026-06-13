@@ -573,26 +573,18 @@ export class Application implements IApplication {
         }
       }
 
-      // Run shutdown tasks unless we're INSIDE a shutdown-driven stop —
-      // in that case `ShutdownCoordinator.shutdown()` already ran them.
+      // Run shutdown tasks through the SAME LifecycleController engine that
+      // shutdown() uses — unless we're INSIDE a shutdown-driven stop, where
+      // the coordinator already ran them. (APP-1/2: one task engine; the
+      // former hand-rolled loop here duplicated the controller's
+      // sort/critical/timeout logic.) Force stop swallows task errors so a
+      // failing critical task can't block the teardown that follows.
       if (!this._shutdown.isShuttingDown && this._shutdown.hasTasks) {
-        const sortedTasks = Array.from(this._shutdown.taskValues())
-          .map((t) => ({ ...t, priority: Number(t.priority ?? 50) }))
-          .sort((a, b) => {
-            const ap = Number(a.priority ?? 50);
-            const bp = Number(b.priority ?? 50);
-            if (ap !== bp) return ap - bp;
-            return (a.id ?? '').localeCompare(b.id ?? '');
-          });
-        for (const task of sortedTasks) {
-          try {
-            this._logger?.debug({ taskName: task.name }, 'Executing shutdown task');
-            await Promise.resolve(task.handler(ShutdownReason.Manual, options));
-            this._logger?.debug({ taskName: task.name }, 'Shutdown task completed');
-          } catch (error) {
-            this._logger?.error({ error, taskName: task.name }, 'Shutdown task failed');
-            if (task.critical && !options.force) throw error;
-          }
+        try {
+          await this._shutdown.runUserTasks(ShutdownReason.Manual, options);
+        } catch (error) {
+          if (!options.force) throw error;
+          this._logger?.warn({ error }, 'Ignoring shutdown-task error due to force stop');
         }
       }
 

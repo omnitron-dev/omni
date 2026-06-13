@@ -315,8 +315,15 @@ describe('Application Integration', () => {
 
       await app.start();
 
-      // Critical task failure should propagate
-      await expect(app.stop()).rejects.toThrow('Critical failure');
+      // Critical task failure should propagate. APP-1/2: stop() now runs
+      // tasks through the SAME LifecycleController as shutdown(), so it
+      // rejects with the unified critical-task error (naming the task) and
+      // preserves the original error as `.cause` — identical to shutdown().
+      const error = await app.stop().then(() => null, (e) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain('Critical shutdown task failed');
+      expect(error.message).toContain('critical-task');
+      expect((error.cause as Error)?.message).toBe('Critical failure');
     });
 
     it('should continue with non-critical task failures', async () => {

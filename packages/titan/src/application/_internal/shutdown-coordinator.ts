@@ -87,10 +87,6 @@ export class ShutdownCoordinator {
     return this.cleanupHandlers.size;
   }
 
-  taskValues(): IterableIterator<IShutdownTask> {
-    return this.tasks.values();
-  }
-
   // ─── Registrations ───────────────────────────────────────────────────
 
   /**
@@ -250,6 +246,28 @@ export class ShutdownCoordinator {
   }
 
   /**
+   * Construct a LifecycleController wired to this coordinator's timeouts,
+   * logger, and phase-event bridge. Both shutdown paths build the
+   * controller the same way — the ONLY difference is which tasks get
+   * registered (see `executeViaController` vs `runUserTasks`).
+   *
+   * `exitOverride: () => false` — the Application owns `process.exit`;
+   * suppress the controller's own exit so it never races the outer
+   * shutdown() / stop() exit path.
+   */
+  private buildController(): LifecycleController {
+    return new LifecycleController({
+      bucketTimeoutMs: this.deps.shutdownTimeoutMs,
+      totalTimeoutMs: this.deps.shutdownTimeoutMs,
+      forceKillBufferMs: 1_000,
+      defaultTaskTimeoutMs: this.deps.shutdownTimeoutMs,
+      logger: this.adaptLogger(),
+      onPhaseEvent: (e) => this.handlePhaseEvent(e),
+      exitOverride: () => false,
+    });
+  }
+
+  /**
    * Build the controller, register tasks + internal terminal tasks,
    * and run. The terminal tasks land in the `dispose` bucket
    * (priority 1000+) so they fire after every user task.
@@ -257,17 +275,7 @@ export class ShutdownCoordinator {
   private async executeViaController(reason: ShutdownReason, details: unknown): Promise<void> {
     const detailsWithSignal = details as { signal?: NodeJS.Signals } | undefined;
 
-    const controller = new LifecycleController({
-      bucketTimeoutMs: this.deps.shutdownTimeoutMs,
-      totalTimeoutMs: this.deps.shutdownTimeoutMs,
-      forceKillBufferMs: 1_000,
-      defaultTaskTimeoutMs: this.deps.shutdownTimeoutMs,
-      logger: this.adaptLogger(),
-      onPhaseEvent: (e) => this.handlePhaseEvent(e),
-      // Application owns process.exit — suppress here so the controller
-      // doesn't race the outer shutdown() exit path.
-      exitOverride: () => false,
-    });
+    const controller = this.buildController();
 
     for (const task of this.tasks.values()) {
       controller.register({ ...task, parallel: false });
@@ -287,6 +295,30 @@ export class ShutdownCoordinator {
       handler: () => this.runCleanupHandlers(),
     });
 
+    await controller.shutdown(reason, details);
+  }
+
+  /**
+   * Run ONLY the registered user tasks through a LifecycleController —
+   * the SAME engine `shutdown()` uses — without the terminal DI-stop /
+   * cleanup tasks.
+   *
+   * APP-1/2: `Application.stop()`, when NOT driven by `shutdown()`,
+   * previously ran the task list through a hand-rolled loop that
+   * duplicated the controller's sort/critical/timeout logic. That second
+   * engine is now gone — stop() funnels its tasks here, so ordering
+   * (`(priority, id)` ascending), critical-abort, force semantics and
+   * per-task ShutdownTaskComplete/Error events are identical regardless
+   * of entry point. The terminal di-stop is omitted because stop() *is*
+   * the di-stop, and cleanup is run by stop() itself afterwards — adding
+   * them here would recurse / double-run.
+   */
+  async runUserTasks(reason: ShutdownReason, details?: unknown): Promise<void> {
+    if (this.tasks.size === 0) return;
+    const controller = this.buildController();
+    for (const task of this.tasks.values()) {
+      controller.register({ ...task, parallel: false });
+    }
     await controller.shutdown(reason, details);
   }
 

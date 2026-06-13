@@ -413,6 +413,9 @@ importers:
       '@omnitron-dev/msgpack':
         specifier: workspace:*
         version: link:../msgpack
+      '@omnitron-dev/netron-protocol':
+        specifier: workspace:*
+        version: link:../netron-protocol
       buffer:
         specifier: ^6.0.3
         version: 6.0.3

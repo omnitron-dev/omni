@@ -1,10 +1,8 @@
 /**
- * The maximum value that can be used for unique identifiers (UIDs) in the Netron system.
- * This value is derived from Number.MAX_SAFE_INTEGER with an unsigned right shift operation
- * to ensure it's a valid 32-bit unsigned integer. This is crucial for maintaining
- * compatibility with network protocols and binary operations.
+ * SHARED-PROTO: MAX_UID_VALUE is re-exported from @omnitron-dev/netron-protocol
+ * (single source of truth shared with the titan server) so this packet-local
+ * copy can't drift from the wire contract.
  *
- * @constant {number} MAX_UID_VALUE
  * @see Number.MAX_SAFE_INTEGER
  */
-export const MAX_UID_VALUE = Number.MAX_SAFE_INTEGER >>> 0;
+export { MAX_UID_VALUE } from '@omnitron-dev/netron-protocol';

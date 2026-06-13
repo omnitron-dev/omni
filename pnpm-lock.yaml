@@ -816,6 +816,9 @@ importers:
       '@omnitron-dev/msgpack':
         specifier: workspace:*
         version: link:../msgpack
+      '@omnitron-dev/netron-protocol':
+        specifier: workspace:*
+        version: link:../netron-protocol
       glob:
         specifier: ^13.0.6
         version: 13.0.6

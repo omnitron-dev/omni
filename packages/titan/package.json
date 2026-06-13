@@ -130,6 +130,7 @@
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/msgpack": "workspace:*",
+    "@omnitron-dev/netron-protocol": "workspace:*",
     "glob": "^13.0.6",
     "ipaddr.js": "^2.4.0",
     "minimatch": "^10.2.5",

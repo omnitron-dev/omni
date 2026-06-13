@@ -18,9 +18,9 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ `MAX_UID_VALUE` — UID upper bound (32-bit unsigned)
 - ✅ `Uid` — sequential, wrap-around UID generator for packet correlation
 - ✅ packet wire types — `PacketImpulse`, `TYPE_*` opcodes, `PacketType`, `StreamType`
-- ⏳ `Packet` + encode/decode
-- ⏳ serializer
-- ⏳ `Definition` / `Reference` / `StreamReference`
+- ✅ `uuid` — UUIDv7 generator (Web Crypto; was a node:crypto-pooled variant in titan and a getRandomValues variant in netron-browser of the same algorithm)
+- ⏳ `Definition` / `Reference` / `StreamReference` (need a shared `ServiceMetadata` type + error-type reconciliation)
+- ⏳ `Packet` + encode/decode + serializer (the wire CODEC — needs byte-compat verification)
 - ⏳ shared error codes
 - ⏳ core-task name + wire constants
 

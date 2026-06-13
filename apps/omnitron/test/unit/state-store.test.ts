@@ -3,19 +3,43 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { StateStore, type PersistedState } from '../../src/daemon/state-store.js';
+import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
+
+// T-7: StateStore was migrated from an atomically-renamed JSON file to a
+// SQLite-backed DaemonStateStore (kvGet/kvSet/kvDelete). These tests exercise
+// the new backing store directly — `save()` is now fire-and-forget (the write
+// lands on an internal promise chain), so durability is asserted after
+// `flush()` via a fresh StateStore over the same db. The torn-write/temp-file
+// rename invariants are gone (SQLite WAL owns atomicity) — see
+// state-store-torn-write.spec.ts.
+
+const silentLogger: any = {
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  debug: () => {},
+  trace: () => {},
+  fatal: () => {},
+  child: () => silentLogger,
+};
 
 describe('StateStore', () => {
   let tmpDir: string;
-  let stateFile: string;
+  let backing: DaemonStateStore;
   let store: StateStore;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-test-'));
-    stateFile = path.join(tmpDir, 'state.json');
-    store = new StateStore(stateFile);
+    backing = new DaemonStateStore(silentLogger, path.join(tmpDir, 'daemon-state.db'));
+    store = new StateStore(backing);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // save()/clear() are fire-and-forget: they lazily open the SQLite db on a
+    // background promise. Flush before removing the temp dir, otherwise that
+    // deferred open races rmSync and surfaces as an unhandled rejection
+    // ("Cannot open database because the directory does not exist").
+    await store.flush();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -23,122 +47,81 @@ describe('StateStore', () => {
     version: '0.1.0',
     updatedAt: Date.now(),
     apps: [
-      {
-        name: 'main',
-        pid: 12345,
-        status: 'online',
-        mode: 'bootstrap',
-        startedAt: Date.now() - 60_000,
-        restarts: 0,
-        port: 3001,
-      },
-      {
-        name: 'storage',
-        pid: 12346,
-        status: 'online',
-        mode: 'bootstrap',
-        startedAt: Date.now() - 30_000,
-        restarts: 1,
-        port: 3002,
-      },
+      { name: 'main', pid: 12345, status: 'online', mode: 'bootstrap', startedAt: Date.now() - 60_000, restarts: 0, port: 3001 },
+      { name: 'storage', pid: 12346, status: 'online', mode: 'bootstrap', startedAt: Date.now() - 30_000, restarts: 1, port: 3002 },
     ],
   };
 
-  describe('save', () => {
-    it('creates state file', () => {
-      store.save(sampleState);
-      expect(fs.existsSync(stateFile)).toBe(true);
-    });
-
-    it('writes valid JSON', () => {
-      store.save(sampleState);
-      const data = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
-      expect(data.version).toBe('0.1.0');
-      expect(data.apps).toHaveLength(2);
-    });
-
-    it('creates parent directories', () => {
-      const nested = path.join(tmpDir, 'a', 'b', 'c', 'state.json');
-      const nestedStore = new StateStore(nested);
-      nestedStore.save(sampleState);
-      expect(fs.existsSync(nested)).toBe(true);
-    });
-
-    it('overwrites existing state', () => {
-      store.save(sampleState);
-      const updated = { ...sampleState, version: '0.2.0', apps: [] };
-      store.save(updated);
-      const loaded = store.load();
-      expect(loaded!.version).toBe('0.2.0');
-      expect(loaded!.apps).toHaveLength(0);
-    });
-
-    it('writes atomically — never leaves a torn JSON file (T#55)', () => {
-      // Drive a save and then check that NO temp/stale file is left
-      // behind (rename consumed it) and the final file contains the
-      // FULL payload. Pre-T#55, `writeFileSync(stateFile, ...)` was a
-      // direct overwrite; if the process was SIGKILL'd between byte
-      // 0 and byte N, the next boot's `load()` saw truncated JSON
-      // and returned null, losing the entire registry.
-      store.save(sampleState);
-
-      const entries = fs.readdirSync(tmpDir);
-      // Only the final state.json should remain — no `.tmp.*` siblings.
-      const stray = entries.filter((e) => e.includes('.tmp.'));
-      expect(stray).toEqual([]);
-
-      // Round-trip: the on-disk file decodes cleanly to the full
-      // sample state, proving the atomic write delivered the whole
-      // payload (not just a prefix).
-      const loaded = store.load();
-      expect(loaded).not.toBeNull();
-      expect(loaded!.apps).toHaveLength(2);
-    });
-
-    it('cleans up the temp file when the rename fails (T#55 error path)', () => {
-      // Force the rename target to be a *directory* — `fs.renameSync`
-      // can't replace a directory with a file, so the atomic-write
-      // path must throw AND clean up its temp sibling.
-      const dirAsTarget = path.join(tmpDir, 'state.json');
-      fs.mkdirSync(dirAsTarget);
-      expect(() => store.save(sampleState)).toThrow();
-      // No stray temp file should be left.
-      const stray = fs.readdirSync(tmpDir).filter((e) => e.includes('.tmp.'));
-      expect(stray).toEqual([]);
-    });
-  });
-
-  describe('load', () => {
-    it('returns saved state', () => {
+  describe('save / load (in-memory cache)', () => {
+    it('round-trips the saved snapshot via the synchronous cache', () => {
       store.save(sampleState);
       const loaded = store.load();
       expect(loaded).not.toBeNull();
-      expect(loaded!.version).toBe(sampleState.version);
+      expect(loaded!.version).toBe('0.1.0');
       expect(loaded!.apps).toHaveLength(2);
       expect(loaded!.apps[0]!.name).toBe('main');
       expect(loaded!.apps[1]!.name).toBe('storage');
     });
 
-    it('returns null when file does not exist', () => {
-      expect(store.load()).toBeNull();
+    it('overwrites existing state', () => {
+      store.save(sampleState);
+      store.save({ ...sampleState, version: '0.2.0', apps: [] });
+      const loaded = store.load();
+      expect(loaded!.version).toBe('0.2.0');
+      expect(loaded!.apps).toHaveLength(0);
     });
 
-    it('returns null on invalid JSON', () => {
-      fs.writeFileSync(stateFile, 'not-json', 'utf-8');
+    it('load() returns null before anything is saved or init()-ed', () => {
       expect(store.load()).toBeNull();
     });
   });
 
-  describe('clear', () => {
-    it('removes state file', () => {
+  describe('SQLite durability', () => {
+    it('persists across flush() so a fresh StateStore recovers the full payload', async () => {
       store.save(sampleState);
-      expect(fs.existsSync(stateFile)).toBe(true);
-      store.clear();
-      expect(fs.existsSync(stateFile)).toBe(false);
+      await store.flush(); // block until the queued SQLite write reaches disk
+
+      const reopened = new StateStore(backing);
+      const recovered = await reopened.init();
+      expect(recovered).not.toBeNull();
+      expect(recovered!.apps).toHaveLength(2); // whole payload, not a torn prefix
+      expect(reopened.load()!.version).toBe('0.1.0');
     });
 
-    it('does not throw when file does not exist', () => {
+    it('clear() drops the persisted snapshot', async () => {
+      store.save(sampleState);
+      await store.flush();
+      store.clear();
+      await store.flush();
+
+      const reopened = new StateStore(backing);
+      expect(await reopened.init()).toBeNull();
+    });
+
+    it('does not throw when clearing an empty store', () => {
       expect(() => store.clear()).not.toThrow();
+    });
+  });
+
+  describe('legacy JSON migration', () => {
+    it('imports a pre-SQLite state.json on first init() and unlinks it', async () => {
+      const legacyPath = path.join(tmpDir, 'state.json');
+      fs.writeFileSync(legacyPath, JSON.stringify(sampleState), 'utf-8');
+
+      const migrating = new StateStore(backing, legacyPath);
+      const migrated = await migrating.init();
+      expect(migrated).not.toBeNull();
+      expect(migrated!.apps).toHaveLength(2);
+      // The legacy file is consumed after a successful migration.
+      expect(fs.existsSync(legacyPath)).toBe(false);
+
+      // And it now lives in SQLite — a fresh store recovers it without the JSON file.
+      const after = new StateStore(backing);
+      expect((await after.init())!.apps).toHaveLength(2);
+    });
+
+    it('init() returns null when there is neither a SQLite row nor a legacy file', async () => {
+      expect(await store.init()).toBeNull();
     });
   });
 });

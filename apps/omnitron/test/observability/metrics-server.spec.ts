@@ -15,6 +15,13 @@ function makeMetricsService(registry: MetricsRegistry): IMetricsService {
   return {
     record: () => {},
     recordBatch: () => {},
+    // T#74: bridge writes via recordTyped — delegate to the registry like the real service.
+    recordTyped: (type, name, labels, value) => {
+      if (type === 'counter') registry.counter(name, labels, value);
+      else if (type === 'histogram') registry.histogram(name, labels, value);
+      else registry.gauge(name, labels, value);
+    },
+    evictApp: async () => {},
     getSnapshot: async () => ({ apps: [] }) as never,
     querySeries: async () => [],
     getPrometheusText: async () => registry.toPrometheusText(),
@@ -37,17 +44,6 @@ const noopLogger = {
     return this;
   },
 } as unknown as Parameters<typeof MetricsServer['prototype']['constructor']>[0]['logger'];
-
-async function pickPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = http.createServer();
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address();
-      const port = typeof addr === 'object' && addr ? addr.port : 0;
-      srv.close(() => (port ? resolve(port) : reject(new Error('no port'))));
-    });
-  });
-}
 
 async function fetchText(url: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -79,15 +75,17 @@ describe('MetricsServer', () => {
       orphansKilled: 0,
       killErrors: 0,
     });
-    port = await pickPort();
+    // Bind ephemeral (port 0) and use the port the server actually got. The
+    // old pickPort()→close→reuse dance raced other test files for the same
+    // freed port and made this suite intermittently flaky.
     server = new MetricsServer({
-      port,
+      port: 0,
       host: '127.0.0.1',
       metrics,
       bridge,
       logger: noopLogger,
     });
-    await server.start();
+    ({ port } = await server.start());
   });
 
   afterAll(async () => {

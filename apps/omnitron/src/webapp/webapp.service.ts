@@ -10,7 +10,7 @@
  * Architecture:
  *   Browser → :9800 (nginx) → static files (webapp dist/)
  *                             → /api/* → :9801 (daemon Netron HTTP)
- *                             → /ws → :9801 (WebSocket upgrade)
+ *                             → /ws → :9802 (daemon Netron WebSocket transport)
  */
 
 import fs from 'node:fs';
@@ -34,7 +34,7 @@ const exec = promisify(execFile);
 // Nginx Config Template
 // =============================================================================
 
-function generateNginxConfig(apiHost: string, apiPort: number): string {
+function generateNginxConfig(apiHost: string, apiPort: number, wsPort: number): string {
   return `
 worker_processes auto;
 
@@ -87,13 +87,21 @@ http {
             proxy_pass http://${apiHost}:${apiPort}/metrics;
         }
 
-        # WebSocket support
+        # WebSocket support — the daemon's Netron WS transport listens on a
+        # separate port (httpPort + 2 = 9802) and serves at the root path, so
+        # the trailing slash rewrites "/ws" → "/" on the upstream.
         location /ws {
-            proxy_pass http://${apiHost}:${apiPort}/ws;
+            proxy_pass http://${apiHost}:${wsPort}/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
+            # Forward the FULL Host incl. port ($http_host, not $host which
+            # strips it). The daemon's WS same-host origin guard compares the
+            # Origin header's host ("localhost:9800") against request Host; with
+            # the port stripped it sees "localhost" and rejects every upgrade,
+            # leaving the console stuck on HTTP polling.
+            proxy_set_header Host $http_host;
+            proxy_set_header Origin $http_origin;
             proxy_read_timeout 3600s;
         }
 
@@ -191,7 +199,8 @@ export class WebappService {
     }
 
     // 3. Generate nginx config
-    const nginxConfig = generateNginxConfig('host.docker.internal', this.apiPort);
+    // WS transport lives on httpPort + 2; daemon HTTP (apiPort) is httpPort + 1.
+    const nginxConfig = generateNginxConfig('host.docker.internal', this.apiPort, this.apiPort + 1);
     const configPath = path.join(this.configDir, 'nginx.conf');
     fs.writeFileSync(configPath, nginxConfig, 'utf-8');
     this.logger.info({ configPath }, 'Generated nginx config');

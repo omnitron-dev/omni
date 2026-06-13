@@ -231,12 +231,95 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     args.push(...config.command);
   }
 
-  // Execute docker run — use async execFile to avoid blocking event loop
-  const { stdout } = await execFileAsync('docker', args.slice(1), { encoding: 'utf-8', timeout: 60_000 });
+  // Execute docker run — use async execFile to avoid blocking event loop.
+  //
+  // Self-heal the two stale-state failures that otherwise wedge a managed
+  // container into an unstartable state (both seen in production on
+  // macOS/OrbStack after dockerd restarts under disk pressure):
+  //   1. "endpoint with name X already exists in network N" — an orphaned
+  //      libnetwork endpoint outlived its container; docker run then leaves a
+  //      half-created container with PortBindings set but NO published host
+  //      port, so clients get ECONNREFUSED while inspect says "running".
+  //   2. "Conflict. The container name X is already in use" — a leftover
+  //      Created-state container from a previously failed run.
+  // On either, scrub the stale state and retry the run exactly once.
+  const runDocker = () => execFileAsync('docker', args.slice(1), { encoding: 'utf-8', timeout: 60_000 });
+  let stdout: string;
+  try {
+    ({ stdout } = await runDocker());
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/endpoint with name .* already exists|is already in use by container/i.test(msg)) throw err;
+    await scrubStaleContainerState(config.name, config.network);
+    ({ stdout } = await runDocker());
+  }
+
+  // Post-create guard: a container can report "running" yet have its declared
+  // host ports UNpublished when it silently reused an orphaned endpoint
+  // (PortBindings present but never wired by dockerd) — the exact failure that
+  // took Redis offline and cascaded to a login outage. Detect the mismatch and
+  // rebuild once from clean state so a successful return always means the
+  // declared ports are actually reachable.
+  if (config.ports.length > 0 && !(await arePortsPublished(config.name, config.ports))) {
+    await scrubStaleContainerState(config.name, config.network);
+    ({ stdout } = await runDocker());
+  }
+
   const output = (stdout ?? '').trim();
 
   // Return container ID from docker run output (first line is container ID)
   return (output || config.name).slice(0, 12);
+}
+
+/**
+ * Clear stale Docker state that blocks (re)creating a managed container: a
+ * leftover container holding the name, and an orphaned libnetwork endpoint
+ * holding the name on the managed network. Best-effort — every step may
+ * legitimately find nothing to remove.
+ */
+async function scrubStaleContainerState(name: string, network?: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    await execFileAsync('docker', ['rm', '-f', name], { encoding: 'utf-8', timeout: 15_000 });
+  } catch {
+    // No leftover container.
+  }
+  if (network) {
+    try {
+      await execFileAsync('docker', ['network', 'disconnect', '-f', network, name], {
+        encoding: 'utf-8',
+        timeout: 15_000,
+      });
+    } catch {
+      // No orphaned endpoint for this name.
+    }
+  }
+}
+
+/**
+ * True if every declared host port shows up in `docker port <name>` (i.e.
+ * dockerd actually published it). Returns true when the check itself fails,
+ * so a transient docker hiccup never triggers a needless rebuild of a
+ * container that is in fact fine.
+ */
+async function arePortsPublished(
+  name: string,
+  ports: Array<{ host: number; container: number }>,
+): Promise<boolean> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    // `docker port` prints one line per published port, e.g.
+    // "6379/tcp -> 0.0.0.0:6379"; an unpublished container prints nothing.
+    const { stdout } = await execFileAsync('docker', ['port', name], { encoding: 'utf-8', timeout: 10_000 });
+    const mapped = stdout ?? '';
+    return ports.every((p) => mapped.includes(`:${p.host}`));
+  } catch {
+    return true;
+  }
 }
 
 /**

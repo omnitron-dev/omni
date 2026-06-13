@@ -17,6 +17,7 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { computeBackoff } from '@omnitron-dev/titan/utils';
 import type {
   InfrastructureConfig,
   InfrastructureState,
@@ -41,6 +42,26 @@ const RECONCILE_INTERVAL = 30_000; // 30s health sweep
 const STARTUP_TIMEOUT = 120_000; // 2min max per service
 /** Consecutive 'unhealthy' ticks before recreate. 2 ticks @ 30s = 60s grace. */
 const UNHEALTHY_RESTART_THRESHOLD = 2;
+/** Restart circuit-breaker: first failed-restart backoff, doubled each failure. */
+const RESTART_BACKOFF_BASE = 30_000; // 30s
+/** Restart circuit-breaker: backoff ceiling (30s → 1m → 2m … capped here). */
+const RESTART_BACKOFF_MAX = 15 * 60_000; // 15min
+
+/**
+ * Restart-circuit-breaker backoff schedule: the delay (ms) to wait before the
+ * next restart attempt after `failures` consecutive failed (re)creates.
+ * Exponential from RESTART_BACKOFF_BASE, capped at RESTART_BACKOFF_MAX so a
+ * permanently-broken service settles into an occasional retry instead of
+ * hammering the supervisor every 30s.
+ *
+ * Delegates to the shared titan `computeBackoff` (the same helper the daos
+ * backends and the titan packages use) so the exponential shape lives in ONE
+ * place. Exported for tests.
+ */
+export function restartBackoffMs(failures: number): number {
+  if (failures < 1) return 0;
+  return computeBackoff({ attempt: failures - 1, baseMs: RESTART_BACKOFF_BASE, maxMs: RESTART_BACKOFF_MAX });
+}
 
 /** Omnitron internal PG connection defaults */
 const OMNITRON_PG_PORT = 5480;
@@ -65,6 +86,18 @@ export class InfrastructureService {
    * making transient pressure look like outages.
    */
   private unhealthyTicks = new Map<string, number>();
+
+  /**
+   * Per-service restart circuit-breaker. A container whose (re)create keeps
+   * failing — an image that won't pull, or infra stuck on an unrecoverable
+   * error — must NOT be retried every 30s forever: that churn (docker calls +
+   * error logging) is what wedged the daemon's event loop and let an external
+   * "socket unreachable → SIGTERM" kill the whole daemon during the 2026-05
+   * outage. After each failed restart we back off exponentially (30s → 1m →
+   * 2m … capped at 15m); a successful restart or an externally-recovered
+   * 'running' observation resets it.
+   */
+  private restartBackoff = new Map<string, { failures: number; nextAttemptAt: number }>();
 
   /**
    * T#75: phantom-endpoint janitor instance. Created in `provision()`
@@ -707,15 +740,32 @@ export class InfrastructureService {
 
       if (!actual || actual.status !== 'running') {
         this.unhealthyTicks.delete(desired.name);
+
+        // Circuit-breaker: while a service is inside its backoff window, skip
+        // the restart so a permanently-failing container can't hammer the
+        // supervisor every tick and starve the daemon's event loop.
+        const backoff = this.restartBackoff.get(desired.name);
+        if (backoff && Date.now() < backoff.nextAttemptAt) {
+          this.logger.debug(
+            { service: desired.name, failures: backoff.failures, retryInMs: backoff.nextAttemptAt - Date.now() },
+            'Service not running — in restart backoff, skipping tick'
+          );
+          continue;
+        }
+
         this.logger.warn(
           { service: desired.name, status: actual?.status ?? 'not_found' },
           'Service not running — auto-restarting'
         );
         try {
           await this.reconcileService(desired);
+          this.restartBackoff.delete(desired.name);
         } catch (err) {
+          const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
+          const backoffMs = restartBackoffMs(failures);
+          this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + backoffMs });
           this.logger.error(
-            { service: desired.name, error: (err as Error).message },
+            { service: desired.name, error: (err as Error).message, failures, backoffMs },
             'Auto-restart failed'
           );
         }
@@ -745,8 +795,11 @@ export class InfrastructureService {
           }
         }
       } else {
-        // Healthy or starting — clear any accumulated unhealthy ticks
+        // Healthy or starting — clear any accumulated unhealthy ticks and
+        // reset the restart circuit-breaker (it may have recovered on its own
+        // via Docker's restart policy).
         this.unhealthyTicks.delete(desired.name);
+        this.restartBackoff.delete(desired.name);
       }
 
       // Update state

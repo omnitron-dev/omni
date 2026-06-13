@@ -21,6 +21,14 @@ function makeMetricsService(registry: MetricsRegistry): IMetricsService {
   return {
     record: () => {},
     recordBatch: () => {},
+    // T#74: the bridge writes via recordTyped — delegate to the registry
+    // exactly as the real MetricsService does so samples reach toPrometheusText.
+    recordTyped: (type, name, labels, value) => {
+      if (type === 'counter') registry.counter(name, labels, value);
+      else if (type === 'histogram') registry.histogram(name, labels, value);
+      else registry.gauge(name, labels, value);
+    },
+    evictApp: async () => {},
     getSnapshot: async () => ({ apps: [] }) as never,
     querySeries: async () => [],
     getPrometheusText: async () => registry.toPrometheusText(),

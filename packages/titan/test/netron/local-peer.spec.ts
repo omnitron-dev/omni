@@ -29,7 +29,7 @@ describe('LocalPeer', () => {
   });
 
   afterEach(async () => {
-    netron.peer.unexposeAllServices();
+    await netron.peer.unexposeAllServices();
     // Properly stop the Netron instance to free the port
     await netron.stop();
   });

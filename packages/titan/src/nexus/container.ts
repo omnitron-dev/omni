@@ -1970,6 +1970,12 @@ export class Container implements IContainer {
     // Clear scoped instances
     this.scopedInstances.clear();
 
+    // NX-16: also drop in-flight async resolutions. Otherwise a resolution that
+    // started before clearCache() would, on completion, re-cache a pre-clear
+    // instance (and any concurrent joiner would receive it) — silently undoing
+    // the invalidation clearCache() just performed.
+    this.pendingPromises.clear();
+
     // If this is a child container, also clear its scopeId from parent's scoped instances
     if (this.parent && (this.parent as any).scopedInstances) {
       const scopeId = this.context.metadata?.['scopeId'];

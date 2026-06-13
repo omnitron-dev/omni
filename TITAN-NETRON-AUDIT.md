@@ -239,7 +239,7 @@ Closed (fix + tests + commit, all suites green): **SEC-2** (opt-in default-deny,
 - NB-8 high — multi-backend-client.ts:290 + backend-client.ts — reconnect events never forwarded.
 - NB-9 high — leader-election/election.ts:81 — no frozen-leader liveness; fallback unimplemented.
 - NB-10 med — election.ts:70 — unvalidated BroadcastChannel messages.
-- NB-11 med — http/connection.ts:68 — single shared AbortController cross-cancels concurrent requests.
+- NB-11 ✅ DONE — `HttpConnection` held ONE shared `this.abortController`, reassigned per request: a request's timeout closure read the field at fire time (aborting whichever request wrote it LAST, not itself), and `close()` cancelled only that last one — while `ping()` never set the field, so its fetch carried `undefined`/stale signal and was uncancellable. Now every request/ping creates its OWN controller tracked in a `Set`; the timeout/finally close over the local const, and `close()` aborts the whole set. Test `tests/unit/transport/http-connection-abort.test.ts` (distinct per-request signals; close aborts all in-flight). netron-browser 842/842, tsc 0-err.
 - NB-12 med — http/types.ts:27 — envelope types drifted (no conditional hints; lastModified type).
 - NB-13 med — request-batcher.ts — fully impl + exported but never instantiated (dead, ~454 LOC).
 - NB-14..19 low — dead services/pendingRequests maps; Uid triplicated; error hierarchy/factories drift + legacy.ts; packet impl drift; router dead branch+greedy prefix; then-trap proxy.

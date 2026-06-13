@@ -65,7 +65,11 @@ export class HttpConnection extends EventEmitter {
   private baseUrl: string;
   private pathPrefix: string;
   private options: TransportOptions;
-  private abortController?: AbortController;
+  // NB-11: one AbortController PER in-flight request. A single shared controller
+  // was overwritten by every request, so a request's timeout aborted whichever
+  // request happened to write the field last (not itself), and close() could
+  // only cancel the most recent one. The set lets close() abort them all.
+  private readonly inFlight = new Set<AbortController>();
 
   // Request tracking
   private pendingRequests = new Map<
@@ -187,10 +191,13 @@ export class HttpConnection extends EventEmitter {
     };
 
     const timeout = this.options?.timeout || 30000;
-    this.abortController = new AbortController();
+    // NB-11: per-request controller, tracked so close() can abort it without
+    // cross-cancelling sibling requests.
+    const controller = new AbortController();
+    this.inFlight.add(controller);
 
     const timeoutId = setTimeout(() => {
-      this.abortController?.abort();
+      controller.abort();
     }, timeout);
 
     try {
@@ -198,12 +205,10 @@ export class HttpConnection extends EventEmitter {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: this.abortController.signal,
+        signal: controller.signal,
         // T#176 — propagate the transport-level credentials policy.
         ...(this.options?.credentials !== undefined ? { credentials: this.options.credentials } : {}),
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         // Try to parse error response
@@ -235,8 +240,6 @@ export class HttpConnection extends EventEmitter {
 
       return await response.json();
     } catch (error: any) {
-      clearTimeout(timeoutId);
-
       if (error.name === 'AbortError') {
         throw new TitanError({
           code: ErrorCode.REQUEST_TIMEOUT,
@@ -245,6 +248,9 @@ export class HttpConnection extends EventEmitter {
       }
 
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      this.inFlight.delete(controller);
     }
   }
 
@@ -258,12 +264,15 @@ export class HttpConnection extends EventEmitter {
     }
 
     const startTime = Date.now();
+    // NB-11: own controller, tracked so close() can abort an in-flight ping.
+    const controller = new AbortController();
+    this.inFlight.add(controller);
 
     try {
       // Use discovery endpoint as a lightweight ping
       const response = await fetch(this.buildUrl('/discover'), {
         method: 'GET',
-        signal: this.abortController?.signal,
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -286,6 +295,8 @@ export class HttpConnection extends EventEmitter {
         this.baseUrl,
         error instanceof Error ? error : new Error(String(error))
       );
+    } finally {
+      this.inFlight.delete(controller);
     }
   }
 
@@ -299,10 +310,11 @@ export class HttpConnection extends EventEmitter {
 
     this._state = ConnectionState.DISCONNECTED;
 
-    // Abort any pending requests
-    if (this.abortController) {
-      this.abortController.abort();
+    // Abort any in-flight requests (NB-11: each request has its own controller).
+    for (const controller of this.inFlight) {
+      controller.abort();
     }
+    this.inFlight.clear();
 
     // Reject all pending requests
     for (const [_id, pending] of this.pendingRequests) {

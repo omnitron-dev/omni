@@ -1,0 +1,42 @@
+{
+  "name": "@omnitron-dev/netron-protocol",
+  "version": "0.1.0",
+  "description": "Shared, dependency-free Netron wire-protocol primitives (UID generator, wire constants) consumed by both @omnitron-dev/titan and @omnitron-dev/netron-browser. Single source of truth for the on-the-wire contract.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "netron",
+    "rpc",
+    "protocol",
+    "wire",
+    "omnitron"
+  ],
+  "author": "Omnitron Dev",
+  "license": "MIT",
+  "sideEffects": false,
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

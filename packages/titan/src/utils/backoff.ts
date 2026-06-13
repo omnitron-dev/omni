@@ -40,12 +40,29 @@ export interface IBackoffOptions {
   /** Exponential growth factor. Default 2. */
   factor?: number;
   /**
-   * Jitter fraction (0..1). When > 0, a random value uniformly
-   * sampled from `[0, jitter * delay)` is ADDED to the delay.
-   * Default 0 (no jitter). Common choice: 0.3 to prevent
-   * thundering herds across N parallel retriers.
+   * Jitter fraction (0..1). When > 0, jitter is applied per `jitterMode`.
+   * Default 0 (no jitter). Common choice: 0.3 to prevent thundering herds
+   * across N parallel retriers.
    */
   jitter?: number;
+  /**
+   * Jitter distribution:
+   *   - `'additive'` (default): a value from `[0, jitter * delay)` is ADDED,
+   *     so the delay only ever grows. Result is NOT clamped to `maxMs`
+   *     post-jitter (preserves the original behaviour of the titan-pm /
+   *     scheduler callers).
+   *   - `'centered'`: a value from `[-0.5, +0.5) * jitter * delay` is added,
+   *     keeping the mean at the exponential value. The result IS clamped to
+   *     `[minMs, maxMs]` (centered jitter can push below/above). This is the
+   *     reconnect-backoff shape used by the netron transports (WIRE-4).
+   */
+  jitterMode?: 'additive' | 'centered';
+  /**
+   * Lower bound applied AFTER centered jitter (ignored for `'additive'`).
+   * Default 0. The netron reconnect path uses `minMs = baseMs` so a downward
+   * jitter never schedules a reconnect sooner than the base delay.
+   */
+  minMs?: number;
   /**
    * RNG override — defaults to `Math.random`. Lets tests
    * deterministically check the jitter envelope.
@@ -63,5 +80,13 @@ export function computeBackoff(options: IBackoffOptions): number {
 
   const exponential = Math.min(baseMs * Math.pow(factor, attempt), maxMs);
   if (jitter === 0) return exponential;
+
+  if (options.jitterMode === 'centered') {
+    const minMs = Math.max(0, options.minMs ?? 0);
+    const jittered = exponential + (random() - 0.5) * exponential * jitter;
+    return Math.min(Math.max(jittered, minMs), maxMs);
+  }
+
+  // 'additive' (default) — unchanged historical behaviour.
   return exponential + random() * exponential * jitter;
 }

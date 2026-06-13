@@ -7,6 +7,7 @@
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { performance } from 'node:perf_hooks';
 import { generateUuidV7 } from '../../utils/id.js';
+import { computeBackoff } from '../../utils/backoff.js';
 import {
   ITransport,
   ITransportConnection,
@@ -235,17 +236,20 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
 
     const baseDelay = this.options.reconnect?.delay ?? 1000;
     const maxDelay = this.options.reconnect?.maxDelay ?? 30000;
-    const exponentialDelay = Math.min(
-      baseDelay * Math.pow(this.options.reconnect?.factor ?? 2, this.reconnectAttempts),
-      maxDelay
-    );
-    // WIRE-4: add ±jitter so a fleet of clients disconnected together (server
-    // restart, network blip) doesn't reconnect in lockstep and stampede the
-    // server. The ConnectionManager path already jitters; this is the third
-    // reconnect impl that didn't. Same formula/default (0.3) for consistency.
-    const jitterFactor = this.options.reconnect?.jitterFactor ?? 0.3;
-    const jitter = exponentialDelay * jitterFactor * (Math.random() - 0.5);
-    const delay = Math.max(baseDelay, Math.min(exponentialDelay + jitter, maxDelay));
+    // WIRE-4 / RESILIENCE-UNIFY: exponential backoff with centered ±jitter so a
+    // fleet of clients disconnected together (server restart, network blip)
+    // doesn't reconnect in lockstep and stampede the server. Delegates to the
+    // shared `computeBackoff` primitive (jitterMode 'centered', minMs=base) —
+    // same formula as the former inline impl, now a single source of truth.
+    const delay = computeBackoff({
+      attempt: this.reconnectAttempts,
+      baseMs: baseDelay,
+      maxMs: maxDelay,
+      factor: this.options.reconnect?.factor ?? 2,
+      jitter: this.options.reconnect?.jitterFactor ?? 0.3,
+      jitterMode: 'centered',
+      minMs: baseDelay,
+    });
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;

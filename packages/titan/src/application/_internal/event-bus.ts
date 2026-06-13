@@ -111,10 +111,28 @@ export class EventBus extends EnhancedEventEmitter implements IAsyncEventBus {
   }
 
   /**
-   * Drop EVERY listener AND error handler. Called by Application on
-   * teardown so restart cycles don't accumulate stale subscriptions.
-   * Without this, every restart cycle doubles handler count for the
-   * lifetime of the process.
+   * Drop EVERY listener AND error handler — a full manual reset.
+   *
+   * APP-3: this is intentionally NOT wired into Application teardown,
+   * despite an earlier doc claiming so. Two reasons:
+   *
+   *   1. There is no listener leak to fix on this bus. Nothing in
+   *      `start()` (nor any module) registers listeners on the
+   *      Application event bus — the only registration paths are the
+   *      public `on`/`once`/`prependListener`, i.e. USER subscriptions.
+   *      `restart()` therefore adds nothing to accumulate. (The real
+   *      per-restart leak was process signal listeners, fixed separately:
+   *      `_doStop` now always calls `_process.cleanup()`.)
+   *   2. A blanket clear on teardown would drop those USER subscriptions,
+   *      breaking the documented contract that a listener registered once
+   *      survives across restart cycles (see application.spec.ts
+   *      "state during restart"). A correct teardown clear would have to
+   *      be origin-aware (snapshot the baseline before start, remove only
+   *      the per-start delta) — but with no per-start registrations there
+   *      is nothing for it to do.
+   *
+   * Kept as a primitive for an embedder that explicitly wants to reset a
+   * reused bus. Do not call it from the lifecycle.
    */
   clear(): void {
     this.removeAllListeners();

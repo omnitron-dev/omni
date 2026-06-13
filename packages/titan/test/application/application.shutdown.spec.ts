@@ -148,6 +148,50 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       expect(taskExecuted).not.toHaveBeenCalled();
     });
+
+    it('APP-1/2: stop() runs tasks through the same engine as shutdown() (priority order)', async () => {
+      // Before APP-1/2, stop() ran shutdown tasks through a separate
+      // hand-rolled loop and shutdown() through the LifecycleController —
+      // two engines that could drift in ordering. They are now one: stop()
+      // funnels its tasks through the same controller, so the (priority, id)
+      // ordering is identical regardless of entry point.
+      const order: string[] = [];
+      app = await Application.create({ disableGracefulShutdown: false, environment: 'test' });
+
+      app.registerShutdownTask({
+        name: 'Low', priority: ShutdownPriority.Low, handler: async () => { order.push('low'); },
+      });
+      app.registerShutdownTask({
+        name: 'First', priority: ShutdownPriority.First, handler: async () => { order.push('first'); },
+      });
+      app.registerShutdownTask({
+        name: 'High', priority: ShutdownPriority.High, handler: async () => { order.push('high'); },
+      });
+
+      await app.start();
+      await app.stop(); // entry point is stop(), NOT shutdown()
+
+      expect(order).toEqual(['first', 'high', 'low']);
+    });
+
+    it('APP-1/2: stop() emits per-task ShutdownTaskComplete like shutdown()', async () => {
+      const completed: string[] = [];
+      app = await Application.create({ disableGracefulShutdown: false, environment: 'test' });
+      app.on('shutdown:task:complete', (data: any) => completed.push(data?.task));
+
+      app.registerShutdownTask({
+        id: 'unified-task', name: 'Unified Task',
+        priority: ShutdownPriority.Normal, handler: async () => undefined,
+      });
+
+      await app.start();
+      await app.stop();
+
+      // The controller surfaces per-task completion through the same event
+      // stream stop() and shutdown() share. (Internal terminal tasks are
+      // not registered on the stop() path, so only the user task appears.)
+      expect(completed).toContain('Unified Task');
+    });
   });
 
   describe('Cleanup Handlers', () => {

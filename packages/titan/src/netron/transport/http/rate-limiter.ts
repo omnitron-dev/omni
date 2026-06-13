@@ -115,7 +115,10 @@ export class SlidingWindowRateLimiter {
     this.skipSuccessfulRequests = config.skipSuccessfulRequests ?? false;
     this.skipFailedRequests = config.skipFailedRequests ?? false;
     this.whitelist = new Set(config.whitelist ?? []);
-    this.trustProxy = config.trustProxy ?? true;
+    // RL-5: secure-by-default. Trusting client-supplied X-Forwarded-For/X-Real-IP
+    // by default lets an attacker rotate the header per request for a fresh limit
+    // bucket each time (trivial bypass). Opt in only behind a trusted proxy.
+    this.trustProxy = config.trustProxy ?? false;
 
     // Start cleanup interval if rate limiting is enabled
     if (this.enabled) {

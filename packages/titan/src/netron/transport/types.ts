@@ -395,6 +395,14 @@ export interface RateLimitConfig {
   message?: string;
   /** List of IPs or patterns to skip rate limiting (e.g., ['127.0.0.1', '::1']) */
   whitelist?: string[];
-  /** Headers to use for client identification (default: ['X-Forwarded-For', 'X-Real-IP']) */
+  /**
+   * Trust `X-Forwarded-For` / `X-Real-IP` for client identification.
+   *
+   * SECURITY (RL-5): defaults to `false`. When `true`, the per-client rate-limit
+   * key is taken from request headers a client fully controls — so an attacker
+   * can rotate `X-Forwarded-For` per request to get a fresh limit bucket each
+   * time, trivially bypassing the limit. Enable ONLY when the service sits
+   * behind a trusted proxy/load-balancer that overwrites these headers.
+   */
   trustProxy?: boolean;
 }

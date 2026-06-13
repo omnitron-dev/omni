@@ -35,11 +35,11 @@ import {
   CONNECT_TIMEOUT,
   NETRON_EVENT_PEER_CONNECT,
   NETRON_EVENT_PEER_DISCONNECT,
-  MAX_EVENT_QUEUE_SIZE,
   RECONNECT_BASE_DELAY,
   RECONNECT_MAX_DELAY,
   RECONNECT_JITTER_FACTOR,
 } from './constants.js';
+import { SpecialEventBuffer } from './special-event-buffer.js';
 import { ConnectionManager, type ConnectionManagerConfig } from './connection-manager.js';
 import { registerStreamReference } from './streams/register-stream-reference.js';
 
@@ -122,15 +122,11 @@ export class Netron extends EventEmitter implements INetron {
   public transportServers: Map<string, ITransportServer> = new Map();
 
   /**
-   * Map of special events that need to be processed sequentially.
-   * Used to ensure ordered processing of related events and prevent race conditions.
-   * Key: event ID, Value: array of {name, data} pairs
-   *
-   * @type {Map<string, { name: string; data: any }[]>}
-   * @private
-   * @description Maintains event queue for ordered processing and prevents race conditions
+   * NET-3: buffers/sequences "special" lifecycle events (extracted from this
+   * god object into a focused collaborator). Initialised in the constructor
+   * once the logger is available.
    */
-  private ownEvents: Map<string, { name: string; data: any }[]> = new Map();
+  private specialEvents!: SpecialEventBuffer;
 
   /**
    * The local peer instance representing this Netron instance.
@@ -332,6 +328,9 @@ export class Netron extends EventEmitter implements INetron {
       timeout: options?.taskTimeout,
       overwriteStrategy: options?.taskOverwriteStrategy,
     });
+
+    // NET-3: special-event buffering/sequencing lives in its own collaborator.
+    this.specialEvents = new SpecialEventBuffer((name, data) => this.emitParallel(name, data), this.logger);
 
     this.peer = new LocalPeer(this);
 
@@ -1318,81 +1317,22 @@ export class Netron extends EventEmitter implements INetron {
    * netron.deleteSpecialEvents('operation-123');
    */
   deleteSpecialEvents(id: string) {
-    this.ownEvents.delete(id);
+    this.specialEvents.delete(id);
   }
 
   /**
-   * Emits a special event with guaranteed sequential processing.
-   * This method implements a sophisticated event emission system that:
-   * 1. Queues events for sequential processing
-   * 2. Implements a timeout mechanism for event processing
-   * 3. Handles error cases gracefully
-   * 4. Ensures proper cleanup of event queues
-   * 5. Prevents unbounded queue growth with a configurable maximum size
-   *
-   * The method maintains event order and prevents race conditions by processing
-   * events in a first-in-first-out manner with a maximum processing time of 5 seconds.
+   * Emits a special lifecycle event with guaranteed sequential, FIFO processing
+   * per id, a 5s per-event timeout, graceful error handling, and a bounded
+   * queue (DoS guard). NET-3: the buffering/sequencing logic now lives in
+   * {@link SpecialEventBuffer}; this thin wrapper preserves the public API.
    *
    * @param {string} event - The name of the event to emit
    * @param {string} id - The unique identifier for this event sequence
    * @param {any} data - The data payload to be emitted with the event
-   * @returns {Promise<void>} A promise that resolves when event processing is complete
-   * @throws {Error} If event processing times out, fails, or queue is full
+   * @returns {Promise<void>} resolves when this id's queue has fully drained
    */
-  async emitSpecial(event: string, id: string, data: any) {
-    const events = this.ownEvents.get(id) || [];
-
-    // Prevent unbounded queue growth (DoS protection)
-    if (events.length >= MAX_EVENT_QUEUE_SIZE) {
-      this.logger.error(
-        { event, id, queueSize: events.length },
-        `Event queue limit exceeded (${MAX_EVENT_QUEUE_SIZE}), dropping oldest event`
-      );
-      // Drop the oldest event to make room
-      events.shift();
-    }
-
-    events.push({ name: event, data });
-    this.ownEvents.set(id, events);
-
-    if (events.length > 1) {
-      return;
-    }
-
-    try {
-      // Process events using index-based iteration to avoid O(n²) complexity
-      // from shift() operations. We track processedCount separately since
-      // new events may be added during processing.
-      let processedCount = 0;
-      while (processedCount < events.length) {
-        const eventData = events[processedCount];
-        processedCount++;
-        if (eventData === undefined) {
-          continue;
-        }
-        try {
-          let timeoutId: NodeJS.Timeout | undefined;
-
-          const timeoutPromise = new Promise<void>((_, reject) => {
-            timeoutId = setTimeout(() => {
-              reject(Errors.timeout('Event emission: ' + eventData.name, 5000));
-            }, 5000);
-          });
-
-          const emitPromise = this.emitParallel(eventData.name, eventData.data);
-
-          await Promise.race([emitPromise, timeoutPromise]).finally(() => {
-            if (timeoutId !== undefined) {
-              clearTimeout(timeoutId);
-            }
-          });
-        } catch (err: any) {
-          this.logger.error(`Event emit error: ${err.message}`);
-        }
-      }
-    } finally {
-      this.ownEvents.delete(id);
-    }
+  async emitSpecial(event: string, id: string, data: any): Promise<void> {
+    return this.specialEvents.emitSpecial(event, id, data);
   }
 
   /**

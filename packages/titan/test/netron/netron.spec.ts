@@ -270,10 +270,13 @@ describeOrSkip('Netron - Comprehensive Tests', () => {
     });
 
     it('should delete special events', () => {
-      netron['ownEvents'].set('event-123', []);
+      // NET-3: the special-event queue now lives in the SpecialEventBuffer
+      // collaborator; deleteSpecialEvents delegates to it.
+      const buffer = netron['specialEvents'] as unknown as { ownEvents: Map<string, unknown[]> };
+      buffer.ownEvents.set('event-123', []);
       netron.deleteSpecialEvents('event-123');
 
-      expect(netron['ownEvents'].has('event-123')).toBe(false);
+      expect(buffer.ownEvents.has('event-123')).toBe(false);
     });
   });
 

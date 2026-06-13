@@ -47,8 +47,12 @@ export interface IRateLimitAlgorithm {
    *
    * @param storage - Storage backend instance
    * @param key - Unique identifier to reset
+   * @param windowMs - Window size; REQUIRED by the fixed-window algorithm to
+   *   reconstruct the current window's storage key (it stores counts under
+   *   `key:<windowId>`). Ignored by sliding-window / token-bucket, which key
+   *   off `key` directly.
    */
-  reset(storage: IRateLimitStorage, key: string): Promise<void>;
+  reset(storage: IRateLimitStorage, key: string, windowMs?: number): Promise<void>;
 }
 
 /**
@@ -242,17 +246,37 @@ export class FixedWindowAlgorithm implements IRateLimitAlgorithm {
   }
 
   /**
-   * Reset fixed window state for a key
+   * Reset fixed window state for a key.
    *
-   * Note: This resets the current window. Previous/future windows
-   * are unaffected and will expire naturally.
+   * `check()` stores counts under the window-suffixed key `key:<windowId>`,
+   * never the bare `key`. The previous implementation deleted the bare `key`
+   * — which is never written — so reset() was a silent no-op for the active
+   * window and the budget was never actually restored.
+   *
+   * With `windowMs` we reconstruct the CURRENT window id and delete that key
+   * (plus the immediately-adjacent windows, so a reset landing right on a
+   * window boundary still clears the slot the next check will use). Previous
+   * windows expire naturally. Without `windowMs` we fall back to the old
+   * best-effort base-key delete.
    *
    * @param storage - Storage backend
    * @param key - Rate limit key to reset (without window ID)
+   * @param windowMs - Window size, required to derive the window-suffixed key
    */
-  async reset(storage: IRateLimitStorage, key: string): Promise<void> {
-    // Delete the base key - specific window keys will expire naturally
-    await storage.delete(key);
+  async reset(storage: IRateLimitStorage, key: string, windowMs?: number): Promise<void> {
+    if (!windowMs || windowMs <= 0) {
+      // No window size available — best-effort (legacy behaviour).
+      await storage.delete(key);
+      return;
+    }
+    const currentWindow = Math.floor(Date.now() / windowMs);
+    // Clear the current window and its neighbours so a reset on a boundary
+    // still frees the slot the subsequent check will read.
+    await Promise.all([
+      storage.delete(`${key}:${currentWindow - 1}`),
+      storage.delete(`${key}:${currentWindow}`),
+      storage.delete(`${key}:${currentWindow + 1}`),
+    ]);
   }
 }
 

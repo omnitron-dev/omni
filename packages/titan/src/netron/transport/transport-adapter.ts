@@ -141,10 +141,24 @@ export class BinaryTransportAdapter extends EventEmitter {
       this.emit('error', error);
     });
 
-    // Map disconnect event to close
-    this.connection.on('disconnect', (reason?: string) => {
+    // Map disconnect event to close.
+    //
+    // WIRE-7: the IConnection 'disconnect' contract is (reason?: string),
+    // and the binary socket transports (TCP/WS/Unix) — the only ones this
+    // adapter ever wraps — honour it. The HTTP connection deliberately
+    // emits a richer { code, reason } object (an HTTP close carries a code,
+    // like a WS close frame), but HTTP never flows through this adapter.
+    // Coerce defensively anyway so a non-string reason can NEVER throw in
+    // Buffer.from() (which rejects plain objects).
+    this.connection.on('disconnect', (reason?: unknown) => {
       this._readyState = BinaryTransportAdapter.CLOSED;
-      this.emit('close', 1000, Buffer.from(reason || ''));
+      const reasonStr =
+        typeof reason === 'string'
+          ? reason
+          : reason && typeof (reason as { reason?: unknown }).reason === 'string'
+            ? (reason as { reason: string }).reason
+            : '';
+      this.emit('close', 1000, Buffer.from(reasonStr));
     });
   }
 

@@ -476,7 +476,9 @@ describe('NotificationsModule', () => {
     });
 
     afterEach(async () => {
-      await service.destroy();
+      // NotificationsService implements the Titan lifecycle hook `onDestroy()`;
+      // there is no `destroy()` alias.
+      await service.onDestroy();
     });
 
     it('should register handlers from decorated class', async () => {
@@ -588,7 +590,22 @@ describe('NotificationsModule', () => {
     });
 
     it('should warn when handler method not found', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation();
+      // registerHandlers logs through the module's ILogger (a null logger by
+      // default), not console — inject a spy logger to observe the warning.
+      const warnSpy = vi.fn();
+      const prevLogger = (NotificationsModule as any).logger;
+      const noop = () => {};
+      (NotificationsModule as any).logger = {
+        trace: noop,
+        debug: noop,
+        info: noop,
+        warn: warnSpy,
+        error: noop,
+        fatal: noop,
+        child() {
+          return this;
+        },
+      };
 
       class BrokenHandler {
         // Method will be removed to simulate missing handler
@@ -602,10 +619,12 @@ describe('NotificationsModule', () => {
       );
 
       const instance = new BrokenHandler();
-      await NotificationsModule.registerHandlers(mockTransport, instance);
-
-      expect(consoleWarnSpy).toHaveBeenCalled();
-      consoleWarnSpy.mockRestore();
+      try {
+        await NotificationsModule.registerHandlers(mockTransport, instance);
+        expect(warnSpy).toHaveBeenCalled();
+      } finally {
+        (NotificationsModule as any).logger = prevLogger;
+      }
     });
   });
 

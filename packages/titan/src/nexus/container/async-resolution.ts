@@ -106,7 +106,10 @@ export class AsyncResolutionService {
       if (richIndices.has(i)) continue;
       const dep = registration.dependencies[i];
       if (dep === undefined) continue; // Skip undefined dependencies
-      let depToken: InjectionToken<any> = dep;
+      // `dep` is an InjectionInput: a bare token, `{ token, optional }`, or the
+      // `{ token: 'CONTEXT', type: 'context' }` marker. The bare-token case is
+      // the common one; the object forms are narrowed and reassigned below.
+      let depToken: InjectionToken<any> = dep as InjectionToken<any>;
       let isOptional = false;
 
       // Handle optional dependencies and context injection
@@ -117,7 +120,7 @@ export class AsyncResolutionService {
         if (depObj.token === 'CONTEXT' && depObj.type === 'context') {
           tasks.push({
             index: i,
-            depToken: dep,
+            depToken: depObj.token,
             isOptional: false,
             isContext: true,
             contextValue: (context as any)['resolveContext'] || context,

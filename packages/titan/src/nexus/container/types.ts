@@ -5,7 +5,7 @@
  * @since 0.1.0
  */
 
-import type { InjectionToken, ProviderDefinition, RegistrationOptions, Scope, IModule } from '../types.js';
+import type { InjectionToken, InjectionInput, ProviderDefinition, RegistrationOptions, Scope, IModule } from '../types.js';
 
 /**
  * Registration metadata for container.
@@ -21,7 +21,7 @@ export interface Registration {
   scope: Scope;
   instance?: any;
   factory?: (...args: any[]) => any;
-  dependencies?: InjectionToken<any>[];
+  dependencies?: InjectionInput<any>[];
   isAsync?: boolean;
 }
 

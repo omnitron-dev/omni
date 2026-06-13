@@ -5,6 +5,7 @@
  */
 
 import * as cron from 'node-cron';
+import { CronExpressionParser } from 'cron-parser';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 
@@ -335,10 +336,16 @@ export class SchedulerService implements ILifecycle {
     let nextExecution: Date | undefined;
 
     if (job.type === 'cron') {
-      // For cron jobs, we need to parse the expression
-      // This is a simplified version - real implementation would use a cron parser
-      const now = new Date();
-      nextExecution = new Date(now.getTime() + 60000); // Next minute
+      // SC-3: derive the real next fire time from the cron expression instead
+      // of the old faked `now + 60000` (which made `0 9 * * 1` report "in a
+      // minute"). node-cron owns ACTUAL firing; this only feeds the
+      // `nextExecution` DISPLAY metadata (health view + sort key), so a parse
+      // failure degrades gracefully to `undefined` rather than throwing.
+      try {
+        nextExecution = CronExpressionParser.parse(String(job.pattern)).next().toDate();
+      } catch {
+        nextExecution = undefined;
+      }
     } else if (job.type === 'interval') {
       const interval = job.pattern as number;
       nextExecution = new Date(Date.now() + interval);

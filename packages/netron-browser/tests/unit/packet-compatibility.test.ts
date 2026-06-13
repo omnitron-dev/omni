@@ -18,6 +18,11 @@ import {
   decodePacket as decodeTitanPacket,
 } from '@omnitron-dev/titan/netron';
 
+// SHARED-PROTO: Definition + Reference are now ONE shared class (from
+// @omnitron-dev/netron-protocol), re-exported by both titan and netron-browser.
+// A cross-impl serialize round-trip proves the wire-level consequence.
+import { Definition, Reference } from '@omnitron-dev/netron-protocol';
+
 describe('Packet Protocol Compatibility', () => {
   describe('Type Constants', () => {
     it('should have matching packet type constants', () => {
@@ -171,6 +176,51 @@ describe('Packet Protocol Compatibility', () => {
       const titanArray = new Uint8Array(titanEncoded);
 
       expect(browserArray).toEqual(titanArray);
+    });
+  });
+
+  describe('Shared-type Compatibility (SHARED-PROTO)', () => {
+    const meta = {
+      name: 'UserService',
+      version: '1.0.0',
+      properties: { id: { type: 'string', readonly: true } },
+      methods: { getUser: { type: 'User', arguments: [{ index: 0, type: 'string' }] } },
+    };
+
+    it('round-trips a Definition titan → browser (one shared class)', () => {
+      const def = new Definition('def-abc', 'peer-1', meta);
+      const titanPacket = createTitanPacket(20, 1, TITAN_TYPE_CALL, { definition: def });
+      const encoded = encodeTitanPacket(titanPacket);
+      const browserPacket = decodeBrowserPacket(new Uint8Array(encoded));
+
+      const decoded = browserPacket.data.definition;
+      expect(decoded).toBeInstanceOf(Definition);
+      expect(decoded.id).toBe('def-abc');
+      expect(decoded.peerId).toBe('peer-1');
+      expect(decoded.meta).toEqual(meta);
+    });
+
+    it('round-trips a Definition browser → titan', () => {
+      const def = new Definition('def-xyz', 'peer-2', meta);
+      const browserPacket = createBrowserPacket(21, 1, TYPE_CALL, { definition: def });
+      const encoded = encodeBrowserPacket(browserPacket);
+      const titanPacket = decodeTitanPacket(Buffer.from(encoded));
+
+      const decoded = titanPacket.data.definition;
+      expect(decoded).toBeInstanceOf(Definition);
+      expect(decoded.id).toBe('def-xyz');
+      expect(decoded.meta).toEqual(meta);
+    });
+
+    it('round-trips a Reference cross-impl', () => {
+      const ref = new Reference('def-abc');
+      const titanPacket = createTitanPacket(22, 1, TITAN_TYPE_CALL, { ref });
+      const encoded = encodeTitanPacket(titanPacket);
+      const browserPacket = decodeBrowserPacket(new Uint8Array(encoded));
+
+      const decoded = browserPacket.data.ref;
+      expect(decoded).toBeInstanceOf(Reference);
+      expect(decoded.defId).toBe('def-abc');
     });
   });
 

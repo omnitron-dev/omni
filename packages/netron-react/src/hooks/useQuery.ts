@@ -135,6 +135,13 @@ export function useQuery<TData = unknown, TError = NetronError>(
   const queryKeyHash = useMemo(() => hashQueryKey(queryKey), [queryKey]);
   const isMounted = useRef(true);
   const fetchCount = useRef(0);
+  // NR-5: mirror `status` into a ref so `fetchData` can read the latest value
+  // (for the idle→loading guard) WITHOUT listing `status` as a dependency.
+  // Depending on `status` rebuilt `fetchData` on every transition
+  // (idle→loading→success), which churned `refetch` and every effect/subscription
+  // keyed off `fetchData` — listener thrash + an unstable refetch identity.
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   // Determine if data is stale
   const isStale = useMemo(() => {
@@ -210,7 +217,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
     const queryCache = client.getQueryCache();
 
     setIsFetching(true);
-    if (status === 'idle') setStatus('loading');
+    if (statusRef.current === 'idle') setStatus('loading');
 
     try {
       // Use getOrCreateFetch for deduplication
@@ -251,7 +258,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setIsFetching(false);
       }
     }
-  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, status, projectData, staleTime]);
+    // NR-5: `status` intentionally omitted — read via statusRef so this callback
+    // is stable across status transitions.
+  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, projectData, staleTime]);
 
   // Refetch function
   const refetch = useCallback(async (): Promise<QueryResult<TData, TError>> => {

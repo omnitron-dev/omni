@@ -470,11 +470,16 @@ export class NetronReactClient {
    * Get the active transport client
    */
   private getActiveClient(): HttpClient | WebSocketClient {
-    if (this.wsClient?.isConnected()) {
-      return this.wsClient as any; // Type compatibility handled
+    // NR-14: capture in locals so narrowing survives the isConnected() call (a
+    // method call on `this` otherwise invalidates `this.wsClient` narrowing).
+    // Both fields are already typed, so no `as any` is needed.
+    const ws = this.wsClient;
+    if (ws?.isConnected()) {
+      return ws;
     }
-    if (this.httpClient) {
-      return this.httpClient as any;
+    const http = this.httpClient;
+    if (http) {
+      return http;
     }
     throw new Error('No active client connection');
   }

@@ -43,6 +43,7 @@ export {
 export {
   // Data fetching
   useQuery,
+  useQueries, // NR-10: was exported from ./hooks but omitted from the public barrel
   useInfiniteQuery,
   useMutation,
   useSubscription,
@@ -51,6 +52,8 @@ export {
   useService,
   createServiceHook,
 } from './hooks/index.js';
+
+export type { QueryObserverResult, QueriesOptions, UseQueriesOptions } from './hooks/index.js';
 
 // ============================================================================
 // Types

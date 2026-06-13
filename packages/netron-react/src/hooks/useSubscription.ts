@@ -35,10 +35,17 @@ export function useSubscription<TData = unknown>(options: SubscriptionOptions<TD
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const bufferRef = useRef<TData[]>([]);
   const bufferTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // NR-12: data arrives asynchronously (event callbacks + buffered-flush timer),
+  // so a late emission can land after the component unmounts. Guard the deferred
+  // state writes with this ref to avoid setState-after-unmount.
+  const isMounted = useRef(true);
 
   // Handle incoming data
   const handleData = useCallback(
     (rawData: unknown) => {
+      // NR-12: a late event can arrive after unmount (before the in-flight
+      // unsubscribe settles) — drop it rather than setState on a dead component.
+      if (!isMounted.current) return;
       try {
         // Transform if needed
         let transformedData: TData;
@@ -84,6 +91,8 @@ export function useSubscription<TData = unknown>(options: SubscriptionOptions<TD
 
   // Flush buffer
   const flushBuffer = useCallback(() => {
+    // NR-12: the flush timer may fire after unmount — skip the state writes.
+    if (!isMounted.current) return;
     if (bufferRef.current.length === 0) return;
 
     const bufferedData = [...bufferRef.current];
@@ -140,10 +149,24 @@ export function useSubscription<TData = unknown>(options: SubscriptionOptions<TD
         onDisconnect?.();
       }
 
-      // Flush any remaining buffer
+      // Flush any remaining buffer (no-op once unmounted — flushBuffer guards),
+      // then ALWAYS clear the pending flush timer so it can't fire post-teardown.
       flushBuffer();
+      if (bufferTimeoutRef.current) {
+        clearTimeout(bufferTimeoutRef.current);
+        bufferTimeoutRef.current = undefined;
+      }
     };
   }, [event, enabled, connection.isConnected, client, handleData, onConnect, onDisconnect, onError, flushBuffer]);
+
+  // NR-12: flip the mounted flag on unmount so the async data/flush paths above
+  // stop writing state. Declared last so its cleanup runs before the others.
+  useEffect(
+    () => () => {
+      isMounted.current = false;
+    },
+    []
+  );
 
   // Connection state change handler
   useEffect(() => {

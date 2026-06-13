@@ -14,6 +14,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { computeBackoff } from '../utils/backoff.js';
 import type { ILogger } from '../types/logger.js';
 import type { ITransportConnection } from './transport/types.js';
 import { Errors } from '../errors/index.js';
@@ -664,19 +665,19 @@ export class ConnectionManager extends EventEmitter {
    * @returns Delay in milliseconds
    */
   calculateReconnectDelay(attempt: number): number {
-    const baseDelay = this.config.reconnect.baseDelay;
-    const maxDelay = this.config.reconnect.maxDelay;
-    const jitterFactor = this.config.reconnect.jitterFactor;
-
-    // Exponential backoff: baseDelay * 2^attempt
-    const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-
-    // Add jitter: delay * (1 - jitter/2 + random * jitter)
-    // This spreads reconnection attempts to avoid thundering herd
-    const jitter = exponentialDelay * jitterFactor * (Math.random() - 0.5);
-    const delay = exponentialDelay + jitter;
-
-    return Math.max(baseDelay, Math.min(delay, maxDelay));
+    // RESILIENCE-UNIFY: exponential backoff (factor 2) with centered ±jitter to
+    // spread reconnection attempts and avoid a thundering herd. Delegates to the
+    // shared `computeBackoff` primitive (same formula as the former inline impl)
+    // so titan has one backoff source of truth.
+    return computeBackoff({
+      attempt,
+      baseMs: this.config.reconnect.baseDelay,
+      maxMs: this.config.reconnect.maxDelay,
+      factor: 2,
+      jitter: this.config.reconnect.jitterFactor,
+      jitterMode: 'centered',
+      minMs: this.config.reconnect.baseDelay,
+    });
   }
 
   /**

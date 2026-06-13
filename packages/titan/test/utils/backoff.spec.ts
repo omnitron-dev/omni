@@ -105,4 +105,53 @@ describe('computeBackoff', () => {
     expect(computeBackoff({ attempt: 2, baseMs: 100, maxMs: 100_000, factor: 0 })).toBe(400);
     expect(computeBackoff({ attempt: 2, baseMs: 100, maxMs: 100_000, factor: -1 })).toBe(400);
   });
+
+  describe("jitterMode 'centered' (netron reconnect shape, RESILIENCE-UNIFY)", () => {
+    const base = { attempt: 1, baseMs: 100, maxMs: 100_000, jitter: 0.5, jitterMode: 'centered' as const };
+
+    it('random=0.5 → no offset (mean stays at the exponential value)', () => {
+      // jittered = exp + (0.5 - 0.5) * exp * jitter = exp
+      expect(computeBackoff({ ...base, random: () => 0.5 })).toBe(200);
+    });
+
+    it('random=0 → downward jitter (−0.5 of the envelope)', () => {
+      // jittered = 200 + (0 - 0.5) * 200 * 0.5 = 200 − 50 = 150
+      expect(computeBackoff({ ...base, random: () => 0 })).toBe(150);
+    });
+
+    it('random→1 → upward jitter (+0.5 of the envelope)', () => {
+      // jittered = 200 + (0.999... − 0.5) * 200 * 0.5 ≈ 200 + ~50
+      const d = computeBackoff({ ...base, random: () => 0.999999 });
+      expect(d).toBeGreaterThan(249);
+      expect(d).toBeLessThanOrEqual(250);
+    });
+
+    it('clamps the jittered result UP to minMs', () => {
+      // downward jitter → 150, but minMs=190 floors it
+      expect(computeBackoff({ ...base, minMs: 190, random: () => 0 })).toBe(190);
+    });
+
+    it('clamps the jittered result DOWN to maxMs', () => {
+      // exp capped at 210, upward jitter would reach ~260, maxMs floors it to 210
+      expect(computeBackoff({ ...base, maxMs: 210, random: () => 1 })).toBe(210);
+    });
+
+    it('matches the legacy inline netron formula across a sweep', () => {
+      // The transports previously computed:
+      //   exp = min(base*factor^attempt, max)
+      //   delay = clamp(exp + exp*jf*(rand-0.5), base, max)
+      const rng = (() => { let s = 0; return () => ((s = (s * 9301 + 49297) % 233280) / 233280); })();
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const r = rng();
+        const baseDelay = 1000, maxDelay = 30000, jf = 0.3, factor = 2;
+        const exp = Math.min(baseDelay * Math.pow(factor, attempt), maxDelay);
+        const legacy = Math.max(baseDelay, Math.min(exp + exp * jf * (r - 0.5), maxDelay));
+        const unified = computeBackoff({
+          attempt, baseMs: baseDelay, maxMs: maxDelay, factor, jitter: jf,
+          jitterMode: 'centered', minMs: baseDelay, random: () => r,
+        });
+        expect(unified).toBeCloseTo(legacy, 9);
+      }
+    });
+  });
 });

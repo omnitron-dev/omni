@@ -273,6 +273,29 @@ describe('BaseTransport Classes', () => {
 
       expect(spy).not.toHaveBeenCalled();
     });
+
+    it('jitters the reconnect backoff to avoid a thundering herd (WIRE-4)', () => {
+      const conn = new TestConnection({
+        reconnect: { enabled: true, delay: 1000, factor: 2, maxDelay: 30000 },
+      });
+      // exponentialDelay at attempt 2 = 1000 * 2^2 = 4000
+      (conn as any).reconnectAttempts = 2;
+
+      const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(1); // maximum +jitter
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+      (conn as any).scheduleReconnect();
+
+      // jitter = 4000 * 0.3 * (1 - 0.5) = 600 → 4600. Pre-WIRE-4 the delay was a
+      // bare 4000 for every client, so a fleet reconnected in lockstep.
+      const scheduledDelay = setTimeoutSpy.mock.calls.at(-1)?.[1];
+      expect(scheduledDelay).toBe(4600);
+
+      const timer = (conn as any).reconnectTimer;
+      if (timer) clearTimeout(timer); // don't let the scheduled doReconnect fire
+      setTimeoutSpy.mockRestore();
+      randomSpy.mockRestore();
+    });
   });
 
   describe('BaseServer', () => {

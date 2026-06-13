@@ -54,6 +54,12 @@ export interface TransportOptions {
     delay?: number;
     maxDelay?: number;
     factor?: number;
+    /**
+     * WIRE-4: fraction of the backoff delay to randomise (±jitterFactor/2),
+     * spreading reconnect attempts so a mass disconnect (e.g. server restart)
+     * doesn't trigger a synchronized thundering-herd reconnect. Default 0.3.
+     */
+    jitterFactor?: number;
   };
   /** Connection timeout in milliseconds (default: 10000) */
   connectTimeout?: number;

@@ -17,18 +17,6 @@
 import { Container } from './container.js';
 
 // ============================================================================
-// Experimental Features - Tracing
-// ============================================================================
-
-/**
- * Distributed tracing support with OpenTelemetry integration.
- *
- * @experimental
- * @since 0.1.0
- */
-export * from './tracing.js';
-
-// ============================================================================
 // Experimental Features - DevTools
 // ============================================================================
 
@@ -280,7 +268,6 @@ export const NEXUS_FEATURES = {
  * Phase 3 features are available but require separate imports:
  *
  * - Decorators: import from '@nexus/decorators'
- * - Tracing: import from '@nexus/tracing'
  * - DevTools: import from '@nexus/devtools'
  */
 

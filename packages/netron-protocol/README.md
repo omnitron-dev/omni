@@ -22,8 +22,9 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ service-definition shape types — `ArgumentInfo`, `MethodInfo`, `PropertyInfo`, `ServiceMetadata`, `ServiceContract`, `ServiceMetadataWithContract`
 - ✅ `Definition` — the service-definition class
 - ✅ `Reference` — service-definition reference (reconciled to a plain Error; titan's TitanError on the empty-defId guard was unreachable + untyped-by-callers)
-- ⏳ `StreamReference`
-- ⏳ `Packet` + encode/decode + serializer (the wire CODEC — needs byte-compat verification)
+- ⛔ `StreamReference` — NOT shareable: its `from()`/`to()` factories bind to the concrete, environment-specific `NetronReadable/WritableStream` classes (server vs browser); only the wire data shape matches. Stays per-package.
+- ⏳ **error system** (XC-2) — sub-EPIC: titan's `errors/codes.ts` is the canonical table-driven version (`ERROR_METADATA` + `toHttpStatus`); the browser's is an older clone (inline name/message, no table). Sharing means upgrading the browser to the table + verifying output-equivalence + relocating titan's public `@omnitron-dev/titan/errors` surface.
+- ⏳ `Packet` + encode/decode + serializer — sub-EPIC: the wire CODEC. Highest risk; needs byte-compat round-trip verification between the two impls before unifying.
 - ⏳ shared error codes
 - ⏳ core-task name + wire constants
 

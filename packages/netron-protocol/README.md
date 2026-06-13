@@ -23,10 +23,10 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ `Definition` — the service-definition class
 - ✅ `Reference` — service-definition reference (reconciled to a plain Error; titan's TitanError on the empty-defId guard was unreachable + untyped-by-callers)
 - ⛔ `StreamReference` — NOT shareable: its `from()`/`to()` factories bind to the concrete, environment-specific `NetronReadable/WritableStream` classes (server vs browser); only the wire data shape matches. Stays per-package.
-- ✅ the FULL error-code module (XC-2) — `ErrorCode` + `ErrorCategory` enums, range classifiers, the `ERROR_METADATA` table, and the table-driven `toHttpStatus`/`getErrorName`/`getDefaultMessage`/`isRetryableError`. titan and netron-browser `errors/codes.ts` are now pure re-exports. The browser's previously-inline name/message/retryable helpers were verified output-identical to titan's table before the swap, so the upgrade is behaviour-preserving. (The TitanError class hierarchy + factories + serialization still live per-package — a separate follow-up.)
+- ✅ the FULL error-code module (XC-2) — `ErrorCode` + `ErrorCategory` enums, range classifiers, the `ERROR_METADATA` table, and the table-driven `toHttpStatus`/`getErrorName`/`getDefaultMessage`/`isRetryableError`. titan and netron-browser `errors/codes.ts` are now pure re-exports. The browser's previously-inline name/message/retryable helpers were verified output-identical to titan's table before the swap, so the upgrade is behaviour-preserving.
+- ✅ `TitanError` class hierarchy (XC-2) — one shared class: `TitanError` + `AggregateError` + `ErrorPool` + `createError`/`isErrorCode`/`ensureError` + the error types. The browser inherits titan's stats/cache/pool/metrics/aggregate machinery and gained `SerializedError`/`fromJSON`; the merge also fixed the browser's raw-`httpStatus` 600/601 leak (XC-3). Both `errors/core.ts` are pure re-exports.
+- ⛔ error FACTORIES + subclasses (`Errors.*`, `ValidationError`, `HttpError`, `AuthError`, …) — DIVERGENT: titan's set (491 LOC) builds richer titan-only subclasses (validation / http / transport); the browser's (322) is a deliberate subset. Per-package — these are framework-specific convenience layers, not the wire contract.
 - ⛔ `Packet` + serializer — the wire CODEC, confirmed DIVERGENT: titan's and the browser's `Packet` bit-manipulation implementations differ substantially (~236/300 lines), wire-compatible but not shared code, and the serializer registers the env-specific `StreamReference` handlers. Unifying needs a byte-compat round-trip harness between the two impls + resolving the StreamReference divergence first — a dedicated sub-EPIC, not a mechanical dedup.
-- ⏳ shared error codes
-- ⏳ core-task name + wire constants
 
 ## Design rules
 

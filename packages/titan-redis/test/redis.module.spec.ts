@@ -10,7 +10,6 @@ import { Container, Provider, ProviderInput, ServiceIdentifier } from '@omnitron
 import { TitanRedisModule } from '../src/redis.module.js';
 import { RedisService } from '../src/redis.service.js';
 import { RedisManager } from '../src/redis.manager.js';
-import { RedisHealthIndicator } from '../src/redis.health.js';
 import { REDIS_MANAGER, getRedisClientToken } from '../src/redis.constants.js';
 import { RedisModuleOptions } from '../src/redis.types.js';
 import { createMockRedisClient, createMockLogger } from '@omnitron-dev/testing/titan';
@@ -88,7 +87,6 @@ describe('TitanRedisModule', () => {
       expect(module.providers).toBeDefined();
       expect(module.exports).toContain(REDIS_MANAGER);
       expect(module.exports).toContain(RedisService);
-      expect(module.exports).toContain(RedisHealthIndicator);
     });
 
     it('should create module with custom configuration', async () => {

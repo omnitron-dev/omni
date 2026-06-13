@@ -12,7 +12,6 @@ import { Redis } from 'ioredis';
 import { TitanRedisModule } from '../src/redis.module.js';
 import { RedisManager } from '../src/redis.manager.js';
 import { RedisService } from '../src/redis.service.js';
-import { RedisHealthIndicator } from '../src/redis.health.js';
 import { REDIS_MANAGER } from '../src/redis.constants.js';
 import { RedisCache, RedisLock, RedisRateLimit } from '../src/redis.decorators.js';
 import { TestApplication } from '@omnitron-dev/testing/titan';
@@ -34,7 +33,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
   let container: Container;
   let redisManager: RedisManager;
   let redisService: RedisService;
-  let healthIndicator: RedisHealthIndicator;
   let testNamespace: string;
   let restoreConsole: (() => void) | undefined;
   let redisHost: string;
@@ -107,7 +105,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     // Resolve services
     redisManager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
     redisService = await container.resolveAsync<RedisService>(RedisService);
-    healthIndicator = await container.resolveAsync<RedisHealthIndicator>(RedisHealthIndicator);
   }, 30000);
 
   afterAll(async () => {
@@ -598,80 +595,44 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     });
   });
 
+  // RD-1: health is exercised directly on RedisManager. The deprecated up/down
+  // RedisHealthIndicator wrapper was removed; standard healthy/degraded/unhealthy
+  // indicators live in @omnitron-dev/titan-health.
   describe('Health Monitoring', () => {
     it('should report health status for all clients', async () => {
-      try {
-        const health = await healthIndicator.checkAll();
+      const health = await redisManager.healthCheck();
 
-        expect(health.redis.status).toBe('up');
-        expect(health.redis.clients).toHaveProperty('default');
-        expect(health.redis.clients).toHaveProperty('cache');
-        expect(health.redis.clients).toHaveProperty('pubsub');
+      expect(health).toHaveProperty('default');
+      expect(health).toHaveProperty('cache');
+      expect(health).toHaveProperty('pubsub');
 
-        // Check only the expected clients, ignore any others
-        const expectedClients = ['default', 'cache', 'pubsub'];
-        for (const clientName of expectedClients) {
-          const client = health.redis.clients[clientName];
-          if (client) {
-            expect(client.healthy).toBe(true);
-            expect(client.latency).toBeGreaterThanOrEqual(0);
-            expect(client.latency).toBeLessThan(100);
-          }
+      // Check only the expected clients, ignore any others
+      const expectedClients = ['default', 'cache', 'pubsub'];
+      for (const clientName of expectedClients) {
+        const client = health[clientName];
+        if (client) {
+          expect(client.healthy).toBe(true);
+          expect(client.latency).toBeGreaterThanOrEqual(0);
+          expect(client.latency).toBeLessThan(100);
         }
-      } catch (error: unknown) {
-        // If health check throws, check the error details
-        const err = error as Error;
-        if (err.message?.includes('not healthy')) {
-          // Some clients might not be healthy, let's get more details
-          console.log('Health check error:', err.message);
-          // For now, skip this test if clients aren't healthy
-          // This might be due to timing issues in the test environment
-          return;
-        }
-        throw error;
       }
     });
 
     it('should measure latency accurately', async () => {
-      try {
-        const result = await healthIndicator.isHealthy('redis');
+      expect(await redisManager.isHealthy()).toBe(true);
 
-        expect(result.redis.status).toBe('up');
-        expect(result.redis.healthy).toBe(true);
-        expect(result.redis.latency).toBeGreaterThanOrEqual(0);
-        expect(result.redis.latency).toBeLessThan(50); // Should be fast on localhost
-      } catch (error: unknown) {
-        // Skip if health check fails
-        const err = error as Error;
-        if (err.message?.includes('not healthy')) {
-          return;
-        }
-        throw error;
-      }
+      const health = await redisManager.healthCheck();
+      expect(health['default'].healthy).toBe(true);
+      expect(health['default'].latency).toBeGreaterThanOrEqual(0);
+      expect(health['default'].latency).toBeLessThan(100); // Should be fast on localhost
     });
 
     it('should perform ping checks', async () => {
-      const result = await healthIndicator.ping();
-
-      expect(result.redis.status).toBe('up');
-      expect(result.redis.ping).toBe('PONG');
+      expect(await redisManager.ping()).toBe('PONG');
     });
 
     it('should check connection status', async () => {
-      try {
-        const result = await healthIndicator.checkConnection();
-
-        // The key is 'redis-default' not 'redis' when no namespace is specified
-        expect(result['redis-default'].status).toBe('up');
-        expect(result['redis-default'].healthy).toBe(true);
-      } catch (error: unknown) {
-        // Skip if health check fails
-        const err = error as Error;
-        if (err.message?.includes('not healthy')) {
-          return;
-        }
-        throw error;
-      }
+      expect(await redisManager.isHealthy()).toBe(true);
     });
   });
 

@@ -1,7 +1,9 @@
 /**
  * Redis Module for Titan Framework
  *
- * Provides Redis integration with connection pooling, clustering, and health checks
+ * Provides Redis integration with connection pooling and clustering. Health
+ * checks live in `@omnitron-dev/titan-health` (standard healthy/degraded/
+ * unhealthy format), not here.
  */
 
 import { DynamicModule, Provider, ProviderDefinition, InjectionToken } from '@omnitron-dev/titan/nexus';
@@ -9,7 +11,6 @@ import { Module } from '@omnitron-dev/titan/decorators';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
 import { getClientNamespace } from './redis.utils.js';
-import { RedisHealthIndicator } from './redis.health.js';
 import {
   REDIS_MANAGER,
   getRedisClientToken,
@@ -48,14 +49,6 @@ export class TitanRedisModule {
           inject: [REDIS_MANAGER],
         },
       ],
-
-      [
-        RedisHealthIndicator,
-        {
-          useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
-          inject: [REDIS_MANAGER],
-        },
-      ],
     ];
 
     // Create client providers
@@ -66,7 +59,6 @@ export class TitanRedisModule {
     const exports: InjectionToken<any>[] = [
       REDIS_MANAGER,
       RedisService,
-      RedisHealthIndicator,
       ...clientProviders.map((p) => (Array.isArray(p) ? p[0] : getRedisClientToken(REDIS_DEFAULT_NAMESPACE))),
     ];
 
@@ -113,14 +105,6 @@ export class TitanRedisModule {
       },
     ]);
 
-    providers.push([
-      RedisHealthIndicator,
-      {
-        useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
-        inject: [REDIS_MANAGER],
-      },
-    ]);
-
     // Default client provider — ensures getRedisClientToken() is resolvable
     // by other modules (e.g., TitanRateLimitModule) that inject it.
     const defaultClientToken = getRedisClientToken(REDIS_DEFAULT_NAMESPACE);
@@ -132,7 +116,7 @@ export class TitanRedisModule {
       },
     ]);
 
-    const exports: InjectionToken<any>[] = [REDIS_MANAGER, RedisService, RedisHealthIndicator, defaultClientToken];
+    const exports: InjectionToken<any>[] = [REDIS_MANAGER, RedisService, defaultClientToken];
 
     const result: DynamicModule = {
       module: TitanRedisModule,

@@ -51,26 +51,10 @@ export { TitanRedisModule as RedisModule } from './redis.module.js';
 export { RedisService } from './redis.service.js';
 export { RedisManager } from './redis.manager.js';
 
-/**
- * @deprecated RedisHealthIndicator from redis module is deprecated.
- * Use RedisHealthIndicator from '@omnitron-dev/titan/module/health' instead.
- * This export will be removed in v1.0.0.
- *
- * The redis module's RedisHealthIndicator uses a different HealthIndicatorResult format
- * that conflicts with the health module's standard format. The health module version
- * should be used for all new code.
- */
-export { RedisHealthIndicator } from './redis.health.js';
-
-/**
- * @deprecated HealthIndicator base class from redis module is deprecated.
- * Use HealthIndicator from '@omnitron-dev/titan/module/health' instead.
- * This export will be removed in v1.0.0.
- *
- * The redis module's HealthIndicator is incompatible with the health module's
- * HealthIndicator base class. Use the health module version for all new code.
- */
-export { HealthIndicator } from './redis.health.js';
+// NOTE: Redis health indicators live in `@omnitron-dev/titan-health`
+// (standard healthy/degraded/unhealthy format). The former non-standard
+// up/down RedisHealthIndicator/HealthIndicator/HealthIndicatorResult that
+// shipped here were deprecated and have been removed (RD-1).
 
 // ============================================================================
 // Decorators
@@ -118,9 +102,6 @@ export type {
   LockOptions,
   RateLimitOptions,
 } from './redis.types.js';
-
-// Health indicator types
-export type { HealthIndicatorResult } from './redis.health.js';
 
 // ============================================================================
 // Type Guards (Public API)

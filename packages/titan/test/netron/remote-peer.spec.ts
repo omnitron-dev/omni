@@ -592,7 +592,7 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
         meta: { name: 'ChildService' },
       } as Definition;
 
-      const result = remotePeer.refService(childDef, parentDef);
+      const result = remotePeer.registerRemoteDefinition(childDef, parentDef);
 
       expect(result.parentId).toBe('parent-123');
       expect(remotePeer.definitions.has('child-456')).toBe(true);
@@ -604,7 +604,7 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
 
       remotePeer.definitions.set('child-456', childDef);
 
-      const result = remotePeer.refService(childDef, parentDef);
+      const result = remotePeer.registerRemoteDefinition(childDef, parentDef);
 
       expect(result).toBe(childDef);
     });

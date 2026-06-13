@@ -1035,15 +1035,21 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * References a service definition and establishes its relationship with a parent service.
-   * This method manages service definition references and maintains the service hierarchy.
-   * Applies FIFO eviction when MAX_SERVICE_DEFINITIONS is reached.
+   * Registers a remote service definition received from the wire and links it to
+   * its parent, maintaining the remote service hierarchy on this peer. Applies
+   * FIFO eviction when MAX_SERVICE_DEFINITIONS is reached.
    *
-   * @param {Definition} def - The service definition to be referenced
+   * NET-4: named distinctly from {@link ILocalPeer.refService}. They are NOT the
+   * same operation — `ILocalPeer.refService(instance, parentDef, callerPeerId)`
+   * ref-counts a LOCAL service stub by instance, whereas this registers a REMOTE
+   * `Definition` by id. RemotePeer does not implement ILocalPeer, so the previous
+   * shared name only type-checked via method-parameter bivariance.
+   *
+   * @param {Definition} def - The remote service definition to register
    * @param {Definition} parentDef - The parent service definition
-   * @returns {Definition} The referenced service definition
+   * @returns {Definition} The registered service definition
    */
-  refService(def: Definition, parentDef: Definition) {
+  registerRemoteDefinition(def: Definition, parentDef: Definition) {
     const existingDef = this.definitions.get(def.id);
     if (existingDef) {
       return existingDef;
@@ -1084,7 +1090,7 @@ export class RemotePeer extends AbstractPeer {
    */
   private processResult(parentDef: Definition, result: any) {
     if (isServiceDefinition(result)) {
-      const def = this.refService(result, parentDef);
+      const def = this.registerRemoteDefinition(result, parentDef);
       return this.queryInterfaceByDefId(def.id, def);
     } else if (isNetronStreamReference(result)) {
       return StreamReference.to(result, this);

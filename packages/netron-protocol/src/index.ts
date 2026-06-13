@@ -26,6 +26,17 @@ export type {
 export { Definition } from './definition.js';
 export { Reference } from './reference.js';
 
+// Wire error taxonomy: the HTTP-semantic ErrorCode enum, ErrorCategory, and the
+// range classifiers. The metadata table / name+message helpers stay per-package
+// (titan's table-driven version vs the browser's; not part of the wire shape).
+export {
+  ErrorCode,
+  ErrorCategory,
+  getErrorCategory,
+  isClientError,
+  isServerError,
+} from './error-codes.js';
+
 // Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
 // the StreamType enum. These define the binary protocol's opcode space and must
 // be identical on both ends.

@@ -12,3 +12,19 @@
 
 export { MAX_UID_VALUE } from './constants.js';
 export { Uid } from './uid.js';
+
+// Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
+// the StreamType enum. These define the binary protocol's opcode space and must
+// be identical on both ends.
+export {
+  TYPE_PING,
+  TYPE_GET,
+  TYPE_SET,
+  TYPE_CALL,
+  TYPE_TASK,
+  TYPE_STREAM,
+  TYPE_STREAM_ERROR,
+  TYPE_STREAM_CLOSE,
+  StreamType,
+} from './packet-types.js';
+export type { PacketImpulse, PacketType } from './packet-types.js';

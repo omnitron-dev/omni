@@ -311,7 +311,7 @@ export class NotificationsModule {
     providers.push([
       NOTIFICATIONS_CHANNEL_REGISTRY,
       {
-        useFactory: async () => {
+        useFactory: async (managed?: IRedisClient) => {
           const registry = new ChannelRegistry();
 
           // Register pre-configured channels
@@ -321,9 +321,17 @@ export class NotificationsModule {
             }
           }
 
-          // Auto-register InApp channel if enabled and redis configured
-          if (options.enableInApp !== false && options.redis) {
-            const inAppChannel = new InAppChannel();
+          // Auto-register InApp channel when enabled and a Redis client is
+          // available. NT-2: the channel used to be built as `new InAppChannel()`
+          // with no argument, so its `@Inject(REDIS_CLIENT)` never fired
+          // (decorators only apply when the container instantiates the class)
+          // and in-app delivery was permanently inert. Resolve a client
+          // (explicit options.redis, else the app's managed titan-redis client)
+          // and pass it directly. InAppChannel only runs commands + PUBLISH
+          // (never SUBSCRIBE), so sharing the managed connection is safe.
+          const inAppRedis = (await resolveNotificationsRedis(options.redis, managed)) as unknown as IRedisClient | null;
+          if (options.enableInApp !== false && inAppRedis) {
+            const inAppChannel = new InAppChannel(inAppRedis);
             if (options.inAppConfig) {
               inAppChannel.configure(options.inAppConfig);
             }
@@ -341,6 +349,7 @@ export class NotificationsModule {
 
           return registry;
         },
+        inject: [{ token: getRedisClientToken(), optional: true }],
         scope: Scope.Singleton,
       },
     ]);
@@ -513,7 +522,7 @@ export class NotificationsModule {
     providers.push([
       NOTIFICATIONS_CHANNEL_REGISTRY,
       {
-        useFactory: async (moduleOptions: NotificationsModuleOptions) => {
+        useFactory: async (moduleOptions: NotificationsModuleOptions, managed?: IRedisClient) => {
           const registry = new ChannelRegistry();
 
           // Register pre-configured channels
@@ -523,9 +532,15 @@ export class NotificationsModule {
             }
           }
 
-          // Auto-register InApp channel if enabled and redis configured
-          if (moduleOptions.enableInApp !== false && moduleOptions.redis) {
-            const inAppChannel = new InAppChannel();
+          // Auto-register InApp channel when enabled and a Redis client is
+          // available — NT-2 (see forRoot): pass the resolved client so the
+          // channel is actually functional instead of inert.
+          const inAppRedis = (await resolveNotificationsRedis(
+            moduleOptions.redis,
+            managed
+          )) as unknown as IRedisClient | null;
+          if (moduleOptions.enableInApp !== false && inAppRedis) {
+            const inAppChannel = new InAppChannel(inAppRedis);
             if (moduleOptions.inAppConfig) {
               inAppChannel.configure(moduleOptions.inAppConfig);
             }
@@ -543,7 +558,7 @@ export class NotificationsModule {
 
           return registry;
         },
-        inject: [NOTIFICATIONS_MODULE_OPTIONS],
+        inject: [NOTIFICATIONS_MODULE_OPTIONS, { token: getRedisClientToken(), optional: true }],
         scope: Scope.Singleton,
       },
     ]);

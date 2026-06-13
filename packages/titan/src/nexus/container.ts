@@ -1999,6 +1999,13 @@ export class Container implements IContainer {
   async dispose(): Promise<void> {
     if (this.disposed) return;
 
+    // NX-6: emit ContainerDisposing BEFORE teardown so `addHook('onDispose', …)`
+    // handlers actually run while the container is still usable. The hook was
+    // wired to this event (see addHook) but the event was never emitted, leaving
+    // every onDispose handler silently dead. `emit` isolates hook errors, so a
+    // throwing handler can't abort disposal.
+    await this.lifecycleManager.emit(LifecycleEvent.ContainerDisposing, {});
+
     // Dispose modules in reverse dependency order
     const moduleDisposeOrder = this.moduleLoaderService.getModuleDisposeOrder(this.modules, this.moduleImports);
     await this.lifecycleService.disposeModules(this.modules, moduleDisposeOrder);

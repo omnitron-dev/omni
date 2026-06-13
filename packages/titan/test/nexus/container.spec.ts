@@ -704,6 +704,20 @@ describe('Container - Comprehensive Tests', () => {
       expect(afterResolve).toHaveBeenCalled();
     });
 
+    it('should fire onDispose hooks on dispose (NX-6)', async () => {
+      const onDispose = vi.fn();
+      const onDisposeAsync = vi.fn(async () => {});
+
+      container.addHook('onDispose', onDispose);
+      container.addHook('onDispose', onDisposeAsync);
+
+      // Previously ContainerDisposing was never emitted, so these never ran.
+      await container.dispose();
+
+      expect(onDispose).toHaveBeenCalledTimes(1);
+      expect(onDisposeAsync).toHaveBeenCalledTimes(1);
+    });
+
     it('should add middleware', () => {
       const middleware = {
         name: 'TestMiddleware',

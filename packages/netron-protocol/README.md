@@ -21,7 +21,8 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ `uuid` — UUIDv7 generator (Web Crypto; was a node:crypto-pooled variant in titan and a getRandomValues variant in netron-browser of the same algorithm)
 - ✅ service-definition shape types — `ArgumentInfo`, `MethodInfo`, `PropertyInfo`, `ServiceMetadata`, `ServiceContract`, `ServiceMetadataWithContract`
 - ✅ `Definition` — the service-definition class
-- ⏳ `Reference` / `StreamReference` (Reference needs error-type reconciliation: titan throws TitanError, browser plain Error)
+- ✅ `Reference` — service-definition reference (reconciled to a plain Error; titan's TitanError on the empty-defId guard was unreachable + untyped-by-callers)
+- ⏳ `StreamReference`
 - ⏳ `Packet` + encode/decode + serializer (the wire CODEC — needs byte-compat verification)
 - ⏳ shared error codes
 - ⏳ core-task name + wire constants

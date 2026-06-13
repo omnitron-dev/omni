@@ -1132,7 +1132,10 @@ export class Netron extends EventEmitter implements INetron {
       // guard check (this.peers.get(peer.id) === peer) fails and doesn't emit a
       // duplicate PEER_DISCONNECT event.
       this.peers.delete(peerId);
-      peer.disconnect();
+      // NET-9: await the async close — fire-and-forget raced the connection
+      // teardown against cleanup + the disconnect event below, and dropped any
+      // rejection as an unhandled promise.
+      await peer.disconnect();
       await this.cleanupPeerServices(peer);
       this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
     }

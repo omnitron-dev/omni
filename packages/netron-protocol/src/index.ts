@@ -43,6 +43,24 @@ export {
 } from './error-codes.js';
 export type { ErrorMetadata } from './error-codes.js';
 
+// The TitanError class hierarchy + helpers (shared so an error constructed or
+// serialized on one end is the same class on the other).
+export {
+  TitanError,
+  AggregateError,
+  ErrorPool,
+  createError,
+  isErrorCode,
+  ensureError,
+} from './error.js';
+export type {
+  ErrorContext,
+  ErrorOptions,
+  RetryStrategy,
+  MetricsOptions,
+  SerializedError,
+} from './error.js';
+
 // Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
 // the StreamType enum. These define the binary protocol's opcode space and must
 // be identical on both ends.

@@ -58,7 +58,48 @@ import type {
   NotificationsOptionsFactory,
 } from './notifications.types.js';
 import type { MessagingTransport, IncomingNotification } from './transport/transport.interface.js';
-import type { RedisOptions } from 'ioredis';
+import type { RedisOptions, Redis } from 'ioredis';
+// NT-4: the app's managed Redis client (titan-redis already a peerDep). Injected
+// OPTIONALLY so notifications boots fine without titan-redis; used as the default
+// Redis when no explicit options.redis is supplied (Invariant #3 — prefer DI over
+// a raw new Redis()).
+import { getRedisClientToken, type IRedisClient } from '@omnitron-dev/titan-redis';
+
+/**
+ * NT-4: resolve the Redis client for a notifications sub-service (rate-limiter /
+ * preference-store). An explicit `options.redis` wins (a dedicated connection,
+ * back-compat); otherwise fall back to the app's MANAGED titan-redis client
+ * (injected optionally) so the module stops bypassing DI / defaulting to db 0.
+ * Returns null when neither is available — the sub-service is then simply not
+ * provided (a `null` provider, exactly as the forRootAsync path already did).
+ *
+ * The managed client is a real ioredis `Redis` under the `IRedisClient` type
+ * (RedisManager.getClient returns `client as unknown as IRedisClient`), so the
+ * cast is runtime-safe.
+ */
+async function resolveNotificationsRedis(
+  redisOpt: NotificationsModuleOptions['redis'],
+  managed: IRedisClient | undefined
+): Promise<Redis | null> {
+  if (redisOpt) {
+    const { Redis } = await import('ioredis');
+    return typeof redisOpt === 'string' ? new Redis(redisOpt) : new Redis(redisOpt as RedisOptions);
+  }
+  return managed ? (managed as unknown as Redis) : null;
+}
+
+/**
+ * NT-4: derive ioredis connection options from the app's managed titan-redis
+ * client so Rotif can open its OWN dedicated sockets (main + DLQ + pub/sub
+ * subscriber) against the same server. We hand Rotif options rather than the
+ * managed client itself because Rotif must own physically separate connections —
+ * a socket in subscriber mode cannot run normal commands, and the blocking
+ * XREADGROUP loop would otherwise stall the shared client. This mirrors
+ * ioredis' own `duplicate()`, which clones from `client.options`.
+ */
+function redisOptionsFromManaged(managed: IRedisClient): RedisOptions {
+  return { ...((managed as unknown as Redis).options as RedisOptions) };
+}
 
 /**
  * Options for configuring the notification worker module.
@@ -146,14 +187,23 @@ export class NotificationsModule {
    * @returns MessagingTransport instance
    * @private
    */
-  private static async createTransport(options: NotificationsModuleOptions): Promise<MessagingTransport> {
+  private static async createTransport(
+    options: NotificationsModuleOptions,
+    managed?: IRedisClient
+  ): Promise<MessagingTransport> {
     // Use custom transport if provided
     if (options.transport?.useTransport) {
       return options.transport.useTransport;
     }
 
-    // Create default Rotif transport
-    const redis = options.redis || { host: 'localhost', port: 6379 };
+    // Create default Rotif transport. NT-4: an explicit `options.redis` wins
+    // (dedicated connection, back-compat); otherwise derive connection options
+    // from the app's managed titan-redis client so Rotif's own sockets land on
+    // the same server/db instead of silently defaulting to localhost:6379/db0.
+    // The localhost fallback only applies when neither is available, preserving
+    // the prior zero-config behaviour.
+    const redis: RedisOptions | string =
+      options.redis ?? (managed ? redisOptionsFromManaged(managed) : { host: 'localhost', port: 6379 });
     const rotifOptions = options.transport?.rotif || {};
 
     const manager = new NotificationManager({
@@ -186,11 +236,14 @@ export class NotificationsModule {
         },
       ],
 
-      // Transport provider
+      // Transport provider. NT-4: optionally inject the managed titan-redis
+      // client so Rotif's dedicated connections derive from it when no explicit
+      // options.redis is given.
       [
         NOTIFICATIONS_TRANSPORT,
         {
-          useFactory: async () => this.createTransport(options),
+          useFactory: async (managed?: IRedisClient) => this.createTransport(options, managed),
+          inject: [{ token: getRedisClientToken(), optional: true }],
           scope: Scope.Singleton,
         },
       ],
@@ -322,17 +375,19 @@ export class NotificationsModule {
       exports.push(NOTIFICATIONS_TEMPLATE_ENGINE);
     }
 
-    // Built-in Redis Rate Limiter (if no custom provided)
-    if (!options.rateLimiter && options.redis) {
+    // Built-in Redis Rate Limiter (if no custom provided). NT-4: register
+    // whenever no custom limiter is supplied — the factory uses options.redis
+    // when set, else the app's managed Redis client, else resolves to null
+    // (the service @Optional-injects NOTIFICATIONS_RATE_LIMITER).
+    if (!options.rateLimiter) {
       providers.push([
         NOTIFICATIONS_REDIS_RATE_LIMITER,
         {
-          useFactory: async () => {
-            const { Redis } = await import('ioredis');
-            const redisClient =
-              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as RedisOptions);
-            return new RedisRateLimiter(redisClient, options.rateLimiterConfig);
+          useFactory: async (managed?: IRedisClient) => {
+            const redisClient = await resolveNotificationsRedis(options.redis, managed);
+            return redisClient ? new RedisRateLimiter(redisClient, options.rateLimiterConfig) : null;
           },
+          inject: [{ token: getRedisClientToken(), optional: true }],
           scope: Scope.Singleton,
         },
       ]);
@@ -347,17 +402,18 @@ export class NotificationsModule {
       exports.push(NOTIFICATIONS_RATE_LIMITER);
     }
 
-    // Built-in Redis Preference Store (if no custom provided)
-    if (!options.preferenceStore && options.redis) {
+    // Built-in Redis Preference Store (if no custom provided). NT-4: managed
+    // client default + explicit options.redis override; null when neither
+    // (the service @Optional-injects NOTIFICATIONS_PREFERENCE_STORE).
+    if (!options.preferenceStore) {
       providers.push([
         NOTIFICATIONS_REDIS_PREFERENCE_STORE,
         {
-          useFactory: async () => {
-            const { Redis } = await import('ioredis');
-            const redisClient =
-              typeof options.redis === 'string' ? new Redis(options.redis) : new Redis(options.redis as RedisOptions);
-            return new RedisPreferenceStore(redisClient, options.preferenceStoreConfig);
+          useFactory: async (managed?: IRedisClient) => {
+            const redisClient = await resolveNotificationsRedis(options.redis, managed);
+            return redisClient ? new RedisPreferenceStore(redisClient, options.preferenceStoreConfig) : null;
           },
+          inject: [{ token: getRedisClientToken(), optional: true }],
           scope: Scope.Singleton,
         },
       ]);
@@ -410,12 +466,15 @@ export class NotificationsModule {
     const asyncProviders = this.createAsyncProviders(options);
     providers.push(...asyncProviders);
 
-    // Transport provider with async options
+    // Transport provider with async options. NT-4: also optionally inject the
+    // managed titan-redis client (see forRoot) so Rotif derives its dedicated
+    // connections from it when no explicit options.redis is supplied.
     providers.push([
       NOTIFICATIONS_TRANSPORT,
       {
-        useFactory: async (moduleOptions: NotificationsModuleOptions) => this.createTransport(moduleOptions),
-        inject: [NOTIFICATIONS_MODULE_OPTIONS],
+        useFactory: async (moduleOptions: NotificationsModuleOptions, managed?: IRedisClient) =>
+          this.createTransport(moduleOptions, managed),
+        inject: [NOTIFICATIONS_MODULE_OPTIONS, { token: getRedisClientToken(), optional: true }],
         scope: Scope.Singleton,
       },
     ]);
@@ -525,18 +584,12 @@ export class NotificationsModule {
     providers.push([
       NOTIFICATIONS_REDIS_RATE_LIMITER,
       {
-        useFactory: async (moduleOptions: NotificationsModuleOptions) => {
-          if (moduleOptions.rateLimiter || !moduleOptions.redis) {
-            return null;
-          }
-          const { Redis } = await import('ioredis');
-          const redisClient =
-            typeof moduleOptions.redis === 'string'
-              ? new Redis(moduleOptions.redis)
-              : new Redis(moduleOptions.redis as RedisOptions);
-          return new RedisRateLimiter(redisClient, moduleOptions.rateLimiterConfig);
+        useFactory: async (moduleOptions: NotificationsModuleOptions, managed?: IRedisClient) => {
+          if (moduleOptions.rateLimiter) return null;
+          const redisClient = await resolveNotificationsRedis(moduleOptions.redis, managed); // NT-4
+          return redisClient ? new RedisRateLimiter(redisClient, moduleOptions.rateLimiterConfig) : null;
         },
-        inject: [NOTIFICATIONS_MODULE_OPTIONS],
+        inject: [NOTIFICATIONS_MODULE_OPTIONS, { token: getRedisClientToken(), optional: true }],
         scope: Scope.Singleton,
       },
     ]);
@@ -561,18 +614,12 @@ export class NotificationsModule {
     providers.push([
       NOTIFICATIONS_REDIS_PREFERENCE_STORE,
       {
-        useFactory: async (moduleOptions: NotificationsModuleOptions) => {
-          if (moduleOptions.preferenceStore || !moduleOptions.redis) {
-            return null;
-          }
-          const { Redis } = await import('ioredis');
-          const redisClient =
-            typeof moduleOptions.redis === 'string'
-              ? new Redis(moduleOptions.redis)
-              : new Redis(moduleOptions.redis as RedisOptions);
-          return new RedisPreferenceStore(redisClient, moduleOptions.preferenceStoreConfig);
+        useFactory: async (moduleOptions: NotificationsModuleOptions, managed?: IRedisClient) => {
+          if (moduleOptions.preferenceStore) return null;
+          const redisClient = await resolveNotificationsRedis(moduleOptions.redis, managed); // NT-4
+          return redisClient ? new RedisPreferenceStore(redisClient, moduleOptions.preferenceStoreConfig) : null;
         },
-        inject: [NOTIFICATIONS_MODULE_OPTIONS],
+        inject: [NOTIFICATIONS_MODULE_OPTIONS, { token: getRedisClientToken(), optional: true }],
         scope: Scope.Singleton,
       },
     ]);

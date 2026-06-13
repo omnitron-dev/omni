@@ -14,6 +14,7 @@ import {
   Scope,
   ProviderDefinition,
   InjectionToken,
+  InjectionInput,
   RegistrationOptions,
   ClassProvider,
   isConfigToken,
@@ -85,7 +86,7 @@ export class RegistrationService {
     }
 
     // Extract dependencies
-    let dependencies: InjectionToken<any>[] | undefined;
+    let dependencies: InjectionInput<any>[] | undefined;
     if ('inject' in provider && provider.inject) {
       dependencies = provider.inject;
     } else if ('useClass' in provider) {

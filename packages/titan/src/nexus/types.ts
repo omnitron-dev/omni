@@ -149,6 +149,29 @@ export type AsyncFactory<T = unknown, Args extends any[] = any[]> = (...args: Ar
 export type InjectionToken<T = any> = Token<T> | ServiceIdentifier<T>;
 
 /**
+ * A single entry in a provider's `inject: [...]` array.
+ *
+ * Besides a bare {@link InjectionToken}, the resolution pipeline accepts two
+ * descriptor objects that the bare-token type cannot express:
+ *
+ *  - `{ token, optional: true }` — resolve optionally; the factory/constructor
+ *    receives `undefined` instead of throwing when the token is unregistered.
+ *  - `{ token: 'CONTEXT', type: 'context' }` — inject the active
+ *    {@link ResolutionContext} rather than a registered value.
+ *
+ * Both forms are honored at runtime by `ResolutionService.resolveDependencies`
+ * and normalized by the registration service; this type makes them part of the
+ * public contract so call sites no longer need `as any`.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export type InjectionInput<T = any> =
+  | InjectionToken<T>
+  | { token: InjectionToken<T>; optional?: boolean }
+  | { token: 'CONTEXT'; type: 'context' };
+
+/**
  * Resolution state for circular dependency detection.
  * Isolated per top-level resolution call to prevent race conditions.
  *
@@ -213,7 +236,7 @@ export interface MiddlewareContext<T = unknown> extends ResolutionContext {
 export type ClassProvider<T = any> = {
   useClass: Constructor<T>;
   scope?: Scope;
-  inject?: InjectionToken[];
+  inject?: InjectionInput[];
   multi?: boolean;
   condition?: (context: ResolutionContext) => boolean;
   fallback?: Provider<T>;
@@ -241,7 +264,7 @@ export type ValueProvider<T = any> = {
  */
 export type FactoryProvider<T = any> = {
   useFactory: Factory<T> | AsyncFactory<T>;
-  inject?: InjectionToken[];
+  inject?: InjectionInput[];
   scope?: Scope;
   async?: boolean;
   timeout?: number;

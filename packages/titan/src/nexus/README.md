@@ -22,7 +22,7 @@
   - [Async Resolution](#async-resolution)
   - [Streaming Providers](#streaming-providers)
   - [Contextual Injection](#contextual-injection)
-- [Experimental Features](#experimental-features)
+- [Dependency-graph diagnostics](#dependency-graph-diagnostics)
 - [Error Reference](#error-reference)
 - [Best Practices](#best-practices)
 
@@ -997,44 +997,19 @@ lazyService.doSomething(); // Now resolved on first access
 const lazyAsync = await container.resolveLazyAsync(ASYNC_SERVICE);
 ```
 
-## Experimental Features
+## Dependency-graph diagnostics
 
-The following features are available but marked as experimental. APIs may change in minor versions.
-
-### Service Mesh
-
-```typescript
-import { ServiceMeshManager } from '@omnitron-dev/titan/nexus';
-
-const mesh = new ServiceMeshManager({
-  serviceName: 'my-service',
-  discovery: { /* discovery config */ },
-  loadBalancing: 'round-robin'
-});
-```
-
-### Distributed Tracing
+`Container.exportGraph()` returns a `DependencyGraph`; `dependency-graph.ts`
+provides DOT/Mermaid/JSON formatters and a `focusGraph` filter for diagnostics.
 
 ```typescript
-import { TracingManager, TraceSpan } from '@omnitron-dev/titan/nexus';
+import { exportToMermaid } from '@omnitron-dev/titan/nexus';
 
-const tracing = new TracingManager({
-  serviceName: 'api-gateway'
-});
-
-const span = tracing.startSpan('process-request');
-// ... operation
-span.finish();
+const diagram = exportToMermaid(container.exportGraph());
 ```
 
-### DevTools
-
-```typescript
-import { DevToolsPlugin } from '@omnitron-dev/titan/nexus';
-
-const devTools = new DevToolsPlugin();
-container.use(devTools);
-```
+> The former experimental Service Mesh, Distributed Tracing, and DevTools
+> debugger modules were removed (NX-5) — they had no consumers.
 
 ## Error Reference
 
@@ -1229,9 +1204,7 @@ container.addMiddleware(new CircuitBreakerMiddleware({ threshold: 5 }));
 | Lifecycle Hooks | Stable | 0.1.0 |
 | Context System | Stable | 0.1.0 |
 | Streaming | Stable | 0.1.0 |
-| Service Mesh | Experimental | 0.1.0 |
-| Distributed Tracing | Experimental | 0.1.0 |
-| DevTools | Experimental | 0.1.0 |
+| Dependency-graph diagnostics | Stable | 0.1.0 |
 
 ## Feature Flags
 

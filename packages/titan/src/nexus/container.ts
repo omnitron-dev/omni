@@ -1422,9 +1422,8 @@ export class Container implements IContainer {
    *
    * Used by `omnitron inspect <app> --graph` and the Prometheus-format
    * snapshot in metrics-bridge to give operators a topological view of
-   * the container without dragging in the heavyweight DevToolsPlugin.
-   * The shape matches `DependencyGraph` in `./devtools.ts` so the
-   * existing Mermaid/DOT formatters from that module work unchanged.
+   * the container. The shape matches `DependencyGraph` in
+   * `./dependency-graph.ts` so its Mermaid/DOT/JSON formatters work unchanged.
    *
    * Notes:
    *  - We walk only THIS container's registrations. Parent-container
@@ -1435,7 +1434,7 @@ export class Container implements IContainer {
    *    deliberately preserved so consumers can see the multiplicity;
    *    Mermaid/DOT renderers tolerate duplicate ids by overlaying.
    */
-  exportGraph(options: { includeParent?: boolean } = {}): import('./devtools.js').DependencyGraph {
+  exportGraph(options: { includeParent?: boolean } = {}): import('./dependency-graph.js').DependencyGraph {
     const seen = new Set<unknown>();
     const nodes: Array<{ id: string; label?: string; type?: string }> = [];
     const edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }> = [];
@@ -2137,8 +2136,8 @@ export class Container implements IContainer {
    *
    * @example
    * ```typescript
-   * const devTools = new DevToolsPlugin();
-   * container.use(devTools);
+   * const extension = { install(c: IContainer) { ... } };
+   * container.use(extension);
    * ```
    */
   use(extension: { install(container: IContainer): void }): this {

@@ -17,16 +17,15 @@
 import { Container } from './container.js';
 
 // ============================================================================
-// Experimental Features - DevTools
+// Dependency-graph diagnostics
 // ============================================================================
 
 /**
- * DevTools extension for debugging and visualization of dependency injection.
- *
- * @experimental
- * @since 0.1.0
+ * Dependency-graph type + DOT/Mermaid/JSON formatters used by
+ * `Container.exportGraph()` (NX-5: extracted from the removed experimental
+ * DevTools debugger).
  */
-export * from './devtools.js';
+export * from './dependency-graph.js';
 
 // ============================================================================
 // Core Container
@@ -257,9 +256,12 @@ export const NEXUS_FEATURES = {
   CONTEXTUAL_INJECTION: true,
   // Phase 3
   DECORATORS: false, // Requires separate import from '@nexus/decorators'
-  SERVICE_MESH: true,
-  DISTRIBUTED_TRACING: true,
-  DEVTOOLS: true,
+  // NX-5: the experimental Service Mesh, Distributed Tracing, and DevTools
+  // debugger modules were removed (zero consumers). The dependency-graph
+  // diagnostics (Container.exportGraph + formatters) live on independently.
+  SERVICE_MESH: false,
+  DISTRIBUTED_TRACING: false,
+  DEVTOOLS: false,
 } as const;
 
 /**
@@ -268,7 +270,6 @@ export const NEXUS_FEATURES = {
  * Phase 3 features are available but require separate imports:
  *
  * - Decorators: import from '@nexus/decorators'
- * - DevTools: import from '@nexus/devtools'
  */
 
 // ============================================================================

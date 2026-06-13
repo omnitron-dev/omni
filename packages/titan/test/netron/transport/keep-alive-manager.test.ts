@@ -36,6 +36,20 @@ describe('KeepAliveManager', () => {
 
       expect(manager1).not.toBe(manager2);
     });
+
+    it('WIRE-12: distinct configs get distinct managers, each honouring its own config', () => {
+      const slow = KeepAliveManager.getInstance({ interval: 30000, timeout: 5000 });
+      const fast = KeepAliveManager.getInstance({ interval: 10000, timeout: 2000 });
+
+      // Different (interval, timeout) → different manager. The former global
+      // singleton returned `slow` for both, silently dropping the fast config.
+      expect(fast).not.toBe(slow);
+      expect(slow.getConfig()).toEqual({ interval: 30000, timeout: 5000 });
+      expect(fast.getConfig()).toEqual({ interval: 10000, timeout: 2000 });
+
+      // Same config still shares one manager (timer-wheel win preserved).
+      expect(KeepAliveManager.getInstance({ interval: 10000, timeout: 2000 })).toBe(fast);
+    });
   });
 
   describe('connection registration', () => {

@@ -48,7 +48,17 @@ export interface KeepAliveConfig {
  * ```
  */
 export class KeepAliveManager {
-  private static instance: KeepAliveManager;
+  /**
+   * WIRE-12: managers are keyed by config, NOT a single process-global
+   * singleton. A lone singleton meant the FIRST caller's
+   * `{interval, timeout}` was forced onto every WebSocket connection in
+   * the process — a second connection (or a second Netron instance) that
+   * asked for a different interval/timeout silently got the first one's.
+   * Keying by config preserves the timer-wheel win (connections that
+   * share a config share a manager + one timer) while honouring distinct
+   * keep-alive settings.
+   */
+  private static instances = new Map<string, KeepAliveManager>();
   private connections = new Map<string, ConnectionEntry>();
   private timer?: NodeJS.Timeout;
   private config: KeepAliveConfig;
@@ -57,27 +67,36 @@ export class KeepAliveManager {
     this.config = config;
   }
 
-  /**
-   * Get or create the singleton instance
-   *
-   * @param config - Keep-alive configuration (interval and timeout)
-   * @returns The singleton KeepAliveManager instance
-   */
-  static getInstance(config: KeepAliveConfig): KeepAliveManager {
-    if (!KeepAliveManager.instance) {
-      KeepAliveManager.instance = new KeepAliveManager(config);
-    }
-    return KeepAliveManager.instance;
+  private static keyFor(config: KeepAliveConfig): string {
+    return `${config.interval}:${config.timeout}`;
   }
 
   /**
-   * Reset the singleton instance (primarily for testing)
+   * Get or create the manager for a given keep-alive config. Calls with
+   * an equal `{interval, timeout}` share one manager (and its timer
+   * wheel); calls with a different config get a distinct manager.
+   *
+   * @param config - Keep-alive configuration (interval and timeout)
+   * @returns The KeepAliveManager for this config
+   */
+  static getInstance(config: KeepAliveConfig): KeepAliveManager {
+    const key = KeepAliveManager.keyFor(config);
+    let instance = KeepAliveManager.instances.get(key);
+    if (!instance) {
+      instance = new KeepAliveManager(config);
+      KeepAliveManager.instances.set(key, instance);
+    }
+    return instance;
+  }
+
+  /**
+   * Destroy and drop every manager (primarily for testing).
    */
   static reset(): void {
-    if (KeepAliveManager.instance) {
-      KeepAliveManager.instance.destroy();
-      KeepAliveManager.instance = undefined as any;
+    for (const instance of KeepAliveManager.instances.values()) {
+      instance.destroy();
     }
+    KeepAliveManager.instances.clear();
   }
 
   /**
@@ -121,26 +140,37 @@ export class KeepAliveManager {
    * @param connection - The connection to unregister
    */
   unregister(connection: WebSocketConnection): void {
-    const entry = this.connections.get(connection.id);
+    this.removeConnection(connection.id);
+  }
+
+  /**
+   * Remove a connection by id: clear its pong timeout, detach the 'pong'
+   * listener, drop it from the registry, and stop the shared timer if no
+   * connections remain.
+   *
+   * Shared by unregister() and the pong-timeout termination path. WIRE-12:
+   * the latter formerly did a bare `connections.delete(id)`, leaving the
+   * 'pong' listener attached to the (possibly lingering) socket and the
+   * shared timer spinning even after it drained the last connection.
+   */
+  private removeConnection(id: string): void {
+    const entry = this.connections.get(id);
     if (!entry) {
       return;
     }
 
-    // Clear any pending pong timeout
     if (entry.pongTimeout) {
       clearTimeout(entry.pongTimeout);
+      entry.pongTimeout = undefined;
     }
 
-    // Remove pong listener
     if ((entry.socket as any).__keepAliveCleanup) {
       (entry.socket as any).__keepAliveCleanup();
       delete (entry.socket as any).__keepAliveCleanup;
     }
 
-    // Remove from registry
-    this.connections.delete(connection.id);
+    this.connections.delete(id);
 
-    // Stop timer if no connections remain
     if (this.connections.size === 0) {
       this.stopTimer();
     }
@@ -206,8 +236,8 @@ export class KeepAliveManager {
             // Ignore errors during termination
           }
 
-          // Clean up entry
-          this.connections.delete(id);
+          // Full cleanup (listener + timer), not a bare delete (WIRE-12).
+          this.removeConnection(id);
         }, this.config.timeout);
       } catch (_error) {
         // Ignore ping errors (connection may be closing)

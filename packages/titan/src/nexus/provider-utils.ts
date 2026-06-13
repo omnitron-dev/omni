@@ -10,7 +10,10 @@ import type { Provider, InjectionToken, Constructor, Factory, AsyncFactory, Scop
  * Check if a value is a constructor
  */
 export function isConstructor(value: any): value is Constructor {
-  return typeof value === 'function' && value.prototype;
+  // NX-13: return a strict boolean — `value.prototype` is the prototype object
+  // (truthy), which works in boolean contexts but makes this predicate return a
+  // non-boolean value, breaking strict `=== true` checks.
+  return typeof value === 'function' && !!value.prototype;
 }
 
 /**

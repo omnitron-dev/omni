@@ -24,6 +24,7 @@ export type {
   ServiceMetadataWithContract,
 } from './definition-types.js';
 export { Definition } from './definition.js';
+export { Reference } from './reference.js';
 
 // Packet wire types: impulse, type codes (TYPE_*), the PacketType union, and
 // the StreamType enum. These define the binary protocol's opcode space and must

@@ -24,7 +24,7 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 - ✅ `Reference` — service-definition reference (reconciled to a plain Error; titan's TitanError on the empty-defId guard was unreachable + untyped-by-callers)
 - ⛔ `StreamReference` — NOT shareable: its `from()`/`to()` factories bind to the concrete, environment-specific `NetronReadable/WritableStream` classes (server vs browser); only the wire data shape matches. Stays per-package.
 - ✅ wire error taxonomy (XC-2, partial) — `ErrorCode` enum + `ErrorCategory` + range classifiers (`getErrorCategory`/`isClientError`/`isServerError`), byte-identical in both. titan + browser re-export from here; their per-package metadata helpers stay local (titan's table-driven `ERROR_METADATA`/`toHttpStatus`/`getErrorName` vs the browser's inline name/message). The full TitanError class hierarchy + factories + serialization remain per-package (larger XC-2 follow-up).
-- ⏳ `Packet` + encode/decode + serializer — sub-EPIC: the wire CODEC. Highest risk; needs byte-compat round-trip verification between the two impls before unifying.
+- ⛔ `Packet` + serializer — the wire CODEC, confirmed DIVERGENT: titan's and the browser's `Packet` bit-manipulation implementations differ substantially (~236/300 lines), wire-compatible but not shared code, and the serializer registers the env-specific `StreamReference` handlers. Unifying needs a byte-compat round-trip harness between the two impls + resolving the StreamReference divergence first — a dedicated sub-EPIC, not a mechanical dedup.
 - ⏳ shared error codes
 - ⏳ core-task name + wire constants
 

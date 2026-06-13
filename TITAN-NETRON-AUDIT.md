@@ -208,7 +208,7 @@ Closed (fix + tests + commit, all suites green): **SEC-2** (opt-in default-deny,
 - WIRE-2 high — readable-stream.ts:116 — reorder buffer kills stream on gap; no HOL timeout; reorder is dead complexity (ordered transports).
 - WIRE-3 high — transport-adapter.ts:120 — decode→re-encode→re-decode every packet.
 - WIRE-4 high — base-transport.ts:233 vs connection-manager.ts:666 vs backend-pool.ts:286 — 3 reconnect impls (only one jittered → thundering herd).
-- WIRE-5 med — base-transport.ts:88 — text/binary heuristic misclassifies packets whose id high-byte is 0x7b/0x5b.
+- WIRE-5 ✅ INVESTIGATED — practically unreachable + deliberate trade-off. The `0x7b`/`0x5b`→text heuristic (base-transport.ts:138) runs ONLY in the pre-handshake window; `if (this.binaryMode)` (line 92) short-circuits every packet after the first successful binary decode. A fresh connection's Uid sequence starts low, so the first binary packet's 4-byte-ID high byte is 0x00 — it can't be 0x7b/0x5b (that needs ID ≥ ~1.5 billion as the very first binary packet). The current T#48 logic deliberately treats `{`/`[` as text to avoid JSON handshakes coincidentally msgpack-decoding; "trying binary first" would regress that. A real fix is explicit text/binary framing → SHARED-PROTO/WIRE epic, not a safe standalone change.
 - WIRE-6 med — packet/index.ts:222 — stream reads outside try/catch; no full-consumption check.
 - WIRE-7 med — tcp 500ms vs ws 5000ms force-close; HTTP disconnect emits object not string reason.
 - WIRE-8 med — connection-manager.ts:830 + backend-pool.ts:261 + keep-alive-manager.ts:182 — 3 health-check loops (T#50 guard copied 3×).

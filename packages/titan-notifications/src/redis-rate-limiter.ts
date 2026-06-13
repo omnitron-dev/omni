@@ -122,7 +122,10 @@ export class RedisRateLimiter implements IRateLimiter {
     if (this.redis) {
       await this.recordToRedis(key, now);
     } else {
-      this.recordToMemory(key, now);
+      // NT-6: record against every configured tier so the in-memory fallback
+      // enforces hour/day/burst, not just per-minute.
+      const limits = await this.getLimitsFor(recipientId, channel);
+      this.recordToMemory(key, now, limits);
     }
   }
 
@@ -236,21 +239,27 @@ export class RedisRateLimiter implements IRateLimiter {
         }
       }
     } else {
-      // In-memory fallback (simplified)
-      const memKey = `${key}:minute`;
-      const entry = this.memoryStore.get(memKey);
+      // NT-6: in-memory fallback now enforces ALL tiers (burst/minute/hour/day),
+      // mirroring the Redis path. Previously only per-minute was checked, so a
+      // Redis outage silently let the burst/hour/day limits be bypassed — an
+      // attacker could send 86400/day while staying under 60/min. Time tiers use
+      // boundary-aligned fixed windows (identical to Redis); burst uses a
+      // fixed-window approximation of Redis' 1s sliding window (acceptable for a
+      // degraded fallback — may permit up to ~2× burst across a window edge).
+      for (const { tier, limit, windowMs } of this.memoryTiers(limits)) {
+        if (!limit) continue;
+        const memKey = `${key}:${tier}:${Math.floor(now / windowMs)}`;
+        const entry = this.memoryStore.get(memKey);
+        const count = entry && entry.resetAt > now ? entry.count : 0;
+        const tierResetAt = (Math.floor(now / windowMs) + 1) * windowMs;
 
-      if (entry && entry.resetAt > now) {
-        remaining.minute = Math.max(0, (limits.perMinute ?? 60) - entry.count);
-        resetAt.minute = entry.resetAt;
+        remaining[tier] = Math.max(0, limit - count);
+        resetAt[tier] = tierResetAt;
 
-        if (entry.count >= (limits.perMinute ?? 60)) {
+        if (count >= limit) {
           allowed = false;
-          retryAfter = entry.resetAt - now;
+          retryAfter = Math.min(retryAfter ?? Infinity, tierResetAt - now);
         }
-      } else {
-        remaining.minute = limits.perMinute ?? 60;
-        resetAt.minute = now + 60000;
       }
     }
 
@@ -350,15 +359,36 @@ export class RedisRateLimiter implements IRateLimiter {
     await pipeline.exec();
   }
 
-  private recordToMemory(key: string, now: number): void {
-    const memKey = `${key}:minute`;
-    const entry = this.memoryStore.get(memKey);
-    const resetAt = (Math.floor(now / 60000) + 1) * 60000;
+  /**
+   * NT-6: the tier table shared by the in-memory fallback's check (getStatus)
+   * and record paths so both enforce burst/minute/hour/day consistently. A tier
+   * with an undefined limit (or burst when detection is disabled) is skipped.
+   */
+  private memoryTiers(
+    limits: RateLimitConfig
+  ): Array<{ tier: 'burst' | 'minute' | 'hour' | 'day'; limit: number | undefined; windowMs: number }> {
+    return [
+      { tier: 'burst', limit: this.enableBurstDetection ? limits.burstLimit : undefined, windowMs: limits.burstWindowMs ?? 1000 },
+      { tier: 'minute', limit: limits.perMinute, windowMs: 60000 },
+      { tier: 'hour', limit: limits.perHour, windowMs: 3600000 },
+      { tier: 'day', limit: limits.perDay, windowMs: 86400000 },
+    ];
+  }
 
-    if (entry && entry.resetAt > now) {
-      entry.count++;
-    } else {
-      this.memoryStore.set(memKey, { count: 1, resetAt });
+  private recordToMemory(key: string, now: number, limits: RateLimitConfig): void {
+    // NT-6: increment every configured tier's window counter (was minute-only),
+    // so the fallback's getStatus can actually enforce hour/day/burst limits.
+    for (const { tier, limit, windowMs } of this.memoryTiers(limits)) {
+      if (!limit) continue;
+      const memKey = `${key}:${tier}:${Math.floor(now / windowMs)}`;
+      const resetAt = (Math.floor(now / windowMs) + 1) * windowMs;
+      const entry = this.memoryStore.get(memKey);
+
+      if (entry && entry.resetAt > now) {
+        entry.count++;
+      } else {
+        this.memoryStore.set(memKey, { count: 1, resetAt });
+      }
     }
 
     // Cleanup old entries when approaching size limit

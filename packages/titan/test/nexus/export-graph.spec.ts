@@ -23,7 +23,7 @@ import {
   exportToMermaid,
   exportToJson,
   focusGraph,
-} from '../../src/nexus/devtools.js';
+} from '../../src/nexus/dependency-graph.js';
 import { Injectable, Inject } from '../../src/decorators/index.js';
 
 const A = createToken<{ name: string }>('TokenA');

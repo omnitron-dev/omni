@@ -677,6 +677,40 @@ describe('Container - Comprehensive Tests', () => {
       expect(before).toBe('preserved');
       expect(after).toBe('preserved');
     });
+
+    it('clears in-flight async resolutions too, so post-clear resolves are fresh (NX-16)', async () => {
+      const token = createToken<{ id: number }>('AsyncCached');
+      const releasers: Array<(v: { id: number }) => void> = [];
+      let calls = 0;
+
+      container.register(token, {
+        useFactory: () =>
+          new Promise<{ id: number }>((resolve) => {
+            const id = ++calls;
+            releasers.push(() => resolve({ id }));
+          }),
+        scope: Scope.Singleton,
+      });
+
+      const settle = () => new Promise((r) => setTimeout(r, 0));
+
+      const p1 = container.resolveAsync(token);
+      // Wait until the first resolution is in-flight (factory ran → pending set).
+      for (let i = 0; i < 100 && calls < 1; i++) await settle();
+      expect(calls).toBe(1);
+
+      container.clearCache(); // NX-16: must also drop the in-flight pending promise
+
+      // A concurrent resolve started AFTER clearCache must NOT join the cleared
+      // pending promise — it has to create afresh. Pre-fix it joined p1 (calls stayed 1).
+      const p2 = container.resolveAsync(token);
+      for (let i = 0; i < 100 && calls < 2; i++) await settle();
+      expect(calls).toBe(2);
+
+      releasers.forEach((release) => release({ id: 0 }));
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1).not.toBe(r2);
+    });
   });
 
   describe('Extensions and Middleware', () => {

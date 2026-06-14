@@ -109,6 +109,7 @@ import {
   type AuthContext,
 } from '@omnitron-dev/titan/netron/auth';
 import { createAuthContextWrapper } from '../services/auth-context.js';
+import { ROLES } from '../shared/roles.js';
 import { expandPath } from '../shared/paths.js';
 
 export interface DaemonStartOptions {
@@ -315,6 +316,23 @@ export class OmnitronDaemon {
         force: true,
         mode: 0o600, // Owner-only access for security
       },
+    });
+
+    // Local CLI trust. The Unix socket above is created mode 0600, so any
+    // peer that can open it is provably the same OS user that owns this
+    // daemon — the OS has already authenticated them. Grant those
+    // connections an implicit admin context so the local CLI satisfies the
+    // `@Public({ auth: { roles } })` guards on the daemon RPC services
+    // without a redundant JWT handshake (the CLI talks over this socket
+    // only). Remote transports — TCP (fleet), HTTP/WS (webapp) — are NOT
+    // registered here and keep requiring a validated token, so this widens
+    // nothing beyond same-user local access that the socket mode already
+    // grants.
+    this.app.netron.setTransportAuthContext('unix', {
+      userId: 'omnitron-local',
+      roles: [ROLES.ADMIN],
+      permissions: [],
+      metadata: { source: 'local-unix-socket' },
     });
 
     // TCP — remote fleet communication (cross-server). Defaults to

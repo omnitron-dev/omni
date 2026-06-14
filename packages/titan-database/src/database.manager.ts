@@ -46,6 +46,7 @@ import {
 import { CircuitBreaker } from '@kysera/infra';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors, TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
+import { computeBackoff } from '@omnitron-dev/titan/utils';
 import type {
   DatabaseConnection,
   DatabaseDialect,
@@ -484,8 +485,16 @@ export class DatabaseManager implements IDatabaseManager {
           break;
         }
 
-        // Calculate exponential backoff delay: 1s, 2s, 4s, 8s, 16s
-        const delayMs = Math.min(retryConfig.baseDelayMs * Math.pow(2, attempt), retryConfig.maxDelayMs);
+        // Calculate exponential backoff delay: 1s, 2s, 4s, 8s, 16s.
+        // RESILIENCE-UNIFY: use the shared computeBackoff primitive (identical to
+        // the previous min(baseDelayMs * 2^attempt, maxDelayMs); factor 2, no jitter).
+        const delayMs = computeBackoff({
+          attempt,
+          baseMs: retryConfig.baseDelayMs,
+          maxMs: retryConfig.maxDelayMs,
+          factor: 2,
+          jitter: 0,
+        });
 
         this.logger.warn(
           { name, attempt, nextRetryIn: delayMs, error: lastError.message },

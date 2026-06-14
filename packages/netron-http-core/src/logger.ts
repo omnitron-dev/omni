@@ -7,5 +7,8 @@
  * both Node and the browser.
  */
 export interface HttpCoreLogger {
-  debug(message: string, ...args: any[]): void;
+  debug(obj: object, msg?: string, ...args: any[]): void;
+  debug(msg: string, ...args: any[]): void;
+  warn(obj: object, msg?: string, ...args: any[]): void;
+  warn(msg: string, ...args: any[]): void;
 }

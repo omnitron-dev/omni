@@ -627,22 +627,16 @@ describe('RetryManager', () => {
   describe('Debug Logging', () => {
     let stderrSpy: vi.SpyInstance;
 
-    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    /** Helper: check that console.log received a debug line containing `substring`.
+     * SHARED-HTTP-CORE: the retry manager's neutral debug fallback is console.log. */
     function expectStderrMsg(substring: string): void {
       const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
-      const found = calls.some((line: string) => {
-        try {
-          const parsed = JSON.parse(line);
-          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
-        } catch {
-          return line.includes(substring);
-        }
-      });
-      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+      const found = calls.some((line: string) => line.includes(substring));
+      expect(found, `Expected a debug log including "${substring}"`).toBe(true);
     }
 
     beforeEach(() => {
-      stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      stderrSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     });
 
     afterEach(() => {
@@ -836,22 +830,16 @@ describe('RetryManager', () => {
     let cbManager: RetryManager;
     let stderrSpy: vi.SpyInstance;
 
-    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    /** Helper: check that console.log received a debug line containing `substring`.
+     * SHARED-HTTP-CORE: the retry manager's neutral debug fallback is console.log. */
     function expectStderrMsg(substring: string): void {
       const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
-      const found = calls.some((line: string) => {
-        try {
-          const parsed = JSON.parse(line);
-          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
-        } catch {
-          return line.includes(substring);
-        }
-      });
-      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+      const found = calls.some((line: string) => line.includes(substring));
+      expect(found, `Expected a debug log including "${substring}"`).toBe(true);
     }
 
     beforeEach(() => {
-      stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      stderrSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       cbManager = new RetryManager({
         debug: true,
         circuitBreaker: {

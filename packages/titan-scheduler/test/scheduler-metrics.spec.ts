@@ -132,20 +132,27 @@ describe('Scheduler Metrics', () => {
     });
 
     it('should track failed executions', () => {
-      const result: IJobExecutionResult = {
-        jobId: 'job-1',
-        executionId: 'exec-1',
-        status: 'failure',
+      // SC-7: failures are reported by the executor via JOB_FAILED (not
+      // JOB_COMPLETED-with-failure-result), and counted once by recordFailure.
+      executor.emit(SCHEDULER_EVENTS.JOB_FAILED, {
+        job: { id: 'job-1', name: 'job-1' },
         error: new Error('Test error'),
-        duration: 50,
-        timestamp: new Date(),
-      };
-
-      executor.emit(SCHEDULER_EVENTS.JOB_COMPLETED, { result });
+        context: {},
+      });
 
       const currentMetrics = metrics.getMetrics();
       expect(currentMetrics.failedExecutions).toBe(1);
       expect(currentMetrics.totalExecutions).toBe(1);
+    });
+
+    it('does NOT double-count: JOB_COMPLETED never tallies a failure (SC-7)', () => {
+      // Even a stray JOB_COMPLETED carrying a failure result must not bump
+      // failedExecutions — recordFailure (JOB_FAILED) is the sole failure counter,
+      // so a failure can never be counted by both paths.
+      executor.emit(SCHEDULER_EVENTS.JOB_COMPLETED, {
+        result: { jobId: 'x', executionId: 'e', status: 'failure', duration: 10, timestamp: new Date() },
+      });
+      expect(metrics.getMetrics().failedExecutions).toBe(0);
     });
 
     it('should track multiple executions', () => {
@@ -237,17 +244,12 @@ describe('Scheduler Metrics', () => {
         });
       }
 
-      // 3 failures
+      // 3 failures — reported via JOB_FAILED, as the executor really does (SC-7)
       for (let i = 0; i < 3; i++) {
-        executor.emit(SCHEDULER_EVENTS.JOB_COMPLETED, {
-          result: {
-            jobId: `failure-${i}`,
-            executionId: `exec-fail-${i}`,
-            status: 'failure',
-            error: new Error('Test'),
-            duration: 50,
-            timestamp: new Date(),
-          },
+        executor.emit(SCHEDULER_EVENTS.JOB_FAILED, {
+          job: { id: `failure-${i}`, name: `failure-${i}` },
+          error: new Error('Test'),
+          context: {},
         });
       }
 

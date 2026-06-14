@@ -413,6 +413,9 @@ importers:
       '@omnitron-dev/msgpack':
         specifier: workspace:*
         version: link:../msgpack
+      '@omnitron-dev/netron-http-core':
+        specifier: workspace:*
+        version: link:../netron-http-core
       '@omnitron-dev/netron-protocol':
         specifier: workspace:*
         version: link:../netron-protocol
@@ -477,6 +480,22 @@ importers:
       ws:
         specifier: ^8.20.0
         version: 8.20.0
+
+  packages/netron-http-core:
+    dependencies:
+      '@omnitron-dev/eventemitter':
+        specifier: workspace:*
+        version: link:../eventemitter
+      '@omnitron-dev/netron-protocol':
+        specifier: workspace:*
+        version: link:../netron-protocol
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@25.8.0)(@vitest/coverage-v8@4.1.6)(happy-dom@20.9.0)(vite@8.0.13(@types/node@25.8.0)(esbuild@0.28.0)(terser@5.46.2)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/netron-protocol:
     devDependencies:
@@ -819,6 +838,9 @@ importers:
       '@omnitron-dev/msgpack':
         specifier: workspace:*
         version: link:../msgpack
+      '@omnitron-dev/netron-http-core':
+        specifier: workspace:*
+        version: link:../netron-http-core
       '@omnitron-dev/netron-protocol':
         specifier: workspace:*
         version: link:../netron-protocol
@@ -10328,7 +10350,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(vite@8.0.13(@types/node@25.6.0)(esbuild@0.28.0)(terser@5.46.2)(tsx@4.21.0)(yaml@2.8.4))
+      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(vite@8.0.13(@types/node@25.6.0)(esbuild@0.27.7)(terser@5.46.2)(tsx@4.21.0)(yaml@2.8.4))
 
   '@vitest/coverage-v8@4.1.6(vitest@4.1.6)':
     dependencies:
@@ -10439,7 +10461,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(vite@8.0.13(@types/node@25.6.0)(esbuild@0.28.0)(terser@5.46.2)(tsx@4.21.0)(yaml@2.8.4))
+      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(vite@8.0.13(@types/node@25.6.0)(esbuild@0.27.7)(terser@5.46.2)(tsx@4.21.0)(yaml@2.8.4))
 
   '@vitest/utils@4.1.5':
     dependencies:

@@ -44,4 +44,91 @@ describe('TitanError (merged)', () => {
     expect(e instanceof TitanError).toBe(true);
     expect(isErrorCode(e, ErrorCode.INTERNAL_ERROR)).toBe(true);
   });
+
+  it('ensureError passes a TitanError through unchanged + appends a cause stack', () => {
+    const original = new TitanError({ code: ErrorCode.NOT_FOUND });
+    expect(ensureError(original)).toBe(original);
+
+    const cause = new Error('root');
+    const wrapped = new TitanError({ code: ErrorCode.INTERNAL_ERROR, cause });
+    expect((wrapped as any).cause).toBe(cause);
+    expect(wrapped.stack).toContain('Caused by:');
+  });
+
+  it('withContext / withDetails return a new error with merged fields', () => {
+    const base = new TitanError({ code: ErrorCode.BAD_REQUEST, context: { a: 1 }, details: { x: 1 } });
+    const withCtx = base.withContext({ b: 2 });
+    expect(withCtx).not.toBe(base);
+    expect(withCtx.context).toEqual({ a: 1, b: 2 });
+    const withDet = base.withDetails({ y: 2 });
+    expect(withDet.details).toEqual({ x: 1, y: 2 });
+  });
+});
+
+describe('TitanError retry semantics', () => {
+  it('isRetryable reflects the code', () => {
+    expect(new TitanError({ code: ErrorCode.SERVICE_UNAVAILABLE }).isRetryable()).toBe(true);
+    expect(new TitanError({ code: ErrorCode.BAD_REQUEST }).isRetryable()).toBe(false);
+  });
+
+  it('getRetryStrategy: non-retryable → no retry', () => {
+    expect(new TitanError({ code: ErrorCode.FORBIDDEN }).getRetryStrategy()).toEqual({
+      shouldRetry: false,
+      delay: 0,
+      maxAttempts: 0,
+    });
+  });
+
+  it('getRetryStrategy: rate-limit uses retryAfter; others use exponential', () => {
+    const rl = new TitanError({ code: ErrorCode.TOO_MANY_REQUESTS, details: { retryAfter: 5 } });
+    expect(rl.getRetryStrategy()).toEqual({ shouldRetry: true, delay: 5000, maxAttempts: 3 });
+
+    const other = new TitanError({ code: ErrorCode.INTERNAL_SERVER_ERROR });
+    expect(other.getRetryStrategy()).toEqual({ shouldRetry: true, delay: 1000, maxAttempts: 3, backoffFactor: 2 });
+  });
+});
+
+describe('TitanError statistics + pool + aggregate', () => {
+  it('getCached returns a stable instance per code', () => {
+    const a = TitanError.getCached(ErrorCode.NOT_FOUND);
+    const b = TitanError.getCached(ErrorCode.NOT_FOUND);
+    expect(a).toBe(b);
+    expect(a.code).toBe(ErrorCode.NOT_FOUND);
+  });
+
+  it('getMetrics + resetStatistics', () => {
+    TitanError.resetStatistics();
+    new TitanError({ code: ErrorCode.NOT_FOUND });
+    new TitanError({ code: ErrorCode.NOT_FOUND });
+    new TitanError({ code: ErrorCode.FORBIDDEN });
+    const m = TitanError.getMetrics({ window: '1m' });
+    expect(m.totalErrors).toBeGreaterThanOrEqual(3);
+    expect(m.topErrors[0]).toMatchObject({ code: ErrorCode.NOT_FOUND, name: 'NOT_FOUND' });
+    TitanError.resetStatistics();
+    expect(TitanError.getStatistics().totalErrors).toBe(0);
+  });
+
+  it('ErrorPool reuses error objects (resetting their fields)', () => {
+    const pool = TitanError.createPool({ size: 2 });
+    expect(pool.size).toBe(2);
+    const e1 = pool.acquire(ErrorCode.BAD_REQUEST, 'first');
+    expect(e1.code).toBe(ErrorCode.BAD_REQUEST);
+    expect(e1.message).toBe('first');
+    pool.release(e1);
+    const e2 = pool.acquire(ErrorCode.NOT_FOUND);
+    expect(e2.code).toBe(ErrorCode.NOT_FOUND);
+    expect(e2.httpStatus).toBe(404);
+  });
+
+  it('AggregateError deduplicates by code+message when asked', () => {
+    const errs = [
+      new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'dup' }),
+      new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'dup' }),
+      new TitanError({ code: ErrorCode.NOT_FOUND, message: 'other' }),
+    ];
+    const agg = new AggregateError(errs, { deduplicate: true });
+    expect(agg.errors).toHaveLength(2);
+    expect(agg.summary).toBe('2 errors occurred');
+    expect(agg.code).toBe(ErrorCode.MULTIPLE_ERRORS);
+  });
 });

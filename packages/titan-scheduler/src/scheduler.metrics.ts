@@ -76,12 +76,15 @@ export class SchedulerMetricsService {
    * Record job execution
    */
   private recordExecution(result: IJobExecutionResult): void {
+    // SC-7: this is driven by JOB_COMPLETED, which the executor emits ONLY for a
+    // success (failures go through JOB_FAILED → recordFailure). The former
+    // `else if (status === 'failure') failedExecutions++` branch was dead AND a
+    // double-count hazard — a failure would be tallied by both this and
+    // recordFailure if the two events ever overlapped. recordFailure is now the
+    // sole failure counter.
     this.totalExecutions++;
-
     if (result.status === 'success') {
       this.successfulExecutions++;
-    } else if (result.status === 'failure') {
-      this.failedExecutions++;
     }
 
     // Record execution time

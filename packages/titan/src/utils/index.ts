@@ -18,6 +18,7 @@
 
 export * from './error-classification.js';
 export * from './backoff.js';
+export * from './periodic-probe.js';
 export * from './failure-tracker.js';
 export * from './process-alive.js';
 export * from './id.js';

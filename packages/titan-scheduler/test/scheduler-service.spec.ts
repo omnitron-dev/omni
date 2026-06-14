@@ -41,6 +41,26 @@ describe('Scheduler Service', () => {
     }
   });
 
+  describe('SC-2: persistence load guards unrestorable handlers', () => {
+    it('skips a loaded job whose handler did not survive serialization', async () => {
+      const brokenJob: any = {
+        id: 'b1', name: 'broken', type: SchedulerJobType.INTERVAL, pattern: 100000,
+        target: null, method: 'run', options: {}, status: JobStatus.PENDING,
+      };
+      const validJob: any = {
+        id: 'v1', name: 'valid', type: SchedulerJobType.INTERVAL, pattern: 100000,
+        target: { run: vi.fn() }, method: 'run', options: {}, status: JobStatus.PENDING,
+      };
+      vi.spyOn(persistence, 'loadAllJobs').mockResolvedValue([brokenJob, validJob]);
+
+      await scheduler.onInit();
+
+      // The handler-less job is skipped (it would crash on fire); the valid one loads.
+      expect(registry.hasJob('broken')).toBe(false);
+      expect(registry.hasJob('valid')).toBe(true);
+    });
+  });
+
   describe('SC-1: distributed mode is not silently accepted', () => {
     it('fails fast when config.distributed.enabled is true (would duplicate execution)', async () => {
       const distConfig: ISchedulerConfig = { ...config, distributed: { enabled: true } };

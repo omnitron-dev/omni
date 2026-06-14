@@ -15,6 +15,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { computeBackoff } from '../utils/backoff.js';
+import { PeriodicProbe } from '../utils/periodic-probe.js';
 import type { ILogger } from '../types/logger.js';
 import type { ITransportConnection } from './transport/types.js';
 import { Errors } from '../errors/index.js';
@@ -276,13 +277,13 @@ export class ConnectionManager extends EventEmitter {
   private state: ConnectionManagerState = ConnectionManagerState.IDLE;
   private connections: Map<string, ManagedConnection> = new Map();
   private peerConnections: Map<string, Set<string>> = new Map();
-  private healthCheckTimer?: NodeJS.Timeout;
-  private cleanupTimer?: NodeJS.Timeout;
   /**
-   * Re-entrancy guard for `performHealthChecks` (T#50). A slow ping
-   * sweep can outlive the interval; the flag drops overlapping ticks.
+   * Health-check loop. HEARTBEAT-UNIFY: the periodic-sweep scaffolding + the
+   * T#50 re-entrancy guard (a slow ping sweep must not pile up overlapping
+   * rounds) now live in the shared {@link PeriodicProbe}.
    */
-  private healthCheckRunning = false;
+  private healthCheckProbe?: PeriodicProbe;
+  private cleanupTimer?: NodeJS.Timeout;
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private logger: ILogger;
 
@@ -320,25 +321,18 @@ export class ConnectionManager extends EventEmitter {
     this.state = ConnectionManagerState.RUNNING;
     this.emit('manager:state_change', oldState, this.state);
 
-    // Start health check timer.
-    //
-    // T#50: re-entrancy guard. A slow health sweep (many connections,
-    // each with a 30-second ping timeout) could outlast the interval
-    // and pile up overlapping in-flight rounds — each independently
-    // mutating `connection.state` and competing to call
-    // `closeConnection` for the same dead peer. The flag drops
-    // overlapping ticks.
-    this.healthCheckTimer = setInterval(() => {
-      if (this.healthCheckRunning) return;
-      this.healthCheckRunning = true;
-      this.performHealthChecks()
-        .catch((err) => {
-          this.logger.error({ err }, 'Health check cycle failed');
-        })
-        .finally(() => {
-          this.healthCheckRunning = false;
-        });
-    }, this.config.healthCheckInterval);
+    // Start health check loop. T#50: a slow health sweep (many connections,
+    // each with a 30-second ping timeout) could outlast the interval and pile
+    // up overlapping in-flight rounds — each independently mutating
+    // `connection.state` and competing to call `closeConnection` for the same
+    // dead peer. The probe's re-entrancy guard drops overlapping ticks.
+    this.healthCheckProbe = new PeriodicProbe({
+      intervalMs: this.config.healthCheckInterval,
+      task: () => this.performHealthChecks(),
+      onError: (err) => this.logger.error({ err }, 'Health check cycle failed'),
+      preventOverlap: true,
+    });
+    this.healthCheckProbe.start();
 
     // Start cleanup timer
     this.cleanupTimer = setInterval(() => {
@@ -363,10 +357,8 @@ export class ConnectionManager extends EventEmitter {
     this.logger.info('Stopping connection manager...');
 
     // Clear timers
-    if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
-      this.healthCheckTimer = undefined;
-    }
+    this.healthCheckProbe?.stop();
+    this.healthCheckProbe = undefined;
 
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);

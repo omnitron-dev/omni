@@ -11,6 +11,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { BackendClient } from './backend-client.js';
 import type { BackendConfig, BackendStatus, BackendHealth, MultiBackendClientOptions } from './types.js';
 import { fallbackLog } from '../../utils/fallback-log.js';
+import { PeriodicProbe } from '../../utils/periodic-probe.js';
 
 /**
  * Backend pool events
@@ -36,7 +37,8 @@ export interface BackendPoolEvents {
  */
 export class BackendPool extends EventEmitter {
   private backends: Map<string, BackendClient>;
-  private healthCheckInterval?: NodeJS.Timeout;
+  /** HEARTBEAT-UNIFY: periodic health-sweep scaffolding + T#50 guard via the shared probe. */
+  private healthCheckProbe?: PeriodicProbe;
   private healthChecksEnabled: boolean;
   private healthCheckIntervalMs: number;
   private unhealthyThreshold: number;
@@ -227,21 +229,17 @@ export class BackendPool extends EventEmitter {
    * piling up overlapping ticks that each mutate `this.backends`
    * concurrently. The flag drops overlapping ticks.
    */
-  private healthCheckRunning = false;
   private startHealthChecks(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-    }
+    // Restart cleanly if already running (matches the previous clear-then-set).
+    this.healthCheckProbe?.stop();
+    this.healthCheckProbe = new PeriodicProbe({
+      intervalMs: this.healthCheckIntervalMs,
+      task: () => this.runHealthChecks(),
+      preventOverlap: true,
+    });
+    this.healthCheckProbe.start();
 
-    this.healthCheckInterval = setInterval(() => {
-      if (this.healthCheckRunning) return;
-      this.healthCheckRunning = true;
-      this.runHealthChecks().finally(() => {
-        this.healthCheckRunning = false;
-      });
-    }, this.healthCheckIntervalMs);
-
-    // Run initial health check
+    // Run initial health check (unguarded immediate — unchanged from before).
     this.runHealthChecks();
   }
 
@@ -249,10 +247,8 @@ export class BackendPool extends EventEmitter {
    * Stop health checks
    */
   private stopHealthChecks(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = undefined;
-    }
+    this.healthCheckProbe?.stop();
+    this.healthCheckProbe = undefined;
   }
 
   /**

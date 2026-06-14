@@ -70,4 +70,12 @@ export interface ContainerStore {
   readonly moduleImports: Map<string, Set<string>>;
   /** The container's registration table (token → registration(s)). */
   readonly registrations: Map<InjectionToken<any>, Registration | Registration[]>;
+  /** In-flight async resolutions, keyed by token (parallel-dedup cache). */
+  readonly pendingPromises: Map<InjectionToken<any>, Promise<any>>;
+  /** The resolved registration for a token, if any (single, not multi-array). */
+  getRegistration(token: InjectionToken<any>): Registration | undefined;
+  /** The container's recursive async resolution entry point. */
+  resolveAsyncInternal<T>(token: InjectionToken<T>): Promise<T>;
+  /** Whether a parent container can provide the token (for optional-dep checks). */
+  hasInParent(token: InjectionToken<any>): boolean;
 }

@@ -12,6 +12,8 @@ import { CircularDependencyError } from '../errors.js';
 import { Errors, toTitanError } from '../../errors/factories.js';
 import { InjectionToken, ResolutionContext } from '../types.js';
 import type { Dependency } from './injection-plan.js';
+import type { Registration } from './types.js';
+import type { ContainerStore } from './store.js';
 import { runInModuleScope } from './module-scope.js';
 
 /**
@@ -24,37 +26,25 @@ interface ResolutionTask {
   isContext: boolean;
   contextValue?: any;
 }
-import type { Registration, ModuleProviderInfo } from './types.js';
 
 /**
- * AsyncResolutionService handles all async resolution logic
+ * AsyncResolutionService handles all async resolution logic.
+ *
+ * NX-9: the container's async-resolution hooks (resolveAsyncInternal /
+ * getRegistration / hasInParent / resolveDependency), module-membership queries
+ * and the pending-promise dedup map are read from the injected
+ * {@link ContainerStore} instead of being threaded through as ~11 positional
+ * callbacks. Only `registration`/`context` are passed per call.
  */
 export class AsyncResolutionService {
+  constructor(private readonly store: ContainerStore) {}
+
   /**
    * Resolve async dependencies
    * Uses isolated resolution state from context to prevent race conditions.
    * Optimized to batch pending promises for parallel resolution.
    */
-  async resolveAsyncDependencies(
-    registration: Registration,
-    context: ResolutionContext,
-    moduleProviders: Map<string, Map<string, ModuleProviderInfo>> | undefined,
-    pendingPromises: Map<InjectionToken<any>, Promise<any>>,
-    registrations: Map<InjectionToken<any>, Registration | Registration[]>,
-    getTokenKeyFn: (token: InjectionToken<any>) => string,
-    getRegistrationFn: (token: InjectionToken<any>) => Registration | undefined,
-    resolveAsyncInternalFn: <T>(token: InjectionToken<T>) => Promise<T>,
-    hasTokenFn: (token: InjectionToken<any>) => boolean,
-    getTokenModuleInfoFn?: (
-      tokenKey: string
-    ) => { moduleName: string; isGlobal: boolean; isExported: boolean } | undefined,
-    /**
-     * Resolver for descriptor-shaped dependencies emitted by
-     * extractClassDependencies (@InjectAll/@Value/@Env/@Config/@Conditional).
-     * Result may be a value or a Promise; both are awaited.
-     */
-    resolveRichDependencyFn?: (dep: Dependency) => unknown | Promise<unknown>
-  ): Promise<any[]> {
+  async resolveAsyncDependencies(registration: Registration, context: ResolutionContext): Promise<any[]> {
     if (!registration.dependencies || registration.dependencies.length === 0) {
       return [];
     }
@@ -63,22 +53,8 @@ export class AsyncResolutionService {
     const resolutionState = context.resolutionState;
 
     // Find which module this registration belongs to using O(1) lookup
-    const tokenKey = getTokenKeyFn(registration.token);
-    let currentModule: string | undefined;
-
-    if (getTokenModuleInfoFn) {
-      // Use O(1) flat index lookup
-      const moduleInfo = getTokenModuleInfoFn(tokenKey);
-      currentModule = moduleInfo?.moduleName;
-    } else if (moduleProviders) {
-      // Fallback to O(m) iteration for backwards compatibility
-      for (const [moduleName, providerMap] of moduleProviders) {
-        if (providerMap.has(tokenKey)) {
-          currentModule = moduleName;
-          break;
-        }
-      }
-    }
+    const tokenKey = this.store.getTokenKey(registration.token);
+    const currentModule: string | undefined = this.store.getTokenModuleInfo(tokenKey)?.moduleName;
 
     // Phase 1: Classify dependencies and collect already-pending promises
     const tasks: ResolutionTask[] = [];
@@ -89,16 +65,14 @@ export class AsyncResolutionService {
     // sequential loop below skips them.
     const richIndices = new Set<number>();
     const richResults: Array<{ index: number; valueOrPromise: unknown | Promise<unknown> }> = [];
-    if (resolveRichDependencyFn) {
-      for (let i = 0; i < registration.dependencies.length; i++) {
-        const dep = registration.dependencies[i];
-        if (dep && typeof dep === 'object' && '__dep' in (dep as any)) {
-          richIndices.add(i);
-          richResults.push({
-            index: i,
-            valueOrPromise: resolveRichDependencyFn((dep as any).__dep as Dependency),
-          });
-        }
+    for (let i = 0; i < registration.dependencies.length; i++) {
+      const dep = registration.dependencies[i];
+      if (dep && typeof dep === 'object' && '__dep' in (dep as any)) {
+        richIndices.add(i);
+        richResults.push({
+          index: i,
+          valueOrPromise: this.store.resolveDependency((dep as any).__dep as Dependency),
+        });
       }
     }
 
@@ -148,8 +122,8 @@ export class AsyncResolutionService {
       }
 
       // Check if already pending - can be resolved in parallel
-      if (pendingPromises.has(depToken)) {
-        pendingTasks.push({ index: i, promise: pendingPromises.get(depToken)! });
+      if (this.store.pendingPromises.has(depToken)) {
+        pendingTasks.push({ index: i, promise: this.store.pendingPromises.get(depToken)! });
         continue;
       }
 
@@ -197,10 +171,10 @@ export class AsyncResolutionService {
 
       const depToken = task.depToken;
       const isOptional = task.isOptional;
-      const depReg = getRegistrationFn(depToken);
+      const depReg = this.store.getRegistration(depToken);
 
       // Handle optional unregistered dependencies
-      if (isOptional && !depReg && !hasTokenFn(depToken)) {
+      if (isOptional && !depReg && !this.store.hasInParent(depToken)) {
         resolvedDeps[task.index] = undefined;
         continue;
       }
@@ -213,8 +187,8 @@ export class AsyncResolutionService {
       resolutionState?.chain.push(depToken);
       try {
         const result = currentModule
-          ? await runInModuleScope(currentModule, () => resolveAsyncInternalFn(depToken))
-          : await resolveAsyncInternalFn(depToken);
+          ? await runInModuleScope(currentModule, () => this.store.resolveAsyncInternal(depToken))
+          : await this.store.resolveAsyncInternal(depToken);
         resolvedDeps[task.index] = result;
       } catch (error) {
         // Optional deps that fail during resolution should return undefined

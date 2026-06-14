@@ -131,10 +131,10 @@ export class Container implements IContainer {
   constructor(parentOrOptions?: IContainer | { environment?: string }, context: Partial<ResolutionContext> = {}) {
     // Initialize internal services
     this.registrationService = new RegistrationService();
-    // NX-9: scopingService + factoryService + resolutionService are constructed
-    // below, once lifecycleManager exists, so they can be handed a shared
-    // ContainerStore instead of taking the container's state/hooks positionally.
-    this.asyncResolutionService = new AsyncResolutionService();
+    // NX-9: the resolution services (scoping/factory/resolution/asyncResolution)
+    // are constructed below, once lifecycleManager exists, so they can be handed
+    // a shared ContainerStore instead of taking the container's state/hooks
+    // as positional args on every call.
     this.moduleLoaderService = new ModuleLoaderService();
     this.lifecycleService = new LifecycleService();
 
@@ -182,10 +182,15 @@ export class Container implements IContainer {
       getTokenKey: (token) => this.getTokenKey(token),
       getTokenModuleInfo: (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
       getModuleProviders: () => this.moduleProviders,
+      pendingPromises: this.pendingPromises,
+      getRegistration: (token) => this.getRegistration(token),
+      resolveAsyncInternal: <T>(token: InjectionToken<T>): Promise<T> => this.resolveAsyncInternal<T>(token),
+      hasInParent: (token) => this.parent?.has(token) ?? false,
     };
     this.scopingService = new ScopingService(store);
     this.factoryService = new FactoryService(store);
     this.resolutionService = new ResolutionService(store);
+    this.asyncResolutionService = new AsyncResolutionService(store);
 
     // Create context provider (child contexts inherit from parent)
     if (this.parent && 'getContext' in this.parent && typeof this.parent.getContext === 'function') {
@@ -988,19 +993,7 @@ export class Container implements IContainer {
     currentContext: ResolutionContext
   ): Promise<T> {
     // Resolve dependencies
-    const dependencies = await this.asyncResolutionService.resolveAsyncDependencies(
-      registration,
-      currentContext,
-      this.moduleProviders,
-      this.pendingPromises,
-      this.registrations,
-      (t) => this.getTokenKey(t),
-      (t) => this.getRegistration(t),
-      (t) => this.resolveAsyncInternal(t),
-      (t) => this.parent?.has(t) ?? false,
-      (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
-      (dep) => this.resolveDependency(dep)
-    );
+    const dependencies = await this.asyncResolutionService.resolveAsyncDependencies(registration, currentContext);
 
     // Create instance with timeout and retry support
     let instance: T;
@@ -1017,16 +1010,7 @@ export class Container implements IContainer {
             // Re-resolve dependencies on each retry attempt
             const freshDependencies = await this.asyncResolutionService.resolveAsyncDependencies(
               registration,
-              currentContext,
-              this.moduleProviders,
-              this.pendingPromises,
-              this.registrations,
-              (t) => this.getTokenKey(t),
-              (t) => this.getRegistration(t),
-              (t) => this.resolveAsyncInternal(t),
-              (t) => this.parent?.has(t) ?? false,
-              (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
-              (dep) => this.resolveDependency(dep)
+              currentContext
             );
             this.validateConstructorArity(registration, freshDependencies);
             let result = registration.factory!(...freshDependencies);

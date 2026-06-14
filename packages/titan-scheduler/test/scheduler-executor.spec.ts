@@ -432,30 +432,46 @@ describe('Scheduler Executor', () => {
       expect(executor.getRunningJobCount()).toBe(0);
     });
 
-    it.skip('should prevent overlap when configured', async () => {
+    it('should prevent overlap when configured (SC-4)', async () => {
+      // SC-4: the executor now owns an atomic check-and-set gate, so this no
+      // longer needs the old `job.isRunning = true` hack between the two calls.
       let executions = 0;
       const handler = vi.fn(async () => {
         executions++;
         await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
-      const job = createMockJob('noOverlapJob', handler, {
-        preventOverlap: true,
-      });
-      job.isRunning = false;
+      const job = createMockJob('noOverlapJob', handler, { preventOverlap: true });
 
-      // Start first execution
-      const promise1 = executor.executeJob(job);
-      job.isRunning = true;
+      const promise1 = executor.executeJob(job); // acquires the lock
+      const promise2 = executor.executeJob(job); // concurrent → cancelled
 
-      // Try to start second while first is running
-      const promise2 = executor.executeJob(job);
-
-      const result2 = await promise2;
-      expect(result2.status).toBe('cancelled');
-
+      expect((await promise2).status).toBe('cancelled');
       await promise1;
       expect(executions).toBe(1);
+
+      // Lock released — a later run executes again.
+      expect((await executor.executeJob(job)).status).toBe('success');
+      expect(executions).toBe(2);
+    });
+
+    it('does NOT cancel the retry of a failing preventOverlap job (SC-4)', async () => {
+      let attempts = 0;
+      const handler = vi.fn(async () => {
+        attempts++;
+        if (attempts < 2) throw new Error('transient');
+        return 'recovered';
+      });
+      const job = createMockJob('retryOverlapJob', handler, {
+        preventOverlap: true,
+        retry: { maxAttempts: 3, delay: 1 },
+      });
+
+      // attempt-2 is a retry of attempt-1, which still holds the lock — it must
+      // bypass the gate, not self-cancel.
+      const result = await executor.executeJob(job);
+      expect(result.status).toBe('success');
+      expect(attempts).toBe(2);
     });
   });
 

@@ -213,6 +213,23 @@ describe('Scheduler Service', () => {
       expect(next.getSeconds()).toBe(0);
       expect(next.getTime()).toBeGreaterThan(Date.now());
     });
+
+    it('re-scheduling a cron job stops the old node-cron task (SC-5, no leak)', async () => {
+      scheduler.addCronJob('resched', '0 9 * * *', vi.fn());
+      await scheduler.onStart();
+
+      const oldTask = registry.getJobInstance('resched');
+      expect(oldTask).toBeDefined();
+      const stopSpy = vi.spyOn(oldTask, 'stop');
+
+      // Re-schedule the same job (e.g. what startJob does for an already-running job).
+      (scheduler as any).scheduleJob(registry.getJob('resched'));
+
+      // The previous node-cron task must be stopped, not left firing on its timer…
+      expect(stopSpy).toHaveBeenCalled();
+      // …and replaced by a fresh task instance.
+      expect(registry.getJobInstance('resched')).not.toBe(oldTask);
+    });
   });
 
   describe('Timeout Job Management', () => {

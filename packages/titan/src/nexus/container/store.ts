@@ -41,4 +41,9 @@ export interface ContainerStore {
    * receiving it as a per-call `createInstanceFn` argument.
    */
   createInstance(registration: Registration): any;
+  /**
+   * Resolve a token to its instance (the container's recursive sync entry
+   * point). Services call this instead of receiving a `resolveFn` callback.
+   */
+  resolve<T>(token: InjectionToken<T>): T;
 }

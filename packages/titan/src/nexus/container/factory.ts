@@ -10,19 +10,25 @@
 import { DependencyNotFoundError } from '../errors.js';
 import { Errors } from '../../errors/index.js';
 import { InjectionToken, ProviderDefinition, ResolutionContext, ConditionalProviderWithWhen } from '../types.js';
+import type { ContainerStore } from './store.js';
 
 /**
- * FactoryService handles creation of factory functions from providers
+ * FactoryService handles creation of factory functions from providers.
+ *
+ * NX-9: the container's recursive `resolve` (needed for `useToken`/`useExisting`
+ * alias providers) is read from the injected {@link ContainerStore} instead of a
+ * per-call `resolveFn` argument.
  */
 export class FactoryService {
+  constructor(private readonly store: ContainerStore) {}
+
   /**
    * Create a factory function from a provider
    */
   createFactory(
     token: InjectionToken<any>,
     provider: ProviderDefinition<any>,
-    context: ResolutionContext,
-    resolveFn: <T>(token: InjectionToken<T>) => T
+    context: ResolutionContext
   ): (...args: any[]) => any {
     if ('useValue' in provider) {
       return () => provider.useValue;
@@ -45,14 +51,14 @@ export class FactoryService {
         } catch (error) {
           // If condition evaluation fails, try fallback
           if (conditionalProvider.fallback) {
-            const fallbackFactory = this.createFactory(token, conditionalProvider.fallback, context, resolveFn);
+            const fallbackFactory = this.createFactory(token, conditionalProvider.fallback, context);
             return fallbackFactory();
           }
           throw error;
         }
 
         if (conditionalProvider.fallback) {
-          const fallbackFactory = this.createFactory(token, conditionalProvider.fallback, context, resolveFn);
+          const fallbackFactory = this.createFactory(token, conditionalProvider.fallback, context);
           return fallbackFactory();
         }
         throw new DependencyNotFoundError(token);
@@ -65,13 +71,13 @@ export class FactoryService {
 
     if ('useToken' in provider && provider.useToken) {
       const aliasToken = provider.useToken;
-      return () => resolveFn(aliasToken);
+      return () => this.store.resolve(aliasToken);
     }
 
     // Handle useExisting (NestJS-style alias provider)
     if ('useExisting' in provider && provider.useExisting) {
       const aliasToken = provider.useExisting as InjectionToken<any>;
-      return () => resolveFn(aliasToken);
+      return () => this.store.resolve(aliasToken);
     }
 
     throw Errors.badRequest('Unable to create factory from provider for token ' + String(token));

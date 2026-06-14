@@ -212,24 +212,14 @@ export class Netron extends EventEmitter implements INetron {
   private transportRegistry: TransportRegistry;
 
   /**
-   * Storage for default transport options (used for client connections).
-   * Maps transport name to its default options.
-   *
-   * @type {Map<string, TransportOptions>}
-   * @private
-   */
-  private transportOptions: Map<string, TransportOptions> = new Map();
-  /**
    * Base logger instance before child logger creation.
    * @private
    */
   private baseLogger!: ILogger;
 
-  /**
-   * Transport server configurations.
-   * @private
-   */
-  private transportServerConfigs: Map<string, TransportConfig> = new Map();
+  // NET-3: transport client-options and server-configs now live on
+  // `transportRegistry` (see setOptions/getOptions/setServerConfig/...), not as
+  // separate Netron fields — keeps all transport state in one collaborator.
 
   /**
    * Connection manager for pooling, health monitoring, and reconnection.
@@ -377,8 +367,7 @@ export class Netron extends EventEmitter implements INetron {
     }
 
     // Store config for use when starting
-    // transportServerConfigs is initialized in constructor
-    this.transportServerConfigs.set(name, config);
+    this.transportRegistry.setServerConfig(name, config);
   }
 
   /**
@@ -393,7 +382,7 @@ export class Netron extends EventEmitter implements INetron {
       throw Errors.notFound('Transport', name);
     }
 
-    this.transportOptions.set(name, options);
+    this.transportRegistry.setOptions(name, options);
   }
 
   /**
@@ -592,7 +581,7 @@ export class Netron extends EventEmitter implements INetron {
     this.registerCoreTasks();
 
     // Get configured transport servers
-    const serverConfigs = this.transportServerConfigs.size > 0 ? this.transportServerConfigs : undefined;
+    const serverConfigs = this.transportRegistry.hasServerConfigs() ? this.transportRegistry.getServerConfigs() : undefined;
 
     if (!serverConfigs || serverConfigs.size === 0) {
       this.logger.info('No transport servers configured, starting in client-only mode');
@@ -699,7 +688,7 @@ export class Netron extends EventEmitter implements INetron {
         // Create RemotePeer with transport adapter for backward compatibility
         const adapter = TransportConnectionFactory.fromConnection(connection);
         // Get transport-specific options for requestTimeout
-        const transportOpts = this.transportOptions.get(name) || {};
+        const transportOpts = this.transportRegistry.getOptions(name) || {};
         // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
         const peer = new RemotePeer(adapter as RemotePeerSocket, this, peerId, transportOpts.requestTimeout);
         this.peers.set(peer.id, peer);
@@ -824,9 +813,7 @@ export class Netron extends EventEmitter implements INetron {
     this.transportServers.clear();
 
     // Clear transport server configs
-    if (this.transportServerConfigs) {
-      this.transportServerConfigs.clear();
-    }
+    this.transportRegistry.clearServerConfigs();
 
     // SECURITY (T#39): tear down the inbound rate limiter so its
     // queue processor and cleanup intervals don't keep the event
@@ -912,7 +899,7 @@ export class Netron extends EventEmitter implements INetron {
         }
 
         // Get transport-specific options
-        const transportOpts = this.transportOptions.get(transport.name) || {};
+        const transportOpts = this.transportRegistry.getOptions(transport.name) || {};
         const connectTimeout = transportOpts.connectTimeout ?? CONNECT_TIMEOUT;
 
         const timeoutId = setTimeout(() => {
@@ -1025,7 +1012,7 @@ export class Netron extends EventEmitter implements INetron {
     const attemptReconnect = () => {
       // Get reconnection options from transport
       const transport = this.getTransportForAddress(address);
-      const transportOpts = this.transportOptions.get(transport.name) || {};
+      const transportOpts = this.transportRegistry.getOptions(transport.name) || {};
       const maxAttempts = transportOpts.reconnect?.maxAttempts ?? this.options.reconnect?.maxAttempts;
 
       if (maxAttempts && reconnectAttempts >= maxAttempts) {
@@ -1080,7 +1067,7 @@ export class Netron extends EventEmitter implements INetron {
       }
 
       // Get transport-specific options
-      const transportOpts = this.transportOptions.get(transport.name) || {};
+      const transportOpts = this.transportRegistry.getOptions(transport.name) || {};
 
       // Connect using HTTP transport
       const connection = await transport.connect(address, {

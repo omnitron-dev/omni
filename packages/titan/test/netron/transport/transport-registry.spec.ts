@@ -9,7 +9,8 @@ import { TransportRegistry } from '../../../src/netron/transport/transport-regis
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import { UnixTransport } from '../../../src/netron/transport/unix-transport.js';
-import type { ITransport, TransportFactory } from '../../../src/netron/transport/types.js';
+import type { ITransport, TransportFactory, TransportOptions } from '../../../src/netron/transport/types.js';
+import type { TransportConfig } from '../../../src/netron/interfaces/core-types.js';
 
 // Mock transport for testing
 class MockTransport implements ITransport {
@@ -85,6 +86,46 @@ describe('TransportRegistry', () => {
 
       const list = registry.list();
       expect(list).toEqual(['third', 'first', 'second']);
+    });
+  });
+
+  describe('Transport Configuration (NET-3)', () => {
+    it('round-trips client options per transport', () => {
+      const opts: TransportOptions = { reconnect: { enabled: true, maxAttempts: 5 } };
+      expect(registry.getOptions('ws')).toBeUndefined();
+
+      registry.setOptions('ws', opts);
+      expect(registry.getOptions('ws')).toBe(opts);
+      expect(registry.getOptions('tcp')).toBeUndefined();
+    });
+
+    it('tracks server configs with has/get/clear', () => {
+      const wsCfg: TransportConfig = { name: 'ws', options: { port: 8080 } };
+      const tcpCfg: TransportConfig = { name: 'tcp', options: { port: 9090 } };
+
+      expect(registry.hasServerConfigs()).toBe(false);
+
+      registry.setServerConfig('ws', wsCfg);
+      registry.setServerConfig('tcp', tcpCfg);
+
+      expect(registry.hasServerConfigs()).toBe(true);
+      const map = registry.getServerConfigs();
+      expect(map.size).toBe(2);
+      expect(map.get('ws')).toBe(wsCfg);
+
+      registry.clearServerConfigs();
+      expect(registry.hasServerConfigs()).toBe(false);
+      expect(registry.getServerConfigs().size).toBe(0);
+    });
+
+    it('keeps configuration isolated between registry instances', () => {
+      const other = new TransportRegistry(false);
+      registry.setOptions('ws', { reconnect: { enabled: false } });
+      registry.setServerConfig('ws', { name: 'ws', options: { port: 1 } });
+
+      // A separate registry (e.g. another Netron) shares nothing.
+      expect(other.getOptions('ws')).toBeUndefined();
+      expect(other.hasServerConfigs()).toBe(false);
     });
   });
 

@@ -9,3 +9,5 @@
 export type { HttpCoreLogger } from './logger.js';
 export { HttpCacheManager } from './cache-manager.js';
 export type { CacheOptions, CacheStats } from './cache-manager.js';
+export { RetryManager } from './retry-manager.js';
+export type { RetryOptions, RetryStats, CircuitBreakerOptions } from './retry-manager.js';

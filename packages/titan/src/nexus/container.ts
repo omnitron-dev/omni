@@ -132,7 +132,9 @@ export class Container implements IContainer {
     this.registrationService = new RegistrationService();
     this.factoryService = new FactoryService();
     this.resolutionService = new ResolutionService();
-    this.scopingService = new ScopingService();
+    // NX-9: scopingService is constructed below, once lifecycleManager exists,
+    // so it can be handed a ContainerStore instead of taking the container's
+    // state as positional args on every call.
     this.asyncResolutionService = new AsyncResolutionService();
     this.moduleLoaderService = new ModuleLoaderService();
     this.lifecycleService = new LifecycleService();
@@ -164,6 +166,15 @@ export class Container implements IContainer {
     this.lifecycleManager = new LifecycleManager();
     this.contextManager = new ContextManager();
     this.moduleCompiler = new ModuleCompiler();
+
+    // NX-9: give the scoping service a typed view over the container's shared
+    // resolution state (stable references — these maps are only ever mutated,
+    // never reassigned) instead of threading them through every call.
+    this.scopingService = new ScopingService({
+      instances: this.instances,
+      scopedInstances: this.scopedInstances,
+      lifecycleManager: this.lifecycleManager,
+    });
 
     // Create context provider (child contexts inherit from parent)
     if (this.parent && 'getContext' in this.parent && typeof this.parent.getContext === 'function') {
@@ -448,9 +459,6 @@ export class Container implements IContainer {
             return this.scopingService.resolveWithScope(
               parentRegistration,
               currentContext,
-              this.instances,
-              this.scopedInstances,
-              this.lifecycleManager,
               (reg) => this.createInstance(reg)
             );
           }
@@ -494,9 +502,6 @@ export class Container implements IContainer {
     return this.scopingService.resolveWithScope(
       registration,
       currentContext,
-      this.instances,
-      this.scopedInstances,
-      this.lifecycleManager,
       (reg) => this.createInstance(reg)
     );
   }
@@ -1219,9 +1224,6 @@ export class Container implements IContainer {
       this.scopingService.resolveWithScope(
         reg,
         this.getCurrentContext(),
-        this.instances,
-        this.scopedInstances,
-        this.lifecycleManager,
         (r) => this.createInstance(r)
       )
     );
@@ -1498,8 +1500,6 @@ export class Container implements IContainer {
             const instance = this.scopingService.resolveRegistration(
               reg,
               currentContext,
-              this.instances,
-              this.scopedInstances,
               (r) => this.createInstance(r)
             );
             if (instance !== undefined) {
@@ -1518,8 +1518,6 @@ export class Container implements IContainer {
         const instance = this.scopingService.resolveRegistration(
           registration,
           currentContext,
-          this.instances,
-          this.scopedInstances,
           (r) => this.createInstance(r)
         );
         if (instance !== undefined) {
@@ -1530,8 +1528,6 @@ export class Container implements IContainer {
         const instance = this.scopingService.resolveRegistration(
           registration,
           currentContext,
-          this.instances,
-          this.scopedInstances,
           (r) => this.createInstance(r)
         );
         if (instance !== undefined) {

@@ -10,32 +10,37 @@
 import { isMultiToken } from '../token.js';
 import { Scope, InjectionToken, ResolutionContext } from '../types.js';
 import type { Registration } from './types.js';
-import { LifecycleEvent, LifecycleManager } from '../lifecycle.js';
+import type { ContainerStore } from './store.js';
+import { LifecycleEvent } from '../lifecycle.js';
 
 /**
- * ScopingService handles scope management and instance caching
+ * ScopingService handles scope management and instance caching.
+ *
+ * NX-9: the container's shared state (instance caches + lifecycle manager) is
+ * supplied once via the injected {@link ContainerStore} instead of being threaded
+ * through every method as positional arguments. `createInstanceFn` (a callback
+ * back into the container) and `context` (per-resolution) remain per-call.
  */
 export class ScopingService {
+  constructor(private readonly store: ContainerStore) {}
+
   /**
    * Resolve with scope management
    */
   resolveWithScope<T>(
     registration: Registration,
     context: ResolutionContext,
-    instances: Map<InjectionToken<any>, any>,
-    scopedInstances: Map<string, Map<InjectionToken<any>, any>>,
-    lifecycleManager: LifecycleManager,
     createInstanceFn: (registration: Registration) => any
   ): T {
     switch (registration.scope) {
       case Scope.Singleton:
-        return this.resolveSingleton(registration, instances, lifecycleManager, createInstanceFn);
+        return this.resolveSingleton(registration, createInstanceFn);
       case Scope.Transient:
         return this.resolveTransient(registration, createInstanceFn);
       case Scope.Scoped:
-        return this.resolveScoped(registration, context, scopedInstances, createInstanceFn);
+        return this.resolveScoped(registration, context, createInstanceFn);
       case Scope.Request:
-        return this.resolveRequest(registration, context, scopedInstances, createInstanceFn);
+        return this.resolveRequest(registration, context, createInstanceFn);
       default:
         return this.resolveTransient(registration, createInstanceFn);
     }
@@ -46,10 +51,10 @@ export class ScopingService {
    */
   private resolveSingleton<T>(
     registration: Registration,
-    instances: Map<InjectionToken<any>, any>,
-    lifecycleManager: LifecycleManager,
     createInstanceFn: (registration: Registration) => any
   ): T {
+    const { instances, lifecycleManager } = this.store;
+
     // For multi-tokens with useValue, always return the value directly
     if (registration.options?.multi && 'useValue' in registration.provider) {
       return (registration.provider as any).useValue;
@@ -103,9 +108,9 @@ export class ScopingService {
   private resolveScoped<T>(
     registration: Registration,
     context: ResolutionContext,
-    scopedInstances: Map<string, Map<InjectionToken<any>, any>>,
     createInstanceFn: (registration: Registration) => any
   ): T {
+    const { scopedInstances } = this.store;
     const scopeId = context.metadata?.['scopeId'] || 'default';
 
     // Each scope maintains its own instances - don't share with parent
@@ -131,7 +136,6 @@ export class ScopingService {
   private resolveRequest<T>(
     registration: Registration,
     context: ResolutionContext,
-    scopedInstances: Map<string, Map<InjectionToken<any>, any>>,
     createInstanceFn: (registration: Registration) => any
   ): T {
     // For request scope, use scopeId or requestId to identify the request context
@@ -142,7 +146,7 @@ export class ScopingService {
       return this.resolveTransient(registration, createInstanceFn);
     }
 
-    return this.resolveScoped(registration, context, scopedInstances, createInstanceFn);
+    return this.resolveScoped(registration, context, createInstanceFn);
   }
 
   /**
@@ -151,10 +155,10 @@ export class ScopingService {
   resolveRegistration(
     registration: Registration,
     context: ResolutionContext,
-    instances: Map<InjectionToken<any>, any>,
-    scopedInstances: Map<string, Map<InjectionToken<any>, any>>,
     createInstanceFn: (registration: Registration) => any
   ): any {
+    const { instances, scopedInstances } = this.store;
+
     // Handle different scopes
     if (registration.scope === Scope.Singleton) {
       // For multi-injection with useValue, don't use the shared instances cache

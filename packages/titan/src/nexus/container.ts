@@ -22,6 +22,7 @@ import { isMultiToken, getTokenName, isOptionalToken, createToken } from './toke
 import { Middleware, MiddlewarePipeline } from './middleware.js';
 import { isConstructor } from './provider-utils.js';
 import { runInModuleScope } from './container/module-scope.js';
+import type { ContainerStore } from './container/store.js';
 import {
   DisposalError,
   ResolutionError,
@@ -130,11 +131,10 @@ export class Container implements IContainer {
   constructor(parentOrOptions?: IContainer | { environment?: string }, context: Partial<ResolutionContext> = {}) {
     // Initialize internal services
     this.registrationService = new RegistrationService();
-    this.factoryService = new FactoryService();
     this.resolutionService = new ResolutionService();
-    // NX-9: scopingService is constructed below, once lifecycleManager exists,
-    // so it can be handed a ContainerStore instead of taking the container's
-    // state as positional args on every call.
+    // NX-9: scopingService + factoryService are constructed below, once
+    // lifecycleManager exists, so they can be handed a shared ContainerStore
+    // instead of taking the container's state/hooks as positional args.
     this.asyncResolutionService = new AsyncResolutionService();
     this.moduleLoaderService = new ModuleLoaderService();
     this.lifecycleService = new LifecycleService();
@@ -170,12 +170,15 @@ export class Container implements IContainer {
     // NX-9: give the scoping service a typed view over the container's shared
     // resolution state (stable references — these maps are only ever mutated,
     // never reassigned) instead of threading them through every call.
-    this.scopingService = new ScopingService({
+    const store: ContainerStore = {
       instances: this.instances,
       scopedInstances: this.scopedInstances,
       lifecycleManager: this.lifecycleManager,
-      createInstance: (reg) => this.createInstance(reg),
-    });
+      createInstance: (registration) => this.createInstance(registration),
+      resolve: <T>(token: InjectionToken<T>): T => this.resolve<T>(token),
+    };
+    this.scopingService = new ScopingService(store);
+    this.factoryService = new FactoryService(store);
 
     // Create context provider (child contexts inherit from parent)
     if (this.parent && 'getContext' in this.parent && typeof this.parent.getContext === 'function') {
@@ -321,7 +324,7 @@ export class Container implements IContainer {
     token: InjectionToken<unknown>,
     provider: ProviderDefinition<unknown>
   ): (...args: unknown[]) => unknown {
-    return this.factoryService.createFactory(token, provider, this.getCurrentContext(), (t) => this.resolve(t));
+    return this.factoryService.createFactory(token, provider, this.getCurrentContext());
   }
 
   /**

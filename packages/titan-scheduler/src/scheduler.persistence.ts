@@ -5,6 +5,7 @@
  */
 
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
+import { LOGGER_TOKEN, type ILogger } from '@omnitron-dev/titan/module/logger';
 
 import { SCHEDULER_CONFIG_TOKEN } from './scheduler.constants.js';
 
@@ -76,7 +77,12 @@ export class SchedulerPersistence {
   private provider: IPersistenceProvider;
   private autosaveInterval?: any;
 
-  constructor(@Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig) {
+  constructor(
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
+    // SC-6: optional logger so persistence-provider failures surface instead of
+    // being swallowed. Absent in standalone use → calls no-op via `?.`.
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: ILogger
+  ) {
     // Initialize persistence provider based on config
     this.provider = this.initializeProvider();
 
@@ -115,7 +121,7 @@ export class SchedulerPersistence {
     const interval = 5 * 60 * 1000;
     this.autosaveInterval = setInterval(() => {
       this.flush().catch((error) => {
-        // Failed to autosave scheduler state
+        this.logger?.warn({ error }, 'Scheduler: failed to autosave state');
       });
     }, interval);
   }
@@ -130,8 +136,8 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.saveJob(job);
-    } catch {
-      // Failed to persist job
+    } catch (error) {
+      this.logger?.warn({ error, jobId: job.id, jobName: job.name }, 'Scheduler: failed to persist job');
     }
   }
 
@@ -145,8 +151,8 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadJob(id);
-    } catch {
-      // Failed to load job
+    } catch (error) {
+      this.logger?.warn({ error, jobId: id }, 'Scheduler: failed to load job');
       return null;
     }
   }
@@ -161,8 +167,8 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadAllJobs();
-    } catch {
-      // Failed to load jobs
+    } catch (error) {
+      this.logger?.warn({ error }, 'Scheduler: failed to load persisted jobs');
       return [];
     }
   }
@@ -177,8 +183,10 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.deleteJob(id);
-    } catch {
-      // Failed to delete job
+    } catch (error) {
+      // SC-6/SC-11: a swallowed delete failure is exactly how a "deleted" job
+      // leaks in the store and resurrects on next boot — surface it.
+      this.logger?.warn({ error, jobId: id }, 'Scheduler: failed to delete persisted job');
     }
   }
 
@@ -192,8 +200,8 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.saveExecutionResult(result);
-    } catch {
-      // Failed to persist execution result
+    } catch (error) {
+      this.logger?.warn({ error, jobId: result.jobId }, 'Scheduler: failed to persist execution result');
     }
   }
 
@@ -207,8 +215,8 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadExecutionHistory(jobId, limit);
-    } catch {
-      // Failed to load execution history
+    } catch (error) {
+      this.logger?.warn({ error, jobId }, 'Scheduler: failed to load execution history');
       return [];
     }
   }
@@ -227,8 +235,8 @@ export class SchedulerPersistence {
   async clear(): Promise<void> {
     try {
       await this.provider.clear();
-    } catch {
-      // Failed to clear persisted data
+    } catch (error) {
+      this.logger?.warn({ error }, 'Scheduler: failed to clear persisted data');
     }
   }
 

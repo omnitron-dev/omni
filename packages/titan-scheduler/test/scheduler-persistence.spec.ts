@@ -3,11 +3,13 @@
  * Tests job state persistence, recovery, and storage providers
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   SchedulerPersistence,
   InMemoryPersistenceProvider,
 } from '../src/scheduler.persistence.js';
+import type { IPersistenceProvider } from '../src/scheduler.persistence.js';
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { JobStatus, SchedulerJobType } from '../src/scheduler.interfaces.js';
 import type {
   ISchedulerConfig,
@@ -331,6 +333,62 @@ describe('Scheduler Persistence', () => {
         const invalidJob: any = null;
 
         await expect(persistence.saveJob(invalidJob)).resolves.not.toThrow();
+      });
+    });
+
+    describe('SC-6: provider failures surface to the logger (no silent swallow)', () => {
+      // A provider whose every operation rejects — stands in for a Redis/DB
+      // backend that is down or erroring.
+      const explode = (): Promise<never> => Promise.reject(new Error('provider down'));
+      const failingProvider: IPersistenceProvider = {
+        saveJob: explode,
+        loadJob: explode,
+        loadAllJobs: explode,
+        deleteJob: explode,
+        saveExecutionResult: explode,
+        loadExecutionHistory: explode,
+        clear: explode,
+      };
+
+      let warn: ReturnType<typeof vi.fn>;
+      let svc: SchedulerPersistence;
+
+      beforeEach(() => {
+        warn = vi.fn();
+        const logger = { warn } as unknown as ILogger;
+        const config: ISchedulerConfig = {
+          persistence: { enabled: true, provider: failingProvider },
+        };
+        svc = new SchedulerPersistence(config, logger);
+      });
+
+      it('logs (and does not throw) when a delete fails — the SC-11 leak path', async () => {
+        await expect(svc.deleteJob('job-x')).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        const [obj, msg] = warn.mock.calls[0];
+        expect(obj).toMatchObject({ jobId: 'job-x' });
+        expect((obj as any).error).toBeInstanceOf(Error);
+        expect(String(msg)).toMatch(/delete/i);
+      });
+
+      it('logs a failed save instead of swallowing it', async () => {
+        await expect(svc.saveJob({ id: 'j1', name: 'n1' } as any)).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0][1])).toMatch(/persist job/i);
+      });
+
+      it('logs a load failure and still returns the safe fallback', async () => {
+        await expect(svc.loadAllJobs()).resolves.toEqual([]);
+        await expect(svc.loadJob('j1')).resolves.toBeNull();
+        expect(warn).toHaveBeenCalledTimes(2);
+      });
+
+      it('no logger bound (standalone) → still no throw', async () => {
+        const standalone = new SchedulerPersistence({
+          persistence: { enabled: true, provider: failingProvider },
+        });
+        await expect(standalone.deleteJob('j1')).resolves.toBeUndefined();
+        await expect(standalone.loadAllJobs()).resolves.toEqual([]);
       });
     });
 

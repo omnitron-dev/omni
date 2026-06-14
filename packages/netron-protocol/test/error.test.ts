@@ -108,6 +108,29 @@ describe('TitanError statistics + pool + aggregate', () => {
     expect(TitanError.getStatistics().totalErrors).toBe(0);
   });
 
+  it('XC-7: byCode stays bounded when errors carry arbitrary custom codes', () => {
+    TitanError.resetStatistics();
+
+    // Known enum codes are tracked precisely...
+    new TitanError({ code: ErrorCode.NOT_FOUND });
+    new TitanError({ code: ErrorCode.FORBIDDEN });
+
+    // ...but 200 errors with DISTINCT arbitrary numeric codes must NOT mint 200
+    // distinct byCode keys — that map is global + static, so per-code keys would
+    // grow it without bound (a latent leak in a long-running process).
+    for (let i = 0; i < 200; i++) {
+      new TitanError({ code: 50_000 + i });
+    }
+
+    const { byCode } = TitanError.getStatistics();
+    // NOT_FOUND + FORBIDDEN + the single custom bucket (-1) = 3 keys, not 202.
+    expect(Object.keys(byCode)).toHaveLength(3);
+    expect(byCode[ErrorCode.NOT_FOUND]).toBe(1);
+    expect(byCode[ErrorCode.FORBIDDEN]).toBe(1);
+    expect(byCode[-1]).toBe(200); // every custom code folded into the bucket
+    TitanError.resetStatistics();
+  });
+
   it('ErrorPool reuses error objects (resetting their fields)', () => {
     const pool = TitanError.createPool({ size: 2 });
     expect(pool.size).toBe(2);

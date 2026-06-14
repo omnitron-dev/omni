@@ -197,11 +197,11 @@ Killed structurally so far: NB-2 (codes can't drift), the UID/packet-type/defini
 ### Cross-cutting (`errors/`,`validation/`,`utils/`,`tracing/`) — XC
 - XC-1 **critical** — netron/packet/serializer.ts:91-205 — drops ALL TitanError subclass fields; test :105 codifies loss.
 - XC-2 high — netron-browser/src/errors/* — clone of titan errors (manual-sync) → SHARED-PROTO.
-- XC-3 high — codes.ts:62 + core.ts:105 — ErrorCode conflates HTTP status w/ identity; httpStatus wrong (600/601) for custom codes.
+- XC-3 ✅ DONE (via SHARED-PROTO error merge) — the merged `netron-protocol` TitanError sets `httpStatus = toHttpStatus(options.code)`, which maps custom codes (600/601 + anything outside the HTTP range) to a valid 500 instead of leaking 600/601 as a bogus HTTP status. titan/netron-browser consume it via shims. error tests assert the mapping.
 - XC-4 high — resilience.ts:148 + errors/utils.ts:227 + mesh.ts:579 — 3 CircuitBreakers.
 - XC-5 med — retry.ts + backoff.ts + resilience.ts:629 + errors/utils.ts:173 — 4 backoff/retry impls.
 - XC-6 med — errors/utils.ts + core.ts — dead API (ErrorPool/HandlerChain/Logger/Matcher/adapters/documentContractErrors).
-- XC-7 med — core.ts:85,128 — unbounded static statistics mutated in every ctor; pool mutates readonly via `as any`.
+- XC-7 ✅ DONE (real-bug half) — the unbounded-statistics leak is fixed: `byCode` (global static `Record<number,number>`) was keyed on the raw `code`, which is `ErrorCode | number` — so errors with arbitrary custom codes grew the map without bound. Now known enum codes are tracked precisely and non-enum codes fold into one sentinel bucket (-1), bounding the key set to (enum size + 1); `byCategory` was already bounded (fixed enum). Test `error.test.ts` "XC-7: byCode stays bounded …" (200 distinct custom codes → 1 bucket). NOTE: the `ErrorPool` `as any` readonly writes are INHERENT to object pooling (reusing an error means resetting its readonly fields) — kept by design with the rest of the stats/pool machinery the user chose to inherit.
 - XC-8 med — errors/validation.ts:59 vs validation-engine.ts:53 — two ValidationError + two ServiceError classes.
 - XC-9..12 low — non-exhaustive name/message maps; AggregateError shadows global; untested domain/contract/formatting; getAvailablePort ignores startPort, UUIDv7 doc says v4.
 
@@ -267,7 +267,7 @@ Killed structurally so far: NB-2 (codes can't drift), the UID/packet-type/defini
 - NR-10 ✅ DONE — public `index.ts` barrel now re-exports `useQueries` (+ its types); was reachable only via the deep `./hooks` path.
 - NR-11 ✅ DONE (via NR-2) — GC now honours per-observer cacheTime (`observerCacheTimes` + `getEffectiveCacheTime`).
 - NR-12 ✅ DONE — `useSubscription` guards the deferred state writes (`handleData` event callback + buffered-flush timer) with an `isMounted` ref and clears the pending flush timer on cleanup, so a late event/timer can't setState after unmount. (Dedicated unmount test belongs to NR-8's missing subscription harness; verified by inspection + full suite 313/313.)
-- NR-13 low — cache/utils.ts:103 — stale check always-true → invalidate-all on focus/reconnect.
+- NR-13 ✅ DONE — `matchQueryFilters({ stale })` now compares against each query's effective staleTime (`now > dataUpdatedAt + staleTime`, staleTime 0 ⇒ always stale, Infinity ⇒ never, invalidated ⇒ always) instead of the old `now > dataUpdatedAt` which was ALWAYS true → made `invalidateQueries({ stale: true })` on focus/reconnect a whole-cache invalidation. Dedicated test `test/cache/stale-filter.test.ts`.
 - NR-14 ✅ DONE — `getActiveClient()` drops the two `as any` casts; locals make the null-narrowing survive the `isConnected()` call (the fields are already typed `HttpClient|null`/`WebSocketClient|null`). tsc clean confirms the casts were noise.
 
 ---

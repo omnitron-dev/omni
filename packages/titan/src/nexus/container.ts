@@ -131,10 +131,9 @@ export class Container implements IContainer {
   constructor(parentOrOptions?: IContainer | { environment?: string }, context: Partial<ResolutionContext> = {}) {
     // Initialize internal services
     this.registrationService = new RegistrationService();
-    this.resolutionService = new ResolutionService();
-    // NX-9: scopingService + factoryService are constructed below, once
-    // lifecycleManager exists, so they can be handed a shared ContainerStore
-    // instead of taking the container's state/hooks as positional args.
+    // NX-9: scopingService + factoryService + resolutionService are constructed
+    // below, once lifecycleManager exists, so they can be handed a shared
+    // ContainerStore instead of taking the container's state/hooks positionally.
     this.asyncResolutionService = new AsyncResolutionService();
     this.moduleLoaderService = new ModuleLoaderService();
     this.lifecycleService = new LifecycleService();
@@ -174,11 +173,19 @@ export class Container implements IContainer {
       instances: this.instances,
       scopedInstances: this.scopedInstances,
       lifecycleManager: this.lifecycleManager,
+      moduleImports: this.moduleImports,
+      registrations: this.registrations,
       createInstance: (registration) => this.createInstance(registration),
       resolve: <T>(token: InjectionToken<T>): T => this.resolve<T>(token),
+      resolveOptional: <T>(token: InjectionToken<T>): T | undefined => this.resolveOptional<T>(token),
+      resolveDependency: (dep) => this.resolveDependency(dep),
+      getTokenKey: (token) => this.getTokenKey(token),
+      getTokenModuleInfo: (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
+      getModuleProviders: () => this.moduleProviders,
     };
     this.scopingService = new ScopingService(store);
     this.factoryService = new FactoryService(store);
+    this.resolutionService = new ResolutionService(store);
 
     // Create context provider (child contexts inherit from parent)
     if (this.parent && 'getContext' in this.parent && typeof this.parent.getContext === 'function') {
@@ -482,19 +489,12 @@ export class Container implements IContainer {
     }
 
     // Check module exports
-    this.resolutionService.checkModuleAccess(
-      token,
-      currentContext,
-      this.moduleProviders,
-      this.moduleImports,
-      (t) => this.getTokenKey(t),
-      (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey)
-    );
+    this.resolutionService.checkModuleAccess(token, currentContext);
 
     // Check for async provider
     if (registration.isAsync) {
       const error = new AsyncResolutionError(token);
-      (error as any).message = this.resolutionService.buildAsyncErrorMessage(token, registration, this.registrations);
+      (error as any).message = this.resolutionService.buildAsyncErrorMessage(token, registration);
       throw error;
     }
 
@@ -551,16 +551,7 @@ export class Container implements IContainer {
 
     try {
       // Resolve dependencies
-      const dependencies = this.resolutionService.resolveDependencies(
-        registration,
-        currentContext,
-        this.moduleProviders,
-        (t) => this.getTokenKey(t),
-        (t) => this.resolve(t),
-        (t) => this.resolveOptional(t),
-        (tokenKey) => this.moduleLoaderService.getTokenModuleInfo(tokenKey),
-        (dep) => this.resolveDependency(dep)
-      );
+      const dependencies = this.resolutionService.resolveDependencies(registration, currentContext);
 
       this.validateConstructorArity(registration, dependencies);
 

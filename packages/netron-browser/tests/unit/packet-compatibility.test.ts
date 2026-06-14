@@ -21,7 +21,7 @@ import {
 // SHARED-PROTO: Definition + Reference are now ONE shared class (from
 // @omnitron-dev/netron-protocol), re-exported by both titan and netron-browser.
 // A cross-impl serialize round-trip proves the wire-level consequence.
-import { Definition, Reference } from '@omnitron-dev/netron-protocol';
+import { Definition, Reference, TitanError, ErrorCode } from '@omnitron-dev/netron-protocol';
 
 describe('Packet Protocol Compatibility', () => {
   describe('Type Constants', () => {
@@ -221,6 +221,40 @@ describe('Packet Protocol Compatibility', () => {
       const decoded = browserPacket.data.ref;
       expect(decoded).toBeInstanceOf(Reference);
       expect(decoded.defId).toBe('def-abc');
+    });
+
+    it('round-trips a TitanError titan → browser (shared class, incr 8)', () => {
+      const err = new TitanError({
+        code: ErrorCode.FORBIDDEN,
+        message: 'nope',
+        details: { reason: 'acl' },
+        requestId: 'req-9',
+      });
+      const titanPacket = createTitanPacket(23, 0, TITAN_TYPE_CALL, { error: err });
+      titanPacket.setError(1);
+      const encoded = encodeTitanPacket(titanPacket);
+      const browserPacket = decodeBrowserPacket(new Uint8Array(encoded));
+
+      const decoded = browserPacket.data.error;
+      expect(decoded).toBeInstanceOf(TitanError);
+      expect(decoded.code).toBe(ErrorCode.FORBIDDEN);
+      expect(decoded.message).toBe('nope');
+      expect(decoded.details).toEqual({ reason: 'acl' });
+      expect(decoded.requestId).toBe('req-9');
+      // httpStatus is derived on decode via the shared toHttpStatus (403 → 403).
+      expect(decoded.httpStatus).toBe(403);
+    });
+
+    it('round-trips a TitanError browser → titan', () => {
+      const err = new TitanError({ code: ErrorCode.INTERNAL_SERVER_ERROR, message: 'boom' });
+      const browserPacket = createBrowserPacket(24, 0, TYPE_CALL, { error: err });
+      const encoded = encodeBrowserPacket(browserPacket);
+      const titanPacket = decodeTitanPacket(Buffer.from(encoded));
+
+      const decoded = titanPacket.data.error;
+      expect(decoded).toBeInstanceOf(TitanError);
+      expect(decoded.code).toBe(ErrorCode.INTERNAL_SERVER_ERROR);
+      expect(decoded.message).toBe('boom');
     });
   });
 

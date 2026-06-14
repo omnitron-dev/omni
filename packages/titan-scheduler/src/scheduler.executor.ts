@@ -26,6 +26,17 @@ import type {
 @Injectable()
 export class SchedulerExecutor {
   private runningJobs: Map<string, AbortController> = new Map();
+
+  /**
+   * SC-4: authoritative set of job NAMES currently executing, owned solely by
+   * the executor. The `preventOverlap` gate check-and-sets this synchronously
+   * (no await between `has()` and `add()`), so two concurrent ticks of the same
+   * job can't both pass — unlike the former `job.isRunning` read, which tested
+   * the service's display flag that it had already set for THIS run. Retries
+   * (attempt > 1) deliberately bypass the gate so a failing job's own retry
+   * chain isn't self-cancelled.
+   */
+  private readonly runningJobNames = new Set<string>();
   private jobQueue: Array<{
     job: IScheduledJob;
     context: IJobExecutionContext;
@@ -62,6 +73,14 @@ export class SchedulerExecutor {
     // Store abort controller for cancellation
     this.runningJobs.set(executionId, abortController);
 
+    // SC-4: a retry (attempt > 1) is a continuation of the first attempt, which
+    // still holds the overlap lock — it must bypass the gate, not self-cancel.
+    const isRetry = (fullContext.attempt ?? 1) > 1;
+    // Tracks whether THIS call acquired the overlap lock, so only the acquirer
+    // releases it in `finally` — a cancelled tick must NOT free the lock the
+    // running tick holds.
+    let acquiredOverlapLock = false;
+
     // Check if we should queue the job
     if (this.shouldQueueJob(job)) {
       return this.queueJob(job, fullContext);
@@ -76,16 +95,24 @@ export class SchedulerExecutor {
         return this.createResult(job.id, executionId, 'cancelled', undefined, undefined, 0);
       }
 
-      // Prevent overlapping executions
-      if (job.options.preventOverlap && job.isRunning) {
-        return this.createResult(
-          job.id,
-          executionId,
-          'cancelled',
-          undefined,
-          Errors.conflict('Job execution already in progress', { jobId: job.id }),
-          0
-        );
+      // SC-4: prevent overlapping executions via an atomic, executor-owned
+      // check-and-set. `has()` + `add()` run with no `await` between them, so
+      // two concurrent ticks of the same job cannot both pass (the former
+      // `job.isRunning` read tested the service's display flag, already set for
+      // THIS run — so the guard never actually fired).
+      if (job.options.preventOverlap && !isRetry) {
+        if (this.runningJobNames.has(job.name)) {
+          return this.createResult(
+            job.id,
+            executionId,
+            'cancelled',
+            undefined,
+            Errors.conflict('Job execution already in progress', { jobId: job.id }),
+            0
+          );
+        }
+        this.runningJobNames.add(job.name);
+        acquiredOverlapLock = true;
       }
 
       // Execute with timeout
@@ -118,6 +145,14 @@ export class SchedulerExecutor {
     } finally {
       this.concurrentJobs--;
       this.runningJobs.delete(executionId);
+      // SC-4: release the overlap lock ONLY if this call acquired it — a tick
+      // cancelled by the gate must not free the running tick's lock, and a retry
+      // (which never acquires) must not free it mid-chain. The acquiring first
+      // attempt's `finally` runs LAST (it `return`s the recursive retry chain),
+      // so the name is freed exactly once, after the whole sequence.
+      if (acquiredOverlapLock) {
+        this.runningJobNames.delete(job.name);
+      }
       this.processQueue();
     }
   }

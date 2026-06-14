@@ -493,18 +493,22 @@ export class SchedulerService implements ILifecycle {
    * Delete a job
    */
   deleteJob(name: string): boolean {
+    // SC-11: capture the job (its id) BEFORE removal. `registry.removeJob()`
+    // deletes the job from the lookup maps, so a `getJob()` afterwards returns
+    // undefined — the old code looked it up post-removal, so `deleteJob` never
+    // reached persistence and the persisted record leaked (and could resurrect
+    // on the next boot via loadAllJobs).
+    const job = this.registry.getJob(name);
+
     // Stop the job first
     this.stopJob(name);
 
-    // Remove from registry
+    // Remove from registry (emits JOB_REMOVED)
     const removed = this.registry.removeJob(name);
 
-    // Remove from persistence
-    if (this.persistence && removed) {
-      const job = this.registry.getJob(name);
-      if (job) {
-        this.persistence.deleteJob(job.id);
-      }
+    // Remove from persistence using the id captured before removal
+    if (this.persistence && removed && job) {
+      this.persistence.deleteJob(job.id);
     }
 
     return removed;

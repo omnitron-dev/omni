@@ -6,69 +6,14 @@
  */
 
 /**
- * Request context for distributed tracing and multi-tenancy
+ * SHARED-HTTP-CORE: the request-side envelope cluster (context / hints / message)
+ * now lives in @omnitron-dev/netron-http-core — single source of truth shared with
+ * @omnitron-dev/titan. Re-exported here so existing `./types.js` importers are
+ * unchanged. (HttpRequestHints gains an optional `conditional?` field from the
+ * shared superset — additive, no browser code depends on its absence.)
  */
-export interface HttpRequestContext {
-  /** Distributed tracing ID */
-  traceId?: string;
-  /** Span ID for request */
-  spanId?: string;
-  /** User context */
-  userId?: string;
-  /** Multi-tenancy context */
-  tenantId?: string;
-  /** Additional metadata */
-  metadata?: Record<string, any>;
-}
-
-/**
- * Client hints for request optimization
- */
-export interface HttpRequestHints {
-  /** Caching configuration */
-  cache?: {
-    /** Maximum age in milliseconds */
-    maxAge?: number;
-    /** Serve stale content while revalidating */
-    staleWhileRevalidate?: number;
-    /** Cache tags for invalidation */
-    tags?: string[];
-  };
-  /** Retry configuration */
-  retry?: {
-    /** Maximum retry attempts */
-    attempts?: number;
-    /** Backoff strategy */
-    backoff?: 'exponential' | 'linear' | 'constant';
-    /** Maximum delay between retries in milliseconds */
-    maxDelay?: number;
-    /** Initial delay in milliseconds */
-    initialDelay?: number;
-  };
-  /** Request priority */
-  priority?: 'high' | 'normal' | 'low';
-  /** Request timeout in milliseconds */
-  timeout?: number;
-}
-
-/**
- * HTTP request message format
- */
-export interface HttpRequestMessage {
-  /** Request ID for correlation */
-  id: string;
-
-  /** Service invocation */
-  service: string;
-  method: string;
-  input: any;
-
-  /** Optional context */
-  context?: HttpRequestContext;
-
-  /** Client hints for optimization */
-  hints?: HttpRequestHints;
-}
+import type { HttpRequestContext, HttpRequestHints, HttpRequestMessage } from '@omnitron-dev/netron-http-core';
+export type { HttpRequestContext, HttpRequestHints, HttpRequestMessage };
 
 /**
  * Server hints for response optimization

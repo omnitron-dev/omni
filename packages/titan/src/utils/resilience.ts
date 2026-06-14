@@ -242,6 +242,20 @@ export class CircuitBreaker extends EventEmitter {
   }
 
   /**
+   * Whether the circuit is currently rejecting calls (imperative API).
+   *
+   * Mirrors the inverse of {@link canExecute}: returns `false` for a closed or
+   * half-open circuit, and — for an open circuit — transitions to half-open and
+   * returns `false` once `resetTimeout` has elapsed, otherwise `true`. Provided
+   * for imperative callers (e.g. the auth policy engine) that gate work with
+   * `if (breaker.isOpen()) …` / `recordSuccess()` / `recordFailure()` rather
+   * than wrapping it in {@link execute}.
+   */
+  isOpen(): boolean {
+    return !this.canExecute();
+  }
+
+  /**
    * Get comprehensive metrics about circuit breaker operation
    *
    * @returns Current metrics
@@ -331,9 +345,10 @@ export class CircuitBreaker extends EventEmitter {
   }
 
   /**
-   * Record a successful call
+   * Record a successful call (imperative API; also used internally by execute).
+   * @param duration - optional call duration in ms (default 0 for imperative callers)
    */
-  private recordSuccess(duration: number): void {
+  recordSuccess(duration: number = 0): void {
     this.addToSlidingWindow({ timestamp: Date.now(), success: true, duration });
 
     if (this.state === CircuitState.HalfOpen) {
@@ -351,9 +366,10 @@ export class CircuitBreaker extends EventEmitter {
   }
 
   /**
-   * Record a failed call
+   * Record a failed call (imperative API; also used internally by execute).
+   * @param duration - optional call duration in ms (default 0 for imperative callers)
    */
-  private recordFailure(duration: number): void {
+  recordFailure(duration: number = 0): void {
     this.failureCount++;
     this.lastFailureTime = Date.now();
     this.addToSlidingWindow({ timestamp: Date.now(), success: false, duration });

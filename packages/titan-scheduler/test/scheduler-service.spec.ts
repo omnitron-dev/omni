@@ -230,6 +230,20 @@ describe('Scheduler Service', () => {
       // …and replaced by a fresh task instance.
       expect(registry.getJobInstance('resched')).not.toBe(oldTask);
     });
+
+    it('re-scheduling a timeout job clears the old timer (SC-8, no leak)', async () => {
+      scheduler.addTimeout('resched-to', 10_000, vi.fn());
+      await scheduler.onStart();
+
+      const oldHandle = registry.getJobInstance('resched-to');
+      const clearSpy = vi.spyOn(global, 'clearTimeout');
+
+      (scheduler as any).scheduleJob(registry.getJob('resched-to'));
+
+      expect(clearSpy).toHaveBeenCalledWith(oldHandle);
+      expect(registry.getJobInstance('resched-to')).not.toBe(oldHandle);
+      clearSpy.mockRestore();
+    });
   });
 
   describe('Timeout Job Management', () => {

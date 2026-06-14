@@ -4,11 +4,12 @@
  * Manages registration and lookup of transport implementations.
  */
 
-import { ITransport, ITransportRegistry, TransportFactory } from './types.js';
+import { ITransport, ITransportRegistry, TransportFactory, type TransportOptions } from './types.js';
 import { WebSocketTransport } from './websocket/index.js';
 import { TcpTransport } from './tcp-transport.js';
 import { UnixSocketTransport } from './unix-transport.js';
 import { Errors } from '../../errors/index.js';
+import type { TransportConfig } from '../interfaces/core-types.js';
 
 /**
  * Global transport registry implementation
@@ -16,6 +17,15 @@ import { Errors } from '../../errors/index.js';
 export class TransportRegistry implements ITransportRegistry {
   private factories = new Map<string, TransportFactory>();
   private protocolMap = new Map<string, string>(); // protocol -> transport name
+
+  // NET-3: per-instance transport *configuration*, consolidated here (was
+  // scattered across the Netron god object as transportOptions /
+  // transportServerConfigs fields woven through start()/connect()/stop()).
+  // Note: these stay empty on the module-global singleton — only owners that
+  // configure connections (e.g. a Netron instance with its own registry) use
+  // them, so there is no shared/global config leak.
+  private optionsByTransport = new Map<string, TransportOptions>(); // transport name -> client options
+  private serverConfigs = new Map<string, TransportConfig>(); // transport name -> server config
 
   constructor(registerDefaults = true) {
     // Register default transports
@@ -146,6 +156,48 @@ export class TransportRegistry implements ITransportRegistry {
 
     // Re-register defaults
     this.registerDefaults();
+  }
+
+  /**
+   * Set client connection options for a transport.
+   */
+  setOptions(name: string, options: TransportOptions): void {
+    this.optionsByTransport.set(name, options);
+  }
+
+  /**
+   * Get client connection options for a transport (undefined if none set).
+   */
+  getOptions(name: string): TransportOptions | undefined {
+    return this.optionsByTransport.get(name);
+  }
+
+  /**
+   * Register a server configuration for a transport.
+   */
+  setServerConfig(name: string, config: TransportConfig): void {
+    this.serverConfigs.set(name, config);
+  }
+
+  /**
+   * Whether any server configurations have been registered.
+   */
+  hasServerConfigs(): boolean {
+    return this.serverConfigs.size > 0;
+  }
+
+  /**
+   * The live server-configuration map (keyed by transport name).
+   */
+  getServerConfigs(): Map<string, TransportConfig> {
+    return this.serverConfigs;
+  }
+
+  /**
+   * Drop all registered server configurations.
+   */
+  clearServerConfigs(): void {
+    this.serverConfigs.clear();
   }
 
   /**

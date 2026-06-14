@@ -16,55 +16,8 @@ import type {
   PolicyExpression,
 } from './types.js';
 import { Errors } from '../../errors/index.js';
+import { CircuitBreaker } from '../../utils/resilience.js';
 import type { AuditLogger } from './audit-logger.js';
-
-/**
- * Circuit breaker for policy evaluation
- * Prevents cascading failures by opening after threshold failures
- */
-class CircuitBreaker {
-  private failures = 0;
-  private lastFailureTime = 0;
-  private state: 'closed' | 'open' | 'half-open' = 'closed';
-
-  constructor(
-    private config: {
-      threshold: number;
-      timeout: number;
-      resetTimeout: number;
-    }
-  ) {}
-
-  isOpen(): boolean {
-    if (this.state === 'open') {
-      // Check if we should transition to half-open
-      if (Date.now() - this.lastFailureTime > this.config.resetTimeout) {
-        this.state = 'half-open';
-        return false;
-      }
-      return true;
-    }
-    return false;
-  }
-
-  recordSuccess(): void {
-    this.failures = 0;
-    this.state = 'closed';
-  }
-
-  recordFailure(): void {
-    this.failures++;
-    this.lastFailureTime = Date.now();
-
-    if (this.failures >= this.config.threshold) {
-      this.state = 'open';
-    }
-  }
-
-  getState(): string {
-    return this.state;
-  }
-}
 
 /**
  * Policy cache with statistics tracking
@@ -178,7 +131,24 @@ export class PolicyEngine {
 
     // Setup circuit breaker if configured
     if (options?.circuitBreaker) {
-      this.circuitBreakers.set(policy.name, new CircuitBreaker(options.circuitBreaker));
+      // RESILIENCE-UNIFY: use the canonical CircuitBreaker (utils/resilience).
+      // Map the auth config so it reproduces the previous behaviour EXACTLY:
+      // opens at `threshold` cumulative failures (any success resets the count),
+      // half-opens after `resetTimeout`, closes on one half-open success.
+      // volumeThreshold:1 + failureRateThreshold:0 disable the sliding-window
+      // gating so only the absolute failure count drives opening; successThreshold:1
+      // matches the old "one success closes" semantics. (`timeout` was unused.)
+      this.circuitBreakers.set(
+        policy.name,
+        new CircuitBreaker({
+          failureThreshold: options.circuitBreaker.threshold,
+          resetTimeout: options.circuitBreaker.resetTimeout,
+          successThreshold: 1,
+          volumeThreshold: 1,
+          failureRateThreshold: 0,
+          name: policy.name,
+        })
+      );
     }
 
     this.logger.debug({ policyName: policy.name }, 'Policy registered');

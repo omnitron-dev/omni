@@ -204,7 +204,19 @@ export class SchedulerService implements ILifecycle {
       throw Errors.badRequest(`${ERROR_MESSAGES.INVALID_CRON_EXPRESSION}: ${pattern}`);
     }
 
-    // Create cron job
+    // SC-5: stop + drop any existing node-cron task for this job before
+    // replacing it. Re-scheduling (e.g. `startJob` on an already-scheduled job)
+    // otherwise overwrote the map entry while the OLD task kept firing on its
+    // own timer — a leak that also double-ran the handler each tick.
+    const existingTask = this.cronJobs.get(job.name);
+    if (existingTask) {
+      existingTask.stop();
+      this.cronJobs.delete(job.name);
+    }
+
+    // Create cron job. node-cron v4's `schedule()` AUTO-STARTS the task (it calls
+    // `task.start()` internally), so we must NOT start it again — the former
+    // explicit `task.start()` here was a redundant double-start (SC-5).
     const task = cron.schedule(
       pattern,
       async () => {
@@ -216,9 +228,6 @@ export class SchedulerService implements ILifecycle {
         timezone: options.timezone || this.config?.timezone,
       }
     );
-
-    // Start the task
-    task.start();
 
     // Store the task
     this.cronJobs.set(job.name, task);

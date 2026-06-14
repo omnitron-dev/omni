@@ -64,10 +64,21 @@ export class SchedulerService implements ILifecycle {
    * Initialize scheduler (ILifecycle)
    */
   async onInit(): Promise<void> {
-    // Load persisted jobs
+    // Load persisted jobs.
     if (this.persistence) {
       const jobs = await this.persistence.loadAllJobs();
       for (const job of jobs) {
+        // SC-2: a job restored from a SERIALIZING provider (Redis/DB) has lost
+        // its handler — `target`/`method` (and any closure options like
+        // onError/retryIf) don't survive JSON. Registering such a job would
+        // schedule a timer that crashes on fire with no callable method. Skip
+        // jobs whose handler can't be restored; decorator-defined jobs are
+        // re-discovered below from their @Cron/@Interval metadata each boot, and
+        // dynamic-handler jobs simply cannot survive a process restart.
+        const handler = job.target && job.method ? (job.target as Record<string, unknown>)[job.method] : undefined;
+        if (typeof handler !== 'function') {
+          continue;
+        }
         this.registry.registerJob(job.name, job.type, job.pattern!, job.target, job.method, job.options);
       }
     }

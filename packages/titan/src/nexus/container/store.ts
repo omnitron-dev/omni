@@ -19,9 +19,14 @@
 
 import type { InjectionToken } from '../types.js';
 import type { LifecycleManager } from '../lifecycle.js';
+import type { Registration } from './types.js';
 
 /**
- * Shared, mutable resolution state owned by a single container instance.
+ * The container's internal interface for its resolution services: the shared
+ * mutable caches it owns, plus the core resolution hook(s) the services call
+ * back into. Injecting this once replaces both the state arguments AND the
+ * callbacks (e.g. `createInstanceFn`) that were previously threaded through
+ * every service method positionally.
  */
 export interface ContainerStore {
   /** Singleton instance cache (token → instance). */
@@ -30,4 +35,10 @@ export interface ContainerStore {
   readonly scopedInstances: Map<string, Map<InjectionToken<any>, any>>;
   /** Lifecycle/event manager for cache-hit and disposal signalling. */
   readonly lifecycleManager: LifecycleManager;
+  /**
+   * Materialise an instance for a registration (construct + inject deps). This
+   * is the recursive hook back into the container; services call it instead of
+   * receiving it as a per-call `createInstanceFn` argument.
+   */
+  createInstance(registration: Registration): any;
 }

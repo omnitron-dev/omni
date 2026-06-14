@@ -174,6 +174,7 @@ export class Container implements IContainer {
       instances: this.instances,
       scopedInstances: this.scopedInstances,
       lifecycleManager: this.lifecycleManager,
+      createInstance: (reg) => this.createInstance(reg),
     });
 
     // Create context provider (child contexts inherit from parent)
@@ -456,11 +457,7 @@ export class Container implements IContainer {
           }
           if (parentRegistration.scope === Scope.Scoped || parentRegistration.scope === Scope.Request) {
             // For scoped/request providers, resolve with current context
-            return this.scopingService.resolveWithScope(
-              parentRegistration,
-              currentContext,
-              (reg) => this.createInstance(reg)
-            );
+            return this.scopingService.resolveWithScope(parentRegistration, currentContext);
           }
         }
         return this.parent.resolve(token);
@@ -499,11 +496,7 @@ export class Container implements IContainer {
     }
 
     // Resolve based on scope
-    return this.scopingService.resolveWithScope(
-      registration,
-      currentContext,
-      (reg) => this.createInstance(reg)
-    );
+    return this.scopingService.resolveWithScope(registration, currentContext);
   }
 
   /**
@@ -1221,11 +1214,7 @@ export class Container implements IContainer {
 
     const regs = Array.isArray(registrations) ? registrations : [registrations];
     return regs.map((reg) =>
-      this.scopingService.resolveWithScope(
-        reg,
-        this.getCurrentContext(),
-        (r) => this.createInstance(r)
-      )
+      this.scopingService.resolveWithScope(reg, this.getCurrentContext())
     );
   }
 
@@ -1497,11 +1486,7 @@ export class Container implements IContainer {
         // Multiple registrations - resolve each one
         for (const reg of registration) {
           try {
-            const instance = this.scopingService.resolveRegistration(
-              reg,
-              currentContext,
-              (r) => this.createInstance(r)
-            );
+            const instance = this.scopingService.resolveRegistration(reg, currentContext);
             if (instance !== undefined) {
               results.push(instance);
             }
@@ -1515,21 +1500,13 @@ export class Container implements IContainer {
         }
       } else if (registration.options?.multi) {
         // Single registration marked as multi
-        const instance = this.scopingService.resolveRegistration(
-          registration,
-          currentContext,
-          (r) => this.createInstance(r)
-        );
+        const instance = this.scopingService.resolveRegistration(registration, currentContext);
         if (instance !== undefined) {
           results.push(instance);
         }
       } else {
         // Regular single registration
-        const instance = this.scopingService.resolveRegistration(
-          registration,
-          currentContext,
-          (r) => this.createInstance(r)
-        );
+        const instance = this.scopingService.resolveRegistration(registration, currentContext);
         if (instance !== undefined) {
           results.push(instance);
         }

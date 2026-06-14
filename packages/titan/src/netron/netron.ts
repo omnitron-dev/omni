@@ -40,6 +40,7 @@ import {
   RECONNECT_JITTER_FACTOR,
 } from './constants.js';
 import { SpecialEventBuffer } from './special-event-buffer.js';
+import { computeBackoff } from '../utils/backoff.js';
 import { ConnectionManager, type ConnectionManagerConfig } from './connection-manager.js';
 import { registerStreamReference } from './streams/register-stream-reference.js';
 
@@ -872,23 +873,27 @@ export class Netron extends EventEmitter implements INetron {
     let manuallyDisconnected = false;
 
     /**
-     * Calculate reconnection delay with exponential backoff and jitter.
-     * This prevents thundering herd problem when multiple clients reconnect simultaneously.
+     * Calculate reconnection delay with exponential backoff and centered jitter.
+     * Prevents the thundering-herd problem when many clients reconnect at once.
+     *
+     * RESILIENCE-UNIFY: delegates to the shared `computeBackoff` (the 3rd and last
+     * netron reconnect site — base-transport + connection-manager already use it).
+     * Provably identical to the previous inline formula: centered jitter
+     * `exp + (rand-0.5)*exp*jitterFactor`, clamped to [baseDelay, maxDelay].
      *
      * @param attempt - Current attempt number (0-based)
      * @returns Delay in milliseconds
      */
-    const calculateReconnectDelay = (attempt: number): number => {
-      // Exponential backoff: baseDelay * 2^attempt
-      const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-
-      // Add jitter: delay * (1 - jitter/2 + random * jitter)
-      // This spreads reconnection attempts to avoid thundering herd
-      const jitter = exponentialDelay * jitterFactor * (Math.random() - 0.5);
-      const delay = exponentialDelay + jitter;
-
-      return Math.max(baseDelay, Math.min(delay, maxDelay));
-    };
+    const calculateReconnectDelay = (attempt: number): number =>
+      computeBackoff({
+        attempt,
+        baseMs: baseDelay,
+        maxMs: maxDelay,
+        factor: 2,
+        jitter: jitterFactor,
+        jitterMode: 'centered',
+        minMs: baseDelay,
+      });
 
     const connectPeer = (): Promise<RemotePeer> =>
       new Promise<RemotePeer>((resolve, reject) => {

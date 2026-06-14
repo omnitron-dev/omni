@@ -28,6 +28,20 @@ import {
   toHttpStatus,
 } from './error-codes.js';
 
+/**
+ * The set of numeric ErrorCode enum members, computed once at module load.
+ * `ErrorOptions.code` is `ErrorCode | number`, so callers can mint errors with
+ * arbitrary numeric codes; this lets updateStatistics() separate real enum
+ * codes (tracked precisely) from custom ones (folded into a single bucket) so
+ * the global `byCode` map can't grow without bound (XC-7).
+ */
+const KNOWN_ERROR_CODES: ReadonlySet<number> = new Set(
+  Object.values(ErrorCode).filter((v): v is number => typeof v === 'number')
+);
+
+/** Sentinel `byCode` key for non-enum (custom/arbitrary) error codes — see XC-7. */
+const CUSTOM_CODE_BUCKET = -1;
+
 /** Error context information. */
 export interface ErrorContext {
   requestId?: string;
@@ -182,7 +196,14 @@ export class TitanError extends Error {
   /** Update error statistics. */
   private static updateStatistics(error: TitanError): void {
     this.stats.totalErrors++;
-    this.stats.byCode[error.code] = (this.stats.byCode[error.code] || 0) + 1;
+    // XC-7: byCode is a global static map keyed by `number`. Since `code` may be
+    // an arbitrary number (not just an ErrorCode enum member), keying on the raw
+    // value would grow this map without bound across a long-running process.
+    // Track known enum codes precisely; fold custom codes into one sentinel
+    // bucket so the key set stays bounded to (enum size + 1). byCategory is
+    // already bounded (getErrorCategory only ever returns a fixed enum member).
+    const codeKey = KNOWN_ERROR_CODES.has(error.code) ? error.code : CUSTOM_CODE_BUCKET;
+    this.stats.byCode[codeKey] = (this.stats.byCode[codeKey] || 0) + 1;
     this.stats.byCategory[error.category] = (this.stats.byCategory[error.category] || 0) + 1;
   }
 

@@ -249,6 +249,15 @@ export class SchedulerService implements ILifecycle {
       this.executeJob(job);
     }
 
+    // SC-8 (interval variant): clear any existing interval for this job before
+    // replacing it, or the old setInterval keeps firing on its own timer after
+    // a re-schedule — a leak that double-runs the handler every tick.
+    const existingInterval = this.intervalHandles.get(job.name);
+    if (existingInterval) {
+      clearInterval(existingInterval);
+      this.intervalHandles.delete(job.name);
+    }
+
     // Create interval
     const handle = setInterval(async () => {
       if (!job.options.disabled) {
@@ -271,6 +280,14 @@ export class SchedulerService implements ILifecycle {
    */
   private scheduleTimeoutJob(job: IScheduledJob): void {
     const timeout = job.pattern as number;
+
+    // SC-8: clear any existing timeout for this job before replacing it, or the
+    // old setTimeout still fires (leak + double-run) on a re-schedule.
+    const existingTimeout = this.timeoutHandles.get(job.name);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this.timeoutHandles.delete(job.name);
+    }
 
     // Create timeout
     const handle = setTimeout(async () => {

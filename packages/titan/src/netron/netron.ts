@@ -22,6 +22,7 @@ import type { IAuthenticationManager, ILocalPeerInternal } from './interfaces/in
 import type { IAuthorizationManager } from './interfaces/core-types.js';
 import type { ITokenTransport } from './auth/token-transport.js';
 import type { PolicyEngine } from './auth/policy-engine.js';
+import type { AuthContext } from './auth/types.js';
 import { BearerTokenTransport } from './auth/token-transports/bearer.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
@@ -274,6 +275,26 @@ export class Netron extends EventEmitter implements INetron {
   public wsAllowedOrigins?: true | string[];
 
   /**
+   * Per-transport implicit auth contexts for OS-gated local transports.
+   *
+   * A connection arriving on a transport registered here — and which does
+   * not carry its own auth context — is assigned the registered context.
+   * Intended for transports the operating system already authenticates,
+   * e.g. a Unix domain socket created with owner-only (0600) permissions:
+   * the connecting peer is provably the same OS user that owns the server,
+   * so a remote-style JWT handshake would be redundant.
+   *
+   * Off by default — `undefined` until {@link setTransportAuthContext} is
+   * called, so NO transport is implicitly trusted unless the application
+   * opts in. Remote transports (TCP/WS/HTTP) are unaffected and keep
+   * requiring a validated token. A connection that DOES carry its own
+   * auth context keeps it (the implicit context is a fallback, never an
+   * override).
+   * @internal
+   */
+  private transportAuthContexts?: Map<string, AuthContext>;
+
+  /**
    * Per-peer inbound packet rate limiter (T#39). Initialized when
    * `options.inboundRateLimit` is provided. Keyed by `peer.id`.
    *
@@ -439,6 +460,24 @@ export class Netron extends EventEmitter implements INetron {
       { transport: this.tokenTransport.name, originPolicy: this.wsAllowedOrigins === true ? 'same-host' : this.wsAllowedOrigins ? 'whitelist' : 'off' },
       'Authentication and authorization configured',
     );
+  }
+
+  /**
+   * Register an implicit auth context for connections arriving on a given
+   * transport (e.g. `'unix'`). Use ONLY for transports the operating system
+   * has already authenticated — most notably an owner-only (0600) Unix domain
+   * socket, where every connecting peer is provably the same OS user that owns
+   * this server. Such peers are assigned `context` unless they present their
+   * own auth context, letting them satisfy `@Public({ auth })` guards without a
+   * redundant JWT handshake. Remote transports (TCP/WS/HTTP) MUST NOT be
+   * registered here — they keep requiring a validated token.
+   *
+   * @param transportName - Transport name as registered with {@link registerTransport} (e.g. `'unix'`).
+   * @param context - The auth context to assign to otherwise-anonymous peers on that transport.
+   */
+  setTransportAuthContext(transportName: string, context: AuthContext): void {
+    (this.transportAuthContexts ??= new Map()).set(transportName, context);
+    this.logger.info({ transport: transportName, roles: context.roles }, 'Implicit auth context registered for transport');
   }
 
   /**
@@ -700,6 +739,18 @@ export class Netron extends EventEmitter implements INetron {
           const authCtx = (connection as any).getAuthContext();
           if (authCtx) {
             peer.setAuthContext(authCtx);
+          }
+        }
+
+        // OS-gated local transport (e.g. owner-only Unix socket): when the
+        // connection carries no auth context of its own, fall back to the
+        // implicit context registered for this transport name via
+        // setTransportAuthContext(). No-op unless the application opted in,
+        // so remote transports (TCP/WS/HTTP) are entirely unaffected.
+        if (!peer.isAuthenticated()) {
+          const implicit = this.transportAuthContexts?.get(name);
+          if (implicit) {
+            peer.setAuthContext(implicit);
           }
         }
 

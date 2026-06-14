@@ -334,6 +334,21 @@ describe('Scheduler Service', () => {
       expect(registry.hasJob('deletable')).toBe(false);
     });
 
+    it('SC-11: deletes the persisted record (id captured before registry removal)', () => {
+      const handler = vi.fn();
+      scheduler.addInterval('persisted-deletable', 1000, handler);
+      const job = registry.getJob('persisted-deletable');
+      expect(job).toBeDefined();
+
+      const delSpy = vi.spyOn(persistence, 'deleteJob');
+      const deleted = scheduler.deleteJob('persisted-deletable');
+
+      expect(deleted).toBe(true);
+      // The bug: getJob() ran AFTER removeJob() → undefined → persistence never
+      // called. The fix captures the id first, so deleteJob fires with that id.
+      expect(delSpy).toHaveBeenCalledWith(job!.id);
+    });
+
     it('should throw error when stopping non-existent job', () => {
       expect(() => scheduler.stopJob('non-existent')).toThrow();
     });

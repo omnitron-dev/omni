@@ -315,11 +315,20 @@ export class RemotePeer extends AbstractPeer {
   async unexposeService(serviceName: string) {
     const defId = await this.runTask('unexpose_service', serviceName);
 
-    // Clean up interfaces
+    // Clean up interfaces. NET-2: snapshot the matching children BEFORE releasing
+    // — releaseInterface() deletes from `this.interfaces`, so iterating the live
+    // map would skip not-yet-visited siblings. AWAIT each release (so a failure
+    // surfaces instead of a fire-and-forget unhandled rejection) and thread one
+    // shared `released` set so a shared descendant isn't released twice.
+    const childInterfaces: any[] = [];
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
-        this.releaseInterface(i.instance);
+        childInterfaces.push(i.instance);
       }
+    }
+    const released = new Set<string>();
+    for (const child of childInterfaces) {
+      await this.releaseInterface(child, released);
     }
 
     // Clean up stubs

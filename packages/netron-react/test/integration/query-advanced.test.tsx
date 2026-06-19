@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, render, screen } from '@testing-library/react';
 import React, { Component, Suspense, type ReactNode } from 'react';
 import { useQuery } from '../../src/hooks/useQuery.js';
+import { useInfiniteQuery } from '../../src/hooks/useInfiniteQuery.js';
 import { NetronProvider } from '../../src/core/provider.js';
 import { createMockedClient } from '../fixtures/test-client.js';
 import type { NetronReactClient } from '../../src/core/client.js';
@@ -155,6 +156,46 @@ describe('useQuery advanced options', () => {
       );
 
       await waitFor(() => expect(screen.getByText('boundary-caught')).toBeTruthy());
+    });
+  });
+
+  describe('useInfiniteQuery useErrorBoundary', () => {
+    it('throws an infinite-query error to the nearest error boundary', async () => {
+      class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+        state: { error: Error | null } = { error: null };
+        static getDerivedStateFromError(error: Error) {
+          return { error };
+        }
+        render() {
+          return this.state.error ? (
+            <div>infinite-boundary-caught</div>
+          ) : (
+            (this.props.children as React.ReactElement)
+          );
+        }
+      }
+
+      function Failing() {
+        useInfiniteQuery({
+          queryKey: ['data', 'failing-infinite'],
+          queryFn: () => client.invoke('data', 'failing', []),
+          getNextPageParam: () => undefined,
+          initialPageParam: 0,
+          retry: false,
+          useErrorBoundary: true,
+        });
+        return <div>no-error</div>;
+      }
+
+      render(
+        <NetronProvider client={client} autoConnect={false}>
+          <Boundary>
+            <Failing />
+          </Boundary>
+        </NetronProvider>
+      );
+
+      await waitFor(() => expect(screen.getByText('infinite-boundary-caught')).toBeTruthy());
     });
   });
 });

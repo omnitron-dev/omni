@@ -477,12 +477,28 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   );
 
   // Apply combine function if provided, otherwise return results array
-  return useMemo(() => {
+  const combined = useMemo(() => {
     if (combine) {
       return combine(results);
     }
     return results as unknown as TCombinedResult;
   }, [results, combine]);
+
+  // useErrorBoundary (per query): re-throw the first error from a query that
+  // opted in, to the nearest React error boundary. AFTER all hooks (plain
+  // control flow, not a hook); gated per query (default off).
+  const resultList = results as unknown as QueryObserverResult[];
+  for (let i = 0; i < resultList.length; i++) {
+    const err = resultList[i]?.error;
+    const opt = (queries[i] as { useErrorBoundary?: boolean | ((e: unknown) => boolean) } | undefined)
+      ?.useErrorBoundary;
+    if (err != null && opt) {
+      const escalate = typeof opt === 'function' ? opt(err) : !!opt;
+      if (escalate) throw err;
+    }
+  }
+
+  return combined;
 }
 
 export default useQueries;

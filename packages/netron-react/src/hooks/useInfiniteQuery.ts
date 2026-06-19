@@ -47,6 +47,9 @@ export interface InfiniteQueryOptions<TData, TError, TPageParam> {
   onSuccess?: (data: InfiniteData<TData>) => void;
   /** Error callback */
   onError?: (error: TError) => void;
+  /** Re-throw a query error to the nearest React error boundary (boolean or
+   *  predicate). */
+  useErrorBoundary?: boolean | ((error: TError) => boolean);
 }
 
 /**
@@ -155,6 +158,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     retry = defaults.retry,
     onSuccess,
     onError,
+    useErrorBoundary = false,
   } = options;
 
   // State — initialised from the shared QueryCache so a remount
@@ -584,7 +588,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
   }, []);
 
   // Return result
-  return useMemo(
+  const result = useMemo(
     () => ({
       data,
       error,
@@ -615,6 +619,17 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       refetch,
     ]
   );
+
+  // useErrorBoundary: re-throw a query error (boolean or predicate) to the
+  // nearest React error boundary during render. AFTER all hooks; gated on the
+  // option (default off → `result` returned unchanged).
+  if (error !== null) {
+    const escalate =
+      typeof useErrorBoundary === 'function' ? useErrorBoundary(error) : !!useErrorBoundary;
+    if (escalate) throw error;
+  }
+
+  return result;
 }
 
 export default useInfiniteQuery;

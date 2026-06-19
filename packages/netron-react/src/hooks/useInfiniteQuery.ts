@@ -5,94 +5,18 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
 import { useNetronClient, useDefaults, useHydration } from '../core/context.js';
-import type { QueryKey, RetryConfig, QueryFunctionContext } from '../core/types.js';
+import type {
+  RetryConfig,
+  InfiniteData,
+  InfiniteQueryFunctionContext,
+  InfiniteQueryOptions,
+  InfiniteQueryResult,
+} from '../core/types.js';
 import { hashQueryKey, calculateRetryDelay, timeUtils } from '../cache/utils.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Context passed to infinite query function
- */
-export interface InfiniteQueryFunctionContext<TPageParam> extends Omit<QueryFunctionContext, 'pageParam'> {
-  pageParam: TPageParam;
-}
-
-/**
- * Infinite query options
- */
-export interface InfiniteQueryOptions<TData, TError, TPageParam> {
-  /** Unique query key */
-  queryKey: QueryKey;
-  /** Query function with page param */
-  queryFn: (context: InfiniteQueryFunctionContext<TPageParam>) => Promise<TData>;
-  /** Get next page param from last page */
-  getNextPageParam: (lastPage: TData, allPages: TData[]) => TPageParam | undefined;
-  /** Get previous page param from first page */
-  getPreviousPageParam?: (firstPage: TData, allPages: TData[]) => TPageParam | undefined;
-  /** Initial page param for first page */
-  initialPageParam: TPageParam;
-  /** Maximum pages to keep in memory */
-  maxPages?: number;
-  /** Time in ms before data is considered stale */
-  staleTime?: number;
-  /** Time in ms to keep unused data in cache */
-  cacheTime?: number;
-  /** Enable/disable the query */
-  enabled?: boolean;
-  /** Retry configuration */
-  retry?: number | boolean | RetryConfig;
-  /** Success callback */
-  onSuccess?: (data: InfiniteData<TData>) => void;
-  /** Error callback */
-  onError?: (error: TError) => void;
-  /** Re-throw a query error to the nearest React error boundary (boolean or
-   *  predicate). */
-  useErrorBoundary?: boolean | ((error: TError) => boolean);
-}
-
-/**
- * Paginated data structure
- */
-export interface InfiniteData<TData> {
-  pages: TData[];
-  pageParams: unknown[];
-}
-
-/**
- * Infinite query result
- */
-export interface InfiniteQueryResult<TData, TError> {
-  /** Paginated data */
-  data: InfiniteData<TData> | undefined;
-  /** Error if any */
-  error: TError | null;
-  /** Query status */
-  status: 'idle' | 'loading' | 'success' | 'error';
-  /** Is initial loading */
-  isLoading: boolean;
-  /** Is currently fetching any page */
-  isFetching: boolean;
-  /** Is fetching next page */
-  isFetchingNextPage: boolean;
-  /** Is fetching previous page */
-  isFetchingPreviousPage: boolean;
-  /** Is error state */
-  isError: boolean;
-  /** Is success state */
-  isSuccess: boolean;
-  /** Has next page available */
-  hasNextPage: boolean;
-  /** Has previous page available */
-  hasPreviousPage: boolean;
-  /** Fetch next page */
-  fetchNextPage: () => Promise<void>;
-  /** Fetch previous page */
-  fetchPreviousPage: () => Promise<void>;
-  /** Refetch all pages */
-  refetch: () => Promise<void>;
-}
+// Infinite-query types (InfiniteQueryOptions/Result/Data + the page-param
+// context) are the canonical definitions in ../core/types.js — imported above.
+// They previously lived here as a duplicate that shadowed the core ones.
 
 // ============================================================================
 // Default Retry Configuration
@@ -158,7 +82,11 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     retry = defaults.retry,
     onSuccess,
     onError,
-    useErrorBoundary = false,
+    // Aliased off the use-prefixed option name so the eslint react-hooks plugin
+    // doesn't treat the call below as a hook call (rules-of-hooks false positive).
+    useErrorBoundary: errorBoundary = false,
+    suspense = false,
+    keepPreviousData = false,
   } = options;
 
   // State — initialised from the shared QueryCache so a remount
@@ -195,6 +123,16 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
   const isMounted = useRef(true);
   const fetchCount = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // keepPreviousData: which queryKeyHash the current `data` belongs to. When it
+  // lags `queryKeyHash` (a key change is in flight) the carried-over pages are
+  // "previous data": we keep rendering them and flag isPreviousData. Also lets
+  // the initial-fetch effect distinguish "no data" from "data for the old key"
+  // so a changed key actually refetches. Initialised to the mount key (any
+  // initial `data` came from that key's cache entry).
+  const dataKeyRef = useRef(queryKeyHash);
+  // suspense: the in-flight initial-page prime promise thrown to a <Suspense>
+  // boundary. Cleared when it settles so a fresh mount can re-prime.
+  const suspendPromiseRef = useRef<Promise<void> | null>(null);
 
   // Get retry configuration
   const retryConfig = useMemo(() => {
@@ -287,6 +225,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       };
 
       setData(infiniteData);
+      dataKeyRef.current = queryKeyHash; // these pages now belong to the current key
       setError(null);
       setStatus('success');
       setDataUpdatedAt(timeUtils.now());
@@ -308,7 +247,21 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
         setIsFetching(false);
       }
     }
-  }, [client, executeFetchPage, initialPageParam, onError, onSuccess, queryKey, status]);
+  }, [client, executeFetchPage, initialPageParam, onError, onSuccess, queryKey, queryKeyHash, status]);
+
+  // suspense: fetch the initial page and write it to the shared cache WITHOUT
+  // touching component state (this runs during render, in the throw path). On
+  // the post-resolve retry the cache-seeded initial state renders normally —
+  // mirrors useQuery's getOrCreateFetch-on-suspend, adapted to the infinite
+  // cache entry.
+  const suspendInitialFetch = useCallback((): Promise<void> => {
+    const queryCache = client.getQueryCache();
+    const controller = new AbortController();
+    return executeFetchPage(initialPageParam, controller.signal).then((result) => {
+      const infiniteData: InfiniteData<TData> = { pages: [result], pageParams: [initialPageParam] };
+      queryCache.set(queryKey, infiniteData, staleTime, true);
+    });
+  }, [client, executeFetchPage, initialPageParam, queryKey, staleTime]);
 
   // Fetch next page
   const fetchNextPage = useCallback(async (): Promise<void> => {
@@ -535,15 +488,20 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     // Check if we need to fetch
     const cached = client.getQueryCache().get<InfiniteData<TData>>(queryKey, true);
     const needsFetch = cached === undefined || isStale;
+    // A key change leaves `data` holding the PREVIOUS key's pages (carried over
+    // for keepPreviousData). Treat that the same as "no data for this key" so the
+    // new key actually loads — the bare `!data` guard would skip the fetch.
+    const hasDataForThisKey = dataKeyRef.current === queryKeyHash && data !== undefined;
 
-    if (needsFetch && !data) {
+    if (needsFetch && !hasDataForThisKey) {
       fetchInitialPage().catch(() => {
         // Error already handled in fetchInitialPage
       });
-    } else if (cached !== undefined && data === undefined) {
-      // Sync from cache
+    } else if (cached !== undefined && !hasDataForThisKey) {
+      // Sync from cache (e.g. the new key was already cached)
       setData(cached);
       setStatus('success');
+      dataKeyRef.current = queryKeyHash;
     }
   }, [queryKeyHash, enabled, isHydrating]);
 
@@ -567,6 +525,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
         setError(s.error);
         setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
         setDataUpdatedAt(s.dataUpdatedAt);
+        if (s.data !== undefined) dataKeyRef.current = queryKeyHash; // mirror belongs to current key
       },
       cacheTime,
       true, // NR-3b: subscribe to the infinite-query variant
@@ -587,6 +546,12 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     };
   }, []);
 
+  // keepPreviousData: while a key change is in flight the carried-over pages
+  // (still in `data`) belong to the PREVIOUS key. Surface that via isPreviousData;
+  // gated on the option (default off → always false).
+  const isPreviousData =
+    keepPreviousData && dataKeyRef.current !== queryKeyHash && data !== undefined;
+
   // Return result
   const result = useMemo(
     () => ({
@@ -599,6 +564,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       isFetchingPreviousPage,
       isError: status === 'error',
       isSuccess: status === 'success',
+      isPreviousData,
       hasNextPage,
       hasPreviousPage,
       fetchNextPage,
@@ -612,6 +578,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       isFetching,
       isFetchingNextPage,
       isFetchingPreviousPage,
+      isPreviousData,
       hasNextPage,
       hasPreviousPage,
       fetchNextPage,
@@ -620,12 +587,27 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     ]
   );
 
+  // suspense: on the initial cold load (no pages yet) throw the in-flight prime
+  // so a <Suspense> boundary shows its fallback. The prime fetches page 1 into
+  // the shared cache; when it resolves React re-renders and the cache-seeded
+  // initial state satisfies this hook without a throw. AFTER all hooks; gated on
+  // the option (default off). keepPreviousData keeps `data` defined across a key
+  // change, so this only fires for a genuine cold load, never a key swap.
+  if (suspense && error === null && data === undefined && enabled && !isHydrating) {
+    if (!suspendPromiseRef.current) {
+      suspendPromiseRef.current = suspendInitialFetch().finally(() => {
+        suspendPromiseRef.current = null;
+      });
+    }
+    throw suspendPromiseRef.current;
+  }
+
   // useErrorBoundary: re-throw a query error (boolean or predicate) to the
   // nearest React error boundary during render. AFTER all hooks; gated on the
   // option (default off → `result` returned unchanged).
   if (error !== null) {
     const escalate =
-      typeof useErrorBoundary === 'function' ? useErrorBoundary(error) : !!useErrorBoundary;
+      typeof errorBoundary === 'function' ? errorBoundary(error) : !!errorBoundary;
     if (escalate) throw error;
   }
 

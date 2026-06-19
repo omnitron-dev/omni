@@ -42,10 +42,10 @@ export type {
 // useQueries types
 export type { QueryObserverResult, QueriesOptions, UseQueriesOptions } from './useQueries.js';
 
-// useInfiniteQuery types
+// useInfiniteQuery types (canonical definitions live in ../core/types.js)
 export type {
   InfiniteQueryFunctionContext,
   InfiniteQueryOptions as UseInfiniteQueryOptions,
   InfiniteData,
   InfiniteQueryResult as UseInfiniteQueryResult,
-} from './useInfiniteQuery.js';
+} from '../core/types.js';

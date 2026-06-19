@@ -61,7 +61,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
     initialData,
     initialDataUpdatedAt,
     suspense = false,
-    useErrorBoundary = false,
+    // Aliased off the use-prefixed option name: a local named `useErrorBoundary`
+    // makes the eslint react-hooks plugin treat the call below as a hook call.
+    useErrorBoundary: errorBoundary = false,
     keepPreviousData = false,
   } = options;
 
@@ -521,7 +523,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
   // error boundary by re-throwing it during render.
   if (error !== null) {
     const escalate =
-      suspense || (typeof useErrorBoundary === 'function' ? useErrorBoundary(error) : !!useErrorBoundary);
+      suspense || (typeof errorBoundary === 'function' ? errorBoundary(error) : !!errorBoundary);
     if (escalate) throw error;
   }
 

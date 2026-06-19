@@ -85,6 +85,8 @@ export type {
   // Infinite query types
   InfiniteQueryOptions,
   InfiniteQueryResult,
+  InfiniteData,
+  InfiniteQueryFunctionContext,
 
   // Client types
   NetronReactClientConfig,

@@ -11,6 +11,7 @@ import { renderHook, waitFor, render, screen } from '@testing-library/react';
 import React, { Component, Suspense, type ReactNode } from 'react';
 import { useQuery } from '../../src/hooks/useQuery.js';
 import { useInfiniteQuery } from '../../src/hooks/useInfiniteQuery.js';
+import { useQueries, type QueryObserverResult } from '../../src/hooks/useQueries.js';
 import { NetronProvider } from '../../src/core/provider.js';
 import { createMockedClient } from '../fixtures/test-client.js';
 import type { NetronReactClient } from '../../src/core/client.js';
@@ -35,6 +36,16 @@ describe('useQuery advanced options', () => {
         },
       },
       { service: 'data', method: 'failing', error: new Error('boom') },
+      {
+        // An infinite-query page source keyed by (category, cursor).
+        service: 'feed',
+        method: 'page',
+        delay: 80,
+        response: (category: string, cursor: number) => ({
+          items: [`${category}:${cursor}`],
+          next: null as number | null,
+        }),
+      },
     ]);
     wrapper = ({ children }) =>
       React.createElement(NetronProvider, { client, autoConnect: false, children });
@@ -196,6 +207,123 @@ describe('useQuery advanced options', () => {
       );
 
       await waitFor(() => expect(screen.getByText('infinite-boundary-caught')).toBeTruthy());
+    });
+  });
+
+  type Page = { items: string[]; next: number | null };
+
+  describe('useInfiniteQuery keepPreviousData', () => {
+    it('carries over the previous key pages while the new key loads, then swaps', async () => {
+      const { result, rerender } = renderHook(
+        ({ cat }: { cat: string }) =>
+          useInfiniteQuery<Page, Error, number>({
+            queryKey: ['feed', cat],
+            queryFn: ({ pageParam }) => client.invoke('feed', 'page', [cat, pageParam]),
+            getNextPageParam: (last) => last.next ?? undefined,
+            initialPageParam: 0,
+            keepPreviousData: true,
+            staleTime: Infinity,
+          }),
+        { wrapper, initialProps: { cat: 'a' } }
+      );
+
+      await waitFor(() => expect(result.current.data?.pages[0]?.items).toEqual(['a:0']));
+      expect(result.current.isPreviousData).toBe(false);
+
+      // Switch keys: the previous category's pages stay visible + flagged while
+      // the new category loads.
+      rerender({ cat: 'b' });
+      await waitFor(() => expect(result.current.isPreviousData).toBe(true));
+      expect(result.current.data?.pages[0]?.items).toEqual(['a:0']);
+      expect(result.current.isFetching).toBe(true);
+
+      // Once the new category resolves, swap and clear the flag.
+      await waitFor(() => expect(result.current.data?.pages[0]?.items).toEqual(['b:0']));
+      expect(result.current.isPreviousData).toBe(false);
+    });
+  });
+
+  describe('useInfiniteQuery suspense', () => {
+    it('suspends on the initial page, then renders the resolved data', async () => {
+      function Feed() {
+        const { data } = useInfiniteQuery<Page, Error, number>({
+          queryKey: ['feed', 'suspense'],
+          queryFn: ({ pageParam }) => client.invoke('feed', 'page', ['s', pageParam]),
+          getNextPageParam: (last) => last.next ?? undefined,
+          initialPageParam: 0,
+          suspense: true,
+        });
+        return <div>feed:{data?.pages[0]?.items[0]}</div>;
+      }
+
+      render(
+        <NetronProvider client={client} autoConnect={false}>
+          <Suspense fallback={<div>infinite-loading</div>}>
+            <Feed />
+          </Suspense>
+        </NetronProvider>
+      );
+
+      expect(screen.getByText('infinite-loading')).toBeTruthy();
+      await waitFor(() => expect(screen.getByText('feed:s:0')).toBeTruthy());
+    });
+  });
+
+  describe('useQueries keepPreviousData', () => {
+    it('flags isPreviousData per query while a key change is in flight', async () => {
+      const { result, rerender } = renderHook(
+        ({ id }: { id: string }) =>
+          useQueries({
+            queries: [
+              {
+                queryKey: ['user', id],
+                queryFn: () => client.invoke('user', 'getUser', [id]),
+                keepPreviousData: true,
+                staleTime: Infinity,
+              },
+            ],
+          }) as unknown as QueryObserverResult<{ id: string; name: string }>[],
+        { wrapper, initialProps: { id: '1' } }
+      );
+
+      await waitFor(() => expect(result.current[0]?.data).toEqual({ id: '1', name: 'Alice' }));
+      expect(result.current[0]?.isPreviousData).toBe(false);
+
+      rerender({ id: '2' });
+      await waitFor(() => expect(result.current[0]?.isPreviousData).toBe(true));
+      expect(result.current[0]?.data).toEqual({ id: '1', name: 'Alice' });
+
+      await waitFor(() => expect(result.current[0]?.data).toEqual({ id: '2', name: 'Bob' }));
+      expect(result.current[0]?.isPreviousData).toBe(false);
+    });
+  });
+
+  describe('useQueries suspense', () => {
+    it('suspends until all suspense queries resolve, then renders', async () => {
+      function Pair() {
+        const results = useQueries({
+          queries: [
+            { queryKey: ['user', '1'], queryFn: () => client.invoke('user', 'getUser', ['1']), suspense: true },
+            { queryKey: ['user', '2'], queryFn: () => client.invoke('user', 'getUser', ['2']), suspense: true },
+          ],
+        }) as unknown as QueryObserverResult<{ id: string; name: string }>[];
+        return (
+          <div>
+            pair:{results[0]?.data?.name},{results[1]?.data?.name}
+          </div>
+        );
+      }
+
+      render(
+        <NetronProvider client={client} autoConnect={false}>
+          <Suspense fallback={<div>queries-loading</div>}>
+            <Pair />
+          </Suspense>
+        </NetronProvider>
+      );
+
+      expect(screen.getByText('queries-loading')).toBeTruthy();
+      await waitFor(() => expect(screen.getByText('pair:Alice,Bob')).toBeTruthy());
     });
   });
 });

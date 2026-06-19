@@ -67,7 +67,9 @@ function projectQueryData(query: QueriesOptions<any, any>, raw: unknown): unknow
  */
 function createInitialState<TData, TError>(
   query: QueriesOptions<TData, TError>,
-  cached: TData | undefined
+  cached: TData | undefined,
+  cachedError: TError | null = null,
+  cachedErrorUpdatedAt = 0,
 ): QueryState<TData, TError> {
   // NR-3: the shared cache holds RAW data — project it for this query.
   let initialData = projectQueryData(query, cached) as TData | undefined;
@@ -81,13 +83,18 @@ function createInitialState<TData, TError>(
         : query.placeholderData;
   }
 
+  // Surface a cached error when there's no data to show. This lets a suspense
+  // retry settle on the error (and escalate to the boundary) instead of seeing
+  // an idle state and re-suspending forever.
+  const hasError = initialData === undefined && cachedError != null;
+
   return {
     data: initialData,
-    error: null,
-    status: initialData !== undefined ? 'success' : 'idle',
+    error: hasError ? cachedError : null,
+    status: initialData !== undefined ? 'success' : hasError ? 'error' : 'idle',
     isFetching: false,
     dataUpdatedAt: query.initialDataUpdatedAt ?? 0,
-    errorUpdatedAt: 0,
+    errorUpdatedAt: hasError ? cachedErrorUpdatedAt : 0,
   };
 }
 
@@ -130,6 +137,12 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   // Refs for stable callbacks and tracking
   const isMounted = useRef(true);
   const fetchCounts = useRef<number[]>([]);
+  // keepPreviousData (per query): which queryKeyHash each index's `data` belongs
+  // to. When it lags the current hash (that query's key changed) the carried-over
+  // data is "previous" and we flag isPreviousData.
+  const dataKeyRefs = useRef<string[]>([]);
+  // suspense (per query): the in-flight cold-load prime promise per index.
+  const suspendPromiseRefs = useRef<(Promise<void> | null)[]>([]);
 
   // Ensure fetchCounts has the right length
   if (fetchCounts.current.length !== queries.length) {
@@ -139,15 +152,23 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   // Initialize states for all queries
   const [states, setStates] = useState<QueryState<unknown, unknown>[]>(() =>
     queries.map((query) => {
-      const queryCache = client.getQueryCache();
-      const cached = queryCache.get(query.queryKey);
-      return createInitialState(query, cached);
+      const cq = client.getQueryCache().getQuery(query.queryKey);
+      // NR-3: cache holds RAW data; its state.error is loosely typed (unknown).
+      return createInitialState(query, cq?.state.data, (cq?.state.error ?? null) as never, cq?.state.errorUpdatedAt);
     })
   );
 
   // Memoize query key hashes for dependency tracking
   const queryKeyHashes = useMemo(() => queries.map((q) => hashQueryKey(q.queryKey)), [queries]);
   const queryKeyHashString = queryKeyHashes.join(',');
+
+  // Keep the per-index ref arrays sized to the queries array. On a structural
+  // change (the count differs) reset key-ownership to the current hashes — the
+  // initial state for each index was seeded from that key's cache entry.
+  if (dataKeyRefs.current.length !== queries.length) {
+    dataKeyRefs.current = queryKeyHashes.slice();
+    suspendPromiseRefs.current = queries.map(() => null);
+  }
 
   // Update a single query's state
   const updateState = useCallback((index: number, update: Partial<QueryState<unknown, unknown>>) => {
@@ -232,6 +253,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
 
               // Update cache with RAW data (NR-3) + the writer's staleTime (NR-13).
               queryCache.set(query.queryKey, raw, query.staleTime ?? defaults.staleTime);
+              dataKeyRefs.current[index] = queryKeyHashes[index]!; // data now belongs to this key
             }
 
             // Callbacks
@@ -342,6 +364,28 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
     [fetchQuery, queries, client, createRemove]
   );
 
+  // suspense: a render-safe cold-load fetch for a single query. Writes the
+  // result (or error) into the shared cache WITHOUT touching component state, so
+  // it can run during render (in the throw path). On the post-resolve retry the
+  // cache-seeded initial state renders (or escalates the error) normally.
+  // Single-attempt — a cold suspense load that fails surfaces to the boundary.
+  const primeQuery = useCallback(
+    async (index: number): Promise<void> => {
+      const query = queries[index];
+      if (!query) return;
+      const queryCache = client.getQueryCache();
+      const controller = new AbortController();
+      const context: QueryFunctionContext = { queryKey: query.queryKey, signal: controller.signal };
+      try {
+        const raw = await query.queryFn(context);
+        queryCache.set(query.queryKey, raw, query.staleTime ?? defaults.staleTime);
+      } catch (err) {
+        queryCache.setError(query.queryKey, err);
+      }
+    },
+    [queries, client, defaults.staleTime]
+  );
+
   // Initial fetch effect - runs all queries in parallel
   useEffect(() => {
     if (isHydrating) return;
@@ -366,6 +410,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
           data: projectQueryData(query, cached),
           status: 'success',
         });
+        dataKeyRefs.current[index] = queryKeyHashes[index]!;
       }
     });
 
@@ -384,6 +429,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         const cached = client.getQueryCache().get(query.queryKey);
         if (cached !== undefined) {
           updateState(index, { data: projectQueryData(query, cached) }); // NR-3: project per-query
+          dataKeyRefs.current[index] = queryKeyHashes[index]!; // mirror belongs to current key
         }
       })
     );
@@ -456,6 +502,13 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         const stateStatus = state?.status ?? 'idle';
         const stateIsFetching = state?.isFetching ?? false;
 
+        // keepPreviousData: this index's `data` is "previous" while a key change
+        // is in flight (its key-ownership lags the current hash). Gated per query.
+        const isPreviousData =
+          ((query as { keepPreviousData?: boolean } | undefined)?.keepPreviousData ?? false) &&
+          dataKeyRefs.current[index] !== queryKeyHashes[index] &&
+          state?.data !== undefined;
+
         return {
           data: state?.data,
           error: state?.error ?? null,
@@ -467,13 +520,14 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
           isFetching: stateIsFetching,
           isRefetching: stateIsFetching && stateStatus !== 'loading',
           isStale,
+          isPreviousData,
           dataUpdatedAt: stateDataUpdatedAt,
           errorUpdatedAt: state?.errorUpdatedAt ?? 0,
           refetch: createRefetch(index),
           remove: createRemove(index),
         } as QueryObserverResult;
       }) as unknown as TResults,
-    [states, queries, defaults.staleTime, createRefetch, createRemove]
+    [states, queries, queryKeyHashString, defaults.staleTime, createRefetch, createRemove]
   );
 
   // Apply combine function if provided, otherwise return results array
@@ -484,18 +538,40 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
     return results as unknown as TCombinedResult;
   }, [results, combine]);
 
-  // useErrorBoundary (per query): re-throw the first error from a query that
-  // opted in, to the nearest React error boundary. AFTER all hooks (plain
-  // control flow, not a hook); gated per query (default off).
+  // suspense + useErrorBoundary (per query), AFTER all hooks (plain control flow):
+  //  - an error from a query that opted into useErrorBoundary (or suspense, which
+  //    implies it) → re-throw to the nearest React error boundary;
+  //  - a cold suspense query with no data/error yet → prime it and collect its
+  //    in-flight promise, then throw the combined promise so a <Suspense>
+  //    boundary shows its fallback until ALL such queries resolve.
   const resultList = results as unknown as QueryObserverResult[];
-  for (let i = 0; i < resultList.length; i++) {
+  const pendingSuspense: Promise<void>[] = [];
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i] as
+      | { enabled?: boolean; suspense?: boolean; useErrorBoundary?: boolean | ((e: unknown) => boolean) }
+      | undefined;
+    if (!q) continue;
     const err = resultList[i]?.error;
-    const opt = (queries[i] as { useErrorBoundary?: boolean | ((e: unknown) => boolean) } | undefined)
-      ?.useErrorBoundary;
-    if (err != null && opt) {
-      const escalate = typeof opt === 'function' ? opt(err) : !!opt;
+
+    if (err != null) {
+      const opt = q.useErrorBoundary;
+      const escalate = !!q.suspense || (typeof opt === 'function' ? opt(err) : !!opt);
       if (escalate) throw err;
+      continue; // errored but not escalated → surface it in the result, don't suspend
     }
+
+    const enabled = q.enabled ?? true;
+    if (q.suspense && enabled && !isHydrating && resultList[i]?.data === undefined) {
+      if (!suspendPromiseRefs.current[i]) {
+        suspendPromiseRefs.current[i] = primeQuery(i).finally(() => {
+          suspendPromiseRefs.current[i] = null;
+        });
+      }
+      pendingSuspense.push(suspendPromiseRefs.current[i]!);
+    }
+  }
+  if (pendingSuspense.length > 0) {
+    throw Promise.all(pendingSuspense) as unknown as Promise<void>;
   }
 
   return combined;

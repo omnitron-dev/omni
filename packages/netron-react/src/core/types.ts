@@ -305,22 +305,60 @@ export interface StreamResult<TChunk = unknown, TResult = TChunk[]> {
 // ============================================================================
 
 /**
- * Infinite query options
+ * Context passed to an infinite query function — the standard query context
+ * with a typed `pageParam`.
  */
-export interface InfiniteQueryOptions<TData = unknown, TError = NetronError, TPageParam = unknown> extends Omit<
-  QueryOptions<TData, TError>,
-  'queryFn'
-> {
-  /** Query function with page param */
-  queryFn: (context: QueryFunctionContext & { pageParam: TPageParam }) => Promise<TData>;
-  /** Get next page param */
+export interface InfiniteQueryFunctionContext<TPageParam = unknown>
+  extends Omit<QueryFunctionContext, 'pageParam'> {
+  pageParam: TPageParam;
+}
+
+/**
+ * Paginated data structure for infinite queries.
+ */
+export interface InfiniteData<TData = unknown> {
+  pages: TData[];
+  pageParams: unknown[];
+}
+
+/**
+ * Infinite query options. Standalone (not extending QueryOptions) because the
+ * infinite hook overrides queryFn/onSuccess and supports a deliberate subset of
+ * the regular query options.
+ */
+export interface InfiniteQueryOptions<TData = unknown, TError = NetronError, TPageParam = unknown> {
+  /** Unique query key */
+  queryKey: QueryKey;
+  /** Query function with a typed page param */
+  queryFn: (context: InfiniteQueryFunctionContext<TPageParam>) => Promise<TData>;
+  /** Get the next page param from the last page (undefined = no more pages) */
   getNextPageParam: (lastPage: TData, allPages: TData[]) => TPageParam | undefined;
-  /** Get previous page param */
+  /** Get the previous page param from the first page */
   getPreviousPageParam?: (firstPage: TData, allPages: TData[]) => TPageParam | undefined;
-  /** Initial page param */
+  /** Initial page param for the first page */
   initialPageParam: TPageParam;
-  /** Max pages to keep in memory */
+  /** Maximum pages to keep in memory */
   maxPages?: number;
+  /** Time in ms before data is considered stale */
+  staleTime?: number;
+  /** Time in ms to keep unused data in cache */
+  cacheTime?: number;
+  /** Enable/disable the query */
+  enabled?: boolean;
+  /** Retry configuration */
+  retry?: number | boolean | RetryConfig;
+  /** Success callback (receives the full paginated data) */
+  onSuccess?: (data: InfiniteData<TData>) => void;
+  /** Error callback */
+  onError?: (error: TError) => void;
+  /** Use React Suspense — throw the initial fetch so a <Suspense> boundary shows
+   *  its fallback until the first page resolves. */
+  suspense?: boolean;
+  /** Re-throw a query error to the nearest React error boundary (boolean or predicate). */
+  useErrorBoundary?: boolean | ((error: TError) => boolean);
+  /** Keep showing the previous key's pages while a new queryKey loads
+   *  (isPreviousData=true) instead of blanking. */
+  keepPreviousData?: boolean;
 }
 
 /**
@@ -328,29 +366,33 @@ export interface InfiniteQueryOptions<TData = unknown, TError = NetronError, TPa
  */
 export interface InfiniteQueryResult<TData = unknown, TError = NetronError> {
   /** Paginated data */
-  data: { pages: TData[]; pageParams: unknown[] } | undefined;
+  data: InfiniteData<TData> | undefined;
   /** Error if any */
   error: TError | null;
-  /** Has next page */
-  hasNextPage: boolean;
-  /** Has previous page */
-  hasPreviousPage: boolean;
-  /** Is fetching next page */
-  isFetchingNextPage: boolean;
-  /** Is fetching previous page */
-  isFetchingPreviousPage: boolean;
-  /** Fetch next page */
-  fetchNextPage: () => Promise<void>;
-  /** Fetch previous page */
-  fetchPreviousPage: () => Promise<void>;
   /** Query status */
   status: QueryStatus;
-  /** Is loading */
+  /** Is initial loading */
   isLoading: boolean;
-  /** Is error */
+  /** Is currently fetching any page */
+  isFetching: boolean;
+  /** Is fetching the next page */
+  isFetchingNextPage: boolean;
+  /** Is fetching the previous page */
+  isFetchingPreviousPage: boolean;
+  /** Is error state */
   isError: boolean;
-  /** Is success */
+  /** Is success state */
   isSuccess: boolean;
+  /** True while keepPreviousData carries a prior key's pages over a key change */
+  isPreviousData: boolean;
+  /** Has a next page available */
+  hasNextPage: boolean;
+  /** Has a previous page available */
+  hasPreviousPage: boolean;
+  /** Fetch the next page */
+  fetchNextPage: () => Promise<void>;
+  /** Fetch the previous page */
+  fetchPreviousPage: () => Promise<void>;
   /** Refetch all pages */
   refetch: () => Promise<void>;
 }

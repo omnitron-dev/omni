@@ -13,7 +13,36 @@ import {
 } from '../src/scheduler.persistence.js';
 import { SCHEDULER_EVENTS } from '../src/scheduler.constants.js';
 import { CronExpression, JobStatus, SchedulerJobType } from '../src/scheduler.interfaces.js';
-import type { ISchedulerConfig } from '../src/scheduler.interfaces.js';
+import type { ISchedulerConfig, ISchedulerLockProvider } from '../src/scheduler.interfaces.js';
+
+/**
+ * Minimal in-process shared lock that models a distributed store for the SC-1
+ * tests. `acquireLock` is atomic (its body has no `await`, so concurrent calls
+ * can't interleave): it returns a lock id, or null when the key is held +
+ * unexpired. Two SchedulerService instances sharing ONE of these behave like
+ * two nodes sharing one Redis. (Cross-process Redis correctness of the real
+ * provider is covered by titan-lock's own SET-NX tests.)
+ */
+class SharedMemoryLock implements ISchedulerLockProvider {
+  private readonly locks = new Map<string, { id: string; expiresAt: number }>();
+  private seq = 0;
+  async acquireLock(key: string, ttlMs: number): Promise<string | null> {
+    const now = Date.now();
+    const existing = this.locks.get(key);
+    if (existing && existing.expiresAt > now) return null; // held by another node
+    const id = `lock-${++this.seq}`;
+    this.locks.set(key, { id, expiresAt: now + ttlMs });
+    return id;
+  }
+  async releaseLock(key: string, lockId: string): Promise<boolean> {
+    const existing = this.locks.get(key);
+    if (existing && existing.id === lockId) {
+      this.locks.delete(key);
+      return true;
+    }
+    return false;
+  }
+}
 
 describe('Scheduler Service', () => {
   let scheduler: SchedulerService;
@@ -61,22 +90,97 @@ describe('Scheduler Service', () => {
     });
   });
 
-  describe('SC-1: distributed mode is not silently accepted', () => {
-    it('fails fast when config.distributed.enabled is true (would duplicate execution)', async () => {
+  describe('SC-1: distributed per-fire-window lock (exactly-once across nodes)', () => {
+    it('fails fast when distributed.enabled is true but NO lock provider is configured', async () => {
       const distConfig: ISchedulerConfig = { ...config, distributed: { enabled: true } };
       const svc = new SchedulerService(
         new SchedulerRegistry(distConfig),
         new SchedulerExecutor(distConfig),
         distConfig
       );
-      await expect(svc.onStart()).rejects.toThrow(/distributed/i);
+      await expect(svc.onStart()).rejects.toThrow(/lock provider|distributed/i);
       expect(svc.isRunning()).toBe(false);
+    });
+
+    it('starts when distributed.enabled is true AND a lock provider is supplied', async () => {
+      const distConfig: ISchedulerConfig = { ...config, distributed: { enabled: true } };
+      const svc = new SchedulerService(
+        new SchedulerRegistry(distConfig),
+        new SchedulerExecutor(distConfig),
+        distConfig,
+        undefined,
+        undefined,
+        undefined,
+        new SharedMemoryLock()
+      );
+      await expect(svc.onStart()).resolves.not.toThrow();
+      expect(svc.isRunning()).toBe(true);
+      await svc.onStop();
     });
 
     it('starts normally when distributed is disabled (default)', async () => {
       const svc = new SchedulerService(new SchedulerRegistry(config), new SchedulerExecutor(config), config);
       await expect(svc.onStart()).resolves.not.toThrow();
       await svc.onStop();
+    });
+
+    // CONTROL: without coordination, two nodes both fire every tick → the same
+    // fire-window runs twice. Proves the duplication is real and that the
+    // exactly-once assertion below can actually detect a regression.
+    it('control: two un-coordinated nodes duplicate the same fire-window', async () => {
+      const fires: number[] = [];
+      const mk = () => {
+        const svc = new SchedulerService(new SchedulerRegistry(config), new SchedulerExecutor(config), config);
+        svc.addCronJob('control-sec', '* * * * * *' as unknown as CronExpression, () => {
+          fires.push(Math.floor(Date.now() / 1000));
+        });
+        return svc;
+      };
+      const a = mk();
+      const b = mk();
+      await a.onStart();
+      await b.onStart();
+      await new Promise((r) => setTimeout(r, 2200));
+      await a.onStop();
+      await b.onStop();
+      // At least one second saw BOTH nodes fire → more entries than unique seconds.
+      expect(fires.length).toBeGreaterThan(new Set(fires).size);
+    });
+
+    it('SC-1-full: two nodes sharing a lock run each fire-window exactly once', async () => {
+      const lock = new SharedMemoryLock(); // ONE store, shared by both "nodes"
+      const distConfig: ISchedulerConfig = {
+        ...config,
+        distributed: { enabled: true, lockTTL: 2000 },
+      };
+      const fires: number[] = [];
+      const mk = () => {
+        const svc = new SchedulerService(
+          new SchedulerRegistry(distConfig),
+          new SchedulerExecutor(distConfig),
+          distConfig,
+          undefined,
+          undefined,
+          undefined,
+          lock
+        );
+        svc.addCronJob('dist-sec', '* * * * * *' as unknown as CronExpression, () => {
+          fires.push(Math.floor(Date.now() / 1000));
+        });
+        return svc;
+      };
+      const a = mk();
+      const b = mk();
+      await a.onStart();
+      await b.onStart();
+      await new Promise((r) => setTimeout(r, 3200));
+      await a.onStop();
+      await b.onStop();
+
+      // At least one tick fired, and NO fire-window (second) ran more than once
+      // across the two nodes — exactly-once distributed execution.
+      expect(fires.length).toBeGreaterThanOrEqual(1);
+      expect(new Set(fires).size).toBe(fires.length);
     });
   });
 

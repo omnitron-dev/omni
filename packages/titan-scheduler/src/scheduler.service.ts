@@ -18,6 +18,7 @@ import {
   SCHEDULER_EXECUTOR_TOKEN,
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_PERSISTENCE_TOKEN,
+  SCHEDULER_LOCK_TOKEN,
 } from './scheduler.constants.js';
 import {
   JobStatus,
@@ -32,6 +33,7 @@ import {
   type ISchedulerMetrics,
   type IJobExecutionResult,
   type IJobExecutionContext,
+  type ISchedulerLockProvider,
 } from './scheduler.interfaces.js';
 
 import type { SchedulerRegistry } from './scheduler.registry.js';
@@ -57,7 +59,10 @@ export class SchedulerService implements ILifecycle {
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
     @Optional() @Inject(SCHEDULER_PERSISTENCE_TOKEN) private readonly persistence?: SchedulerPersistence,
     @Optional() @Inject(SCHEDULER_METRICS_TOKEN) private readonly metrics?: SchedulerMetricsService,
-    @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery
+    @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery,
+    // SC-1: optional per-fire-window distributed lock. REQUIRED when
+    // config.distributed.enabled is true (enforced in onStart).
+    @Optional() @Inject(SCHEDULER_LOCK_TOKEN) private readonly lockProvider?: ISchedulerLockProvider
   ) {}
 
   /**
@@ -102,17 +107,17 @@ export class SchedulerService implements ILifecycle {
       return; // Already started (e.g., via onInit auto-start) — idempotent
     }
 
-    // SC-1: `distributed` mode is configured (interfaces + defaults) but NOT
-    // implemented — node-cron fires on EVERY node, and nothing consults a lock,
-    // so enabling it silently runs every job on every node (duplicate execution
-    // at scale). Fail fast rather than pretend: this is opt-in (defaults to
-    // false), so normal single-node usage is unaffected. Distributed scheduling
-    // (per-fire-window lock over a shared store) is tracked as scheduler-hardening.
-    if (this.config?.distributed?.enabled) {
+    // SC-1: distributed mode coordinates fires through a per-fire-window lock
+    // (see `executeJob`). It REQUIRES a lock provider — without one, node-cron
+    // fires on EVERY node with nothing consulting a lock, silently running every
+    // job on every node (duplicate execution at scale). Fail fast rather than
+    // pretend. Single-node usage is unaffected (opt-in, defaults to false).
+    if (this.config?.distributed?.enabled && !this.lockProvider) {
       throw Errors.badRequest(
-        'Scheduler distributed mode is enabled but not implemented: jobs would execute on ' +
-          'every node (duplicate execution). Run the scheduler on a single node or set ' +
-          'config.distributed.enabled = false until distributed coordination is implemented.'
+        'Scheduler distributed mode is enabled but no lock provider is configured: jobs would ' +
+          'execute on every node (duplicate execution). Provide a lock provider at ' +
+          'SCHEDULER_LOCK_TOKEN (e.g. titan-lock DistributedLockService) or set ' +
+          'config.distributed.enabled = false.'
       );
     }
 
@@ -320,9 +325,73 @@ export class SchedulerService implements ILifecycle {
   }
 
   /**
-   * Execute a job
+   * Execute a scheduled fire. In distributed mode (SC-1), coordinates through a
+   * per-fire-window lock so a given fire runs on exactly ONE node; other nodes
+   * skip it. Manual `triggerJob()` bypasses this entirely (it calls the executor
+   * directly) — an explicit per-node action that should always run locally.
    */
   private async executeJob(job: IScheduledJob): Promise<void> {
+    const distributed = this.config?.distributed;
+    if (distributed?.enabled && this.lockProvider) {
+      const key = this.fireWindowKey(job);
+      const ttlMs = distributed.lockTTL ?? 30000;
+      let lockId: string | null = null;
+      try {
+        lockId = await this.lockProvider.acquireLock(key, ttlMs);
+      } catch {
+        // Lock store unreachable: fail CLOSED (skip this fire) rather than risk
+        // a duplicate run on every node. The next fire retries; the provider is
+        // responsible for logging the underlying store error.
+        return;
+      }
+      // `null` = another node already owns this fire window → skip. This is
+      // normal contention, not an error: every non-winning node skips every
+      // fire, so it is intentionally silent.
+      if (!lockId) {
+        return;
+      }
+      // Winner: run it. We deliberately do NOT release the lock — holding it for
+      // the full TTL stops a clock-skewed-late node from re-acquiring and
+      // re-running the SAME fire. The per-fire key differs from the next fire's
+      // key, so holding never blocks a legitimate future fire.
+      await this.runJob(job);
+      return;
+    }
+
+    // Single-node (or distributed with no provider — already rejected at start).
+    await this.runJob(job);
+  }
+
+  /**
+   * Compute the lock key identifying ONE scheduled fire across all nodes.
+   *
+   * Cron: the cron's scheduled fire instant, derived from the expression — the
+   * same on every node regardless of clock skew (node-cron fires AT/after the
+   * instant, so `prev()` of "now" resolves to this fire), so all nodes firing
+   * the same tick contend on the same key. Interval/timeout (no shared
+   * schedule): a wall-clock window bucket of width `lockTTL`, which dedupes
+   * fires landing in the same window.
+   */
+  private fireWindowKey(job: IScheduledJob): string {
+    const prefix = `scheduler:fire:${job.name}`;
+    const ttlMs = this.config?.distributed?.lockTTL ?? 30000;
+    if (job.type === 'cron') {
+      try {
+        const scheduled = CronExpressionParser.parse(String(job.pattern)).prev().getTime();
+        return `${prefix}:${scheduled}`;
+      } catch {
+        // Unparseable pattern — degrade to the time-bucket key below.
+      }
+    }
+    return `${prefix}:${Math.floor(Date.now() / ttlMs) * ttlMs}`;
+  }
+
+  /**
+   * Run a job through the executor + record its result. Split out of
+   * `executeJob` so the SC-1 distributed lock can wrap it without duplicating
+   * the status/result/next-execution handling.
+   */
+  private async runJob(job: IScheduledJob): Promise<void> {
     // Update job status
     this.registry.updateJobStatus(job.name, JobStatus.RUNNING);
     this.registry.markJobRunning(job.name, true);

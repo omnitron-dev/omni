@@ -21,6 +21,7 @@ import {
   DEFAULT_SCHEDULER_CONFIG,
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_LISTENERS_TOKEN,
+  SCHEDULER_LOCK_TOKEN,
   SCHEDULER_PERSISTENCE_TOKEN,
 } from './scheduler.constants.js';
 
@@ -56,6 +57,8 @@ export class SchedulerModule {
         [SchedulerService, { useExisting: SCHEDULER_SERVICE_TOKEN }],
         // Listeners
         [SCHEDULER_LISTENERS_TOKEN, { useValue: options.listeners || [] }],
+        // SC-1: distributed-lock provider (required iff distributed.enabled)
+        [SCHEDULER_LOCK_TOKEN, { useValue: options.lockProvider }],
       ] as any,
       exports: [SchedulerService, SCHEDULER_SERVICE_TOKEN, SCHEDULER_REGISTRY_TOKEN, SCHEDULER_METRICS_TOKEN],
       global: true,
@@ -92,6 +95,16 @@ export class SchedulerModule {
       SCHEDULER_LISTENERS_TOKEN,
       {
         useFactory: (config: ISchedulerModuleOptions) => config.listeners || [],
+        inject: [SCHEDULER_CONFIG_TOKEN],
+      },
+    ] as any);
+
+    // SC-1: distributed-lock provider, read from the resolved config (a
+    // useFactory can inject a lock service and return it on the config object).
+    providers.push([
+      SCHEDULER_LOCK_TOKEN,
+      {
+        useFactory: (config: ISchedulerModuleOptions) => config.lockProvider,
         inject: [SCHEDULER_CONFIG_TOKEN],
       },
     ] as any);

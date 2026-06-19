@@ -371,6 +371,30 @@ export interface IJobExecutionResult {
 /**
  * Scheduler configuration
  */
+/**
+ * Distributed-lock provider for SC-1 per-fire-window coordination.
+ *
+ * When `distributed.enabled` is true, the scheduler acquires a lock keyed by
+ * each scheduled fire BEFORE running it, so a given fire executes on exactly
+ * ONE node (the lock winner); other nodes skip that fire. The lock is held for
+ * its full TTL and NOT released early — releasing would let a clock-skewed-late
+ * node re-acquire and re-run the same fire.
+ *
+ * Structurally compatible with `@omnitron-dev/titan-lock`'s
+ * `IDistributedLockService` — wire that (or any adapter with the same two
+ * methods) at `SCHEDULER_LOCK_TOKEN`, or pass it as `lockProvider` in the
+ * module options.
+ */
+export interface ISchedulerLockProvider {
+  /**
+   * Acquire `key` for `ttlMs`. Returns a lock id (this node owns the fire) or
+   * `null` if the lock is already held (another node owns it).
+   */
+  acquireLock(key: string, ttlMs: number): Promise<string | null>;
+  /** Release a previously-acquired lock (by the id from `acquireLock`). */
+  releaseLock(key: string, lockId: string): Promise<boolean>;
+}
+
 export interface ISchedulerConfig {
   /**
    * Enable scheduler
@@ -603,6 +627,15 @@ export interface ISchedulerModuleOptions extends ISchedulerConfig {
    * Custom metrics provider
    */
   metricsProvider?: InjectionToken<any>;
+
+  /**
+   * SC-1 distributed-lock provider instance. REQUIRED when
+   * `distributed.enabled` is true — without it the scheduler fails fast on
+   * start (it won't silently run every job on every node). Pass
+   * `@omnitron-dev/titan-lock`'s `DistributedLockService` (or any
+   * `ISchedulerLockProvider`).
+   */
+  lockProvider?: ISchedulerLockProvider;
 }
 
 /**

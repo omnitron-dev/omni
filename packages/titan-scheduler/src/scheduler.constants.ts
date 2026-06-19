@@ -4,7 +4,7 @@
 
 import { Token, createToken } from '@omnitron-dev/titan/nexus';
 
-import type { IJobListener, ISchedulerConfig } from './scheduler.interfaces.js';
+import type { IJobListener, ISchedulerConfig, ISchedulerLockProvider } from './scheduler.interfaces.js';
 
 /**
  * Scheduler metadata keys
@@ -28,6 +28,9 @@ export const SCHEDULER_PERSISTENCE_TOKEN: Token<any> = createToken('SCHEDULER_PE
 export const SCHEDULER_METRICS_TOKEN: Token<any> = createToken('SCHEDULER_METRICS');
 export const SCHEDULER_DISCOVERY_TOKEN: Token<any> = createToken('SCHEDULER_DISCOVERY');
 export const SCHEDULER_LISTENERS_TOKEN: Token<IJobListener[]> = createToken<IJobListener[]>('SCHEDULER_LISTENERS');
+// SC-1: optional distributed-lock provider for per-fire-window coordination.
+export const SCHEDULER_LOCK_TOKEN: Token<ISchedulerLockProvider> =
+  createToken<ISchedulerLockProvider>('SCHEDULER_LOCK');
 
 /**
  * Default configuration

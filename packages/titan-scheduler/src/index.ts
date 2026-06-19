@@ -80,6 +80,7 @@ export {
   SCHEDULER_METRICS_TOKEN,
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_LISTENERS_TOKEN,
+  SCHEDULER_LOCK_TOKEN,
   SCHEDULER_METADATA,
   DEFAULT_SCHEDULER_CONFIG,
   SCHEDULER_EVENTS,
@@ -117,6 +118,7 @@ export type {
   // Configuration
   ISchedulerConfig,
   ISchedulerMetrics,
+  ISchedulerLockProvider,
 
   // Module options
   ISchedulerModuleOptions,

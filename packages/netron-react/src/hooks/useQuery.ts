@@ -60,6 +60,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
     placeholderData,
     initialData,
     initialDataUpdatedAt,
+    suspense = false,
+    useErrorBoundary = false,
+    keepPreviousData = false,
   } = options;
 
   // NR-3: `select` is a PER-OBSERVER projection — it must NOT be baked into the
@@ -131,6 +134,14 @@ export function useQuery<TData = unknown, TError = NetronError>(
     cachedQueryOnInit?.state.errorUpdatedAt ?? 0,
   );
 
+  // keepPreviousData: snapshot of the last successful data, carried over while a
+  // new queryKey loads. Seeded from the first render's data (cache/initial/
+  // placeholder); kept current by the effect below on every success.
+  const previousDataRef = useRef<{ data: TData | undefined; dataUpdatedAt: number }>({
+    data,
+    dataUpdatedAt,
+  });
+
   // Refs for stable callbacks
   const queryKeyHash = useMemo(() => hashQueryKey(queryKey), [queryKey]);
   const isMounted = useRef(true);
@@ -142,6 +153,11 @@ export function useQuery<TData = unknown, TError = NetronError>(
   // keyed off `fetchData` — listener thrash + an unstable refetch identity.
   const statusRef = useRef(status);
   statusRef.current = status;
+
+  // The queryKeyHash that the current `data` belongs to. It lags behind on a
+  // key change until the new key's data arrives — that gap is exactly when
+  // keepPreviousData carries the previous key's data over (isPreviousData=true).
+  const dataKeyRef = useRef(queryKeyHash);
 
   // Determine if data is stale
   const isStale = useMemo(() => {
@@ -232,6 +248,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setError(null);
         setStatus('success');
         setDataUpdatedAt(timeUtils.now());
+        dataKeyRef.current = queryKeyHash; // data now belongs to this key
       }
 
       // Callbacks
@@ -277,6 +294,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
         isFetching: false,
         isRefetching: false,
         isStale: false,
+        isPreviousData: false,
         dataUpdatedAt: timeUtils.now(),
         errorUpdatedAt: 0,
         refetch,
@@ -294,6 +312,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
         isFetching: false,
         isRefetching: false,
         isStale: true,
+        isPreviousData: false,
         dataUpdatedAt,
         errorUpdatedAt: timeUtils.now(),
         refetch,
@@ -328,6 +347,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
       // Sync from cache (NR-3: project the raw shared entry through this observer's select).
       setData(projectData(cached));
       setStatus('success');
+      dataKeyRef.current = queryKeyHash;
     }
   }, [queryKeyHash, enabled, isHydrating]);
 
@@ -362,6 +382,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
         // data was deeply unchanged. replaceEqualDeep returns the PREVIOUS
         // reference when deeply equal, letting React bail out of the update.
         setData((prev) => replaceEqualDeep(prev, projectData(s.data) as TData | undefined));
+        // Fresh data for THIS key clears the keepPreviousData carry-over flag.
+        if (s.data !== undefined) dataKeyRef.current = queryKeyHash;
         setError(s.error);
         setStatus(s.status === 'loading' ? (s.data !== undefined ? 'success' : 'loading') : s.status);
         setDataUpdatedAt(s.dataUpdatedAt);
@@ -428,26 +450,82 @@ export function useQuery<TData = unknown, TError = NetronError>(
     };
   }, []);
 
-  // Return result
-  return useMemo(
+  // keepPreviousData: keep the snapshot current with the latest success so a
+  // future queryKey change can carry it over.
+  useEffect(() => {
+    if (data !== undefined && status === 'success') {
+      previousDataRef.current = { data, dataUpdatedAt };
+    }
+  }, [data, status, dataUpdatedAt]);
+
+  // ── Result + suspense/error-boundary escalation ──────────────────
+  // keepPreviousData: while the new key has no data yet, display the carried-
+  // over snapshot (status 'success', isPreviousData true) instead of blanking.
+  const showingPrevious =
+    keepPreviousData &&
+    dataKeyRef.current !== queryKeyHash &&
+    previousDataRef.current.data !== undefined;
+  const displayData = showingPrevious ? previousDataRef.current.data : data;
+  const displayStatus: typeof status = showingPrevious ? 'success' : status;
+  const displayDataUpdatedAt = showingPrevious ? previousDataRef.current.dataUpdatedAt : dataUpdatedAt;
+  const displayIsStale = showingPrevious
+    ? staleTime !== Infinity && timeUtils.isExpired(previousDataRef.current.dataUpdatedAt, staleTime)
+    : isStale;
+
+  const result = useMemo<QueryResult<TData, TError>>(
     () => ({
-      data,
+      data: displayData,
       error,
-      status,
-      isLoading: status === 'loading',
-      isError: status === 'error',
-      isSuccess: status === 'success',
-      isIdle: status === 'idle',
+      status: displayStatus,
+      isLoading: displayStatus === 'loading',
+      isError: displayStatus === 'error',
+      isSuccess: displayStatus === 'success',
+      isIdle: displayStatus === 'idle',
       isFetching,
-      isRefetching: isFetching && status !== 'loading',
-      isStale,
-      dataUpdatedAt,
+      isRefetching: isFetching && displayStatus !== 'loading',
+      isStale: displayIsStale,
+      isPreviousData: showingPrevious,
+      dataUpdatedAt: displayDataUpdatedAt,
       errorUpdatedAt,
       refetch,
       remove,
     }),
-    [data, error, status, isFetching, isStale, dataUpdatedAt, errorUpdatedAt, refetch, remove]
+    [
+      displayData,
+      error,
+      displayStatus,
+      isFetching,
+      displayIsStale,
+      showingPrevious,
+      displayDataUpdatedAt,
+      errorUpdatedAt,
+      refetch,
+      remove,
+    ]
   );
+
+  // Render-phase escalation — AFTER all hooks (incl. the useMemo above), so this
+  // is plain control flow, not conditional hooks. Both paths are gated on their
+  // options (default off → `result` returned unchanged, behaviour identical).
+  //
+  // suspense: throw the in-flight fetch (starting one if the effect hasn't run
+  // yet) so a <Suspense> boundary shows its fallback until data resolves.
+  if (suspense && error === null && displayData === undefined && enabled && !isHydrating) {
+    const cache = client.getQueryCache();
+    throw (
+      cache.getInFlightPromise<TData>(queryKey) ??
+      cache.getOrCreateFetch<TData>(queryKey, executeFetch, staleTime)
+    );
+  }
+  // useErrorBoundary (and suspense) escalate a query error to the nearest React
+  // error boundary by re-throwing it during render.
+  if (error !== null) {
+    const escalate =
+      suspense || (typeof useErrorBoundary === 'function' ? useErrorBoundary(error) : !!useErrorBoundary);
+    if (escalate) throw error;
+  }
+
+  return result;
 }
 
 export default useQuery;

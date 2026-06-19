@@ -8,6 +8,12 @@
 
 import { box, log, prism, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { DiscoveryScanResult } from '../services/discovery.service.js';
+
+/** Typed view of the daemon-exposed `OmnitronDiscovery` peer service. */
+interface IDiscoveryRpcService {
+  scanAll(): Promise<DiscoveryScanResult>;
+}
 
 export async function discoverCommand(): Promise<void> {
   const client = createDaemonClient();
@@ -21,17 +27,11 @@ export async function discoverCommand(): Promise<void> {
   }
 
   try {
-    // Use OmnitronDiscovery RPC service via daemon
-    // The daemon-client only exposes IDaemonService, so we use exec to call
-    // the OmnitronDiscovery service methods via the generic exec RPC
-    const result = await client.exec({
-      name: '__daemon__',
-      service: 'OmnitronDiscovery',
-      method: 'scanAll',
-      args: [],
-    } as any);
-
-    const scan = result as any;
+    // Call the daemon-exposed OmnitronDiscovery peer service directly.
+    // (`exec` routes to an *app* handle via getHandle(name); '__daemon__' is not
+    // an app, so it 404s — the daemon's own services are reached with service().)
+    const discovery = await client.service<IDiscoveryRpcService>('OmnitronDiscovery');
+    const scan = await discovery.scanAll();
 
     const lines: string[] = [];
 

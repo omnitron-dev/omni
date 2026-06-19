@@ -117,7 +117,10 @@ export async function inspectCommand(appName: string): Promise<void> {
       lines.push('', prism.bold('Logs:'));
       lines.push(`  app:    ${prism.cyan(diag.logPaths.app)}`);
       lines.push(`  error:  ${prism.cyan(diag.logPaths.error)}`);
-      lines.push(`  ${prism.dim('Tip: omnitron logs ' + appName + ' [-f] [-e]')}`);
+      // Tip mirrors the real `logs` command flags (see cli/omnitron.ts).
+      // The error stream is surfaced via `-l error` (level filter); the
+      // logs command has no dedicated `-e`/error-file flag.
+      lines.push(`  ${prism.dim('Tip: omnitron logs ' + appName + ' [-f] [-l error]')}`);
     }
 
     // Environment section

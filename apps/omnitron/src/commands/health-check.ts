@@ -11,6 +11,22 @@
 
 import { box, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { HealthReport, PlatformHealthReport } from '../services/health-check.service.js';
+
+/**
+ * Typed proxy for the `OmnitronHealth` Netron service exposed directly
+ * on the daemon peer (see daemon.ts → exposeService(HealthCheckRpcService)).
+ *
+ * This is a top-level peer service — it is NOT hosted inside an app, so
+ * it must be reached via `client.service('OmnitronHealth')`, the same way
+ * `inspect`/`project`/etc. reach their services. It is NOT reachable via
+ * `client.exec`, whose `name` field resolves an app handle and would
+ * (pre-fix) throw "App with id __daemon__ not found".
+ */
+interface IHealthCheckRpcService {
+  checkApp(data: { appName: string; port?: number }): Promise<HealthReport>;
+  checkAll(): Promise<PlatformHealthReport>;
+}
 
 export async function healthCheckCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
@@ -22,25 +38,19 @@ export async function healthCheckCommand(appName?: string): Promise<void> {
   }
 
   try {
+    const health = await client.service<IHealthCheckRpcService>('OmnitronHealth');
 
     if (appName) {
-      // Single app health check via OmnitronHealth.checkApp
-      const report = await client.exec({
-        name: '__daemon__',
-        service: 'OmnitronHealth',
-        method: 'checkApp',
-        args: [{ appName }],
-      } as any) as any;
+      // Single app health check via OmnitronHealth.checkApp.
+      // The service resolves `appName` through orchestrator.getApp →
+      // resolveAppName, so both short ("main") and canonical
+      // ("omni/dev/main") forms work — matching `inspect`.
+      const report = await health.checkApp({ appName });
 
       renderHealthReport(`Health Check: ${appName}`, report);
     } else {
       // Full platform health check via OmnitronHealth.checkAll
-      const result = await client.exec({
-        name: '__daemon__',
-        service: 'OmnitronHealth',
-        method: 'checkAll',
-        args: [],
-      } as any) as any;
+      const result = await health.checkAll();
 
       const lines: string[] = [];
 

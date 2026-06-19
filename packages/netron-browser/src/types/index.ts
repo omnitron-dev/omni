@@ -62,27 +62,17 @@ export interface NetronClientOptions {
   };
 
   /**
-   * HTTP-specific options
+   * HTTP-specific options.
+   *
+   * NOTE: caching and batching are NOT client-level toggles. Blanket-caching
+   * every RPC invoke is unsafe — it would silently cache mutations (a repeated
+   * `create(...)` within the TTL would return the first result instead of
+   * executing). Caching, request batching, and circuit-breaking are opt-in,
+   * per-call concerns of the fluent HTTP interface (`peer.queryFluentInterface()`
+   * → `.cache()` / `HttpCacheManager`), not the basic client. Only `retry` /
+   * `maxRetries` are consumed here.
    */
   http?: {
-    /**
-     * Enable request batching
-     * @default false
-     */
-    batching?: boolean;
-
-    /**
-     * Enable request caching
-     * @default false
-     */
-    caching?: boolean;
-
-    /**
-     * Cache TTL in milliseconds
-     * @default 60000
-     */
-    cacheTTL?: number;
-
     /**
      * Enable retry mechanism
      * @default false

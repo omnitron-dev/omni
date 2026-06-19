@@ -332,6 +332,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         isFetching: false,
         isRefetching: false,
         isStale: true,
+        isPreviousData: false,
         dataUpdatedAt: stateDataUpdatedAt,
         errorUpdatedAt: stateErrorUpdatedAt,
         refetch: createRefetch(index),

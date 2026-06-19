@@ -81,6 +81,10 @@ export interface QueryOptions<TData = unknown, TError = NetronError> {
   suspense?: boolean;
   /** Use Error Boundary */
   useErrorBoundary?: boolean | ((error: TError) => boolean);
+  /** Keep showing the previous key's data while a new queryKey loads (instead
+   *  of blanking to the loading state). The result's `isPreviousData` is true
+   *  while the carried-over data is displayed. */
+  keepPreviousData?: boolean;
 }
 
 /**
@@ -116,6 +120,9 @@ export interface QueryResult<TData = unknown, TError = NetronError> {
   isRefetching: boolean;
   /** Is data stale */
   isStale: boolean;
+  /** True when `keepPreviousData` is carrying over a prior key's data while the
+   *  current queryKey is still loading. */
+  isPreviousData: boolean;
   /** Last data update timestamp */
   dataUpdatedAt: number;
   /** Last error update timestamp */

@@ -5,6 +5,7 @@
 import os from 'node:os';
 import { Writable } from 'node:stream';
 import pino, { Logger as PinoLogger, multistream } from 'pino';
+import prettyStream from 'pino-pretty';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 
 /**
@@ -149,6 +150,7 @@ export class LoggerService implements ILoggerModule {
   private globalLogger!: ILogger;
   private transports: ITransport[] = [];
   private processors: ILogProcessor[] = [];
+  private transportFanout?: NodeJS.WritableStream;
   private context: object = {};
   private loggers = new Map<string, ILogger>();
   private initialized = false;
@@ -159,16 +161,27 @@ export class LoggerService implements ILoggerModule {
     @Optional() @Inject(LOGGER_PROCESSORS_TOKEN) initialProcessors?: ILogProcessor[],
     @Optional() @Inject(CONFIG_SERVICE_TOKEN) private configService?: any
   ) {
-    // Initialize immediately
-    this.initialize();
+    // Register configured transports/processors BEFORE initialize() so the
+    // root logger is built with knowledge of them (the multistream branch +
+    // the transport fan-out are decided at init). `addTransport`/`addProcessor`
+    // after init still work: processors are read by reference on every log, and
+    // the fan-out stream (present whenever any transport was configured at
+    // init) likewise reads the live transport list.
+    //
+    // Source order: the explicitly-injected args (DI tokens, also how
+    // `forRoot` passes `options.transports`/`options.processors`) take
+    // precedence; otherwise fall back to the `options` fields. The `??` avoids
+    // double-adding when forRoot supplies both (it passes the same arrays).
+    const transports = initialTransports ?? this.options.transports;
+    const processors = initialProcessors ?? this.options.processors;
+    if (transports) {
+      this.transports.push(...transports);
+    }
+    if (processors) {
+      this.processors.push(...processors);
+    }
 
-    // Add initial transports and processors if provided
-    if (initialTransports) {
-      this.transports.push(...initialTransports);
-    }
-    if (initialProcessors) {
-      this.processors.push(...initialProcessors);
-    }
+    this.initialize();
   }
 
   private initialize(): void {
@@ -178,6 +191,7 @@ export class LoggerService implements ILoggerModule {
     const config = this.getConfiguration();
 
     // Create root logger with configuration
+    const self = this;
     const pinoOptions: ILoggerOptions = {
       level: config.level || 'info',
       name: config.name || 'titan-app',
@@ -195,16 +209,42 @@ export class LoggerService implements ILoggerModule {
       messageKey: config.messageKey || 'msg',
       nestedKey: config.nestedKey,
       enabled: config.enabled !== false,
-    };
+      // Wire the ILogProcessor pipeline. pino's `logMethod` hook runs on every
+      // log call and is inherited by child loggers, so processors apply
+      // everywhere. Each processor may transform the record or DROP the log by
+      // returning null/undefined. Fast-path: with no processors registered this
+      // is a single length check + passthrough, so the common case keeps pino's
+      // native overhead. `this.processors` is read by reference, so
+      // `addProcessor()` after init takes effect on the next log.
+      hooks: {
+        logMethod(this: PinoLogger, inputArgs: any[], method: (...a: any[]) => void, level: number): void {
+          if (self.processors.length === 0) {
+            method.apply(this, inputArgs);
+            return;
+          }
+          self.runProcessors(this, inputArgs, method, level);
+        },
+      },
+    } as ILoggerOptions;
 
-    // Check if pretty print is enabled (for development)
-    const prettyPrint = config.prettyPrint || (config.environment === 'development' && config.prettyPrint !== false);
+    // Pretty (human-readable) output for development — pino-pretty as a
+    // destination stream. Production stays on structured JSON.
+    const prettyPrint =
+      config.prettyPrint === true ||
+      config.pretty === true ||
+      (config.environment === 'development' && config.prettyPrint !== false && config.pretty !== false);
+    const makeStdoutStream = (): NodeJS.WritableStream =>
+      prettyPrint
+        ? (prettyStream({ colorize: true }) as unknown as NodeJS.WritableStream)
+        : (process.stdout as unknown as NodeJS.WritableStream);
 
-    // Build destination: multistream if additional destinations provided, otherwise stdout
+    // Build destination. ITransport sinks and extra `destinations` both require
+    // a multistream; a bare stdout uses the async-destination fast path (T#66).
     const destinations = this.options.destinations;
-    const hasDestinations = destinations && destinations.length > 0;
+    const hasDestinations = !!(destinations && destinations.length > 0);
+    const hasTransports = this.transports.length > 0;
 
-    if (hasDestinations) {
+    if (hasDestinations || hasTransports) {
       // T#67: pino's multistream calls `.write()` on every registered
       // stream synchronously within its hot path. If any of those
       // streams has a synchronous `_write` — or one that does a
@@ -213,25 +253,35 @@ export class LoggerService implements ILoggerModule {
       // event loop stalls for the duration of that syscall. Wrap
       // every USER-supplied stream in an async forwarder so a slow
       // sub-stream can't block pino itself or its siblings. The
-      // process's own `process.stdout` is left untouched: it's
-      // either a real TTY (already async for most pipes) or
-      // managed by the host runtime.
+      // stdout stream (raw `process.stdout`, or the pino-pretty
+      // stream) is left as-is: a TTY/host-managed sink.
       const streams: Array<{ stream: NodeJS.WritableStream; level?: string }> = [
-        { stream: process.stdout as unknown as NodeJS.WritableStream },
+        { stream: makeStdoutStream() },
       ];
-      for (const dest of destinations) {
-        if ('stream' in dest && dest.stream) {
-          streams.push({
-            stream: wrapAsyncStream((dest as any).stream),
-            level: (dest as any).level,
-          });
-        } else {
-          streams.push({
-            stream: wrapAsyncStream(dest as unknown as NodeJS.WritableStream),
-          });
+      if (hasDestinations) {
+        for (const dest of destinations!) {
+          if ('stream' in dest && dest.stream) {
+            streams.push({
+              stream: wrapAsyncStream((dest as any).stream),
+              level: (dest as any).level,
+            });
+          } else {
+            streams.push({
+              stream: wrapAsyncStream(dest as unknown as NodeJS.WritableStream),
+            });
+          }
         }
       }
+      if (hasTransports) {
+        // ITransport sinks receive the fully-serialised record off pino's hot
+        // path via this fan-out stream (reads `this.transports` by reference).
+        streams.push({ stream: this.createTransportFanout() });
+      }
       this.rootLogger = pino(pinoOptions, multistream(streams as any));
+    } else if (prettyPrint) {
+      // Dev pretty output straight to stdout. pino-pretty manages its own
+      // stdout writes, so the async-destination flush hook does not apply here.
+      this.rootLogger = pino(pinoOptions, makeStdoutStream() as any);
     } else {
       // T#66: pino without a second-arg defaults to a SYNC stdout
       // destination — every `logger.info(...)` blocks the event
@@ -398,6 +448,120 @@ export class LoggerService implements ILoggerModule {
    */
   addProcessor(processor: ILogProcessor): void {
     this.processors.push(processor);
+  }
+
+  /**
+   * Run the processor pipeline for a single log call (invoked from pino's
+   * `logMethod` hook). Builds the record the processors see — the child
+   * bindings merged with the per-call fields plus `level`/`time`/`msg`/`err`
+   * meta — runs each processor in order, and either drops the log (a processor
+   * returned null/undefined) or forwards the transformed fields to pino.
+   *
+   * A top-level `Error` argument is preserved as-is so pino's native error
+   * serialiser still applies; the meta `level`/`time` are stripped before the
+   * call so pino emits its own.
+   */
+  private runProcessors(
+    pinoLogger: PinoLogger,
+    args: any[],
+    method: (...a: any[]) => void,
+    level: number
+  ): void {
+    const errorFirst = args.length > 0 && args[0] instanceof Error;
+    const objFirst = !errorFirst && args.length > 0 && typeof args[0] === 'object' && args[0] !== null;
+    const mergeObj: Record<string, any> = objFirst ? (args[0] as Record<string, any>) : {};
+    const hasLead = objFirst || errorFirst;
+    const msg = hasLead ? args[1] : args[0];
+    const interp = args.slice(hasLead ? 2 : 1);
+
+    const levelLabel = (pinoLogger as any).levels?.labels?.[level] ?? String(level);
+    let record: any = {
+      level: levelLabel,
+      time: Date.now(),
+      ...pinoLogger.bindings(),
+      ...mergeObj,
+    };
+    if (errorFirst) record.err = args[0];
+    if (msg !== undefined) record.msg = msg;
+
+    for (const processor of this.processors) {
+      record = processor.process(record);
+      if (record === null || record === undefined) {
+        return; // a processor dropped the log — emit nothing
+      }
+    }
+
+    // Reconstruct the pino call from the (possibly transformed) record. `level`
+    // and `time` are pino-managed and must not be passed back as fields.
+    const outObj: Record<string, any> = { ...record };
+    delete outObj['level'];
+    delete outObj['time'];
+    const outMsg = outObj['msg'];
+    delete outObj['msg'];
+
+    if (errorFirst) {
+      // Keep pino's native top-level-Error handling: pass the original Error
+      // back. If processors added other fields, carry them on the merge object
+      // under the standard `err` key so the serialiser still applies.
+      delete outObj['err'];
+      const lead = Object.keys(outObj).length > 0 ? { ...outObj, err: args[0] } : args[0];
+      const outArgs: any[] = [lead];
+      if (outMsg !== undefined) outArgs.push(outMsg);
+      method.apply(pinoLogger, outArgs.concat(interp));
+      return;
+    }
+
+    const outArgs: any[] = [outObj];
+    if (outMsg !== undefined) outArgs.push(outMsg);
+    method.apply(pinoLogger, outArgs.concat(interp));
+  }
+
+  /**
+   * Create (once) the fan-out stream that delivers each serialised log record
+   * to every registered `ITransport`. It sits in the root multistream, so it
+   * receives exactly what pino emits — after the processor pipeline, and only
+   * for logs that passed the level filter. Work is deferred to a `setImmediate`
+   * macrotask (T#67) so a slow or synchronous `transport.write` can never block
+   * pino's hot path, and each transport is isolated in try/catch so a throwing
+   * transport can't break logging. The live `this.transports` list is read on
+   * every write, so `addTransport()` after init is honoured.
+   */
+  private createTransportFanout(): NodeJS.WritableStream {
+    if (this.transportFanout) return this.transportFanout;
+    const self = this;
+    const fanout = new Writable({
+      write(chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) {
+        const transports = self.transports;
+        if (transports.length === 0) {
+          callback();
+          return;
+        }
+        const line = chunk.toString();
+        setImmediate(() => {
+          let record: any;
+          try {
+            record = JSON.parse(line);
+          } catch {
+            record = line;
+          }
+          for (const transport of transports) {
+            try {
+              const result = transport.write(record);
+              if (result && typeof (result as Promise<void>).then === 'function') {
+                (result as Promise<void>).catch(() => {
+                  /* a transport's async failure must never break logging */
+                });
+              }
+            } catch {
+              /* a transport must never break logging */
+            }
+          }
+        });
+        callback();
+      },
+    });
+    this.transportFanout = fanout as unknown as NodeJS.WritableStream;
+    return this.transportFanout;
   }
 
   /**

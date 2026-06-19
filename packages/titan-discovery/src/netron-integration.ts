@@ -10,7 +10,13 @@
 
 import { Injectable, Inject, Optional, PostConstruct, PreDestroy } from '@omnitron-dev/titan/decorators';
 import { NETRON_TOKEN } from '@omnitron-dev/titan/application';
-import { DISCOVERY_SERVICE_TOKEN, type IDiscoveryService, type ServiceInfo } from './types.js';
+import {
+  DISCOVERY_SERVICE_TOKEN,
+  DISCOVERY_OPTIONS_TOKEN,
+  type IDiscoveryService,
+  type ServiceInfo,
+  type DiscoveryOptions,
+} from './types.js';
 import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '@omnitron-dev/titan/netron';
 import type { Netron } from '@omnitron-dev/titan/netron';
 import type { ServiceExposeEvent, ServiceUnexposeEvent } from '@omnitron-dev/titan/netron';
@@ -64,15 +70,21 @@ export class NetronDiscoveryIntegration {
   private serviceExposeHandler: (event: ServiceExposeEvent) => void;
   private serviceUnexposeHandler: (event: ServiceUnexposeEvent) => void;
   private initialized = false;
+  // Whether to register already-exposed services on init (DiscoveryOptions.
+  // registerExisting, default true). Services exposed AFTER init are always
+  // registered via the live expose event regardless of this flag.
+  private readonly registerExistingOnInit: boolean;
 
   constructor(
     @Optional() @Inject(NETRON_TOKEN) private netron: Netron | null,
     @Optional() @Inject(DISCOVERY_SERVICE_TOKEN) private discovery: IDiscoveryService | null,
-    @Optional() @Inject(LOGGER_TOKEN) private logger?: ILogger
+    @Optional() @Inject(LOGGER_TOKEN) private logger?: ILogger,
+    @Optional() @Inject(DISCOVERY_OPTIONS_TOKEN) options?: DiscoveryOptions | null
   ) {
     // Bind handlers in constructor to ensure they're always defined
     this.serviceExposeHandler = this.handleServiceExpose.bind(this);
     this.serviceUnexposeHandler = this.handleServiceUnexpose.bind(this);
+    this.registerExistingOnInit = options?.registerExisting !== false;
   }
 
   /**
@@ -105,8 +117,14 @@ export class NetronDiscoveryIntegration {
     // Listen for service unexpose events
     this.netron.on(NETRON_EVENT_SERVICE_UNEXPOSE, this.serviceUnexposeHandler);
 
-    // Register any existing services
-    await this.registerExistingServices();
+    // Register any services that were already exposed before init — unless the
+    // caller opted out via `registerExisting: false`. (Services exposed after
+    // this point are picked up by the live expose-event handler regardless.)
+    if (this.registerExistingOnInit) {
+      await this.registerExistingServices();
+    } else {
+      this.logger?.debug?.('NetronDiscoveryIntegration: registerExisting=false — skipping existing-service registration');
+    }
 
     this.initialized = true;
     this.logger?.info?.('NetronDiscoveryIntegration: Integration initialized successfully');

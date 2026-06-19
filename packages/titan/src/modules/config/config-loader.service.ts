@@ -264,7 +264,10 @@ export class ConfigLoaderService implements IConfigLoader {
    * errors aren't transient).
    */
   private async loadRemote(source: IRemoteConfigSource): Promise<Record<string, any>> {
-    const maxAttempts = 3;
+    // `source.retry` is the max number of fetch attempts (default 3). A value
+    // < 1 is meaningless (it would never fetch), so fall back to the default.
+    const maxAttempts =
+      Number.isInteger(source.retry) && (source.retry as number) >= 1 ? (source.retry as number) : 3;
     const baseDelay = 200;
     const maxDelay = 2_000;
 

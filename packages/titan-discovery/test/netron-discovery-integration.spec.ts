@@ -109,6 +109,46 @@ describe('NetronDiscoveryIntegration', () => {
         version: '1.0.0',
       });
     });
+
+    it('should NOT register existing services when registerExisting is false', async () => {
+      mockNetron.services.set('test-service:1.0.0', {
+        definition: { meta: { name: 'test-service', version: '1.0.0' } },
+      });
+
+      // 4th arg = DiscoveryOptions; registerExisting:false opts out of the
+      // startup sweep.
+      integration = new NetronDiscoveryIntegration(mockNetron as any, mockDiscovery, mockLogger as any, {
+        registerExisting: false,
+      } as any);
+
+      await integration.onModuleInit();
+
+      // The pre-existing service is NOT registered on init...
+      expect(mockDiscovery.registerService).not.toHaveBeenCalled();
+
+      // ...but a service exposed AFTER init still registers via the live event.
+      mockNetron.emit(NETRON_EVENT_SERVICE_EXPOSE, { name: 'later-service', version: '2.0.0' });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockDiscovery.registerService).toHaveBeenCalledWith({
+        name: 'later-service',
+        version: '2.0.0',
+      });
+    });
+
+    it('registers existing services by default (registerExisting defaults to true)', async () => {
+      mockNetron.services.set('test-service:1.0.0', {
+        definition: { meta: { name: 'test-service', version: '1.0.0' } },
+      });
+
+      // No options passed → default behaviour (register existing).
+      integration = new NetronDiscoveryIntegration(mockNetron as any, mockDiscovery, mockLogger as any);
+      await integration.onModuleInit();
+
+      expect(mockDiscovery.registerService).toHaveBeenCalledWith({
+        name: 'test-service',
+        version: '1.0.0',
+      });
+    });
   });
 
   describe('Service Expose Event Handling', () => {

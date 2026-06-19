@@ -112,6 +112,8 @@ export class DiscoveryService implements IDiscoveryService, ILifecycle {
       redisPrefix: options?.redisPrefix ?? DEFAULT_REDIS_PREFIX,
       maxRetries: options?.maxRetries ?? 3,
       retryDelay: options?.retryDelay ?? 1000,
+      // Consumed by the Netron integration (not DiscoveryService itself).
+      registerExisting: options?.registerExisting ?? true,
     };
 
     if (this.options.clientMode) {

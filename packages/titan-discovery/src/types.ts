@@ -79,6 +79,15 @@ export interface DiscoveryOptions {
   redisPrefix?: string;
 
   /**
+   * (Netron integration) On startup, register services that were already
+   * exposed via Netron before the integration initialised. Set `false` to only
+   * register services exposed AFTER startup (services exposed later are always
+   * registered via the live expose event).
+   * @default true
+   */
+  registerExisting?: boolean;
+
+  /**
    * Maximum retry attempts for critical operations like heartbeat.
    * @default 3
    */

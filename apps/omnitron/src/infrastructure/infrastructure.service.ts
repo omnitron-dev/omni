@@ -36,6 +36,7 @@ import {
   ensureImage,
   waitForHealthy,
   createVolume,
+  containerSpecHash,
 } from './container-runtime.js';
 
 const RECONCILE_INTERVAL = 30_000; // 30s health sweep
@@ -469,6 +470,25 @@ export class InfrastructureService {
           config: desired,
           reason: `image changed: ${actual.image} → ${desired.image}`,
         };
+      }
+      // Config drift: image unchanged but the desired spec (env, ports,
+      // volumes, command, extraHosts) differs from what the running container
+      // was created with. Without this, an omnitron.config.ts edit that only
+      // touches env — e.g. the Tor hidden-service target — is silently ignored
+      // because the container is "running and healthy". Only fires when the
+      // running container carries a spec-hash label; pre-upgrade containers
+      // (no label) are left alone until they recreate for another reason, so
+      // upgrading omnitron never churns an otherwise-healthy stack.
+      if (actual.specHash) {
+        const desiredHash = containerSpecHash(desired);
+        if (actual.specHash !== desiredHash) {
+          return {
+            type: 'recreate',
+            service: desired.name,
+            config: desired,
+            reason: `config drift (spec ${actual.specHash} → ${desiredHash})`,
+          };
+        }
       }
       return { type: 'noop', service: desired.name };
     }

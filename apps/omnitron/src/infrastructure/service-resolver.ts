@@ -433,6 +433,9 @@ export function resolveGateway(
       UPSTREAM_MESSAGING_WS_PORT: '3006',
       UPSTREAM_GEO_HOST: upstreamHost,
       UPSTREAM_GEO_PORT: '3007',
+      // User-supplied env overrides/additions (e.g. PORTAL_DEV_UPSTREAM). Merged
+      // last so config can override a preset default when intended.
+      ...(config.env ?? {}),
     },
     volumes: [
       // nginx.conf template — rendered by entrypoint via envsubst

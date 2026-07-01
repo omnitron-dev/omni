@@ -8,7 +8,40 @@
  * All Omnitron-managed containers are labeled with `omnitron.managed=true`.
  */
 
+import { createHash } from 'node:crypto';
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
+
+/** Label carrying the desired-spec fingerprint, used for config-drift detection. */
+export const SPEC_HASH_LABEL = 'omnitron.spec-hash';
+
+/**
+ * Stable fingerprint of a container's *desired* spec. Covers the fields that a
+ * config edit can change and that require a recreate to apply (image, env,
+ * ports, volumes, command/entrypoint, extraHosts). Deliberately EXCLUDES
+ * labels — the spec-hash label is derived from this, and docker-compose adds
+ * label noise — so the hash is stable across recreations of an unchanged spec.
+ *
+ * Stamped as a label at create time and compared on reconcile so that an env
+ * change (e.g. the Tor hidden-service target) triggers a recreate instead of
+ * being silently ignored because the image is unchanged.
+ */
+export function containerSpecHash(config: ResolvedContainer): string {
+  const sortedEnv = Object.keys(config.environment)
+    .sort()
+    .map((k) => [k, config.environment[k]]);
+  const normalized = JSON.stringify({
+    image: config.image,
+    env: sortedEnv,
+    ports: [...config.ports].sort((a, b) => a.host - b.host || a.container - b.container),
+    volumes: [...config.volumes]
+      .map((v) => ({ s: v.source, t: v.target, ro: !!v.readonly }))
+      .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0)),
+    command: config.command ?? null,
+    entrypoint: config.entrypoint ?? null,
+    extraHosts: [...(config.extraHosts ?? [])].sort(),
+  });
+  return createHash('sha1').update(normalized).digest('hex').slice(0, 16);
+}
 
 // =============================================================================
 // Singleton DockerAdapter (lazy-loaded, self-healing)
@@ -121,6 +154,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status),
+        specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
       };
     });
   } catch {
@@ -182,8 +216,11 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     args.push('-v', `${v.source}:${v.target}${v.readonly ? ':ro' : ''}`);
   }
 
-  // Labels
-  for (const [key, value] of Object.entries(config.labels ?? {})) {
+  // Labels — stamp the desired-spec fingerprint so a later reconcile can
+  // detect config drift (env/ports/volumes/cmd change under the same image)
+  // and recreate instead of silently no-op'ing.
+  const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config) };
+  for (const [key, value] of Object.entries(labels)) {
     args.push('--label', `${key}=${value}`);
   }
 

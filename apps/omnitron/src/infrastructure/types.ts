@@ -70,6 +70,8 @@ export interface GatewayServiceConfig {
   redisDb?: number;
   /** Auto-generated from app transport definitions if not specified */
   customConfig?: string;
+  /** Extra environment variables passed to the gateway container (merged over the preset defaults). */
+  env?: Record<string, string>;
   resources?: ResourceLimits;
 }
 
@@ -138,6 +140,8 @@ export interface ContainerState {
   health?: 'healthy' | 'unhealthy' | 'starting' | 'none' | undefined;
   startedAt?: string | undefined;
   error?: string | undefined;
+  /** Desired-spec fingerprint from the omnitron.spec-hash label (config-drift detection). */
+  specHash?: string | undefined;
 }
 
 export interface InfrastructureState {

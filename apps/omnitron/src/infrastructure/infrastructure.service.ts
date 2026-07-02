@@ -331,6 +331,29 @@ export class InfrastructureService {
   }
 
   /**
+   * Databases declared for this stack's postgres (e.g. main, storage, geo).
+   * Source of truth for "which DBs must be backed up" — read straight from
+   * the same `infrastructure.postgres.databases` block omnitron provisions
+   * from, so the backup set can never drift from the provisioned set.
+   */
+  getPostgresDatabases(): string[] {
+    const pg = this.config.postgres;
+    if (!pg || !pg.databases) return [];
+    return Object.keys(pg.databases);
+  }
+
+  /**
+   * Resolved container name for an infra service (e.g. 'postgres' →
+   * 'daos-dev-postgres'). Taken from the already-resolved desired containers
+   * so it reflects the real container prefix rather than re-deriving it from
+   * the mutable module-global. Returns null if the stack has no such service.
+   */
+  getResolvedContainerName(service: string): string | null {
+    const match = this.desiredContainers.find((d) => d.name.endsWith(`-${service}`));
+    return match?.name ?? null;
+  }
+
+  /**
    * Get connection info for an infrastructure service.
    * Used by config generator to resolve { infra: 'postgres', database: 'main' }.
    */

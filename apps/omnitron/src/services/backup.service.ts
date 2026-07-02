@@ -16,11 +16,12 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
-import { DAEMON_STATE_STORE_TOKEN } from '../shared/tokens.js';
+import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import type { ProjectService } from './project.service.js';
 
 // =============================================================================
 // Types
@@ -71,6 +72,13 @@ export class BackupService {
      * files happens on the first list/restore call.
      */
     @Inject(DAEMON_STATE_STORE_TOKEN) private readonly store: DaemonStateStore,
+    /**
+     * Optional so the daemon still boots (and omnitron-pg self-backup still
+     * works) even if the project subsystem is unavailable. When present it is
+     * the source of truth for the running stacks' real DB topology, replacing
+     * the old hardcoded omnitron-pg-only mappings.
+     */
+    @Optional() @Inject(PROJECT_SERVICE_TOKEN) private readonly projects?: ProjectService,
   ) {
     this.logger = loggerModule.logger;
     this.backupDir = expandPath('~/.omnitron/backups');
@@ -391,33 +399,107 @@ export class BackupService {
   // ===========================================================================
 
   private resolveDbConfig(database: string): { dbConfig: DbConfig; isDocker: boolean; containerName: string } {
-    // Known database mappings for Omnitron infrastructure
-    const configs: Record<string, { dbConfig: DbConfig; containerName: string }> = {
-      omnitron: {
-        dbConfig: { host: 'localhost', port: 5480, user: 'omnitron', password: 'omnitron', database: 'omnitron' },
-        containerName: 'omnitron-pg',
-      },
-      main: {
-        dbConfig: { host: 'localhost', port: 5432, user: 'omnitron', password: 'omnitron', database: 'omnitron_main' },
-        containerName: 'omnitron-pg',
-      },
-      storage: {
-        dbConfig: { host: 'localhost', port: 5432, user: 'omnitron', password: 'omnitron', database: 'omnitron_storage' },
-        containerName: 'omnitron-pg',
-      },
-    };
-
-    const entry = configs[database];
-    if (!entry) {
-      // Default: treat as omnitron-pg database name
+    // 1. Stack databases — resolved LIVE from the running stacks' real
+    //    infrastructure (container, credentials, DB list) via ProjectService.
+    //    This is the primary path for project/app databases (main, storage,
+    //    priceverse, paysys, messaging, geo, …). Accepts either the bare DB
+    //    name ("main") or a fully-qualified "<project>/<stack>/<db>" key.
+    const stackMap = this.buildStackDbMap();
+    const stackEntry = stackMap.get(database);
+    if (stackEntry) {
       return {
-        dbConfig: { host: 'localhost', port: 5480, user: 'omnitron', password: 'omnitron', database },
+        dbConfig: {
+          host: stackEntry.host,
+          port: stackEntry.port,
+          user: stackEntry.user,
+          password: stackEntry.password,
+          database: stackEntry.database,
+        },
+        isDocker: !!stackEntry.container,
+        containerName: stackEntry.container ?? '',
+      };
+    }
+
+    // 2. Omnitron's own control-plane database (daemon state DB).
+    if (database === 'omnitron' || database === 'omnitron-pg') {
+      return {
+        dbConfig: { host: 'localhost', port: 5480, user: 'omnitron', password: 'omnitron', database: 'omnitron' },
         isDocker: true,
         containerName: 'omnitron-pg',
       };
     }
 
-    return { dbConfig: entry.dbConfig, isDocker: true, containerName: entry.containerName };
+    // 3. Unknown — fail loudly rather than silently dumping the wrong DB
+    //    (the pre-fix behaviour that made `backup create main` hit the wrong
+    //    database entirely).
+    const known = [...new Set([...stackMap.keys()].filter((k) => !k.includes('/')))];
+    throw new Error(
+      `Unknown backup target '${database}'. Known databases: ${known.length ? known.join(', ') : '(no running stack)'}, omnitron`,
+    );
+  }
+
+  /**
+   * Resolve every database of every running stack to its real connection
+   * (container, credentials) straight from the provisioned InfrastructureService
+   * — so the backup set is always in lock-step with what omnitron provisioned.
+   * Registers both the bare DB name and a "<project>/<stack>/<db>" key.
+   */
+  private buildStackDbMap(): Map<string, StackDbResolution> {
+    const map = new Map<string, StackDbResolution>();
+    const projects = this.projects;
+    if (!projects) return map;
+    try {
+      const infraManager = projects.getInfraManager();
+      for (const p of projects.listProjects()) {
+        let stacks: string[] = [];
+        try { stacks = projects.getRunningStacks(p.name); } catch { continue; }
+        for (const stack of stacks) {
+          const infra = infraManager.getInstance(p.name, stack);
+          if (!infra) continue;
+          const conn = infra.getConnectionInfo('postgres') as
+            | { host?: string; port?: number; user?: string; password?: string }
+            | null;
+          if (!conn) continue;
+          const container = infra.getResolvedContainerName('postgres') ?? undefined;
+          for (const db of infra.getPostgresDatabases()) {
+            const res: StackDbResolution = {
+              container,
+              host: String(conn.host ?? 'localhost'),
+              port: Number(conn.port ?? 5432),
+              user: String(conn.user ?? 'postgres'),
+              password: String(conn.password ?? 'postgres'),
+              database: db,
+              project: p.name,
+              stack,
+            };
+            if (!map.has(db)) map.set(db, res); // bare name: first stack wins
+            map.set(`${p.name}/${stack}/${db}`, res); // fully-qualified: unambiguous
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, 'Failed to resolve stack DB topology for backup');
+    }
+    return map;
+  }
+
+  /**
+   * Back up every database of every running stack. A single DB failure is
+   * captured per-entry and does not abort the rest. Returns per-DB results.
+   */
+  async createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    const bareNames = [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))];
+    const results: Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
+    for (const db of bareNames) {
+      try {
+        const info = await this.createBackup(db, { compress: true });
+        results.push({ database: db, ok: true, id: info.id, size: info.size });
+      } catch (err) {
+        results.push({ database: db, ok: false, error: (err as Error).message });
+      }
+    }
+    this.logger.info({ total: results.length, ok: results.filter((r) => r.ok).length }, 'createAllBackups complete');
+    return results;
   }
 
   private parseCronInterval(cron: string): number {
@@ -446,4 +528,18 @@ interface DbConfig {
   user: string;
   password: string;
   database: string;
+}
+
+/** A stack database resolved to its real, provisioned connection. */
+interface StackDbResolution {
+  /** Docker container to `docker exec` into (undefined ⇒ local pg_dump). */
+  container: string | undefined;
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  /** Actual database name inside the server. */
+  database: string;
+  project: string;
+  stack: string;
 }

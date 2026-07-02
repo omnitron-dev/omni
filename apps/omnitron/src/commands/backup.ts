@@ -10,30 +10,38 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 async function invokeRpc(method: string, data?: any): Promise<any> {
   const client = createDaemonClient();
   try {
-    await (client as any).ensureConnected();
-    const netron = (client as any).netron;
-    const peers = netron.getPeers ? netron.getPeers() : [];
-    for (const peer of peers) {
-      try {
-        const svc = await peer.queryInterface('OmnitronBackups');
-        if (svc && typeof svc[method] === 'function') {
-          return data ? await svc[method](data) : await svc[method]();
-        }
-      } catch {
-        continue;
-      }
+    if (!(await client.isReachable())) {
+      throw new Error('omnitron daemon is not running (start it with `omnitron up`)');
     }
-    throw new Error('OmnitronBackups service not available');
+    const svc = await client.service<Record<string, (arg?: any) => Promise<any>>>('OmnitronBackups');
+    return data !== undefined ? await svc[method]!(data) : await svc[method]!();
   } finally {
     await client.disconnect();
   }
 }
 
 export async function backupCreateCommand(database?: string): Promise<void> {
-  const db = database || 'omnitron';
   try {
-    log.info(`Creating backup for '${db}'...`);
-    const backup: any = await invokeRpc('createBackup', { database: db, compress: true });
+    // No target ⇒ back up every database of every running stack (the safe
+    // default for data protection). A specific name backs up just that DB.
+    if (!database) {
+      log.info('Creating backups for all running-stack databases...');
+      const results: any[] = await invokeRpc('createAllBackups');
+      if (!results || results.length === 0) {
+        log.warn('No databases found to back up — is a stack running?');
+        return;
+      }
+      for (const r of results) {
+        if (r.ok) log.success(`  ✓ ${r.database} — ${(r.size / (1024 * 1024)).toFixed(2)} MB [${r.id.slice(0, 8)}]`);
+        else log.error(`  ✗ ${r.database}: ${r.error}`);
+      }
+      const ok = results.filter((r) => r.ok).length;
+      log.info(`Done: ${ok}/${results.length} database(s) backed up`);
+      return;
+    }
+
+    log.info(`Creating backup for '${database}'...`);
+    const backup: any = await invokeRpc('createBackup', { database, compress: true });
     const sizeMB = (backup.size / (1024 * 1024)).toFixed(2);
     log.success(`Backup created: ${backup.filename} (${sizeMB} MB)`);
     log.info(`  ID: ${backup.id}`);

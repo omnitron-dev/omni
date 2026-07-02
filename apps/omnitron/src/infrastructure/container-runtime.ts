@@ -148,6 +148,11 @@ export async function getContainerState(name: string): Promise<ContainerState | 
       if (!exists) return null;
 
       const info = await adapter.inspectContainer(name);
+      // Network attachment: an OrbStack/dockerd restart can leave a container
+      // 'running' but detached from every network (empty Networks) with its
+      // published ports gone — reachable by nothing. Surface it so callers can
+      // recreate instead of trusting the 'running' status.
+      const networkAttached = Object.keys(info.NetworkSettings?.Networks ?? {}).length > 0;
       return {
         name: (info.Name ?? name).replace(/^\//, ''),
         image: info.Config?.Image ?? '',
@@ -155,6 +160,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         containerId: info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
+        networkAttached,
       };
     });
   } catch {

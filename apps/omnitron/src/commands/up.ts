@@ -185,7 +185,12 @@ async function provisionOmnitronPg(): Promise<void> {
     const pgSpec = resolveOmnitronPg();
     const existing = await getContainerState(pgSpec.name);
 
-    if (!existing || existing.status !== 'running') {
+    // Recreate when absent, not running, OR running-but-network-detached — the
+    // last case is the OrbStack/dockerd-restart artifact that leaves the auth
+    // DB 'running' yet unreachable (host :5480 dead), which silently breaks
+    // Console login. The named data volume is preserved across recreation.
+    const detached = existing?.status === 'running' && existing.networkAttached === false;
+    if (!existing || existing.status !== 'running' || detached) {
       if (existing) await removeContainer(pgSpec.name);
       await ensureImage(pgSpec.image);
       for (const vol of pgSpec.volumes) {
@@ -193,7 +198,7 @@ async function provisionOmnitronPg(): Promise<void> {
       }
       await createContainer(pgSpec);
       await waitForHealthy(pgSpec.name, 60_000);
-      s.stop('omnitron-pg ready (port 5480)');
+      s.stop(detached ? 'omnitron-pg recreated (was network-detached; port 5480)' : 'omnitron-pg ready (port 5480)');
     } else {
       s.stop('omnitron-pg already running');
     }
@@ -267,6 +272,14 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
     log.info('Use `omnitron stack start/stop` to manage stacks.');
     log.info('Use `omnitron down` to stop.');
     return;
+  }
+
+  // Ensure omnitron-pg (Console auth DB) is healthy on EVERY master start, not
+  // just first-run init — recreates it if absent, stopped, or running-but-
+  // network-detached (the OrbStack/dockerd-restart artifact that silently
+  // breaks Console login). Idempotent: a healthy container is left as-is.
+  if (savedConfig.role === 'master' && !options?.noInfra) {
+    await provisionOmnitronPg();
   }
 
   // 3. Foreground mode — blocks terminal

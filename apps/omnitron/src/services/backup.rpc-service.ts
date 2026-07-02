@@ -23,6 +23,12 @@ export class BackupRpcService {
     return this.backups.createAllBackups();
   }
 
+  /** Full backup: all stack DBs + minio storage + tor keys + daemon-state. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    return this.backups.createFullBackup();
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async listBackups(data?: { database?: string }): Promise<BackupInfo[]> {
     return this.backups.listBackups(data?.database);

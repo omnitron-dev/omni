@@ -650,6 +650,14 @@ backup
   });
 
 backup
+  .command('full')
+  .description('Full backup: all stack DBs + minio storage + tor keys + daemon-state')
+  .action(async () => {
+    const { backupFullCommand } = await import('../commands/backup.js');
+    await backupFullCommand();
+  });
+
+backup
   .command('list')
   .description('List available backups')
   .action(async () => {

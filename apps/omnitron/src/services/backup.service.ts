@@ -187,6 +187,173 @@ export class BackupService {
   }
 
   // ===========================================================================
+  // Non-DB backup targets: storage objects, tor keys, daemon-state (secrets)
+  // ===========================================================================
+
+  /** First running stack's provisioned InfrastructureService (for minio/tor). */
+  private getRunningInfra(): { infra: InfraLike; project: string; stack: string } | null {
+    const projects = this.projects;
+    if (!projects) return null;
+    try {
+      const mgr = projects.getInfraManager();
+      for (const p of projects.listProjects()) {
+        let stacks: string[] = [];
+        try { stacks = projects.getRunningStacks(p.name); } catch { continue; }
+        for (const stack of stacks) {
+          const infra = mgr.getInstance(p.name, stack) as unknown as InfraLike | null;
+          if (infra) return { infra, project: p.name, stack };
+        }
+      }
+    } catch { /* no running stack */ }
+    return null;
+  }
+
+  /** Index a already-written backup file into the SQLite backups table. */
+  private indexBackupFile(app: string, filepath: string, type: string): BackupInfo {
+    const stats = fs.statSync(filepath);
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    const filename = path.basename(filepath);
+    this.store.insertBackupSync({
+      id, app, path: filepath, size_bytes: stats.size, created_at: createdAt,
+      metadata: { filename, compressed: filename.endsWith('.gz'), type },
+    });
+    return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz') };
+  }
+
+  private async execShell(cmd: string, timeoutMs = 600_000): Promise<void> {
+    const { execFile } = await import('node:child_process');
+    await new Promise<void>((resolve, reject) => {
+      execFile('/bin/sh', ['-c', cmd], { timeout: timeoutMs, maxBuffer: 200 * 1024 * 1024 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+  }
+
+  private async execToFile(cmd: string, outputPath: string, timeoutMs = 600_000): Promise<void> {
+    await this.execShell(cmd, timeoutMs);
+    if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+      throw new Error('backup produced an empty file');
+    }
+  }
+
+  private async restoreStorageBackup(filepath: string): Promise<void> {
+    const running = this.getRunningInfra();
+    const conn = running?.infra.getConnectionInfo('minio') as { accessKey?: string; secretKey?: string } | null;
+    const container = running?.infra.getResolvedContainerName('minio');
+    if (!running || !conn || !container) throw new Error('minio not found in any running stack');
+    const ak = conn.accessKey ?? 'minioadmin';
+    const sk = conn.secretKey ?? 'minioadmin';
+    const stage = path.join(this.backupDir, `.storage-restore-${randomUUID().slice(0, 8)}`);
+    // Untar on the host, docker cp into the container, then mirror back into the
+    // bucket (minio has no tar, so staging happens host-side).
+    const inner = `mc alias set _bk http://localhost:9000 ${ak} ${sk} >/dev/null 2>&1; ` +
+      `mc mb --ignore-existing _bk/storage >/dev/null 2>&1; ` +
+      `mc mirror --overwrite --quiet /tmp/_bk_storage _bk/storage >/dev/null 2>&1; true`;
+    try {
+      await this.execShell(
+        `rm -rf "${stage}" && mkdir -p "${stage}" && tar xzf "${filepath}" -C "${stage}" && ` +
+        `docker exec ${container} rm -rf /tmp/_bk_storage && docker cp "${stage}/_bk_storage" ${container}:/tmp/_bk_storage && ` +
+        `docker exec ${container} sh -c '${inner}'`,
+      );
+    } finally {
+      await this.execShell(`rm -rf "${stage}"`).catch(() => { /* best-effort */ });
+    }
+  }
+
+  private async restoreTorKeysBackup(filepath: string): Promise<void> {
+    const container = this.getRunningInfra()?.infra.getResolvedContainerName('tor');
+    if (!container) throw new Error('tor not found in any running stack');
+    await this.execShell(`docker exec -i ${container} sh -c 'tar xzf - -C /var/lib/tor' < "${filepath}"`);
+    this.logger.warn({}, 'Tor keys restored — restart the tor container to serve the restored onion');
+  }
+
+  /** Object-level backup of the minio `storage` bucket (mc mirror → tar.gz). */
+  async createStorageBackup(): Promise<BackupInfo> {
+    const running = this.getRunningInfra();
+    const conn = running?.infra.getConnectionInfo('minio') as
+      | { accessKey?: string; secretKey?: string } | null;
+    const container = running?.infra.getResolvedContainerName('minio');
+    if (!running || !conn || !container) throw new Error('minio not found in any running stack');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filepath = path.join(this.backupDir, `storage-objects_${ts}_${randomUUID().slice(0, 8)}.tar.gz`);
+    const stage = path.join(this.backupDir, `.storage-stage-${randomUUID().slice(0, 8)}`);
+    const ak = conn.accessKey ?? 'minioadmin';
+    const sk = conn.secretKey ?? 'minioadmin';
+    // mc is bundled in the minio image (tar is NOT): mirror the bucket into a
+    // container temp dir, `docker cp` it to the host, then tar on the host.
+    // Object-level (not raw volume) so it survives minio storage-format changes.
+    const inner = `mc alias set _bk http://localhost:9000 ${ak} ${sk} >/dev/null 2>&1; ` +
+      `mc mb --ignore-existing _bk/storage >/dev/null 2>&1; ` +
+      `rm -rf /tmp/_bk_storage && mkdir -p /tmp/_bk_storage && ` +
+      `mc mirror --overwrite --quiet _bk/storage /tmp/_bk_storage >/dev/null 2>&1; true`;
+    this.logger.info({ container }, 'Backing up minio storage bucket');
+    try {
+      await this.execShell(`docker exec ${container} sh -c '${inner}'`);
+      await this.execToFile(
+        `rm -rf "${stage}" && mkdir -p "${stage}" && docker cp ${container}:/tmp/_bk_storage "${stage}/" && ` +
+        `tar czf "${filepath}" -C "${stage}" _bk_storage`,
+        filepath,
+      );
+    } finally {
+      await this.execShell(`rm -rf "${stage}"`).catch(() => { /* best-effort */ });
+    }
+    return this.indexBackupFile('storage-objects', filepath, 'storage-objects');
+  }
+
+  /** Snapshot the Tor hidden-service keys (the .onion identity). */
+  async createTorKeysBackup(): Promise<BackupInfo> {
+    const running = this.getRunningInfra();
+    const container = running?.infra.getResolvedContainerName('tor');
+    if (!container) throw new Error('tor not found in any running stack');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filepath = path.join(this.backupDir, `tor-keys_${ts}_${randomUUID().slice(0, 8)}.tar.gz`);
+    this.logger.info({ container }, 'Backing up tor hidden-service keys');
+    await this.execToFile(`docker exec ${container} tar czf - -C /var/lib/tor . > "${filepath}"`, filepath);
+    return this.indexBackupFile('tor-keys', filepath, 'tor-keys');
+  }
+
+  /** Online snapshot of the daemon-state DB (encrypted secrets + backup index). */
+  async createSecretsBackup(): Promise<BackupInfo> {
+    const src = expandPath('~/.omnitron/data/daemon-state.db');
+    if (!fs.existsSync(src)) throw new Error('daemon-state.db not found');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filepath = path.join(this.backupDir, `daemon-state_${ts}_${randomUUID().slice(0, 8)}.db`);
+    // `.backup` is SQLite's online-consistent snapshot — safe while the daemon
+    // holds the DB open in WAL mode.
+    this.logger.info({}, 'Backing up daemon-state.db (secrets + backup index)');
+    await this.execToFile(`sqlite3 "${src}" ".backup '${filepath}'"`, filepath);
+    return this.indexBackupFile('daemon-state', filepath, 'daemon-state');
+  }
+
+  /**
+   * Full backup: every stack DB + minio storage objects + tor keys +
+   * daemon-state (secrets). Per-target failures are captured, not fatal.
+   */
+  async createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    const results: Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
+    for (const r of await this.createAllBackups()) {
+      const { database, ...rest } = r;
+      results.push({ target: database, ...rest });
+    }
+    const extras: Array<[string, () => Promise<BackupInfo>]> = [
+      ['storage-objects', () => this.createStorageBackup()],
+      ['tor-keys', () => this.createTorKeysBackup()],
+      ['daemon-state', () => this.createSecretsBackup()],
+    ];
+    for (const [target, fn] of extras) {
+      try {
+        const info = await fn();
+        results.push({ target, ok: true, id: info.id, size: info.size });
+      } catch (err) {
+        results.push({ target, ok: false, error: (err as Error).message });
+      }
+    }
+    this.logger.info({ total: results.length, ok: results.filter((r) => r.ok).length }, 'createFullBackup complete');
+    return results;
+  }
+
+  // ===========================================================================
   // List backups
   // ===========================================================================
 
@@ -224,24 +391,39 @@ export class BackupService {
   // ===========================================================================
 
   async restoreBackup(backupId: string): Promise<void> {
-    const backups = await this.listBackups();
-    const backup = backups.find((b) => b.id === backupId);
-    if (!backup) throw new Error(`Backup '${backupId}' not found`);
+    this.migrateLegacyMetaIfPresent();
+    const row = this.store.selectBackupsSync().find((r) => r.id === backupId);
+    if (!row) throw new Error(`Backup '${backupId}' not found`);
+    if (!fs.existsSync(row.path)) throw new Error(`Backup file not found: ${row.path}`);
 
-    const filepath = path.join(this.backupDir, backup.filename);
-    if (!fs.existsSync(filepath)) throw new Error(`Backup file not found: ${backup.filename}`);
+    let meta: { type?: string; compressed?: boolean } = {};
+    if (row.metadata) { try { meta = JSON.parse(row.metadata); } catch { /* */ } }
+    const type = meta.type ?? 'postgres';
 
-    this.logger.info({ database: backup.database, filename: backup.filename }, 'Restoring backup');
+    this.logger.info({ app: row.app, type, path: row.path }, 'Restoring backup');
 
-    const { dbConfig, isDocker, containerName } = this.resolveDbConfig(backup.database);
-
-    if (isDocker) {
-      await this.pgRestoreDocker(containerName, dbConfig, filepath, backup.compressed);
-    } else {
-      await this.pgRestoreLocal(dbConfig, filepath, backup.compressed);
+    switch (type) {
+      case 'storage-objects':
+        await this.restoreStorageBackup(row.path);
+        break;
+      case 'tor-keys':
+        await this.restoreTorKeysBackup(row.path);
+        break;
+      case 'daemon-state':
+        throw new Error(
+          'Refusing to restore daemon-state.db into a running daemon. Stop the daemon (`omnitron down`), ' +
+          `copy ${row.path} to ~/.omnitron/data/daemon-state.db, then start it (\`omnitron up\`).`,
+        );
+      default: {
+        // Postgres — resolve the live target and pg_restore.
+        const { dbConfig, isDocker, containerName } = this.resolveDbConfig(row.app);
+        const compressed = meta.compressed ?? row.path.endsWith('.gz');
+        if (isDocker) await this.pgRestoreDocker(containerName, dbConfig, row.path, compressed);
+        else await this.pgRestoreLocal(dbConfig, row.path, compressed);
+      }
     }
 
-    this.logger.info({ database: backup.database }, 'Backup restored');
+    this.logger.info({ app: row.app, type }, 'Backup restored');
   }
 
   // ===========================================================================
@@ -321,7 +503,8 @@ export class BackupService {
     const timer = setInterval(() => {
       void (async () => {
         try {
-          if (database === 'all') await this.createAllBackups();
+          if (database === 'full') await this.createFullBackup();
+          else if (database === 'all') await this.createAllBackups();
           else await this.createBackup(database, { compress: true });
           await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
         } catch (err) {
@@ -338,9 +521,13 @@ export class BackupService {
    * Bounds unbounded growth from hourly schedules (~168/week/db otherwise).
    */
   private async pruneOldBackups(database: string, keep = 48): Promise<void> {
-    const dbs = database === 'all'
-      ? [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))]
-      : [database];
+    let dbs: string[];
+    if (database === 'all' || database === 'full') {
+      dbs = [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))];
+      if (database === 'full') dbs.push('storage-objects', 'tor-keys', 'daemon-state');
+    } else {
+      dbs = [database];
+    }
     for (const db of dbs) {
       const backups = (await this.listBackups(db)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       for (const old of backups.slice(keep)) {
@@ -584,6 +771,13 @@ interface DbConfig {
   user: string;
   password: string;
   database: string;
+}
+
+/** Minimal shape of InfrastructureService used by the backup service. */
+interface InfraLike {
+  getConnectionInfo(service: string): Record<string, unknown> | null;
+  getResolvedContainerName(service: string): string | null;
+  getPostgresDatabases(): string[];
 }
 
 /** A stack database resolved to its real, provisioned connection. */

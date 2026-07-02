@@ -80,6 +80,25 @@ export async function backupListCommand(): Promise<void> {
   }
 }
 
+export async function backupFullCommand(): Promise<void> {
+  try {
+    log.info('Creating FULL backup (all DBs + storage + tor keys + daemon-state)...');
+    const results: any[] = await invokeRpc('createFullBackup');
+    if (!results || results.length === 0) {
+      log.warn('Nothing to back up — is a stack running?');
+      return;
+    }
+    for (const r of results) {
+      if (r.ok) log.success(`  ✓ ${r.target} — ${((r.size ?? 0) / (1024 * 1024)).toFixed(2)} MB [${(r.id || '').slice(0, 8)}]`);
+      else log.error(`  ✗ ${r.target}: ${r.error}`);
+    }
+    const ok = results.filter((r) => r.ok).length;
+    log.info(`Done: ${ok}/${results.length} target(s) backed up`);
+  } catch (err) {
+    log.error(`Failed: ${(err as Error).message}`);
+  }
+}
+
 export async function backupScheduleCommand(target: string, cron: string): Promise<void> {
   try {
     await invokeRpc('setSchedule', { database: target, cron });

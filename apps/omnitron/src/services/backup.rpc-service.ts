@@ -50,4 +50,15 @@ export class BackupRpcService {
   async getSchedule(data: { database: string }): Promise<string | null> {
     return this.backups.getSchedule(data.database);
   }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async listSchedules(): Promise<Record<string, string>> {
+    return this.backups.listSchedules();
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async removeSchedule(data: { database: string }): Promise<{ success: boolean }> {
+    await this.backups.removeSchedule(data.database);
+    return { success: true };
+  }
 }

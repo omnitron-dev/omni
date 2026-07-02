@@ -665,6 +665,30 @@ backup
     await backupRestoreCommand(id);
   });
 
+backup
+  .command('schedule <target> <cron>')
+  .description("Schedule recurring backups (target 'all' = every stack DB; cron: hourly|daily|weekly|<ms>)")
+  .action(async (target, cron) => {
+    const { backupScheduleCommand } = await import('../commands/backup.js');
+    await backupScheduleCommand(target, cron);
+  });
+
+backup
+  .command('schedules')
+  .description('List configured backup schedules')
+  .action(async () => {
+    const { backupSchedulesCommand } = await import('../commands/backup.js');
+    await backupSchedulesCommand();
+  });
+
+backup
+  .command('unschedule <target>')
+  .description('Remove a backup schedule')
+  .action(async (target) => {
+    const { backupUnscheduleCommand } = await import('../commands/backup.js');
+    await backupUnscheduleCommand(target);
+  });
+
 // ============================================================================
 // Kubernetes
 // ============================================================================

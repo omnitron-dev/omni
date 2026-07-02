@@ -48,6 +48,7 @@ interface ScheduleEntry {
 
 @Injectable()
 export class BackupService {
+  private static readonly SCHEDULES_KV_KEY = 'backup:schedules';
   private readonly backupDir: string;
   private readonly logger: ILogger;
   private schedules = new Map<string, ScheduleEntry>();
@@ -268,29 +269,84 @@ export class BackupService {
   // Schedule
   // ===========================================================================
 
+  /**
+   * Arm and PERSIST a recurring backup. `database` may be a specific DB name,
+   * a "<project>/<stack>/<db>" key, or the special target "all" — which backs
+   * up every database of every running stack each tick. Persisted to state_kv
+   * so it survives daemon restarts (re-armed via restoreSchedules on boot).
+   */
   async setSchedule(database: string, cron: string): Promise<void> {
-    // Cancel existing schedule
+    this.armSchedule(database, cron);
+    const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
+    map[database] = cron;
+    this.store.kvSetSync(BackupService.SCHEDULES_KV_KEY, map);
+    this.logger.info({ database, cron }, 'Backup schedule set + persisted');
+  }
+
+  /** Cancel + un-persist a schedule. */
+  async removeSchedule(database: string): Promise<void> {
     const existing = this.schedules.get(database);
     if (existing?.timer) clearInterval(existing.timer);
+    this.schedules.delete(database);
+    const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
+    delete map[database];
+    this.store.kvSetSync(BackupService.SCHEDULES_KV_KEY, map);
+    this.logger.info({ database }, 'Backup schedule removed');
+  }
 
-    // Parse simple cron-like interval (for MVP: interpret as interval in ms)
-    const intervalMs = this.parseCronInterval(cron);
+  /** Re-arm every persisted schedule. Called once at daemon start. */
+  async restoreSchedules(): Promise<void> {
+    const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
+    let n = 0;
+    for (const [database, cron] of Object.entries(map)) {
+      this.armSchedule(database, cron);
+      n++;
+    }
+    if (n > 0) this.logger.info({ count: n }, 'Restored persisted backup schedules');
+  }
 
-    const timer = setInterval(async () => {
-      try {
-        await this.createBackup(database, { compress: true });
-      } catch (err) {
-        this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
-      }
-    }, intervalMs);
-    timer.unref();
-
-    this.schedules.set(database, { database, cron, timer });
-    this.logger.info({ database, cron, intervalMs }, 'Backup schedule set');
+  async listSchedules(): Promise<Record<string, string>> {
+    return this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
   }
 
   async getSchedule(database: string): Promise<string | null> {
-    return this.schedules.get(database)?.cron ?? null;
+    return this.schedules.get(database)?.cron ?? (await this.listSchedules())[database] ?? null;
+  }
+
+  /** In-memory timer arm (no persistence) — shared by setSchedule/restore. */
+  private armSchedule(database: string, cron: string): void {
+    const existing = this.schedules.get(database);
+    if (existing?.timer) clearInterval(existing.timer);
+    const intervalMs = this.parseCronInterval(cron);
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          if (database === 'all') await this.createAllBackups();
+          else await this.createBackup(database, { compress: true });
+          await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
+        } catch (err) {
+          this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
+        }
+      })();
+    }, intervalMs);
+    timer.unref();
+    this.schedules.set(database, { database, cron, timer });
+  }
+
+  /**
+   * Retention: keep the most recent `keep` backups per database, delete older.
+   * Bounds unbounded growth from hourly schedules (~168/week/db otherwise).
+   */
+  private async pruneOldBackups(database: string, keep = 48): Promise<void> {
+    const dbs = database === 'all'
+      ? [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))]
+      : [database];
+    for (const db of dbs) {
+      const backups = (await this.listBackups(db)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      for (const old of backups.slice(keep)) {
+        try { await this.deleteBackup(old.id); } catch { /* best-effort */ }
+      }
+    }
   }
 
   dispose(): void {

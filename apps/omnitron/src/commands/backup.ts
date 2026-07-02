@@ -80,6 +80,40 @@ export async function backupListCommand(): Promise<void> {
   }
 }
 
+export async function backupScheduleCommand(target: string, cron: string): Promise<void> {
+  try {
+    await invokeRpc('setSchedule', { database: target, cron });
+    log.success(`Scheduled backup of '${target}' every '${cron}'`);
+    log.info(`  (use 'all' to back up every running-stack database)`);
+  } catch (err) {
+    log.error(`Failed: ${(err as Error).message}`);
+  }
+}
+
+export async function backupSchedulesCommand(): Promise<void> {
+  try {
+    const map: Record<string, string> = await invokeRpc('listSchedules');
+    const entries = Object.entries(map || {});
+    if (entries.length === 0) {
+      log.info('No backup schedules configured');
+      return;
+    }
+    log.info('Backup schedules:');
+    for (const [target, cron] of entries) log.info(`  ${target.padEnd(28)} ${cron}`);
+  } catch (err) {
+    log.error(`Failed: ${(err as Error).message}`);
+  }
+}
+
+export async function backupUnscheduleCommand(target: string): Promise<void> {
+  try {
+    await invokeRpc('removeSchedule', { database: target });
+    log.success(`Removed backup schedule for '${target}'`);
+  } catch (err) {
+    log.error(`Failed: ${(err as Error).message}`);
+  }
+}
+
 export async function backupRestoreCommand(id: string): Promise<void> {
   try {
     log.info(`Restoring backup '${id}'...`);

@@ -504,6 +504,10 @@ export class OmnitronDaemon {
     const backupService = await container.resolveAsync<BackupService>(BACKUP_SERVICE_TOKEN);
     const backupRpcService = new BackupRpc(backupService);
     await this.app.netron.peer.exposeService(backupRpcService);
+    // Re-arm any persisted backup schedules so they survive daemon restarts.
+    await backupService.restoreSchedules().catch((err: unknown) =>
+      loggerModule.logger.warn({ err: (err as Error).message }, 'Failed to restore backup schedules'),
+    );
 
     // Infrastructure RPC service (reports infra state — slave has no infra)
     const { InfrastructureRpcService: InfraRpc } = await import('../services/infrastructure.rpc-service.js');

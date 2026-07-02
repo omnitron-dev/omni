@@ -17,6 +17,12 @@ export class BackupRpcService {
     return this.backups.createBackup(data.database, data.compress != null ? { compress: data.compress } : undefined);
   }
 
+  /** Back up every database of every running stack. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    return this.backups.createAllBackups();
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async listBackups(data?: { database?: string }): Promise<BackupInfo[]> {
     return this.backups.listBackups(data?.database);

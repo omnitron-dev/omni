@@ -142,6 +142,8 @@ export interface ContainerState {
   error?: string | undefined;
   /** Desired-spec fingerprint from the omnitron.spec-hash label (config-drift detection). */
   specHash?: string | undefined;
+  /** False when a 'running' container is detached from all networks (OrbStack/dockerd restart artifact). */
+  networkAttached?: boolean | undefined;
 }
 
 export interface InfrastructureState {

@@ -485,6 +485,17 @@ export class InfrastructureService {
     }
 
     if (actual.status === 'running') {
+      // Running but detached from all networks (OrbStack/dockerd-restart
+      // artifact): the container is unreachable and its published ports are
+      // gone. 'running' is a lie here — recreate to re-attach + re-publish.
+      if (actual.networkAttached === false) {
+        return {
+          type: 'recreate',
+          service: desired.name,
+          config: desired,
+          reason: 'network-detached (running but on no network)',
+        };
+      }
       // Check if image changed
       if (actual.image !== desired.image && !actual.image.startsWith(desired.image)) {
         return {

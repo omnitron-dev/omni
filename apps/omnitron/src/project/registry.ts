@@ -196,9 +196,17 @@ export class ProjectRegistry {
    * unchanged.
    */
   persist(): void {
-    // Mutations already wrote through. Touch last_seen on every
-    // project so an external "I'm still here" ping is cheap to
+    // Mutations to name/path already wrote through; touch last_seen on
+    // every project so an external "I'm still here" ping is cheap to
     // record without restructuring callers.
+    //
+    // `enabledStacks` however lives ONLY on the in-memory object between
+    // persist() calls (ProjectService.updateEnabledStacks mutates it and
+    // calls us) — so write it through here too. Before this, the field
+    // was silently dropped (the kv write existed only in the legacy-JSON
+    // migration), enabled-stacks never survived a daemon restart, and the
+    // boot-time stack auto-resume in daemon.startApps() always saw an
+    // empty list — apps stayed down after every daemon crash.
     for (const project of this.projects.values()) {
       this.store.upsertProjectSync({
         name: project.name,
@@ -206,6 +214,11 @@ export class ProjectRegistry {
         added_at: project.registeredAt,
         last_seen: new Date().toISOString(),
       });
+      if (project.enabledStacks && project.enabledStacks.length > 0) {
+        this.store.kvSetSync(ENABLED_STACKS_KV_KEY(project.name), project.enabledStacks);
+      } else {
+        this.store.kvDeleteSync?.(ENABLED_STACKS_KV_KEY(project.name));
+      }
     }
   }
 

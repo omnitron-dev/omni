@@ -32,6 +32,23 @@ async function main() {
   const cwd = env.OMNITRON_CWD ?? process.cwd();
   process.chdir(cwd);
 
+  // Single-instance guard. `omnitron up` checks the pid file BEFORE forking,
+  // but a supervisor (launchd/systemd via `omnitron service install`) execs
+  // this entry directly — without the guard a service start racing a manually
+  // forked daemon would double-bind the socket and crash-loop. Exit 0 (clean)
+  // so a KeepAlive={SuccessfulExit:false} supervisor doesn't respawn against
+  // a healthy foreign daemon.
+  {
+    const { PidManager } = await import('./pid-manager.js');
+    const { expandPath } = await import('../shared/paths.js');
+    const pidManager = new PidManager(expandPath(DEFAULT_DAEMON_CONFIG.pidFile));
+    if (pidManager.isRunning()) {
+      console.error(`Omnitron daemon already running (PID: ${pidManager.getPid()}) — exiting.`);
+      process.exit(0);
+    }
+    pidManager.cleanupStale(expandPath(DEFAULT_DAEMON_CONFIG.socketPath));
+  }
+
   const registry = ProjectRegistry.open();
 
   // Try auto-detect from CWD, then first registered project, then defaults

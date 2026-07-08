@@ -69,6 +69,38 @@ program
   });
 
 // ============================================================================
+// OS Service (daemon supervision — launchd/systemd)
+// ============================================================================
+
+const service = program
+  .command('service')
+  .description('Supervise the daemon with the OS (launchd/systemd): auto-restart on crash, start at login');
+
+service
+  .command('install')
+  .description('Install + start the OS service (macOS LaunchAgent / systemd user unit)')
+  .action(async () => {
+    const { serviceInstall } = await import('../commands/service.js');
+    await serviceInstall();
+  });
+
+service
+  .command('uninstall')
+  .description('Stop the supervised daemon and remove the OS service')
+  .action(async () => {
+    const { serviceUninstall } = await import('../commands/service.js');
+    await serviceUninstall();
+  });
+
+service
+  .command('status')
+  .description('Show OS-service supervision state')
+  .action(async () => {
+    const { serviceStatus } = await import('../commands/service.js');
+    await serviceStatus();
+  });
+
+// ============================================================================
 // Project Management
 // ============================================================================
 

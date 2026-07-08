@@ -345,21 +345,43 @@ async function startBackground(
   const s = spinner();
   s.start('Starting Omnitron daemon...');
 
-  // Fork the daemon entry point as a detached child process
-  const daemonScript = path.resolve(__dirname, '../daemon/daemon-entry.js');
-  const child = fork(daemonScript, [], {
-    detached: true,
-    stdio: 'ignore',
-    env: {
-      ...process.env,
-      OMNITRON_CWD: process.cwd(),
-      ...(options?.noInfra ? { OMNITRON_NO_INFRA: '1' } : {}),
-      ...(options?.noWatch ? { OMNITRON_NO_WATCH: '1' } : {}),
-    },
-    execArgv: ['--import', 'tsx/esm'],
-  });
+  // When the OS service is installed (`omnitron service install`), start the
+  // daemon THROUGH the supervisor so it stays under crash-restart
+  // supervision — a plain fork here would create an unsupervised daemon and
+  // silently defeat the service. The one-shot debug flags (--no-infra /
+  // --no-watch) are not part of the supervisor environment, so those runs
+  // fall back to a direct fork.
+  let viaService = false;
+  if (!options?.noInfra && !options?.noWatch) {
+    try {
+      const { isServiceInstalled, serviceKickstart } = await import('./service.js');
+      if (isServiceInstalled()) {
+        serviceKickstart();
+        viaService = true;
+        s.message('Starting Omnitron daemon via OS service...');
+      }
+    } catch {
+      viaService = false; // supervisor refused — fall through to fork
+    }
+  }
 
-  child.unref();
+  if (!viaService) {
+    // Fork the daemon entry point as a detached child process
+    const daemonScript = path.resolve(__dirname, '../daemon/daemon-entry.js');
+    const child = fork(daemonScript, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        OMNITRON_CWD: process.cwd(),
+        ...(options?.noInfra ? { OMNITRON_NO_INFRA: '1' } : {}),
+        ...(options?.noWatch ? { OMNITRON_NO_WATCH: '1' } : {}),
+      },
+      execArgv: ['--import', 'tsx/esm'],
+    });
+
+    child.unref();
+  }
 
   // Wait for daemon to become reachable via Unix socket
   const client = createDaemonClient(socketPath);

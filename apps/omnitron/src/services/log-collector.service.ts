@@ -94,6 +94,19 @@ function escapeLike(str: string): string {
 
 const FLUSH_INTERVAL_MS = 1_000;
 const FLUSH_THRESHOLD = 100;
+/**
+ * Hard ceiling on buffered entries. During a DB outage every flush fails and
+ * requeues while new entries keep arriving — without a ceiling the buffer
+ * grows for as long as the outage lasts. The 2026-07-11 daemon crash was
+ * exactly this: hours of omnitron-pg downtime grew the buffer into the
+ * hundreds of thousands, and the then-`unshift(...batch)` requeue blew the
+ * argument-spread call-stack limit (RangeError → unhandled rejection →
+ * daemon exit). Newest entries win; the oldest overflow is counted and
+ * dropped.
+ */
+const MAX_BUFFER = 50_000;
+/** Per-flush insert ceiling — bounds both the INSERT payload and the requeue. */
+const FLUSH_BATCH_MAX = 5_000;
 
 @Injectable()
 export class LogCollectorService extends EventEmitter {
@@ -101,6 +114,8 @@ export class LogCollectorService extends EventEmitter {
   private flushTimer: NodeJS.Timeout | null = null;
   private flushing = false;
   private disposed = false;
+  /** Entries dropped to the MAX_BUFFER ceiling since the last successful flush. */
+  private droppedSinceFlush = 0;
 
   constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
     super();
@@ -111,11 +126,21 @@ export class LogCollectorService extends EventEmitter {
   // Ingestion
   // ===========================================================================
 
+  /** Drop the oldest overflow so the buffer never exceeds MAX_BUFFER. */
+  private enforceCap(): void {
+    const overflow = this.buffer.length - MAX_BUFFER;
+    if (overflow > 0) {
+      this.buffer.splice(0, overflow);
+      this.droppedSinceFlush += overflow;
+    }
+  }
+
   /** Ingest a single log entry into the buffer */
   ingestLog(entry: LogEntry): void {
     if (this.disposed) return;
 
     this.buffer.push(entry);
+    this.enforceCap();
 
     if (this.buffer.length >= FLUSH_THRESHOLD) {
       void this.flush();
@@ -126,7 +151,10 @@ export class LogCollectorService extends EventEmitter {
   ingestBatch(entries: LogEntry[]): void {
     if (this.disposed) return;
 
-    this.buffer.push(...entries);
+    // concat, not push(...entries) — spreading a large array as arguments
+    // risks the same call-stack blowup the flush requeue hit.
+    this.buffer = this.buffer.concat(entries);
+    this.enforceCap();
 
     if (this.buffer.length >= FLUSH_THRESHOLD) {
       void this.flush();
@@ -341,7 +369,10 @@ export class LogCollectorService extends EventEmitter {
     if (this.flushing || this.buffer.length === 0) return;
 
     this.flushing = true;
-    const batch = this.buffer.splice(0);
+    // Bounded batch — caps the INSERT payload AND the requeue-on-failure so
+    // an outage backlog drains in chunks instead of one giant statement.
+    // The 1s flush timer + threshold-triggered flushes drain the remainder.
+    const batch = this.buffer.splice(0, FLUSH_BATCH_MAX);
 
     try {
       if (batch.length === 0) return;
@@ -363,13 +394,19 @@ export class LogCollectorService extends EventEmitter {
 
       await this.db.insertInto('logs').values(rows).execute();
 
+      if (this.droppedSinceFlush > 0) {
+        this.emit('dropped', this.droppedSinceFlush);
+        this.droppedSinceFlush = 0;
+      }
       this.emit('flushed', batch.length);
     } catch (err) {
-      // On failure, put entries back at the front of the buffer
-      // (drop if buffer is too large to avoid unbounded growth)
-      if (this.buffer.length < 10_000) {
-        this.buffer.unshift(...batch);
-      }
+      // On failure, put the batch back at the FRONT of the buffer so order
+      // is preserved. concat (never unshift(...batch)) — spreading a large
+      // batch as arguments overflows the call stack, which is precisely how
+      // the 2026-07-11 daemon crash happened. The ceiling then drops the
+      // oldest overflow.
+      this.buffer = batch.concat(this.buffer);
+      this.enforceCap();
       this.emit('flush_error', err);
     } finally {
       this.flushing = false;

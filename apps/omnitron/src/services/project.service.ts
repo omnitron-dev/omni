@@ -87,6 +87,10 @@ export class ProjectService extends EventEmitter {
   private readonly infraManager: StackInfrastructureManager;
   private slaveConnector: SlaveConnector | null = null;
   private readonly deployer: RemoteDeployer;
+  // Enabled-stacks reconciler state (see startEnabledStacksReconciler)
+  private resumeTimer: NodeJS.Timeout | null = null;
+  private readonly resumeBackoff = new Map<string, { nextAt: number; delayMs: number }>();
+  private dockerWasAvailable: boolean | null = null;
 
   constructor(
     private readonly logger: ILogger,
@@ -582,11 +586,105 @@ export class ProjectService extends EventEmitter {
     return this.infraManager;
   }
 
+  // ===========================================================================
+  // Enabled-stacks reconciler — desired-state convergence
+  // ===========================================================================
+
+  /**
+   * Periodically converge running stacks onto the persisted desired state
+   * (`project.enabledStacks`). Boot-time resume in daemon.startApps() is
+   * one-shot — on 2026-07-11 it fired seconds after login while Docker
+   * (OrbStack) was still coming up, failed with "Docker is not available",
+   * and the platform stayed appless for days despite a healthy supervised
+   * daemon. The reconciler retries with per-stack exponential backoff until
+   * the stack is running, and picks up any later divergence (a stack that
+   * crashed into 'error', infra that vanished) the same way.
+   *
+   * Manual intent is respected by construction: `stack stop` removes the
+   * stack from enabledStacks (persisted), so a deliberately stopped stack is
+   * never resurrected; 'starting'/'stopping' states are skipped as in-flight.
+   */
+  startEnabledStacksReconciler(intervalMs = 60_000): void {
+    if (this.resumeTimer) return;
+    this.resumeTimer = setInterval(() => {
+      void this.reconcileEnabledStacks().catch((err) => {
+        this.logger.warn({ error: (err as Error).message }, 'Enabled-stacks reconciler tick failed');
+      });
+    }, intervalMs);
+    this.resumeTimer.unref();
+    this.logger.info({ intervalMs }, 'Enabled-stacks reconciler started');
+  }
+
+  private async reconcileEnabledStacks(): Promise<void> {
+    // Collect the divergence set first — cheap, no I/O.
+    const pending: Array<{ project: string; stack: string }> = [];
+    for (const project of this.registry.list()) {
+      for (const stackName of project.enabledStacks ?? []) {
+        const state = this.stackStates.get(`${project.name}/${stackName}`);
+        const status = state?.status;
+        // Converge only from fully-down states (absent/stopped/error).
+        // 'degraded' means mostly-up — restarting the whole stack over it
+        // would churn healthy apps; per-app recovery owns that case.
+        if (status === 'running' || status === 'starting' || status === 'stopping' || status === 'degraded') {
+          continue;
+        }
+        pending.push({ project: project.name, stack: stackName });
+      }
+    }
+    if (pending.length === 0) return;
+
+    // One cheap probe gates the whole round: without Docker every start is
+    // guaranteed to fail, so don't burn backoff budget on it.
+    const { isDockerAvailable } = await import('../infrastructure/container-runtime.js');
+    if (!(await isDockerAvailable())) {
+      if (this.dockerWasAvailable !== false) {
+        this.logger.warn(
+          { pending: pending.map((p) => `${p.project}/${p.stack}`) },
+          'Reconciler: Docker unavailable — deferring enabled-stack resume',
+        );
+      }
+      this.dockerWasAvailable = false;
+      return;
+    }
+    this.dockerWasAvailable = true;
+
+    const now = Date.now();
+    for (const { project, stack } of pending) {
+      const key = `${project}/${stack}`;
+      const backoff = this.resumeBackoff.get(key);
+      if (backoff && now < backoff.nextAt) continue;
+
+      this.logger.info({ project, stack, attemptDelayMs: backoff?.delayMs ?? 0 }, 'Reconciler: resuming enabled stack');
+      try {
+        // Config may not be loaded yet on a fresh daemon (boot resume died
+        // before reaching this project) — load lazily, same as boot does.
+        if (!this.getLoadedConfig(project)) {
+          await this.loadProjectConfig(project);
+        }
+        await this.startStack(project, stack);
+        this.resumeBackoff.delete(key);
+        this.logger.info({ project, stack }, 'Reconciler: stack resumed');
+      } catch (err) {
+        const prev = backoff?.delayMs ?? 0;
+        const delayMs = Math.min(prev > 0 ? prev * 2 : 60_000, 15 * 60_000);
+        this.resumeBackoff.set(key, { nextAt: Date.now() + delayMs, delayMs });
+        this.logger.error(
+          { project, stack, error: (err as Error).message, retryInMs: delayMs },
+          'Reconciler: stack resume failed — will retry',
+        );
+      }
+    }
+  }
+
   /**
    * Dispose of all resources held by this service.
    * Called during daemon shutdown.
    */
   async dispose(): Promise<void> {
+    if (this.resumeTimer) {
+      clearInterval(this.resumeTimer);
+      this.resumeTimer = null;
+    }
     this.slaveConnector?.dispose();
     await this.infraManager.teardownAll();
   }

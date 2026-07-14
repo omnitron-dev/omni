@@ -1036,6 +1036,31 @@ export class OmnitronDaemon {
       return;
     }
 
+    // When there are enabled stacks to resume, wait for Docker first. Under
+    // OS-service supervision the daemon boots at login, seconds before
+    // OrbStack/dockerd finishes starting — on 2026-07-11 the one-shot resume
+    // fired into "Docker is not available" and the platform stayed appless
+    // for days. Bounded wait; on timeout we proceed and the enabled-stacks
+    // reconciler keeps retrying with backoff.
+    const hasEnabledStacks = allProjects.some((p) => (p.enabledStacks?.length ?? 0) > 0);
+    if (hasEnabledStacks) {
+      const { isDockerAvailable } = await import('../infrastructure/container-runtime.js');
+      const deadline = Date.now() + 120_000;
+      let waited = false;
+      while (!(await isDockerAvailable())) {
+        if (Date.now() > deadline) {
+          logger.warn('Docker still unavailable after 120s — proceeding; reconciler will retry enabled stacks');
+          break;
+        }
+        if (!waited) {
+          logger.info('Docker not available yet (host still booting?) — waiting before stack resume');
+          waited = true;
+        }
+        await new Promise((r) => setTimeout(r, 3_000));
+      }
+      if (waited) logger.info('Docker is available — continuing stack resume');
+    }
+
     // Reconcile orphan containers: stop/remove any omnitron.managed containers
     // that don't belong to current registered projects/stacks (e.g. leftovers from
     // a previous session or auto-restarted by Docker after a system reboot).
@@ -1096,6 +1121,11 @@ export class OmnitronDaemon {
       { projects: allProjects.length, stacks: totalStacks },
       'All projects and stacks initialized'
     );
+
+    // Keep converging after boot: retry failed resumes (with backoff) and
+    // re-start enabled stacks that later fall over. One-shot boot resume is
+    // not enough — see the 2026-07-11 Docker-race incident.
+    projectService.startEnabledStacksReconciler();
   }
 
   // ============================================================================

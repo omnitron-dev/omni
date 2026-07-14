@@ -82,6 +82,19 @@ async function main() {
   }, dc);
 }
 
+// Supervisor-grade safety net. Node's default kills the process on an
+// unhandled rejection — which is how a background log-flush bug (2026-07-11,
+// LogCollectorService requeue stack-overflow) took down the whole control
+// plane and every app under it. A leaked background promise must never kill
+// the supervisor: log it loudly and keep running. Uncaught synchronous
+// exceptions keep the default fatal behaviour (state may be corrupt; the OS
+// service respawns us and boot-time stack resume + the enabled-stacks
+// reconciler restore the apps).
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error(`[daemon] Unhandled rejection (continuing): ${err.stack ?? err.message}`);
+});
+
 main().catch((err) => {
   console.error('Daemon fatal error:', err);
   process.exit(1);

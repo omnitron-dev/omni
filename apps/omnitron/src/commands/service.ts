@@ -112,6 +112,11 @@ function renderLaunchdPlist(): string {
   const workdir = serviceWorkdir();
   const args = [process.execPath, '--import', 'tsx/esm', daemonEntryPath()];
   const argsXml = args.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
+  // stdout → /dev/null: the daemon already writes (and ROTATES) its own
+  // ~/.omnitron/logs/omnitron.log; launchd appends without rotation, and the
+  // duplicated stdout stream grew to 1.1GB in under a week. stderr stays on
+  // file — it is small and carries the crash forensics (fatal errors,
+  // unhandled-rejection safety-net lines) that outlive the daemon's logger.
   const logs = logsDir();
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -144,7 +149,7 @@ ${argsXml}
   <key>ExitTimeOut</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>${xmlEscape(path.join(logs, 'launchd.out.log'))}</string>
+  <string>/dev/null</string>
   <key>StandardErrorPath</key>
   <string>${xmlEscape(path.join(logs, 'launchd.err.log'))}</string>
 </dict>

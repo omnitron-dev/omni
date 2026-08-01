@@ -38,7 +38,7 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
-    "@kysera/migrations": "^0.8.8",
+    "@kysera/migrations": "^0.9.0",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",
@@ -56,7 +56,7 @@
     "better-sqlite3": "^12.9.0",
     "commander": "^14.0.3",
     "jose": "^6.2.3",
-    "kysely": "0.28.17",
+    "kysely": "^0.29.4",
     "pg": "^8.20.0",
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2"

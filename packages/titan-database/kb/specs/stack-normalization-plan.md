@@ -6,6 +6,12 @@ messaging, storage, paysys, priceverse). Goal: each concern lives at exactly
 one layer; everything below is verified with file:line evidence (see the
 audit session reports).
 
+> **STATUS 2026-08-01:** DONE — kysera 0.9.0 published to npm; omni bumped
+> (`@kysera/*` → ^0.9.0, `kysely` → ^0.29.4 everywhere incl. the
+> titan-health/titan-scheduler 0.28.12 pins; single kysely in the store).
+> Gates: titan-database typecheck + 327/327 tests green on 0.9;
+> titan/titan-health/titan-scheduler/testing typecheck clean.
+
 ## 0. Prerequisite: publish kysera 0.9
 
 omni consumes **published npm `@kysera/*@0.8.8`** (kysely 0.28.17), NOT the

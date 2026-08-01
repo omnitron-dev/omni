@@ -138,3 +138,57 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
    integration suites; titan tests must stop mocking `@kysera/*` (today the
    mocks hide integration breakage — only titan-database tests run real
    kysera).
+
+## 6. Addendum — verified-on-live-Postgres criticals (final audit delta)
+
+**P0, before any other work:**
+
+1. **[CRITICAL/SECURITY] RLS decorators are silent no-ops.**
+   `database.decorators.ts:506-652` — `@Policy/@Allow/@Deny/@Filter/@BypassRLS`
+   write Reflect metadata that NOTHING reads; `forFeature` builds plugins
+   only from soft-delete/timestamps/audit (module.ts:92-140), rlsPlugin is
+   never constructed. An app annotating a repository gets ZERO filtering,
+   silently. Fix: compile decorator metadata into `defineRLSSchema` +
+   register `rlsPlugin` in forFeature; until then, decorators must THROW at
+   registration instead of no-op.
+2. **[CRITICAL] HardenedMigrationRunner's advisory lock is broken** —
+   `hardened-runner.ts:276-291` acquires `pg_try_advisory_lock` through the
+   POOL; session-scoped lock lands on an arbitrary connection (reproduced:
+   release returns false, lock held until pool death; `--redo` always fails
+   with MigrationLockError). Confirms §2: replace with kysera 0.9 runner
+   (pins the session via `db.connection().execute()`).
+3. **Lifecycle (reproduced):** double `pool.end()` on every PG shutdown
+   (manager.ts:1193-1205 — Kysely destroy already ends the pool), so
+   `connected` never resets and DISCONNECTED never emits; `reconnect()`
+   leaks the old pool (auto-triggered by 3 failed health checks — flapping
+   DB leaks a pool per cycle); `acquireTimeoutMillis` is NOT a pg-pool
+   option (pool exhaustion hangs forever; need `connectionTimeoutMillis`).
+4. **setSchema/withSchema via pool** — `SET search_path` lands on ONE
+   arbitrary pooled connection; schema-per-tenant isolation breaks
+   nondeterministically. Pin via `db.connection().execute()` or delete
+   (zero usage, zero tests).
+5. `runInTransaction` nested call joins WITHOUT a savepoint (context.ts:
+   120-124) — inner failure rolls back the outer transaction invisibly →
+   delegate to `@kysera/dal` withTransaction.
+6. `withPluginMetadata` is NOT exported by titan-database while `getRawDb`
+   is first-class — the model inversion; export the scoped opt-out.
+7. TAR double-filters `deleted_at` when the soft-delete plugin is active
+   via forFeature; `list()` has no limit clamp (unbounded scan; kysera
+   `paginate` clamps at 10k); 9 config blocks are dead (users configure
+   isolationLevel/queryTimeout → typechecker-approved nothing).
+
+**Consolidated adoption numbers (all 8 apps):** ~4700 LOC removable. Top:
+copy-paste offset pagination 1400 (43 repos declare their own `list`, ZERO
+call the inherited one; `hasMore: offset + data.length < total` ×108),
+runtime-settings repo+service ×3 (~700), outbox ×3+1 (~600), manual counts
+×113 (`executeCount` unused, ~340), manual soft-delete ×254 (~300).
+Root theme: **non-adoption, not missing features** — zero usage across all
+apps of softDeletePlugin, timestampsPlugin, auditPlugin, executeCount,
+upsertMany, UUID_V7, and the entire DAL. `main` needs its own sweep (128k
+LOC, 85 repos; its 223-line `query-types.ts` shim exists only because TAR's
+`dynamicExecutor` returns `unknown` — type it in titan-database).
+TAR redesign must support table families (priceverse OhlcvRepository serves
+3 identical candle tables via runtime dispatch and has to ignore all
+inherited CRUD). paysys carries two mutually contradictory soft-delete
+comments (plugins.ts:9 vs base.repository.ts:37) — both false; fix docs
+with the code.

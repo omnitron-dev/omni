@@ -41,6 +41,23 @@ construction must run `extendRepository` (or TAR queries must go through the
 intercepted methods). Wire `hasSoftDelete` into ALL read paths, not just
 `list()/exists()` — or delete the flag in favor of the plugin.
 
+> **Wiring facts verified 2026-08-01** (implementer notes): the DI chain is
+> ALREADY plugin-capable end-to-end — `DATABASE_CONNECTION` provider →
+> `manager.getConnection()` → returns `info.executor` (KyseraExecutor)
+> whenever module-level plugins were configured (`kysera.plugins`, or legacy
+> `plugins.builtIn.*` via `applyGlobalPlugins()`, which runs after
+> connection creation in init; titan-kit emits `timestamps: true` by
+> default, manager.ts:1603+, module.ts:226-232, module-factories.ts:201).
+> So QUERY interception can reach TAR through the executor proxy. Remaining
+> §1 work: (a) find where the kit's `timestamps` flag gets dropped before
+> `applyGlobalPlugins` — audited apps showed inert plugins despite this
+> wiring, so `info.executor` likely never materializes on the kit path;
+> (b) run `extendRepository` over TAR instances at construction — 0.9's
+> `createORM(executor, [])` plugin inheritance is the natural vehicle;
+> (c) de-duplicate TAR's own `hasSoftDelete`/`applySoftDeleteFilter` vs the
+> plugin's WHERE (§6.7) — one owner, prefer the plugin;
+> (d) type TAR's `dynamicExecutor` (kills main's 223-line query-types shim).
+
 ## 2. titan-database: delegate down (duplication of @kysera/infra et al.)
 
 `database.manager.ts` (1671 LOC) reimplements what its own re-exports provide:

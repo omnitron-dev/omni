@@ -1,7 +1,7 @@
 # Database Stack Normalization Plan (2026-08-01 audit)
 
 Consolidated audit of `app → @daos/titan-kit → titan-database → @kysera/* → kysely`
-across titan-database internals and 7 backends (portal, portal-seed, geo,
+across titan-database internals and 8 backends (main, portal, portal-seed, geo,
 messaging, storage, paysys, priceverse). Goal: each concern lives at exactly
 one layer; everything below is verified with file:line evidence (see the
 audit session reports).
@@ -86,6 +86,19 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
    drove ~150 LOC of ad hoc visibility filtering in paysys).
 9. `JsonColumn<T>` ColumnType convention (priceverse has a live type/runtime
    drift bug); runtime table-family routing helper (priceverse backfill).
+10. JSONB mutation helpers `jsonbSet()`/`jsonbIncrement()` (atomic counter/
+    cache updates; kysely has no JSON DSL) — main alone has 52 raw-SQL
+    sites across 6 files.
+11. `withAdvisoryLock(db, key, fn)` app-level mutex in `@kysera/infra`
+    (`hashtextextended` + `pg_advisory_xact_lock`) — main reinvents it 3×,
+    independently each time.
+12. `estimateRowCount()` (EXPLAIN FORMAT JSON → Plan Rows) in
+    `@kysera/dialects` — main carries a 108-line schema-agnostic impl.
+13. `safeOrderBy(column, allowlist)` — main's post.repository documents a
+    REAL past SQL injection from `sql.raw(orderBy)`; the guard is
+    re-derived per file. (Related docs gap, not code gap: teams build
+    raw-string CASE + hand-rolled escaping ×5 not knowing kysely ships
+    `eb.case()`.)
 
 ## 4. App-level fixes (after 1–3 land)
 
@@ -118,6 +131,30 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
   `deleteOlderThan`; wrap the USD/RUB two-write site in a transaction; fix
   the `sources` JSON drift. Upstream its `COUNT(*) OVER()` single-query
   pagination trick into TAR's `list()`.
+- **main** (largest: 128k LOC, 82 repos, 130 migrations; ~3160 LOC
+  infra-shaped, ~1100 removable with ZERO new kysera code): replace the 94
+  hand-written repository `useFactory` DI blocks with `@InjectRepository`/
+  `getRepositoryToken` (exist, 0 uses); eliminate raw `DATABASE_CONNECTION`
+  injection in 20/54 services — the single root of 9 manual soft-delete
+  re-adds and 12 hand-rolled `db.transaction()` blocks; adopt `paginate`/
+  `paginateCursor` (114 hand-rolled `hasMore` sites / 50 files ≈ 1800 LOC;
+  `clampLimit` implemented 3×); `timestampsPlugin` after §1 (182 manual
+  sites; 3 mechanisms coexist incl. DB triggers); `parseDatabaseError`
+  (~30 race-prone exists-then-throw uniqueness sites — vote.repository
+  documents the race AND the `upsert()` fix, applied 1 of 30 times);
+  finish `shared/jsonb.ts` adoption (32 ungoverned `JSON.parse` ladders
+  remain); `upsert()` for 10 hand-rolled `onConflict`; collapse 5
+  independent role/tier CASE generators onto `tier-sql.ts` + `eb.case()`;
+  type the 49 enum-ish columns currently bare `string` with the
+  `shared/enums.ts` unions; evaluate kysely-codegen — migration DDL /
+  Kysely schema / hand-written DTOs (9k LOC) are three independently
+  drifting layers with review as the only backstop. NOTE: main is the
+  positive model twice over — migrations (24-line wrapper around
+  `runMigrationCli`, zero reinvention) and RLS (direct `rlsPlugin`
+  registration from bootstrap.ts:46 — exactly what the broken §6.1
+  decorators should compile down to). Its app.module.ts:96 rejects
+  softDeletePlugin citing a column-name limitation that doesn't exist
+  (`deletedAtColumn` is configurable) — same false comment as paysys.
 - **titan-kit**: the proven push-down vehicle — add the error-taxonomy
   scaffold (`defineErrorTaxonomy()`; paysys+priceverse have identical
   shapes), Zod→TitanError validator, batch-processor.
@@ -184,9 +221,19 @@ runtime-settings repo+service ×3 (~700), outbox ×3+1 (~600), manual counts
 ×113 (`executeCount` unused, ~340), manual soft-delete ×254 (~300).
 Root theme: **non-adoption, not missing features** — zero usage across all
 apps of softDeletePlugin, timestampsPlugin, auditPlugin, executeCount,
-upsertMany, UUID_V7, and the entire DAL. `main` needs its own sweep (128k
-LOC, 85 repos; its 223-line `query-types.ts` shim exists only because TAR's
-`dynamicExecutor` returns `unknown` — type it in titan-database).
+upsertMany, UUID_V7, and the entire DAL. `main` sweep is now complete (see
+its §4 bullet): +~3160 LOC → **fleet total ~7900 LOC removable**; offset
+pagination alone is ~3200 LOC fleet-wide (1400 + main's 1800). main
+confirms the theme at scale: paginate/executeCount/timestampsPlugin/DAL
+all at zero across 128k LOC, while its ONE `upsert()` adoption ships a
+docstring explaining exactly which race it fixed — the capability works;
+discovery failed. Non-adoption is partly doc-driven: main app.module.ts:96
+and paysys plugins.ts:9 both reject softDeletePlugin for a limitation that
+doesn't exist. main's 223-line `query-types.ts` shim exists only because
+TAR's `dynamicExecutor` returns `unknown` — type it in titan-database.
+main raw-SQL census (150 runtime sites): ~63% legitimate (JSONB ops,
+advisory locks, PostGIS), ~27% works around a missing helper (→ backlog
+items 10–13), ~10% avoidable with existing kysely APIs.
 TAR redesign must support table families (priceverse OhlcvRepository serves
 3 identical candle tables via runtime dispatch and has to ignore all
 inherited CRUD). paysys carries two mutually contradictory soft-delete

@@ -8,6 +8,7 @@
  */
 
 import type { Kysely, Transaction, Selectable, Insertable, Updateable } from 'kysely';
+import { isKyseraExecutor, getPlugins, withPluginMetadata } from '@kysera/executor';
 import { getExecutor, isInTransactionContext, getCurrentTransaction } from '../transaction/transaction.context.js';
 import { applyWhereClause, type WhereClause } from '@kysera/repository';
 import { upsert as kyseraUpsert, upsertMany as kyseraUpsertMany, type UpsertOptions } from '@kysera/repository';
@@ -72,6 +73,15 @@ type DynamicQueryBuilder = {
 export abstract class TransactionAwareRepository<DB, Table extends string> {
   protected readonly hasSoftDelete: boolean = false;
   protected readonly softDeleteColumn: string = 'deletedAt';
+  /**
+   * Timestamps are injected on create/update when the `@kysera/timestamps`
+   * executor plugin is active (the plugin itself only extends kysera-style
+   * factory repositories, so this class applies the equivalent behavior).
+   * Set to `false` for tables without these columns.
+   */
+  protected readonly hasTimestamps: boolean = true;
+  protected readonly createdAtColumn: string = 'createdAt';
+  protected readonly updatedAtColumn: string = 'updatedAt';
 
   constructor(
     protected readonly db: Kysely<DB>,
@@ -121,6 +131,51 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
 
   protected get dynamicExecutor(): DynamicQueryBuilder {
     return this.executor as unknown as DynamicQueryBuilder;
+  }
+
+  // ===========================================================================
+  // EXECUTOR PLUGIN AWARENESS
+  // ===========================================================================
+
+  /** Whether the injected db is a kysera executor carrying the named plugin. */
+  protected hasExecutorPlugin(pluginName: string): boolean {
+    return isKyseraExecutor(this.db) && getPlugins(this.db).some((p) => p.name === pluginName);
+  }
+
+  protected get timestampsPluginActive(): boolean {
+    return this.hasTimestamps && this.hasExecutorPlugin('@kysera/timestamps');
+  }
+
+  protected get softDeletePluginActive(): boolean {
+    return this.hasExecutorPlugin('@kysera/soft-delete');
+  }
+
+  /**
+   * Executor for statements that must SEE soft-deleted rows (restore, hard
+   * delete, includeSoftDeleted reads): scopes the soft-delete plugin's
+   * `includeDeleted` opt-out to this statement. A no-op passthrough when the
+   * resolved executor is a plain Kysely/Transaction.
+   */
+  protected get executorIncludingDeleted(): Executor<DB> {
+    return withPluginMetadata(this.executor as Kysely<DB>, { includeDeleted: true }) as Executor<DB>;
+  }
+
+  protected get dynamicExecutorIncludingDeleted(): DynamicQueryBuilder {
+    return this.executorIncludingDeleted as unknown as DynamicQueryBuilder;
+  }
+
+  /** Inject created/updated timestamps when the timestamps plugin is active. */
+  private applyTimestamps<T>(data: T, mode: 'create' | 'update'): T {
+    if (!this.timestampsPluginActive) return data;
+    const record = { ...(data as Record<string, unknown>) };
+    const now = formatTimestampForDb(new Date(), detectDialect(this.db) as Dialect);
+    if (mode === 'create' && record[this.createdAtColumn] === undefined) {
+      record[this.createdAtColumn] = now;
+    }
+    if (record[this.updatedAtColumn] === undefined) {
+      record[this.updatedAtColumn] = now;
+    }
+    return record as T;
   }
 
   // ===========================================================================
@@ -247,7 +302,7 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     };
 
     return (this.dynamicExecutor.insertInto(this.tableName) as QR)
-      .values(data)
+      .values(this.applyTimestamps(data, 'create'))
       .returningAll()
       .executeTakeFirstOrThrow();
   }
@@ -261,7 +316,10 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       execute(): Promise<Selectable<DB[Table & keyof DB]>[]>;
     };
 
-    return (this.dynamicExecutor.insertInto(this.tableName) as QR).values(data).returningAll().execute();
+    return (this.dynamicExecutor.insertInto(this.tableName) as QR)
+      .values(data.map((row) => this.applyTimestamps(row, 'create')))
+      .returningAll()
+      .execute();
   }
 
   async update(id: string, data: Updateable<DB[Table & keyof DB]>): Promise<Selectable<DB[Table & keyof DB]> | null> {
@@ -273,7 +331,7 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     };
 
     const result = await (this.dynamicExecutor.updateTable(this.tableName) as QR)
-      .set(data)
+      .set(this.applyTimestamps(data, 'update'))
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirst();
@@ -287,7 +345,9 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<{ numDeletedRows: bigint } | undefined>;
     };
 
-    const result = await (this.dynamicExecutor.deleteFrom(this.tableName) as QR)
+    // Hard delete means DELETE even for soft-deleted rows — scope the
+    // soft-delete plugin's mutation narrowing out of this statement.
+    const result = await (this.dynamicExecutorIncludingDeleted.deleteFrom(this.tableName) as QR)
       .where('id', '=', id)
       .executeTakeFirst();
 
@@ -336,7 +396,9 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<Selectable<DB[Table & keyof DB]> | undefined>;
     };
 
-    const result = await (this.dynamicExecutor.updateTable(this.tableName) as QR)
+    // The soft-delete plugin narrows UPDATEs to live rows — without the
+    // includeDeleted opt-out this restore would never match its target.
+    const result = await (this.dynamicExecutorIncludingDeleted.updateTable(this.tableName) as QR)
       .set({ [this.softDeleteColumn]: null })
       .where('id', '=', id)
       .returningAll()
@@ -363,10 +425,17 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<{ count: string | number | bigint } | undefined>;
     };
 
-    let countQuery = (this.dynamicExecutor.selectFrom(this.tableName) as CountQR).select(
+    // includeSoftDeleted must also opt out of the soft-delete plugin's
+    // filter; and when the plugin is active it owns the WHERE — adding the
+    // native filter again would double it on every query.
+    const qb = includeSoftDeleted ? this.dynamicExecutorIncludingDeleted : this.dynamicExecutor;
+    const applyNativeSoftDeleteFilter =
+      this.hasSoftDelete && !includeSoftDeleted && !this.softDeletePluginActive;
+
+    let countQuery = (qb.selectFrom(this.tableName) as CountQR).select(
       (eb: CEB) => eb.fn.count('id').as('count')
     );
-    if (this.hasSoftDelete && !includeSoftDeleted) {
+    if (applyNativeSoftDeleteFilter) {
       countQuery = countQuery.where(this.softDeleteColumn, 'is', null);
     }
     const countResult = await countQuery.executeTakeFirst();
@@ -381,8 +450,8 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       execute(): Promise<Selectable<DB[Table & keyof DB]>[]>;
     };
 
-    let dataQuery = (this.dynamicExecutor.selectFrom(this.tableName) as SelectQR).selectAll();
-    if (this.hasSoftDelete && !includeSoftDeleted) {
+    let dataQuery = (qb.selectFrom(this.tableName) as SelectQR).selectAll();
+    if (applyNativeSoftDeleteFilter) {
       dataQuery = dataQuery.where(this.softDeleteColumn, 'is', null);
     }
     const data = await dataQuery.orderBy(orderBy, direction).limit(limit).offset(offset).execute();
@@ -403,11 +472,12 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<unknown | undefined>;
     };
 
-    let query = (this.dynamicExecutor.selectFrom(this.tableName) as QR)
+    const qb = includeSoftDeleted ? this.dynamicExecutorIncludingDeleted : this.dynamicExecutor;
+    let query = (qb.selectFrom(this.tableName) as QR)
       .select((eb: LEB) => eb.lit(1).as('exists'))
       .where('id', '=', id);
 
-    if (this.hasSoftDelete && !includeSoftDeleted) {
+    if (this.hasSoftDelete && !includeSoftDeleted && !this.softDeletePluginActive) {
       query = query.where(this.softDeleteColumn, 'is', null);
     }
 
@@ -423,10 +493,11 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<{ count: string | number | bigint } | undefined>;
     };
 
-    let query = (this.dynamicExecutor.selectFrom(this.tableName) as QR).select((eb: CEB) =>
+    const qb = includeSoftDeleted ? this.dynamicExecutorIncludingDeleted : this.dynamicExecutor;
+    let query = (qb.selectFrom(this.tableName) as QR).select((eb: CEB) =>
       eb.fn.count('id').as('count')
     );
-    if (this.hasSoftDelete && !includeSoftDeleted) {
+    if (this.hasSoftDelete && !includeSoftDeleted && !this.softDeletePluginActive) {
       query = query.where(this.softDeleteColumn, 'is', null);
     }
     const result = await query.executeTakeFirst();
@@ -519,7 +590,7 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     };
 
     const result = await (this.dynamicExecutor.updateTable(this.tableName) as QR)
-      .set(data)
+      .set(this.applyTimestamps(data, 'update'))
       .where((eb: unknown) => applyWhereClause(eb as never, where as Record<string, unknown>))
       .executeTakeFirst();
 

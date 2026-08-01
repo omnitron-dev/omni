@@ -255,6 +255,9 @@ export {
   isKyseraExecutor,
   getPlugins as getExecutorPlugins,
   getRawDb,
+  // Scoped per-statement plugin opt-out (e.g. { includeDeleted: true }) —
+  // prefer this over getRawDb, which silently disables ALL plugins.
+  withPluginMetadata,
   wrapTransaction,
   applyPlugins,
   validatePlugins as validateExecutorPlugins,

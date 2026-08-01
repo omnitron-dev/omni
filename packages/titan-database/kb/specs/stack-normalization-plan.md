@@ -30,6 +30,20 @@ hardening). Order of operations:
    lock; `createORM(executor, [])` inherits executor plugins; `{col: null}`
    → `IS NULL`; malformed operator values throw.
 
+> **STATUS 2026-08-02:** core of §1 LANDED (337/337 tests green, incl. a new
+> TAR×plugin-chain spec; apps typecheck clean). Verified: DI wiring was
+> already sound (manager.init() → applyGlobalPlugins → info.executor →
+> getConnection, all before DATABASE_CONNECTION resolves); the true gap was
+> that timestamps/audit are extendRepository-only plugins, and
+> extendRepository's spread-wrapping cannot apply to class hierarchies. TAR
+> now detects executor plugins natively: timestamps injected on
+> create/createMany/update/updateWhere (per-repo opt-out `hasTimestamps`);
+> soft-delete plugin owns read filtering (double-WHERE removed);
+> restore/hard-delete/includeSoftDeleted use scoped
+> `withPluginMetadata({includeDeleted})` (also re-exported — §6.6 done).
+> Remaining: audit parity for TAR writes (extendRepository-only, needs a
+> design), decorator→rlsPlugin compilation (§6.1), dynamicExecutor typing.
+
 ## 1. titan-database: the root defect
 
 **`TransactionAwareRepository` (TAR) never runs the kysera plugin chain.**

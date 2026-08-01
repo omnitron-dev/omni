@@ -178,6 +178,15 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
 
 ## 6. Addendum — verified-on-live-Postgres criticals (final audit delta)
 
+> **STATUS 2026-08-01:** P0 batch landed (titan-database, 326+ tests green):
+> item 1 — interim fix (decorators now THROW at class definition; full
+> decorator→rlsPlugin compilation still pending); items 2, 3, 4 — fixed
+> (lock pinned via `db.connection()`, single destroy + DISCONNECTED in
+> finally, reconnect closes stale pool first, `connectionTimeoutMillis`
+> mapped, defaultSchema now a pool startup parameter, setSchema/withSchema
+> disabled with loud errors); item 5 — fixed (nested runInTransaction wraps
+> in SAVEPOINT). Items 6-7 pending the kysera 0.9 bump / TAR rework (§1).
+
 **P0, before any other work:**
 
 1. **[CRITICAL/SECURITY] RLS decorators are silent no-ops.**

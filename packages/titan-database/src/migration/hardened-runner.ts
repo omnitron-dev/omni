@@ -253,8 +253,47 @@ export class HardenedMigrationRunner<DB = unknown> {
       return fn();
     }
     const key = this.opts.advisoryLockKey;
-    const provider: AdvisoryLockProvider =
-      this.opts.lockProvider ?? this.defaultPgLockProvider();
+
+    // Custom providers (tests, external lock services) own their session.
+    if (this.opts.lockProvider) {
+      return this.withProvidedLock(this.opts.lockProvider, key, fn);
+    }
+
+    // Advisory locks are SESSION-scoped: acquire and release must run on the
+    // SAME connection. Through the pool, the lock landed on an arbitrary
+    // client — release returned false, the lock survived until pool death,
+    // and a concurrent/crashed run blocked `--redo` with MigrationLockError.
+    // Pin one connection for the entire run; migrations inside fn() still
+    // use the pool normally.
+    const db = this.db as unknown as Kysely<unknown>;
+    return db.connection().execute(async (conn) => {
+      const res = (await sql<{
+        ok: boolean;
+      }>`SELECT pg_try_advisory_lock(${key.toString()}::bigint) AS ok`.execute(conn)) as {
+        rows: { ok: boolean }[];
+      };
+      if (!res.rows[0]?.ok) {
+        throw new MigrationLockError(
+          `Could not acquire migration advisory lock (key=${key}). Another runner is in progress; refusing to proceed.`,
+        );
+      }
+      try {
+        return await fn();
+      } finally {
+        try {
+          await sql`SELECT pg_advisory_unlock(${key.toString()}::bigint)`.execute(conn);
+        } catch (e) {
+          this.opts.logger.warn(`pg_advisory_unlock failed: ${(e as Error).message}`);
+        }
+      }
+    });
+  }
+
+  private async withProvidedLock<T>(
+    provider: AdvisoryLockProvider,
+    key: Parameters<AdvisoryLockProvider['acquire']>[0],
+    fn: () => Promise<T>,
+  ): Promise<T> {
     const ok = await provider.acquire(key);
     if (!ok) {
       throw new MigrationLockError(
@@ -270,24 +309,6 @@ export class HardenedMigrationRunner<DB = unknown> {
         this.opts.logger.warn(`pg_advisory_unlock failed: ${(e as Error).message}`);
       }
     }
-  }
-
-  /** Default provider — issues `pg_try_advisory_lock` on the live db. */
-  private defaultPgLockProvider(): AdvisoryLockProvider {
-    const db = this.db as unknown as Kysely<unknown>;
-    return {
-      acquire: async (key) => {
-        const res = (await sql<{
-          ok: boolean;
-        }>`SELECT pg_try_advisory_lock(${key.toString()}::bigint) AS ok`.execute(db)) as {
-          rows: { ok: boolean }[];
-        };
-        return Boolean(res.rows[0]?.ok);
-      },
-      release: async (key) => {
-        await sql`SELECT pg_advisory_unlock(${key.toString()}::bigint)`.execute(db);
-      },
-    };
   }
 
   async up(): Promise<HardenedUpResult> {

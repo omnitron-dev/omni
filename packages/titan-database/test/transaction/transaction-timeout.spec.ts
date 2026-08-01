@@ -29,10 +29,20 @@ import type { Kysely, Transaction } from 'kysely';
 // ---------------------------------------------------------------------------
 
 function createMockTransaction(): Transaction<unknown> {
+  // Minimal query executor so control statements issued by nested
+  // runInTransaction (`sql.raw('SAVEPOINT …').execute(trx)`) run against
+  // the mock: RawBuilder calls getExecutor() → transformQuery →
+  // compileQuery → executeQuery.
+  const executor = {
+    transformQuery: (node: unknown) => node,
+    compileQuery: (node: unknown) => ({ sql: '', parameters: [], query: node }),
+    executeQuery: async () => ({ rows: [] }),
+  };
   return {
     _tag: 'mock-transaction',
     selectFrom: vi.fn().mockReturnThis(),
     insertInto: vi.fn().mockReturnThis(),
+    getExecutor: () => executor,
   } as unknown as Transaction<unknown>;
 }
 

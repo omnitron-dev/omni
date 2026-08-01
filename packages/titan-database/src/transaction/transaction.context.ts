@@ -9,6 +9,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { sql } from 'kysely';
 import type { Transaction, Kysely } from 'kysely';
 import type { Plugin } from '@kysera/executor';
 
@@ -112,6 +113,9 @@ export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | 
  * Run a function within a new transaction context.
  * If already in a transaction, reuses it (nested support).
  */
+// Monotonic counter for collision-free savepoint names within a process.
+let savepointSequence = 0;
+
 export async function runInTransaction<DB, T>(
   db: Kysely<DB>,
   fn: () => Promise<T>,
@@ -120,7 +124,25 @@ export async function runInTransaction<DB, T>(
   const existingCtx = transactionStorage.getStore();
 
   if (existingCtx) {
-    return fn();
+    // Joining the outer transaction bare is not enough: on Postgres ANY
+    // inner failure aborts the WHOLE transaction (every following statement
+    // fails with 25P02), invisibly to an outer catch. A savepoint makes the
+    // nested unit atomic on its own — same syntax on postgres/mysql/sqlite.
+    const trx = existingCtx.transaction;
+    const savepoint = `titan_sp_${++savepointSequence}`;
+    await sql.raw(`SAVEPOINT ${savepoint}`).execute(trx);
+    try {
+      const result = await fn();
+      await sql.raw(`RELEASE SAVEPOINT ${savepoint}`).execute(trx);
+      return result;
+    } catch (error) {
+      try {
+        await sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`).execute(trx);
+      } catch {
+        // Connection-level failure — the outer transaction is already doomed.
+      }
+      throw error;
+    }
   }
 
   return db.transaction().execute(async (trx) => {

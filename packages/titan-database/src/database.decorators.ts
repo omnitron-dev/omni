@@ -503,28 +503,21 @@ export interface RLSFilterConfig {
  * class PostRepository extends BaseRepository<Post> {}
  * ```
  */
-export function Policy(config?: RLSPolicyConfig): ClassDecorator {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  return <TFunction extends Function>(target: TFunction): TFunction => {
-    const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
+function rlsDecoratorsDisabled(decorator: string): Error {
+  return new Error(
+    `${decorator} is disabled: titan-database does not compile RLS decorator metadata into a ` +
+      `runtime rlsPlugin — the decorators only wrote Reflect metadata that NOTHING reads, so an ` +
+      `annotated repository silently ran with ZERO row filtering. Register RLS explicitly ` +
+      `instead: build a schema with defineRLSSchema() and pass rlsPlugin() from @kysera/rls via ` +
+      `the module's kysera plugin options. These decorators will be re-enabled once decorator ` +
+      `compilation ships.`,
+  );
+}
 
-    Reflect.defineMetadata(
-      METADATA_KEYS.REPOSITORY,
-      {
-        ...existingConfig,
-        rls: config || {},
-      },
-      target
-    );
-
-    // Store RLS policy metadata separately for discovery
-    Reflect.defineMetadata(METADATA_KEYS.RLS_POLICY, config || {}, target);
-
-    // Mark as RLS-enabled
-    Reflect.defineMetadata('database:rls-enabled', true, target);
-
-    return target;
-  };
+export function Policy(_config?: RLSPolicyConfig): ClassDecorator {
+  // SECURITY: throwing at class-definition time turns a silent no-op
+  // (annotated repo, zero enforcement) into an immediate boot failure.
+  throw rlsDecoratorsDisabled('@Policy');
 }
 
 /**
@@ -543,21 +536,8 @@ export function Policy(config?: RLSPolicyConfig): ClassDecorator {
  * }
  * ```
  */
-export function Allow(config: RLSRuleConfig): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_ALLOW, target.constructor) || [];
-
-    rules.push({
-      name: config.name || String(propertyKey),
-      method: propertyKey,
-      operations: config.operations,
-      priority: config.priority ?? 0,
-    });
-
-    Reflect.defineMetadata(METADATA_KEYS.RLS_ALLOW, rules, target.constructor);
-
-    return descriptor;
-  };
+export function Allow(_config: RLSRuleConfig): MethodDecorator {
+  throw rlsDecoratorsDisabled('@Allow');
 }
 
 /**
@@ -576,21 +556,8 @@ export function Allow(config: RLSRuleConfig): MethodDecorator {
  * }
  * ```
  */
-export function Deny(config: RLSRuleConfig): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_DENY, target.constructor) || [];
-
-    rules.push({
-      name: config.name || String(propertyKey),
-      method: propertyKey,
-      operations: config.operations,
-      priority: config.priority ?? 0,
-    });
-
-    Reflect.defineMetadata(METADATA_KEYS.RLS_DENY, rules, target.constructor);
-
-    return descriptor;
-  };
+export function Deny(_config: RLSRuleConfig): MethodDecorator {
+  throw rlsDecoratorsDisabled('@Deny');
 }
 
 /**
@@ -609,20 +576,8 @@ export function Deny(config: RLSRuleConfig): MethodDecorator {
  * }
  * ```
  */
-export function Filter(config?: RLSFilterConfig): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const filters = Reflect.getMetadata(METADATA_KEYS.RLS_FILTER, target.constructor) || [];
-
-    filters.push({
-      name: config?.name || String(propertyKey),
-      method: propertyKey,
-      operations: config?.operations || ['select'],
-    });
-
-    Reflect.defineMetadata(METADATA_KEYS.RLS_FILTER, filters, target.constructor);
-
-    return descriptor;
-  };
+export function Filter(_config?: RLSFilterConfig): MethodDecorator {
+  throw rlsDecoratorsDisabled('@Filter');
 }
 
 /**
@@ -642,13 +597,7 @@ export function Filter(config?: RLSFilterConfig): MethodDecorator {
  * ```
  */
 export function BypassRLS(): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const bypassed = Reflect.getMetadata(METADATA_KEYS.RLS_BYPASS, target.constructor) || [];
-    bypassed.push(propertyKey);
-    Reflect.defineMetadata(METADATA_KEYS.RLS_BYPASS, bypassed, target.constructor);
-
-    return descriptor;
-  };
+  throw rlsDecoratorsDisabled('@BypassRLS');
 }
 
 /**

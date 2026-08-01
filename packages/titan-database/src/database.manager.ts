@@ -223,21 +223,10 @@ export class DatabaseManager implements IDatabaseManager {
 
     this.initialized = true;
 
-    // Apply default schema if configured (PostgreSQL only)
-    if (this.options.defaultSchema) {
-      for (const [name, info] of this.connections) {
-        if (info.config.dialect === 'postgres' && info.connected) {
-          try {
-            await this.setSchema(this.options.defaultSchema, name);
-          } catch (error) {
-            this.logger.warn(
-              { connection: name, schema: this.options.defaultSchema, error },
-              'Failed to set default schema'
-            );
-          }
-        }
-      }
-    }
+    // defaultSchema (PostgreSQL) is applied at pool creation as a
+    // per-connection startup parameter — see the postgres dialect factory.
+    // Setting it here via `SET search_path` configured only one arbitrary
+    // pooled client, so most connections silently kept `public`.
 
     // Start proactive health checks if enabled
     if (this.options.healthCheck !== false) {
@@ -660,12 +649,34 @@ export class DatabaseManager implements IDatabaseManager {
           );
         }
 
+        const pgPoolConfig = { ...DEFAULT_POOL_CONFIG, ...config.pool } as typeof DEFAULT_POOL_CONFIG & {
+          connectionTimeoutMillis?: number;
+        };
         const pool = new Pool({
           ...pgConfig,
-          ...DEFAULT_POOL_CONFIG,
-          ...config.pool,
+          ...pgPoolConfig,
+          // node-postgres has no acquireTimeoutMillis; connectionTimeoutMillis
+          // bounds both TCP connect AND waiting for a free pooled client, so
+          // pool exhaustion fails fast instead of hanging forever.
+          connectionTimeoutMillis:
+            pgPoolConfig.connectionTimeoutMillis ?? pgPoolConfig.acquireTimeoutMillis,
+          // defaultSchema must be a per-connection STARTUP parameter — issuing
+          // `SET search_path` through the pool configures only the one client
+          // the pool happened to hand out.
+          ...(this.options.defaultSchema
+            ? {
+                options: `-c search_path=${this.assertValidSchemaName(this.options.defaultSchema)},public`,
+              }
+            : {}),
           Client: ResilientPgClient,
         });
+
+        if (this.options.defaultSchema) {
+          this.connectionSchemas.set(
+            config.name || DATABASE_DEFAULT_CONNECTION,
+            this.options.defaultSchema
+          );
+        }
 
         // Add comprehensive error handlers with metrics collection
         const connectionName = config.name || DATABASE_DEFAULT_CONNECTION;
@@ -1164,8 +1175,18 @@ export class DatabaseManager implements IDatabaseManager {
 
     this.logger.info({ name }, 'Attempting to reconnect to database');
 
+    // Tear down the stale instance/pool first: reconnect is auto-triggered
+    // by failed health checks, and recreating over a live pool leaked one
+    // pool per cycle on a flapping database.
+    const config = info.config;
+    try {
+      await this.close(name);
+    } catch (error) {
+      this.logger.warn({ name, error }, 'Error disposing stale connection before reconnect');
+    }
+
     // Use retry logic for reconnection
-    await this.createConnectionWithRetry(name, info.config);
+    await this.createConnectionWithRetry(name, config);
   }
 
   /**
@@ -1189,35 +1210,25 @@ export class DatabaseManager implements IDatabaseManager {
         await destroyExecutor(info.executor);
       }
 
-      // Destroy Kysely instance
+      // Kysely owns the pool through its dialect: destroy() ends the
+      // pg/mysql pool and closes the sqlite handle. The manual pool.end()
+      // that used to follow was a DOUBLE close — it rejected on every PG
+      // shutdown, so `connected` never reset and DISCONNECTED never fired.
       await info.instance.destroy();
-
-      // Close pool based on dialect
-      if (info.pool) {
-        if (info.config.dialect === 'postgres' && info.pool instanceof Pool) {
-          await info.pool.end();
-        } else if (info.config.dialect === 'mysql' && 'end' in info.pool) {
-          await new Promise<void>((resolve, reject) => {
-            (info.pool as mysql.Pool).end((err) => (err ? reject(err) : resolve()));
-          });
-        } else if (info.config.dialect === 'sqlite' && 'close' in info.pool) {
-          (info.pool as Database).close();
-        }
-      }
-
-      info.connected = false;
-
-      // Emit disconnected event
-      this.emitEvent({
-        type: DATABASE_EVENTS.DISCONNECTED as DatabaseEventType,
-        connection: name,
-        timestamp: new Date(),
-      });
 
       this.logger.info({ name }, 'Database connection closed');
     } catch (error) {
       this.logger.error({ name, error }, 'Error closing database connection');
       throw error;
+    } finally {
+      // The connection is unusable whether destroy() succeeded or not —
+      // always reflect that in state and notify listeners.
+      info.connected = false;
+      this.emitEvent({
+        type: DATABASE_EVENTS.DISCONNECTED as DatabaseEventType,
+        connection: name,
+        timestamp: new Date(),
+      });
     }
   }
 
@@ -1467,48 +1478,36 @@ export class DatabaseManager implements IDatabaseManager {
   // ============================================================================
 
   /**
-   * Set PostgreSQL search_path for a connection (schema-per-tenant).
-   *
-   * This enables multi-tenant isolation by switching the database schema.
-   * Only supported for PostgreSQL connections.
-   *
-   * @param schema - Schema name to set (e.g., 'tenant_123')
-   * @param name - Connection name (defaults to 'default')
-   *
-   * @example
-   * ```typescript
-   * // Switch to tenant schema
-   * await manager.setSchema('tenant_abc');
-   *
-   * // All subsequent queries on this connection use tenant_abc schema
-   * const users = await db.selectFrom('users').selectAll().execute();
-   *
-   * // Reset to public schema
-   * await manager.setSchema('public');
-   * ```
+   * @deprecated Disabled — always throws. A session-scoped `SET search_path`
+   * through a connection pool configures one arbitrary pooled client, so
+   * schema-per-tenant isolation breaks nondeterministically. Use the
+   * `defaultSchema` module option (per-connection startup parameter),
+   * Kysely's `.withSchema()` for per-query scoping, or a dedicated
+   * connection per tenant.
    */
   async setSchema(schema: string, name: string = DATABASE_DEFAULT_CONNECTION): Promise<void> {
-    const info = this.connections.get(name);
-    if (!info) {
-      throw Errors.notFound('Database connection', name);
-    }
+    // DISABLED: `SET search_path` is session-scoped, but this executed
+    // through the POOL — it configured whichever single client the pool
+    // handed out, while every other pooled connection silently kept the
+    // previous schema. Schema-per-tenant isolation then depends on which
+    // client serves each query. Refusing loudly beats corrupting tenants.
+    throw Errors.badRequest(
+      `setSchema('${schema}', '${name}') is disabled: a session-scoped SET search_path over a ` +
+        `connection pool lands on ONE arbitrary pooled client and breaks schema isolation ` +
+        `nondeterministically. Use the defaultSchema module option (applied as a per-connection ` +
+        `startup parameter), Kysely's .withSchema() for per-query scoping, or a dedicated ` +
+        `connection per tenant.`
+    );
+  }
 
-    if (info.config.dialect !== 'postgres') {
-      throw Errors.badRequest(`setSchema is only supported for PostgreSQL connections, got: ${info.config.dialect}`);
-    }
-
-    // Validate schema name to prevent SQL injection
+  /**
+   * Validate a schema identifier (used for pool startup parameters).
+   */
+  private assertValidSchemaName(schema: string): string {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
       throw Errors.badRequest(`Invalid schema name: ${schema}`);
     }
-
-    // Schema name already validated by regex above — safe for interpolation.
-    // Using sql.raw() because SET search_path is a session command, not a DML query,
-    // and sql.ref() produces column references, not schema identifiers.
-    await sql.raw(`SET search_path TO "${schema}", public`).execute(info.instance);
-    this.connectionSchemas.set(name, schema);
-
-    this.logger.debug({ connection: name, schema }, 'Schema set for connection');
+    return schema;
   }
 
   /**
@@ -1519,32 +1518,23 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   /**
-   * Execute a function within a specific schema context.
-   * Automatically switches to the schema before execution and
-   * restores the previous schema afterward.
-   *
-   * @example
-   * ```typescript
-   * const users = await manager.withSchema('tenant_123', async (db) => {
-   *   return db.selectFrom('users').selectAll().execute();
-   * });
-   * ```
+   * @deprecated Disabled — always throws. Switching `search_path` on a
+   * shared pool races between concurrent requests (tenant bleed). Use
+   * Kysely's `.withSchema()` or a dedicated connection per tenant.
    */
   async withSchema<T>(
     schema: string,
-    fn: (db: Kysely<unknown>) => Promise<T>,
+    _fn: (db: Kysely<unknown>) => Promise<T>,
     name: string = DATABASE_DEFAULT_CONNECTION
   ): Promise<T> {
-    const previousSchema = this.connectionSchemas.get(name);
-    await this.setSchema(schema, name);
-
-    try {
-      const db = await this.getConnection(name);
-      return await fn(db);
-    } finally {
-      // Restore previous schema or default to public
-      await this.setSchema(previousSchema ?? 'public', name);
-    }
+    // DISABLED for the same reason as setSchema — and worse: interleaved
+    // withSchema calls from concurrent requests raced on the shared pool,
+    // bleeding one tenant's schema into another's queries.
+    throw Errors.badRequest(
+      `withSchema('${schema}', '${name}') is disabled: switching search_path over a shared ` +
+        `connection pool races between concurrent requests. Use Kysely's .withSchema() for ` +
+        `per-query scoping or a dedicated connection per tenant.`
+    );
   }
 
   // ============================================================================

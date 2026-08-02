@@ -36,9 +36,13 @@ hardening). Order of operations:
 > getConnection, all before DATABASE_CONNECTION resolves); the true gap was
 > that timestamps/audit are extendRepository-only plugins, and
 > extendRepository's spread-wrapping cannot apply to class hierarchies. TAR
-> now detects executor plugins natively: timestamps injected on
-> create/createMany/update/updateWhere (per-repo opt-out `hasTimestamps`);
-> soft-delete plugin owns read filtering (double-WHERE removed);
+> now handles this natively: timestamps injected on
+> create/createMany/update/updateWhere as an explicit PER-REPO OPT-IN via
+> the `@Timestamps()` decorator (or `hasTimestamps=true`), independent of
+> executor plugins — a schema scan showed ~50 of main's 128 TAR tables are
+> append-only/junction tables WITHOUT updatedAt, so a global default would
+> be a runtime SQL error factory. Soft-delete: when the executor plugin is
+> active it owns read filtering (double-WHERE removed);
 > restore/hard-delete/includeSoftDeleted use scoped
 > `withPluginMetadata({includeDeleted})` (also re-exported — §6.6 done).
 > Remaining: audit parity for TAR writes (extendRepository-only, needs a

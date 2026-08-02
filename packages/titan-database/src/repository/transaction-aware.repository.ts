@@ -9,6 +9,7 @@
 
 import type { Kysely, Transaction, Selectable, Insertable, Updateable } from 'kysely';
 import { isKyseraExecutor, getPlugins, withPluginMetadata } from '@kysera/executor';
+import { getTimestampsConfig } from '../database.decorators.js';
 import { getExecutor, isInTransactionContext, getCurrentTransaction } from '../transaction/transaction.context.js';
 import { applyWhereClause, type WhereClause } from '@kysera/repository';
 import { upsert as kyseraUpsert, upsertMany as kyseraUpsertMany, type UpsertOptions } from '@kysera/repository';
@@ -74,12 +75,15 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   protected readonly hasSoftDelete: boolean = false;
   protected readonly softDeleteColumn: string = 'deletedAt';
   /**
-   * Timestamps are injected on create/update when the `@kysera/timestamps`
-   * executor plugin is active (the plugin itself only extends kysera-style
-   * factory repositories, so this class applies the equivalent behavior).
-   * Set to `false` for tables without these columns.
+   * Opt-in timestamp management: when enabled, createdAt/updatedAt are
+   * injected on create/update (explicit values in data always win). Enable
+   * per repository either with the `@Timestamps()` class decorator
+   * (preferred; column names configurable there) or by overriding this
+   * flag. Deliberately OFF by default — many tables are append-only logs
+   * or junctions without these columns, and injecting into them would be
+   * a runtime SQL error.
    */
-  protected readonly hasTimestamps: boolean = true;
+  protected readonly hasTimestamps: boolean = false;
   protected readonly createdAtColumn: string = 'createdAt';
   protected readonly updatedAtColumn: string = 'updatedAt';
 
@@ -142,8 +146,26 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     return isKyseraExecutor(this.db) && getPlugins(this.db).some((p) => p.name === pluginName);
   }
 
-  protected get timestampsPluginActive(): boolean {
-    return this.hasTimestamps && this.hasExecutorPlugin('@kysera/timestamps');
+  /**
+   * Resolved timestamp columns, or null when this repository has not opted
+   * in. `@Timestamps()` decorator config wins over the class-field defaults;
+   * the decorator (or the flag) alone is sufficient — injection does not
+   * depend on any executor plugin, so it works on a raw Kysely too.
+   */
+  protected timestampsColumns(): { createdAt: string; updatedAt: string } | null {
+    const decoratorConfig = getTimestampsConfig(
+      this.constructor as Parameters<typeof getTimestampsConfig>[0]
+    ) as { createdAt?: string; updatedAt?: string } | undefined;
+    if (decoratorConfig) {
+      return {
+        createdAt: decoratorConfig.createdAt ?? this.createdAtColumn,
+        updatedAt: decoratorConfig.updatedAt ?? this.updatedAtColumn,
+      };
+    }
+    if (this.hasTimestamps) {
+      return { createdAt: this.createdAtColumn, updatedAt: this.updatedAtColumn };
+    }
+    return null;
   }
 
   protected get softDeletePluginActive(): boolean {
@@ -164,16 +186,17 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     return this.executorIncludingDeleted as unknown as DynamicQueryBuilder;
   }
 
-  /** Inject created/updated timestamps when the timestamps plugin is active. */
+  /** Inject created/updated timestamps for repositories that opted in. */
   private applyTimestamps<T>(data: T, mode: 'create' | 'update'): T {
-    if (!this.timestampsPluginActive) return data;
+    const columns = this.timestampsColumns();
+    if (!columns) return data;
     const record = { ...(data as Record<string, unknown>) };
     const now = formatTimestampForDb(new Date(), detectDialect(this.db) as Dialect);
-    if (mode === 'create' && record[this.createdAtColumn] === undefined) {
-      record[this.createdAtColumn] = now;
+    if (mode === 'create' && record[columns.createdAt] === undefined) {
+      record[columns.createdAt] = now;
     }
-    if (record[this.updatedAtColumn] === undefined) {
-      record[this.updatedAtColumn] = now;
+    if (record[columns.updatedAt] === undefined) {
+      record[columns.updatedAt] = now;
     }
     return record as T;
   }

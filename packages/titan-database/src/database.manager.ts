@@ -43,10 +43,9 @@ import {
   type Plugin,
   type KyseraExecutor,
 } from '@kysera/executor';
-import { CircuitBreaker } from '@kysera/infra';
+import { CircuitBreaker, withRetry, isTransientError } from '@kysera/infra';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors, TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
-import { computeBackoff } from '@omnitron-dev/titan/utils';
 import type {
   DatabaseConnection,
   DatabaseDialect,
@@ -452,54 +451,62 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private async createConnectionWithRetry(name: string, config: DatabaseConnection): Promise<ConnectionInfo> {
     const retryConfig = this.defaultRetryConfig;
-    let lastError: Error | undefined;
+    let attempts = 0;
 
-    for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
-      try {
-        this.logger.debug({ name, attempt, maxRetries: retryConfig.maxRetries }, 'Attempting database connection');
-
-        const info = await this.createConnection(name, config);
-
-        if (attempt > 0) {
-          this.logger.info({ name, attempt, totalRetries: attempt }, 'Database connection established after retries');
+    try {
+      const info = await withRetry(
+        () => {
+          attempts += 1;
+          this.logger.debug(
+            { name, attempt: attempts - 1, maxRetries: retryConfig.maxRetries },
+            'Attempting database connection'
+          );
+          return this.createConnection(name, config);
+        },
+        {
+          maxAttempts: retryConfig.maxRetries + 1,
+          delayMs: retryConfig.baseDelayMs,
+          maxDelayMs: retryConfig.maxDelayMs,
+          backoff: true,
+          jitterFactor: 0,
+          // Retry transient driver errors AND our own SERVICE_UNAVAILABLE
+          // wrapper (createConnection reduces every failed liveness probe to
+          // it, e.g. while the database container is still starting). Config
+          // mistakes (bad dialect, malformed options) fail on the FIRST
+          // attempt instead of burning the whole backoff budget.
+          shouldRetry: (error) =>
+            isTransientError(error) ||
+            (error instanceof TitanError && error.code === ErrorCode.SERVICE_UNAVAILABLE),
+          onRetry: (attempt, error) => {
+            this.logger.warn(
+              {
+                name,
+                attempt: attempt - 1,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              'Database connection failed, retrying'
+            );
+          },
         }
+      );
 
-        return info;
-      } catch (error) {
-        lastError = error as Error;
-        const isLastAttempt = attempt === retryConfig.maxRetries;
-
-        if (isLastAttempt) {
-          this.logger.error({ name, attempt, error: lastError }, 'Database connection failed after all retries');
-          break;
-        }
-
-        // Calculate exponential backoff delay: 1s, 2s, 4s, 8s, 16s.
-        // RESILIENCE-UNIFY: use the shared computeBackoff primitive (identical to
-        // the previous min(baseDelayMs * 2^attempt, maxDelayMs); factor 2, no jitter).
-        const delayMs = computeBackoff({
-          attempt,
-          baseMs: retryConfig.baseDelayMs,
-          maxMs: retryConfig.maxDelayMs,
-          factor: 2,
-          jitter: 0,
-        });
-
-        this.logger.warn(
-          { name, attempt, nextRetryIn: delayMs, error: lastError.message },
-          'Database connection failed, retrying'
+      if (attempts > 1) {
+        this.logger.info(
+          { name, totalRetries: attempts - 1 },
+          'Database connection established after retries'
         );
-
-        await this.sleep(delayMs);
       }
-    }
 
-    // All retries exhausted
-    throw new TitanError({
-      code: ErrorCode.SERVICE_UNAVAILABLE,
-      message: `Database connection ${name} failed after ${retryConfig.maxRetries} retries: ${lastError?.message}`,
-      details: { connection: name, error: lastError?.message, maxRetries: retryConfig.maxRetries },
-    });
+      return info;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error({ name, attempts, error }, 'Database connection failed after all retries');
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: `Database connection ${name} failed after ${retryConfig.maxRetries} retries: ${message}`,
+        details: { connection: name, error: message, maxRetries: retryConfig.maxRetries },
+      });
+    }
   }
 
   /**
@@ -1005,13 +1012,6 @@ export class DatabaseManager implements IDatabaseManager {
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  /**
-   * Sleep utility for retry delays
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

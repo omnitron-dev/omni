@@ -38,8 +38,6 @@ import type { Kysely } from 'kysely';
 import type { Plugin as KyseraPlugin } from '@kysera/executor';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
 
-const DATABASE_MODULE_LOGGER = Symbol.for('DATABASE_MODULE_LOGGER');
-
 @Module()
 export class TitanDatabaseModule {
   name = 'TitanDatabaseModule';
@@ -185,16 +183,6 @@ export class TitanDatabaseModule {
     } else {
       providers.push(optionsProvider as [ServiceIdentifier<unknown>, ProviderDefinition<unknown>]);
     }
-
-    // Module logger
-    providers.push([
-      DATABASE_MODULE_LOGGER,
-      {
-        useFactory: (loggerModule: ILoggerModule) => loggerModule.create('TitanDatabaseModule'),
-        inject: [LOGGER_SERVICE_TOKEN],
-        scope: Scope.Singleton,
-      },
-    ]);
 
     // DatabaseManager — creates Kysely instances, manages pools
     providers.push([

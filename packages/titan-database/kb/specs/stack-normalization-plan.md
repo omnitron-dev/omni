@@ -175,7 +175,11 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
 - **main** (largest: 128k LOC, 82 repos, 130 migrations; ~3160 LOC
   infra-shaped, ~1100 removable with ZERO new kysera code): replace the 94
   hand-written repository `useFactory` DI blocks with `@InjectRepository`/
-  `getRepositoryToken` (exist, 0 uses); eliminate raw `DATABASE_CONNECTION`
+  `getRepositoryToken` (exist, 0 uses) — 2026-08-02 evidence of the
+  fragility: ContentService takes 41 POSITIONAL constructor args; removing
+  one slot silently shifted every later dependency by one and broke 23
+  unit tests via null-repo wiring (services survived only because DI
+  resolves by token order at runtime); eliminate raw `DATABASE_CONNECTION`
   injection in 20/54 services — the single root of 9 manual soft-delete
   re-adds and 12 hand-rolled `db.transaction()` blocks; adopt `paginate`/
   `paginateCursor` (114 hand-rolled `hasMore` sites / 50 files ≈ 1800 LOC;

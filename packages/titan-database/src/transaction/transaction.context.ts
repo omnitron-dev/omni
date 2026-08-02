@@ -116,10 +116,23 @@ export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | 
 // Monotonic counter for collision-free savepoint names within a process.
 let savepointSequence = 0;
 
+export interface RunInTransactionOptions {
+  name?: string;
+  connectionName?: string;
+  /**
+   * Retry the WHOLE transaction on serialization failures/deadlocks
+   * (pg 40001/40P01, mysql 1213/1205, mssql 1205, SQLITE_BUSY) via
+   * @kysera/infra withTransactionRetry. Number = maxAttempts (true = 3).
+   * Applies only when this call STARTS the transaction — a nested call
+   * joins the outer transaction and cannot retry it in isolation.
+   */
+  retry?: boolean | number;
+}
+
 export async function runInTransaction<DB, T>(
   db: Kysely<DB>,
   fn: () => Promise<T>,
-  options?: { name?: string; connectionName?: string }
+  options?: RunInTransactionOptions
 ): Promise<T> {
   const existingCtx = transactionStorage.getStore();
 
@@ -145,16 +158,33 @@ export async function runInTransaction<DB, T>(
     }
   }
 
-  return db.transaction().execute(async (trx) => {
-    const ctx: TransactionContextData = {
-      transaction: trx as Transaction<unknown>,
-      connectionName: options?.connectionName ?? 'default',
-      depth: 1,
-      startedAt: new Date(),
-      name: options?.name,
-    };
-    return transactionStorage.run(ctx, fn);
-  });
+  const runOnce = (): Promise<T> =>
+    db.transaction().execute(async (trx) => {
+      const ctx: TransactionContextData = {
+        transaction: trx as Transaction<unknown>,
+        connectionName: options?.connectionName ?? 'default',
+        depth: 1,
+        startedAt: new Date(),
+        name: options?.name,
+      };
+      return transactionStorage.run(ctx, fn);
+    });
+
+  if (options?.retry) {
+    // Same semantics as @kysera/infra withTransactionRetry (which is
+    // withRetry over db.transaction().execute): each attempt here runs
+    // runOnce(), i.e. a FRESH transaction and a fresh ALS context.
+    const { withRetry, isSerializationError } = await import('@kysera/infra');
+    const maxAttempts = typeof options.retry === 'number' ? options.retry : 3;
+    return withRetry(runOnce, {
+      maxAttempts,
+      delayMs: 100,
+      maxDelayMs: 2000,
+      shouldRetry: isSerializationError,
+    });
+  }
+
+  return runOnce();
 }
 
 /**

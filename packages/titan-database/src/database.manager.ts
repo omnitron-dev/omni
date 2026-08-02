@@ -158,6 +158,11 @@ export class DatabaseManager implements IDatabaseManager {
   private eventEmitter: EventEmitter = new EventEmitter();
   public logger: ILogger;
   private options: DatabaseModuleOptions;
+
+  /** Module-level RLS defaults (activation inputs, bulk-check bound). */
+  getRlsDefaults(): DatabaseModuleOptions['rls'] {
+    return this.options.rls;
+  }
   private initialized = false;
   private readonly defaultRetryConfig: RetryConfig = {
     maxRetries: 5,
@@ -1589,6 +1594,19 @@ export class DatabaseManager implements IDatabaseManager {
       case 'audit': {
         const { auditPlugin } = await import('@kysera/audit');
         return auditPlugin(options as Parameters<typeof auditPlugin>[0]);
+      }
+      case 'rls': {
+        // Requires a schema — only reachable via the {plugin: 'rls', options}
+        // config form; a bare 'rls' string cannot carry one.
+        if (!options || typeof options !== 'object' || !('schema' in options)) {
+          this.logger.warn(
+            { plugin: name },
+            "RLS plugin requires options.schema (use { plugin: 'rls', options: { schema } }); skipping"
+          );
+          return null;
+        }
+        const { rlsPlugin } = await import('@kysera/rls');
+        return rlsPlugin(options as unknown as Parameters<typeof rlsPlugin>[0]);
       }
       default:
         this.logger.warn({ plugin: name }, 'Unknown built-in plugin name, skipping');

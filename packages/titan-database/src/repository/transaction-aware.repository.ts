@@ -36,10 +36,18 @@ export interface ListOptions {
   orderBy?: string;
   direction?: 'asc' | 'desc';
   includeSoftDeleted?: boolean;
+  /**
+   * Skip the COUNT query (kysera 0.10 'count: none' analogue): total is
+   * reported as -1 and hasMore is derived from a limit+1 probe. Use on
+   * hot paths where an exact total is not worth a second query.
+   * @default true
+   */
+  withTotal?: boolean;
 }
 
 export interface OffsetPaginatedResult<T> {
   data: T[];
+  /** Exact total, or -1 when the query ran with withTotal: false */
   total: number;
   limit: number;
   offset: number;
@@ -455,14 +463,7 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     const applyNativeSoftDeleteFilter =
       this.hasSoftDelete && !includeSoftDeleted && !this.softDeletePluginActive;
 
-    let countQuery = (qb.selectFrom(this.tableName) as CountQR).select(
-      (eb: CEB) => eb.fn.count('id').as('count')
-    );
-    if (applyNativeSoftDeleteFilter) {
-      countQuery = countQuery.where(this.softDeleteColumn, 'is', null);
-    }
-    const countResult = await countQuery.executeTakeFirst();
-    const total = Number(countResult?.count ?? 0);
+    const withTotal = options.withTotal ?? true;
 
     type SelectQR = {
       selectAll(): SelectQR;
@@ -477,7 +478,28 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     if (applyNativeSoftDeleteFilter) {
       dataQuery = dataQuery.where(this.softDeleteColumn, 'is', null);
     }
-    const data = await dataQuery.orderBy(orderBy, direction).limit(limit).offset(offset).execute();
+    dataQuery = dataQuery.orderBy(orderBy, direction);
+
+    if (!withTotal) {
+      // COUNT skipped: fetch limit+1 to derive hasMore, report total = -1
+      const probe = await dataQuery
+        .limit(limit + 1)
+        .offset(offset)
+        .execute();
+      const hasMore = probe.length > limit;
+      return { data: probe.slice(0, limit), total: -1, limit, offset, hasMore };
+    }
+
+    let countQuery = (qb.selectFrom(this.tableName) as CountQR).select(
+      (eb: CEB) => eb.fn.count('id').as('count')
+    );
+    if (applyNativeSoftDeleteFilter) {
+      countQuery = countQuery.where(this.softDeleteColumn, 'is', null);
+    }
+    const countResult = await countQuery.executeTakeFirst();
+    const total = Number(countResult?.count ?? 0);
+
+    const data = await dataQuery.limit(limit).offset(offset).execute();
 
     return { data, total, limit, offset, hasMore: offset + data.length < total };
   }

@@ -168,7 +168,25 @@ export interface DatabaseModuleOptions {
     validateChecksums?: boolean;
     transactional?: boolean;
   };
-  rls?: { enabled: boolean };
+  rls?: {
+    enabled: boolean;
+    /**
+     * Conditional policy activation inputs, passed to rlsPlugin (kysera
+     * 0.10+): environment for whenEnvironment gates (default NODE_ENV),
+     * feature flags for whenFeature, static activation metadata.
+     */
+    activation?: {
+      environment?: string;
+      features?: string[] | Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    /**
+     * Upper bound for per-row value-policy checks on bulk mutations
+     * (kysera 0.10+ enforces value policies on bulkUpdate/bulkDelete).
+     * @default 1000
+     */
+    maxBulkRowChecks?: number;
+  };
   circuitBreaker?: {
     enabled?: boolean;
     threshold?: number;

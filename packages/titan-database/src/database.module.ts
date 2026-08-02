@@ -143,7 +143,18 @@ export class TitanDatabaseModule {
           compiledRLS = compileRLSDecorators(repository, metadata.table, () => instanceHolder.current);
           if (compiledRLS) {
             const { rlsPlugin, defineRLSSchema } = await import('@kysera/rls');
-            plugins.push(rlsPlugin({ schema: defineRLSSchema(compiledRLS.schema as never) }) as KyseraPlugin);
+            // Thread module-level RLS defaults (kysera 0.10+): conditional
+            // policy activation inputs and the bulk value-check bound.
+            const rlsDefaults = manager.getRlsDefaults();
+            plugins.push(
+              rlsPlugin({
+                schema: defineRLSSchema(compiledRLS.schema as never),
+                ...(rlsDefaults?.activation ? { activation: rlsDefaults.activation } : {}),
+                ...(rlsDefaults?.maxBulkRowChecks !== undefined
+                  ? { maxBulkRowChecks: rlsDefaults.maxBulkRowChecks }
+                  : {})
+              }) as KyseraPlugin
+            );
           }
 
           // Get executor with decorator plugins + global plugins

@@ -10,8 +10,19 @@
  * - Event emission and metrics tracking
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { isDockerAvailable } from '@omnitron-dev/testing/titan';
+
+// better-sqlite3 does not parse `file:...?mode=memory&cache=shared` URIs —
+// it creates a literal FILE with that name in cwd (which is also the only
+// reason two "shared memory" connections ever saw the same data). Tests
+// that need a shareable database use real files under a throwaway tmp dir.
+const SQLITE_TMP_DIR = mkdtempSync(join(tmpdir(), 'titan-database-spec-'));
+const sqliteFile = (name: string): string => join(SQLITE_TMP_DIR, `${name}.sqlite`);
+afterAll(() => rmSync(SQLITE_TMP_DIR, { recursive: true, force: true }));
 
 const skipIntegrationTests =
   process.env.SKIP_DOCKER_TESTS === 'true' || process.env.SKIP_DATABASE_TESTS === 'true' || !isDockerAvailable();
@@ -261,7 +272,7 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
         {
           connection: {
             dialect: 'sqlite',
-            connection: 'file:memdb1?mode=memory&cache=shared',
+            connection: sqliteFile('memdb1'),
           },
         },
         mockLogger
@@ -721,7 +732,7 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
         {
           connection: {
             dialect: 'sqlite',
-            connection: 'file:memdb?mode=memory&cache=shared',
+            connection: sqliteFile('memdb'),
           },
         },
         mockLogger
@@ -765,11 +776,11 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
           connections: {
             conn1: {
               dialect: 'sqlite',
-              connection: `file:${uniqueDbName}?mode=memory&cache=shared`,
+              connection: sqliteFile(uniqueDbName),
             },
             conn2: {
               dialect: 'sqlite',
-              connection: `file:${uniqueDbName}?mode=memory&cache=shared`,
+              connection: sqliteFile(uniqueDbName),
             },
           },
         },

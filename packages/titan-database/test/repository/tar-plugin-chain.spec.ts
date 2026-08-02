@@ -1,13 +1,14 @@
 /**
  * TAR × kysera executor plugin chain
  *
- * Verifies that TransactionAwareRepository reacts to plugins carried by the
- * injected executor:
- * - timestamps: values injected on create/createMany/update
- * - soft-delete: plugin owns read filtering; restore and hard delete opt out
- *   of mutation narrowing via scoped metadata; includeSoftDeleted reads work
- * - raw Kysely (no executor): native soft-delete filter still applies and
- *   no timestamps are injected
+ * Verifies TransactionAwareRepository's plugin/decorator contract:
+ * - timestamps: OPT-IN per repository via @Timestamps() (or hasTimestamps
+ *   override); injected on create/createMany/update regardless of executor
+ *   plugins, explicit values win, non-opted repos are never touched
+ * - soft-delete: when the @kysera/soft-delete executor plugin is active it
+ *   owns read filtering; restore and hard delete opt out of mutation
+ *   narrowing via scoped metadata; includeSoftDeleted reads work
+ * - raw Kysely (no executor): native soft-delete filter still applies
  *
  * SQLite in-memory — no Docker required.
  */
@@ -17,8 +18,8 @@ import { Kysely, SqliteDialect, sql, type Generated } from 'kysely';
 import BetterSqlite3 from 'better-sqlite3';
 import { createExecutor } from '@kysera/executor';
 import { softDeletePlugin } from '@kysera/soft-delete';
-import { timestampsPlugin } from '@kysera/timestamps';
 import { TransactionAwareRepository } from '../../src/repository/transaction-aware.repository.js';
+import { Timestamps } from '../../src/database.decorators.js';
 
 interface UsersTable {
   id: Generated<number>;
@@ -32,7 +33,16 @@ interface TestDB {
   users: UsersTable;
 }
 
-class UserRepo extends TransactionAwareRepository<TestDB, 'users'> {
+@Timestamps()
+class StampedRepo extends TransactionAwareRepository<TestDB, 'users'> {
+  protected override readonly hasSoftDelete = true;
+
+  constructor(db: Kysely<TestDB>) {
+    super(db, 'users');
+  }
+}
+
+class PlainRepo extends TransactionAwareRepository<TestDB, 'users'> {
   protected override readonly hasSoftDelete = true;
 
   constructor(db: Kysely<TestDB>) {
@@ -57,27 +67,33 @@ async function createDb(): Promise<Kysely<TestDB>> {
 }
 
 describe('TAR × executor plugin chain', () => {
-  describe('with soft-delete + timestamps plugins on the executor', () => {
+  describe('with the soft-delete plugin on the executor', () => {
     let db: Kysely<TestDB>;
-    let repo: UserRepo;
+    let repo: StampedRepo;
 
     beforeEach(async () => {
       db = await createDb();
-      const executor = await createExecutor(db, [
-        softDeletePlugin({ deletedAtColumn: 'deletedAt' }),
-        timestampsPlugin(),
-      ]);
-      repo = new UserRepo(executor as Kysely<TestDB>);
+      const executor = await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deletedAt' })]);
+      repo = new StampedRepo(executor as Kysely<TestDB>);
     });
 
     afterEach(async () => {
       await db.destroy();
     });
 
-    it('injects createdAt/updatedAt on create', async () => {
+    it('injects createdAt/updatedAt on create for @Timestamps repos', async () => {
       const row = await repo.create({ name: 'alice' });
       expect(row.createdAt).toBeTruthy();
       expect(row.updatedAt).toBeTruthy();
+    });
+
+    it('never injects into repos without the opt-in', async () => {
+      const plain = new PlainRepo(
+        (await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deletedAt' })])) as Kysely<TestDB>
+      );
+      const row = await plain.create({ name: 'nobody' });
+      expect(row.createdAt).toBeNull();
+      expect(row.updatedAt).toBeNull();
     });
 
     it('keeps explicitly provided timestamp values', async () => {
@@ -146,24 +162,31 @@ describe('TAR × executor plugin chain', () => {
 
   describe('with a raw Kysely instance (no executor)', () => {
     let db: Kysely<TestDB>;
-    let repo: UserRepo;
 
     beforeEach(async () => {
       db = await createDb();
-      repo = new UserRepo(db);
     });
 
     afterEach(async () => {
       await db.destroy();
     });
 
-    it('does not inject timestamps', async () => {
+    it('@Timestamps injection works standalone (no executor plugin needed)', async () => {
+      const repo = new StampedRepo(db);
+      const row = await repo.create({ name: 'henry' });
+      expect(row.createdAt).toBeTruthy();
+      expect(row.updatedAt).toBeTruthy();
+    });
+
+    it('does not inject timestamps without the opt-in', async () => {
+      const repo = new PlainRepo(db);
       const row = await repo.create({ name: 'henry' });
       expect(row.createdAt).toBeNull();
       expect(row.updatedAt).toBeNull();
     });
 
     it('applies the NATIVE soft-delete filter and restore still works', async () => {
+      const repo = new PlainRepo(db);
       const row = await repo.create({ name: 'iris' });
       await repo.softDelete(String(row.id));
 

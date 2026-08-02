@@ -23,7 +23,15 @@ import { Module } from '@omnitron-dev/titan/decorators';
 import { DatabaseManager } from './database.manager.js';
 import { DatabaseHealthIndicator } from './database.health.js';
 // Migrations delegated to @kysera/migrations — use kysera CLI or createMigrationRunner()
-import { getRepositoryMetadata, getDecoratorPlugins, getSoftDeleteConfig, getTimestampsConfig, getAuditConfig } from './database.decorators.js';
+import {
+  getRepositoryMetadata,
+  getDecoratorPlugins,
+  getSoftDeleteConfig,
+  getTimestampsConfig,
+  getAuditConfig,
+  compileRLSDecorators,
+  type CompiledRLSDecorators,
+} from './database.decorators.js';
 import type { RepositoryConstructor } from './database.internal-types.js';
 import {
   DATABASE_HEALTH_INDICATOR,
@@ -91,6 +99,10 @@ export class TitanDatabaseModule {
         // Build per-repository plugins from decorator metadata
         const decoratorPluginNames = getDecoratorPlugins(repository);
         let db: Kysely<unknown>;
+        // Late-bound repository instance for RLS policy predicates: the
+        // plugin-aware executor must exist BEFORE the repository does.
+        const instanceHolder: { current?: object } = {};
+        let compiledRLS: CompiledRLSDecorators | null = null;
 
         if (decoratorPluginNames.length > 0) {
           // Create executor with decorator-specified plugins merged with global plugins
@@ -125,6 +137,15 @@ export class TitanDatabaseModule {
             }));
           }
 
+          // Compile @Policy/@Allow/@Deny/@Filter metadata into a real
+          // rlsPlugin. Before this, the RLS decorators wrote metadata that
+          // nothing read — an annotated repository ran with ZERO filtering.
+          compiledRLS = compileRLSDecorators(repository, metadata.table, () => instanceHolder.current);
+          if (compiledRLS) {
+            const { rlsPlugin, defineRLSSchema } = await import('@kysera/rls');
+            plugins.push(rlsPlugin({ schema: defineRLSSchema(compiledRLS.schema as never) }) as KyseraPlugin);
+          }
+
           // Get executor with decorator plugins + global plugins
           const globalPlugins = manager.getConnectionPlugins(metadata.connection);
           const allPlugins = [...globalPlugins, ...plugins];
@@ -134,7 +155,26 @@ export class TitanDatabaseModule {
           db = await manager.getConnection(metadata.connection);
         }
 
-        return new (repository as any)(db, metadata.table);
+        const instance = new (repository as any)(db, metadata.table);
+        instanceHolder.current = instance as object;
+
+        // @BypassRLS methods run under a system context (elevation requires
+        // an ambient RLS context to elevate FROM — calling one without a
+        // context is an error, matching requireContext semantics).
+        if (compiledRLS && compiledRLS.bypassMethods.length > 0) {
+          const { rlsContext } = await import('@kysera/rls');
+          for (const method of compiledRLS.bypassMethods) {
+            const original = (instance as Record<string | symbol, unknown>)[method];
+            if (typeof original === 'function') {
+              (instance as Record<string | symbol, unknown>)[method] = (...args: unknown[]) =>
+                rlsContext.asSystemAsync(async () =>
+                  (original as (...a: unknown[]) => unknown).apply(instance, args)
+                );
+            }
+          }
+        }
+
+        return instance;
       };
 
       providers.push([

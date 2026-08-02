@@ -5,6 +5,7 @@
  */
 
 import { Inject } from '@omnitron-dev/titan/decorators';
+import { allow as rlsAllow, deny as rlsDeny, filter as rlsFilter } from '@kysera/rls';
 import {
   getDatabaseConnectionToken,
   getRepositoryToken,
@@ -450,8 +451,25 @@ export function getDecoratorPlugins(target: Constructor | RepositoryConstructor)
   if (hasAudit(target)) {
     plugins.push('audit');
   }
+  if (hasRLSDecorators(target)) {
+    plugins.push('rls');
+  }
 
   return plugins;
+}
+
+/**
+ * Check if the repository carries ANY RLS decorator metadata
+ * (@Policy on the class, or @Allow/@Deny/@Filter on methods).
+ */
+export function hasRLSDecorators(target: Constructor | RepositoryConstructor): boolean {
+  const ctor = target as Constructor;
+  return (
+    Reflect.getMetadata('database:rls-enabled', target) === true ||
+    getRLSAllowRules(ctor).length > 0 ||
+    getRLSDenyRules(ctor).length > 0 ||
+    getRLSFilters(ctor).length > 0
+  );
 }
 
 // ============================================================================
@@ -503,21 +521,28 @@ export interface RLSFilterConfig {
  * class PostRepository extends BaseRepository<Post> {}
  * ```
  */
-function rlsDecoratorsDisabled(decorator: string): Error {
-  return new Error(
-    `${decorator} is disabled: titan-database does not compile RLS decorator metadata into a ` +
-      `runtime rlsPlugin — the decorators only wrote Reflect metadata that NOTHING reads, so an ` +
-      `annotated repository silently ran with ZERO row filtering. Register RLS explicitly ` +
-      `instead: build a schema with defineRLSSchema() and pass rlsPlugin() from @kysera/rls via ` +
-      `the module's kysera plugin options. These decorators will be re-enabled once decorator ` +
-      `compilation ships.`,
-  );
-}
+export function Policy(config?: RLSPolicyConfig): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  return <TFunction extends Function>(target: TFunction): TFunction => {
+    const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
-export function Policy(_config?: RLSPolicyConfig): ClassDecorator {
-  // SECURITY: throwing at class-definition time turns a silent no-op
-  // (annotated repo, zero enforcement) into an immediate boot failure.
-  throw rlsDecoratorsDisabled('@Policy');
+    Reflect.defineMetadata(
+      METADATA_KEYS.REPOSITORY,
+      {
+        ...existingConfig,
+        rls: config || {},
+      },
+      target
+    );
+
+    // Store RLS policy metadata separately for discovery
+    Reflect.defineMetadata(METADATA_KEYS.RLS_POLICY, config || {}, target);
+
+    // Mark as RLS-enabled
+    Reflect.defineMetadata('database:rls-enabled', true, target);
+
+    return target;
+  };
 }
 
 /**
@@ -536,8 +561,21 @@ export function Policy(_config?: RLSPolicyConfig): ClassDecorator {
  * }
  * ```
  */
-export function Allow(_config: RLSRuleConfig): MethodDecorator {
-  throw rlsDecoratorsDisabled('@Allow');
+export function Allow(config: RLSRuleConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_ALLOW, target.constructor) || [];
+
+    rules.push({
+      name: config.name || String(propertyKey),
+      method: propertyKey,
+      operations: config.operations,
+      priority: config.priority ?? 0,
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_ALLOW, rules, target.constructor);
+
+    return descriptor;
+  };
 }
 
 /**
@@ -556,8 +594,21 @@ export function Allow(_config: RLSRuleConfig): MethodDecorator {
  * }
  * ```
  */
-export function Deny(_config: RLSRuleConfig): MethodDecorator {
-  throw rlsDecoratorsDisabled('@Deny');
+export function Deny(config: RLSRuleConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_DENY, target.constructor) || [];
+
+    rules.push({
+      name: config.name || String(propertyKey),
+      method: propertyKey,
+      operations: config.operations,
+      priority: config.priority ?? 0,
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_DENY, rules, target.constructor);
+
+    return descriptor;
+  };
 }
 
 /**
@@ -576,8 +627,20 @@ export function Deny(_config: RLSRuleConfig): MethodDecorator {
  * }
  * ```
  */
-export function Filter(_config?: RLSFilterConfig): MethodDecorator {
-  throw rlsDecoratorsDisabled('@Filter');
+export function Filter(config?: RLSFilterConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const filters = Reflect.getMetadata(METADATA_KEYS.RLS_FILTER, target.constructor) || [];
+
+    filters.push({
+      name: config?.name || String(propertyKey),
+      method: propertyKey,
+      operations: config?.operations || ['select'],
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_FILTER, filters, target.constructor);
+
+    return descriptor;
+  };
 }
 
 /**
@@ -597,7 +660,13 @@ export function Filter(_config?: RLSFilterConfig): MethodDecorator {
  * ```
  */
 export function BypassRLS(): MethodDecorator {
-  throw rlsDecoratorsDisabled('@BypassRLS');
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const bypassed = Reflect.getMetadata(METADATA_KEYS.RLS_BYPASS, target.constructor) || [];
+    bypassed.push(propertyKey);
+    Reflect.defineMetadata(METADATA_KEYS.RLS_BYPASS, bypassed, target.constructor);
+
+    return descriptor;
+  };
 }
 
 /**
@@ -647,6 +716,118 @@ export function getRLSFilters(target: Constructor): Array<{
  */
 export function getRLSBypassedMethods(target: Constructor): Array<string | symbol> {
   return Reflect.getMetadata(METADATA_KEYS.RLS_BYPASS, target) || [];
+}
+
+// ============================================================================
+// RLS DECORATOR COMPILATION
+// ============================================================================
+
+/** Decorator operations → @kysera/rls policy operations. */
+const RLS_OPERATION_MAP = {
+  select: 'read',
+  insert: 'create',
+  update: 'update',
+  delete: 'delete',
+} as const;
+
+type RLSDecoratorOperation = keyof typeof RLS_OPERATION_MAP;
+
+export interface CompiledRLSDecorators {
+  /** Table → config, ready for `defineRLSSchema()` / `rlsPlugin({ schema })`. */
+  schema: Record<string, unknown>;
+  /** Methods marked @BypassRLS — callers wrap them in `rlsContext.asSystemAsync`. */
+  bypassMethods: Array<string | symbol>;
+}
+
+/**
+ * Compile @Policy/@Allow/@Deny/@Filter metadata into an @kysera/rls schema
+ * fragment. Returns null when the class carries no RLS decorators.
+ *
+ * Policy methods are invoked with a late-bound `this`: at compile time the
+ * repository instance may not exist yet (the plugin-aware executor is built
+ * first), so predicates must not rely on constructor state — by the time
+ * queries actually run, `getInstance()` resolves to the live repository.
+ */
+export function compileRLSDecorators(
+  repository: Constructor | RepositoryConstructor,
+  defaultTable: string,
+  getInstance: () => object | undefined = () => undefined
+): CompiledRLSDecorators | null {
+  if (!hasRLSDecorators(repository)) {
+    return null;
+  }
+
+  const policyConfig = getRLSPolicyMetadata(repository as Constructor);
+  const allowRules = getRLSAllowRules(repository as Constructor);
+  const denyRules = getRLSDenyRules(repository as Constructor);
+  const filters = getRLSFilters(repository as Constructor);
+  const bypassMethods = getRLSBypassedMethods(repository as Constructor);
+
+  const proto = (repository as { prototype: Record<string | symbol, unknown> }).prototype;
+  const invoke = (method: string | symbol, args: unknown[]): unknown => {
+    const fn = proto[method];
+    if (typeof fn !== 'function') {
+      throw new Error(
+        `RLS decorator references method "${String(method)}" which does not exist on ` +
+          `${(repository as { name?: string }).name ?? 'repository'}`
+      );
+    }
+    return (fn as (...a: unknown[]) => unknown).apply(getInstance() ?? proto, args);
+  };
+
+  const mapOperations = (operations: readonly string[]): Array<'read' | 'create' | 'update' | 'delete'> =>
+    operations.map((op) => RLS_OPERATION_MAP[op as RLSDecoratorOperation]);
+
+  const policies: unknown[] = [];
+
+  for (const rule of denyRules) {
+    policies.push(
+      rlsDeny(
+        mapOperations(rule.operations),
+        ((ctx: { row?: unknown }) => Boolean(invoke(rule.method, [ctx, ctx.row]))) as never,
+        { name: String(rule.name), priority: rule.priority }
+      )
+    );
+  }
+
+  for (const rule of allowRules) {
+    policies.push(
+      rlsAllow(
+        mapOperations(rule.operations),
+        ((ctx: { row?: unknown }) => Boolean(invoke(rule.method, [ctx, ctx.row]))) as never,
+        { name: String(rule.name), priority: rule.priority }
+      )
+    );
+  }
+
+  // @kysera/rls filters are declared for 'read' or 'all' (mutation-side
+  // enforcement is handled by the plugin itself): select-only decorator
+  // filters compile to 'read', anything broader to 'all'.
+  const filterOperation = (operations: readonly string[]): 'read' | 'all' => {
+    const mapped = new Set(mapOperations(operations));
+    return mapped.size === 1 && mapped.has('read') ? 'read' : 'all';
+  };
+
+  for (const filterRule of filters) {
+    policies.push(
+      rlsFilter(
+        filterOperation(filterRule.operations ?? ['select']),
+        ((ctx: unknown) => invoke(filterRule.method, [ctx]) as Record<string, unknown>) as never,
+        { name: String(filterRule.name) }
+      )
+    );
+  }
+
+  const table = policyConfig?.table ?? defaultTable;
+  const tableConfig: Record<string, unknown> = { policies };
+  if (policyConfig?.skipFor !== undefined) {
+    tableConfig['skipFor'] = policyConfig.skipFor;
+  }
+  if (policyConfig?.defaultPolicy === 'deny') {
+    tableConfig['defaultDeny'] = true;
+  }
+
+  return { schema: { [table]: tableConfig }, bypassMethods };
 }
 
 /**

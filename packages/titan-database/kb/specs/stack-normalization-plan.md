@@ -230,7 +230,15 @@ every CRUD method to avoid collisions) and implement the declared-but-missing
 
 **P0, before any other work:**
 
-1. **[CRITICAL/SECURITY] RLS decorators are silent no-ops.**
+1. **[CRITICAL/SECURITY] RLS decorators are silent no-ops.** — **CLOSED
+   2026-08-02**: decorators are functional again AND compiled —
+   `compileRLSDecorators()` maps @Policy (table/skipFor/defaultPolicy),
+   @Allow/@Deny (row predicates, select→read/insert→create), @Filter
+   (select-only → 'read', broader → 'all') into a defineRLSSchema fragment;
+   forFeature registers the resulting rlsPlugin on the repo's executor and
+   wraps @BypassRLS methods in rlsContext.asSystemAsync. Covered by
+   rls-decorators.spec.ts (6 cases incl. live tenant filtering and
+   requireContext rejection); suite 345/345.
    `database.decorators.ts:506-652` — `@Policy/@Allow/@Deny/@Filter/@BypassRLS`
    write Reflect metadata that NOTHING reads; `forFeature` builds plugins
    only from soft-delete/timestamps/audit (module.ts:92-140), rlsPlugin is

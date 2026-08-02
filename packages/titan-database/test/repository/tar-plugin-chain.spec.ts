@@ -200,3 +200,36 @@ describe('TAR × executor plugin chain', () => {
     });
   });
 });
+
+describe('TAR list() withTotal: false (kysera 0.10)', () => {
+  let db: Kysely<TestDB>
+  let repo: PlainRepo
+
+  beforeEach(async () => {
+    db = await createDb()
+    repo = new PlainRepo(db)
+    for (let i = 0; i < 5; i++) {
+      await repo.create({ name: `user-${i}` })
+    }
+  })
+
+  afterEach(async () => {
+    await db.destroy()
+  })
+
+  it('skips COUNT, reports total=-1, derives hasMore from limit+1 probe', async () => {
+    const page1 = await repo.list({ limit: 2, offset: 0, orderBy: 'id', direction: 'asc', withTotal: false })
+    expect(page1.total).toBe(-1)
+    expect(page1.data).toHaveLength(2)
+    expect(page1.hasMore).toBe(true)
+
+    const lastPage = await repo.list({ limit: 2, offset: 4, orderBy: 'id', direction: 'asc', withTotal: false })
+    expect(lastPage.data).toHaveLength(1)
+    expect(lastPage.hasMore).toBe(false)
+  })
+
+  it('default keeps exact totals', async () => {
+    const page = await repo.list({ limit: 2, orderBy: 'id' })
+    expect(page.total).toBe(5)
+  })
+})

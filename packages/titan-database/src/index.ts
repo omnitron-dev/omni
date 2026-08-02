@@ -218,7 +218,13 @@ export {
 // @kysera/infra - Resilience
 // ============================================================================
 
-export { withRetry, CircuitBreaker, isTransientError } from '@kysera/infra';
+export {
+  withRetry,
+  withTransactionRetry,
+  CircuitBreaker,
+  isTransientError,
+  isSerializationError,
+} from '@kysera/infra';
 export { HealthMonitor, checkDatabaseHealth, performHealthCheck } from '@kysera/infra';
 export type {
   RetryOptions,

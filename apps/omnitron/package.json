@@ -38,7 +38,7 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
-    "@kysera/migrations": "^0.9.0",
+    "@kysera/migrations": "^0.10.0",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",

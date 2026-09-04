@@ -195,6 +195,24 @@ describeOrSkip('RedisManager with Real Redis', () => {
       expect(health.cache.latency).toBeGreaterThanOrEqual(0);
     });
 
+    it('answers every one of many concurrent probes', async () => {
+      // `isHealthy` issues a PING per call and they share one connection, so
+      // concurrent callers have their replies multiplexed on the same socket.
+      // A health endpoint under load makes exactly this shape of call, and it
+      // was untested — the closest existing test is one healthCheck() at a time.
+      const options: RedisModuleOptions = {
+        clients: [{ namespace: 'default', host: 'localhost', port: dockerFixture.port, db: 15 }],
+      };
+
+      manager = new RedisManager(options, createMockLogger());
+      await manager.init();
+
+      const results = await Promise.all(Array.from({ length: 50 }, () => manager.isHealthy()));
+
+      expect(results).toHaveLength(50);
+      expect(results.every((healthy) => healthy === true)).toBe(true);
+    });
+
     it('should report unhealthy client', async () => {
       const options: RedisModuleOptions = {
         clients: [

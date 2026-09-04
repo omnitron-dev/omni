@@ -385,31 +385,44 @@ describe('ProcessMetricsCollector', () => {
   });
 
   describe('Latency Metrics Calculation', () => {
-    it('should calculate percentiles correctly', () => {
-      // Test with known values
-      const latencies = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    // These three used to track latencies and assert NOTHING, with comments
+    // saying the calculation is private and therefore unverifiable. It is
+    // reachable: a collection cycle attaches it to the stored metrics, so
+    // `getMetrics(id).latency` exposes the percentiles and the mean.
+    // Order matters: startCollection() resets the process's latency bucket, so
+    // samples recorded before it are discarded.
+    const collectOnce = async (processId: string, samples: number[]) => {
+      collector.startCollection(processId, createMockProxy(), 1000);
+      for (const value of samples) collector.trackLatency(processId, value);
+      await vi.advanceTimersByTimeAsync(1100);
+      return collector.getMetrics(processId);
+    };
 
-      for (const latency of latencies) {
-        collector.trackLatency('proc-1', latency);
-      }
+    it('should calculate percentiles correctly', async () => {
+      const latency = (await collectOnce('proc-1', [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]))?.latency;
 
-      // The percentile calculation is private, but we can verify through metrics
-      // when latency metrics are attached
+      // percentile() takes sorted[ceil(p/100 * n) - 1] over ten samples.
+      expect(latency).toBeDefined();
+      expect(latency!.p50).toBe(50);
+      expect(latency!.p75).toBe(80);
+      expect(latency!.p90).toBe(90);
+      expect(latency!.p95).toBe(100);
+      expect(latency!.p99).toBe(100);
     });
 
-    it('should calculate mean correctly', () => {
-      const latencies = [10, 20, 30, 40, 50];
+    it('should calculate mean correctly', async () => {
+      const latency = (await collectOnce('proc-1', [10, 20, 30, 40, 50]))?.latency;
 
-      for (const latency of latencies) {
-        collector.trackLatency('proc-1', latency);
-      }
-
-      // Mean should be 30
+      expect(latency?.mean).toBe(30);
     });
 
-    it('should handle empty latency array', () => {
-      // No latencies tracked
-      // Should not cause errors in metrics calculation
+    it('should handle empty latency array', async () => {
+      const metrics = await collectOnce('proc-1', []);
+
+      // No samples tracked: the collector must still produce metrics, just
+      // without a latency block.
+      expect(metrics).not.toBeNull();
+      expect(metrics?.latency).toBeUndefined();
     });
   });
 
@@ -505,13 +518,21 @@ describe('ProcessMetricsCollector', () => {
       expect(collector.getMetrics('proc-2')).not.toBeNull();
     });
 
-    it('should track latency per process', () => {
+    it('should track latency per process', async () => {
+      // startCollection() first: it clears the bucket for that process.
+      collector.startCollection('proc-1', createMockProxy(), 1000);
+      collector.startCollection('proc-2', createMockProxy(), 1000);
+
       collector.trackLatency('proc-1', 50);
       collector.trackLatency('proc-2', 100);
       collector.trackLatency('proc-1', 60);
       collector.trackLatency('proc-2', 110);
 
-      // Latencies should be tracked separately per process
+      await vi.advanceTimersByTimeAsync(1100);
+
+      // Separate buckets, not one shared list — the means differ.
+      expect(collector.getMetrics('proc-1')?.latency?.mean).toBe(55);
+      expect(collector.getMetrics('proc-2')?.latency?.mean).toBe(105);
     });
   });
 

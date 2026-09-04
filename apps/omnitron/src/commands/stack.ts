@@ -5,9 +5,9 @@
  */
 
 import { log, table, note, prism } from '@xec-sh/kit';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import type { IProjectRpcService } from '../shared/dto/services.js';
-import { emitJson, emitError, emitStep, emitSuccess, emitInfo } from './output.js';
+import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 
 // =============================================================================
 // Helpers
@@ -59,6 +59,19 @@ export async function stackListCommand(options?: { project?: string }): Promise<
 
     if (filtered.length === 0) {
       log.error(`Project '${options?.project}' not found`);
+      return;
+    }
+
+    if (isJsonMode()) {
+      const data = [];
+      for (const project of filtered) {
+        data.push({
+          project: project.name,
+          path: project.path,
+          stacks: await svc.listStacks({ project: project.name }),
+        });
+      }
+      emitJson(data);
       return;
     }
 
@@ -174,8 +187,38 @@ export async function stackStatusCommand(projectName: string, stackName: string)
   }
 }
 
+/**
+ * Report the end of a lifecycle command that did not return an answer.
+ *
+ * A timeout is not a failure. The daemon cancels nothing when the caller
+ * stops waiting, so the stack is very likely still starting — saying
+ * "Failed" here sends an operator to roll back work that is succeeding.
+ * Observed exactly that: `stack start` reported failure at sixty seconds
+ * and the six apps were all online twenty seconds later.
+ *
+ * The exit code stays non-zero, because "unknown" is not "fine", but the
+ * message says which of the two it is.
+ */
+function reportLifecycleError(
+  err: unknown,
+  action: string,
+  details: Record<string, unknown>
+): void {
+  if (isRequestTimeout(err)) {
+    emitError(
+      `Stopped waiting for ${action}. The daemon has not been told to stop — the operation is probably still running. ` +
+        `Check with \`omnitron list\` or \`omnitron doctor\` before doing anything else.`,
+      { ...details, outcome: 'unknown', reason: 'client-timeout' }
+    );
+  } else {
+    emitError(`Failed: ${(err as Error).message}`, details);
+  }
+  process.exitCode = 1;
+}
+
 export async function stackStartCommand(projectName: string, stackName: string): Promise<void> {
-  const client = createDaemonClient();
+  // Starting a stack boots every app in it; a minute is not enough.
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     emitStep(`Starting stack ${projectName}/${stackName}...`);
@@ -202,15 +245,17 @@ export async function stackStartCommand(projectName: string, stackName: string):
       }
     }
   } catch (err) {
-    emitError(`Failed: ${(err as Error).message}`, { project: projectName, stack: stackName });
-    process.exitCode = 1;
+    reportLifecycleError(err, `stack ${projectName}/${stackName} to start`, {
+      project: projectName,
+      stack: stackName,
+    });
   } finally {
     await client.disconnect();
   }
 }
 
 export async function stackStopCommand(projectName: string, stackName: string): Promise<void> {
-  const client = createDaemonClient();
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     emitStep(`Stopping stack ${projectName}/${stackName}...`);
@@ -218,8 +263,10 @@ export async function stackStopCommand(projectName: string, stackName: string): 
     if (emitJson({ project: projectName, stack: stackName, action: 'stopped' })) return;
     emitSuccess(`Stack ${projectName}/${stackName} stopped`);
   } catch (err) {
-    emitError(`Failed: ${(err as Error).message}`, { project: projectName, stack: stackName });
-    process.exitCode = 1;
+    reportLifecycleError(err, `stack ${projectName}/${stackName} to stop`, {
+      project: projectName,
+      stack: stackName,
+    });
   } finally {
     await client.disconnect();
   }

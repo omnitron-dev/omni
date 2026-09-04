@@ -20,6 +20,46 @@ export function isJsonMode(): boolean {
 }
 
 /**
+ * Whether this process has written anything machine-readable yet.
+ *
+ * `--json` is a global flag, but honouring it is per-command, and most
+ * commands do not: they render a table with box-drawing characters and ANSI
+ * colour, and say nothing about having ignored the flag. A script asking for
+ * JSON gets a picture of a table, with no way to tell that from data.
+ *
+ * `installJsonModeGuard` uses this to turn that silence into a parseable
+ * answer.
+ */
+let emittedJson = false;
+
+export function hasEmittedJson(): boolean {
+  return emittedJson;
+}
+
+/**
+ * Announce, in JSON, that this command has no JSON output — and fail.
+ *
+ * Called on exit when `--json` was asked for and nothing answered it.
+ * Refusing loudly is the only honest option: succeeding would hand the
+ * caller a table, and staying silent would hand it nothing while claiming
+ * success.
+ */
+export function installJsonModeGuard(commandPath: string): void {
+  process.on('exit', () => {
+    if (!isJsonMode() || emittedJson) return;
+    process.stderr.write(
+      JSON.stringify({
+        ok: false,
+        error: `\`${commandPath}\` does not support --json; its output is human-readable only.`,
+        command: commandPath,
+        hint: 'Commands that do support it emit a single {"ok":…} object on stdout.',
+      }) + '\n'
+    );
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 2;
+  });
+}
+
+/**
  * Emit a successful JSON result and return true if JSON mode is active.
  * Caller can use the boolean to skip subsequent TUI rendering:
  *
@@ -28,6 +68,7 @@ export function isJsonMode(): boolean {
  */
 export function emitJson(payload: unknown): boolean {
   if (!isJsonMode()) return false;
+  emittedJson = true;
   process.stdout.write(JSON.stringify({ ok: true, data: payload }) + '\n');
   return true;
 }
@@ -39,6 +80,7 @@ export function emitJson(payload: unknown): boolean {
  */
 export function emitError(message: string, details?: Record<string, unknown>): boolean {
   if (isJsonMode()) {
+    emittedJson = true;
     const payload = { ok: false, error: message, ...(details ?? {}) };
     process.stderr.write(JSON.stringify(payload) + '\n');
     return true;

@@ -421,7 +421,10 @@ export class WebSocketConnection extends EventEmitter {
       }
 
       try {
-        this.ws!.send(data);
+        // See ws-client.ts: `Uint8Array` is generic over `ArrayBufferLike`
+        // since TS 5.7, and that union includes `SharedArrayBuffer`, which
+        // `WebSocket.send()` rejects. Narrow instead of copying the payload.
+        this.ws!.send(data as Uint8Array<ArrayBuffer>);
         this.metrics.bytesSent += data.byteLength;
         this.metrics.messagesSent++;
         resolve();

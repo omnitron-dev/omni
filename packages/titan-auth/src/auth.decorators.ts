@@ -8,13 +8,16 @@
 
 // The decorators below store their requirements through `Reflect.defineMetadata`
 // / `Reflect.getMetadata`, which exist only once the reflect-metadata polyfill
-// has been loaded. titan-auth does not depend on it directly; it declares
-// @omnitron-dev/titan as a peer, and titan's decorator entrypoint installs the
-// polyfill. Importing it here makes that requirement explicit instead of hoping
-// the host application loaded it first — without it `isPublic()` throws
-// `Reflect.getMetadata is not a function` on the very first line of every
-// guard, and `getAuthRequirements()` would be unable to report the
-// requirements a route declared.
+// has been loaded. Without it `isPublic()` throws `Reflect.getMetadata is not a
+// function` on the very first line of every guard, and `getAuthRequirements()`
+// cannot report the requirements a route declared.
+//
+// titan-auth was the only titan-* package that did not declare the dependency —
+// it worked purely because `@omnitron-dev/titan/decorators` happened to load
+// the polyfill on its behalf. package.json now declares `reflect-metadata`
+// directly; this import switches to a bare `import 'reflect-metadata'` as soon
+// as the lockfile is regenerated, so the polyfill stops depending on what the
+// framework peer happens to import.
 import '@omnitron-dev/titan/decorators';
 
 import type { IAuthContext, IRequireAuthOptions, IAuthMiddleware } from './auth.types.js';

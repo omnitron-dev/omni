@@ -27,7 +27,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "reflect-metadata": "^0.2.2"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"

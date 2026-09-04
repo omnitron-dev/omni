@@ -19,7 +19,7 @@ program.name('omnitron').description('Production-grade Titan application supervi
 // suppresses spinners / styled prose. Also honors `OMNITRON_OUTPUT=json`
 // for environments where flag plumbing is awkward (CI templates, hooks).
 program.option('--json', 'Emit machine-readable JSON output (no spinners, no styling)');
-program.hook('preAction', (cmd) => {
+program.hook('preAction', async (cmd, actionCommand) => {
   const opts = cmd.opts();
   if (opts['json'] || process.env['OMNITRON_OUTPUT'] === 'json') {
     // Update both the actual env (for child processes / subprocess
@@ -27,6 +27,19 @@ program.hook('preAction', (cmd) => {
     // subsequent getEnv() readers in this process see the flag.
     process.env['OMNITRON_OUTPUT'] = 'json';
     setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+
+    // Most commands render tables regardless of this flag and say nothing
+    // about it, so a caller asking for JSON silently receives a picture of a
+    // table. The guard makes that refusal explicit and parseable.
+    // The full path, not the leaf: `status` alone names four different
+    // subcommands, so the message has to say which one refused.
+    const path: string[] = [];
+    for (let node: typeof actionCommand | null = actionCommand; node; node = node.parent) {
+      if (node.parent) path.unshift(node.name());
+    }
+
+    const { installJsonModeGuard } = await import('../commands/output.js');
+    installJsonModeGuard(path.join(' ') || actionCommand.name());
   }
 });
 

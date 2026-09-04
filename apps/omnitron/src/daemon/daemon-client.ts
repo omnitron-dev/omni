@@ -38,6 +38,33 @@ import { DAEMON_SERVICE_ID, DEFAULT_SOCKET_PATH } from '../config/defaults.js';
 
 const CLI_REQUEST_TIMEOUT = 60_000;
 
+/**
+ * Timeout for calls that legitimately take minutes — starting or stopping a
+ * whole stack, where each app is a Titan application connecting to a
+ * database, Redis and its siblings before it reports ready.
+ *
+ * Six apps take well over a minute on a cold start, so the default ceiling
+ * expired mid-operation and the CLI announced a failure for something that
+ * went on to succeed.
+ */
+export const LONG_REQUEST_TIMEOUT = 10 * 60_000;
+
+/**
+ * Whether an error is the client giving up rather than the operation failing.
+ *
+ * The distinction matters more than it looks: the daemon does not cancel
+ * anything when the caller stops waiting, so a timeout leaves the operation
+ * running with its outcome unknown. Reporting that as a failure is worse
+ * than reporting nothing, because an operator acts on it — rolling back
+ * something that is in the middle of working.
+ */
+export function isRequestTimeout(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; message?: unknown };
+  if (e.code === 408 || e.code === 'REQUEST_TIMEOUT') return true;
+  return typeof e.message === 'string' && e.message.includes('timed out after');
+}
+
 // =============================================================================
 // DaemonClient — Unix socket (local CLI ↔ daemon)
 // =============================================================================
@@ -49,10 +76,13 @@ export class DaemonClient implements IDaemonService {
   private connected = false;
   private readonly serviceCache = new Map<string, unknown>();
 
-  constructor(private readonly socketPath: string = DEFAULT_SOCKET_PATH) {
+  constructor(
+    private readonly socketPath: string = DEFAULT_SOCKET_PATH,
+    requestTimeout: number = CLI_REQUEST_TIMEOUT
+  ) {
     this.netron = new Netron(createNullLogger(), { id: `omnitron-${process.pid}` });
     this.netron.registerTransport('unix', () => new UnixSocketTransport());
-    this.netron.setTransportOptions('unix', { requestTimeout: CLI_REQUEST_TIMEOUT });
+    this.netron.setTransportOptions('unix', { requestTimeout });
   }
 
   private async ensureConnected(): Promise<void> {
@@ -300,8 +330,8 @@ export class RemoteDaemonClient {
 // Factory functions
 // =============================================================================
 
-export function createDaemonClient(socketPath?: string): DaemonClient {
-  return new DaemonClient(socketPath ?? getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH);
+export function createDaemonClient(socketPath?: string, requestTimeout?: number): DaemonClient {
+  return new DaemonClient(socketPath ?? getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH, requestTimeout);
 }
 
 export function createRemoteDaemonClient(host: string, port: number): RemoteDaemonClient {

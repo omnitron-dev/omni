@@ -14,6 +14,7 @@ import { log, table } from '@xec-sh/kit';
 import { ProjectRegistry } from '../project/registry.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IProjectRpcService, IProjectInfo } from '../shared/dto/services.js';
+import { emitJson } from './output.js';
 
 async function withProjectService<T>(
   online: (svc: IProjectRpcService) => Promise<T>,
@@ -72,6 +73,11 @@ export async function projectListCommand(): Promise<void> {
         return { projects, online: false };
       },
     );
+
+    // `online` says whether these numbers came from the daemon or from the
+    // on-disk registry, which is the difference between "no stacks running"
+    // and "we could not ask".
+    if (emitJson({ projects, online })) return;
 
     if (projects.length === 0) {
       log.info('No projects registered.');

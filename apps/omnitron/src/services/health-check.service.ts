@@ -19,32 +19,23 @@ import { ORCHESTRATOR_TOKEN, INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN } from '../sh
 // Types
 // =============================================================================
 
-export interface HealthCheckResult {
-  name: string;
-  status: 'pass' | 'fail' | 'warn';
-  message?: string | undefined;
-  duration?: number | undefined;
-}
+export type {
+  HealthCheckResult,
+  HealthReport,
+  PlatformHealthReport,
+} from '../shared/dto/health.js';
 
-export interface HealthReport {
-  overall: 'healthy' | 'degraded' | 'unhealthy';
-  checks: HealthCheckResult[];
-  timestamp: string;
-  duration: number;
-}
-
-export interface PlatformHealthReport {
-  apps: HealthReport;
-  infra: HealthReport;
-  overall: 'healthy' | 'degraded' | 'unhealthy';
-  timestamp: string;
-}
 
 // =============================================================================
 // @xec-sh/ops HealthChecker — loaded dynamically
 // =============================================================================
 
 import { loadXecOps } from '../shared/xec-loader.js';
+import type {
+  HealthCheckResult,
+  HealthReport,
+  PlatformHealthReport,
+} from '../shared/dto/health.js';
 
 type XecHealthReport = import('@xec-sh/ops').HealthReport;
 

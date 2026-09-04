@@ -8,8 +8,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import type { KubernetesService, K8sPod, K8sDeployment, K8sService } from './kubernetes.service.js';
 
+import type { IOmnitronKubernetesService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronKubernetes' })
-export class KubernetesRpcService {
+export class KubernetesRpcService implements IOmnitronKubernetesService {
   constructor(private readonly k8s: KubernetesService) {}
 
   @Public({ auth: { roles: ADMIN_ROLES } })

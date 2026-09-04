@@ -23,8 +23,10 @@ interface IHealthWorkerProxy {
   getStatusSummaries(): Promise<INodeHealthSummary[]>;
 }
 
+import type { IOmnitronNodesService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronNodes' })
-export class NodeManagerRpcService {
+export class NodeManagerRpcService implements IOmnitronNodesService {
   private healthWorkerProxy: IHealthWorkerProxy | null = null;
   private healthRepo: NodeHealthRepository | null = null;
 

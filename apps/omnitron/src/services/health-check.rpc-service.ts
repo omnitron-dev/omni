@@ -8,8 +8,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES } from '../shared/roles.js';
 import type { HealthCheckService, HealthReport, PlatformHealthReport } from './health-check.service.js';
 
+import type { IOmnitronHealthService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronHealth' })
-export class HealthCheckRpcService {
+export class HealthCheckRpcService implements IOmnitronHealthService {
   constructor(private readonly healthCheck: HealthCheckService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })

@@ -8,8 +8,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { BackupService, BackupInfo } from './backup.service.js';
 
+import type { IOmnitronBackupsService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronBackups' })
-export class BackupRpcService {
+export class BackupRpcService implements IOmnitronBackupsService {
   constructor(private readonly backups: BackupService) {}
 
   @Public({ auth: { roles: ADMIN_ROLES } })

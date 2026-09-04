@@ -26,6 +26,13 @@ import type {
   IOmnitronPipelinesService,
   IOmnitronTracesService,
   IOmnitronSystemInfoService,
+  IOmnitronBackupsService,
+  IOmnitronKubernetesService,
+  IOmnitronHealthService,
+  IOmnitronDiscoveryService,
+  IOmnitronSecretsService,
+  IOmnitronNodesService,
+  IOmnitronMetricsService,
   IProjectRpcService,
 } from '@omnitron-dev/omnitron/dto/services';
 
@@ -40,19 +47,19 @@ export interface OmnitronConsoleSchema extends BackendSchema {
     OmnitronLogs: IOmnitronLogsService;
     OmnitronFleet: IOmnitronFleetService;
     OmnitronAlerts: IOmnitronAlertsService;
-    OmnitronMetrics: Record<string, (...args: any[]) => any>;
+    OmnitronMetrics: IOmnitronMetricsService;
     OmnitronInfra: IOmnitronInfraService;
     OmnitronDeploy: IOmnitronDeployService;
     OmnitronPipelines: IOmnitronPipelinesService;
     OmnitronTraces: IOmnitronTracesService;
-    OmnitronBackups: Record<string, (...args: any[]) => any>;
-    OmnitronKubernetes: Record<string, (...args: any[]) => any>;
-    OmnitronHealth: Record<string, (...args: any[]) => any>;
-    OmnitronDiscovery: Record<string, (...args: any[]) => any>;
-    OmnitronSecrets: Record<string, (...args: any[]) => any>;
+    OmnitronBackups: IOmnitronBackupsService;
+    OmnitronKubernetes: IOmnitronKubernetesService;
+    OmnitronHealth: IOmnitronHealthService;
+    OmnitronDiscovery: IOmnitronDiscoveryService;
+    OmnitronSecrets: IOmnitronSecretsService;
     OmnitronProject: IProjectRpcService;
     OmnitronSystemInfo: IOmnitronSystemInfoService;
-    OmnitronNodes: Record<string, (...args: any[]) => any>;
+    OmnitronNodes: IOmnitronNodesService;
   };
 }
 

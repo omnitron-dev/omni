@@ -22,25 +22,24 @@ import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/token
 import { expandPath } from '../shared/paths.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { ProjectService } from './project.service.js';
+import type {
+  BackupInfo,
+} from '../shared/dto/backups.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface BackupInfo {
-  id: string;
-  database: string;
-  filename: string;
-  size: number;
-  createdAt: string;
-  compressed: boolean;
-}
-
+export type {
+  BackupInfo,
+} from '../shared/dto/backups.js';
 interface ScheduleEntry {
   database: string;
   cron: string;
   timer?: NodeJS.Timeout;
 }
+
+
 
 // =============================================================================
 // Service

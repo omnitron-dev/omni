@@ -49,10 +49,13 @@
  * field's `.toFixed(...)` to seed a "max balance" button). For
  * actual rendering of a value, prefer `formatCoinAmount`.
  */
-export const COIN_DISPLAY_DECIMALS: Readonly<Record<string, number>> = Object.freeze({
-  btc: 8,
-  xmr: 8,
-});
+export const COIN_DISPLAY_DECIMALS: Readonly<Record<string, number>> = Object.freeze(
+  // Prototype-free: a plain literal answers `COIN_DISPLAY_DECIMALS['constructor']`
+  // with a function, which `?? FALLBACK_DECIMALS` accepts as a precision. That
+  // produced `toFixed(NaN)` — silently formatting with zero decimals instead
+  // of eight, for any coin code that collides with an Object.prototype key.
+  Object.assign(Object.create(null) as Record<string, number>, { btc: 8, xmr: 8 })
+);
 
 /** Default precision when the coin code isn't recognized. */
 const FALLBACK_DECIMALS = 8;
@@ -92,7 +95,46 @@ export interface FormatCoinAmountOptions {
  * Case-insensitive. Unknown codes fall back to 8.
  */
 export function getCoinDecimals(coin: string): number {
-  return COIN_DISPLAY_DECIMALS[coin.toLowerCase()] ?? FALLBACK_DECIMALS;
+  const decimals = COIN_DISPLAY_DECIMALS[coin.toLowerCase()];
+  return typeof decimals === 'number' ? decimals : FALLBACK_DECIMALS;
+}
+
+/**
+ * Format a decimal STRING at a fixed scale without going through a float.
+ *
+ * The docblock above promises that string input "preserves full precision
+ * end-to-end from the RPC wire", but the implementation used to hand the
+ * string straight to `Number()` — inheriting binary floating point along with
+ * its rounding surprises. `'1.005'` is fractionally BELOW 1.005 as a double,
+ * so `toFixed(2)` rendered `'1.00'`: a balance displayed one cent short of
+ * the one actually stored.
+ *
+ * Rounding here is half-up on the decimal digits themselves, carried with
+ * BigInt so a carry across the whole number (`'9.999' → '10.00'`) is exact at
+ * any magnitude.
+ *
+ * @returns the formatted string, or `null` when `raw` is not a plain decimal
+ *          (exponent notation, junk) — the caller then falls back to `Number`.
+ */
+function formatDecimalString(raw: string, decimals: number): string | null {
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(raw.trim());
+  if (!match) return null;
+
+  const [, sign = '', intPart = '', fracPart = ''] = match;
+  if (intPart === '' && fracPart === '') return null;
+
+  const digits = `${intPart || '0'}${fracPart.slice(0, decimals).padEnd(decimals, '0')}`;
+  const roundUp = (fracPart[decimals] ?? '0') >= '5';
+  const scaled = BigInt(digits) + (roundUp ? 1n : 0n);
+
+  const asString = scaled.toString().padStart(decimals + 1, '0');
+  const whole = asString.slice(0, asString.length - decimals) || '0';
+  const fraction = decimals > 0 ? asString.slice(asString.length - decimals) : '';
+  const magnitude = decimals > 0 ? `${whole}.${fraction}` : whole;
+
+  // -0 is not a balance anyone holds.
+  const isZero = scaled === 0n;
+  return `${sign === '-' && !isZero ? '-' : ''}${magnitude}`;
 }
 
 /**
@@ -120,17 +162,27 @@ export function formatCoinAmount(
   const decimals = Math.max(0, options?.precision ?? getCoinDecimals(code));
   const trim = options?.trim === true;
 
-  let n: number;
-  if (typeof value === 'number') {
-    n = value;
-  } else if (typeof value === 'string' && value.trim().length > 0) {
-    n = Number(value);
-  } else {
-    n = 0;
-  }
-  if (!Number.isFinite(n)) n = 0;
+  let formatted: string | null = null;
 
-  let formatted = n.toFixed(decimals);
+  if (typeof value === 'string' && value.trim().length > 0) {
+    // Preferred path: format the decimal digits directly, no float involved.
+    formatted = formatDecimalString(value, decimals);
+  }
+
+  if (formatted === null) {
+    let n: number;
+    if (typeof value === 'number') {
+      n = value;
+    } else if (typeof value === 'string' && value.trim().length > 0) {
+      n = Number(value);
+    } else {
+      n = 0;
+    }
+    if (!Number.isFinite(n)) n = 0;
+    // `-0` formats as "-0.00000000" otherwise.
+    if (Object.is(n, -0)) n = 0;
+    formatted = n.toFixed(decimals);
+  }
   if (trim && formatted.includes('.')) {
     // Drop trailing zeros and a trailing solitary decimal point.
     formatted = formatted.replace(/\.?0+$/, '');

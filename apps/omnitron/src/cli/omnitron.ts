@@ -297,6 +297,14 @@ program
   });
 
 program
+  .command('doctor')
+  .description('Diagnose why the platform is unhealthy — findings, evidence, and what to do')
+  .action(async () => {
+    const { doctorCommand } = await import('../commands/doctor.js');
+    await doctorCommand();
+  });
+
+program
   .command('health [app]')
   .description('Health check report')
   .action(async (app) => {

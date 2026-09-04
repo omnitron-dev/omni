@@ -19,7 +19,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -141,6 +141,43 @@ class Worker {
     const proc = await manager().spawn(file, { name: 'thrower' });
 
     await expect(proc.boom()).rejects.toThrow(/worker exploded/);
+  }, 60_000);
+
+  it('says out loud that vm/container isolation is not implemented', async () => {
+    // `security.isolation` accepts 'vm' and 'container', and both spawn a plain
+    // child process — same filesystem, same network as the parent. That is not
+    // a naming quibble: a caller who sets 'container' expecting confinement
+    // gets none, and used to get no indication either. The contract stays;
+    // the silence does not.
+    const file = writeWorker('confined', `
+class Worker {
+  static __public = ['pid'];
+  async pid() { return process.pid; }
+}`);
+
+    // A recording logger rather than a spread of the real one: the spawner and
+    // Netron both call `logger.child(...)`, and a spread loses it.
+    const warn = vi.fn();
+    const recording: Record<string, unknown> = {
+      warn,
+      info: () => {},
+      debug: () => {},
+      error: () => {},
+      trace: () => {},
+      fatal: () => {},
+    };
+    recording['child'] = () => recording;
+    pm = new ProcessManager(recording as never, {
+      testing: { useMockSpawner: false },
+      isolation: 'child',
+    } as never);
+
+    const proc = await pm.spawn(file, { name: 'confined', security: { isolation: 'container' } } as never);
+    expect(await proc.pid()).not.toBe(process.pid);
+
+    const messages = warn.mock.calls.map((call) => String(call[1] ?? call[0]));
+    expect(messages.some((message) => /container.*not implemented/i.test(message))).toBe(true);
+    expect(messages.some((message) => /security boundary/i.test(message))).toBe(true);
   }, 60_000);
 
   it('stops the OS process on shutdown', async () => {

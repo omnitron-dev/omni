@@ -586,20 +586,25 @@ describe('Scheduler Executor', () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
-      // Fill up concurrent slots
+      // Fill up concurrent slots. maxConcurrent is 3 in this suite, so two of
+      // the five queue up.
       const jobs = Array.from({ length: 5 }, (_, i) => createMockJob(`queueClearJob${i}`, handler));
 
-      jobs.forEach((job) => executor.executeJob(job));
+      // Keep the promises. `clearQueue()` rejects whatever is still queued with
+      // "Queue was cleared manually" — dropping them on the floor turned that
+      // into an unhandled rejection that failed the whole run even though every
+      // test passed. It only started surfacing once the concurrency gate began
+      // working, because before that nothing ever queued.
+      const running = jobs.map((job) => executor.executeJob(job).catch(() => undefined));
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const _queuedBefore = executor.getQueuedJobCount();
+      expect(executor.getQueuedJobCount()).toBeGreaterThan(0);
       executor.clearQueue();
-      const queuedAfter = executor.getQueuedJobCount();
-
-      expect(queuedAfter).toBe(0);
+      expect(executor.getQueuedJobCount()).toBe(0);
 
       executor.cancelAllJobs();
+      await Promise.all(running);
     });
   });
 

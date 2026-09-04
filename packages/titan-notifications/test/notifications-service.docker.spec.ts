@@ -368,7 +368,9 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
       });
 
       await expect(fixture.service.subscribeToDLQ(handler)).resolves.not.toThrow();
-    }, 5000);
+      // 5s was not enough for a Docker-backed DLQ subscription to establish its
+      // consumer group; the package default (120s) applies now.
+    });
 
     it('should get DLQ stats', async () => {
       const stats = await fixture.service.getDLQStats();
@@ -815,7 +817,11 @@ describe('NotificationsService - Unit Tests', () => {
 
       const destroyableService = new NotificationsService(destroyableTransport);
 
-      await destroyableService.destroy();
+      // The service implements the Titan lifecycle hook `onDestroy()`; there is
+      // no bare `destroy()`. The test was written before the rename and has
+      // been failing with "destroyableService.destroy is not a function" ever
+      // since.
+      await destroyableService.onDestroy();
 
       expect(destroyableTransport.destroy).toHaveBeenCalled();
     });

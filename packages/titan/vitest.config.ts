@@ -37,17 +37,6 @@ export default defineConfig({
       'test/nexus/runtime/bun-*',
       'test/nexus/runtime/deno-*',
       'test/nexus/bun/**',
-      // Modules extracted to standalone packages — tests live there now
-      'test/modules/cache/**',
-      'test/modules/database/**',
-      'test/modules/discovery/**',
-      'test/modules/events/**',
-      'test/modules/health/**',
-      'test/modules/lock/**',
-      'test/modules/notifications/**',
-      'test/modules/pm/**',
-      'test/modules/redis/**',
-      'test/modules/scheduler/**',
       // Rotif (messaging) extracted — depends on ioredis + moved source files
       'test/rotif/**',
       // Service-discovery integration tests — depend on extracted redis/discovery modules

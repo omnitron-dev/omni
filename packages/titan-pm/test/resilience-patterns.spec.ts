@@ -174,21 +174,21 @@ describe('Resilience Patterns - Retry with Backoff', () => {
   it('should retry failed operations with exponential backoff', async () => {
     const service = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
-    // Execute query with retries
+    // Script exactly two failures, so the retry path is the thing under test
+    // rather than the fixture's dice. Previously this asserted `success` from a
+    // worker that fails at random, and three failures in a row — about one run
+    // in seventy — turned a passing feature into a red build.
+    await service.failNext(2);
+
     const startTime = Date.now();
     const result = await service.executeQuery('SELECT * FROM users', { maxRetries: 3 });
     const duration = Date.now() - startTime;
 
     expect(result.success).toBe(true);
-    expect(result.attempts).toBeGreaterThanOrEqual(1);
-    expect(result.attempts).toBeLessThanOrEqual(3);
+    expect(result.attempts).toBe(3);
 
-    // If retries occurred, duration should reflect backoff delays
-    if (result.attempts > 1) {
-      // With exponential backoff, retries add 100ms, 200ms, etc.
-      const expectedMinDuration = (result.attempts - 1) * 50;
-      expect(duration).toBeGreaterThanOrEqual(expectedMinDuration);
-    }
+    // Two backoffs precede the successful third attempt: 100ms then 200ms.
+    expect(duration).toBeGreaterThanOrEqual(250);
   });
 
   it('should fail after max retries exceeded', async () => {

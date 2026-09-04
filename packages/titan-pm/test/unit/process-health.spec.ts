@@ -232,6 +232,24 @@ describe('ProcessHealthChecker', () => {
     it('should return false for unknown process', () => {
       expect(checker.isHealthy('unknown')).toBe(false);
     });
+
+    it('returns false for a process that exposes no probe at all', async () => {
+      // The basic check pings `__getMetrics` to ask "can I call anything on
+      // this process". It used to skip the ping when the method was absent and
+      // fall through to `status: 'healthy'` — reporting a process fine having
+      // verified nothing about it. "I could not check" is not "it is fine".
+      //
+      // The guard that skipped it, `'__getMetrics' in proxy`, never fired in
+      // practice because a Netron interface proxy answers `in` for every name,
+      // so the dangerous branch was reachable only for a plain object. It is
+      // still the wrong answer to give.
+      const bare = { __processId: 'test-process', __destroy: vi.fn() } as never;
+
+      checker.startMonitoring('proc-1', bare, { interval: 1000 });
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(checker.isHealthy('proc-1')).toBe(false);
+    });
   });
 
   describe('Health Check with Retries', () => {

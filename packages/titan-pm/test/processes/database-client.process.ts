@@ -48,8 +48,31 @@ export default class DatabaseClientService {
     throw new Error(`Query failed after ${attempts} attempts: ${lastError?.message}`);
   }
 
+  /**
+   * Number of upcoming attempts that must fail, set by `failNext()`.
+   *
+   * Without it this fixture is random — 30% on the first two attempts plus 10%
+   * on every one — and a test that asserts a query succeeds is asserting the
+   * outcome of a coin toss. With `maxRetries: 3` all three attempts fail about
+   * once in seventy runs, which is exactly how often
+   * "should retry failed operations with exponential backoff" failed.
+   */
+  private scriptedFailures = 0;
+
+  @Public()
+  async failNext(count: number): Promise<void> {
+    this.scriptedFailures = count;
+  }
+
   private async simulateQuery(): Promise<void> {
     this.connectionAttempts++;
+
+    // A scripted failure takes precedence and is exact: a test asking for two
+    // failures gets two, then a success.
+    if (this.scriptedFailures > 0) {
+      this.scriptedFailures--;
+      throw new Error('Connection timeout');
+    }
 
     // Simulate connection issues (30% failure rate on first 2 attempts)
     if (this.connectionAttempts <= 2 && Math.random() < 0.3) {

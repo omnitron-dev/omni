@@ -130,8 +130,7 @@ describe('ProcessHealthChecker', () => {
     });
 
     it('should handle stopping non-existent monitoring', () => {
-      // Should not throw
-      checker.stopMonitoring('non-existent');
+      expect(() => checker.stopMonitoring('non-existent')).not.toThrow();
     });
 
     it('should log debug message when stopping', async () => {

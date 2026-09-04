@@ -102,6 +102,11 @@ export function getCoinDecimals(coin: string): number {
 /**
  * Format a decimal STRING at a fixed scale without going through a float.
  *
+ * Exported because more than one surface needs it: `formatCoinAmount` for
+ * coin balances, `AmountCell` for financial tables. Anything that receives a
+ * decimal string from the wire and renders it should use this rather than
+ * `Number(x).toFixed(n)`.
+ *
  * The docblock above promises that string input "preserves full precision
  * end-to-end from the RPC wire", but the implementation used to hand the
  * string straight to `Number()` — inheriting binary floating point along with
@@ -116,7 +121,7 @@ export function getCoinDecimals(coin: string): number {
  * @returns the formatted string, or `null` when `raw` is not a plain decimal
  *          (exponent notation, junk) — the caller then falls back to `Number`.
  */
-function formatDecimalString(raw: string, decimals: number): string | null {
+export function formatDecimalString(raw: string, decimals: number): string | null {
   const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(raw.trim());
   if (!match) return null;
 

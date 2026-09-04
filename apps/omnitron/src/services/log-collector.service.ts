@@ -14,61 +14,13 @@ import type { OmnitronDatabase } from '../database/schema.js';
 import { EventEmitter } from 'node:events';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { OMNITRON_DB_TOKEN } from '../shared/tokens.js';
+import type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface LogEntry {
-  app: string;
-  level: string;
-  message: string;
-  timestamp?: Date | string;
-  nodeId?: string;
-  labels?: Record<string, unknown>;
-  traceId?: string;
-  spanId?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface LogQueryFilter {
-  app?: string | undefined;
-  level?: string | string[] | undefined;
-  search?: string | undefined;
-  labels?: Record<string, string> | undefined;
-  traceId?: string | undefined;
-  from?: Date | string | undefined;
-  to?: Date | string | undefined;
-  limit?: number | undefined;
-  offset?: number | undefined;
-}
-
-export interface LogQueryResult {
-  entries: LogEntryRow[];
-  total: number;
-  hasMore: boolean;
-}
-
-export interface LogEntryRow {
-  id: string;
-  timestamp: Date;
-  nodeId: string | null;
-  app: string;
-  level: string;
-  message: string;
-  labels: Record<string, unknown> | null;
-  traceId: string | null;
-  spanId: string | null;
-  metadata: Record<string, unknown> | null;
-}
-
-export interface LogStats {
-  byApp: Array<{ app: string; count: number }>;
-  byLevel: Array<{ level: string; count: number }>;
-  totalCount: number;
-  oldestEntry: Date | null;
-  newestEntry: Date | null;
-}
+export type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
 
 // =============================================================================
 // Pino Level Map (numeric → string)

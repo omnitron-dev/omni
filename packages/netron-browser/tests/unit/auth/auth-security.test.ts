@@ -1894,13 +1894,24 @@ describe('Additional Security Edge Cases', () => {
         invalidTokenTimes.push(performance.now() - start);
       }
 
-      // Calculate averages
-      const validAvg = validTokenTimes.reduce((a, b) => a + b, 0) / iterations;
-      const invalidAvg = invalidTokenTimes.reduce((a, b) => a + b, 0) / iterations;
+      // Compare MEDIANS, not means. Each sample is a sub-microsecond property
+      // assignment, so a single scheduler preemption moves the mean by orders
+      // of magnitude — that is what made this fail with 0.236 vs 0.056.
+      //
+      // What this can prove is narrow, and worth stating: setToken/getToken do
+      // no secret-dependent branching, so their cost must not vary with the
+      // token. It is not a substitute for a constant-time comparison test of
+      // whatever ultimately validates the token.
+      const median = (values: number[]) => {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+      };
 
-      // Times should be reasonably similar (within 10x)
-      // This is a weak test but demonstrates awareness of timing attacks
-      expect(Math.abs(validAvg - invalidAvg)).toBeLessThan(validAvg * 10);
+      const validMedian = median(validTokenTimes);
+      const invalidMedian = median(invalidTokenTimes);
+
+      expect(Math.abs(validMedian - invalidMedian)).toBeLessThan(Math.max(validMedian, 0.001) * 10);
 
       client.destroy();
     });

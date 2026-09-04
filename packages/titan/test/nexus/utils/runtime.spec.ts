@@ -202,7 +202,12 @@ describe('Runtime Detection', () => {
       const elapsed2 = timer.elapsed();
 
       expect(elapsed1).toBeGreaterThan(40);
-      expect(elapsed2).toBeLessThan(30);
+      // The property is that the timer restarted, so compare the two readings
+      // instead of holding the second to a fixed ceiling: `< 30` failed at 36ms
+      // whenever the 20ms sleep was preempted. For this to break, the short
+      // sleep would have to outlast the long one.
+      expect(elapsed2).toBeLessThan(elapsed1);
+      expect(elapsed2).toBeGreaterThanOrEqual(15);
     });
 
     it('should use appropriate timing method', () => {

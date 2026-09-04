@@ -364,13 +364,37 @@ describe('Security Validation Tests', () => {
         data[`field${i}`] = `value${i}`;
       }
 
-      const startTime = Date.now();
       const result = validator.validate(data);
-      const duration = Date.now() - startTime;
-
-      // Should validate quickly
-      expect(duration).toBeLessThan(50);
       expect(Object.keys(result)).toHaveLength(100);
+
+      // The wall-clock bound this used to carry (`< 50ms`) measured the machine,
+      // not the validator — it read 221ms under load. What matters is that field
+      // count does not cost quadratically, so compare two sizes on the same
+      // machine, best-of-N to shrug off GC pauses.
+      const bestOf = (fieldCount: number, runs = 5) => {
+        // Schema and payload must agree on the field set, so build both.
+        const shape: Record<string, z.ZodString> = {};
+        const payload: Record<string, string> = {};
+        for (let i = 0; i < fieldCount; i++) {
+          shape[`field${i}`] = z.string();
+          payload[`field${i}`] = `value${i}`;
+        }
+        const sizedValidator = engine.compile(z.object(shape));
+
+        let best = Infinity;
+        for (let r = 0; r < runs; r++) {
+          const start = performance.now();
+          sizedValidator.validate(payload);
+          best = Math.min(best, performance.now() - start);
+        }
+        return best;
+      };
+
+      const small = bestOf(25);
+      const large = bestOf(100);
+
+      // 4x the fields: linear is ~4x, quadratic ~16x. 8x separates them.
+      expect(large).toBeLessThan(Math.max(small, 0.05) * 8);
     });
 
     it('should handle very large individual field values', () => {

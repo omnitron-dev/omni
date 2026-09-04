@@ -314,25 +314,41 @@ describe('CUID', () => {
     });
 
     it('should scale linearly with length', () => {
-      const iterations = 1000;
-      const timings: Record<number, number> = {};
+      // This measured 1000 iterations with `Date.now()`, whose millisecond
+      // resolution left the 8-char baseline at 0-1ms — so the ratio was
+      // dividing by noise and reached 28x on a busy machine. Two changes make
+      // it mean something: enough work per sample that the timer resolution is
+      // irrelevant, and best-of-N so a GC pause in one sample cannot define the
+      // result.
+      const iterations = 20_000;
+      const runs = 5;
 
-      for (const length of [8, 16, 24, 32]) {
+      const bestOf = (length: number) => {
         const customCuid = createOptimizedCuid({ length });
-        const startTime = Date.now();
+        // Warm up so JIT compilation is not attributed to the first length.
+        for (let i = 0; i < 1_000; i++) customCuid();
 
-        for (let i = 0; i < iterations; i++) {
-          customCuid();
+        let best = Infinity;
+        for (let r = 0; r < runs; r++) {
+          const start = performance.now();
+          for (let i = 0; i < iterations; i++) customCuid();
+          best = Math.min(best, performance.now() - start);
         }
+        return best;
+      };
 
-        timings[length] = Date.now() - startTime;
-      }
+      const short = bestOf(8);
+      const long = bestOf(32);
 
-      // Longer IDs should not take significantly more time
-      // Hashing dominates the cost, but entropy generation scales with length
-      // Allow up to 5x for 32-char vs 8-char (accounts for JIT warmup and GC variance)
-      const ratio = timings[32]! / timings[8]!;
-      expect(ratio).toBeLessThan(5);
+      // Correctness alongside the timing: both lengths must actually produce
+      // ids of the requested size.
+      expect(createOptimizedCuid({ length: 8 })()).toHaveLength(8);
+      expect(createOptimizedCuid({ length: 32 })()).toHaveLength(32);
+
+      // 4x the characters. Hashing dominates, so the cost should grow far
+      // slower than linearly in length; 5x is a generous ceiling that still
+      // catches a genuinely super-linear regression.
+      expect(long).toBeLessThan(short * 5);
     });
   });
 

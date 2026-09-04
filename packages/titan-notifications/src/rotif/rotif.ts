@@ -98,6 +98,18 @@ export class NotificationManager {
   private initializationDefer: Deferred;
   private subClient?: Redis;
   private dlqClient?: Redis;
+  /**
+   * Dedicated connections for the blocking XREADGROUP of each consumer loop.
+   *
+   * A blocking Redis command owns its connection for the whole BLOCK window, so
+   * running the loops' reads on `this.redis` made every other command — publish,
+   * ack, zincrby, xpending, the health ping — queue behind up to
+   * `blockInterval` per running loop. With a handful of subscriptions a single
+   * `publish()` took tens of seconds. `dlqClient` already exists for exactly
+   * this reason ("separate Redis connection ... to avoid blocking"); the main
+   * consumer loops need the same treatment.
+   */
+  private readClients = new Set<Redis>();
   private consumerLoops = new Map<
     string,
     {
@@ -620,7 +632,7 @@ export class NotificationManager {
           if (Number(newCount) === 0) {
             // Immediately remove from local activePatterns
             this.activePatterns.delete(pattern);
-            await this.redis.publish('rotif:subscriptions:updates', `remove:${pattern}`);
+            await this.redis.publish(this.patternUpdatesChannel, `remove:${pattern}`);
             this.logger.info(`Unsubscribed from pattern (no more subscribers): ${pattern}`);
           }
         }
@@ -652,7 +664,7 @@ export class NotificationManager {
     if (Number(newCount) === 1) {
       // Immediately add to local activePatterns
       this.activePatterns.add(pattern);
-      await this.redis.publish('rotif:subscriptions:updates', `add:${pattern}`);
+      await this.redis.publish(this.patternUpdatesChannel, `add:${pattern}`);
       this.logger.info(`Subscribed to new pattern: ${pattern}`);
     }
 
@@ -729,6 +741,16 @@ export class NotificationManager {
       ]);
     }
 
+    // A loop still parked in BLOCK will not have released its own connection
+    // within that window; drop it here so the socket cannot keep the process
+    // alive. The pending read rejects, and the loop breaks on `!this.active`.
+    for (const readClient of this.readClients) {
+      if (readClient.status !== 'end') {
+        readClient.disconnect();
+      }
+    }
+    this.readClients.clear();
+
     if (this.redis.status !== 'end') {
       await this.redis.quit();
     }
@@ -756,7 +778,7 @@ export class NotificationManager {
 
     // Create a separate Redis connection for DLQ subscription to avoid blocking
     if (!this.dlqClient) {
-      this.dlqClient = new Redis(this.config.redis as RedisOptions);
+      this.dlqClient = this.createConnection({ connectionName: 'rotif-dlq' });
     }
 
     try {
@@ -839,8 +861,19 @@ export class NotificationManager {
       }
     })();
 
-    // Return the promise so tests can optionally await it
-    return this.dlqSubscriptionPromise;
+    // Do NOT return the loop promise.
+    //
+    // `subscribeToDLQ` is `async`, so returning `this.dlqSubscriptionPromise`
+    // made this method's own promise ADOPT the infinite `while (this.active)`
+    // consumer loop above — awaiting it never resolved until stopAll(). The
+    // comment that used to sit here ("so tests can optionally await it") had
+    // the semantics backwards: in an async function that is not optional for
+    // the caller. Every caller awaits: NotificationsService.subscribeToDLQ,
+    // RotifTransport.subscribeToDLQ, and the tests. Subscribing to the dead
+    // letter queue therefore hung the caller forever.
+    //
+    // The loop stays on `this.dlqSubscriptionPromise`, which is what stopAll()
+    // waits on and what a test can await deliberately.
   }
 
   /**
@@ -865,9 +898,9 @@ export class NotificationManager {
         this.subClient.removeAllListeners();
       }
 
-      this.subClient = new Redis(this.config.redis as RedisOptions);
+      this.subClient = this.createConnection({ connectionName: 'rotif-pattern-updates' });
 
-      this.subClient.subscribe('rotif:subscriptions:updates').catch((err) => {
+      this.subClient.subscribe(this.patternUpdatesChannel).catch((err) => {
         this.logger.error({ err }, 'Pub/Sub subscription failed');
       });
 
@@ -910,6 +943,13 @@ export class NotificationManager {
 
     const subscriptions = new Set<Subscription>();
     const readyDefer = defer();
+
+    // This loop's own connection, used only for the blocking read below.
+    // Named so `CLIENT LIST` on a live Redis says which loop each connection
+    // belongs to — a service with many subscriptions otherwise shows a wall of
+    // anonymous sockets.
+    const readClient = this.createConnection({ connectionName: `rotif-read:${loopKey}` });
+    this.readClients.add(readClient);
 
     // Initialize backpressure state for this loop
     this.backpressureStates.set(loopKey, { active: false, pendingCount: 0 });
@@ -1281,7 +1321,7 @@ export class NotificationManager {
             }
           }
 
-          const entries = await this.redis.xreadgroup(
+          const entries = await readClient.xreadgroup(
             'GROUP',
             group,
             consumer,
@@ -1343,6 +1383,11 @@ export class NotificationManager {
         }
       }
 
+      this.readClients.delete(readClient);
+      if (readClient.status !== 'end') {
+        readClient.disconnect();
+      }
+
       if (this.active) {
         this.logger.info(`Stopped shared consumer loop for ${stream}:${group}`);
       }
@@ -1350,6 +1395,45 @@ export class NotificationManager {
 
     await readyDefer.promise!; // Wait for the loop to be ready before returning
     return subscriptions;
+  }
+
+  /**
+   * Pub/Sub channel used to broadcast pattern registrations.
+   *
+   * Scoped to the same boundary as the keys it announces. Redis Pub/Sub is
+   * NOT database-scoped: a `PUBLISH` reaches every subscriber on the server no
+   * matter which database each of them selected. On a single fixed channel,
+   * a manager on db 9 therefore learned about patterns whose streams live on
+   * db 10, added them to `activePatterns`, and then — because `publish()`
+   * writes one stream per matching pattern — wrote copies of its messages into
+   * `rotif:stream:<foreign pattern>` in its OWN database, where no consumer
+   * group exists. Those streams have no reader and no trim, so they grow
+   * without bound; the publisher also got an array of ids back where its
+   * contract promises a single string.
+   *
+   * `rotif:patterns` itself is a key and so already db-scoped, which is why a
+   * reconnect (syncPatterns) silently repaired the set — the divergence only
+   * ever arrived over Pub/Sub.
+   */
+  private get patternUpdatesChannel(): string {
+    const options = this.redis.options;
+    // keyPrefix scopes the keys but is not applied to channel names by ioredis,
+    // so carry it explicitly; two deployments sharing a database but not a
+    // prefix are as separate as two databases.
+    return `${options.keyPrefix ?? ''}rotif:subscriptions:updates:${options.db ?? 0}`;
+  }
+
+  /**
+   * Builds an extra Redis connection from the configured endpoint.
+   *
+   * `config.redis` is either a URL string or an options object, and the two
+   * take different `new Redis(...)` forms; this keeps the per-connection
+   * extras (a connection name, so far) working for both.
+   */
+  private createConnection(extra: Partial<RedisOptions> = {}): Redis {
+    return typeof this.config.redis === 'string'
+      ? new Redis(this.config.redis, extra)
+      : new Redis({ ...(this.config.redis as RedisOptions), ...extra });
   }
 
   private async syncPatterns() {

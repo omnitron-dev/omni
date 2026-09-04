@@ -31,6 +31,34 @@ describeOrSkip('NotificationManager - DLQ Subscription', () => {
     await manager.stopAll();
   });
 
+  it('subscribeToDLQ resolves instead of adopting its own consumer loop', async () => {
+    // `subscribeToDLQ` is async and used to `return this.dlqSubscriptionPromise`
+    // — the infinite `while (this.active)` loop — so the returned promise was
+    // adopted and never settled until stopAll(). Every caller awaits it
+    // (NotificationsService, RotifTransport, these tests), so subscribing to
+    // the dead letter queue hung the caller forever.
+    const config = getTestRedisConfig(1);
+    const probe = new NotificationManager({
+      redis: { host: config.host, port: config.port, db: config.db },
+      blockInterval: 100,
+    });
+    await probe.waitUntilReady();
+
+    try {
+      let settled = false;
+      await Promise.race([
+        probe.subscribeToDLQ(async () => {}).then(() => {
+          settled = true;
+        }),
+        delay(5_000),
+      ]);
+
+      expect(settled).toBe(true);
+    } finally {
+      await probe.stopAll();
+    }
+  }, 30_000);
+
   it('should deliver messages from DLQ subscription', async () => {
     const received: RotifMessage[] = [];
 

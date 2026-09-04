@@ -4,8 +4,8 @@
  * These fixtures provide worker services for testing HTTP transport clustering
  */
 
-import { Process, Public, HealthCheck } from '../../src/modules/pm/decorators.js';
-import type { IHealthStatus } from '../../src/modules/pm/types.js';
+import { Process, Public, HealthCheck } from '../../src/decorators.js';
+import type { IHealthStatus } from '../../src/types.js';
 
 /**
  * Calculator Service - Simple stateless service for load balancing tests

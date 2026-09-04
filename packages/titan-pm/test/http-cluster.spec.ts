@@ -1,29 +1,47 @@
 /**
- * PM Module HTTP Cluster Integration Tests
+ * PM pool API under an HTTP-transport configuration.
  *
- * Phase 3 implementation from weaks.md - Testing PM module with HTTP transport clustering
+ * Moved here from titan's `test/integration/`, where it had been excluded from
+ * the run since the pm module was extracted into this package — it still
+ * imported `src/modules/pm/types.js`, which no longer exists.
  *
- * GOAL: Comprehensive integration tests for HTTP transport with PM module clustering
+ * WHAT THIS COVERS: the ProcessManager pool contract — sizing, round-robin
+ * distribution, restart bookkeeping, per-worker state isolation, health and
+ * metrics shape — driven through `createTestProcessManager`, which is
+ * `{ mock: true }`.
+ *
+ * WHAT IT DOES NOT COVER, despite the name it arrived with: no process is
+ * spawned, no HTTP transport is opened and nothing is clustered. The fixtures
+ * in `./fixtures/http-workers.ts` declare real `@Process` workers that the mock
+ * never runs, and several assertions say so out loud ("simulated", "in mock
+ * mode, we verify the pool was created with correct size"). The header is
+ * corrected rather than the tests deleted: the pool contract they check is
+ * real, it is just not integration.
+ *
+ * The gap is not local to this file — `real-transports.spec.ts` is titled
+ * "with real process spawning" and installs AdvancedMockProcessSpawner in
+ * beforeAll. titan-pm currently has no coverage of a genuinely spawned worker
+ * over any transport.
  *
  * Test Scenarios:
- * 1. Multi-Process HTTP Server Pool
- * 2. Worker Crash and Recovery
- * 3. State Isolation
- * 4. Health Monitoring
- * 5. Metrics Collection
+ * 1. Worker pool sizing and distribution
+ * 2. Restart accounting after a simulated crash
+ * 3. Per-worker state isolation
+ * 4. Health monitoring surface
+ * 5. Metrics collection surface
  */
 
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestProcessManager, TestProcessManager } from '@omnitron-dev/testing/titan';
-import { PoolStrategy } from '../../src/modules/pm/types.js';
+import { PoolStrategy } from '../src/types.js';
 import {
   CalculatorWorker,
   StatefulCounterWorker,
   CrashableWorker,
   HeavyComputeWorker,
   MetricsTrackerWorker,
-} from '../fixtures/http-workers.js';
+} from './fixtures/http-workers.js';
 
 // ============================================================================
 // Test Configuration
@@ -35,7 +53,7 @@ const TEST_TIMEOUT = 30000; // 30 seconds for integration tests
 // Phase 3.1: Multi-Process HTTP Server Pool Tests
 // ============================================================================
 
-describe('PM Module - HTTP Cluster Integration', () => {
+describe('PM Module - pool API under an HTTP transport config (mock spawner)', () => {
   describe('Phase 3.1: Multi-Process HTTP Server Pool', () => {
     let pm: TestProcessManager;
 

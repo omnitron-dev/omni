@@ -317,7 +317,14 @@ export class DistributedLockService implements IDistributedLockService {
     const autoRenew = options?.autoRenew ?? true;
     const renewIntervalMs = options?.renewIntervalMs ?? Math.max(1, Math.floor(ttl / 3));
 
-    for (let i = 0; i < retries; i++) {
+    // `retries` counts attempts, and a caller asking for 0 means "try once,
+    // don't block" — not "never touch Redis". Before this floor the loop body
+    // was skipped entirely for retries: 0 and withLock threw
+    // "Failed to acquire lock ... after 0 retries" without ever attempting to
+    // acquire it. The default of 3 is unaffected.
+    const attempts = Math.max(1, retries);
+
+    for (let i = 0; i < attempts; i++) {
       const lockId = await this.acquireLock(key, ttl);
 
       if (lockId) {
@@ -359,8 +366,8 @@ export class DistributedLockService implements IDistributedLockService {
         }
       }
 
-      // If not the last retry, wait before trying again
-      if (i < retries - 1) {
+      // If not the last attempt, wait before trying again
+      if (i < attempts - 1) {
         const delay = exponentialBackoff ? retryDelay * (i + 1) : retryDelay;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -371,7 +378,7 @@ export class DistributedLockService implements IDistributedLockService {
       return undefined as T;
     }
 
-    throw new Error(`Failed to acquire lock for key: ${key} after ${retries} retries`);
+    throw new Error(`Failed to acquire lock for key: ${key} after ${attempts} attempt(s)`);
   }
 
   /**

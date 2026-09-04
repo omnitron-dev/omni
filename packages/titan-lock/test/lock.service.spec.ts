@@ -433,7 +433,7 @@ describe('DistributedLockService', () => {
       const fn = vi.fn();
 
       await expect(lockService.withLock('test-key', fn, { retries: 3, retryDelay: 10 })).rejects.toThrow(
-        'Failed to acquire lock for key: test-key after 3 retries'
+        'Failed to acquire lock for key: test-key after 3 attempt(s)'
       );
 
       expect(fn).not.toHaveBeenCalled();

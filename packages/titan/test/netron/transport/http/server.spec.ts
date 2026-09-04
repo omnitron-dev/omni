@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getFreeHttpPort as getFreePort } from '../../../utils/index.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
@@ -15,9 +16,12 @@ describe('HttpServer (Legacy Tests)', () => {
   let mockPeer: LocalPeer;
   let testPort: number;
 
-  beforeEach(() => {
-    // Generate random port for parallel test execution
-    testPort = 3000 + Math.floor(Math.random() * 1000);
+  beforeEach(async () => {
+    // Ask the OS for a free port. Picking a random one out of 3000-3999 and
+    // hoping raced everything else on the host and, with a fresh draw per
+    // beforeEach, the suite's own other cases — an intermittent EADDRINUSE
+    // that looked like a flake.
+    testPort = await getFreePort();
 
     server = new HttpServer({
       port: testPort,

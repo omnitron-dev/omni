@@ -16,29 +16,21 @@ import type { FleetService } from './fleet.service.js';
 // Types
 // =============================================================================
 
-export interface OmnitronDiscoveredTarget {
-  id: string;
-  type: 'docker' | 'ssh' | 'unknown';
-  name: string;
-  address: string;
-  port: number;
-  status: string;
-  labels?: Record<string, string> | undefined;
-  metadata?: Record<string, unknown> | undefined;
-}
+export type {
+  OmnitronDiscoveredTarget,
+  DiscoveryScanResult,
+} from '../shared/dto/discovery.js';
 
-export interface DiscoveryScanResult {
-  docker: OmnitronDiscoveredTarget[];
-  ssh: OmnitronDiscoveredTarget[];
-  timestamp: string;
-  duration: number;
-}
 
 // =============================================================================
 // @xec-sh/ops integration — loaded dynamically
 // =============================================================================
 
 import { loadXecOps } from '../shared/xec-loader.js';
+import type {
+  OmnitronDiscoveredTarget,
+  DiscoveryScanResult,
+} from '../shared/dto/discovery.js';
 
 type XecDiscoveredTarget = import('@xec-sh/ops').DiscoveredTarget;
 

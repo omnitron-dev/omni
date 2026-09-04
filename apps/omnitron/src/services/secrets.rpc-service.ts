@@ -9,8 +9,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import type { SecretsService } from './secrets.service.js';
 
+import type { IOmnitronSecretsService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronSecrets' })
-export class SecretsRpcService {
+export class SecretsRpcService implements IOmnitronSecretsService {
   constructor(private readonly secrets: SecretsService) {}
 
   /**

@@ -89,6 +89,23 @@ import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './flee
 import type { Pipeline, PipelineDef, PipelineRun } from './pipelines.js';
 import type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 import type { SystemSnapshot } from './system-info.js';
+import type { BackupInfo } from './backups.js';
+import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
+import type { HealthReport, PlatformHealthReport } from './health.js';
+import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
+import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo } from './nodes.js';
+import type { INodeHealthSummary } from '../../workers/types.js';
+import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
+
+export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
+import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
+
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo } from './nodes.js';
+
+export type { BackupInfo } from './backups.js';
+export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
+export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';
+export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 
 export type { Pipeline, PipelineDef, PipelineStep, PipelineRun, PipelineRunStepResult } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
@@ -378,4 +395,100 @@ export interface IOmnitronTracesService {
 /** Host snapshot: OS, CPU, memory, disks, network, daemon runtime. */
 export interface IOmnitronSystemInfoService {
   getSnapshot(): Promise<SystemSnapshot>;
+}
+
+// ============================================================================
+// Backups / Kubernetes / Health / Discovery / Secrets
+// ============================================================================
+//
+// These four were the last services the console could only reach as
+// `Record<string, (...args: any[]) => any>`. None of them is called from the
+// UI yet — which is exactly why the contract is worth writing down now,
+// while nothing has had a chance to drift against it.
+
+/** Database and volume backups, plus their schedules. */
+export interface IOmnitronBackupsService {
+  createBackup(data: { database: string; compress?: boolean }): Promise<BackupInfo>;
+  createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>>;
+  createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>>;
+  listBackups(data?: { database?: string }): Promise<BackupInfo[]>;
+  restoreBackup(data: { backupId: string }): Promise<{ success: boolean }>;
+  deleteBackup(data: { backupId: string }): Promise<{ success: boolean }>;
+  setSchedule(data: { database: string; cron: string }): Promise<{ success: boolean }>;
+  getSchedule(data: { database: string }): Promise<string | null>;
+  listSchedules(): Promise<Record<string, string>>;
+  removeSchedule(data: { database: string }): Promise<{ success: boolean }>;
+}
+
+/** Kubernetes workloads on the cluster this daemon is pointed at. */
+export interface IOmnitronKubernetesService {
+  listPods(data?: { namespace?: string; labelSelector?: string }): Promise<K8sPod[]>;
+  getPod(data: { name: string; namespace?: string }): Promise<K8sPod | null>;
+  deletePod(data: { name: string; namespace?: string }): Promise<{ success: boolean }>;
+  getPodLogs(data: { name: string; namespace?: string; tail?: number }): Promise<string>;
+  listDeployments(data?: { namespace?: string }): Promise<K8sDeployment[]>;
+  scaleDeployment(data: { name: string; replicas: number; namespace?: string }): Promise<{ success: boolean }>;
+  restartDeployment(data: { name: string; namespace?: string }): Promise<{ success: boolean }>;
+  listServices(data?: { namespace?: string }): Promise<K8sService[]>;
+  execInPod(data: { pod: string; command: string[]; namespace?: string }): Promise<string>;
+}
+
+/** Application and infrastructure health probes. */
+export interface IOmnitronHealthService {
+  checkApp(data: { appName: string; port?: number }): Promise<HealthReport>;
+  checkApps(): Promise<HealthReport>;
+  checkInfrastructure(): Promise<HealthReport>;
+  checkAll(): Promise<PlatformHealthReport>;
+}
+
+/** Scanning for containers and nodes this daemon could adopt. */
+export interface IOmnitronDiscoveryService {
+  discoverContainers(): Promise<OmnitronDiscoveredTarget[]>;
+  discoverNodes(data: { hosts: string[] }): Promise<OmnitronDiscoveredTarget[]>;
+  scanAll(): Promise<DiscoveryScanResult>;
+}
+
+/** Encrypted secret storage. */
+export interface IOmnitronSecretsService {
+  get(data: { key: string }): Promise<{ key: string; value: string | null }>;
+  set(data: { key: string; value: string }): Promise<{ success: boolean }>;
+  delete(data: { key: string }): Promise<{ success: boolean; existed: boolean }>;
+  list(): Promise<{ keys: string[] }>;
+}
+
+/**
+ * Fleet node inventory and health history.
+ *
+ * The setter methods the RPC class also exposes (`setHealthWorkerProxy`,
+ * `setHealthRepository`) are wiring, not contract — they take server-side
+ * objects and are deliberately absent here.
+ */
+export interface IOmnitronNodesService {
+  listNodes(): INodeWithStatus[];
+  getNode(data: { id: string }): INodeWithStatus | null;
+  addNode(data: AddNodeInput): Promise<INode>;
+  updateNode(data: { id: string } & UpdateNodeInput): Promise<INode>;
+  removeNode(data: { id: string }): void;
+  checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
+  checkAllNodes(): Promise<INodeStatus[]>;
+  getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
+  getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;
+  getNodeHealthSummaries(): Promise<INodeHealthSummary[]>;
+  triggerNodeCheck(data: { nodeId?: string }): Promise<INodeHealthSummary[]>;
+  listSshKeys(): SshKeyInfo[];
+}
+
+/**
+ * Metrics snapshots and time series.
+ *
+ * `OmnitronMetrics` is implemented by `MetricsRpcService` in
+ * `@omnitron-dev/titan-metrics`, so the `implements` half of this contract
+ * lives in that package. Declared here so the console is type-checked against
+ * it rather than reaching for `any` — the dashboard and the metrics page are
+ * its only callers.
+ */
+export interface IOmnitronMetricsService {
+  getSnapshot(): Promise<MetricsSnapshot>;
+  querySeries(data: MetricsQueryFilter): Promise<MetricsTimeSeries[]>;
+  getPrometheusText(): Promise<string>;
 }

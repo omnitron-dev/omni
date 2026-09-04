@@ -8,8 +8,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES } from '../shared/roles.js';
 import type { DiscoveryService, OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.service.js';
 
+import type { IOmnitronDiscoveryService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronDiscovery' })
-export class DiscoveryRpcService {
+export class DiscoveryRpcService implements IOmnitronDiscoveryService {
   constructor(private readonly discovery: DiscoveryService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })

@@ -89,8 +89,20 @@ export function getEnv(): OmnitronEnvShape {
   if (cached) {
     return override ? { ...cached, ...override } : cached;
   }
+  cached = loadSnapshot();
+  // The override has to be applied on this path too. It previously was
+  // not: `setEnvOverride()` called BEFORE the first `getEnv()` — which is
+  // the natural order in a test (`resetEnvCache()` → override → exercise
+  // code) — was silently dropped, because the first call returned the raw
+  // snapshot and only later calls merged the patch. The one production
+  // caller (`cli/omnitron.ts` `--json`) happened to survive by also
+  // writing `process.env`, which masked the defect.
+  return override ? { ...cached, ...override } : cached;
+}
+
+function loadSnapshot(): OmnitronEnvShape {
   const raw = process.env;
-  cached = {
+  return {
     HOME: raw['HOME'] || os.homedir() || raw['USERPROFILE'] || '/tmp',
     ...(raw['USERPROFILE'] !== undefined && { USERPROFILE: raw['USERPROFILE'] }),
     NODE_ENV: ((raw['NODE_ENV'] as OmnitronEnvShape['NODE_ENV']) ?? 'development'),
@@ -110,7 +122,6 @@ export function getEnv(): OmnitronEnvShape {
     ...(raw['POSTGRES_PASSWORD'] !== undefined && { POSTGRES_PASSWORD: raw['POSTGRES_PASSWORD'] }),
     ...(raw['REDIS_PASSWORD'] !== undefined && { REDIS_PASSWORD: raw['REDIS_PASSWORD'] }),
   };
-  return cached;
 }
 
 /** Patch the cached snapshot for the rest of the process. */

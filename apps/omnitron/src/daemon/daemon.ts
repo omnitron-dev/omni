@@ -901,50 +901,26 @@ export class OmnitronDaemon {
     }
   }
 
+  /**
+   * Apply the internal-database schema.
+   *
+   * Delegates to the shared runner (`database/migration-runner.ts`) so this
+   * path, the infrastructure service and the `migrate` CLI all execute the
+   * same registry through the same engine. A failure here is logged as an
+   * ERROR — the daemon keeps running, but every feature backed by
+   * omnitron-pg (alerts, sessions, logs, metrics, deployments) is degraded
+   * and the operator has to see it.
+   */
   private async runOmnitronMigrations(logger: ILogger): Promise<void> {
+    const { runOmnitronMigrations } = await import('../database/migration-runner.js');
+
     try {
-      const { Kysely, PostgresDialect, Migrator } = await import('kysely');
-      const pg = await import('pg');
-      const m001 = await import('../database/migrations/001_initial_schema.js');
-      const m002 = await import('../database/migrations/002_metrics_raw.js');
-      const m003 = await import('../database/migrations/003_pipelines_traces.js');
-      const m004 = await import('../database/migrations/004_sync_buffer.js');
-      const m005 = await import('../database/migrations/005_node_health_checks.js');
-
-      const pool = new pg.default.Pool({
-        host: 'localhost', port: 5480,
-        database: 'omnitron', user: 'omnitron', password: 'omnitron',
-      });
-
-      const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool }) });
-
-      try {
-        const migrator = new Migrator({
-          db,
-          provider: {
-            async getMigrations() {
-              return {
-                '001_initial_schema': { up: m001.up, down: m001.down },
-                '002_metrics_raw': { up: m002.up, down: m002.down },
-                '003_pipelines_traces': { up: m003.up, down: m003.down },
-                '004_sync_buffer': { up: m004.up, down: m004.down },
-                '005_node_health_checks': { up: m005.up, down: m005.down },
-              };
-            },
-          },
-        });
-
-        const { results, error } = await migrator.migrateToLatest();
-        const applied = results?.filter((r) => r.status === 'Success') ?? [];
-        if (applied.length > 0) {
-          logger.info({ migrations: applied.map((r: any) => r.migrationName) }, `Applied ${applied.length} migration(s)`);
-        }
-        if (error) logger.warn({ error: String(error) }, 'Migration warning');
-      } finally {
-        await db.destroy();
-      }
+      await runOmnitronMigrations(logger);
     } catch (err) {
-      logger.warn({ error: (err as Error).message }, 'Could not run migrations — will retry on next start');
+      logger.error(
+        { error: (err as Error).message },
+        'Omnitron database migrations FAILED — alerts, sessions, logs and metrics will not work until this is resolved'
+      );
     }
   }
 

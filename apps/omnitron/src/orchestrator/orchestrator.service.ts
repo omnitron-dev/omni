@@ -2467,6 +2467,10 @@ export class OrchestratorService extends EventEmitter {
         // still existed.
         const pids = this.resolveTopologyPids(handle, topo);
         const alive = pids.filter((pid) => isAlive(pid));
+        const declaredInstances = topo.instances ?? 1;
+        const liveInstances = isPoolEntry
+          ? (handle.topologyPools.get(topo.name)?.size ?? 0)
+          : alive.length;
         const childPid = alive[0] ?? pids[0] ?? null;
         const childStatus: AppStatus =
           alive.length > 0 ? 'online' : pids.length > 0 ? 'crashed' : 'stopped';
@@ -2486,6 +2490,8 @@ export class OrchestratorService extends EventEmitter {
           memory: sample?.memory ?? 0,
           uptime: handle.uptime,
           restarts: 0,
+          instances: liveInstances,
+          declaredInstances,
         });
       }
     }

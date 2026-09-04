@@ -2,7 +2,7 @@ import { delay } from '@omnitron-dev/common';
 import { getTestRedisConfig, isRedisInMockMode } from './helpers/test-utils.js';
 
 import { RotifMessage } from '../../src/rotif/rotif.js';
-import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 
 const skipTests = isRedisInMockMode();
 if (skipTests) {

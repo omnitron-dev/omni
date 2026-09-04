@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 import { delay } from '@omnitron-dev/common';
 import Redis from 'ioredis';
 import { getTestRedisConfig, isRedisInMockMode } from './helpers/test-utils.js';
@@ -397,9 +397,17 @@ describeOrSkip('Rotif Improvements Integration', () => {
       await manager.publish('test:channel1', { data: 1 });
       await manager.publish('test:channel1', { data: 2 });
       await manager.publish('test:channel2', { data: 3 });
-      await delay(300);
 
-      const stats = await manager.getDLQStats();
+      // Poll instead of sleeping a fixed 300ms: three messages across two
+      // subscriptions with blockInterval 100 do not reliably reach the DLQ in
+      // that window, which showed up as "expected 2 to be 3".
+      let stats = await manager.getDLQStats();
+      const deadline = Date.now() + 10_000;
+      while (stats.totalMessages < 3 && Date.now() < deadline) {
+        await delay(50);
+        stats = await manager.getDLQStats();
+      }
+
       expect(stats.totalMessages).toBe(3);
       expect(stats.messagesByChannel['test:channel1']).toBe(2);
       expect(stats.messagesByChannel['test:channel2']).toBe(1);

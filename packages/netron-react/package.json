@@ -73,7 +73,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc -p tsconfig.json --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
     "build:watch": "tsup --watch",
     "dev": "tsup --watch",
     "test": "vitest run",

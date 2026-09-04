@@ -88,7 +88,18 @@ export class AuthService {
   // Sign In
   // ===========================================================================
 
-  async signIn(request: OmnitronSignInRequest): Promise<OmnitronSignInResult> {
+  /**
+   * @param request - the client's payload (username, password, claimed UA)
+   * @param origin  - facts the SERVER established about the call. Kept as a
+   *                  separate argument rather than folded into `request` so
+   *                  the wire DTO cannot grow a field a client could set:
+   *                  `ipAddress` was exactly that before, and the operator's
+   *                  session list repeated whatever the client claimed.
+   */
+  async signIn(
+    request: OmnitronSignInRequest,
+    origin: { ipAddress?: string } = {}
+  ): Promise<OmnitronSignInResult> {
     const { username, password, userAgent } = request;
 
     // 1. Find user
@@ -132,7 +143,7 @@ export class AuthService {
         userId: user.id,
         token: accessToken,
         expiresAt,
-        ipAddress: null,
+        ipAddress: origin.ipAddress ?? null,
         userAgent: userAgent ?? null,
       })
       .execute();

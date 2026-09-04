@@ -69,6 +69,10 @@ async function main() {
       ? {
           role: savedConfig.role,
           ...(savedConfig.master ? { master: savedConfig.master } : {}),
+          // Persisted alongside role/master because the daemon boots from the
+          // saved config, not the project's ecosystem file — a `trustProxy`
+          // set only in the latter never reached the running daemon.
+          ...(savedConfig.httpRateLimit ? { httpRateLimit: savedConfig.httpRateLimit } : {}),
         }
       : {}),
     auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },

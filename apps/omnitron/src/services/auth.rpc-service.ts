@@ -16,7 +16,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
-import { getCurrentAuth, requireAuth } from './auth-context.js';
+import { getCurrentAuth, requireAuth, getRequestContext } from './auth-context.js';
 import type {
   AuthService,
   OmnitronSignInResult,
@@ -38,13 +38,12 @@ export class AuthRpcService {
     password: string;
     userAgent?: string;
   }): Promise<OmnitronSignInResult> {
-    // `ipAddress` used to be part of this payload and was written to
-    // omnitron_sessions verbatim — a client could stamp any address it liked
-    // onto its own session and the operator-facing session list would repeat
-    // it as fact. The console never sent it, so the column was always null
-    // anyway. It stays null until the transport can supply the peer address
-    // server-side; a forgeable value is worse than an absent one.
-    return this.authService.signIn(data);
+    // The address is taken from the TRANSPORT, never from the payload. It
+    // used to be a client-supplied field written to omnitron_sessions
+    // verbatim, so a client could stamp any address onto its own session and
+    // the operator's session list would repeat it as fact.
+    const ipAddress = getRequestContext()?.ipAddress;
+    return this.authService.signIn(data, ipAddress ? { ipAddress } : {});
   }
 
   @Public({ auth: { allowAnonymous: true } })

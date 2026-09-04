@@ -9,7 +9,7 @@
  * @module @omnitron-dev/prism/components/confirm-dialog
  */
 
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -103,19 +103,39 @@ export function ConfirmDialog({
   const titleId = useId();
   const descriptionId = useId();
 
+  // Re-entry guard for the destructive action.
+  //
+  // The only thing standing between a double-click and two deletions used to
+  // be the caller's `loading` prop — and most callers don't thread one
+  // through, because the dialog's own example doesn't. An impatient operator
+  // clicking twice fired `onConfirm` twice.
+  //
+  // Tracked here rather than relying on the caller: this component knows when
+  // the action it started is still running.
+  const [confirming, setConfirming] = useState(false);
+  const busy = loading || confirming;
+
   const handleConfirm = () => {
+    if (busy) return;
+
     const result = onConfirm();
-    if (result instanceof Promise) {
-      result.catch(() => {
-        // Error handling should be done in the parent component
-      });
-    }
+    if (!(result instanceof Promise)) return;
+
+    setConfirming(true);
+    result
+      .catch(() => {
+        // The parent owns error reporting; the dialog only owns the button
+        // state. Swallowing here prevents an unhandled rejection, and the
+        // `finally` below makes sure a failure leaves the operator able to
+        // retry instead of stuck behind a spinner.
+      })
+      .finally(() => setConfirming(false));
   };
 
   return (
     <Dialog
       open={open}
-      onClose={loading ? undefined : onClose}
+      onClose={busy ? undefined : onClose}
       maxWidth={maxWidth}
       fullWidth
       aria-labelledby={titleId}
@@ -135,11 +155,11 @@ export function ConfirmDialog({
       )}
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} color="inherit" disabled={loading} variant="outlined">
+        <Button onClick={onClose} color="inherit" disabled={busy} variant="outlined">
           {cancelLabel}
         </Button>
 
-        <Button onClick={handleConfirm} color={confirmColor} variant="contained" loading={loading} disabled={disabled}>
+        <Button onClick={handleConfirm} color={confirmColor} variant="contained" loading={busy} disabled={disabled}>
           {confirmLabel}
         </Button>
       </DialogActions>

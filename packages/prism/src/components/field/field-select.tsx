@@ -84,15 +84,18 @@ export function FieldSelect({
           helperText={error?.message ?? helperText}
           required={required}
           slotProps={{
+            ...slotProps,
             formHelperText: {
               id: helperId,
+              ...slotProps?.formHelperText,
             },
+            // Merged, not overwritten — see field-text for the same fix.
             select: {
               'aria-describedby': error?.message || helperText ? helperId : undefined,
               'aria-invalid': !!error,
               'aria-required': required,
+              ...(slotProps?.select as object | undefined),
             },
-            ...slotProps,
           }}
           {...other}
         >

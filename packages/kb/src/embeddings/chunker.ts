@@ -178,17 +178,26 @@ export class Chunker {
    * Find a natural break point near the target line.
    */
   private findNaturalBreak(lines: string[], target: number, max: number): number {
+    // `target` can sit past `max`: the caller's token loop leaves chunkEnd one
+    // beyond the last line it consumed. The backward search used to start
+    // there, read `lines[target]` as undefined, treat the resulting '' as an
+    // empty line and return an index outside the symbol — so a chunk claimed a
+    // range ending past the end of the file (123 for a 122-line file). The
+    // content was merely truncated by slice, but the range is what a search
+    // result cites, and it pointed at a line that does not exist.
+    const ceiling = Math.min(target, max);
+
     // Look forward up to 5 lines for an empty line or closing brace
-    for (let i = target; i <= Math.min(target + 5, max); i++) {
+    for (let i = ceiling; i <= Math.min(ceiling + 5, max); i++) {
       const line = lines[i]?.trim() ?? '';
       if (line === '' || line === '}' || line === '};') return i;
     }
     // Look backward
-    for (let i = target; i >= Math.max(target - 3, 0); i--) {
+    for (let i = ceiling; i >= Math.max(ceiling - 3, 0); i--) {
       const line = lines[i]?.trim() ?? '';
       if (line === '' || line === '}' || line === '};') return i;
     }
-    return Math.min(target, max);
+    return ceiling;
   }
 
   private estimateTokens(text: string): number {

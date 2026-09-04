@@ -122,6 +122,20 @@ export function getCoinDecimals(coin: string): number {
  *          (exponent notation, junk) — the caller then falls back to `Number`.
  */
 export function formatDecimalString(raw: string, decimals: number): string | null {
+  const scaled = toScaledInteger(raw, decimals);
+  return scaled === null ? null : fromScaledInteger(scaled, decimals);
+}
+
+/**
+ * A decimal string as an exact integer at `decimals` scale, half-up rounded.
+ *
+ * `'1.005'` at scale 2 is `101n` — which is the whole point: as a double the
+ * same literal sits fractionally BELOW 1.005, so any arithmetic that starts
+ * with `Number('1.005')` has already lost before it begins.
+ *
+ * @returns null when `raw` is not a plain decimal (exponent notation, junk).
+ */
+export function toScaledInteger(raw: string, decimals: number): bigint | null {
   const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(raw.trim());
   if (!match) return null;
 
@@ -130,16 +144,54 @@ export function formatDecimalString(raw: string, decimals: number): string | nul
 
   const digits = `${intPart || '0'}${fracPart.slice(0, decimals).padEnd(decimals, '0')}`;
   const roundUp = (fracPart[decimals] ?? '0') >= '5';
-  const scaled = BigInt(digits) + (roundUp ? 1n : 0n);
+  const magnitude = BigInt(digits) + (roundUp ? 1n : 0n);
 
-  const asString = scaled.toString().padStart(decimals + 1, '0');
+  return sign === '-' ? -magnitude : magnitude;
+}
+
+/** Render a scaled integer back as a decimal string. Inverse of `toScaledInteger`. */
+export function fromScaledInteger(scaled: bigint, decimals: number): string {
+  const negative = scaled < 0n;
+  const asString = (negative ? -scaled : scaled).toString().padStart(decimals + 1, '0');
   const whole = asString.slice(0, asString.length - decimals) || '0';
   const fraction = decimals > 0 ? asString.slice(asString.length - decimals) : '';
   const magnitude = decimals > 0 ? `${whole}.${fraction}` : whole;
 
   // -0 is not a balance anyone holds.
-  const isZero = scaled === 0n;
-  return `${sign === '-' && !isZero ? '-' : ''}${magnitude}`;
+  return `${negative && scaled !== 0n ? '-' : ''}${magnitude}`;
+}
+
+/**
+ * Add decimal strings exactly, returning a decimal string.
+ *
+ * For totalling amounts that arrived from the wire as strings. Accumulating
+ * them with `parseFloat` is the same mistake as formatting with it, one step
+ * earlier and harder to see: `0.1 + 0.2 + 0.3` is `0.6000000000000001`, and
+ * while a formatter capped at eight decimals rounds that back to `0.60000000`,
+ * anything that shows the raw total — a tooltip, a CSV export, a value posted
+ * back to the server — shows the artefact.
+ *
+ * Values that are not plain decimals are skipped rather than poisoning the
+ * total with `NaN`; `null` and `undefined` count as absent, not as zero-ish
+ * junk. Numbers are accepted for callers mid-migration, and go through their
+ * decimal representation rather than their binary one.
+ *
+ * @param decimals scale to accumulate at — use the coin's display precision
+ *        (`getCoinDecimals`) unless you have a reason not to.
+ */
+export function sumDecimalStrings(
+  values: Iterable<string | number | null | undefined>,
+  decimals: number
+): string {
+  let total = 0n;
+
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const scaled = toScaledInteger(typeof value === 'number' ? String(value) : value, decimals);
+    if (scaled !== null) total += scaled;
+  }
+
+  return fromScaledInteger(total, decimals);
 }
 
 /**

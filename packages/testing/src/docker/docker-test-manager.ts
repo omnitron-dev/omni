@@ -359,7 +359,18 @@ export class DockerTestManager extends EventEmitter {
         [
           'inspect',
           '--format',
-          '{{.State.Running}}\t{{.State.Status}}\t{{.State.Health.Status}}\t{{.State.ExitCode}}',
+          // `.State.Health` is absent on a container with no HEALTHCHECK, and
+          // Go templates fail hard on a missing map key rather than rendering
+          // empty: `docker inspect` exited 1 with "map has no entry for key
+          // \"Health\"". stderr is ignored here and the catch below reports a
+          // default, so every such container was read as NOT RUNNING — and
+          // `waitForContainer` rejected with "Container exited with status
+          // 'undefined' and exit code undefined" for a container that was
+          // running perfectly. That made `waitFor` unusable with any image
+          // lacking a healthcheck, which is precisely the case
+          // `waitFor.healthcheck: false` exists to serve; callers worked around
+          // it by always declaring one.
+          '{{.State.Running}}\t{{.State.Status}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}\t{{.State.ExitCode}}',
           name,
         ],
         {

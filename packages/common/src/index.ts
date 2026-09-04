@@ -7,3 +7,4 @@ export * from './primitives.js';
 export * from './predicates.js';
 export * from './list-buffer.js';
 export * from './decimal.js';
+export * from './errors.js';

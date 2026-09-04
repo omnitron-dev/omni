@@ -36,6 +36,7 @@ type Database = BetterSqlite3.Database;
 import { sqliteDateSerializerPlugin } from './plugins/sqlite-date-serializer.plugin.js';
 import {
   createExecutor,
+  createExecutorSync,
   destroyExecutor,
   isKyseraExecutor,
   getPlugins,
@@ -44,6 +45,7 @@ import {
   type KyseraExecutor,
 } from '@kysera/executor';
 import { CircuitBreaker, withRetry, isTransientError } from '@kysera/infra';
+import { createLiveConnectionRef } from './connection-ref.js';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors, TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
 import type {
@@ -301,10 +303,10 @@ export class DatabaseManager implements IDatabaseManager {
   private async runSingleHealthCheck(name: string, info: ConnectionInfo): Promise<void> {
     try {
       const startTime = Date.now();
-      const isHealthy = await this.validateConnectionHealth(info.instance, info.config.dialect);
+      const result = await this.validateConnectionHealth(info.instance, info.config.dialect);
       const latency = Date.now() - startTime;
 
-      if (isHealthy) {
+      if (result.healthy) {
         // Reset failure counter on success
         this.healthCheckFailures.set(name, 0);
 
@@ -313,7 +315,7 @@ export class DatabaseManager implements IDatabaseManager {
           this.logger.warn({ connection: name, latency }, 'Connection health check passed but with high latency');
         }
       } else {
-        await this.handleHealthCheckFailure(name, info, new Error('Health check returned false'));
+        await this.handleHealthCheckFailure(name, info, result.error);
       }
     } catch (error) {
       await this.handleHealthCheckFailure(name, info, error as Error);
@@ -383,10 +385,12 @@ export class DatabaseManager implements IDatabaseManager {
 
     try {
       const startTime = Date.now();
-      const isHealthy = await this.validateConnectionHealth(info.instance, info.config.dialect);
+      const result = await this.validateConnectionHealth(info.instance, info.config.dialect);
       const latency = Date.now() - startTime;
 
-      return { healthy: isHealthy, latency };
+      return result.healthy
+        ? { healthy: true, latency }
+        : { healthy: false, latency, error: result.error.message };
     } catch (error) {
       return { healthy: false, error: (error as Error).message };
     }
@@ -557,9 +561,9 @@ export class DatabaseManager implements IDatabaseManager {
       info.pool = pool;
 
       // Test connection health (single check — testConnection is redundant)
-      const isHealthy = await this.validateConnectionHealth(instance, config.dialect);
-      if (!isHealthy) {
-        throw Errors.unavailable('Database', 'Connection health check failed');
+      const health = await this.validateConnectionHealth(instance, config.dialect);
+      if (!health.healthy) {
+        throw Errors.unavailable('Database', `Connection health check failed: ${health.error.message}`);
       }
 
       info.connected = true;
@@ -994,9 +998,19 @@ export class DatabaseManager implements IDatabaseManager {
 
   /**
    * Validate connection health with timeout.
-   * Returns false on failure instead of throwing.
+   *
+   * Returns the failure instead of throwing it, and instead of logging it: this
+   * used to swallow the real error behind `logger.error('Connection health
+   * check failed')` and hand its caller a bare `false`, which the caller then
+   * reported as `new Error('Health check returned false')` under the SAME
+   * message. Every incident therefore carried two identical lines — one with
+   * the cause and no connection name, one with the connection name and no
+   * cause — and neither on its own was enough to diagnose anything.
    */
-  private async validateConnectionHealth(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<boolean> {
+  private async validateConnectionHealth(
+    db: Kysely<unknown>,
+    dialect: DatabaseDialect
+  ): Promise<{ healthy: true } | { healthy: false; error: Error }> {
     const timeout = dialect === 'sqlite' ? 10000 : 5000;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeout);
@@ -1006,14 +1020,13 @@ export class DatabaseManager implements IDatabaseManager {
         sql`SELECT 1 AS health_check`.execute(db),
         new Promise<never>((_, reject) => {
           ac.signal.addEventListener('abort', () =>
-            reject(new Error('Health check timeout'))
+            reject(new Error(`Health check timed out after ${timeout}ms`))
           );
         }),
       ]);
-      return true;
+      return { healthy: true };
     } catch (error) {
-      this.logger.error({ error }, 'Connection health check failed');
-      return false;
+      return { healthy: false, error: error instanceof Error ? error : new Error(String(error)) };
     } finally {
       clearTimeout(timer);
     }
@@ -1096,6 +1109,81 @@ export class DatabaseManager implements IDatabaseManager {
 
     // Create executor without plugins (still provides executor interface)
     return createExecutor(info.instance, []);
+  }
+
+  /**
+   * A stable reference to a connection, safe to hold for the process lifetime.
+   *
+   * `getConnection()` returns the object that is current when it is called,
+   * which is the right answer for a caller that uses it and drops it. It is the
+   * wrong answer for a Singleton — a repository, or the DATABASE_CONNECTION
+   * provider — because reconnection destroys that object and builds another.
+   * Holding the old one meant every query failed with `driver has already been
+   * destroyed` from then on, with no recovery short of a restart.
+   *
+   * The reference returned here resolves the current connection on every
+   * access, so a reconnect is invisible to whoever holds it.
+   */
+  getConnectionRef(name: string = DATABASE_DEFAULT_CONNECTION): Kysely<unknown> {
+    return createLiveConnectionRef(() => this.requireLiveConnection(name)) as Kysely<unknown>;
+  }
+
+  /**
+   * The same guarantee for a plugin-specific executor.
+   *
+   * An executor wraps one Kysely instance, so it has to be rebuilt whenever the
+   * instance behind it changes; that is done here rather than by the caller,
+   * who has no way to notice.
+   */
+  getExecutorRef(
+    name: string = DATABASE_DEFAULT_CONNECTION,
+    plugins: readonly Plugin[] = []
+  ): KyseraExecutor<unknown> {
+    let builtFrom: Kysely<unknown> | undefined;
+    let executor: KyseraExecutor<unknown> | undefined;
+
+    return createLiveConnectionRef(() => {
+      const instance = this.requireLiveInstance(name);
+      if (builtFrom !== instance || !executor) {
+        executor = createExecutorSync(instance, plugins);
+        builtFrom = instance;
+      }
+      return executor as object;
+    }) as KyseraExecutor<unknown>;
+  }
+
+  /**
+   * The connection as consumers should see it — executor when one is
+   * configured, raw instance otherwise — or a clear error saying why not.
+   *
+   * Deliberately synchronous, and therefore deliberately unable to reconnect:
+   * a live reference is read in the middle of building a query, where there is
+   * nothing to await. During the brief window when `reconnect()` has closed the
+   * old connection and not yet registered the new one, callers get this error
+   * and can retry — which is what the proactive health check is already doing
+   * on their behalf.
+   */
+  private requireLiveConnection(name: string): object {
+    const info = this.connections.get(name);
+    if (!info) {
+      throw Errors.notFound('Database connection', name);
+    }
+    if (!info.connected) {
+      throw Errors.unavailable(name, info.lastError?.message || 'Connection is not established');
+    }
+    return (info.executor ?? info.instance) as object;
+  }
+
+  /** The raw instance behind a connection, for building executors on top of. */
+  private requireLiveInstance(name: string): Kysely<unknown> {
+    const info = this.connections.get(name);
+    if (!info) {
+      throw Errors.notFound('Database connection', name);
+    }
+    if (!info.connected) {
+      throw Errors.unavailable(name, info.lastError?.message || 'Connection is not established');
+    }
+    return info.instance;
   }
 
   /**

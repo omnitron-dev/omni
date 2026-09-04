@@ -157,13 +157,16 @@ export class TitanDatabaseModule {
             );
           }
 
-          // Get executor with decorator plugins + global plugins
+          // Get executor with decorator plugins + global plugins.
+          // A live reference: repositories are Singletons and capture `db` in
+          // their constructor, so they must not be handed an object that
+          // reconnection replaces.
           const globalPlugins = manager.getConnectionPlugins(metadata.connection);
           const allPlugins = [...globalPlugins, ...plugins];
-          db = await manager.getExecutor(metadata.connection, allPlugins) as Kysely<unknown>;
+          db = manager.getExecutorRef(metadata.connection, allPlugins) as Kysely<unknown>;
         } else {
-          // Use connection with global plugins (getConnection returns executor if available)
-          db = await manager.getConnection(metadata.connection);
+          // Same, for a repository with no plugins of its own.
+          db = manager.getConnectionRef(metadata.connection);
         }
 
         const instance = new (repository as any)(db, metadata.table);
@@ -260,11 +263,17 @@ export class TitanDatabaseModule {
       },
     ]);
 
-    // Default connection
+    // Default connection.
+    //
+    // A live reference, not the instance itself: this provider is a Singleton,
+    // so whatever it returns is held for the process lifetime, while
+    // reconnection destroys the Kysely instance and builds a new one. Handing
+    // out the instance meant one reconnect left every consumer holding a
+    // destroyed driver for good.
     providers.push([
       DATABASE_CONNECTION,
       {
-        useFactory: async (manager: DatabaseManager) => manager.getConnection(DATABASE_DEFAULT_CONNECTION),
+        useFactory: async (manager: DatabaseManager) => manager.getConnectionRef(DATABASE_DEFAULT_CONNECTION),
         inject: [DATABASE_MANAGER],
         scope: Scope.Singleton,
       },

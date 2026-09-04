@@ -25,7 +25,7 @@ import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import type { DaemonRole } from '../config/types.js';
+import type { DaemonRole, IDaemonConfig } from '../config/types.js';
 import { expandPath } from '../shared/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +46,13 @@ export interface SavedDaemonConfig {
    * console's JWT sessions survive daemon restarts (see ensurePersistedJwtSecret).
    */
   auth?: { jwtSecret: string };
+  /**
+   * Transport-level rate limiting and proxy trust for the daemon's HTTP
+   * surface. Persisted because the daemon boots from THIS file, not from the
+   * project's ecosystem config — anything set only there is invisible to a
+   * running daemon.
+   */
+  httpRateLimit?: IDaemonConfig['httpRateLimit'];
 }
 
 const DAEMON_CONFIG_PATH = path.join(OMNITRON_HOME, 'config.json');

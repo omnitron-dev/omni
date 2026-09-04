@@ -416,7 +416,12 @@ export class OmnitronDaemon {
       allowedOrigins: true,
     });
 
-    const authContextWrapper = createAuthContextWrapper();
+    // `trustProxy` is shared with the rate limiter deliberately: both answer
+    // the same question — is there a proxy in front whose forwarded headers
+    // we may believe? Two separate switches would eventually disagree.
+    const authContextWrapper = createAuthContextWrapper({
+      trustProxy: dc.httpRateLimit?.trustProxy === true,
+    });
 
     // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to
     // these over the same loopback; nginx fronts the public surface.

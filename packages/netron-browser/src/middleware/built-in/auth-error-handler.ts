@@ -165,24 +165,51 @@ export function createAuthErrorMiddleware(options: AuthErrorMiddlewareOptions): 
   // Queue for rate-limited requests (currently unused, reserved for future rate limit queue implementation)
   // const retryQueue: QueuedRetry[] = [];
 
+  /**
+   * Route one failure to the right handler.
+   *
+   * @returns true when the error was an auth error and has been handled.
+   */
+  async function dispatch(ctx: ClientMiddlewareContext, error: any): Promise<boolean> {
+    // Extract error code - check multiple places
+    const errorCode = extractErrorCode(error);
+
+    if (errorCode === ErrorCode.UNAUTHORIZED || errorCode === 401) {
+      await handleUnauthorized(ctx, error);
+      return true;
+    }
+    if (errorCode === ErrorCode.FORBIDDEN || errorCode === 403) {
+      await handleForbidden(ctx, error);
+      return true;
+    }
+    if (errorCode === ErrorCode.TOO_MANY_REQUESTS || errorCode === 429) {
+      await handleRateLimited(ctx, error);
+      return true;
+    }
+    return false;
+  }
+
   return async (ctx, next) => {
     try {
       await next();
     } catch (error: any) {
-      // Extract error code - check multiple places
-      const errorCode = extractErrorCode(error);
-
-      // Check if this error should trigger special handling
-      if (errorCode === ErrorCode.UNAUTHORIZED || errorCode === 401) {
-        await handleUnauthorized(ctx, error);
-      } else if (errorCode === ErrorCode.FORBIDDEN || errorCode === 403) {
-        await handleForbidden(ctx, error);
-      } else if (errorCode === ErrorCode.TOO_MANY_REQUESTS || errorCode === 429) {
-        await handleRateLimited(ctx, error);
-      } else {
+      // Wrapper model: the failure propagates out of `next()`.
+      if (!(await dispatch(ctx, error))) {
         // Not an auth error, re-throw
         throw error;
       }
+      return;
+    }
+
+    // ERROR-stage model: the client already caught the failure and put it on
+    // the context before running this stage, so `next()` resolved normally and
+    // the catch above can never fire. That is how HttpClient invokes
+    // middleware (http-client.ts sets `ctx.error` then executes
+    // MiddlewareStage.ERROR), which meant none of the 401/403/429 handlers had
+    // ever run on the HTTP transport — and why the `auth:retry` flag they set
+    // was never observed downstream.
+    if (ctx.error) {
+      await dispatch(ctx, ctx.error);
     }
   };
 

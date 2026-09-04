@@ -87,3 +87,47 @@ describe('createAuthErrorMiddleware — 401 refresh + retry (NB-6)', () => {
     expect(authClient.refreshToken).not.toHaveBeenCalled();
   });
 });
+
+describe('createAuthErrorMiddleware — ERROR-stage invocation', () => {
+  // The middleware is written as a wrapper: `try { await next() } catch`. But
+  // HttpClient does not invoke it that way — it catches the failure itself,
+  // assigns `ctx.error` and then runs MiddlewareStage.ERROR, so `next()`
+  // resolves normally and the catch can never fire. None of the 401/403/429
+  // handlers had ever run on the HTTP transport, which is also why the
+  // `auth:retry` flag they set was never observed downstream.
+  it('handles a 401 delivered on ctx.error rather than thrown', async () => {
+    const authClient = makeAuthClient();
+    const mw = createAuthErrorMiddleware({ authClient });
+
+    const ctx = makeCtx();
+    (ctx as { error?: Error }).error = err401();
+
+    // next() resolves — the client already caught the failure.
+    await mw(ctx, async () => {});
+
+    expect(authClient.refreshToken).toHaveBeenCalled();
+    expect(ctx.metadata.get('auth:retry')).toBe(true);
+  });
+
+  it('leaves a non-auth ctx.error alone', async () => {
+    const authClient = makeAuthClient();
+    const mw = createAuthErrorMiddleware({ authClient });
+
+    const ctx = makeCtx();
+    (ctx as { error?: Error }).error = Object.assign(new Error('boom'), { code: 500 });
+
+    await expect(mw(ctx, async () => {})).resolves.toBeUndefined();
+    expect(authClient.refreshToken).not.toHaveBeenCalled();
+  });
+
+  it('still re-throws a non-auth error in the wrapper model', async () => {
+    const authClient = makeAuthClient();
+    const mw = createAuthErrorMiddleware({ authClient });
+
+    await expect(
+      mw(makeCtx(), async () => {
+        throw Object.assign(new Error('boom'), { code: 500 });
+      })
+    ).rejects.toThrow('boom');
+  });
+});

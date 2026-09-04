@@ -59,6 +59,20 @@ export class DockerTestManager extends EventEmitter {
   private verbose: boolean;
   private defaultNetwork?: string;
 
+  /**
+   * Identifies the resources THIS manager created.
+   *
+   * Cleanup used to select by the shared `test.cleanup=true` label, i.e. every
+   * test container on the host. Vitest gives each spec file its own worker
+   * process, each with its own manager and its own `process.on('exit')` hook,
+   * so the first worker to finish stopped and removed containers the others
+   * were still using. `docker stop` sends SIGTERM and Redis exits 0 on SIGTERM
+   * — which is exactly the "Container exited with status 'exited' and exit code
+   * 0" that made titan-redis, titan-database and titan-notifications flaky
+   * under parallel runs.
+   */
+  private readonly managerId = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
   private constructor(options: DockerTestManagerOptions = {}) {
     super();
     this.dockerPath = options.dockerPath || this.findDockerPath();
@@ -450,6 +464,9 @@ export class DockerTestManager extends EventEmitter {
     const labels = {
       'test.id': id,
       'test.cleanup': 'true',
+      // Ownership, so cleanup can select this manager's containers instead of
+      // every test container on the machine.
+      'test.manager': this.managerId,
       ...options.labels,
     };
     for (const [key, value] of Object.entries(labels)) {
@@ -719,7 +736,7 @@ export class DockerTestManager extends EventEmitter {
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], {
+        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`], {
           stdio: 'pipe',
           encoding: 'utf8',
         });
@@ -742,12 +759,12 @@ export class DockerTestManager extends EventEmitter {
             // that happen to have no running container at that instant. Every
             // other operation in this manager is scoped by the
             // `test.cleanup=true` label; this one was not.
-            execFileSync(this.dockerPath, ['network', 'prune', '-f', '--filter', 'label=test.cleanup=true'], {
+            execFileSync(this.dockerPath, ['network', 'prune', '-f', '--filter', `label=test.manager=${this.managerId}`], {
               stdio: 'ignore',
             });
             this.log('Cleaned up unused networks, retrying network creation...');
             // Retry network creation after cleanup
-            execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], {
+            execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`], {
               stdio: 'pipe',
               encoding: 'utf8',
             });
@@ -1025,7 +1042,7 @@ export class DockerTestManager extends EventEmitter {
   private cleanupSyncWindows(): void {
     try {
       // Get container IDs with test.cleanup label
-      const containerIds = execFileSync(this.dockerPath, ['ps', '-a', '--filter', 'label=test.cleanup=true', '-q'], {
+      const containerIds = execFileSync(this.dockerPath, ['ps', '-a', '--filter', `label=test.manager=${this.managerId}`, '-q'], {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'ignore'],
       }).trim();
@@ -1058,7 +1075,7 @@ export class DockerTestManager extends EventEmitter {
       try {
         const networkIds = execFileSync(
           this.dockerPath,
-          ['network', 'ls', '--filter', 'label=test.cleanup=true', '-q'],
+          ['network', 'ls', '--filter', `label=test.manager=${this.managerId}`, '-q'],
           {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
@@ -1094,7 +1111,7 @@ export class DockerTestManager extends EventEmitter {
   private cleanupSyncUnix(): void {
     try {
       // Remove containers
-      const containerCmd = `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`;
+      const containerCmd = `"${this.dockerPath}" ps -a --filter "label=test.manager=${this.managerId}" -q`;
       try {
         const ids = execSync(containerCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         if (ids) {
@@ -1125,7 +1142,7 @@ export class DockerTestManager extends EventEmitter {
 
       // Remove test networks
       try {
-        const networkCmd = `"${this.dockerPath}" network ls --filter "label=test.cleanup=true" -q`;
+        const networkCmd = `"${this.dockerPath}" network ls --filter "label=test.manager=${this.managerId}" -q`;
         const ids = execSync(networkCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         if (ids) {
           const networkIds = ids.split('\n').filter((id) => id.trim());
@@ -1147,7 +1164,7 @@ export class DockerTestManager extends EventEmitter {
 
       // Remove test volumes
       try {
-        const volumeCmd = `"${this.dockerPath}" volume ls --filter "label=test.cleanup=true" -q`;
+        const volumeCmd = `"${this.dockerPath}" volume ls --filter "label=test.manager=${this.managerId}" -q`;
         const ids = execSync(volumeCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         if (ids) {
           const volumeIds = ids.split('\n').filter((id) => id.trim());

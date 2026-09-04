@@ -11,7 +11,7 @@
  *   - Heartbeat keep-alive
  */
 
-import type { DaemonEvent } from '../../../src/shared/events.js';
+import type { DaemonEvent } from '@omnitron-dev/omnitron/dto/events';
 
 type EventCallback = (event: DaemonEvent) => void;
 type ConnectionCallback = (connected: boolean) => void;

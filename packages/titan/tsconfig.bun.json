@@ -10,7 +10,6 @@
     "noEmit": true,
     "composite": false,
     "strict": true,
-    "downlevelIteration": true,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,

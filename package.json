@@ -52,13 +52,13 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.23.13",
     "turbo": "^2.10.12",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.69.0"
   },
   "pnpm": {
     "overrides": {
       "web-worker": "1.5.0",
-      "minimatch": "10.2.5",
+      "typescript": "7.0.2",
       "@typescript-eslint/eslint-plugin": "8.69.0",
       "@typescript-eslint/parser": "8.69.0",
       "@typescript-eslint/utils": "8.69.0",

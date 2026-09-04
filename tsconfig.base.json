@@ -47,8 +47,6 @@
     "sourceMap": true,
     "removeComments": false,
     "importHelpers": false,
-    "importsNotUsedAsValues": "remove",
-    "downlevelIteration": false,
     "preserveConstEnums": true,
 
     // Advanced

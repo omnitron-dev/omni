@@ -88,8 +88,8 @@
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "8.69.0",
     "@typescript-eslint/parser": "8.69.0",
-    "@vitest/coverage-v8": "^4.1.11",
-    "@vitest/ui": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/ui": "^5.0.0",
     "eslint": "^10.10.0",
     "happy-dom": "^20.14.0",
     "http-server": "^14.1.1",
@@ -99,7 +99,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
+    "vitest": "^5.0.0",
     "ws": "^8.21.3"
   },
   "engines": {

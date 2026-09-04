@@ -718,18 +718,42 @@ describe('BinaryTransportAdapter', () => {
       expect(callback).toHaveBeenCalledWith(error);
     });
 
-    it('should log error when send fails without callback', async () => {
+    it('should log error to the structured fallback when send fails without callback', async () => {
+      // The adapter no longer writes plain-text `console.error`; with no logger
+      // injected it emits a pino-compatible JSON line to stderr via
+      // fallbackLog, so no unstructured line escapes into the log pipeline.
       const error = new Error('Send failed');
       (mockConnection.send as vi.Mock).mockRejectedValue(error);
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
       adapter.send(Buffer.from('test'));
 
       await delay(10);
-      expect(consoleErrorSpy).toHaveBeenCalledWith('BinaryTransportAdapter send error:', error);
+      expect(stderrSpy).toHaveBeenCalled();
+      const entry = JSON.parse(String(stderrSpy.mock.calls.at(-1)?.[0]));
+      expect(entry.msg).toBe('BinaryTransportAdapter send error');
+      expect(entry.level).toBe(50);
+      expect(entry.err).toMatchObject({ message: 'Send failed', type: 'Error' });
 
-      consoleErrorSpy.mockRestore();
+      stderrSpy.mockRestore();
+    });
+
+    it('should log error through the injected logger when one is set', async () => {
+      const error = new Error('Send failed');
+      (mockConnection.send as vi.Mock).mockRejectedValue(error);
+
+      const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+      adapter.setLogger(logger as never);
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      adapter.send(Buffer.from('test'));
+
+      await delay(10);
+      expect(logger.error).toHaveBeenCalledWith({ err: error }, 'BinaryTransportAdapter send error');
+      expect(stderrSpy).not.toHaveBeenCalled();
+
+      stderrSpy.mockRestore();
     });
   });
 

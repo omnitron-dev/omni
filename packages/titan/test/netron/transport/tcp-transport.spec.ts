@@ -67,7 +67,14 @@ describe('TcpTransport', () => {
 
   describe('Server Creation and Listening', () => {
     it('should create and start a TCP server', async () => {
-      const server = await transport.createServer();
+      // `createServer()` with no options binds the transport's default port
+      // (9000) eagerly — it does not wait for `listen()`. 9000 is a crowded
+      // well-known port (OrbStack, MinIO and php-fpm all claim it), so calling
+      // it without options made this test fail with EADDRINUSE depending on
+      // what else the host was running. Bind a port we know is free instead;
+      // the behaviour under test is server creation and listen, not the
+      // default-port constant.
+      const server = await transport.createServer({ port: await getFreePort() });
       expect(server).toBeDefined();
 
       await server.listen();

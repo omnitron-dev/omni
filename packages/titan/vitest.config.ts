@@ -57,17 +57,6 @@ export default defineConfig({
       'test/scheduler/**',
       // Redis utilities that depend on extracted redis module
       'test/utils/redis-*',
-      // Transport tests that transitively import redis module via test-utils
-      'test/netron/transport/tcp-transport*',
-      'test/netron/transport/unix-transport*',
-      'test/netron/transport/websocket-transport*',
-      'test/netron/transport/websocket-advanced*',
-      'test/netron/transport/transport-adapter*',
-      'test/netron/transport/transport-integration*',
-      'test/netron/transport/transport-isomorphic*',
-      'test/netron/transport/error-serialization*',
-      'test/netron/transport/http/cache-adapter*',
-      'test/netron/transport/websocket/keep-alive-manager*',
       // Wheel timer has parse error (syntax issue in source)
       'test/utils/wheel-timer*',
     ],

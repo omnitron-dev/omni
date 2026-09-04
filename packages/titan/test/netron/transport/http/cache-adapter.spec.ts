@@ -7,18 +7,14 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HttpCacheAdapter } from '../../../../src/netron/transport/http/fluent-interface/cache-adapter.js';
-import { CacheService } from '../../../../src/modules/cache/cache.service.js';
+import { MemoryCacheService } from './helpers/memory-cache-service.js';
 
 describe('HttpCacheAdapter', () => {
-  let cacheService: CacheService;
+  let cacheService: MemoryCacheService;
   let adapter: HttpCacheAdapter;
 
   beforeEach(() => {
-    cacheService = new CacheService({
-      defaultMaxSize: 100,
-      defaultTtl: 60,
-      enableStats: true,
-    });
+    cacheService = new MemoryCacheService();
 
     adapter = new HttpCacheAdapter({
       cacheService,

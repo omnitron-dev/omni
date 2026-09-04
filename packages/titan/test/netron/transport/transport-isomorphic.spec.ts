@@ -19,11 +19,10 @@ import {
   UnixSocketTransport,
   NamedPipeTransport,
 } from '../../../src/netron/transport/index.js';
-import { Packet, encodePacket } from '../../../src/netron/packet/index.js';
+import { Packet, createPacket, encodePacket, TYPE_CALL } from '../../../src/netron/packet/index.js';
+import type { PacketImpulse } from '../../../src/netron/packet/index.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createServer as createHttpServer } from 'node:http';
-import { WebSocketServer } from 'ws';
 import { promises as fs } from 'node:fs';
 import { getFreePort, waitForEvent } from '../../utils/index.js';
 
@@ -61,65 +60,85 @@ async function waitForCondition(condition: () => boolean, timeout = 5000, interv
   }
 }
 
-// Test packet for consistency
-const createTestPacket = (id: number): Packet => ({
-  id,
-  type: 'request',
-  taskId: 'test-task',
-  taskName: 'test',
-  isBroadcast: false,
-  isPart: false,
-  isEnd: false,
-  args: [`test-${id}`, { value: id }],
-});
+// Test packet for consistency.
+//
+// This used to be an object literal shaped like an old Packet DTO. `Packet` is
+// a class (netron-protocol) whose type/impulse live in a flags byte, so
+// encodePacket's `packet.getType()` threw `is not a function` on every literal.
+const createTestPacket = (id: number): Packet =>
+  createPacket(id, 1 as PacketImpulse, TYPE_CALL, [`test-${id}`, { value: id }]);
 
-// Pre-populate transport configs at module scope using top-level await.
-// Vitest collects tests after module evaluation, so configs are available.
+// Transport configs are built per describe block, each with its own ports.
+//
+// They used to be a single module-scope array sharing one tcpPort/wsPort/socket
+// path across all six describe blocks. Each block's beforeEach binds a server on
+// that address and afterEach closes it, so any overlap — a close that has not
+// finished draining, a concurrently scheduled block — produced EADDRINUSE on the
+// server side and ECONNREFUSED on the client side. Vitest collects tests after
+// module evaluation, so the address pool is allocated here with top-level await
+// and handed out one set per block.
+
 const isWindows = process.platform === 'win32';
-const tcpPort = await getFreePort();
-const wsPort = await getFreePort();
-const socketPath = getSocketPath();
 
-const transportConfigs: TransportTestConfig[] = [
-  {
-    name: 'TCP',
-    transport: new TcpTransport(),
-    serverAddress: `tcp://127.0.0.1:${tcpPort}`,
-    clientAddress: `tcp://127.0.0.1:${tcpPort}`,
-  },
-  (() => {
-    let httpServer: any;
-    let wsServer: WebSocketServer;
-    return {
+interface AddressSet {
+  tcpPort: number;
+  wsPort: number;
+  socketPath: string;
+}
+
+const addressSets: AddressSet[] = [];
+for (let i = 0; i < 8; i++) {
+  addressSets.push({
+    tcpPort: await getFreePort(),
+    wsPort: await getFreePort(),
+    socketPath: getSocketPath(),
+  });
+}
+
+let nextAddressSet = 0;
+
+/** One fresh set of transport configs, with addresses no other block uses. */
+function makeTransportConfigs(): TransportTestConfig[] {
+  const addresses = addressSets[nextAddressSet++];
+  if (!addresses) {
+    throw new Error('transport-isomorphic: address pool exhausted — raise the pool size');
+  }
+  const { tcpPort, wsPort, socketPath } = addresses;
+
+  return [
+    {
+      name: 'TCP',
+      transport: new TcpTransport(),
+      serverAddress: `tcp://127.0.0.1:${tcpPort}`,
+      clientAddress: `tcp://127.0.0.1:${tcpPort}`,
+    },
+    {
+      // WebSocketTransport declares `capabilities.server: true`, so the harness
+      // creates the transport's own server in beforeEach — exactly as it does
+      // for TCP and Unix, which is the point of an *isomorphic* suite.
+      //
+      // This config used to ALSO stand up a bare `ws` WebSocketServer on the
+      // same port via setupServer(). Two servers raced for one port, and the
+      // data tests then waited on a connection belonging to whichever server
+      // lost, blocking until the 120s test timeout — which is what made this
+      // file look like a hang and got it excluded from the suite.
       name: 'WebSocket',
       transport: new WebSocketTransport(),
       serverAddress: `ws://127.0.0.1:${wsPort}`,
       clientAddress: `ws://127.0.0.1:${wsPort}`,
-      setupServer: async () => {
-        httpServer = createHttpServer();
-        await new Promise<void>((resolve) => {
-          httpServer.listen(wsPort, '127.0.0.1', resolve);
-        });
-        wsServer = new WebSocketServer({ server: httpServer });
-        return wsServer;
-      },
-      teardownServer: async () => {
-        wsServer?.close();
-        await new Promise((resolve) => httpServer?.close(resolve));
-      },
-    };
-  })(),
-  {
-    name: isWindows ? 'NamedPipe' : 'Unix',
-    transport: isWindows ? new NamedPipeTransport() : new UnixSocketTransport(),
-    serverAddress: socketPath,
-    clientAddress: socketPath,
-  },
-];
+    },
+    {
+      name: isWindows ? 'NamedPipe' : 'Unix',
+      transport: isWindows ? new NamedPipeTransport() : new UnixSocketTransport(),
+      serverAddress: socketPath,
+      clientAddress: socketPath,
+    },
+  ];
+}
 
 describe('Isomorphic Transport Test Suite', () => {
   describe('Core Transport Capabilities', () => {
-    transportConfigs.forEach((config) => {
+    makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         let server: ITransportServer;
         let externalServer: any;
@@ -375,7 +394,7 @@ describe('Isomorphic Transport Test Suite', () => {
   });
 
   describe('Packet Encoding/Decoding Consistency', () => {
-    transportConfigs.forEach((config) => {
+    makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         let server: ITransportServer;
         let externalServer: any;
@@ -506,7 +525,7 @@ describe('Isomorphic Transport Test Suite', () => {
   });
 
   describe('Error Handling and Recovery', () => {
-    transportConfigs.forEach((config) => {
+    makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         it('should handle connection failures gracefully', async () => {
           // Use invalid address
@@ -611,7 +630,7 @@ describe('Isomorphic Transport Test Suite', () => {
   });
 
   describe('Performance and Stress Testing', () => {
-    transportConfigs.forEach((config) => {
+    makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         let server: ITransportServer;
         let externalServer: any;
@@ -766,7 +785,7 @@ describe('Isomorphic Transport Test Suite', () => {
   });
 
   describe('Transport Metrics', () => {
-    transportConfigs.forEach((config) => {
+    makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         it('should track connection metrics', async () => {
           if (!config.transport.capabilities.server) {
@@ -831,7 +850,7 @@ describe('Isomorphic Transport Test Suite', () => {
 
   describe('Isomorphic Guarantees', () => {
     it('should provide consistent API across all transports', () => {
-      transportConfigs.forEach((config) => {
+      makeTransportConfigs().forEach((config) => {
         const transport = config.transport;
 
         // All transports must implement these methods

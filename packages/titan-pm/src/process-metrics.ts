@@ -163,13 +163,22 @@ export class ProcessMetricsCollector {
   private storeMetrics(processId: string, metrics: IProcessMetrics): void {
     const history = this.metricsHistory.get(processId) || [];
 
-    // Add timestamp
-    const timestampedMetrics = {
+    // Attach latency BEFORE storing.
+    //
+    // This used to compute the percentiles after pushing, and assign them to
+    // the `metrics` argument — a local that `collectMetrics()` had just
+    // returned and that nothing else referenced. The stored entry was the
+    // spread copy made a few lines earlier, so it never carried them:
+    // trackLatency(), the percentiles and the mean were all computed and
+    // discarded, and getMetrics() could never report a latency block.
+    const latencies = this.latencyTracking.get(processId);
+    const timestampedMetrics: IProcessMetrics = {
       ...metrics,
+      ...(latencies && latencies.length > 0 ? { latency: this.calculateLatencyMetrics(latencies) } : {}),
       timestamp: Date.now(),
-    };
+    } as IProcessMetrics;
 
-    history.push(timestampedMetrics as IProcessMetrics);
+    history.push(timestampedMetrics);
 
     // Keep only last 1000 entries
     if (history.length > 1000) {
@@ -177,12 +186,6 @@ export class ProcessMetricsCollector {
     }
 
     this.metricsHistory.set(processId, history);
-
-    // Calculate latency metrics
-    const latencies = this.latencyTracking.get(processId);
-    if (latencies && latencies.length > 0) {
-      metrics.latency = this.calculateLatencyMetrics(latencies);
-    }
   }
 
   /**

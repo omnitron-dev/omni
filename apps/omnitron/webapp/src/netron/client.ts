@@ -11,6 +11,8 @@ import {
   createMultiBackendClient,
   AuthenticationClient,
   SessionTokenStorage,
+  createSimpleAuthErrorMiddleware,
+  MiddlewareStage,
   type BackendSchema,
 } from '@omnitron-dev/prism/netron';
 
@@ -81,6 +83,39 @@ export const daemonClient = createMultiBackendClient<OmnitronConsoleSchema>({
   },
   defaultBackend: 'daemon',
 });
+
+// -----------------------------------------------------------------------------
+// Expired-session handling
+//
+// Without this, an expired JWT produced a console that LOOKED functional: every
+// RPC came back 401, and the dashboard rendered "Applications 0 / No apps yet"
+// with the status bar showing "Offline". An operator reading that would
+// reasonably conclude their applications had died. Reproduced in the browser —
+// nine 401s on a single page load, no redirect.
+//
+// The session manager already handles expiry it can PREDICT (it schedules a
+// refresh before the token's expiry). This covers the case it cannot: a token
+// that expired while the tab was closed or asleep, where the first request
+// after waking is already rejected.
+//
+// `createSimpleAuthErrorMiddleware` attempts a refresh first and only reports
+// expiry when that fails, so a recoverable session is not thrown away.
+// -----------------------------------------------------------------------------
+
+daemonClient.use(
+  createSimpleAuthErrorMiddleware(jwtAuth, {
+    onSessionExpired: () => {
+      // Deliberately a full navigation rather than a router push: the whole
+      // client state is derived from a session that no longer exists.
+      if (typeof window === 'undefined') return;
+      if (window.location.pathname.startsWith('/auth/')) return;
+      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
+    },
+  }),
+  { name: 'auth-error-handler', priority: 10 },
+  MiddlewareStage.ERROR,
+);
 
 // =============================================================================
 // Typed Service Proxies — call methods directly

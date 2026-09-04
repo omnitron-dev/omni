@@ -1,8 +1,19 @@
 /**
- * Real Process Manager Tests
+ * ProcessManager API surface, under the mock spawner.
  *
- * These tests use actual worker threads and child processes
- * to achieve >96% test coverage with real implementations.
+ * The header used to claim "actual worker threads and child processes ... with
+ * real implementations". `beforeAll` calls
+ * `ProcessSpawnerFactory.setMockSpawner(AdvancedMockProcessSpawner)`, so no
+ * worker thread and no child process is created here at all.
+ *
+ * The tests are kept because the manager behaviour they drive — spawn
+ * bookkeeping, pool strategies, lifecycle state, registry contents — is real.
+ * The claim is not, and it mattered: one assertion here required
+ * `processInfo.pid` to be defined, which held only because ProcessManager was
+ * substituting the daemon's own pid for workers that have none. A false premise
+ * in a header is how a test ends up defending a defect.
+ *
+ * `real-spawn.spec.ts` is where a process is genuinely spawned.
  */
 
 import 'reflect-metadata';

@@ -200,6 +200,24 @@ export function FilterToolbar({
     }
   }, [debouncedSearch, searchFilter?.key, onChange, values]);
 
+  // Adopt an EXTERNAL change to the search value.
+  //
+  // The text box holds its own state so typing stays responsive, seeded from
+  // `values` once at mount. Nothing re-seeded it, so a reset performed by the
+  // parent — switching tabs, clearing filters programmatically, restoring a
+  // saved view — left the box showing a term that was no longer filtering
+  // anything. The operator reads a search that isn't applied.
+  //
+  // Only external changes are adopted: `prevDebouncedRef` holds the last
+  // value this toolbar itself sent up, so a value echoed back from the parent
+  // mid-typing does not overwrite what is being typed.
+  const searchValue = (values[searchFilter?.key ?? 'search'] as string | undefined) ?? '';
+  useEffect(() => {
+    if (searchValue === prevDebouncedRef.current) return;
+    prevDebouncedRef.current = searchValue;
+    setLocalSearch(searchValue);
+  }, [searchValue]);
+
   // Count active filters (excluding search)
   const activeCount = useMemo(
     () => filters.filter((f) => f.type !== 'search' && isFilterActive(f, values[f.key])).length,
@@ -271,7 +289,13 @@ export function FilterToolbar({
               size="small"
               value={(values[key] as string) ?? ''}
               onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(key, e.target.value)}
-              slotProps={{ select: { displayEmpty: true } }}
+              // The visible "label" is rendered as the empty-value MenuItem so
+              // the control reads as a placeholder — deliberate, and it leaves
+              // the field with NO accessible name. A screen-reader user hears
+              // "combo box" with no indication of what it filters. Name it
+              // explicitly rather than adding a visual label the design does
+              // not want.
+              slotProps={{ select: { displayEmpty: true, 'aria-label': label } }}
               sx={{
                 minWidth: width ?? 150,
                 '& .MuiOutlinedInput-root': { borderRadius: 1 },
@@ -306,6 +330,10 @@ export function FilterToolbar({
                 select: {
                   multiple: true,
                   displayEmpty: true,
+                  // Same reason as the single select above: the label lives in
+                  // `renderValue` as placeholder text, leaving the control
+                  // without an accessible name.
+                  'aria-label': label,
                   renderValue: (selected: unknown) => {
                     const sel = selected as string[];
                     if (sel.length === 0) {

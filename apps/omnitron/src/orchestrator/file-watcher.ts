@@ -5,6 +5,17 @@
  * On file change → debounce → orchestrator.restartApp() which handles
  * any topology: single-process, multi-process (server + worker pools), classic fork.
  *
+ * Platform note (macOS): `{ recursive: true }` is backed by FSEvents, which
+ * behaves materially differently from inotify. The stream takes a few hundred
+ * milliseconds to arm after `fs.watch()` returns, and writes in that window
+ * are dropped outright — not delivered late. Steady-state delivery then lags
+ * by roughly a second. In practice this means an edit made in the first
+ * moments after the daemon starts watching may not trigger a restart, and
+ * every restart is ~1s behind the save. Node exposes no readiness signal for
+ * `fs.watch`, so this is a property of the platform rather than something the
+ * watcher can correct; `test/unit/file-watcher.test.ts` documents the
+ * measurements and works around it by waiting for observed delivery.
+ *
  * Design:
  *   - One recursive watcher per app directory
  *   - Debounce: 300ms per app (accumulates changes, then triggers single restart)

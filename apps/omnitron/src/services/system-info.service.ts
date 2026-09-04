@@ -9,88 +9,18 @@
 import si from 'systeminformation';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { DaemonRole } from '../config/types.js';
+import type {
+  SystemSnapshot,
+} from '../shared/dto/system-info.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface SystemSnapshot {
-  timestamp: number;
+export type {
+  SystemSnapshot,
+} from '../shared/dto/system-info.js';
 
-  os: {
-    platform: string;
-    distro: string;
-    release: string;
-    kernel: string;
-    arch: string;
-    hostname: string;
-    uptime: number;
-  };
-
-  cpu: {
-    manufacturer: string;
-    brand: string;
-    cores: number;
-    physicalCores: number;
-    speed: number;
-    currentLoad: number;
-    loadPerCore: number[];
-    temperature: number | null;
-  };
-
-  memory: {
-    total: number;
-    used: number;
-    free: number;
-    available: number;
-    usedPercent: number;
-    swapTotal: number;
-    swapUsed: number;
-  };
-
-  disks: Array<{
-    fs: string;
-    type: string;
-    size: number;
-    used: number;
-    available: number;
-    usedPercent: number;
-    mount: string;
-  }>;
-
-  network: {
-    interfaces: Array<{
-      iface: string;
-      ip4: string;
-      ip6: string;
-      mac: string;
-      speed: number | null;
-      operstate: string;
-    }>;
-    rxSec: number;
-    txSec: number;
-  };
-
-  docker: {
-    running: number;
-    paused: number;
-    stopped: number;
-  } | null;
-
-  daemon: {
-    role: DaemonRole;
-    pid: number;
-    nodeVersion: string;
-    v8Version: string;
-    uptimeMs: number;
-    memoryUsage: {
-      rss: number;
-      heapTotal: number;
-      heapUsed: number;
-      external: number;
-    };
-  };
-}
 
 // =============================================================================
 // Service

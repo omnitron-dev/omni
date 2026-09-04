@@ -17,62 +17,27 @@ import type { OmnitronDatabase } from '../database/schema.js';
 // Types
 // =============================================================================
 
-export interface PipelineDef {
-  name: string;
-  description?: string;
-  steps: PipelineStep[];
-  triggers?: PipelineTrigger[];
-}
+export type {
+  PipelineDef,
+  PipelineStep,
+  Pipeline,
+  PipelineRunStepResult,
+  PipelineRun,
+} from '../shared/dto/pipelines.js';
 
-export interface PipelineStep {
-  name: string;
-  run: string;
-  dependsOn?: string[];
-  env?: Record<string, string>;
-  timeout?: number;
-  retries?: number;
-  condition?: string;
-}
-
-export interface PipelineTrigger {
-  type: 'cron' | 'webhook' | 'manual';
-  config: Record<string, unknown>;
-}
-
-export interface Pipeline {
-  id: string;
-  name: string;
-  description: string | null;
-  steps: PipelineStep[];
-  triggers: PipelineTrigger[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PipelineRunStepResult {
-  name: string;
-  status: string;
-  duration: number;
-  output?: string;
-  error?: string;
-}
-
-export interface PipelineRun {
-  id: string;
-  pipelineId: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
-  steps: PipelineRunStepResult[];
-  startedAt: string;
-  completedAt: string | null;
-  triggeredBy: string;
-  params: Record<string, unknown> | null;
-}
 
 // =============================================================================
 // @xec-sh/ops Pipeline — loaded dynamically
 // =============================================================================
 
 import { loadXecOps } from '../shared/xec-loader.js';
+import type {
+  PipelineDef,
+  PipelineStep,
+  Pipeline,
+  PipelineRunStepResult,
+  PipelineRun,
+} from '../shared/dto/pipelines.js';
 
 // =============================================================================
 // Service

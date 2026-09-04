@@ -16,52 +16,24 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
+import type {
+  TraceSpan,
+  Trace,
+  TraceFilter,
+  ServiceMapEntry,
+} from '../shared/dto/traces.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface TraceSpan {
-  traceId: string;
-  spanId: string;
-  parentSpanId: string | null;
-  operationName: string;
-  serviceName: string;
-  startTime: string;
-  endTime: string;
-  duration: number;
-  status: 'ok' | 'error';
-  tags: Record<string, string>;
-  logs?: Array<{ timestamp: string; message: string }>;
-}
+export type {
+  TraceSpan,
+  Trace,
+  TraceFilter,
+  ServiceMapEntry,
+} from '../shared/dto/traces.js';
 
-export interface Trace {
-  traceId: string;
-  spans: TraceSpan[];
-  duration: number;
-  serviceName: string;
-  operationName: string;
-  startTime: string;
-}
-
-export interface TraceFilter {
-  service?: string;
-  operation?: string;
-  minDuration?: number;
-  maxDuration?: number;
-  from?: string;
-  to?: string;
-  limit?: number;
-  tags?: Record<string, string>;
-}
-
-export interface ServiceMapEntry {
-  source: string;
-  target: string;
-  callCount: number;
-  avgDuration: number;
-  errorRate: number;
-}
 
 // =============================================================================
 // Service

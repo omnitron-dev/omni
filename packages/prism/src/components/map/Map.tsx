@@ -28,7 +28,8 @@ import { forwardRef, useEffect, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Map as ReactMapGL, NavigationControl, ScaleControl } from 'react-map-gl/maplibre';
 import type { MapRef, ViewState, ViewStateChangeEvent } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
+// maplibre-gl 6 dropped the default export; every entry point is a named one.
+import { addProtocol } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import { useTheme } from '@mui/material/styles';
@@ -41,7 +42,7 @@ let pmtilesProtocolRegistered = false;
 function ensurePmtilesProtocol() {
   if (pmtilesProtocolRegistered) return;
   const protocol = new Protocol();
-  maplibregl.addProtocol('pmtiles', protocol.tile);
+  addProtocol('pmtiles', protocol.tile);
   pmtilesProtocolRegistered = true;
 }
 

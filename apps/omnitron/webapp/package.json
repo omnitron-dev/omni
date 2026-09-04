@@ -16,7 +16,7 @@
     "@mui/system": "^9.4.0",
     "@omnitron-dev/prism": "workspace:*",
     "@xyflow/react": "^12.11.6",
-    "apexcharts": "^5.16.0",
+    "apexcharts": "^7.1.0",
     "dayjs": "^1.11.23",
     "react": "19.2.8",
     "react-apexcharts": "^2.1.1",

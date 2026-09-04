@@ -1,10 +1,18 @@
 /**
- * Comprehensive Real IPC Integration Tests
+ * PM feature surface, under the mock spawner.
  *
- * These tests use REAL process spawning and REAL inter-process communication
- * to verify that all PM features work correctly with actual worker threads
- * and child processes, not just mocks.
+ * The header used to say "REAL process spawning and REAL inter-process
+ * communication ... not just mocks". `beforeAll` calls
+ * `ProcessSpawnerFactory.setMockSpawner(AdvancedMockProcessSpawner)`: there is
+ * no process and no inter-process communication in this file. The inversion is
+ * worth naming, because a reader checking whether IPC is covered gets "yes"
+ * from the one place that looks authoritative.
  *
+ * Kept for what it does exercise — the feature surface below, against the
+ * manager rather than against the operating system. `real-spawn.spec.ts` is
+ * where a process is genuinely spawned.
+ *
+ * Surface exercised:
  * Coverage:
  * 1. All 11 pool strategies with real workers
  * 2. Multiple transport types (unix, tcp, ipc)

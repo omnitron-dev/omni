@@ -1,14 +1,24 @@
 /**
- * Real Transport Tests
+ * Transport configuration, under the mock spawner.
  *
- * Tests all documented IPC transport types with real process spawning:
+ * The name and the note this file used to carry said "with real process
+ * spawning" and "skipped in CI/mock environments". Neither was true: `beforeAll`
+ * calls `ProcessSpawnerFactory.setMockSpawner(AdvancedMockProcessSpawner)`
+ * unconditionally, so nothing is spawned and nothing is ever skipped for want of
+ * infrastructure. Corrected rather than deleted — what these tests do check is
+ * real, it is simply configuration handling, not transport behaviour.
+ *
+ * WHAT IS COVERED: that each documented transport type is accepted, wired into
+ * the spawn context and reported back, for
  * 1. unix - Unix domain sockets (default, fast)
  * 2. ipc - Native IPC (Node.js built-in)
  * 3. tcp - TCP sockets (network)
  * 4. http - HTTP/WebSocket (web-compatible)
  *
- * NOTE: These tests require real process spawning infrastructure and are skipped
- * in CI/mock environments.
+ * WHAT IS NOT: no socket is opened and no bytes cross a process boundary, so a
+ * transport that is accepted here and broken in practice would still pass.
+ * `real-spawn.spec.ts` is the suite that actually spawns; extending it to each
+ * transport is the work this file's title has been claiming was already done.
  */
 
 import 'reflect-metadata';

@@ -113,10 +113,13 @@ describe('Netron API', () => {
         options: { host: 'localhost', port: 8080 },
       });
 
-      const configs = (netron as any).transportServerConfigs;
-      expect(configs).toBeDefined();
+      // Server configs live on the transport registry, not on a
+      // `Netron.transportServerConfigs` field — that field was removed when the
+      // registry took ownership (see the note at netron.ts:223).
+      const configs = netron.transportRegistry.getServerConfigs();
+      expect(netron.transportRegistry.hasServerConfigs()).toBe(true);
       expect(configs.get('custom-transport')).toBeDefined();
-      expect(configs.get('custom-transport').options.port).toBe(8080);
+      expect(configs.get('custom-transport')!.options!.port).toBe(8080);
     });
 
     it('should throw error when transport is not registered', () => {
@@ -172,10 +175,10 @@ describe('Netron API', () => {
         options: { host: 'localhost', port: 8081 },
       });
 
-      const configs = (netron as any).transportServerConfigs;
+      const configs = netron.transportRegistry.getServerConfigs();
       expect(configs.size).toBe(2);
-      expect(configs.get('ws').options.port).toBe(8080);
-      expect(configs.get('http').options.port).toBe(8081);
+      expect(configs.get('ws')!.options!.port).toBe(8080);
+      expect(configs.get('http')!.options!.port).toBe(8081);
     });
   });
 

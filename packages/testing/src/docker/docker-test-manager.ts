@@ -736,8 +736,13 @@ export class DockerTestManager extends EventEmitter {
           // Docker network pool exhausted - try to clean up unused networks
           this.log('Docker network pool exhausted, attempting cleanup...');
           try {
-            // Prune unused networks
-            execFileSync(this.dockerPath, ['network', 'prune', '-f'], {
+            // Prune unused networks THAT WE CREATED. A bare `network prune -f`
+            // is host-wide: it removes every unused network on the machine,
+            // including ones belonging to compose stacks and other projects
+            // that happen to have no running container at that instant. Every
+            // other operation in this manager is scoped by the
+            // `test.cleanup=true` label; this one was not.
+            execFileSync(this.dockerPath, ['network', 'prune', '-f', '--filter', 'label=test.cleanup=true'], {
               stdio: 'ignore',
             });
             this.log('Cleaned up unused networks, retrying network creation...');

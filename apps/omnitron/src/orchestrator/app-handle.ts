@@ -65,6 +65,17 @@ export class AppHandle {
     return typeof http?.port === 'number' ? http.port : null;
   }
   public lastMetrics: IProcessMetrics | null = null;
+
+  /**
+   * Last OS sample per topology entry name.
+   *
+   * Sub-process CPU and memory used to be reported as literal `0` even
+   * though the pid was in hand — a placeholder indistinguishable from a
+   * measurement, which is the same defect that made the app table show
+   * 0% CPU for processes holding 105 MB.
+   */
+  public childMetrics: Map<string, { cpu: number; memory: number }> = new Map();
+
   public lastHealth: IHealthStatus | null = null;
 
   /** PM supervisor managing this app's processes (bootstrap mode) */

@@ -61,6 +61,7 @@ import { ServiceRouter } from './service-router.js';
 import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
 import { BuildService, type BuildResult } from './build-service.js';
 import { ProcessJanitor } from './process-janitor.js';
+import { collectOwnedPids } from './owned-pids.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import type { Netron } from '@omnitron-dev/titan/netron';
@@ -518,24 +519,15 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /**
-   * Walk every live handle's supervisor children and collect the OS
-   * pids the orchestrator currently considers ours. Cheap — called
-   * every janitor sweep.
+   * Every OS pid the orchestrator currently considers ours. Cheap — called
+   * on every janitor sweep, and the janitor kills whatever this set omits.
+   *
+   * The rule itself lives in `owned-pids.ts`, where it can be tested: the
+   * janitor's own tests supply this set as a fixture, so they could never
+   * catch it being incomplete — and it was, by a whole class of process.
    */
   private collectOwnedPids(): Set<number> {
-    const owned = new Set<number>();
-    for (const handle of this.handles.values()) {
-      const supervisor = handle.supervisor;
-      if (!supervisor) continue;
-      for (const childName of supervisor.getChildNames()) {
-        const processId = supervisor.getChildProcessId(childName);
-        if (!processId) continue;
-        const workerHandle = this.pm.getWorkerHandle(processId);
-        const pid = workerHandle?.pid;
-        if (typeof pid === 'number') owned.add(pid);
-      }
-    }
-    return owned;
+    return collectOwnedPids(this.handles.values(), (workerId) => this.pm.getWorkerHandle(workerId)?.pid);
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
@@ -1181,36 +1173,9 @@ export class OrchestratorService extends EventEmitter {
       if (name && appName !== name) continue;
 
       if (handle.mode === 'bootstrap' && handle.supervisor) {
-        const childNames = handle.supervisor.getChildNames();
-        let cpu = 0,
-          memory = 0,
-          requests = 0,
-          errors = 0;
-
-        for (const childName of childNames) {
-          // Try PM-level RPC metrics first
-          const m = await handle.supervisor.getChildMetrics(childName);
-          if (m && (m.cpu > 0 || m.memory > 0)) {
-            cpu += m.cpu;
-            memory += m.memory;
-            requests += m.requests ?? 0;
-            errors += m.errors ?? 0;
-          } else {
-            // Fallback: OS-level metrics via ps for the child PID
-            const processId = handle.supervisor.getChildProcessId(childName);
-            if (processId) {
-              const workerHandle = this.pm.getWorkerHandle(processId);
-              const childPid = workerHandle?.pid;
-              if (childPid) {
-                const osMetrics = await this.sampleProcessMetrics(childPid);
-                cpu += osMetrics.cpu;
-                memory += osMetrics.memory;
-              }
-            }
-          }
-        }
-
-        const aggregated: IProcessMetrics = { cpu, memory, requests, errors };
+        // Same sampler the poller uses, so `omnitron metrics` and `omnitron
+        // list` cannot report different numbers for the same app.
+        const aggregated = await this.sampleAppMetrics(handle);
         handle.lastMetrics = aggregated;
         result[appName] = aggregated;
       } else {
@@ -1637,25 +1602,32 @@ export class OrchestratorService extends EventEmitter {
           enabled: procEntry.health?.enabled !== false,
           interval: procEntry.health?.interval ?? config.monitoring.healthCheck.interval,
         },
-        autoScale: procEntry.scaling?.strategy === 'auto'
-          ? {
-              enabled: true,
-              min: 1,
-              max: procEntry.scaling?.maxInstances ?? instances * 4,
-              targetCPU: procEntry.scaling?.targetCPU ?? 70,
-              targetMemory: procEntry.scaling?.targetMemory ?? 80,
-              queueThreshold: procEntry.scaling?.queueThreshold ?? 10,
-              cooldownPeriod: procEntry.scaling?.cooldownPeriod ?? 30_000,
-            }
-          : {
-              enabled: true,
-              min: 1,
-              max: instances * 4,
-              targetCPU: 70,
-              targetMemory: 80,
-              queueThreshold: 10,
-              cooldownPeriod: 30_000,
-            },
+        // `scaling.strategy` is what opts a pool into autoscaling; anything
+        // else — including the default of not declaring it — means the pool
+        // stays at the declared `instances`, which is what 'fixed' says on
+        // the tin.
+        //
+        // Both arms of this ternary used to set `enabled: true`, differing
+        // only in where the numbers came from. The setting existed, the
+        // mechanism existed, and nothing connected them: every pool in the
+        // platform was autoscaled whether or not it asked to be. Live effect
+        // on two pools declared `instances: 2` — grown to their cap of eight
+        // and held there, sixteen processes where four were configured.
+        //
+        // `min` follows the declared instance count rather than 1: a pool
+        // asked for two workers should not be scaled below two.
+        autoScale:
+          procEntry.scaling?.strategy === 'auto'
+            ? {
+                enabled: true,
+                min: instances,
+                max: procEntry.scaling?.maxInstances ?? instances * 4,
+                targetCPU: procEntry.scaling?.targetCPU ?? 70,
+                targetMemory: procEntry.scaling?.targetMemory ?? 80,
+                queueThreshold: procEntry.scaling?.queueThreshold ?? 10,
+                cooldownPeriod: procEntry.scaling?.cooldownPeriod ?? 30_000,
+              }
+            : { enabled: false, min: instances, max: instances },
       };
 
       this.logger.info(
@@ -2232,6 +2204,171 @@ export class OrchestratorService extends EventEmitter {
     return computeBackoff(attempt + 1, backoff as Parameters<typeof computeBackoff>[1]);
   }
 
+  /**
+   * The live OS processes behind one topology entry.
+   *
+   * Single-instance entries run as supervisor children; entries with
+   * `instances > 1` run in a pool the supervisor knows nothing about. Both
+   * shapes are resolved here, in one place, because metrics sampling and
+   * status reporting each used to resolve them separately — and disagreed.
+   * The pool branch asserted `online` from `pool.size > 0` before looking at
+   * a pid at all, so a worker whose process had exited still read as online
+   * (observed live: two pool workers reporting `online` on pids that `kill
+   * -0` said were gone).
+   */
+  private resolveTopologyPids(handle: AppHandle, topo: IProcessEntry): number[] {
+    const isPoolEntry = (topo.instances ?? 1) > 1;
+
+    if (isPoolEntry) {
+      const pool = handle.topologyPools.get(topo.name);
+      if (!pool || pool.size === 0) return [];
+      return pool
+        .getWorkerIds()
+        .map((id) => this.pm.getWorkerHandle(id)?.pid)
+        .filter((pid): pid is number => typeof pid === 'number');
+    }
+
+    const childNames = handle.supervisor?.getChildNames() ?? [];
+    const childName = childNames.find((cn) => cn.includes(topo.name)) ?? topo.name;
+    const processId = handle.supervisor?.getChildProcessId(childName);
+    if (!processId) return [];
+    const pid = this.pm.getWorkerHandle(processId)?.pid;
+    return typeof pid === 'number' ? [pid] : [];
+  }
+
+  /**
+   * Sample every process an app owns, and record the per-entry readings on
+   * the handle on the way through.
+   *
+   * A bootstrap app is several OS processes, so "the memory this app uses"
+   * is their sum. The periodic poller used to sample the single pid stored
+   * on the handle — which for a multi-process app is whichever child was
+   * registered last — and overwrite `lastMetrics` with it every five
+   * seconds, while `getMetrics()` right beside it aggregated correctly and
+   * wrote to the same field. The poller won on frequency, so the aggregate
+   * was never what anyone saw: `daos/dev/main` reported 122 MB against 437 MB
+   * actually resident across its three processes.
+   *
+   * ## Why `ps` and not the child's own report
+   *
+   * The aggregating path preferred the PM-level metrics a child reports over
+   * its RPC channel, falling back to `ps`. Those two are not the same
+   * quantities:
+   *
+   *   - `cpu` from the child is `(cpuUsage().user + .system) / 1e6` — CPU
+   *     SECONDS CONSUMED SINCE START, a monotonically growing counter. `ps`
+   *     `%cpu` is a percentage. The dashboard column is labelled `CPU %`,
+   *     so an app running for a day would have read `86400`. Observed
+   *     climbing live: 12.845 to 13.297 across twelve seconds of idling.
+   *   - `memory` from the child is `memoryUsage().heapUsed` — the V8 heap.
+   *     `ps` reports RSS, which is what "memory this app uses" means to
+   *     whoever is sizing a host. Observed: 66 MB heap against 149 MB
+   *     resident for the same process.
+   *
+   * Mixing them per-child, depending on which source answered first, gave a
+   * column that was neither quantity. `ps` is asked for both figures here so
+   * that every number under one label means one thing.
+   */
+  private async sampleAppMetrics(handle: AppHandle): Promise<IProcessMetrics> {
+    const topology = handle.topologyProcesses ?? [];
+    const childNames = handle.supervisor?.getChildNames() ?? [];
+
+    // Which pids belong to which topology entry. Everything is sampled in a
+    // single `ps` call: sampling one child at a time would fork a process per
+    // child per polling interval, and a monitor that costs more than what it
+    // monitors is its own kind of defect.
+    const pidsByEntry = new Map<string, number[]>();
+    for (const topo of topology) {
+      pidsByEntry.set(topo.name, this.resolveTopologyPids(handle, topo));
+    }
+
+    if (topology.length === 0) {
+      // No declared topology: fall back to the supervisor's children, and
+      // failing that to the handle's own pid.
+      for (const childName of childNames) {
+        const processId = handle.supervisor?.getChildProcessId(childName);
+        const pid = processId ? this.pm.getWorkerHandle(processId)?.pid : undefined;
+        if (typeof pid === 'number') pidsByEntry.set(childName, [pid]);
+      }
+      if (pidsByEntry.size === 0 && handle.pid) {
+        pidsByEntry.set(handle.name, [handle.pid]);
+      }
+    }
+
+    const batch = await this.sampleProcessMetricsBatch([...pidsByEntry.values()].flat());
+
+    let cpu = 0;
+    let memory = 0;
+    const sampled = new Map<string, { cpu: number; memory: number }>();
+
+    for (const [name, pids] of pidsByEntry) {
+      const sample = { cpu: 0, memory: 0 };
+      for (const pid of pids) {
+        const os = batch.get(pid);
+        if (!os) continue;
+        sample.cpu += os.cpu;
+        sample.memory += os.memory;
+      }
+      sampled.set(name, sample);
+      cpu += sample.cpu;
+      memory += sample.memory;
+    }
+
+    // Request and error counters can only come from inside the child; `ps`
+    // knows nothing about them. Its CPU and memory figures are deliberately
+    // NOT used — see the note on this method.
+    let requests = 0;
+    let errors = 0;
+    for (const childName of childNames) {
+      const reported = await handle.supervisor?.getChildMetrics(childName);
+      if (!reported) continue;
+      requests += reported.requests ?? 0;
+      errors += reported.errors ?? 0;
+    }
+
+    handle.childMetrics = sampled;
+    return { cpu, memory, requests, errors };
+  }
+
+  /**
+   * Sample several processes in one `ps` call.
+   *
+   * Pids the OS no longer knows are simply absent from the result — an
+   * omission the caller can see, unlike a zeroed reading it cannot tell
+   * apart from an idle process.
+   */
+  private async sampleProcessMetricsBatch(pids: number[]): Promise<Map<number, { cpu: number; memory: number }>> {
+    const out = new Map<number, { cpu: number; memory: number }>();
+    const unique = [...new Set(pids)];
+    if (unique.length === 0) return out;
+
+    try {
+      const { execFile } = await import('node:child_process');
+      const psOutput = await new Promise<string>((resolve, reject) => {
+        execFile('ps', ['-p', unique.join(','), '-o', 'pid=,rss=,%cpu='], { timeout: 5000 }, (err, stdout) => {
+          // `ps` exits non-zero when NONE of the pids exist, but still
+          // prints the ones that do — so stdout is worth reading either way.
+          if (err && !stdout) reject(err);
+          else resolve(stdout.trim());
+        });
+      });
+
+      for (const line of psOutput.split('\n')) {
+        const [pidText, rssKb, cpuPercent] = line.trim().split(/\s+/);
+        const pid = Number.parseInt(pidText ?? '', 10);
+        if (!Number.isFinite(pid)) continue;
+        out.set(pid, {
+          cpu: Number.parseFloat(cpuPercent ?? '0') || 0,
+          memory: (Number.parseInt(rssKb ?? '0', 10) || 0) * 1024,
+        });
+      }
+    } catch {
+      // Leave the map empty: no reading is honest, a zero reading is not.
+    }
+
+    return out;
+  }
+
   /** Sample CPU/memory for a single OS process via `ps` (async — does not block event loop) */
   private async sampleProcessMetrics(pid: number): Promise<{ cpu: number; memory: number }> {
     try {
@@ -2271,12 +2408,13 @@ export class OrchestratorService extends EventEmitter {
         if (handle.mode === 'classic' && handle.childProcess?.pid) {
           const m = await this.sampleProcessMetrics(handle.childProcess.pid);
           handle.lastMetrics = { ...m, requests: 0, errors: 0 };
-        } else if (handle.mode === 'bootstrap' && handle.pid) {
-          const m = await this.sampleProcessMetrics(handle.pid);
+        } else if (handle.mode === 'bootstrap') {
+          // Every process the app owns, not just the one on the handle.
+          const m = await this.sampleAppMetrics(handle);
           handle.lastMetrics = {
             ...m,
-            requests: handle.lastMetrics?.requests ?? 0,
-            errors: handle.lastMetrics?.errors ?? 0,
+            requests: m.requests || (handle.lastMetrics?.requests ?? 0),
+            errors: m.errors || (handle.lastMetrics?.errors ?? 0),
           };
         }
       }
@@ -2322,50 +2460,30 @@ export class OrchestratorService extends EventEmitter {
       info.processes = [];
       for (const topo of handle.topologyProcesses) {
         const isPoolEntry = (topo.instances ?? 1) > 1;
-        let childPid: number | null = null;
-        let childStatus: AppStatus = 'stopped';
 
-        if (isPoolEntry) {
-          // Pool-managed topology — the supervisor doesn't know about
-          // these (workers are owned by ProcessPool). Read directly
-          // from the pool ref we stashed at creation time.
-          const pool = handle.topologyPools.get(topo.name);
-          if (pool && pool.size > 0) {
-            childStatus = 'online';
-            // Surface the first worker's PID. Pool workers are
-            // interchangeable so any one is representative; the CLI
-            // prints "PID" as a quick liveness signal, not a unique
-            // identifier.
-            const workerIds = pool.getWorkerIds();
-            if (workerIds.length > 0) {
-              const firstId = workerIds[0]!;
-              const wh = this.pm.getWorkerHandle(firstId);
-              childPid = wh?.pid ?? null;
-            }
-          }
-        } else {
-          // Single-instance topology — supervisor manages the child directly.
-          const childNames = handle.supervisor.getChildNames();
-          const childName = childNames.find((cn) => cn.includes(topo.name)) ?? topo.name;
-          const processId = handle.supervisor.getChildProcessId(childName);
-          if (processId) {
-            const wh = this.pm.getWorkerHandle(processId);
-            childPid = wh?.pid ?? null;
-            childStatus = childPid ? 'online' : 'stopped';
-          }
-        }
+        // The same ghost-online guard the parent gets a few lines above.
+        // Without it the pool branch reported `online` from the pool's own
+        // bookkeeping, never checking whether the pid it printed alongside
+        // still existed.
+        const pids = this.resolveTopologyPids(handle, topo);
+        const alive = pids.filter((pid) => isAlive(pid));
+        const childPid = alive[0] ?? pids[0] ?? null;
+        const childStatus: AppStatus =
+          alive.length > 0 ? 'online' : pids.length > 0 ? 'crashed' : 'stopped';
 
         // Derive process type from declarations for backward-compatible DTO
         const derivedType: 'server' | 'worker' | 'scheduler' | 'custom' =
           topo.transports ? 'server' : isPoolEntry ? 'worker' : 'custom';
+
+        const sample = handle.childMetrics.get(topo.name);
 
         info.processes.push({
           name: topo.name,
           type: derivedType,
           pid: childPid,
           status: childStatus,
-          cpu: 0,
-          memory: 0,
+          cpu: sample?.cpu ?? 0,
+          memory: sample?.memory ?? 0,
           uptime: handle.uptime,
           restarts: 0,
         });

@@ -665,7 +665,17 @@ export class ProcessSpawner implements IProcessSpawner {
     try {
       // Spawn based on configuration
       if (isolation === 'vm' || isolation === 'container') {
-        // Use child process for stronger isolation
+        // Neither is implemented. Both fall through to an ordinary child
+        // process, which shares the parent's filesystem and network — so a
+        // caller who asked for 'container' believing the process is confined
+        // gets no confinement at all, and nothing said so. The contract is
+        // left alone (changing it would break callers who set these values);
+        // the silence is not.
+        this.logger.warn(
+          { processId, isolation, actual: 'child' },
+          `Process isolation '${isolation}' is not implemented — spawning an ordinary child process. ` +
+            'It has the same filesystem and network access as its parent; do not rely on it as a security boundary.'
+        );
         worker = await this.spawnChildProcess(context, options.execArgv);
       } else if (useWorkerThreads) {
         // Use worker threads for better performance

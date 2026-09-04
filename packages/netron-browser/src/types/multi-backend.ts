@@ -69,18 +69,26 @@ export interface HttpBackendOptions {
   /**
    * Enable response caching
    * @default false
+   *
+   * NOT IMPLEMENTED — this field, `cacheTTL` and `batching` below are read by
+   * nothing. Setting them changes no behaviour: responses are not cached and
+   * requests are not batched. Kept so existing configurations still type-check.
    */
   caching?: boolean;
 
   /**
    * Cache TTL in milliseconds
    * @default 60000
+   *
+   * NOT IMPLEMENTED — see `caching`.
    */
   cacheTTL?: number;
 
   /**
    * Enable request batching
    * @default false
+   *
+   * NOT IMPLEMENTED — see `caching`.
    */
   batching?: boolean;
 }

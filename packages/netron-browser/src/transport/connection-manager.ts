@@ -72,6 +72,7 @@ export interface ConnectionManagerConfig {
     jitterFactor?: number;
   };
   /** Enable metrics collection @default true */
+  /** NOT IMPLEMENTED — read by nothing; metrics collection does not consult it. */
   enableMetrics?: boolean;
   /** Cleanup interval in ms @default 10000 */
   cleanupInterval?: number;

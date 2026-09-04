@@ -88,6 +88,52 @@ describe('createAuthErrorMiddleware — 401 refresh + retry (NB-6)', () => {
   });
 });
 
+describe('createAuthErrorMiddleware — retryStatusCodes', () => {
+  // The option was declared with `@default [401]` and read by nothing: the
+  // status to match was hardcoded, so a caller's list had no effect at all.
+  const err = (code: number) => Object.assign(new Error(`HTTP ${code}`), { code });
+
+  it('refreshes on a configured non-401 status', async () => {
+    const authClient = makeAuthClient();
+    // 419 is what several stacks answer for an expired session.
+    const mw = createAuthErrorMiddleware({ authClient, retryStatusCodes: [401, 419] });
+    const ctx = makeCtx();
+
+    await mw(ctx, async () => {
+      throw err(419);
+    });
+
+    expect(authClient.refreshToken).toHaveBeenCalledTimes(1);
+    expect(ctx.metadata.get('auth:retry')).toBe(true);
+  });
+
+  it('leaves a status outside the list to the caller', async () => {
+    const authClient = makeAuthClient();
+    const mw = createAuthErrorMiddleware({ authClient, retryStatusCodes: [401] });
+    const ctx = makeCtx();
+
+    await expect(
+      mw(ctx, async () => {
+        throw err(419);
+      })
+    ).rejects.toThrow('HTTP 419');
+
+    expect(authClient.refreshToken).not.toHaveBeenCalled();
+  });
+
+  it('defaults to 401, preserving the previous behaviour', async () => {
+    const authClient = makeAuthClient();
+    const mw = createAuthErrorMiddleware({ authClient });
+    const ctx = makeCtx();
+
+    await mw(ctx, async () => {
+      throw err(401);
+    });
+
+    expect(authClient.refreshToken).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('createAuthErrorMiddleware — ERROR-stage invocation', () => {
   // The middleware is written as a wrapper: `try { await next() } catch`. But
   // HttpClient does not invoke it that way — it catches the failure itself,

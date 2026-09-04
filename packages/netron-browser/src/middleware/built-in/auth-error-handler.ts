@@ -154,6 +154,7 @@ export function createAuthErrorMiddleware(options: AuthErrorMiddlewareOptions): 
     onRateLimited,
     maxRetries = 1,
     emitEvents = true,
+    retryStatusCodes = [401],
   } = options;
   // NB-6: `refreshMethod` is superseded by the AuthenticationClient's own
   // configured refresh transport (cookie/bearer); kept in the options type only
@@ -174,7 +175,13 @@ export function createAuthErrorMiddleware(options: AuthErrorMiddlewareOptions): 
     // Extract error code - check multiple places
     const errorCode = extractErrorCode(error);
 
-    if (errorCode === ErrorCode.UNAUTHORIZED || errorCode === 401) {
+    // `retryStatusCodes` was declared with `@default [401]` and read by
+    // nothing: the list a caller configured had no effect, because the code
+    // to match was hardcoded here. The default reproduces the previous
+    // behaviour exactly, so this only starts honouring a setting that was
+    // already documented — a deployment answering 419 or 440 for an expired
+    // session can now route it through the refresh path.
+    if (errorCode === ErrorCode.UNAUTHORIZED || retryStatusCodes.includes(errorCode as number)) {
       await handleUnauthorized(ctx, error);
       return true;
     }

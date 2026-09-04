@@ -449,6 +449,16 @@ export class AuthenticationClient {
    * is configured, falls back to the historical Bearer behaviour.
    */
   getAuthHeaders(): Record<string, string> {
+    // `autoAttach` is documented as "Include auth token in all requests" and
+    // was stored on construction and then read by nothing — so a caller who
+    // turned it off still had the token attached to every request. Every
+    // attach site (http-client, ws-client, and the re-apply after a refresh in
+    // the auth error middleware) goes through this method, which makes it the
+    // one place the setting has to be honoured.
+    if (!this.options.autoAttach) {
+      return {};
+    }
+
     if (this.transport) {
       const headers: Record<string, string> = {};
       this.transport.prepareRequest({ headers }, this.state.token ?? null);

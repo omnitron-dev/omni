@@ -180,6 +180,28 @@ class Worker {
     expect(messages.some((message) => /security boundary/i.test(message))).toBe(true);
   }, 60_000);
 
+  it('does not report a thread-backed worker under the daemon pid', async () => {
+    // A worker thread has no pid of its own. `processInfo.pid` used to fall
+    // back to `process.pid`, so such a worker was published as running under
+    // the daemon's own pid — and every consumer that asked the OS about it got
+    // "alive", because the daemon is. A dead worker read as healthy, and `ps`
+    // sampling measured the daemon's memory instead of the worker's.
+    const file = writeWorker('threaded', `
+class Worker {
+  static __public = ['ok'];
+  async ok() { return true; }
+}`);
+
+    // Default isolation is 'worker' — worker threads.
+    pm = new ProcessManager(logger as never, { testing: { useMockSpawner: false } } as never);
+    const proc = await pm.spawn(file, { name: 'threaded' });
+    expect(await proc.ok()).toBe(true);
+
+    const infos = pm.listProcesses().filter((info) => info.name === 'threaded');
+    expect(infos).toHaveLength(1);
+    expect(infos[0]!.pid).toBeUndefined();
+  }, 60_000);
+
   it('stops the OS process on shutdown', async () => {
     const file = writeWorker('stoppable', `
 class Worker {

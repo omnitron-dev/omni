@@ -256,9 +256,27 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       // Register in the registry for discovery
       this.registry.register(processInfo);
 
-      // Update status — use actual child PID, not daemon PID
+      // Update status — use actual child PID, not daemon PID.
+      //
+      // The `?? process.pid` fallback that used to be here did precisely what
+      // this comment forbids: a worker thread has no pid of its own
+      // (`handle.pid` is `undefined` by contract), so every thread-backed
+      // worker was reported as running under the DAEMON's pid. Consumers then
+      // asked the OS about that pid and were told, correctly, that it is alive
+      // — so a dead worker read as healthy — and anything sampling `ps` for
+      // memory or cpu measured the daemon instead of the worker.
+      //
+      // `IProcessInfo.pid` is optional. Absent is the honest answer for a
+      // thread, and it is the one `sweepDeadWorkers` already relies on: it
+      // skips handles whose pid is not a number rather than probing a made-up
+      // one. A fabricated pid is worse than a missing one, because every
+      // downstream check keeps answering — about the wrong process.
       processInfo.status = ProcessStatus.RUNNING;
-      processInfo.pid = handle.pid ?? process.pid;
+      if (typeof handle.pid === 'number') {
+        processInfo.pid = handle.pid;
+      } else {
+        delete processInfo.pid;
+      }
       this.emit('process:ready', processInfo);
 
       // Setup monitoring

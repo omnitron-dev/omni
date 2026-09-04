@@ -242,15 +242,21 @@ describe('Scheduler Executor', () => {
       expect(handler).toHaveBeenCalledTimes(3);
     });
 
-    it.skip('should apply exponential backoff', async () => {
+    it('should apply exponential backoff', async () => {
       const delays: number[] = [];
+      let calls = 0;
       let lastTime = Date.now();
 
       const handler = vi.fn(() => {
         const now = Date.now();
-        if (delays.length > 0) {
+        // Guarded on the CALL COUNT, not on `delays.length`. The old guard was
+        // `if (delays.length > 0)` — the array starts empty, so it never fired
+        // and `delays` stayed empty forever. The backoff assertion could not
+        // pass, and the maxDelay one passed vacuously on an empty array.
+        if (calls > 0) {
           delays.push(now - lastTime);
         }
+        calls++;
         lastTime = now;
         throw new Error('Backoff test');
       });
@@ -269,13 +275,19 @@ describe('Scheduler Executor', () => {
 
     it('should respect maxDelay', async () => {
       const delays: number[] = [];
+      let calls = 0;
       let lastTime = Date.now();
 
       const handler = vi.fn(() => {
         const now = Date.now();
-        if (delays.length > 0) {
+        // Guarded on the CALL COUNT, not on `delays.length`. The old guard was
+        // `if (delays.length > 0)` — the array starts empty, so it never fired
+        // and `delays` stayed empty forever. The backoff assertion could not
+        // pass, and the maxDelay one passed vacuously on an empty array.
+        if (calls > 0) {
           delays.push(now - lastTime);
         }
+        calls++;
         lastTime = now;
         throw new Error('Max delay test');
       });
@@ -287,6 +299,7 @@ describe('Scheduler Executor', () => {
       await executor.executeJob(job);
 
       // All delays should be capped at maxDelay
+      expect(delays.length).toBeGreaterThan(0);
       expect(delays.every((d) => d < 300)).toBe(true);
     });
 
@@ -345,10 +358,10 @@ describe('Scheduler Executor', () => {
       const result = await executor.executeJob(job);
 
       expect(result.status).toBe('failure');
-      expect(result.error?.message).toContain('timeout');
+      expect(result.error?.message).toContain('timed out');
     });
 
-    it.skip('should use global timeout if job timeout not specified', async () => {
+    it('should use global timeout if job timeout not specified', async () => {
       const globalTimeoutExecutor = new SchedulerExecutor({
         ...config,
         shutdownTimeout: 100,
@@ -362,7 +375,10 @@ describe('Scheduler Executor', () => {
       const result = await globalTimeoutExecutor.executeJob(job);
 
       expect(result.status).toBe('failure');
-      expect(result.error?.message).toContain('timeout');
+      // The executor reports "... timed out after 100ms"; the assertion was
+      // still looking for the noun.
+      expect(result.error?.message).toContain('timed out');
+      expect(result.error?.message).toContain('100ms');
     });
 
     it('should not timeout fast jobs', async () => {
@@ -380,7 +396,7 @@ describe('Scheduler Executor', () => {
   });
 
   describe('Concurrency Control', () => {
-    it.skip('should respect maxConcurrent limit', async () => {
+    it('should respect maxConcurrent limit', async () => {
       let concurrent = 0;
       let maxConcurrent = 0;
 
@@ -476,33 +492,81 @@ describe('Scheduler Executor', () => {
   });
 
   describe('Job Cancellation', () => {
-    it.skip('should cancel running job by execution ID', async () => {
-      const handler = vi.fn(async (context: any) => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        return 'should not complete';
-      });
+    // Cancellation is COOPERATIVE. JavaScript cannot preempt a running handler,
+    // so all the executor can do is abort the AbortSignal it hands the job.
+    // These tests used to run a handler that ignored the signal and then assert
+    // it ended in 'failure' — asserting preemption that no runtime provides,
+    // which is presumably why they were skipped rather than fixed. They now
+    // pin the contract that does exist: the signal fires, and a handler that
+    // observes it ends as a failure.
+    it('aborts the signal handed to a running job', async () => {
+      let observedAbort = false;
+      const handler = vi.fn(
+        (context: any) =>
+          new Promise((resolve, reject) => {
+            const timer = setTimeout(() => resolve('completed'), 500);
+            context.signal?.addEventListener('abort', () => {
+              observedAbort = true;
+              clearTimeout(timer);
+              reject(new Error('cancelled'));
+            });
+          })
+      );
 
       const job = createMockJob('cancellableJob', handler);
-
       const promise = executor.executeJob(job);
 
-      // Get execution ID and cancel
       await new Promise((resolve) => setTimeout(resolve, 50));
-      const runningCount = executor.getRunningJobCount();
-      expect(runningCount).toBeGreaterThan(0);
+      expect(executor.getRunningJobCount()).toBeGreaterThan(0);
 
-      // We can't easily get the execution ID, but we can test cancelAllJobs
+      executor.cancelAllJobs();
+
+      const result = await promise;
+      expect(observedAbort).toBe(true);
+      expect(result.status).toBe('failure');
+    });
+
+    it('reports failure immediately even if the handler ignores its signal', async () => {
+      // The other half of the contract, stated explicitly so nobody re-adds the
+      // impossible expectation. The executor stops WAITING on cancel and
+      // reports failure right away; it cannot stop the handler's own work,
+      // which keeps running in the background. Both halves matter: the caller
+      // gets a prompt answer, and the job is not magically preempted.
+      let handlerFinished = false;
+      const handler = vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        handlerFinished = true;
+        return 'finished anyway';
+      });
+
+      const job = createMockJob('uncooperativeJob', handler);
+      const promise = executor.executeJob(job);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
       executor.cancelAllJobs();
 
       const result = await promise;
       expect(result.status).toBe('failure');
+      // Resolved well before the handler's own 200ms timer.
+      expect(handlerFinished).toBe(false);
+      expect(executor.getRunningJobCount()).toBe(0);
     });
 
-    it.skip('should cancel all running jobs', async () => {
-      const handler = vi.fn(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      });
+    it('should cancel all running jobs', async () => {
+      let aborted = 0;
+      const handler = vi.fn(
+        (context: any) =>
+          new Promise((resolve, reject) => {
+            const timer = setTimeout(() => resolve('completed'), 500);
+            context.signal?.addEventListener('abort', () => {
+              aborted++;
+              clearTimeout(timer);
+              reject(new Error('cancelled'));
+            });
+          })
+      );
 
+      // maxConcurrent is 3 in this suite's config, so three jobs all run.
       const jobs = Array.from({ length: 3 }, (_, i) => createMockJob(`cancelJob${i}`, handler));
 
       const promises = jobs.map((job) => executor.executeJob(job));
@@ -512,6 +576,7 @@ describe('Scheduler Executor', () => {
 
       const results = await Promise.all(promises);
 
+      expect(aborted).toBe(3);
       expect(results.every((r) => r.status === 'failure')).toBe(true);
       expect(executor.getRunningJobCount()).toBe(0);
     });

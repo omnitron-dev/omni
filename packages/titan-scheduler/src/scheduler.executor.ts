@@ -20,6 +20,14 @@ import type {
   IJobExecutionContext,
 } from './scheduler.interfaces.js';
 
+/** Did this failure come from cancelJob()/cancelAllJobs() rather than the job itself? */
+function isCancellation(error: unknown): boolean {
+  return (
+    error instanceof TitanError &&
+    (error.details as { cancelled?: boolean } | undefined)?.cancelled === true
+  );
+}
+
 /**
  * Executes scheduled jobs with advanced features
  */
@@ -81,10 +89,19 @@ export class SchedulerExecutor {
     // running tick holds.
     let acquiredOverlapLock = false;
 
-    // Check if we should queue the job
+    // Check if we should queue the job.
+    //
+    // The slot must be CLAIMED in the same synchronous step as the check.
+    // `concurrentJobs++` used to live further down, after `await
+    // notifyJobStart(...)`, so every job submitted in one tick saw the counter
+    // at its pre-tick value and sailed through the gate: ten simultaneous
+    // executeJob() calls all ran at once under maxConcurrent: 3. The same
+    // discipline the SC-4 overlap lock already documents ("no `await` between
+    // check and set") applies here.
     if (this.shouldQueueJob(job)) {
       return this.queueJob(job, fullContext);
     }
+    this.concurrentJobs++;
 
     try {
       // Emit start event
@@ -119,7 +136,6 @@ export class SchedulerExecutor {
       const startTime = Date.now();
       const timeout = job.options.timeout || this.config?.shutdownTimeout || 30000;
 
-      this.concurrentJobs++;
       const result = await this.executeWithTimeout(job, fullContext, timeout, abortController.signal);
 
       const duration = Date.now() - startTime;
@@ -188,7 +204,10 @@ export class SchedulerExecutor {
               new TitanError({
                 code: ErrorCode.INTERNAL_ERROR,
                 message: 'Job execution cancelled',
-                details: { jobId: job.id },
+                // `cancelled` is what handleJobFailure keys off to stop the
+                // retry chain. Matching on the message would break the moment
+                // someone rewords it.
+                details: { jobId: job.id, cancelled: true },
               })
             );
           }
@@ -237,6 +256,18 @@ export class SchedulerExecutor {
     executionId: string
   ): Promise<IJobExecutionResult> {
     const retryOptions = job.options.retry || this.config?.retry;
+
+    // A cancelled job is terminal — never retry it.
+    //
+    // cancelJob()/cancelAllJobs() abort the signal, executeWithTimeout rejects,
+    // and this handler used to treat that like any other failure: it waited the
+    // backoff and called executeJob() again with a FRESH AbortController that
+    // nobody had aborted. With retries configured (the default is 3) cancelling
+    // a job therefore restarted it, and the operator who asked for it to stop
+    // watched it succeed.
+    if (isCancellation(error)) {
+      return this.createResult(job.id, executionId, 'failure', undefined, error, 0, context.attempt);
+    }
 
     // Check if we should retry
     if (retryOptions && context.attempt < (retryOptions.maxAttempts || 3)) {

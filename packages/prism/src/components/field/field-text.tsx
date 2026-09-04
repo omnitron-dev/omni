@@ -70,17 +70,22 @@ export function FieldText({
           helperText={error?.message ?? helperText}
           required={required}
           slotProps={{
+            // Shrink label for multiline fields to prevent overlap with textarea content
+            ...(multiline ? { inputLabel: { shrink: true } } : {}),
+            ...slotProps,
             formHelperText: {
               id: helperId,
+              ...slotProps?.formHelperText,
             },
+            // Merged, not overwritten: spreading the caller's `slotProps` last
+            // replaced `htmlInput` wholesale, so passing any input prop
+            // silently stripped every aria attribute below.
             htmlInput: {
               'aria-describedby': error?.message || helperText ? helperId : undefined,
               'aria-invalid': !!error,
               'aria-required': required,
+              ...(slotProps?.htmlInput as object | undefined),
             },
-            // Shrink label for multiline fields to prevent overlap with textarea content
-            ...(multiline ? { inputLabel: { shrink: true } } : {}),
-            ...slotProps,
           }}
           {...other}
         />

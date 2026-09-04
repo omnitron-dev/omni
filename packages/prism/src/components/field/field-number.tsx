@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode, ComponentProps } from 'react';
-import { useCallback, useState, useEffect, useId } from 'react';
+import { useCallback, useState, useEffect, useId, useMemo, useRef } from 'react';
 import {
   Controller,
   useFormContext,
@@ -81,10 +81,24 @@ function NumberInput({
     transformForDisplay(field.value ?? options.defaultValue ?? 0, options)
   );
 
-  // Sync display value when field value changes externally (e.g., form reset)
+  // The last value this input pushed into the form. Anything else arriving in
+  // `field.value` came from outside (a reset, a setValue, a server default).
+  const committedRef = useRef<unknown>(field.value);
+
+  // Re-render the box from the form value ONLY when the form value changed
+  // externally.
+  //
+  // This effect used to run on every render and unconditionally overwrite the
+  // display. Two consequences, both user-visible: a decimal separator could
+  // never be typed (mid-entry "1." parses to 1 and formats back to "1", so the
+  // character vanished as it was typed), and any unrelated parent re-render —
+  // form validation, a sibling field updating — reformatted whatever was
+  // half-typed. `options` was rebuilt on every render too, so the dependency
+  // array never held it still.
   useEffect(() => {
-    const formatted = transformForDisplay(field.value ?? options.defaultValue ?? 0, options);
-    setDisplayValue(formatted);
+    if (Object.is(field.value, committedRef.current)) return;
+    committedRef.current = field.value;
+    setDisplayValue(transformForDisplay(field.value ?? options.defaultValue ?? 0, options));
   }, [field.value, options]);
 
   const handleChange = useCallback(
@@ -95,10 +109,17 @@ function NumberInput({
       // Update form value if we have a valid number
       const num = parseFloat(transformed);
       if (!isNaN(num)) {
+        committedRef.current = num;
         field.onChange(num);
       } else if (transformed === '' || transformed === '-') {
-        // Keep intermediate states for UX
-        field.onChange(options.defaultValue ?? 0);
+        // Intermediate states ('' while clearing, '-' before the digits) are
+        // kept in the display and reported as `undefined` rather than being
+        // silently replaced with the default. Substituting the default here
+        // meant the box could not be emptied — it refilled with 0 — and a
+        // `required` rule could never fire, because the form always held a
+        // number.
+        committedRef.current = undefined;
+        field.onChange(undefined);
       }
     },
     [field, options]
@@ -106,6 +127,7 @@ function NumberInput({
 
   const handleBlur = useCallback(() => {
     const finalValue = transformOnBlur(displayValue || String(field.value ?? options.defaultValue ?? 0), options);
+    committedRef.current = finalValue;
     field.onChange(finalValue);
     setDisplayValue(transformForDisplay(finalValue, options));
     field.onBlur();
@@ -123,9 +145,14 @@ function NumberInput({
       helperText={error?.message ?? helperText}
       required={required}
       slotProps={{
+        ...slotProps,
         formHelperText: {
           id: helperId,
+          ...slotProps?.formHelperText,
         },
+        // Merged, not overwritten: spreading the caller's `slotProps` last
+        // replaced `htmlInput` wholesale, so passing any input prop silently
+        // stripped every aria attribute below.
         htmlInput: {
           inputMode: options.decimals === 0 ? 'numeric' : 'decimal',
           'aria-describedby': error?.message || helperText ? helperId : undefined,
@@ -134,8 +161,8 @@ function NumberInput({
           'aria-valuemin': options.min,
           'aria-valuemax': options.max,
           'aria-valuenow': field.value ?? options.defaultValue ?? 0,
+          ...(slotProps?.htmlInput as object | undefined),
         },
-        ...slotProps,
       }}
     />
   );
@@ -176,13 +203,12 @@ export function FieldNumber({
   const inputId = `field-number-${id}`;
   const helperId = `field-number-helper-${id}`;
 
-  const options: TransformNumberOptions = {
-    min,
-    max,
-    decimals,
-    allowNegative,
-    defaultValue,
-  };
+  // Memoised on the primitives: rebuilding this object every render made it a
+  // new dependency each time for the effect and callbacks inside NumberInput.
+  const options: TransformNumberOptions = useMemo(
+    () => ({ min, max, decimals, allowNegative, defaultValue }),
+    [min, max, decimals, allowNegative, defaultValue]
+  );
 
   return (
     <Controller

@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping client-mocked.spec.ts - integration test requiring dynamic mocking');

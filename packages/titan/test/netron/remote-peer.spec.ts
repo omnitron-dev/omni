@@ -20,7 +20,7 @@ import {
   decodePacket,
 } from '../../src/netron/packet/index.js';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping remote-peer.spec.ts - integration test with async RPC behavior');

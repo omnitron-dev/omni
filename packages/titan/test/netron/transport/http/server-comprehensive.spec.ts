@@ -24,7 +24,7 @@ import { contract } from '../../../../src/validation/contract.js';
 import { z } from 'zod';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping server-comprehensive.spec.ts - integration test requiring real HTTP');

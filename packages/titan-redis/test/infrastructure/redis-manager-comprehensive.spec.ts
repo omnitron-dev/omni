@@ -15,7 +15,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 const skipTests =
   isRedisInMockMode() ||
   !isDockerAvailable() ||
-  process.env.CI === 'true' ||
+  process.env.SKIP_DOCKER_TESTS === 'true' ||
   process.env.SKIP_DOCKER_TESTS === 'true' ||
   process.env.SKIP_INTEGRATION_TESTS === 'true';
 

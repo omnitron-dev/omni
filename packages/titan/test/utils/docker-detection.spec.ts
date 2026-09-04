@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DockerTestManager } from './docker-test-manager.js';
 
 // Skip tests if in CI or mock mode to avoid long timeouts
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 if (skipTests) {
   console.log('⏭️ Skipping docker-detection.spec.ts - would timeout in CI/mock mode');
 }

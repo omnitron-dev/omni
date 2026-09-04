@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Skip this test - has integration issues with Application setup
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 if (skipTests) {
   console.log('⏭️ Skipping task-manager-simple.spec.ts - requires full Application setup');
 }

@@ -13,7 +13,7 @@ import type { MessagingTransport } from '../src/transport/transport.interface.js
 import Redis from 'ioredis';
 
 // Check if Docker tests should be skipped
-const SKIP_DOCKER_TESTS = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const SKIP_DOCKER_TESTS = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 const NOTIFICATIONS_TEST_TIMEOUT = 60000;
 
 export interface NotificationsTestFixture {

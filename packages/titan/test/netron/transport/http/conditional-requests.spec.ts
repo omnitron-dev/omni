@@ -12,7 +12,7 @@ import { contract } from '../../../../src/validation/contract.js';
 import { createRequestMessage } from '../../../../src/netron/transport/http/types.js';
 import { z } from 'zod';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping conditional-requests.spec.ts - integration test requiring real HTTP');

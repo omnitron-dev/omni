@@ -14,11 +14,9 @@
 //
 // titan-auth was the only titan-* package that did not declare the dependency —
 // it worked purely because `@omnitron-dev/titan/decorators` happened to load
-// the polyfill on its behalf. package.json now declares `reflect-metadata`
-// directly; this import switches to a bare `import 'reflect-metadata'` as soon
-// as the lockfile is regenerated, so the polyfill stops depending on what the
-// framework peer happens to import.
-import '@omnitron-dev/titan/decorators';
+// the polyfill on its behalf. It is declared directly now, so the polyfill no
+// longer depends on what the framework peer happens to import.
+import 'reflect-metadata';
 
 import type { IAuthContext, IRequireAuthOptions, IAuthMiddleware } from './auth.types.js';
 import { AUTH_MIDDLEWARE_TOKEN } from './auth.tokens.js';

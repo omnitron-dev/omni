@@ -153,6 +153,38 @@ describe('auto-scaling compares percentages, not raw counters', () => {
     expect(pool.size).toBeGreaterThan(1);
   }, 30_000);
 
+  it('keeps a worker healthy when only its metrics call fails', async () => {
+    // Health and telemetry are different questions. The metrics call used to
+    // sit inside the health verdict's try, so a telemetry failure marked the
+    // worker unhealthy and counted toward auto-replacement — a restart caused
+    // by a reading, not by the worker.
+    let count = 0;
+    const manager = mockManager(() => ({
+      __processId: `worker-${++count}`,
+      __destroy: vi.fn().mockResolvedValue(undefined),
+      __getMetrics: vi.fn().mockRejectedValue(new Error('metrics unavailable')),
+      __getHealth: vi.fn().mockResolvedValue({ status: 'healthy', checks: [], timestamp: Date.now() }),
+      testMethod: vi.fn().mockResolvedValue('result'),
+    }));
+
+    pool = new ProcessPool(
+      manager,
+      'TestProcess',
+      {
+        size: 2,
+        healthCheck: { enabled: true, interval: HEALTH_INTERVAL },
+        autoScale: { enabled: true, min: 1, max: 4, cooldownPeriod: 0, checkInterval: CHECK_INTERVAL },
+      } as never,
+      logger as never
+    );
+    await pool.initialize();
+    await tick(3);
+
+    const metrics = pool.metrics;
+    expect(metrics.healthyWorkers).toBe(2);
+    expect(metrics.unhealthyWorkers).toBe(0);
+  }, 30_000);
+
   it('does not treat an unmeasured resource as idle', async () => {
     // A worker that reports nothing usable must not license scale-down: "not
     // measured" is not "idle". Before, an absent figure defaulted to 0 and read

@@ -77,7 +77,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
   afterEach(async () => {
     if (service) {
       try {
-        await service.stop();
+        await service.onStop();
       } catch {
         // Ignore stop errors
       }
@@ -142,7 +142,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       container.register(DiscoveryService, { useClass: DiscoveryService });
 
       service = container.resolve(DiscoveryService);
-      await service.start();
+      await service.onStart();
 
       expect(service.isRegistered()).toBe(false);
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('client mode'));
@@ -174,7 +174,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     it('should register node on start', async () => {
-      await service.start();
+      await service.onStart();
 
       // Wait for registration
       await waitFor(() => service.isRegistered(), 2000);
@@ -193,7 +193,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
 
     it('should not register in client mode', async () => {
       const clientService = createClientModeService();
-      await clientService.start();
+      await clientService.onStart();
 
       expect(clientService.isRegistered()).toBe(false);
 
@@ -203,13 +203,13 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
 
       expect(exists).toBe(0);
 
-      await clientService.stop();
+      await clientService.onStop();
     });
 
     it('should send periodic heartbeats', async () => {
       vi.useFakeTimers();
 
-      await service.start();
+      await service.onStart();
       await waitFor(() => service.isRegistered(), 2000);
 
       const nodeId = service.getNodeId();
@@ -242,7 +242,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
         return originalEval(...args);
       });
 
-      await service.start();
+      await service.onStart();
 
       // Should retry and succeed
       await waitFor(() => service.isRegistered(), 3000);
@@ -251,10 +251,10 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     it('should stop heartbeats when service stops', async () => {
-      await service.start();
+      await service.onStart();
       await waitFor(() => service.isRegistered(), 2000);
 
-      await service.stop();
+      await service.onStop();
 
       // Heartbeat timer should be cleared
       const nodeId = service.getNodeId();
@@ -278,7 +278,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
-      await service.start();
+      await service.onStart();
       await waitFor(() => service.isRegistered(), 2000);
     });
 
@@ -376,11 +376,11 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       service2 = container2.resolve(DiscoveryService);
 
       // Start and register services
-      await service1.start();
+      await service1.onStart();
       await service1.registerService({ name: 'Service1', version: '1.0.0' });
       await waitFor(() => service1.isRegistered(), 2000);
 
-      await service2.start();
+      await service2.onStart();
       await service2.registerService({ name: 'Service2', version: '2.0.0' });
       await service2.registerService({ name: 'SharedService', version: '1.0.0' });
       await waitFor(() => service2.isRegistered(), 2000);
@@ -439,7 +439,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
 
     it('should filter inactive nodes', async () => {
       // Stop service2 to make it inactive
-      await service2.stop();
+      await service2.onStop();
 
       // Wait for heartbeat to expire
       await new Promise((resolve) => setTimeout(resolve, 3500));
@@ -460,7 +460,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
-      await service.start();
+      await service.onStart();
       await waitFor(() => service.isRegistered(), 2000);
     });
 
@@ -499,14 +499,14 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
-      await service.start();
+      await service.onStart();
       await waitFor(() => service.isRegistered(), 2000);
     });
 
     it('should deregister node on stop', async () => {
       const nodeId = service.getNodeId();
 
-      await service.stop();
+      await service.onStop();
 
       // Node should be removed from Redis
       const exists = await redis.exists(`titan:discovery:nodes:${nodeId}`);
@@ -518,9 +518,9 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     it('should handle multiple stop calls gracefully', async () => {
-      const promise1 = service.stop();
-      const promise2 = service.stop();
-      const promise3 = service.stop();
+      const promise1 = service.onStop();
+      const promise2 = service.onStop();
+      const promise3 = service.onStop();
 
       await Promise.all([promise1, promise2, promise3]);
 
@@ -530,10 +530,10 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
 
     it('should clean up PubSub subscriptions', async () => {
       const pubSubService = createPubSubEnabledService();
-      await pubSubService.start();
+      await pubSubService.onStart();
       await waitFor(() => pubSubService.isRegistered(), 2000);
 
-      await pubSubService.stop();
+      await pubSubService.onStop();
 
       // Verify logger was called for cleanup
       expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unsubscribed from PubSub'));
@@ -555,7 +555,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       // Mock Redis error
       redis.eval = vi.fn().mockRejectedValue(new Error('Connection error'));
 
-      await service.start();
+      await service.onStart();
 
       // Should log error but not throw
       expect(logger.error).toHaveBeenCalledWith(
@@ -567,7 +567,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     it('should handle service discovery errors', async () => {
-      await service.start();
+      await service.onStart();
 
       // Mock Redis error for discovery
       redis.smembers = vi.fn().mockRejectedValue(new Error('Discovery error'));
@@ -580,10 +580,10 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     it('should prevent starting a stopped service', async () => {
-      await service.start();
-      await service.stop();
+      await service.onStart();
+      await service.onStop();
 
-      await expect(service.start()).rejects.toThrow('Cannot start a stopped DiscoveryService');
+      await expect(service.onStart()).rejects.toThrow('Cannot start a stopped DiscoveryService');
     });
   });
 
@@ -684,10 +684,10 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
         ? container2.resolve(DISCOVERY_SERVICE_TOKEN)
         : container2.resolve(DiscoveryService);
 
-      await service1.start();
+      await service1.onStart();
       await service1.registerService({ name: 'ModuleService1', version: '1.0.0' });
 
-      await service2.start();
+      await service2.onStart();
       await service2.registerService({ name: 'ModuleService2', version: '2.0.0' });
 
       await waitFor(() => service1.isRegistered() && service2.isRegistered(), 3000);
@@ -699,8 +699,8 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
       expect(nodes1).toHaveLength(2);
       expect(nodes2).toHaveLength(2);
 
-      await service1.stop();
-      await service2.stop();
+      await service1.onStop();
+      await service2.onStop();
     });
   });
 

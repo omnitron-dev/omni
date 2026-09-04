@@ -4,6 +4,8 @@
 
 import { vi } from 'vitest';
 import { Redis } from 'ioredis';
+import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { Container } from '@omnitron-dev/titan/nexus';
 import { DiscoveryService } from '../src/discovery.service.js';
 import { REDIS_TOKEN, DISCOVERY_OPTIONS_TOKEN } from '../src/types.js';
@@ -12,48 +14,60 @@ import { DiscoveryModule } from '../src/discovery.module.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { NodeInfo, ServiceInfo, DiscoveryOptions } from '../src/types.js';
 /**
+ * Default Redis endpoint for tests.
+ *
+ * docker-compose.test.yml publishes Redis on 16379, NOT the default 6379, so
+ * the test stack cannot collide with a developer's local Redis. Mirrors
+ * `@omnitron-dev/testing/env` (this package deliberately does not take a
+ * dependency on the testing package, matching titan-redis's own test utils).
+ */
+const DEFAULT_REDIS_HOST = process.env['TEST_REDIS_HOST'] ?? 'localhost';
+const DEFAULT_REDIS_PORT = Number(process.env['TEST_REDIS_PORT'] ?? 16379);
+
+/** Read the Redis endpoint published by a globalSetup, if any. */
+function readRedisInfoFile(): { port?: number; isMock?: boolean } | null {
+  try {
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (!existsSync(infoPath)) return null;
+    return JSON.parse(readFileSync(infoPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check if we're in mock mode (no real Redis available)
  */
 export function isRedisInMockMode(): boolean {
   if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
     return true;
   }
-  try {
-    const { existsSync, readFileSync } = require('node:fs');
-    const { join } = require('node:path');
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
-    if (existsSync(infoPath)) {
-      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
-      if (info.isMock === true) return true;
-    }
-  } catch {
-    // Continue
-  }
-  return false;
+  return readRedisInfoFile()?.isMock === true;
 }
 
 /**
- * Get centralized Redis test configuration
+ * Get centralized Redis test configuration.
+ *
+ * Resolution order: globalSetup info file → globalThis.globalRedis →
+ * TEST_REDIS_HOST/TEST_REDIS_PORT (defaulting to the compose stack on 16379).
  */
-function getTestRedisConfig(db = 15) {
-  try {
-    const { existsSync, readFileSync } = require('node:fs');
-    const { join } = require('node:path');
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
-    if (existsSync(infoPath)) {
-      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
-      if (info.port) {
-        return { url: `redis://localhost:${info.port}/${db}`, host: 'localhost', port: info.port, db };
-      }
-    }
-  } catch {
-    // Continue
+export function getTestRedisConfig(db = 15) {
+  const info = readRedisInfoFile();
+  if (info?.port) {
+    return { url: `redis://localhost:${info.port}/${db}`, host: 'localhost', port: info.port, db };
   }
+
   const globalRedis = (globalThis as any).globalRedis;
   if (globalRedis?.host && globalRedis?.port) {
     return { url: `redis://${globalRedis.host}:${globalRedis.port}/${db}`, host: globalRedis.host, port: globalRedis.port, db };
   }
-  return { url: `redis://localhost:6379/${db}`, host: 'localhost', port: 6379, db };
+
+  return {
+    url: `redis://${DEFAULT_REDIS_HOST}:${DEFAULT_REDIS_PORT}/${db}`,
+    host: DEFAULT_REDIS_HOST,
+    port: DEFAULT_REDIS_PORT,
+    db,
+  };
 }
 
 /**

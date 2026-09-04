@@ -32,7 +32,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
   afterEach(async () => {
     if (service) {
       try {
-        await service.stop();
+        await service.onStop();
       } catch (_e) {
         // ignore
       }
@@ -51,7 +51,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
       expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('PubSub'));
     });
@@ -66,7 +66,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
 
       const publishSpy = vi.spyOn(redis, 'publish');
 
-      await service.start();
+      await service.onStart();
 
       // Wait for initial heartbeat
       await new Promise((resolve) => setTimeout(resolve, 600));
@@ -85,7 +85,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
 
       service.onEvent(handler);
 
-      await service.start();
+      await service.onStart();
 
       // Simulate receiving own event
       const event: DiscoveryEvent = {
@@ -110,7 +110,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
       const publishSpy = vi.spyOn(redis, 'publish');
 
@@ -131,7 +131,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
     });
 
     it('should publish NODE_UPDATED event on service update', async () => {
-      await service.start();
+      await service.onStart();
 
       const publishSpy = vi.spyOn(redis, 'publish');
 
@@ -144,7 +144,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
     });
 
     it('should publish NODE_DEREGISTERED event on stop', async () => {
-      await service.start();
+      await service.onStart();
 
       // Wait for registration
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -166,7 +166,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
       const _subscribeSpy = vi.spyOn(redis, 'subscribe');
 
@@ -244,7 +244,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
 
       redis.publish = vi.fn().mockRejectedValue(new Error('Publish error'));
 
-      await service.start();
+      await service.onStart();
 
       // Wait for attempted publish
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -259,7 +259,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
       // Simulate receiving malformed message
       const subscriber = (service as any).subscriber;
@@ -282,9 +282,9 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
-      await service.stop();
+      await service.onStop();
 
       expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unsubscribed from PubSub'));
     });
@@ -295,7 +295,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
 
       // Mock unsubscribe error
       const subscriber = (service as any).subscriber;
@@ -303,7 +303,7 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
         subscriber.unsubscribe = vi.fn().mockRejectedValue(new Error('Unsub error'));
       }
 
-      await service.stop();
+      await service.onStop();
 
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({ error: expect.anything() }),

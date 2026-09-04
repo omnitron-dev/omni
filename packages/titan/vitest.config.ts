@@ -57,8 +57,6 @@ export default defineConfig({
       'test/scheduler/**',
       // Redis utilities that depend on extracted redis module
       'test/utils/redis-*',
-      // Wheel timer has parse error (syntax issue in source)
-      'test/utils/wheel-timer*',
     ],
     testTimeout: 120_000, // 2 minutes for Docker-based tests
     hookTimeout: 120_000,

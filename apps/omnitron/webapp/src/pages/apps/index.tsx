@@ -46,17 +46,19 @@ export default function AppsListPage() {
       if (activeProject) {
         // In project workspace: get configured apps (includes stopped)
         const stackApps = await projectRpc.getProjectApps({ project: activeProject });
-        // Map IStackAppStatus → ProcessInfoDto shape
-        const mapped: ProcessInfoDto[] = stackApps.map((a: any) => ({
+        // Map IStackAppStatus → ProcessInfoDto shape. Every field below comes
+        // from the orchestrator; none may be defaulted to a placeholder, or the
+        // table silently reports a healthy zero for a value it never asked for.
+        const mapped: ProcessInfoDto[] = stackApps.map((a) => ({
           name: a.name,
-          pid: a.pid ?? null,
-          status: a.status ?? 'stopped',
-          cpu: 0,
-          memory: 0,
-          uptime: a.uptime ?? 0,
-          restarts: 0,
-          instances: a.instances ?? 0,
-          port: null,
+          pid: a.pid,
+          status: a.status,
+          cpu: a.cpu,
+          memory: a.memory,
+          uptime: a.uptime,
+          restarts: a.restarts,
+          instances: a.instances,
+          port: a.port,
           mode: 'bootstrap' as const,
           critical: false,
         }));

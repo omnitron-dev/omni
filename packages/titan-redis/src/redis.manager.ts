@@ -318,16 +318,55 @@ export class RedisManager {
     }
   }
 
+  /**
+   * Default ceiling for a health probe when `healthCheck.timeout` is not set.
+   * Matches the connect-wait default in `connectClient`.
+   */
+  private get healthProbeTimeout(): number {
+    return this.options.healthCheck?.timeout ?? (process.env['NODE_ENV'] === 'test' ? 10000 : 5000);
+  }
+
   async isHealthy(namespace?: string): Promise<boolean> {
+    // Bounded on purpose. `ping()` on a client that cannot reach its server
+    // does not always reject: an ioredis Cluster pointed at an unresolvable
+    // host leaves the command pending indefinitely, so this used to hang
+    // forever — and `healthCheck()` awaits every namespace, so one wedged
+    // client froze the health of all of them. A health probe that never
+    // answers is worse than one that answers "unhealthy": the caller cannot
+    // even tell that something is wrong.
+    //
+    // `healthCheck.timeout` was already a declared option; it just never
+    // reached the health check it is named for, only the connect wait.
+    const timeout = this.healthProbeTimeout;
+    let timer: NodeJS.Timeout | undefined;
+
     try {
       const client = this.getInternalClient(namespace);
 
       // For lazy-connected clients, try to ping (which will trigger connection)
       // If not ready and not connecting, the ping will handle connection
-      const result = await client.ping();
+      const ping = client.ping();
+      // The losing promise is still live; swallow its eventual rejection so a
+      // timed-out probe cannot surface as an unhandled rejection later.
+      void Promise.resolve(ping).catch(() => {});
+
+      const result = await Promise.race([
+        ping,
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), timeout);
+        }),
+      ]);
+
+      if (result === null) {
+        this.logger.warn({ namespace: namespace ?? 'default', timeout }, 'Redis health probe timed out');
+        return false;
+      }
+
       return result === 'PONG';
     } catch {
       return false;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 

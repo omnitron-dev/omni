@@ -295,8 +295,15 @@ describeOrSkip('Redis Cluster Support', () => {
 
   describe('Cluster Error Handling', () => {
     it('should handle cluster connection errors', { timeout: 30000 }, async () => {
+      // This used to time out at 30s. `isHealthy` awaited `client.ping()` with
+      // no ceiling, and an ioredis Cluster pointed at an unresolvable host
+      // leaves the command pending rather than rejecting — so the probe never
+      // answered. `healthCheck.timeout` below is the option that was already
+      // declared for exactly this and was not being applied to the probe.
+      const started = Date.now();
       const manager = new RedisManager(
         {
+          healthCheck: { timeout: 2000 },
           clients: [
             {
               namespace: 'cluster-error',
@@ -322,9 +329,10 @@ describeOrSkip('Redis Cluster Support', () => {
       const client = manager.getClient('cluster-error');
       expect(client).toBeDefined();
 
-      // Should handle errors gracefully
+      // Should handle errors gracefully — and answer, rather than hang.
       const isHealthy = await manager.isHealthy('cluster-error');
       expect(isHealthy).toBe(false);
+      expect(Date.now() - started).toBeLessThan(15_000);
 
       await manager.destroy();
     });

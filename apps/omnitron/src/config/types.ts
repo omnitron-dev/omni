@@ -683,6 +683,34 @@ export interface IDaemonConfig {
     jwtSecret?: string;
   };
 
+  /**
+   * Transport-level rate limiting for the daemon's HTTP RPC surface.
+   *
+   * Complements the per-account lockout in AuthService: the lockout stops
+   * password guessing against one account, this caps overall request volume
+   * so the control plane cannot be flooded.
+   *
+   * Note on deployment: the daemon binds loopback and nginx fronts it, so
+   * every request arrives from 127.0.0.1 unless `trustProxy` is enabled —
+   * meaning `maxRequests` behaves as a shared budget in that topology.
+   * `trustProxy` is off by default because the forwarded header is
+   * client-controlled unless the proxy is known to overwrite it.
+   */
+  httpRateLimit?: {
+    /** Default: true. */
+    enabled?: boolean;
+    /** Window length in ms. Default: 60_000. */
+    windowMs?: number;
+    /** Requests per client key per window. Default: 3_000. */
+    maxRequests?: number;
+    /** Requests across all clients per window. Default: 6_000. */
+    globalMaxRequests?: number;
+    /** Trust X-Forwarded-For / X-Real-IP for the client key. Default: false. */
+    trustProxy?: boolean;
+    /** Client keys exempt from limiting. */
+    whitelist?: string[];
+  };
+
   /** Health monitor worker configuration */
   healthMonitor?: {
     /** Check interval in ms (default: 30_000) */

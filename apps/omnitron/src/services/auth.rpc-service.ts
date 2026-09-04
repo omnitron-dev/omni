@@ -36,9 +36,14 @@ export class AuthRpcService {
   async signIn(data: {
     username: string;
     password: string;
-    ipAddress?: string;
     userAgent?: string;
   }): Promise<OmnitronSignInResult> {
+    // `ipAddress` used to be part of this payload and was written to
+    // omnitron_sessions verbatim — a client could stamp any address it liked
+    // onto its own session and the operator-facing session list would repeat
+    // it as fact. The console never sent it, so the column was always null
+    // anyway. It stays null until the transport can supply the peer address
+    // server-side; a forgeable value is worse than an absent one.
     return this.authService.signIn(data);
   }
 

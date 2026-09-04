@@ -427,6 +427,7 @@ export class OmnitronDaemon {
     // HTTP — Netron RPC API (internal port, nginx proxies from public port)
     const internalHttpPort = (dc.httpPort ?? 9800) + 1;
     this.app.netron.registerTransport('http', () => new HttpTransport());
+    const rl = dc.httpRateLimit ?? {};
     this.app.netron.registerTransportServer('http', {
       name: 'daemon-http',
       options: {
@@ -434,6 +435,17 @@ export class OmnitronDaemon {
         host: localHost,
         cors: true,
         invocationWrapper: authContextWrapper,
+        // Volume cap on the RPC surface. Password guessing is bounded by the
+        // per-account lockout in AuthService; this bounds everything else,
+        // including attempts to flood the daemon into unresponsiveness.
+        rateLimit: {
+          enabled: rl.enabled ?? true,
+          windowMs: rl.windowMs ?? 60_000,
+          maxRequests: rl.maxRequests ?? 3_000,
+          globalMaxRequests: rl.globalMaxRequests ?? 6_000,
+          trustProxy: rl.trustProxy ?? false,
+          ...(rl.whitelist ? { whitelist: rl.whitelist } : {}),
+        },
       },
     });
 

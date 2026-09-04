@@ -249,9 +249,24 @@ export function AdminDataTable<T>({
       if (rowKey) return rowKey(row);
       const record = row as Record<string, unknown>;
       if (record['id'] !== undefined) return String(record['id']);
+
+      // Falling back to the index is fine for React reconciliation, but it is
+      // NOT an identity: sort or paginate and position N is a different
+      // record. With `selectable` that turns a selection into "rows 2 and 5
+      // of whatever is currently on screen", and a bulk action then applies
+      // to records the operator never picked. Surface it in development
+      // rather than let a delete find out at runtime.
+      if (selectable && process.env['NODE_ENV'] !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[AdminDataTable] `selectable` is on but rows have no stable key: ' +
+            'pass `rowKey`, or give each row an `id`. Index-based keys make the ' +
+            'selection positional, so sorting or paging silently re-targets it.'
+        );
+      }
       return String(index);
     },
-    [rowKey]
+    [rowKey, selectable]
   );
 
   // Stable empty set so callers can omit `selectedKeys` without us

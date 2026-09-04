@@ -1642,6 +1642,10 @@ export class ProjectService extends EventEmitter {
           pid: running.pid,
           instances: running.instances,
           uptime: running.uptime,
+          restarts: running.restarts,
+          cpu: running.cpu,
+          memory: running.memory,
+          port: running.port ?? null,
         };
       }
       // App is configured but not running
@@ -1652,6 +1656,10 @@ export class ProjectService extends EventEmitter {
         pid: null,
         instances: 0,
         uptime: 0,
+        restarts: 0,
+        cpu: 0,
+        memory: 0,
+        port: null,
       };
     });
 
@@ -1664,6 +1672,10 @@ export class ProjectService extends EventEmitter {
         pid: running.pid,
         instances: running.instances,
         uptime: running.uptime,
+        restarts: running.restarts,
+        cpu: running.cpu,
+        memory: running.memory,
+        port: running.port ?? null,
       });
     }
 

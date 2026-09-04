@@ -112,6 +112,14 @@ export interface IStackAppStatus {
   instances: number;
   /** Uptime in ms */
   uptime: number;
+  /** Restarts since the app was first started — a crash loop shows up here. */
+  restarts: number;
+  /** CPU percentage, 0 when not running or not yet sampled. */
+  cpu: number;
+  /** Resident memory in bytes, 0 when not running or not yet sampled. */
+  memory: number;
+  /** HTTP port the app listens on, null when it has no HTTP transport. */
+  port: number | null;
 }
 
 export interface IStackInfraStatus {

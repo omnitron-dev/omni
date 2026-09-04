@@ -364,7 +364,18 @@ export class OrchestratorService extends EventEmitter {
     //
     // `setConfig` is the one point every path passes through, and the call
     // is idempotent — an existing timer is cleared first.
-    this.startMetricsPolling(config.monitoring?.metrics?.interval ?? 5_000);
+    this.ensureMetricsPolling();
+  }
+
+  /**
+   * Start metrics sampling if it is not already running.
+   *
+   * Called from every path that can produce a managed process, so no app can
+   * end up unsampled because of how it was started.
+   */
+  private ensureMetricsPolling(): void {
+    if (this.metricsTimer) return;
+    this.startMetricsPolling(this.config?.monitoring?.metrics?.interval ?? 5_000);
   }
 
   /**
@@ -644,6 +655,20 @@ export class OrchestratorService extends EventEmitter {
     const mode = entry.bootstrap ? 'bootstrap' : 'classic';
     const handle = new AppHandle(entry, mode);
     this.handles.set(entry.name, handle);
+
+    // Arm metrics sampling here — the one place an app enters the registry.
+    //
+    // It used to be armed only from `startAll` (the `omnitron start` path).
+    // Anything else — `stack start`, a single `omnitron start <app>`, the
+    // daemon resuming a stack at boot — was never sampled, so `list`,
+    // `status` and the console's app cards reported cpu 0 / memory 0 for
+    // processes serving traffic. Observed: six apps online, every one at
+    // zero, while `ps` showed ~105 MB RSS apiece.
+    //
+    // `setConfig` looked like the right seam but is only called on config
+    // RELOAD, so it never fired on a normal start. This is the seam that
+    // actually covers every path. Idempotent: re-arming replaces the timer.
+    this.ensureMetricsPolling();
 
     this.logger.info({ app: entry.name, mode }, 'Starting app');
 

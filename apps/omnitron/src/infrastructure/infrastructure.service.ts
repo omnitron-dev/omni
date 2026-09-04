@@ -38,6 +38,12 @@ import {
   createVolume,
   containerSpecHash,
 } from './container-runtime.js';
+import {
+  OMNITRON_PG_PORT,
+  OMNITRON_PG_USER,
+  OMNITRON_PG_PASSWORD,
+  OMNITRON_PG_DATABASE,
+} from '../database/connection.js';
 
 const RECONCILE_INTERVAL = 30_000; // 30s health sweep
 const STARTUP_TIMEOUT = 120_000; // 2min max per service
@@ -64,11 +70,9 @@ export function restartBackoffMs(failures: number): number {
   return computeBackoff({ attempt: failures - 1, baseMs: RESTART_BACKOFF_BASE, maxMs: RESTART_BACKOFF_MAX });
 }
 
-/** Omnitron internal PG connection defaults */
-const OMNITRON_PG_PORT = 5480;
-const OMNITRON_PG_USER = 'omnitron';
-const OMNITRON_PG_PASSWORD = 'omnitron';
-const OMNITRON_PG_DATABASE = 'omnitron';
+// Omnitron internal PG connection defaults live in `database/connection.ts`
+// so the container spec below and every client that connects to it are
+// derived from the same values (see the import above).
 
 export class InfrastructureService {
   private readonly desiredContainers: ResolvedContainer[] = [];
@@ -694,58 +698,20 @@ export class InfrastructureService {
   }
 
   /**
-   * Connect to Omnitron's PG and run migrations via Kysely's built-in Migrator.
-   * Uses dynamic import to keep pg/kysely optional until actually needed.
+   * Apply the internal-database schema through the shared runner.
+   *
+   * This used to be a second, independently-maintained copy of the daemon's
+   * migration code that only knew migrations 001–002 — and, like the
+   * daemon's copy, it constructed `Migrator` from the `kysely` package root
+   * where that export does not exist, so it threw on every run. Both are now
+   * one call into `database/migration-runner.ts`.
+   *
+   * Errors propagate to `provisionOmnitronDatabase`'s caller: provisioning
+   * that ends with an unmigrated database has not succeeded.
    */
   private async runOmnitronMigrations(): Promise<void> {
-    const { Kysely, PostgresDialect, Migrator } = await import('kysely');
-    const pg = await import('pg');
-    const m001 = await import('../database/migrations/001_initial_schema.js');
-    const m002 = await import('../database/migrations/002_metrics_raw.js');
-
-    const pool = new pg.default.Pool({
-      host: 'localhost',
-      port: OMNITRON_PG_PORT,
-      database: OMNITRON_PG_DATABASE,
-      user: OMNITRON_PG_USER,
-      password: OMNITRON_PG_PASSWORD,
-    });
-
-    const db = new Kysely<unknown>({
-      dialect: new PostgresDialect({ pool }),
-    });
-
-    try {
-      const migrator = new Migrator({
-        db,
-        provider: {
-          async getMigrations() {
-            return {
-              '001_initial_schema': { up: m001.up, down: m001.down },
-              '002_metrics_raw': { up: m002.up, down: m002.down },
-            };
-          },
-        },
-      });
-
-      const { results, error } = await migrator.migrateToLatest();
-
-      const applied = results?.filter((r) => r.status === 'Success') ?? [];
-      if (applied.length > 0) {
-        this.logger.info(
-          { migrations: applied.map((r) => r.migrationName) },
-          `Applied ${applied.length} Omnitron migration(s)`
-        );
-      } else {
-        this.logger.debug('Omnitron database schema is up to date');
-      }
-
-      if (error) {
-        this.logger.error({ error: String(error) }, 'Migration error');
-      }
-    } finally {
-      await db.destroy();
-    }
+    const { runOmnitronMigrations } = await import('../database/migration-runner.js');
+    await runOmnitronMigrations(this.logger);
   }
 
   // ===========================================================================

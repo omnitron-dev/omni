@@ -1384,11 +1384,6 @@ export class ProcessPool<T> {
             }
           }
 
-          // Also get metrics
-          if ('__getMetrics' in worker.proxy) {
-            const raw = (await (worker.proxy as any).__getMetrics()) as IProcessMetrics;
-            worker.metrics = this.withDerivedPercentages(worker.id, raw);
-          }
         } catch (error) {
           // Edge-transition log: WARN on first failure, DEBUG on
           // continuing, ERROR exactly once at the persistent
@@ -1398,6 +1393,33 @@ export class ProcessPool<T> {
           this.emitHealthDecision(decision, worker.id, error);
           worker.health = 'unhealthy';
           worker.consecutiveFailures++;
+        }
+
+        // Metrics are collected separately from the health verdict, and
+        // deliberately so.
+        //
+        // This call used to sit inside the try above, so a failed metrics call
+        // marked the worker UNHEALTHY and counted toward auto-replacement: a
+        // telemetry hiccup restarted a worker that was answering its health
+        // probe perfectly well. Health and telemetry are different questions.
+        //
+        // There is also no way to feature-detect the method first. The guard
+        // that used to stand here, `'__getMetrics' in worker.proxy`, is not a
+        // guard at all — `worker.proxy` is a Netron interface proxy, and `in`
+        // answers true for every name. It has been passing by luck, because the
+        // method happens to exist. Attempting the call and treating failure as
+        // "no metrics this tick" is the honest equivalent, and the only one
+        // available through a proxy.
+        try {
+          const raw = (await (worker.proxy as { __getMetrics?: () => Promise<IProcessMetrics> })
+            .__getMetrics?.()) as IProcessMetrics | undefined;
+          if (raw) {
+            worker.metrics = this.withDerivedPercentages(worker.id, raw);
+          }
+        } catch (error) {
+          // Stale metrics are better than a wrong health verdict; the scaling
+          // rules already treat an absent percentage as unknown.
+          this.logger.debug({ workerId: worker.id, error }, 'Worker metrics unavailable this tick');
         }
 
         return previousHealth !== worker.health;
@@ -1673,12 +1695,23 @@ export class ProcessPool<T> {
           try {
             if ('__getMetrics' in worker.proxy) {
               const metrics = await (worker.proxy as any).__getMetrics();
-              if (metrics && typeof metrics.memory === 'number') {
-                worker.memoryUsage = metrics.memory;
-                worker.peakMemoryUsage = Math.max(worker.peakMemoryUsage, metrics.memory);
+              // Resident set, not heap. `memoryLimit` is documented as "Memory
+              // limit per worker ... Workers exceeding this limit will be
+              // recycled" — that is the process's footprint on the machine, and
+              // `heapUsed` is a fraction of it (66 MB heap against 149 MB
+              // resident on one live worker). Recycling on heap meant a worker
+              // holding three times its configured limit in real memory was
+              // never recycled, and the "using N MB of 512 MB" line reported to
+              // operators understated by the same factor. Heap stays available
+              // as a fallback for reporters that do not send rss.
+              const footprint =
+                typeof metrics?.memoryRss === 'number' ? metrics.memoryRss : metrics?.memory;
+              if (typeof footprint === 'number') {
+                worker.memoryUsage = footprint;
+                worker.peakMemoryUsage = Math.max(worker.peakMemoryUsage, footprint);
 
                 // Update weight based on memory pressure (lower weight = less likely to be selected)
-                const memoryRatio = metrics.memory / this.memoryLimitBytes;
+                const memoryRatio = footprint / this.memoryLimitBytes;
                 if (memoryRatio > 0.9) {
                   worker.weight = 10; // Very low weight when memory is critical
                 } else if (memoryRatio > 0.7) {

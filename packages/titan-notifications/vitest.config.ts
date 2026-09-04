@@ -27,13 +27,14 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     clearMocks: true,
-    // Every suite in this package talks to a shared Redis and most of them call
-    // `flushdb()` in beforeEach. Twenty-two suites ask for logical DB 0 and
-    // thirty-one for DB 1, so running files in parallel means they erase each
-    // other's streams mid-test — which surfaced as subscribers receiving
-    // nothing at all. Redis has 16 logical DBs and this package has 33 spec
-    // files, so per-file isolation is not available; run them one at a time.
-    fileParallelism: false,
+    // Suites here share one Redis and most call `flushdb()` in beforeEach, so
+    // two files must never run concurrently against the same logical database.
+    // Each worker gets its own (see toTestDb in test/rotif/helpers/test-utils),
+    // and this cap is the other half of that guarantee: 8 workers, 8 databases.
+    // Serialising the whole package instead was correct but unusable — the
+    // Redis waits stopped overlapping and three files took eight minutes.
+    maxWorkers: 8,
+    minWorkers: 1,
     alias: [
       { find: /^@omnitron-dev\/titan\/nexus$/, replacement: resolve(__dirname, '../titan/src/nexus/index.ts') },
       { find: /^@omnitron-dev\/titan\/nexus\/(.*)$/, replacement: resolve(__dirname, '../titan/src/nexus/$1') },

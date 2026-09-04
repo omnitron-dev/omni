@@ -10,7 +10,7 @@ import { WebSocketServerAdapter } from '../../../src/netron/transport/websocket/
 import type { TransportOptions } from '../../../src/netron/transport/types.js';
 
 // Skip HTTP server tests in CI/mock mode
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 
 describe('Path Prefix Support', () => {

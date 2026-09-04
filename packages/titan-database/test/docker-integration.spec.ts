@@ -5,7 +5,7 @@
  * with automatic fallback to SQLite when Docker is not available
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { isDockerAvailable as isDockerAvailableUtil } from '@omnitron-dev/testing/titan';
 
 const skipIntegrationTests =
@@ -21,7 +21,7 @@ import {
   Repository,
   InjectRepository,
 } from '../src/index.js';
-import { createTestDatabase, withTestDatabase, isDockerAvailable } from '@omnitron-dev/testing/titan';
+import { createTestDatabase, getRecommendedTestDatabase, withTestDatabase, isDockerAvailable } from '@omnitron-dev/testing/titan';
 import type { DatabaseTestContext } from '@omnitron-dev/testing/titan';
 import { Application } from '@omnitron-dev/titan/application';
 import { Module, Injectable } from '@omnitron-dev/titan/decorators';
@@ -325,27 +325,19 @@ describeOrSkip('Docker Database Integration', () => {
     });
 
     it('should use SQLite in CI environments by default', async () => {
-      // Simulate CI environment
-      const originalCI = process.env.CI;
-      process.env.CI = 'true';
-
-      const context = await createTestDatabase({
-        dialect: 'postgres',
-        verbose: true,
-      });
-
-      // In CI, should prefer SQLite for speed
-      if (process.env.CI === 'true') {
-        console.log('CI detected - using SQLite');
-      }
-
-      await context.cleanup();
-
-      // Restore environment
-      if (originalCI !== undefined) {
-        process.env.CI = originalCI;
-      } else {
-        delete process.env.CI;
+      // `createTestDatabase` never consulted CI — `getRecommendedTestDatabase`
+      // is the function that does. The old version of this test called
+      // createTestDatabase, asserted nothing, and mutated process.env.CI
+      // globally for the duration of the run, which made every CI-gated suite
+      // in other packages skip itself mid-flight.
+      vi.stubEnv('CI', 'true');
+      try {
+        const context = await getRecommendedTestDatabase({ dialect: 'postgres', verbose: true });
+        expect(context.dialect).toBe('sqlite');
+        expect(context.isDocker).toBe(false);
+        await context.cleanup();
+      } finally {
+        vi.unstubAllEnvs();
       }
     });
   });

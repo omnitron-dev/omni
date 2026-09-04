@@ -6,7 +6,7 @@
 import { describe, it } from 'vitest';
 
 // Skip this test - ioredis-mock is not installed
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 if (skipTests) {
   console.log('⏭️ Skipping discovery-address-detection.spec.ts - requires ioredis-mock dependency');
 }

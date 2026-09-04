@@ -17,7 +17,7 @@ import { HttpTransportClient } from '../../../../src/netron/transport/http/clien
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping client-comprehensive.spec.ts - integration test requiring real HTTP');

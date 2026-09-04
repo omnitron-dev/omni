@@ -39,7 +39,7 @@ function readRedisInfoFile(): { port?: number; isMock?: boolean } | null {
  * Check if we're in mock mode (no real Redis available)
  */
 export function isRedisInMockMode(): boolean {
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true') {
     return true;
   }
   return readRedisInfoFile()?.isMock === true;

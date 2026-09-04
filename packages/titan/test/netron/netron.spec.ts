@@ -9,7 +9,7 @@ import { RemotePeer } from '../../src/netron/remote-peer.js';
 import { Service, Public } from '../../src/decorators/index.js';
 import { createLogger } from '../utils/test-logger.js';
 
-const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
 if (skipIntegrationTests) {
   console.log('⏭️  Skipping netron.spec.ts - integration test with async event handling');

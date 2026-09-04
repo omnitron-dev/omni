@@ -11,7 +11,7 @@ import {
 } from '../../src/netron/index';
 import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 if (skipTests) {
   console.log('⏭️  Skipping integration-netron-streams.spec.ts - integration test');
 }

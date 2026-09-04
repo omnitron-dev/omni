@@ -20,7 +20,7 @@ import type {
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 // Skip all tests in this file if running in mock mode or CI
-const SKIP_DOCKER = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+const SKIP_DOCKER = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 if (SKIP_DOCKER) {
   console.log('⏭️ Skipping rotif-transport.docker.spec.ts - requires Docker');
 }

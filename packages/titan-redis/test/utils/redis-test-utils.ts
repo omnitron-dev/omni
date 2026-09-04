@@ -58,7 +58,7 @@ function getRedisInfo(): { port?: number; isMock?: boolean; url?: string } | nul
  */
 export function isRedisInMockMode(): boolean {
   const info = getRedisInfo();
-  return info?.isMock === true || process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+  return info?.isMock === true || process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 }
 
 /**
@@ -108,7 +108,7 @@ export function getTestRedisConfig(db = 15): RedisTestConfig {
   }
 
   // Check if USE_MOCK_REDIS is set
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true') {
     return {
       url: 'mock://localhost',
       host: 'localhost',

@@ -17,7 +17,7 @@ import { join } from 'node:path';
  * Check if real Redis is available from global setup
  */
 function isRealRedisAvailable(): boolean {
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true') {
     return false;
   }
   try {

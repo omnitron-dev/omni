@@ -21,7 +21,7 @@ import {
 } from './utils/redis-test-utils.js';
 
 // Skip tests if Docker is not available or in mock mode
-const skipDockerTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || !isDockerAvailable();
+const skipDockerTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true' || !isDockerAvailable();
 if (skipDockerTests && !isRedisInMockMode()) {
   console.log('⏭️ Skipping redis.utils.spec.ts Docker tests - requires Docker');
 }

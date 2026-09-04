@@ -39,14 +39,17 @@ import { useStackContext } from 'src/hooks/use-stack-context';
 // Types
 // ---------------------------------------------------------------------------
 
-interface Container {
-  id: string;
-  name: string;
-  image: string;
-  status: 'running' | 'exited' | 'created' | 'restarting' | 'paused';
-  health: 'healthy' | 'unhealthy' | 'none' | 'starting';
-  ports: string[];
-  createdAt: string;
+// The daemon's own shape. The page used to declare a lookalike with `id`,
+// `createdAt` and `ports: string[]`; the service actually returns
+// `containerId`, `startedAt` and `ports` as a name→port map, so half these
+// fields were always undefined at runtime.
+type Container = import('@omnitron-dev/omnitron/dto/services').ContainerState;
+
+/** "5432→5432, 6379→6379" — or '--' when the container publishes nothing. */
+function formatPorts(ports: Container['ports']): string {
+  const entries = Object.entries(ports ?? {});
+  if (entries.length === 0) return '--';
+  return entries.map(([name, port]) => `${name}:${port}`).join(', ');
 }
 
 // ---------------------------------------------------------------------------
@@ -217,27 +220,27 @@ export default function ContainersPage() {
   const stoppedCount = containers.filter((c) => c.status === 'exited').length;
   const unhealthyCount = containers.filter((c) => c.health === 'unhealthy').length;
 
-  const handleStart = async (containerId: string) => {
+  const handleStart = async (containerName: string) => {
     try {
-      await infra.startContainer(containerId);
+      await infra.startContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to start container');
     }
   };
 
-  const handleStop = async (containerId: string) => {
+  const handleStop = async (containerName: string) => {
     try {
-      await infra.stopContainer(containerId);
+      await infra.stopContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to stop container');
     }
   };
 
-  const handleRemove = async (containerId: string) => {
+  const handleRemove = async (containerName: string) => {
     try {
-      await infra.removeContainer(containerId);
+      await infra.removeContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to remove container');
@@ -246,9 +249,9 @@ export default function ContainersPage() {
 
   const handleViewLogs = async (container: Container) => {
     try {
-      const lines = await infra.getContainerLogs(container.id, 100);
+      const { logs } = await infra.getContainerLogs({ name: container.name, tail: 200 });
       setLogModalContainer(container.name);
-      setLogModalLines(Array.isArray(lines) ? lines : []);
+      setLogModalLines(logs ? logs.split('\n') : []);
       setLogModalOpen(true);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to fetch container logs');
@@ -348,7 +351,7 @@ export default function ContainersPage() {
               ) : (
                 containers.map((container) => (
                   <TableRow
-                    key={container.id}
+                    key={container.name}
                     hover
                     sx={{ '&:last-child td': { borderBottom: 0 } }}
                   >
@@ -378,9 +381,9 @@ export default function ContainersPage() {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={container.health}
+                        label={container.health ?? 'none'}
                         size="small"
-                        color={HEALTH_COLORS[container.health] ?? 'default'}
+                        color={HEALTH_COLORS[container.health ?? 'none'] ?? 'default'}
                         variant="outlined"
                         sx={{ textTransform: 'capitalize' }}
                       />
@@ -390,7 +393,7 @@ export default function ContainersPage() {
                         variant="caption"
                         sx={{ fontFamily: 'monospace', fontSize: 12 }}
                       >
-                        {container.ports.length > 0 ? container.ports.join(', ') : '--'}
+                        {formatPorts(container.ports)}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
@@ -401,7 +404,7 @@ export default function ContainersPage() {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => handleRemove(container.id)}
+                            onClick={() => handleRemove(container.name)}
                           >
                             <CloseIcon fontSize="small" />
                           </IconButton>
@@ -419,7 +422,7 @@ export default function ContainersPage() {
                             <IconButton
                               size="small"
                               color="success"
-                              onClick={() => handleStart(container.id)}
+                              onClick={() => handleStart(container.name)}
                             >
                               <PlayIcon fontSize="small" />
                             </IconButton>
@@ -430,7 +433,7 @@ export default function ContainersPage() {
                             <IconButton
                               size="small"
                               color="warning"
-                              onClick={() => handleStop(container.id)}
+                              onClick={() => handleStop(container.name)}
                             >
                               <StopIcon fontSize="small" />
                             </IconButton>

@@ -8,9 +8,10 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import type { DeployService, DeployResult, DeploymentRecord } from './deploy.service.js';
+import type { IOmnitronDeployService } from '../shared/dto/services.js';
 
 @Service({ name: 'OmnitronDeploy' })
-export class DeployRpcService {
+export class DeployRpcService implements IOmnitronDeployService {
   constructor(private readonly deploy: DeployService) {}
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -31,5 +32,11 @@ export class DeployRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getHistory(data?: { app?: string; limit?: number }): Promise<DeploymentRecord[]> {
     return this.deploy.getHistory(data?.app, data?.limit);
+  }
+
+  /** Applications the daemon manages, for the console's deploy dialog. */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async listDeployableApps(): Promise<string[]> {
+    return this.deploy.listDeployableApps();
   }
 }

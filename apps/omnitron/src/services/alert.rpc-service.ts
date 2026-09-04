@@ -6,10 +6,12 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
-import type { AlertService, AlertRule, AlertEvent, AlertSummary } from './alert.service.js';
+import type { AlertService } from './alert.service.js';
+import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput } from '../shared/dto/alerts.js';
+import type { IOmnitronAlertsService } from '../shared/dto/services.js';
 
 @Service({ name: 'OmnitronAlerts' })
-export class AlertRpcService {
+export class AlertRpcService implements IOmnitronAlertsService {
   constructor(private readonly alertService: AlertService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })
@@ -18,14 +20,7 @@ export class AlertRpcService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async createRule(data: {
-    name: string;
-    expression: string;
-    type: string;
-    severity: string;
-    forDuration?: number;
-    enabled?: boolean;
-  }): Promise<AlertRule> {
+  async createRule(data: CreateAlertRuleInput): Promise<AlertRule> {
     return this.alertService.createRule({
       name: data.name,
       expression: data.expression,
@@ -58,6 +53,12 @@ export class AlertRpcService {
   async acknowledgeAlert(data: { alertId: string; acknowledgedBy: string }): Promise<{ success: boolean }> {
     await this.alertService.acknowledgeAlert(data.alertId, data.acknowledgedBy);
     return { success: true };
+  }
+
+  /** Firing + acknowledged alerts joined with their rule — what the console lists. */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getActiveAlerts(data?: { limit?: number }): Promise<ActiveAlert[]> {
+    return this.alertService.getActiveAlerts(data?.limit);
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

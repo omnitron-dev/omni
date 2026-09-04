@@ -15,7 +15,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
-import { infra } from 'src/netron/client';
+import { fleet } from 'src/netron/client';
 import { useTopologyStore } from './topology-store';
 
 // ---------------------------------------------------------------------------
@@ -76,14 +76,19 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
     setError(null);
 
     try {
-      await infra.addServer({
-        alias: alias.trim(),
-        host: host.trim(),
+      // Registering a remote server IS registering a fleet node — there is no
+      // `infra.addServer` and never was, so this dialog 404'd on every submit.
+      await fleet.registerNode({
+        hostname: alias.trim(),
+        address: host.trim(),
         port: parseInt(port, 10) || 22,
-        tags: tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
+        role: role as never,
+        metadata: {
+          tags: tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean),
+        },
       });
       await fetchAll();
       resetForm();

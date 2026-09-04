@@ -38,34 +38,14 @@ export interface DeployRequest {
   deployedBy?: string | undefined;
 }
 
-export interface DeployResult {
-  id: string;
-  app: string;
-  version: string;
-  previousVersion: string | null;
-  strategy: string;
-  status: 'success' | 'failed' | 'rolled_back';
-  duration: number;
-  error?: string | undefined;
-}
-
-export interface DeploymentRecord {
-  id: string;
-  app: string;
-  version: string;
-  previousVersion: string | null;
-  strategy: string;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  deployedBy: string | null;
-}
+export type { DeployResult, DeploymentRecord } from '../shared/dto/deploy.js';
 
 // =============================================================================
 // @xec-sh/ops Deployer — loaded dynamically
 // =============================================================================
 
 import { loadXecOps } from '../shared/xec-loader.js';
+import type { DeployResult, DeploymentRecord } from '../shared/dto/deploy.js';
 
 // =============================================================================
 // Service
@@ -84,6 +64,21 @@ export class DeployService {
     @Optional() @Inject(HEALTH_CHECK_SERVICE_TOKEN) private readonly healthCheck?: HealthCheckService | undefined,
   ) {
     this.logger = loggerModule.logger;
+  }
+
+  /**
+   * Names of the applications this daemon can deploy.
+   *
+   * The console's deploy dialog needs a list to choose from and was calling
+   * a `listDeployableApps()` that did not exist, so the dialog offered
+   * nothing and the page logged a 404 on every load. The orchestrator
+   * already knows the managed set — that is the answer.
+   */
+  async listDeployableApps(): Promise<string[]> {
+    return this.orchestrator
+      .list()
+      .map((app) => app.name)
+      .sort();
   }
 
   /**

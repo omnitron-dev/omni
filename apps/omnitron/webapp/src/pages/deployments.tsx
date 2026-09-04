@@ -24,21 +24,21 @@ import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { Breadcrumbs } from '@omnitron-dev/prism';
 import { deploy } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
+import { useAuthStore } from 'src/auth/store';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface Deployment {
-  id: string;
-  app: string;
-  version: string;
-  previousVersion: string;
-  strategy: 'all-at-once' | 'rolling' | 'blue-green' | 'canary';
-  status: 'success' | 'failed' | 'deploying' | 'rolled_back';
-  startedAt: string;
-  duration: number; // ms
-  deployedBy: string;
+// The daemon's shape, not a local guess. The page used to declare its own
+// `Deployment` with a `duration` field the server has never sent — duration
+// is derived from startedAt/completedAt, which the record does carry.
+type Deployment = import('@omnitron-dev/omnitron/dto/services').DeploymentRecord;
+
+/** Elapsed ms for a finished deployment; null while it is still running. */
+function deploymentDuration(dep: Deployment): number | null {
+  if (!dep.completedAt) return null;
+  return new Date(dep.completedAt).getTime() - new Date(dep.startedAt).getTime();
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ export default function DeploymentsPage() {
   const fetchDeployments = useCallback(async () => {
     try {
       const [history, apps] = await Promise.allSettled([
-        deploy.listDeployments(),
+        deploy.getHistory(),
         deploy.listDeployableApps(),
       ]);
 
@@ -205,7 +205,9 @@ export default function DeploymentsPage() {
 
   const handleDeploy = async (app: string, version: string, strategy: string) => {
     try {
-      await deploy.deploy({ app, version, strategy });
+      // `deployApp`, not `deploy` — and the server records who did it.
+      const deployedBy = useAuthStore.getState().user?.username ?? 'unknown';
+      await deploy.deployApp({ app, version, strategy, deployedBy });
       fetchDeployments();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to start deployment');
@@ -334,14 +336,17 @@ export default function DeploymentsPage() {
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                        {formatDuration(dep.duration)}
+                        {(() => {
+                          const ms = deploymentDuration(dep);
+                          return ms === null ? '--' : formatDuration(ms);
+                        })()}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" sx={{
                         color: "text.secondary"
                       }}>
-                        {dep.deployedBy}
+                        {dep.deployedBy ?? '--'}
                       </Typography>
                     </TableCell>
                   </TableRow>

@@ -82,6 +82,20 @@ export interface IDaemonService {
 // ============================================================================
 
 import type { OmnitronSignInResult, OmnitronAuthUser, OmnitronActiveSession } from './auth.js';
+import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput } from './alerts.js';
+import type { DeployResult, DeploymentRecord } from './deploy.js';
+import type { ContainerState, InfrastructureState } from '../../infrastructure/types.js';
+import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.js';
+
+export type { FleetNode, FleetSummary, NodeRegistration, NodeRole };
+export type { NodeStatus } from './fleet.js';
+
+export type { ContainerState, InfrastructureState };
+
+export type { DeployResult, DeploymentRecord };
+
+export type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput };
+export type { AlertSeverity, AlertRuleType, AlertEventStatus } from './alerts.js';
 
 import type { LogQueryResult, LogStats, LogEntryRow } from './logs.js';
 
@@ -239,4 +253,86 @@ export interface IProjectRpcService {
   }): Promise<IStackInfo>;
 
   deleteStack(data: { project: string; stack: string }): Promise<{ success: boolean }>;
+}
+
+// ============================================================================
+// Alerts Service Interface
+// ============================================================================
+
+/**
+ * Alert rule and event management.
+ *
+ * The console used to reach this service through
+ * `Record<string, (...args: any[]) => any>`, so nothing checked that the
+ * calls existed. They did not: the alerts page called `listRules()` and
+ * `listActiveAlerts()` (neither exists anywhere in the codebase) and passed
+ * positional arguments to `updateRule` / `deleteRule` / `acknowledgeAlert`,
+ * which take a single object. Every request 404'd — reproduced in the
+ * browser before this interface was introduced.
+ */
+export interface IOmnitronAlertsService {
+  getRules(): Promise<AlertRule[]>;
+  createRule(data: CreateAlertRuleInput): Promise<AlertRule>;
+  updateRule(data: { id: string; updates: Partial<AlertRule> }): Promise<AlertRule>;
+  deleteRule(data: { id: string }): Promise<{ success: boolean }>;
+  getEvents(data?: { ruleId?: string; status?: string; limit?: number }): Promise<AlertEvent[]>;
+  getActiveAlerts(data?: { limit?: number }): Promise<ActiveAlert[]>;
+  acknowledgeAlert(data: { alertId: string; acknowledgedBy: string }): Promise<{ success: boolean }>;
+  getSummary(): Promise<AlertSummary>;
+}
+
+// ============================================================================
+// Deploy Service Interface
+// ============================================================================
+
+/**
+ * Application deployment, rollback and history.
+ *
+ * Another contract the console reached through `Record<string, any>`: the
+ * deployments page called `listDeployments()` and `listDeployableApps()`
+ * (the first is named `getHistory` here, the second did not exist) and
+ * `deploy()` (named `deployApp`). All three 404'd.
+ */
+export interface IOmnitronDeployService {
+  deployApp(data: { app: string; version: string; strategy?: string; deployedBy?: string }): Promise<DeployResult>;
+  rollback(data: { app: string; deployedBy?: string }): Promise<DeployResult>;
+  getHistory(data?: { app?: string; limit?: number }): Promise<DeploymentRecord[]>;
+  listDeployableApps(): Promise<string[]>;
+}
+
+// ============================================================================
+// Infrastructure Service Interface
+// ============================================================================
+
+/**
+ * Managed infrastructure containers.
+ *
+ * `ContainerState` / `InfrastructureState` come from the infrastructure
+ * module's own type file, which is types-only — no decorators, safe for the
+ * console's build.
+ */
+export interface IOmnitronInfraService {
+  getState(): Promise<InfrastructureState | null>;
+  listContainers(): Promise<ContainerState[]>;
+  getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null>;
+  startContainer(data: { name: string }): Promise<{ success: boolean }>;
+  stopContainer(data: { name: string; timeout?: number }): Promise<{ success: boolean }>;
+  removeContainer(data: { name: string }): Promise<{ success: boolean }>;
+  getContainerLogs(data: { name: string; tail?: number }): Promise<{ logs: string }>;
+}
+
+// ============================================================================
+// Fleet Service Interface
+// ============================================================================
+
+/** Remote node registration and fleet topology. */
+export interface IOmnitronFleetService {
+  listNodes(): Promise<FleetNode[]>;
+  getSummary(): Promise<FleetSummary>;
+  registerNode(data: NodeRegistration): Promise<FleetNode>;
+  removeNode(data: { nodeId: string }): Promise<{ success: boolean }>;
+  getNode(data: { nodeId: string }): Promise<FleetNode | null>;
+  setRole(data: { nodeId: string; role: NodeRole }): Promise<FleetNode>;
+  drainNode(data: { nodeId: string }): Promise<{ success: boolean }>;
+  heartbeat(data: { nodeId: string }): Promise<{ ok: boolean }>;
 }

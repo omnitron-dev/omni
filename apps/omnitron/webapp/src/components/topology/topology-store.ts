@@ -92,17 +92,16 @@ export interface ServerNodeData {
 
 export type TopologyNodeData = InfraNodeData | AppNodeData | GatewayNodeData | ServerNodeData;
 
-export interface FleetNode {
-  id: string;
-  hostname: string;
-  address: string;
-  port: number;
-  role: 'leader' | 'follower' | 'database' | 'cache';
-  status: 'online' | 'offline' | 'draining';
-  lastHeartbeat: string;
-  cpu?: number;
-  memory?: number;
-  apps?: number;
+// The daemon's shape. The local copy listed four roles where the server has
+// seven ('candidate', 'gateway', 'worker' were missing) and three statuses
+// where the server has four ('joining'), so any node in one of those states
+// was typed as impossible while rendering perfectly well at runtime.
+export type FleetNode = import('@omnitron-dev/omnitron/dto/services').FleetNode;
+
+/** Read a numeric field out of a node's metadata bag, if present. */
+function numericMetadata(metadata: FleetNode['metadata'], key: string): number | undefined {
+  const value = metadata?.[key];
+  return typeof value === 'number' ? value : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -353,8 +352,11 @@ function buildFlowGraph(
         address: server.address,
         role: server.role,
         status: server.status,
-        cpu: server.cpu,
-        memory: server.memory,
+        // FleetNode carries no cpu/memory of its own — the store used to read
+        // `server.cpu` / `server.memory`, which were always undefined. The
+        // node's metadata bag is where a health reporter would put them.
+        cpu: numericMetadata(server.metadata, 'cpu'),
+        memory: numericMetadata(server.metadata, 'memory'),
         apps: [],
       },
     });

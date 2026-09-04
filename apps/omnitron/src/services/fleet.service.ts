@@ -21,42 +21,13 @@ import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { OMNITRON_DB_TOKEN, FLEET_SELF_NODE_ID_TOKEN } from '../shared/tokens.js';
 import type { OmnitronDatabase } from '../database/schema.js';
+import type { NodeRole, FleetNode, FleetSummary, NodeRegistration } from '../shared/dto/fleet.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type NodeRole = 'leader' | 'follower' | 'candidate' | 'database' | 'cache' | 'gateway' | 'worker';
-export type NodeStatus = 'online' | 'offline' | 'draining' | 'joining';
-
-export interface FleetNode {
-  id: string;
-  hostname: string;
-  address: string;
-  port: number;
-  role: NodeRole;
-  status: NodeStatus;
-  lastHeartbeat: string | null;
-  metadata: Record<string, unknown> | null;
-  apps?: string[];
-  createdAt: string;
-}
-
-export interface FleetSummary {
-  totalNodes: number;
-  onlineNodes: number;
-  offlineNodes: number;
-  leader: FleetNode | null;
-  nodes: FleetNode[];
-}
-
-export interface NodeRegistration {
-  hostname: string;
-  address: string;
-  port: number;
-  role?: NodeRole;
-  metadata?: Record<string, unknown>;
-}
+export type { NodeRole, NodeStatus, FleetNode, FleetSummary, NodeRegistration } from '../shared/dto/fleet.js';
 
 // =============================================================================
 // Service

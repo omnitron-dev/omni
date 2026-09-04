@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/titan",
   "version": "0.2.0",
-  "description": "Enterprise backend framework — core DI, Netron RPC, decorators, and validation",
+  "description": "Enterprise backend framework \u2014 core DI, Netron RPC, decorators, and validation",
   "keywords": [
     "backend",
     "framework",
@@ -147,8 +147,6 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
     "@playwright/test": "^1.62.1",
     "@types/bun": "latest",
     "@types/node": "25.6.0",

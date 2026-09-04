@@ -1,8 +1,21 @@
 /**
  * Cache Types Tests
  *
- * Type validation tests for cache module types.
- * These tests validate the shape and contracts of the type system.
+ * These check that the declared option shapes accept the literals below — a
+ * compile-time property, asserted at runtime. 25 of the 30 tests here are of
+ * the form "build an object literal, then read a field back from it", which
+ * cannot fail unless TypeScript itself does.
+ *
+ * Worth stating plainly, because the file's name invites the opposite reading:
+ * a green run here says NOTHING about whether an option is implemented. Six of
+ * the fields exercised below are not — `staleWhileRevalidate` (both the per-get
+ * flag and the module-level window), `backgroundRefresh`, `statsInterval`,
+ * `warmingStrategies` and the per-set `onExpire` are declared, documented and
+ * read by nothing. Each is now marked NOT IMPLEMENTED at its declaration; these
+ * tests passed the whole time regardless, and would keep passing if the rest
+ * were unimplemented too.
+ *
+ * Behaviour belongs in the suites that drive a cache.
  */
 
 import { describe, it, expect } from 'vitest';

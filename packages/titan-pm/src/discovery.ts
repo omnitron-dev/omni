@@ -39,7 +39,7 @@ export interface DiscoveredProcess {
   managed: boolean;
   /** Raw env, useful for callers that need other tags (PORT, etc.). */
   env: Readonly<Record<string, string>>;
-  /** Seconds since process started (ps `etimes`). 0 when unknown. */
+  /** Seconds since process started (ps `etime`). 0 when unknown. */
   elapsedSeconds: number;
 }
 
@@ -140,23 +140,84 @@ function parseEnvironSpace(raw: string): Record<string, string> {
   return env;
 }
 
-/** Walk every pid on the host via `ps`. */
+/**
+ * Parse the `etime` column into seconds.
+ *
+ * `etime` is the *formatted* elapsed-time field, and unlike Linux-only
+ * `etimes` it exists on Darwin/BSD too. Formats, widest first:
+ *
+ *   `DD-HH:MM:SS`  multi-day
+ *   `HH:MM:SS`     under a day
+ *   `MM:SS`        under an hour
+ *
+ * Returns 0 for anything unrecognised — callers treat elapsed time as a
+ * hint, never as a correctness input.
+ */
+export function parseEtime(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed === '') return 0;
+
+  let days = 0;
+  let rest = trimmed;
+  const dash = rest.indexOf('-');
+  if (dash > 0) {
+    days = Number(rest.slice(0, dash));
+    rest = rest.slice(dash + 1);
+    if (!Number.isFinite(days)) return 0;
+  }
+
+  const parts = rest.split(':');
+  if (parts.length < 2 || parts.length > 3) return 0;
+
+  let seconds = 0;
+  for (const part of parts) {
+    const n = Number(part);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    seconds = seconds * 60 + n;
+  }
+  return days * 86_400 + seconds;
+}
+
+/** Parse the output of `ps -eo pid,ppid[,etime]`. */
+export function parsePsRows(raw: string): Array<{ pid: number; ppid: number; elapsedSeconds: number }> {
+  const out: Array<{ pid: number; ppid: number; elapsedSeconds: number }> = [];
+  const lines = raw.split('\n');
+  // Line 0 is the `PID PPID ELAPSED` header.
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    const parts = line.split(/\s+/);
+    const pid = Number(parts[0]);
+    const ppid = Number(parts[1]);
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+    // The elapsed column is absent when we fell back to the minimal `ps`.
+    out.push({ pid, ppid, elapsedSeconds: parts[2] === undefined ? 0 : parseEtime(parts[2]) });
+  }
+  return out;
+}
+
+/**
+ * Walk every pid on the host via `ps`.
+ *
+ * We ask for `etime`, NOT `etimes`: `etimes` is a procps (Linux) extension.
+ * On macOS/BSD `ps -eo pid,ppid,etimes` fails outright — `ps: etimes: keyword
+ * not found`, exit 1 — so `execSync` threw, the bare `catch` swallowed it, and
+ * `discoverManagedProcesses()` returned an empty list on every Darwin host.
+ * That is a silent total failure of cross-daemon-restart reconciliation on a
+ * platform this module's own header claims to support.
+ *
+ * If even `etime` is unavailable (a minimal BusyBox `ps`, say) we degrade to
+ * `pid,ppid` alone: discovery still works, only the age hint is lost.
+ */
 function listAllPids(): Array<{ pid: number; ppid: number; elapsedSeconds: number }> {
+  const opts = { encoding: 'utf-8' as const, maxBuffer: 4 * 1024 * 1024 };
   try {
-    const raw = execSync('ps -eo pid,ppid,etimes', { encoding: 'utf-8', maxBuffer: 4 * 1024 * 1024 });
-    const out: Array<{ pid: number; ppid: number; elapsedSeconds: number }> = [];
-    const lines = raw.split('\n');
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i]?.trim();
-      if (!line) continue;
-      const parts = line.split(/\s+/);
-      const pid = Number(parts[0]);
-      const ppid = Number(parts[1]);
-      const elapsedSeconds = Number(parts[2] ?? 0);
-      if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
-      out.push({ pid, ppid, elapsedSeconds });
-    }
-    return out;
+    return parsePsRows(execSync('ps -eo pid,ppid,etime', opts));
+  } catch {
+    /* fall through to the minimal form */
+  }
+  try {
+    return parsePsRows(execSync('ps -eo pid,ppid', opts));
   } catch {
     return [];
   }

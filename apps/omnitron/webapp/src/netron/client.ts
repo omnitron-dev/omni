@@ -11,7 +11,6 @@ import {
   createMultiBackendClient,
   AuthenticationClient,
   SessionTokenStorage,
-  createSimpleAuthErrorMiddleware,
   MiddlewareStage,
   type BackendSchema,
 } from '@omnitron-dev/prism/netron';
@@ -102,20 +101,47 @@ export const daemonClient = createMultiBackendClient<OmnitronConsoleSchema>({
 // expiry when that fails, so a recoverable session is not thrown away.
 // -----------------------------------------------------------------------------
 
+// NOTE ON THE IMPLEMENTATION
+//
+// `createSimpleAuthErrorMiddleware` in netron-browser looks like the right
+// tool and is documented for exactly this, but it cannot fire on the HTTP
+// client: it is written as a wrapper (`try { await next() } catch`), while
+// the client invokes the ERROR stage AFTER catching the failure itself and
+// parks it in `ctx.error`. `next()` therefore never throws and the handler's
+// catch never runs. Reported to netron-browser's owner; once the shared
+// middleware reads `ctx.error`, this collapses into a call to it.
+//
+// Until then the console carries the minimum that makes the symptom go away,
+// and no refresh logic — the session manager already owns that.
 daemonClient.use(
-  createSimpleAuthErrorMiddleware(jwtAuth, {
-    onSessionExpired: () => {
-      // Deliberately a full navigation rather than a router push: the whole
-      // client state is derived from a session that no longer exists.
-      if (typeof window === 'undefined') return;
-      if (window.location.pathname.startsWith('/auth/')) return;
-      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
-    },
-  }),
-  { name: 'auth-error-handler', priority: 10 },
+  async (ctx, next) => {
+    await next();
+
+    const status = errorStatus(ctx.error);
+    if (status !== 401) return;
+
+    // Deliberately a full navigation rather than a router push: the whole
+    // client state derives from a session that no longer exists.
+    if (typeof window === 'undefined') return;
+    if (window.location.pathname.startsWith('/auth/')) return;
+
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
+  },
+  { name: 'session-expired-redirect', priority: 10 },
   MiddlewareStage.ERROR,
 );
+
+/** Pull an HTTP status out of the several shapes a Netron error can take. */
+function errorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as Record<string, any>;
+  const candidates = [e['status'], e['statusCode'], e['code'], e['response']?.status, e['data']?.code];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number') return candidate;
+  }
+  return undefined;
+}
 
 // =============================================================================
 // Typed Service Proxies — call methods directly
@@ -196,9 +222,22 @@ export function daemonRpc(method: string, ...args: any[]): Promise<any> {
 }
 
 /** @deprecated Use `auth` typed proxy instead */
-export function authRpc(method: string, ...args: any[]): Promise<any> {
+export function authRpc<M extends keyof IOmnitronAuthService>(
+  method: M,
+  ...args: Parameters<IOmnitronAuthService[M]>
+): Promise<ReturnType<IOmnitronAuthService[M]>> {
+  // Typed against the service contract. Untyped (`...args: any[]`), this
+  // helper let `refreshSession` be called with a bare string where the
+  // contract takes `{ sessionId }` — the server read `undefined`, returned
+  // `{ success: false }`, and session refresh silently never worked.
   const noAuth = method === 'signIn' || method === 'validateToken' || method === 'refreshSession';
-  return daemonClient.invoke('daemon', 'OmnitronAuth', method, args, noAuth ? { skipAuth: true } : undefined);
+  return daemonClient.invoke(
+    'daemon',
+    'OmnitronAuth',
+    method as string,
+    args,
+    noAuth ? { skipAuth: true } : undefined
+  ) as Promise<ReturnType<IOmnitronAuthService[M]>>;
 }
 
 /** @deprecated Use `logs` typed proxy instead */

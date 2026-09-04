@@ -75,7 +75,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      const result = await authRpc('validateSession', { sessionId });
+      // A live session does not imply a live token: the session lasts 24h,
+      // the JWT one hour. Restoring from a session alone produced a console
+      // that believed it was signed in while every RPC came back 401 — the
+      // dashboard rendered "Applications 0 / No apps yet" and the status bar
+      // said "Offline", which reads as "your applications died".
+      //
+      // Refresh first when the token is stale, so the app is handed a state
+      // it can actually act on.
+      if (sessionManager.isAccessTokenStale()) {
+        await sessionManager.refresh().catch(() => false);
+      }
+
+      const result = await authRpc('validateSession', { sessionId: getSessionId() ?? sessionId });
 
       if (result.valid && result.user) {
         const expiresAt = result.session?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -101,7 +113,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const refreshed = await sessionManager.refresh();
         if (refreshed) {
           // Retry validation after refresh
-          const retryResult = await authRpc('validateSession', { sessionId: getSessionId() });
+          const refreshedSessionId = getSessionId();
+          if (!refreshedSessionId) {
+            clearSession();
+            set({ initialized: true });
+            return;
+          }
+          const retryResult = await authRpc('validateSession', { sessionId: refreshedSessionId });
           if (retryResult.valid && retryResult.user) {
             set({
               user: {

@@ -76,6 +76,21 @@ class SessionManager {
   }
 
   /**
+   * True when the stored access token is absent, unreadable, or within
+   * `REFRESH_THRESHOLD_MS` of expiring.
+   *
+   * The session (24h) and the access token (1h) expire on different clocks,
+   * so a valid session says nothing about whether the token still works.
+   * Callers restoring state on page load need to ask this before trusting a
+   * session-validation result.
+   */
+  isAccessTokenStale(): boolean {
+    const expiry = this.getJwtExpiryMs();
+    if (expiry === null) return true;
+    return expiry - Date.now() <= REFRESH_THRESHOLD_MS;
+  }
+
+  /**
    * Refresh the session. Returns true if successful.
    * Coalesces concurrent calls — all callers share the same in-flight request.
    */
@@ -130,8 +145,15 @@ class SessionManager {
     const sid = this.getSessionId();
     if (!sid) return false;
 
-    // refreshSession is @Public — use skipAuth to bypass expired JWT
-    const result: any = await authRpc('refreshSession', sid);
+    // refreshSession is @Public — skipAuth bypasses the expired JWT.
+    //
+    // The argument is an OBJECT. It used to be passed as a bare string, so
+    // the server read `data.sessionId` off a string, got `undefined`, found
+    // no session and returned `{ success: false }` — every single time.
+    // Session refresh therefore never worked: an hour after signing in, the
+    // console's token expired and nothing renewed it, leaving a UI that
+    // believed it was signed in while every RPC returned 401.
+    const result = await authRpc('refreshSession', { sessionId: sid });
 
     if (!result?.success || !result?.result) return false;
 

@@ -127,6 +127,12 @@ export interface IOmnitronAuthService {
   validateSession(data: { sessionId: string }): Promise<{
     valid: boolean;
     user?: OmnitronAuthUser;
+    /**
+     * Session expiry, when the session exists. The implementation has always
+     * returned it — the console reads it to schedule a refresh — but the
+     * contract omitted it, so that read was unchecked.
+     */
+    session?: { expiresAt: string };
   }>;
 
   /** Auth context derived from JWT — no token param needed */

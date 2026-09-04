@@ -262,11 +262,33 @@ function BreadcrumbLink({
   return content;
 }
 
+/**
+ * Schemes an external reference link may use.
+ *
+ * `moreLinks` takes raw strings and renders them as anchors. If any consumer
+ * ever feeds it a value that originated server-side, `javascript:` and
+ * `data:` URLs become script execution on click. The component cannot know
+ * where its strings came from, so it refuses the dangerous ones outright —
+ * a library should be safe by default, not safe when used carefully.
+ */
+const SAFE_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+
+function isSafeExternalLink(href: string): boolean {
+  const trimmed = href.trim();
+  // Relative and protocol-relative URLs carry no scheme of their own.
+  if (trimmed.startsWith('/') || trimmed.startsWith('#')) return true;
+  try {
+    return SAFE_LINK_SCHEMES.has(new URL(trimmed, 'https://placeholder.invalid').protocol);
+  } catch {
+    return false;
+  }
+}
+
 /** List of external reference links. */
 function MoreLinks({ links, sx, ...other }: MoreLinksProps) {
   return (
     <MoreLinksRoot sx={sx} {...other}>
-      {links?.map((href) => (
+      {links?.filter(isSafeExternalLink).map((href) => (
         <li key={href}>
           <Link href={href} variant="body2" target="_blank" rel="noopener noreferrer">
             {href}

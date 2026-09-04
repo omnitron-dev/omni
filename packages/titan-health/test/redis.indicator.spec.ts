@@ -77,8 +77,15 @@ describe('RedisHealthIndicator', () => {
 
   describe('setClient', () => {
     it('should set client for lazy initialization', async () => {
-      indicator.setClient(createMockRedisClient());
-      const result = await indicator.check();
+      // `latencyDegradedThreshold` defaults to 10ms, so under parallel load
+      // even a mocked ping can be reported as degraded purely because the
+      // event loop was busy — this test is about setClient, not about latency.
+      // Give it a threshold no scheduling delay will cross.
+      const ind = new RedisHealthIndicator(undefined, { latencyDegradedThreshold: 60_000 });
+      ind.setClient(createMockRedisClient());
+
+      const result = await ind.check();
+
       expect(result.status).toBe('healthy');
     });
   });

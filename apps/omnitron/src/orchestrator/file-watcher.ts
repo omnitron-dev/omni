@@ -141,6 +141,24 @@ export class FileWatcher {
     }));
   }
 
+  /**
+   * The single call into the platform watcher.
+   *
+   * Exists as an overridable seam because the behaviour worth testing here —
+   * ignore rules, debouncing, the restart queue — is this class's, while
+   * `fs.watch` on macOS is FSEvents: it drops writes issued before the stream
+   * arms and then delivers with a delay measured in seconds (3.6s under load
+   * in one measured run). Driving the tests through real file writes made
+   * them slow, flaky, and — before they were rewritten — silently vacuous.
+   * Tests substitute a deterministic emitter through this method; one
+   * end-to-end case still exercises the real thing.
+   *
+   * Production callers must not override it.
+   */
+  protected watchDirectory(dir: string, onEvent: (eventType: string, filename: string | null) => void): fs.FSWatcher {
+    return fs.watch(dir, { recursive: true }, onEvent);
+  }
+
   private watchApp(entry: IEcosystemAppEntry): void {
     // If explicitly disabled
     if (entry.watch === false) {
@@ -197,7 +215,7 @@ export class FileWatcher {
           continue;
         }
 
-        const w = fs.watch(dir, { recursive: true }, (eventType, filename) => {
+        const w = this.watchDirectory(dir, (eventType, filename) => {
           if (!filename) return;
           this.onFileChange(watched, filename, eventType);
         });
@@ -301,10 +319,18 @@ export class FileWatcher {
   }
 
   private async triggerRestart(app: WatchedApp): Promise<void> {
-    // Don't stack restarts
+    // Don't stack restarts — but don't discard the work either.
+    //
+    // This branch used to `clear()` the pending set before returning, which
+    // is the opposite of what its own comment promised. The `finally` below
+    // re-triggers only `if (app.pendingFiles.size > 0)`, so wiping the set
+    // here guaranteed that follow-up never happened: every edit made while a
+    // restart was in flight was dropped, and the app kept running the code
+    // from before those edits with no indication anything had been missed.
+    //
+    // Leaving the set intact is what makes the existing `finally` hand-off
+    // work: the in-flight restart picks the changes up when it completes.
     if (app.restarting) {
-      // Queue another restart after current finishes
-      app.pendingFiles.clear();
       return;
     }
 

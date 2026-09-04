@@ -125,7 +125,7 @@ export function StatusBar() {
 
         const st = status.status === 'fulfilled' ? (status.value as any) : null;
         const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
-        const al = alertsResult.status === 'fulfilled' ? (alerts.value as any) : null;
+        const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
 
         const appList = st?.apps ?? [];
         const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;

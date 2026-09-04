@@ -7,9 +7,10 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import type { FleetService, FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.service.js';
+import type { IOmnitronFleetService } from '../shared/dto/services.js';
 
 @Service({ name: 'OmnitronFleet' })
-export class FleetRpcService {
+export class FleetRpcService implements IOmnitronFleetService {
   constructor(private readonly fleet: FleetService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })

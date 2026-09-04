@@ -35,31 +35,18 @@ import { Breadcrumbs } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { useAuthStore } from 'src/auth/store';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface AlertRule {
-  id: string;
-  name: string;
-  expression: string;
-  type: 'threshold' | 'anomaly' | 'absence' | 'composite';
-  severity: 'critical' | 'warning' | 'info';
-  enabled: boolean;
-  createdAt: string;
-}
-
-interface ActiveAlert {
-  id: string;
-  ruleId: string;
-  ruleName: string;
-  severity: 'critical' | 'warning' | 'info';
-  message: string;
-  firedAt: string;
-  acknowledged: boolean;
-  resolvedAt?: string;
-}
+// Shapes come from the daemon's DTO module — the page used to declare its
+// own, and they had drifted: it invented rule types ('threshold' | 'anomaly' |
+// 'absence' | 'composite') the server has never accepted (it takes
+// 'metric' | 'log' | 'health'), so every rule created here was rejected.
+type AlertRule = import('@omnitron-dev/omnitron/dto/services').AlertRule;
+type ActiveAlert = import('@omnitron-dev/omnitron/dto/services').ActiveAlert;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -82,10 +69,9 @@ interface CreateAlertRuleDialogProps {
 }
 
 const RULE_TYPES: Array<{ value: AlertRule['type']; label: string }> = [
-  { value: 'threshold', label: 'Threshold' },
-  { value: 'anomaly', label: 'Anomaly' },
-  { value: 'absence', label: 'Absence' },
-  { value: 'composite', label: 'Composite' },
+  { value: 'metric', label: 'Metric' },
+  { value: 'log', label: 'Log' },
+  { value: 'health', label: 'Health' },
 ];
 
 const SEVERITY_OPTIONS: Array<{ value: AlertRule['severity']; label: string }> = [
@@ -97,7 +83,7 @@ const SEVERITY_OPTIONS: Array<{ value: AlertRule['severity']; label: string }> =
 function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDialogProps) {
   const [name, setName] = useState('');
   const [expression, setExpression] = useState('');
-  const [type, setType] = useState<AlertRule['type']>('threshold');
+  const [type, setType] = useState<AlertRule['type']>('metric');
   const [severity, setSeverity] = useState<AlertRule['severity']>('warning');
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -106,7 +92,7 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
   const reset = () => {
     setName('');
     setExpression('');
-    setType('threshold');
+    setType('metric');
     setSeverity('warning');
     setEnabled(true);
     setError(null);
@@ -126,7 +112,7 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
     setError(null);
     try {
       const created = await alerts.createRule({ name: name.trim(), expression: expression.trim(), type, severity, enabled });
-      onCreated(created as AlertRule);
+      onCreated(created);
       handleClose();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to create rule');
@@ -273,8 +259,8 @@ export default function AlertsPage() {
   const fetchData = useCallback(async () => {
     try {
       const [rulesList, alertsList] = await Promise.allSettled([
-        alerts.listRules(),
-        alerts.listActiveAlerts(),
+        alerts.getRules(),
+        alerts.getActiveAlerts(),
       ]);
 
       if (rulesList.status === 'fulfilled') setRules(Array.isArray(rulesList.value) ? rulesList.value : []);
@@ -298,7 +284,7 @@ export default function AlertsPage() {
 
   const handleToggleRule = async (ruleId: string, enabled: boolean) => {
     try {
-      await alerts.updateRule(ruleId, { enabled });
+      await alerts.updateRule({ id: ruleId, updates: { enabled } });
       setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled } : r)));
     } catch (err: any) {
       setError(err?.message ?? 'Failed to update rule');
@@ -307,7 +293,7 @@ export default function AlertsPage() {
 
   const handleDeleteRule = async (ruleId: string) => {
     try {
-      await alerts.deleteRule(ruleId);
+      await alerts.deleteRule({ id: ruleId });
       setRules((prev) => prev.filter((r) => r.id !== ruleId));
     } catch (err: any) {
       setError(err?.message ?? 'Failed to delete rule');
@@ -316,7 +302,9 @@ export default function AlertsPage() {
 
   const handleAcknowledge = async (alertId: string) => {
     try {
-      await alerts.acknowledgeAlert(alertId);
+      // The server records WHO acknowledged; it is part of the audit trail.
+      const actor = useAuthStore.getState().user?.username ?? 'unknown';
+      await alerts.acknowledgeAlert({ alertId, acknowledgedBy: actor });
       setActiveAlerts((prev) =>
         prev.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)),
       );

@@ -17,49 +17,21 @@ import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, INFRA_STATE_ACCESSOR_TOKEN } from '../shared/tokens.js';
+import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type AlertSeverity = 'critical' | 'warning' | 'info';
-export type AlertRuleType = 'metric' | 'log' | 'health';
-export type AlertEventStatus = 'firing' | 'resolved' | 'silenced' | 'acknowledged';
-
-export interface AlertRule {
-  id: string;
-  name: string;
-  expression: string;
-  type: AlertRuleType;
-  severity: AlertSeverity;
-  forDuration: number | null;
-  annotations: Record<string, unknown> | null;
-  labels: Record<string, unknown> | null;
-  enabled: boolean;
-  lastEvaluatedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AlertEvent {
-  id: string;
-  ruleId: string;
-  status: AlertEventStatus;
-  value: string | null;
-  annotations: Record<string, unknown> | null;
-  firedAt: string;
-  resolvedAt: string | null;
-  acknowledgedAt: string | null;
-  acknowledgedBy: string | null;
-}
-
-export interface AlertSummary {
-  firing: number;
-  resolved: number;
-  silenced: number;
-  total: number;
-  bySeverity: Record<string, number>;
-}
+export type {
+  AlertSeverity,
+  AlertRuleType,
+  AlertEventStatus,
+  AlertRule,
+  AlertEvent,
+  AlertSummary,
+  CreateAlertRuleInput,
+} from '../shared/dto/alerts.js';
 
 // =============================================================================
 // Built-in Alert Expressions (simple DSL)
@@ -279,6 +251,55 @@ export class AlertService {
     if (options?.status) query = query.where('status', '=', options.status);
     const rows = await query.execute();
     return rows.map(mapEvent);
+  }
+
+  /**
+   * Firing and acknowledged alerts, joined with their rule.
+   *
+   * Resolved events are excluded: this answers "what needs attention now".
+   * The message prefers the rule's `summary` annotation and falls back to the
+   * expression and the observed value, so an alert always renders as
+   * something a human can act on.
+   */
+  async getActiveAlerts(limit = 100): Promise<ActiveAlert[]> {
+    const rows = await this.db
+      .selectFrom('alert_events')
+      .innerJoin('alert_rules', 'alert_rules.id', 'alert_events.ruleId')
+      .select([
+        'alert_events.id as id',
+        'alert_events.ruleId as ruleId',
+        'alert_events.status as status',
+        'alert_events.value as value',
+        'alert_events.annotations as eventAnnotations',
+        'alert_events.firedAt as firedAt',
+        'alert_events.resolvedAt as resolvedAt',
+        'alert_events.acknowledgedAt as acknowledgedAt',
+        'alert_rules.name as ruleName',
+        'alert_rules.severity as severity',
+        'alert_rules.expression as expression',
+        'alert_rules.annotations as ruleAnnotations',
+      ])
+      .where('alert_events.status', 'in', ['firing', 'acknowledged'])
+      .orderBy('alert_events.firedAt', 'desc')
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => {
+      const annotations = (row.eventAnnotations ?? row.ruleAnnotations) as Record<string, unknown> | null;
+      const summary = typeof annotations?.['summary'] === 'string' ? (annotations['summary'] as string) : null;
+      const value = row.value !== null && row.value !== undefined ? String(row.value) : null;
+
+      return {
+        id: String(row.id),
+        ruleId: String(row.ruleId),
+        ruleName: String(row.ruleName),
+        severity: row.severity as AlertSeverity,
+        message: summary ?? (value ? `${row.expression} (value: ${value})` : String(row.expression)),
+        firedAt: new Date(row.firedAt as unknown as string).toISOString(),
+        resolvedAt: row.resolvedAt ? new Date(row.resolvedAt as unknown as string).toISOString() : null,
+        acknowledged: row.acknowledgedAt !== null && row.acknowledgedAt !== undefined,
+      };
+    });
   }
 
   async acknowledgeAlert(alertId: string, acknowledgedBy: string): Promise<void> {

@@ -30,7 +30,7 @@
     "@eslint/js": "^10.0.1",
     "@omnitron-dev/omnitron": "workspace:*",
     "@types/add": "^2.0.3",
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "26.4.1",
     "@types/pg": "^8.23.1",
     "@types/semver": "^7.8.0",

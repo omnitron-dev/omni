@@ -363,8 +363,16 @@ export function createErrorTranslator(options: {
       }
     }
 
-    // Try custom messages, then fallback
-    const errorDef = messages[code] ?? fallbackMessages[code] ?? fallbackMessages.UNKNOWN_ERROR;
+    // Try custom messages, then fallback.
+    //
+    // Own-property lookups: `code` comes off the wire, and a plain object
+    // answers `messages['constructor']` with a function — which would then be
+    // read for `.title` / `.message` and render `undefined` to the user
+    // instead of an error description.
+    const errorDef =
+      (Object.hasOwn(messages, code) ? messages[code] : undefined) ??
+      (Object.hasOwn(fallbackMessages, code) ? fallbackMessages[code] : undefined) ??
+      fallbackMessages.UNKNOWN_ERROR;
 
     return {
       title: errorDef.title,

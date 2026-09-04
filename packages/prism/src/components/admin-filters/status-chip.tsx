@@ -96,7 +96,13 @@ const DEFAULT_COLOR_MAP: Record<string, StatusColor> = {
 export function StatusChip({ status, label, colorMap, size = 'small', sx }: StatusChipProps): ReactNode {
   const normalizedStatus = status.toLowerCase();
   const mergedMap = colorMap ? { ...DEFAULT_COLOR_MAP, ...colorMap } : DEFAULT_COLOR_MAP;
-  const color: StatusColor = mergedMap[normalizedStatus] ?? 'default';
+  // Own-property lookup only. Statuses arrive from the server, and a plain
+  // object answers `map['constructor']` with a FUNCTION — which `?? 'default'`
+  // accepts as a colour, sending `theme.palette[fn].main` into a TypeError
+  // that takes the whole React tree down. `toString`, `valueOf` and
+  // `hasOwnProperty` do the same.
+  const mapped = Object.hasOwn(mergedMap, normalizedStatus) ? mergedMap[normalizedStatus] : undefined;
+  const color: StatusColor = mapped ?? 'default';
 
   const displayLabel: ReactNode = label ?? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 

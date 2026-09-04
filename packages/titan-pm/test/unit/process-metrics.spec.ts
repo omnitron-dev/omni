@@ -136,8 +136,7 @@ describe('ProcessMetricsCollector', () => {
     });
 
     it('should handle stopping non-existent collection', () => {
-      // Should not throw
-      collector.stopCollection('non-existent');
+      expect(() => collector.stopCollection('non-existent')).not.toThrow();
     });
 
     it('should log debug message when stopping', async () => {
@@ -311,27 +310,44 @@ describe('ProcessMetricsCollector', () => {
   });
 
   describe('Track Latency', () => {
-    it('should track latency measurements', () => {
-      collector.trackLatency('proc-1', 100);
-      collector.trackLatency('proc-1', 150);
-      collector.trackLatency('proc-1', 200);
+    // "Tracked internally" and "tested indirectly" is how these three used to
+    // end — three bodies with no expectation at all. The samples do surface,
+    // through the latency block on the stored metrics.
+    const collectAfterTracking = async (processId: string, record: () => void) => {
+      collector.startCollection(processId, createMockProxy(), 1000);
+      record();
+      await vi.advanceTimersByTimeAsync(1100);
+      return collector.getMetrics(processId)?.latency;
+    };
 
-      // Latencies are tracked internally
-      // They affect the latency calculation in storeMetrics
+    it('should track latency measurements', async () => {
+      const latency = await collectAfterTracking('proc-1', () => {
+        collector.trackLatency('proc-1', 100);
+        collector.trackLatency('proc-1', 150);
+        collector.trackLatency('proc-1', 200);
+      });
+
+      expect(latency?.mean).toBe(150);
+      expect(latency?.p50).toBe(150);
     });
 
-    it('should limit latency measurements to 1000', () => {
-      for (let i = 0; i < 1500; i++) {
-        collector.trackLatency('proc-1', i);
-      }
+    it('should limit latency measurements to 1000', async () => {
+      const latency = await collectAfterTracking('proc-1', () => {
+        for (let i = 0; i < 1500; i++) collector.trackLatency('proc-1', i);
+      });
 
-      // Internal state should only keep last 1000
-      // This is tested indirectly through metrics
+      // The window keeps the LAST 1000 samples, so 0-499 are gone. The mean of
+      // 500..1499 is 999.5, and p50 is sorted[ceil(0.5 * 1000) - 1] = 999 —
+      // both of which would be far lower if the cap were not applied.
+      expect(latency?.mean).toBe(999.5);
+      expect(latency?.p50).toBe(999);
     });
 
-    it('should handle tracking for new process', () => {
-      // Should not throw
-      collector.trackLatency('new-process', 50);
+    it('should handle tracking for new process', async () => {
+      // No startCollection for this id: tracking must not throw, and the
+      // samples simply have nowhere to be reported.
+      expect(() => collector.trackLatency('new-process', 50)).not.toThrow();
+      expect(collector.getMetrics('new-process')).toBeNull();
     });
   });
 

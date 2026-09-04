@@ -231,8 +231,15 @@ describe('ProcessSupervisor', () => {
 
       await supervisor.start();
 
-      // When one crashes, all should restart
-      // (strategy is implemented in supervisor)
+      // The strategy's restart behaviour needs a crash-injection harness this
+      // suite does not have. What IS observable is that the supervisor brought
+      // both children up under the ONE_FOR_ALL strategy — more than the
+      // previous version asserted, which was nothing at all. Deliberately not
+      // asserting the post-stop count: `listProcesses()` still reports two
+      // after `stop()`, and whether that is a leak or simply a list that
+      // includes terminated entries is a question this test should not answer
+      // by guessing.
+      expect(processManager.listProcesses()).toHaveLength(2);
 
       await supervisor.stop();
     });
@@ -251,8 +258,12 @@ describe('ProcessSupervisor', () => {
 
       const supervisor = new ProcessSupervisor(processManager, CriticalSupervisor, {}, mockLogger as any);
 
-      // Critical child failure should be handled differently
+      // Same limitation as above: the difference in handling shows up on
+      // failure, which needs crash injection. Assert what start can: both the
+      // critical and the optional child are supervised.
       await supervisor.start();
+      expect(processManager.listProcesses()).toHaveLength(2);
+
       await supervisor.stop();
     });
   });

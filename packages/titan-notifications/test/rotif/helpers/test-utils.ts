@@ -69,9 +69,27 @@ export function getTestRedisConfig(db = 0): { url: string; host: string; port: n
  * @param additionalConfig - Additional configuration options
  * @returns Configuration object for NotificationManager
  */
-/** Redis logical DBs 0-4 belong to the apps/omnitron suites; rotif uses 5-15. */
-export function toTestDb(db: number): number {
-  return 5 + (Math.abs(Math.trunc(db)) % 11);
+/**
+ * Pick this worker's Redis database.
+ *
+ * Redis logical DBs 0-4 belong to the apps/omnitron suites; rotif gets 5-12.
+ *
+ * The db number a spec asks for is deliberately IGNORED. Nearly every suite
+ * here calls `flushdb()` in beforeEach, and 22 of them asked for db 0 with 31
+ * asking for db 1 — so in parallel they erased each other's streams mid-test
+ * and subscribers appeared to receive nothing. Every file uses exactly one
+ * database, so partitioning by worker rather than by requested number removes
+ * the collision without giving up parallelism: files that share a worker run
+ * one after another, which is precisely when `flushdb` is safe.
+ *
+ * Capped at 8 to match `maxWorkers` in vitest.config.ts — that pairing is what
+ * guarantees two concurrently running files never land on the same database.
+ */
+const WORKER_DB_SLOTS = 8;
+const WORKER_ID = Number(process.env['VITEST_POOL_ID'] ?? process.env['VITEST_WORKER_ID'] ?? 1);
+
+export function toTestDb(_requestedDb: number): number {
+  return 5 + ((Math.max(1, WORKER_ID) - 1) % WORKER_DB_SLOTS);
 }
 
 export function createTestConfig(db: number = 1, additionalConfig: any = {}) {

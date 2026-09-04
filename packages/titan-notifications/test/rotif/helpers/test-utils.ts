@@ -1,5 +1,4 @@
 import { Redis } from 'ioredis';
-import { getGlobalRedisInfo } from '../../setup/redis-docker-setup.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NotificationManager } from '../../../src/rotif/rotif.js';
@@ -36,20 +35,13 @@ export function isInMockMode(): boolean {
  * @returns Redis connection string
  */
 export function getTestRedisUrl(db?: number): string {
-  // Try to use global Docker Redis setup first
-  let globalRedis = getGlobalRedisInfo();
-
-  // If not in memory, try to read from file (written by globalSetup)
-  if (!globalRedis) {
-    try {
-      // File is in the titan package root - use process.cwd() for portability
-      // This works because Jest runs from the package directory
-      const infoFile = join(process.cwd(), '.redis-test-info.json');
-      const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
-      globalRedis = info;
-    } catch {
-      // Ignore if file doesn't exist
-    }
+  // Endpoint published by a globalSetup, if one ran.
+  let globalRedis: { url?: string } | undefined;
+  try {
+    const infoFile = join(process.cwd(), '.redis-test-info.json');
+    globalRedis = JSON.parse(readFileSync(infoFile, 'utf-8'));
+  } catch {
+    // No info file — fall through to the environment defaults below.
   }
 
   const defaultPort = process.env.TEST_REDIS_PORT ?? '16379';
@@ -63,9 +55,14 @@ export function getTestRedisUrl(db?: number): string {
  * @param additionalConfig - Additional configuration options
  * @returns Configuration object for NotificationManager
  */
+/** Redis logical DBs 0-4 belong to the apps/omnitron suites; rotif uses 5-15. */
+export function toTestDb(db: number): number {
+  return 5 + (Math.abs(Math.trunc(db)) % 11);
+}
+
 export function createTestConfig(db: number = 1, additionalConfig: any = {}) {
   return {
-    redis: getTestRedisUrl(db),
+    redis: getTestRedisUrl(toTestDb(db)),
     ...additionalConfig,
   };
 }
@@ -108,3 +105,6 @@ export async function cleanupRedis(redis: Redis): Promise<void> {
 export function createTestNamespace(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
+
+/** Alias kept for the specs migrated from titan, which import this name. */
+export const isRedisInMockMode = isInMockMode;

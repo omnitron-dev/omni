@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createRetryDelayFn, RetryStrategies } from '../../../src/utils/retry.js';
+import { createRetryDelayFn, RetryStrategies } from '@omnitron-dev/titan/utils';
 import type { RotifMessage } from '../../../src/rotif/types.js';
 
 // Helper to create a mock message

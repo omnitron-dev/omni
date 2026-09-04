@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 import { delay } from '@omnitron-dev/common';
-import { isRedisInMockMode } from '../utils/redis-test-utils.js';
+import { isRedisInMockMode } from './helpers/test-utils.js';
 
 import type { NotificationManager } from '../../src/rotif/rotif.js';
 import { createTestNotificationManager } from './helpers/test-utils.js';

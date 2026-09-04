@@ -1,5 +1,5 @@
 import { delay } from '@omnitron-dev/common';
-import { getTestRedisConfig, isRedisInMockMode } from '../utils/redis-test-utils.js';
+import { getTestRedisConfig, isRedisInMockMode } from './helpers/test-utils.js';
 
 import { RotifMessage } from '../../src/rotif/rotif.js';
 import type { NotificationManager } from '../../src/rotif/rotif.js';

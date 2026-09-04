@@ -3,7 +3,7 @@ import Redis from 'ioredis';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
 import { createTestConfig, createTestNotificationManager } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
-import { isRedisInMockMode } from '../../utils/redis-test-utils.js';
+import { isRedisInMockMode } from '../helpers/test-utils.js';
 
 const skipTests = isRedisInMockMode();
 if (skipTests) {

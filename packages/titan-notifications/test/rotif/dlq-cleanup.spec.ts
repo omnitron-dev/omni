@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { NotificationManager } from '../../src/rotif/rotif.js';
 import { DLQManager } from '../../src/rotif/dlq-manager.js';
 import { delay } from '@omnitron-dev/common';
-import { getTestRedisConfig, isRedisInMockMode } from '../utils/redis-test-utils.js';
+import { getTestRedisConfig, isRedisInMockMode } from './helpers/test-utils.js';
 
 const skipTests = isRedisInMockMode();
 if (skipTests) {

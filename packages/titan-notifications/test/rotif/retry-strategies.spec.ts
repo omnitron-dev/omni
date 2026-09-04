@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createRetryDelayFn, RetryStrategies, type RetryStrategyType } from '../../src/utils/retry.js';
+import { createRetryDelayFn, RetryStrategies, type RetryStrategyType } from '@omnitron-dev/titan/utils';
 import type { RotifMessage } from '../../src/rotif/types.js';
 
 // Type alias for backward compatibility with tests

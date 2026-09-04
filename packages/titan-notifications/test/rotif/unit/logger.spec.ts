@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createNullLogger } from '../../../src/modules/logger/logger.types.js';
-import type { ILogger } from '../../../src/modules/logger/logger.types.js';
+import { createNullLogger } from '@omnitron-dev/titan/types';
+import type { ILogger } from '@omnitron-dev/titan/types';
 
 describe('Rotif - Logger', () => {
   const mockLogger: ILogger = {

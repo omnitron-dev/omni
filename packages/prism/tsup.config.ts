@@ -36,7 +36,8 @@ export default defineConfig([
       '.json': 'json',
     },
     format: ['esm'],
-    dts: true,
+    // Declarations come from `tsc -p tsconfig.build.json` — see that file.
+    dts: false,
     splitting: true,
     sourcemap: true,
     clean: true,
@@ -75,7 +76,8 @@ export default defineConfig([
       'cli/index': 'src/cli/index.ts',
     },
     format: ['esm'],
-    dts: true,
+    // Declarations come from `tsc -p tsconfig.build.json` — see that file.
+    dts: false,
     splitting: false,
     sourcemap: true,
     clean: false, // Don't clean on second build

@@ -1,0 +1,22 @@
+{
+  // Declaration-only build.
+  //
+  // tsup's `dts: true` runs rollup-plugin-dts 6.1.1, which it bundles rather
+  // than resolves — so it cannot be lifted by an override. That version reads
+  // TypeScript internals removed in TS 7 (`useCaseSensitiveFileNames` off the
+  // module object) and throws at load, taking the whole build with it.
+  //
+  // Emitting declarations with tsc itself is both a fix and a simplification:
+  // the compiler that typechecks the package is the one that describes it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/__tests__/**", "tests/**", "node_modules", "dist"]
+}

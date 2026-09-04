@@ -135,6 +135,7 @@ export {
   // CSRF middleware factory (cookie mode)
   createCsrfMiddleware,
 
+
   // WebSocket client for direct realtime connections
   WebSocketClient,
 
@@ -172,3 +173,20 @@ export {
   useNetronService,
   createNetronServiceHook,
 } from './hooks.js';
+
+// ---------------------------------------------------------------------------
+// Auth error handling (401 refresh-then-expire, 403, 429)
+//
+// Re-exported here because prism is this platform's single RPC entry point —
+// a consumer should never have to reach past it into netron-browser just to
+// react to an expired session.
+// ---------------------------------------------------------------------------
+
+export {
+  createAuthErrorMiddleware,
+  createSimpleAuthErrorMiddleware,
+  type AccessDeniedDetails,
+  type AuthErrorMiddlewareOptions,
+} from '@omnitron-dev/netron-browser/middleware';
+
+export { MiddlewareStage } from '@omnitron-dev/netron-browser/middleware';

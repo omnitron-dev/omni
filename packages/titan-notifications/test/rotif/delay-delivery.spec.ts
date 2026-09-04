@@ -63,16 +63,26 @@ describeOrSkip('NotificationManager - delay delivery', () => {
   });
 
   it('should not deliver before delay', async () => {
+    // Sampled well inside the delay window, not at its edge. Waiting the full
+    // 1000ms and asserting "nothing yet" is a coin flip: the message becomes
+    // due at publish+1000 and the assertion runs at publish+1000 too, so any
+    // event-loop lag under a parallel run delivers it before the check and the
+    // test fails on timing rather than on behaviour. The invariant worth
+    // pinning is "held back until due, then delivered" — so check both halves.
     const seen: number[] = [];
+    const publishedAt = Date.now();
 
     await manager.subscribe('test.nodelivery', async (msg) => {
-      seen.push(Date.now());
+      seen.push(Date.now() - publishedAt);
     });
 
     await manager.publish('test.nodelivery', { value: 'wait' }, { delayMs: 1000 });
 
-    await delayMs(1000);
+    await delayMs(500);
+    expect(seen).toEqual([]);
 
-    expect(seen.length).toBe(0);
-  });
+    await delayMs(1500);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeGreaterThanOrEqual(1000);
+  }, 15_000);
 });

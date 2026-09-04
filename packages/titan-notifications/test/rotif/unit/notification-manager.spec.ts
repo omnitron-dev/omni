@@ -220,12 +220,23 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(50);
 
       await manager.publish('test.channel', {});
-      await delay(50);
 
-      const unsubPromise = sub.unsubscribe();
-
+      // Wait for the handler to actually be running rather than sleeping a
+      // flat 50ms and hoping. What this test is about is the second half —
+      // that unsubscribe() waits for an in-flight handler — and a sleep that
+      // is a few milliseconds short fails it on the setup instead, which is
+      // exactly what happened ("expected false to be true" on line 227).
+      // The handler holds for 200ms once it starts, so polling lands well
+      // inside the window it needs to observe.
+      const deadline = Date.now() + 10_000;
+      while (!processing && Date.now() < deadline) {
+        await delay(5);
+      }
       expect(processing).toBe(true);
-      await unsubPromise;
+      expect(completed).toBe(false);
+
+      await sub.unsubscribe();
+
       expect(completed).toBe(true);
     });
 

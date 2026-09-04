@@ -8,14 +8,18 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { Redis } from 'ioredis';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
 import type { RotifConfig, Subscription, RotifMessage } from '../../../src/rotif/types.js';
-import { isRedisInMockMode } from '../helpers/test-utils.js';
+import { isRedisInMockMode, createRedisTestHelper } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
 
-// Skip these tests in regular runs - they require dedicated Redis and have timing dependencies
-// Run with USE_REAL_REDIS=true to execute these tests
-const skipTests = isRedisInMockMode() || process.env.USE_REAL_REDIS !== 'true';
+// Real Redis, like every other spec in this directory. The extra
+// `USE_REAL_REDIS !== 'true'` gate this file used to carry meant it was off in
+// every run anyone ever made, so 699 lines of infrastructure coverage never
+// executed — and the undefined helper below proves it: the file could not even
+// be collected. Each worker gets its own logical database (see toTestDb), so
+// the `flushdb()` in beforeEach is safe under parallelism.
+const skipTests = isRedisInMockMode();
 if (skipTests) {
-  console.log('⏭️  Skipping rotif-comprehensive.spec.ts - integration test (set USE_REAL_REDIS=true to run)');
+  console.log('⏭️  Skipping rotif-comprehensive.spec.ts - requires real Redis');
 }
 const describeOrSkip = skipTests ? describe.skip : describe;
 
@@ -50,6 +54,13 @@ describeOrSkip('Rotif - NotificationManager Infrastructure Tests', () => {
       redis: {
         host: redis.options.host || 'localhost',
         port: redis.options.port || 6379,
+        // The database matters: without it the manager silently worked in db 0
+        // while `flushdb()` above cleaned the helper's database, so nothing was
+        // ever reset between tests. `rotif:patterns` accumulated across the
+        // whole file (scores of 2-4 by the end), which made `publish` match
+        // several stale patterns and return an array instead of one id, and
+        // let old streams redeliver into later tests as out-of-order messages.
+        db: helper.config.db,
         lazyConnect: false,
       },
       checkDelayInterval: 100,

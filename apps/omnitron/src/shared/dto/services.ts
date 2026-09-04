@@ -81,17 +81,9 @@ export interface IDaemonService {
 // Auth Service Interface (OmnitronAuth)
 // ============================================================================
 
-import type {
-  OmnitronSignInResult,
-  OmnitronAuthUser,
-  OmnitronActiveSession,
-} from '../../services/auth.service.js';
+import type { OmnitronSignInResult, OmnitronAuthUser, OmnitronActiveSession } from './auth.js';
 
-import type {
-  LogQueryResult,
-  LogStats,
-  LogEntryRow,
-} from '../../services/log-collector.service.js';
+import type { LogQueryResult, LogStats, LogEntryRow } from './logs.js';
 
 export type { OmnitronSignInResult, OmnitronAuthUser, OmnitronActiveSession };
 export type { LogQueryResult, LogStats, LogEntryRow };
@@ -100,7 +92,6 @@ export interface IOmnitronAuthService {
   signIn(data: {
     username: string;
     password: string;
-    ipAddress?: string;
     userAgent?: string;
   }): Promise<OmnitronSignInResult>;
 

@@ -573,9 +573,26 @@ export class ProcessSpawner implements IProcessSpawner {
     // ESM-only: use module-level import.meta.url resolution
     let currentDir = SPAWNER_DIR;
 
-    // If running from source (during tests with ts-jest), redirect to dist
-    if (currentDir.includes('/src/') || currentDir.includes('\\src\\')) {
-      currentDir = currentDir.replace(/[/\\]src[/\\]/, path.sep + 'dist' + path.sep);
+    // If running from source, redirect to dist: the worker entrypoints are
+    // forked by path and only exist there as JavaScript.
+    //
+    // This used to test `currentDir.includes('/src/')`, which requires a
+    // trailing separator — and this file sits directly in `src/`, so
+    // SPAWNER_DIR ends with `/src` and the check was always false. The
+    // redirect fired only for a spawner in a SUBdirectory of src, which it has
+    // never been. Running titan-pm from source therefore resolved
+    // `src/worker-runtime.js` and `src/fork-worker.js`, which do not exist, and
+    // every spawn died with MODULE_NOT_FOUND. That is not a test-only path:
+    // the daos backends execute source through esbuild.
+    //
+    // Matching on path segments handles both `.../src` and `.../src/sub`, and
+    // taking the LAST segment avoids rewriting an unrelated `src` earlier in
+    // the path (the old regex replaced the first occurrence).
+    const segments = currentDir.split(path.sep);
+    const srcIndex = segments.lastIndexOf('src');
+    if (srcIndex !== -1) {
+      segments[srcIndex] = 'dist';
+      currentDir = segments.join(path.sep);
     }
 
     this.workerRuntimePath = path.join(currentDir, 'worker-runtime.js');

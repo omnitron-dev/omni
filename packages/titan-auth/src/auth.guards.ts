@@ -166,18 +166,19 @@ export class RoleGuard implements IGuard {
       };
     }
 
-    // Check decorator requirements if handler/method provided
+    // Decorator requirements and guard-level requirements are cumulative: a
+    // method decorator may ADD a constraint, never remove the one the guard was
+    // mounted with. This used to `return { allowed: true }` the moment the
+    // decorator was satisfied, so a RoleGuard(['admin']) protecting a class was
+    // defeated by any method annotated with a role the caller already held.
     if (handler && methodName) {
       const requirements = getAuthRequirements(handler, methodName);
-      if (requirements?.roles && requirements.roles.length > 0) {
-        if (!hasRole(authContext.role, requirements.roles)) {
-          return {
-            allowed: false,
-            authContext,
-            reason: `Required roles: ${requirements.roles.join(', ')}`,
-          };
-        }
-        return { allowed: true, authContext };
+      if (requirements?.roles && requirements.roles.length > 0 && !hasRole(authContext.role, requirements.roles)) {
+        return {
+          allowed: false,
+          authContext,
+          reason: `Required roles: ${requirements.roles.join(', ')}`,
+        };
       }
     }
 

@@ -78,9 +78,9 @@ export class AuthMiddleware implements IAuthMiddleware {
    * 3. Fall back to anonymous context
    */
   async authenticate(request: IRequestLike): Promise<IAuthContext> {
-    const tenantId = extractTenantId(request, this.defaultTenantId);
-
-    // 1. Try Bearer token authentication
+    // 1. Try Bearer token authentication.
+    //    The tenant comes from the verified `tenant_id` claim, never from the
+    //    request headers.
     const token = extractBearerToken(request);
     if (token) {
       try {
@@ -96,17 +96,25 @@ export class AuthMiddleware implements IAuthMiddleware {
     if (apiKey) {
       const result = this.validateApiKey(apiKey);
       if (result.valid && result.context) {
-        // Override tenant ID from header if present
-        return {
-          ...result.context,
-          tenantId,
-        };
+        // `x-tenant-id` is an unauthenticated request header, so only a caller
+        // that proved it holds the SERVICE key — a trusted secret whose whole
+        // purpose is acting on behalf of any tenant — may select the tenant
+        // with it. The anon key is public by design: honouring the header for
+        // it would let any client pick a tenant and, under RLS, read across the
+        // isolation boundary.
+        if (result.type === 'service') {
+          return {
+            ...result.context,
+            tenantId: extractTenantId(request, this.defaultTenantId),
+          };
+        }
+        return result.context;
       }
       throw new UnauthorizedError('Invalid API key');
     }
 
-    // 3. Fall back to anonymous context
-    return createAnonymousContext(tenantId);
+    // 3. Fall back to anonymous context — no credentials, so no tenant choice.
+    return createAnonymousContext(this.defaultTenantId);
   }
 
   /**

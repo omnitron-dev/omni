@@ -205,7 +205,12 @@ export interface ConnectionEvents {
   packet: (packet: Packet) => void;
   state: (state: ConnectionState) => void;
   reconnect: (attempt: number) => void;
-  reconnect_failed: () => void;
+  /**
+   * Reconnection has permanently given up: the retry budget is spent and the
+   * connection has moved to DISCONNECTED. Carries the cause of the last failed
+   * attempt — without it the reason was unobservable.
+   */
+  reconnect_failed: (info: { attempts: number; error: Error }) => void;
 }
 
 /**

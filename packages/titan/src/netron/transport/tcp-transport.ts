@@ -39,10 +39,20 @@ export class TcpConnection extends BaseConnection {
   private bufferChunks: Buffer[] = [];
   /** Total length of all buffered chunks */
   private bufferLength: number = 0;
+  /**
+   * Where this connection was dialled, captured at connect time.
+   *
+   * Reconnection cannot ask the socket: a socket torn down by a server-side
+   * reset has no `remoteAddress` left, which is precisely the situation
+   * reconnection exists for. Absent for server-accepted connections, which
+   * never reconnect.
+   */
+  private readonly target?: { host: string; port: number };
 
-  constructor(socket: net.Socket, options: TcpOptions = {}) {
+  constructor(socket: net.Socket, options: TcpOptions = {}, target?: { host: string; port: number }) {
     super(options);
     this.socket = socket;
+    this.target = target;
     this.setupSocket();
     this.setupEventHandlers();
   }
@@ -269,29 +279,27 @@ export class TcpConnection extends BaseConnection {
    * Reconnect the TCP socket
    */
   protected async doReconnect(): Promise<void> {
-    const { remoteAddress, remotePort } = this.socket;
-    if (!remoteAddress || !remotePort) {
+    // Prefer the address we dialled. Falling back to the socket's own remote
+    // address only helps while the socket is still healthy — after a reset it
+    // is cleared, and this used to fail every attempt with
+    // "Failed to connect to unknown via tcp" even though the peer was back.
+    const host = this.target?.host ?? this.socket.remoteAddress;
+    const port = this.target?.port ?? this.socket.remotePort;
+    if (!host || !port) {
       throw NetronErrors.connectionFailed('tcp', 'unknown', new Error('Cannot reconnect: no remote address'));
     }
 
-    const newSocket = net.createConnection({
-      host: remoteAddress,
-      port: remotePort,
-    });
+    const newSocket = net.createConnection({ host, port });
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         newSocket.destroy();
-        reject(NetronErrors.connectionTimeout('tcp', `${remoteAddress}:${remotePort}`));
+        reject(NetronErrors.connectionTimeout('tcp', `${host}:${port}`));
       }, this.options.connectTimeout ?? 10000);
 
       newSocket.once('connect', () => {
         clearTimeout(timeout);
-        // Replace old socket with new one
-        this.socket.destroy();
-        this.socket = newSocket;
-        this.setupSocket();
-        this.setupEventHandlers();
+        this.replaceSocket(newSocket);
         resolve();
       });
 
@@ -300,6 +308,20 @@ export class TcpConnection extends BaseConnection {
         reject(error);
       });
     });
+  }
+
+  /**
+   * Swap in a freshly connected socket after a successful reconnect.
+   *
+   * Shared with subclasses (UnixSocketConnection dials a path rather than a
+   * host/port but needs the identical hand-off) so the teardown-and-rewire
+   * sequence lives in one place.
+   */
+  protected replaceSocket(newSocket: net.Socket): void {
+    this.socket.destroy();
+    this.socket = newSocket;
+    this.setupSocket();
+    this.setupEventHandlers();
   }
 
   /**
@@ -443,7 +465,7 @@ export class TcpTransport extends BaseTransport {
 
       socket.once('connect', () => {
         clearTimeout(timeout);
-        resolve(new TcpConnection(socket, options));
+        resolve(new TcpConnection(socket, options, { host: parsed.host!, port: parsed.port! }));
       });
 
       socket.once('error', (error) => {

@@ -40,6 +40,36 @@ export class UnixSocketConnection extends TcpConnection {
   override get remoteAddress(): string | undefined {
     return this.socketPath;
   }
+
+  /**
+   * Reconnect over the socket path.
+   *
+   * The inherited TCP implementation dials host/port; a unix socket has
+   * neither, so it failed every attempt with "Cannot reconnect: no remote
+   * address" — this transport declared `reconnection: true` while being unable
+   * to reconnect at all.
+   */
+  protected override async doReconnect(): Promise<void> {
+    const newSocket = net.createConnection({ path: this.socketPath });
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        newSocket.destroy();
+        reject(NetronErrors.connectionTimeout('unix', this.socketPath));
+      }, this.options.connectTimeout ?? 10000);
+
+      newSocket.once('connect', () => {
+        clearTimeout(timeout);
+        this.replaceSocket(newSocket);
+        resolve();
+      });
+
+      newSocket.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+  }
 }
 
 /**

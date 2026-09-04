@@ -564,8 +564,24 @@ describe('Testing Utilities', () => {
 
       const finalMemory = testContainer.getMemoryUsage();
 
-      expect(finalMemory.heapUsed).toBeGreaterThan(initialMemory.heapUsed);
-      expect(finalMemory.objectCount).toBe(10); // Should be exactly 10 after registering 10 tokens
+      // objectCount is the container's own number and is exact.
+      expect(finalMemory.objectCount).toBe(10);
+
+      // heapUsed is NOT: getMemoryUsage() reports `process.memoryUsage()`,
+      // which covers the whole process. This used to assert that it GREW —
+      // an intermittent failure, because ten 1000-element arrays are far
+      // below the noise of V8 heap accounting and a GC between the two
+      // samples makes the second reading smaller. The container cannot
+      // promise that number moves in either direction; what it does promise
+      // is that tracking reports the real process figures rather than the
+      // zeros it returns when tracking is off.
+      expect(finalMemory.heapUsed).toBeGreaterThan(0);
+      expect(finalMemory.heapTotal).toBeGreaterThanOrEqual(finalMemory.heapUsed);
+      expect(createTestContainer({ trackMemory: false }).getMemoryUsage()).toEqual({
+        heapUsed: 0,
+        heapTotal: 0,
+        objectCount: 0,
+      });
     });
   });
 

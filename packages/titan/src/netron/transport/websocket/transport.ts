@@ -109,15 +109,30 @@ export class WebSocketTransport extends BaseTransport {
   /**
    * Create a WebSocket server
    */
-  override async createServer(options: WebSocketOptions = {}): Promise<ITransportServer> {
+  override async createServer(addressOrOptions?: string | WebSocketOptions): Promise<ITransportServer> {
     // Check if we're in Node.js
     if (typeof window !== 'undefined') {
       throw Errors.notImplemented('Cannot create WebSocket server in browser environment');
     }
 
-    // Parse host and port from options
-    const host = options.host || '0.0.0.0'; // Use 0.0.0.0 to bind to all interfaces
-    const port = options.port || 8080;
+    // Accept either a `ws://host:port` address or an options object, matching
+    // TcpTransport and UnixSocketTransport. Options-only used to be the whole
+    // contract here, so a caller passing an address string got its host and
+    // port silently dropped and the server bound the 0.0.0.0:8080 default —
+    // no error, just a server nobody could reach at the address they asked for.
+    let options: WebSocketOptions = {};
+    let host = '0.0.0.0'; // Use 0.0.0.0 to bind to all interfaces
+    let port = 8080;
+
+    if (typeof addressOrOptions === 'string') {
+      const parsed = this.parseAddress(addressOrOptions);
+      host = parsed.host || host;
+      port = parsed.port || port;
+    } else if (addressOrOptions) {
+      options = addressOrOptions;
+      host = options.host || host;
+      port = options.port || port;
+    }
 
     const wss = new WebSocketServer({
       host,

@@ -467,12 +467,15 @@ describe('Isomorphic Transport Test Suite', () => {
             new Promise<Packet>((_, reject) => setTimeout(() => reject(new Error('Packet timeout')), 2000)),
           ]);
 
-          // Verify packet integrity
+          // Verify packet integrity. These used to read `.type`, `.taskId`,
+          // `.taskName` and `.args` — fields of an old DTO that `Packet` does
+          // not have, so every assertion compared undefined with undefined and
+          // passed no matter what came over the wire. Type and impulse live in
+          // the flags byte; the payload is `data`.
           expect(receivedPacket.id).toBe(testPacket.id);
-          expect(receivedPacket.type).toBe(testPacket.type);
-          expect(receivedPacket.taskId).toBe(testPacket.taskId);
-          expect(receivedPacket.taskName).toBe(testPacket.taskName);
-          expect(receivedPacket.args).toEqual(testPacket.args);
+          expect(receivedPacket.getType()).toBe(testPacket.getType());
+          expect(receivedPacket.getImpulse()).toBe(testPacket.getImpulse());
+          expect(receivedPacket.data).toEqual(testPacket.data);
 
           await client.close();
         });
@@ -515,7 +518,7 @@ describe('Isomorphic Transport Test Suite', () => {
           // Verify packet order and content
           packets.forEach((packet, i) => {
             expect(packet.id).toBe(i);
-            expect(packet.args[0]).toBe(`test-${i}`);
+            expect((packet.data as unknown[])[0]).toBe(`test-${i}`);
           });
 
           await client.close();
@@ -600,7 +603,24 @@ describe('Isomorphic Transport Test Suite', () => {
               },
             });
 
-            const reconnectPromise = waitForEvent(client, 'reconnect');
+            // What the transport actually promises is the retry SCHEDULE, not a
+            // successful reconnect: base-transport emits `reconnect` with the
+            // attempt number as each attempt starts (immediately after
+            // setState(RECONNECTING), before doReconnect() runs) and
+            // `reconnect_failed` once maxAttempts is exhausted. This test used
+            // to assert CONNECTED the instant the first `reconnect` arrived,
+            // which the transport never guaranteed.
+            const attempts: number[] = [];
+            let failed = false;
+            client.on('reconnect', (attempt: number) => attempts.push(attempt));
+            client.on('reconnect_failed', () => {
+              failed = true;
+            });
+
+            const settled = new Promise<void>((resolve) => {
+              client.on('reconnect_failed', () => resolve());
+              client.on('connect', () => resolve());
+            });
 
             // Close server to trigger disconnect
             await server.close();
@@ -611,14 +631,16 @@ describe('Isomorphic Transport Test Suite', () => {
               await server.listen();
             }
 
-            // Wait for reconnect
-            const reconnectEvent = await Promise.race([
-              reconnectPromise,
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
-            ]);
+            await Promise.race([settled, new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
 
-            if (reconnectEvent) {
-              expect(client.state).toBe(ConnectionState.CONNECTED);
+            // Either the connection came back, or the retry budget was spent —
+            // never silence.
+            expect(attempts.length).toBeGreaterThan(0);
+            if (client.state === ConnectionState.CONNECTED) {
+              expect(failed).toBe(false);
+            } else {
+              expect(failed).toBe(true);
+              expect(attempts).toEqual([1, 2, 3]);
             }
 
             await client.close();
@@ -832,12 +854,19 @@ describe('Isomorphic Transport Test Suite', () => {
             await client.send(Buffer.from(`client-${i}`));
           }
 
-          // Get server metrics if available
+          // Get server metrics if available.
+          //
+          // `connect()` resolves on the CLIENT side; the server registers the
+          // connection on its own event loop turn. Reading the counters
+          // immediately raced the third connection under load, so this asserted
+          // 3 and intermittently saw 2. Wait for the server to observe them.
           if (server.getMetrics) {
+            await waitForCondition(() => server.getMetrics!().activeConnections >= 3, 5000);
             const metrics = server.getMetrics();
             expect(metrics.totalConnections).toBeGreaterThanOrEqual(3);
             expect(metrics.activeConnections).toBe(3);
-            expect(metrics.totalBytesReceived).toBeGreaterThan(0);
+            await waitForCondition(() => server.getMetrics!().totalBytesReceived > 0, 5000);
+            expect(server.getMetrics().totalBytesReceived).toBeGreaterThan(0);
           }
 
           // Clean up
@@ -868,7 +897,7 @@ describe('Isomorphic Transport Test Suite', () => {
     });
 
     it('should provide consistent connection API', async () => {
-      for (const config of transportConfigs) {
+      for (const config of makeTransportConfigs()) {
         let externalServer: any;
         let server: ITransportServer | undefined;
 
@@ -937,7 +966,7 @@ describe('Isomorphic Transport Test Suite', () => {
     });
 
     it('should emit consistent events', async () => {
-      for (const config of transportConfigs) {
+      for (const config of makeTransportConfigs()) {
         let externalServer: any;
         let server: ITransportServer | undefined;
 

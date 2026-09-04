@@ -478,7 +478,13 @@ describe('Real IPC - Process Lifecycle States', () => {
 
     expect(processInfo).toBeDefined();
     expect(processInfo?.name).toBe('test-calculator');
-    expect(processInfo?.pid).toBeDefined();
+    // No OS pid here on purpose: this suite runs on the mock spawner, and a
+    // mock worker — like a real worker thread — has none. This used to assert
+    // `toBeDefined()`, which held only because ProcessManager filled the gap
+    // with the daemon's own pid. A pid that always answers "alive" is exactly
+    // what made a dead worker look healthy. `real-spawn.spec.ts` covers the
+    // case where a pid genuinely exists.
+    expect(processInfo?.pid).toBeUndefined();
     expect(processInfo?.startTime).toBeDefined();
     expect(processInfo?.startTime).toBeLessThanOrEqual(Date.now());
   });

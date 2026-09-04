@@ -4,25 +4,23 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
-    "baseUrl": "./",
     "rootDir": "./src",
     "outDir": "./dist",
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,
-    "downlevelIteration": true,
     "paths": {
       "@netron": [
-        "src/netron/index.js"
+        "./src/netron/index.js"
       ],
       "@netron/*": [
-        "src/netron/*"
+        "./src/netron/*"
       ],
       "@nexus": [
-        "src/nexus/index.js"
+        "./src/nexus/index.js"
       ],
       "@nexus/*": [
-        "src/nexus/*"
+        "./src/nexus/*"
       ]
     }
   },

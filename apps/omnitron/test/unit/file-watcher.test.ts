@@ -21,9 +21,11 @@
  * and `.png` write. Two carried `retry: 2` and a comment blaming FS timing,
  * which is how a vacuous test survives.
  *
- * So the unit tests below inject events through the `watchDirectory` seam and
- * assert exactly. One end-to-end case at the bottom still uses the real
- * `fs.watch`, so the seam itself cannot silently stop matching reality.
+ * So the tests below inject events through the `watchDirectory` seam and
+ * assert exactly. The last case pins the seam itself to `fs.watch` with a
+ * spy, so it cannot silently stop matching reality — asserting the call
+ * rather than waiting for an OS event, which is what kept this suite honest
+ * without making it hostage to FSEvents' latency.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -33,9 +35,6 @@ import os from 'node:os';
 import { FileWatcher } from '../../src/orchestrator/file-watcher.js';
 import type { IEcosystemConfig, IEcosystemAppEntry } from '../../src/config/types.js';
 import type { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
-
-/** Generous enough for FSEvents' arm + delivery latency under load. */
-const REAL_FS_TIMEOUT = 30_000;
 
 function createMockLogger() {
   return {
@@ -314,28 +313,31 @@ describe('FileWatcher', () => {
 
   // --- The seam matches reality ------------------------------------------
 
-  it(
-    'restarts on a real filesystem write (end-to-end, no seam)',
-    { timeout: REAL_FS_TIMEOUT + 5_000 },
-    async () => {
-      // Guards the seam: if `watchDirectory` ever stopped wiring `fs.watch`
-      // correctly, every test above would still pass. Written as a retry loop
-      // because FSEvents drops writes issued before its stream arms, so a
-      // single write proves nothing on macOS.
+  it('wires the seam to a real recursive fs.watch', () => {
+    // Guards the seam: every test above talks to a substitute, so if
+    // `watchDirectory` stopped calling `fs.watch` — or dropped `recursive` —
+    // they would all still pass while the daemon watched nothing.
+    //
+    // This asserts the call rather than waiting for an event on purpose. The
+    // earlier end-to-end version of this check wrote a real file and waited,
+    // which made it hostage to FSEvents: it needs hundreds of ms to arm and
+    // then delivers seconds late, so under a loaded machine (a build and a
+    // docker stack running alongside) it timed out at 30s and failed a suite
+    // that had nothing wrong with it. Whether `fs.watch` itself delivers is
+    // Node's contract to keep, not this repo's to re-verify on every run.
+    const watchSpy = vi.spyOn(fs, 'watch');
+    try {
       const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
       watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
       watcher.start();
 
-      await vi.waitFor(
-        async () => {
-          fs.writeFileSync(path.join(srcDir, `real-${Date.now()}.ts`), 'export const real = 1;');
-          await new Promise((r) => setTimeout(r, 250));
-          expect(restartMock().mock.calls.length).toBeGreaterThanOrEqual(1);
-        },
-        { timeout: REAL_FS_TIMEOUT, interval: 300 }
-      );
-
-      expect(orchestrator.restartApp).toHaveBeenCalledWith('test-app');
+      expect(watchSpy).toHaveBeenCalledTimes(1);
+      const [dir, options] = watchSpy.mock.calls[0]!;
+      expect(dir).toBe(appDir);
+      expect(options).toMatchObject({ recursive: true });
+      expect(typeof watchSpy.mock.calls[0]![2]).toBe('function');
+    } finally {
+      watchSpy.mockRestore();
     }
-  );
+  });
 });

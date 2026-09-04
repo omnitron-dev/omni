@@ -112,13 +112,45 @@ export class PhantomEndpointJanitor {
     } catch {
       return 0;
     }
-    const endpoints = networks[0]?.Containers ?? {};
+    const endpoints = Object.entries(networks[0]?.Containers ?? {});
+    if (endpoints.length === 0) return 0;
+
+    // One authoritative listing instead of an inspect per endpoint: it is
+    // a single docker round-trip (this loop used to make N), and it gives
+    // the sweep a positive fact — "these containers exist" — to reason
+    // from. If the listing itself fails we know nothing about anything, so
+    // the only safe move is to skip the sweep entirely and retry next tick.
+    const listing = await this.runDocker(['ps', '-aq', '--no-trunc']);
+    if (!listing.ok) {
+      this.opts.logger.warn(
+        { network, stderr: listing.stderr },
+        'phantom-endpoint janitor: could not list containers — skipping sweep (nothing disconnected)',
+      );
+      return 0;
+    }
+    const liveContainerIds = new Set(
+      listing.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+
     let cleaned = 0;
-    for (const [containerId, info] of Object.entries(endpoints)) {
-      // Check whether the container still exists. `docker inspect`
-      // returns exit code 1 with "No such object" when it doesn't.
-      const exists = await this.runDocker(['inspect', '--type=container', '--format', '{{.Id}}', containerId]);
-      if (exists.ok) continue;
+    for (const [containerId, info] of endpoints) {
+      if (liveContainerIds.has(containerId)) continue;
+
+      // Absent from the listing is not yet proof: the container may have
+      // been created between the listing and now. Confirm per-endpoint,
+      // and require docker to SAY the object is gone.
+      const verdict = await this.containerVerdict(containerId);
+      if (verdict !== 'absent') {
+        this.opts.logger.warn(
+          { network, containerId, name: info?.Name, verdict },
+          'phantom-endpoint janitor: could not confirm container is gone — leaving endpoint alone',
+        );
+        continue;
+      }
+
       // Phantom — force-disconnect.
       const disconnect = await this.runDocker(['network', 'disconnect', network, containerId, '--force']);
       if (disconnect.ok) {
@@ -135,6 +167,34 @@ export class PhantomEndpointJanitor {
       }
     }
     return cleaned;
+  }
+
+  /**
+   * Decide whether a container exists, is definitively gone, or cannot be
+   * determined right now.
+   *
+   * This distinction is the whole point of the module's safety. The
+   * original code asked `docker inspect` and treated ANY non-zero exit as
+   * "gone" — so a 10s timeout (trivially reachable when the host disk is
+   * full and dockerd crawls), a spawn failure, or an unreachable daemon
+   * all read as "phantom". On 2026-09-04 that fired nine times in six
+   * minutes against RUNNING containers: the janitor force-disconnected
+   * daos-dev-pg, -redis, -postgres, -minio, -tor, -tiles, -nominatim and
+   * both monero containers from the managed network, which drops their
+   * host port publication until the container is recreated. The container
+   * IDs in those log lines matched the live containers exactly — they were
+   * never phantoms.
+   *
+   * `disconnect --force` is destructive and unrecoverable without a
+   * recreate, so 'unknown' must never be treated as 'absent'.
+   */
+  private async containerVerdict(containerId: string): Promise<'exists' | 'absent' | 'unknown'> {
+    const result = await this.runDocker(['inspect', '--type=container', '--format', '{{.Id}}', containerId]);
+    if (result.ok) return 'exists';
+    // Docker answered, and its answer was "there is no such object".
+    if (/no such (object|container)/i.test(result.stderr)) return 'absent';
+    // Timeout, spawn error, daemon unreachable, permission problem, …
+    return 'unknown';
   }
 
   /**

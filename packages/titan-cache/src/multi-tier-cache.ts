@@ -26,6 +26,7 @@ export interface MultiTierCacheOptions {
   l1?: IL1CacheOptions & { type?: 'lru' | 'lfu' };
   l2?: IL2CacheOptions;
   writeStrategy?: 'through' | 'back';
+  /** NOT IMPLEMENTED — nothing reads this; reads are always L1 first. */
   readStrategy?: 'l1-first' | 'parallel';
   autoPromote?: boolean;
   promotionThreshold?: number;

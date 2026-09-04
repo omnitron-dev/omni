@@ -117,7 +117,15 @@ export interface ICacheSetOptions {
   skipL2?: boolean;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
-  /** Callback when entry expires */
+  /**
+   * Callback when entry expires.
+   *
+   * NOT IMPLEMENTED — nothing reads this field, so the callback is never
+   * invoked. (The `onExpire` inside lru-cache/lfu-cache is a different,
+   * internal wheel-timer hook and is unrelated to this one.) Declared here
+   * because removing it would break callers who pass it; documented because
+   * they are entitled to know it does nothing.
+   */
   onExpire?: (key: string, value: unknown) => void;
 }
 
@@ -125,7 +133,14 @@ export interface ICacheSetOptions {
  * Cache get options
  */
 export interface ICacheGetOptions {
-  /** Return stale value while refreshing */
+  /**
+   * Return stale value while refreshing.
+   *
+   * NOT IMPLEMENTED — nothing reads this field. A caller who sets it still
+   * gets an ordinary miss when the entry expires, along with the latency spike
+   * and the stampede on the origin that stale-while-revalidate exists to
+   * prevent. The cache stays correct, which is why this is easy to miss.
+   */
   staleWhileRevalidate?: boolean;
   /** Skip L1 and go directly to L2 */
   skipL1?: boolean;
@@ -234,10 +249,12 @@ export interface ICacheModuleOptions {
   /** Enable statistics collection */
   enableStats?: boolean;
   /** Stats collection interval in ms */
+  /** NOT IMPLEMENTED — nothing reads this; stats are not published on a timer. */
   statsInterval?: number;
   /** Cache partitions */
   partitions?: ICachePartition[];
   /** Warming strategies */
+  /** NOT IMPLEMENTED — nothing reads this; no warming is performed. */
   warmingStrategies?: ICacheWarmingStrategy[];
   /** Enable WeakRef for optional GC */
   useWeakRef?: boolean;
@@ -251,9 +268,14 @@ export interface ICacheModuleOptions {
   wheelTimerBuckets?: number;
   /** Make module global */
   isGlobal?: boolean;
-  /** Stale-while-revalidate window in seconds */
+  /**
+   * Stale-while-revalidate window in seconds.
+   *
+   * NOT IMPLEMENTED, like its per-get counterpart above.
+   */
   staleWhileRevalidate?: number;
   /** Background refresh enabled */
+  /** NOT IMPLEMENTED — nothing reads this. */
   backgroundRefresh?: boolean;
 }
 

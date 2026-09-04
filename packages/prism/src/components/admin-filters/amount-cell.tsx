@@ -14,6 +14,8 @@ import { useMemo } from 'react';
 import Typography from '@mui/material/Typography';
 import type { SxProps, Theme } from '@mui/material/styles';
 
+import { formatDecimalString } from '../../utils/format-crypto.js';
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -41,7 +43,15 @@ function formatAmount(amount: string, decimals?: number): string {
   const num = parseFloat(amount);
   if (Number.isNaN(num)) return amount;
 
-  const fixed = decimals !== undefined ? num.toFixed(decimals) : amount;
+  // Scale the DECIMAL STRING, never `Number(amount).toFixed(n)`.
+  //
+  // This component exists for financial tables, and its own docblock shows
+  // `<AmountCell amount="0.00045123" currency="XMR" decimals={12} />` — a
+  // precision at which a double has already lost digits. The amount arrives
+  // as a string precisely so those digits survive; rounding it through a
+  // float discarded them at the last step before display.
+  const scaled = decimals !== undefined ? formatDecimalString(amount, decimals) : null;
+  const fixed = scaled ?? (decimals !== undefined ? num.toFixed(decimals) : amount);
   const [intPart, decPart] = fixed.split('.');
   const absInt = intPart.replace('-', '');
 

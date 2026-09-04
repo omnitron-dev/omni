@@ -432,10 +432,30 @@ describe('Resilience Patterns - Combined Patterns', () => {
       }
     }
 
-    // DB query with retry
-    const dbResult = await dbService.executeQuery('SELECT * FROM cache');
+    // DB query with retry.
+    //
+    // The fixture fails on purpose — 30% on each of the first two attempts and
+    // 10% on every attempt — so with three attempts it legitimately gives up
+    // about 1.4% of the time. Asserting unconditional success made this test
+    // fail roughly one run in seventy for reasons the code under test is
+    // entitled to. Assert the retry CONTRACT instead: it either succeeds, or it
+    // exhausts exactly the configured number of attempts.
+    let dbResult: Awaited<ReturnType<typeof dbService.executeQuery>> | undefined;
+    let dbError: Error | undefined;
+    try {
+      dbResult = await dbService.executeQuery('SELECT * FROM cache');
+    } catch (error) {
+      dbError = error as Error;
+    }
 
-    expect(dbResult.success).toBe(true);
+    if (dbResult) {
+      expect(dbResult.success).toBe(true);
+      expect(dbResult.attempts).toBeGreaterThanOrEqual(1);
+      expect(dbResult.attempts).toBeLessThanOrEqual(3);
+    } else {
+      expect(dbError?.message).toContain('Query failed after 3 attempts');
+    }
+
     expect(apiResults.length).toBeGreaterThan(0);
   });
 

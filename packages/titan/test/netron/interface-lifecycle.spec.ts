@@ -79,7 +79,7 @@ describe('Interface Lifecycle Tests', () => {
     await remotePeer.releaseInterface(iface2);
 
     // Интерфейс должен быть удалён после обоих освобождений
-    expect(async () => iface1.getData()).rejects.toThrow('Invalid interface');
+    await expect(async () => iface1.getData()).rejects.toThrow('Invalid interface');
   });
 
   it('should handle cyclic nested interface releases gracefully', async () => {
@@ -91,7 +91,7 @@ describe('Interface Lifecycle Tests', () => {
     await remotePeer.releaseInterface(iface);
 
     // Проверка, что вложенный интерфейс был автоматически освобождён
-    expect(async () => nestedIface.increment()).rejects.toThrow('Invalid interface');
+    await expect(async () => nestedIface.increment()).rejects.toThrow('Invalid interface');
   });
 
   it('should throw when accessing released interface', async () => {

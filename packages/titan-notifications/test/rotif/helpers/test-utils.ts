@@ -140,3 +140,64 @@ export function createTestNamespace(prefix: string): string {
 
 /** Alias kept for the specs migrated from titan, which import this name. */
 export const isRedisInMockMode = isInMockMode;
+
+/**
+ * Redis client pool for a suite that needs raw clients alongside a manager.
+ *
+ * `rotif-comprehensive.spec.ts` called `createRedisTestHelper()` at the top of
+ * its describe body, and the symbol was never defined or imported anywhere in
+ * the repository. Vitest evaluates a `describe.skip` body, so the reference
+ * threw at collection and the whole 699-line file failed to load — while its
+ * own console line said "Skipping … integration test", which is what kept the
+ * breakage invisible.
+ */
+export function createRedisTestHelper(db = 0) {
+  const clients: Redis[] = [];
+  const config = getTestRedisConfig(db);
+
+  return {
+    config,
+
+    createClient(connectionName?: string): Redis {
+      const client = new Redis({
+        host: config.host,
+        port: config.port,
+        db: config.db,
+        ...(connectionName ? { connectionName } : {}),
+        maxRetriesPerRequest: null,
+        lazyConnect: false,
+      });
+      clients.push(client);
+      return client;
+    },
+
+    async waitForRedis(timeoutMs = 30_000): Promise<void> {
+      const probe = new Redis({ host: config.host, port: config.port, db: config.db, lazyConnect: true });
+      const deadline = Date.now() + timeoutMs;
+      try {
+        for (;;) {
+          try {
+            if (probe.status !== 'ready') await probe.connect().catch(() => {});
+            if ((await probe.ping()) === 'PONG') return;
+          } catch (error) {
+            if (Date.now() >= deadline) throw error;
+          }
+          if (Date.now() >= deadline) throw new Error(`Redis at ${config.host}:${config.port} not ready`);
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      } finally {
+        probe.disconnect();
+      }
+    },
+
+    async cleanup(): Promise<void> {
+      for (const client of clients.splice(0)) {
+        try {
+          await client.quit();
+        } catch {
+          client.disconnect();
+        }
+      }
+    },
+  };
+}

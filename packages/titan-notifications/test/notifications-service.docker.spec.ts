@@ -488,8 +488,17 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
         data: { message: 'error test' },
       });
 
-      // Wait for error to propagate
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Poll rather than sleep a fixed 200ms. This used to time out at 120s:
+      // the consumer loops ran their blocking XREADGROUP on the manager's
+      // shared command connection, so the `subscribe` above and the `publish`
+      // below each queued behind a 5s BLOCK window — 35s and 15s respectively,
+      // measured. See rotif/blocking-read-isolation.spec.ts. With each loop on
+      // its own connection the hook fires in ~100ms, and polling keeps the
+      // assertion about the hook rather than about a sleep length.
+      const deadline = Date.now() + 15_000;
+      while (onError.mock.calls.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
 
       expect(onError).toHaveBeenCalled();
     });

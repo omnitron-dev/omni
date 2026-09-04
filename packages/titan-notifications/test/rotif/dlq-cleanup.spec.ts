@@ -27,12 +27,23 @@ async function publishAndFail(manager: NotificationManager, channel: string, pay
   // Wait for subscription to be ready
   await delay(50);
 
+  const before = (await manager.getDLQMessages()).length;
+
   // Publish message
   await manager.publish(channel, payload);
 
-  // Wait for processing and DLQ movement
-  // Need more time for the message to be processed, failed, and moved to DLQ
-  await delay(300);
+  // Wait for the message to actually land in the DLQ. This used to be a flat
+  // `delay(300)`, which is a guess about how long publish -> handler -> retry
+  // exhaustion -> move-to-dlq takes; when the box was busy the message was
+  // still in flight and the caller counted one too few ("expected 5 to be 3").
+  // Waiting on the observable outcome removes the guess entirely.
+  const deadline = Date.now() + 15_000;
+  while ((await manager.getDLQMessages()).length <= before) {
+    if (Date.now() >= deadline) {
+      throw new Error(`message for ${channel} never reached the DLQ (still ${before})`);
+    }
+    await delay(25);
+  }
 
   // Unsubscribe
   await sub.unsubscribe();

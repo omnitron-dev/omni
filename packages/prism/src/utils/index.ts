@@ -324,4 +324,7 @@ export {
   COIN_DISPLAY_DECIMALS,
   type FormatCoinAmountOptions,
   formatDecimalString,
+  sumDecimalStrings,
+  toScaledInteger,
+  fromScaledInteger,
 } from './format-crypto.js';

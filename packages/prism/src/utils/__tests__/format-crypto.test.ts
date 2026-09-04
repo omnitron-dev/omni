@@ -12,7 +12,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { formatCoinAmount, formatCoinAmountList, getCoinDecimals } from '../format-crypto.js';
+import {
+  formatCoinAmount,
+  formatCoinAmountList,
+  getCoinDecimals,
+  sumDecimalStrings,
+  toScaledInteger,
+  fromScaledInteger,
+} from '../format-crypto.js';
 
 describe('formatCoinAmount', () => {
   it('pads to the canonical precision', () => {
@@ -113,5 +120,84 @@ describe('formatCoinAmountList', () => {
 
   it('renders an empty map as an empty string', () => {
     expect(formatCoinAmountList({})).toBe('');
+  });
+});
+
+describe('sumDecimalStrings', () => {
+  it('adds amounts that a float cannot', () => {
+    // The canonical demonstration: `0.1 + 0.2 + 0.3` as doubles is
+    // 0.6000000000000001. A formatter capped at eight decimals hides that,
+    // but anything showing the raw total — a tooltip, an export, a value
+    // posted back — shows the artefact.
+    expect(sumDecimalStrings(['0.1', '0.2', '0.3'], 8)).toBe('0.60000000');
+  });
+
+  it('carries across the whole number exactly', () => {
+    expect(sumDecimalStrings(['0.99999999', '0.00000001'], 8)).toBe('1.00000000');
+  });
+
+  it('stays exact where a float accumulator drifts', () => {
+    // At eight decimals a float accumulator and this one agree for realistic
+    // balances — the divergence appears at wire precision. XMR stores twelve
+    // decimals, and there three values are already enough:
+    const values = ['12346.678901234567', '23457.789012345678', '34568.890123456789'];
+
+    let drifting = 0;
+    for (const value of values) drifting += Number(value);
+
+    expect(sumDecimalStrings(values, 12)).toBe('70373.358037037034');
+    expect(drifting.toFixed(12)).toBe('70373.358037037033'); // one piconero short
+  });
+
+  it('subtracts, when a value is negative', () => {
+    expect(sumDecimalStrings(['1.5', '-0.75'], 8)).toBe('0.75000000');
+  });
+
+  it('renders a zero total without a sign', () => {
+    expect(sumDecimalStrings(['1.5', '-1.5'], 8)).toBe('0.00000000');
+  });
+
+  it('treats absent values as absent, not as junk', () => {
+    // A missing balance must not turn the whole total into NaN — which is
+    // exactly what a `parseFloat` accumulator does.
+    expect(sumDecimalStrings(['1.5', null, undefined, ''], 8)).toBe('1.50000000');
+  });
+
+  it('skips values that are not plain decimals', () => {
+    expect(sumDecimalStrings(['1.5', 'abc', '1e3'], 8)).toBe('1.50000000');
+  });
+
+  it('is zero for nothing at all', () => {
+    expect(sumDecimalStrings([], 8)).toBe('0.00000000');
+  });
+
+  it('accepts numbers through their decimal representation', () => {
+    expect(sumDecimalStrings([1.5, '0.25'], 8)).toBe('1.75000000');
+  });
+
+  it('rounds each value half-up at the accumulation scale', () => {
+    expect(sumDecimalStrings(['0.005', '0.005'], 2)).toBe('0.02');
+  });
+});
+
+describe('toScaledInteger / fromScaledInteger', () => {
+  it('round-trips a value at its scale', () => {
+    expect(fromScaledInteger(toScaledInteger('1.005', 2)!, 2)).toBe('1.01');
+  });
+
+  it('scales `1.005` above the double, not below it', () => {
+    // `Number('1.005').toFixed(2)` is '1.00' — a balance a cent short of the
+    // one actually stored. The whole reason this path exists.
+    expect(toScaledInteger('1.005', 2)).toBe(101n);
+  });
+
+  it('refuses what it cannot read', () => {
+    expect(toScaledInteger('1e3', 8)).toBeNull();
+    expect(toScaledInteger('', 8)).toBeNull();
+    expect(toScaledInteger('BTC', 8)).toBeNull();
+  });
+
+  it('keeps a negative sign through both directions', () => {
+    expect(fromScaledInteger(toScaledInteger('-0.5', 8)!, 8)).toBe('-0.50000000');
   });
 });

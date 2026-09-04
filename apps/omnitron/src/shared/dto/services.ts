@@ -86,6 +86,13 @@ import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleI
 import type { DeployResult, DeploymentRecord } from './deploy.js';
 import type { ContainerState, InfrastructureState } from '../../infrastructure/types.js';
 import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.js';
+import type { Pipeline, PipelineDef, PipelineRun } from './pipelines.js';
+import type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
+import type { SystemSnapshot } from './system-info.js';
+
+export type { Pipeline, PipelineDef, PipelineStep, PipelineRun, PipelineRunStepResult } from './pipelines.js';
+export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
+export type { SystemSnapshot } from './system-info.js';
 
 export type { FleetNode, FleetSummary, NodeRegistration, NodeRole };
 export type { NodeStatus } from './fleet.js';
@@ -335,4 +342,34 @@ export interface IOmnitronFleetService {
   setRole(data: { nodeId: string; role: NodeRole }): Promise<FleetNode>;
   drainNode(data: { nodeId: string }): Promise<{ success: boolean }>;
   heartbeat(data: { nodeId: string }): Promise<{ ok: boolean }>;
+}
+
+// ============================================================================
+// Pipelines / Traces / System Info Service Interfaces
+// ============================================================================
+
+/** CI/CD pipeline definitions and runs. */
+export interface IOmnitronPipelinesService {
+  createPipeline(data: PipelineDef): Promise<Pipeline>;
+  getPipeline(data: { id: string }): Promise<Pipeline | null>;
+  listPipelines(): Promise<Pipeline[]>;
+  deletePipeline(data: { id: string }): Promise<{ success: boolean }>;
+  executePipeline(data: { id: string; params?: Record<string, unknown> }): Promise<PipelineRun>;
+  cancelRun(data: { runId: string }): Promise<{ success: boolean }>;
+  getRunStatus(data: { runId: string }): Promise<PipelineRun | null>;
+  listRuns(data?: { pipelineId?: string; limit?: number }): Promise<PipelineRun[]>;
+}
+
+/** Distributed trace ingestion and query. */
+export interface IOmnitronTracesService {
+  ingestSpan(data: TraceSpan): Promise<{ success: boolean }>;
+  ingestBatch(data: { spans: TraceSpan[] }): Promise<{ success: boolean }>;
+  getTrace(data: { traceId: string }): Promise<Trace | null>;
+  queryTraces(data: TraceFilter): Promise<Trace[]>;
+  getServiceMap(): Promise<ServiceMapEntry[]>;
+}
+
+/** Host snapshot: OS, CPU, memory, disks, network, daemon runtime. */
+export interface IOmnitronSystemInfoService {
+  getSnapshot(): Promise<SystemSnapshot>;
 }

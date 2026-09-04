@@ -8,8 +8,10 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES } from '../shared/roles.js';
 import type { SystemInfoService, SystemSnapshot } from './system-info.service.js';
 
+import type { IOmnitronSystemInfoService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronSystemInfo' })
-export class SystemInfoRpcService {
+export class SystemInfoRpcService implements IOmnitronSystemInfoService {
   constructor(private readonly systemInfo: SystemInfoService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })

@@ -13,8 +13,10 @@ import type {
   PipelineRun,
 } from './pipeline.service.js';
 
+import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronPipelines' })
-export class PipelineRpcService {
+export class PipelineRpcService implements IOmnitronPipelinesService {
   constructor(private readonly pipelines: PipelineService) {}
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

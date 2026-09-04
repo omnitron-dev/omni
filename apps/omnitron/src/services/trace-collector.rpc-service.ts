@@ -14,8 +14,10 @@ import type {
   ServiceMapEntry,
 } from './trace-collector.service.js';
 
+import type { IOmnitronTracesService } from '../shared/dto/services.js';
+
 @Service({ name: 'OmnitronTraces' })
-export class TraceRpcService {
+export class TraceRpcService implements IOmnitronTracesService {
   constructor(private readonly traces: TraceCollectorService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })

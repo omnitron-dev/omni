@@ -81,6 +81,29 @@ function OnShutdown(): MethodDecorator {
 // Topology DI token prefix — apps use createToken('topology:{processName}')
 const TOPOLOGY_TOKEN_PREFIX = 'topology:';
 
+/**
+ * Announce which stage of start-up we reached.
+ *
+ * Start-up runs config load → module import → `Application.create` →
+ * hooks → transports → `start()`, and until now it reported nothing until it
+ * was finished. When an app hung — `daos/dev/main` did, repeatedly — the only
+ * artefact was `Worker startup timed out after 30000ms` with
+ * `stderrBytes: 0`: the supervisor knew the child never answered and nothing
+ * knew how far it had got.
+ *
+ * Each stage is written to stderr as a single line. stderr specifically,
+ * because the spawner already captures the last 64 KiB of it into the crash
+ * record — so a timeout now carries a trail ending at the stage that hung,
+ * with no new plumbing between the child and the daemon.
+ *
+ * The prefix is machine-greppable on purpose; `omnitron doctor` reads the
+ * last one to name the stalled stage.
+ */
+function reportStage(stage: string, detail?: string): void {
+  const suffix = detail ? ` ${detail}` : '';
+  process.stderr.write(`[omnitron:boot] ${stage}${suffix}\n`);
+}
+
 @Process({ name: 'BootstrapApp', allMethodsPublic: true })
 class BootstrapProcess {
   private definition: IAppDefinition | null = null;
@@ -114,7 +137,9 @@ class BootstrapProcess {
 
     // Prefer bundled module path (esbuild pre-built) over tsx runtime
     const hasTsx = !bundledModulePath && (process.execArgv ?? []).some((a) => a.includes('tsx'));
+    reportStage('config:loading', bootstrapPath);
     this.definition = await loadBootstrapConfig(bootstrapPath, { devMode: hasTsx || !!bundledModulePath });
+    reportStage('config:loaded', this.definition.name);
 
     // Find this process's entry in the topology.
     if (resolvedProcessName) {
@@ -136,13 +161,16 @@ class BootstrapProcess {
 
     // beforeCreate hook
     if (hooks?.beforeCreate) {
+      reportStage('hook:beforeCreate');
       await hooks.beforeCreate();
     }
 
     // Import the module — prefer pre-bundled .mjs from BuildService,
     // fall back to resolving from bootstrap directory (tsx or dist/)
     const modulePath = bundledModulePath ?? path.resolve(path.dirname(bootstrapPath), this.entry.module);
+    reportStage('module:importing', modulePath);
     const moduleFile = await import(modulePath);
+    reportStage('module:imported');
 
     // ────────────────────────────────────────────────────────────────────
     // Container identity guard.
@@ -179,14 +207,18 @@ class BootstrapProcess {
     }
 
     // Create Titan Application
+    reportStage('application:creating');
     this.app = await Application.create(ModuleClass, {
       name: this.definition.name,
       version: this.definition.version,
     });
+    reportStage('application:created');
 
     // afterCreate hook
     if (hooks?.afterCreate) {
+      reportStage('hook:afterCreate');
       await hooks.afterCreate(this.app);
+      reportStage('hook:afterCreate:done');
     }
 
     // Inject topology proxies via Netron-native connection to daemon.
@@ -265,16 +297,24 @@ class BootstrapProcess {
 
     // beforeStart hook
     if (hooks?.beforeStart) {
+      reportStage('hook:beforeStart');
       await hooks.beforeStart(this.app);
+      reportStage('hook:beforeStart:done');
     }
 
     // Start the application
+    reportStage('application:starting');
     await this.app.start();
+    reportStage('application:started');
 
     // afterStart hook
     if (hooks?.afterStart) {
+      reportStage('hook:afterStart');
       await hooks.afterStart(this.app);
+      reportStage('hook:afterStart:done');
     }
+
+    reportStage('ready');
   }
 
   /**

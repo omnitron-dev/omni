@@ -46,7 +46,24 @@ export class AppHandle {
   public status: AppStatus = 'stopped';
   public startedAt: number = 0;
   public restarts: number = 0;
-  public port: number | null = null;
+  /**
+   * HTTP port the app listens on, or null when it has no HTTP transport.
+   *
+   * Derived from the topology rather than reported by the child: the port is
+   * declared in `transports.http.port` and is known to the daemon before the
+   * process even starts, so asking the child for it would add a round trip to
+   * learn something already in hand.
+   *
+   * This used to be a field nothing ever assigned. `BootstrapProcess` computed
+   * the value and exposed `getPort()`, but no caller existed — so `omnitron
+   * list`, `status`, and the console's app cards all reported `port: null`
+   * for apps that were serving traffic. Six apps on ports 3001-3006 showed as
+   * portless.
+   */
+  get port(): number | null {
+    const http = this.topologyProcesses?.find((p) => p.transports?.http)?.transports?.http;
+    return typeof http?.port === 'number' ? http.port : null;
+  }
   public lastMetrics: IProcessMetrics | null = null;
   public lastHealth: IHealthStatus | null = null;
 

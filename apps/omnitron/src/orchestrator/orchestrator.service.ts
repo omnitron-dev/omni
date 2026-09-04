@@ -351,6 +351,20 @@ export class OrchestratorService extends EventEmitter {
    */
   setConfig(config: IEcosystemConfig): void {
     this.config = config;
+
+    // Metrics polling is armed here rather than in `startAll` alone.
+    //
+    // It used to run only from `startAll`, which is the `omnitron start`
+    // path. Apps brought up any other way — `stack start`, a single
+    // `omnitron start <app>`, or the daemon resuming a stack at boot — were
+    // never sampled, so `omnitron list`, `status` and the console's app
+    // cards reported cpu 0 / memory 0 for processes that were serving
+    // traffic. Observed live: six apps online, every one showing 0 while
+    // `ps` reported ~105 MB RSS apiece.
+    //
+    // `setConfig` is the one point every path passes through, and the call
+    // is idempotent — an existing timer is cleared first.
+    this.startMetricsPolling(config.monitoring?.metrics?.interval ?? 5_000);
   }
 
   /**
@@ -473,9 +487,8 @@ export class OrchestratorService extends EventEmitter {
       );
     }
 
-    // Periodic sweep was armed by `ensureBootReconciled` above —
-    // no second call needed here.
-    this.startMetricsPolling(config.monitoring.metrics.interval);
+    // Periodic sweep was armed by `ensureBootReconciled` above, and metrics
+    // polling by `setConfig` — no second call needed for either.
     this.persistState();
   }
 
@@ -2214,8 +2227,18 @@ export class OrchestratorService extends EventEmitter {
     }
   }
 
-  /** Periodic metrics polling for classic mode processes */
+  /**
+   * Periodic CPU/memory sampling for every managed process.
+   *
+   * Idempotent: re-arming replaces the previous timer rather than stacking a
+   * second one, so `setConfig` can call it on every config reload.
+   */
   private startMetricsPolling(interval: number): void {
+    if (this.metricsTimer) {
+      clearInterval(this.metricsTimer);
+      this.metricsTimer = null;
+    }
+
     this.metricsTimer = setInterval(async () => {
       for (const handle of this.handles.values()) {
         if (handle.status !== 'online') continue;
@@ -2233,6 +2256,7 @@ export class OrchestratorService extends EventEmitter {
         }
       }
     }, interval);
+    this.metricsTimer.unref();
   }
 
   // ============================================================================

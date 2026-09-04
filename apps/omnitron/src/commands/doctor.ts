@@ -37,6 +37,14 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
+import type { ProcessInfoDto } from '../config/types.js';
+
+/**
+ * How long the daemon may take to answer before that is itself a finding.
+ * Generous: the call is local and normally answers in milliseconds, so this
+ * fires for a blocked supervisor, not for a busy machine.
+ */
+const SLOW_DAEMON_MS = 3_000;
 
 // ---------------------------------------------------------------------------
 // Findings
@@ -57,7 +65,7 @@ export interface Finding {
 }
 
 /** Collected during a run; rendered together at the end. */
-class Findings {
+export class Findings {
   private readonly items: Finding[] = [];
 
   add(finding: Finding): void {
@@ -186,9 +194,11 @@ async function checkDatabase(findings: Findings): Promise<void> {
  * with no further explanation, which is how `daos/dev/main` sat broken for a
  * whole session.
  */
-async function checkApps(findings: Findings, client: ReturnType<typeof createDaemonClient>): Promise<void> {
-  const apps = await client.list();
-
+async function checkApps(
+  findings: Findings,
+  client: ReturnType<typeof createDaemonClient>,
+  apps: ProcessInfoDto[]
+): Promise<void> {
   for (const app of apps) {
     if (app.status === 'online') continue;
 
@@ -274,6 +284,113 @@ async function checkApps(findings: Findings, client: ReturnType<typeof createDae
       ],
       remedy:
         'Metrics sampling is armed from the daemon config. Restart the daemon (`omnitron down && omnitron up`); if the readings stay at zero, the sampler is not running.',
+    });
+  }
+}
+
+/**
+ * What an app hides behind `online`.
+ *
+ * `omnitron list` reports one status per app, taken from its main process.
+ * A bootstrap app is several processes, and everything that goes wrong with
+ * the others is invisible at that level — which is how two pool workers spent
+ * a full session being killed and respawned every thirty seconds while their
+ * apps read `online` throughout. These three checks look underneath.
+ */
+export async function checkAppInternals(findings: Findings, apps: ProcessInfoDto[]): Promise<void> {
+  for (const app of apps) {
+    if (app.status !== 'online') continue;
+
+    for (const proc of app.processes ?? []) {
+      // A sub-process whose pid the OS no longer knows. The orchestrator
+      // reports this as `crashed` rather than `stopped` precisely so it can
+      // be told apart from one that was never started.
+      if (proc.status === 'crashed') {
+        findings.add({
+          id: 'app.subprocess-crashed',
+          severity: 'error',
+          title: `"${app.name}" is online but its "${proc.name}" process is gone`,
+          evidence: [
+            `app status: online (pid ${app.pid})`,
+            `${proc.name}: ${proc.type}, last known pid ${proc.pid ?? 'none'} — no such process`,
+          ],
+          remedy: `Restart the app (\`omnitron restart ${app.name}\`) and check its log for what killed that process.`,
+        });
+        continue;
+      }
+
+      if (proc.status === 'stopped') {
+        findings.add({
+          id: 'app.subprocess-stopped',
+          severity: 'warning',
+          title: `"${app.name}" is online but its "${proc.name}" process is not running`,
+          evidence: [`${proc.name}: ${proc.type}, declared in the app's topology, no pid`],
+          remedy: `Whatever this process does is not happening. \`omnitron inspect ${app.name}\` shows the resolved topology.`,
+        });
+        continue;
+      }
+
+      // A pool that no longer matches its declaration. Growth is the easy
+      // case to miss: a pool with more workers than asked for still reports
+      // itself healthy, because it does have workers.
+      if (proc.declaredInstances > 0 && proc.instances !== proc.declaredInstances) {
+        const grown = proc.instances > proc.declaredInstances;
+        findings.add({
+          id: grown ? 'pool.oversized' : 'pool.undersized',
+          severity: 'warning',
+          title: `Pool "${app.name}/${proc.name}" is running ${proc.instances} workers, not the ${proc.declaredInstances} declared`,
+          evidence: [
+            `declared instances: ${proc.declaredInstances}`,
+            `live workers: ${proc.instances}`,
+          ],
+          remedy: grown
+            ? 'Autoscaling only applies to a pool whose topology entry sets `scaling.strategy: "auto"`. If this one does not, the pool grew without being asked to.'
+            : 'Workers are dying faster than the pool replaces them — check the app log for their exit reason.',
+        });
+      }
+    }
+  }
+}
+
+/**
+ * An app that answers `online` while nothing is listening on its port.
+ *
+ * The supervisor's notion of "online" is that the process exists. Whether it
+ * ever finished binding is a different question, and the one an operator is
+ * actually asking when a request fails.
+ */
+export async function checkPorts(findings: Findings, apps: ProcessInfoDto[]): Promise<void> {
+  const net = await import('node:net');
+
+  const reachable = (port: number): Promise<boolean> =>
+    new Promise((resolve) => {
+      const socket = new net.Socket();
+      const done = (ok: boolean) => {
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(1_000);
+      socket.once('connect', () => done(true));
+      socket.once('timeout', () => done(false));
+      socket.once('error', () => done(false));
+      socket.connect(port, '127.0.0.1');
+    });
+
+  for (const app of apps) {
+    if (app.status !== 'online' || app.port === null) continue;
+    if (await reachable(app.port)) continue;
+
+    findings.add({
+      id: 'app.port-unreachable',
+      severity: 'error',
+      title: `"${app.name}" is online but nothing is listening on port ${app.port}`,
+      evidence: [
+        `app status: online (pid ${app.pid})`,
+        `TCP connect to 127.0.0.1:${app.port} refused or timed out`,
+      ],
+      remedy:
+        `The process is alive but its HTTP transport never bound, or bound elsewhere. ` +
+        `Check the app log around start-up; \`omnitron inspect ${app.name}\` shows the port it was told to use.`,
     });
   }
 }
@@ -446,11 +563,40 @@ export async function doctorCommand(): Promise<void> {
       remedy: 'Start it with `omnitron up`.',
     });
   } else {
+    // One `list` serves several checks, and how long it takes is itself a
+    // reading: the call walks every supervisor, so a supervisor that has
+    // stopped answering shows up here as latency long before it shows up as
+    // a status.
+    let apps: ProcessInfoDto[] = [];
+    const listStarted = Date.now();
+    try {
+      apps = await client.list();
+    } catch {
+      // `checkApps` will report the failure with its own evidence.
+    }
+    const listMs = Date.now() - listStarted;
+
+    if (listMs > SLOW_DAEMON_MS) {
+      findings.add({
+        id: 'daemon.slow',
+        severity: 'warning',
+        title: `The daemon took ${(listMs / 1000).toFixed(1)}s to list ${apps.length} app(s)`,
+        evidence: [
+          `expected well under ${SLOW_DAEMON_MS / 1000}s`,
+          'the call polls every supervisor, so one that has stopped answering shows up as latency here',
+        ],
+        remedy:
+          'Find the app whose supervisor is blocked: `omnitron inspect <app>` on each in turn will hang on the one at fault.',
+      });
+    }
+
     // Each check is independent: one failing must not hide the others, which
     // is the whole point of running them together.
     for (const check of [
       () => checkDaemon(findings, client),
-      () => checkApps(findings, client),
+      () => checkApps(findings, client, apps),
+      () => checkAppInternals(findings, apps),
+      () => checkPorts(findings, apps),
       () => checkInfrastructure(findings, client),
     ]) {
       try {

@@ -823,6 +823,18 @@ export interface SubProcessInfoDto {
   memory: number;
   uptime: number;
   restarts: number;
+  /**
+   * Live worker count. 1 for a supervisor-managed child; the pool's actual
+   * size for an entry declaring `instances > 1`.
+   */
+  instances: number;
+  /**
+   * What the topology asked for. Reported alongside `instances` so a pool
+   * that has drifted from its declaration is visible without going and
+   * reading the bootstrap file — a pool grown past its configuration still
+   * reports itself as healthy, since it does have workers.
+   */
+  declaredInstances: number;
 }
 
 export interface DaemonStatusDto {

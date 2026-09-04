@@ -99,12 +99,8 @@ export class MultiBackendClient<T extends BackendSchema = BackendSchema> impleme
 
     // Register shared middleware from options
     if (options.shared?.middleware) {
-      for (const config of options.shared.middleware) {
-        // Create a no-op middleware function if not provided
-        const middlewareFn: MiddlewareFunction = async (_ctx, next) => {
-          await next();
-        };
-        this.middleware.use(middlewareFn, config);
+      for (const entry of options.shared.middleware) {
+        this.middleware.use(entry.middleware, entry.config, entry.stage);
       }
     }
 

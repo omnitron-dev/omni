@@ -193,9 +193,32 @@ export interface SharedOptions {
   auth?: AuthenticationClient;
 
   /**
-   * Middleware configurations applied to all backends
+   * Middleware applied to every backend.
+   *
+   * Each entry carries the function to run alongside its registration config.
+   * This used to be `MiddlewareConfig[]` — config only, with no way to name the
+   * function — and the constructor filled the gap with a no-op, so anything
+   * passed here was registered under its name and then did nothing at all.
    */
-  middleware?: MiddlewareConfig[];
+  middleware?: SharedMiddlewareEntry[];
+}
+
+/**
+ * One entry of {@link SharedOptions.middleware}: the middleware itself plus how
+ * it should be registered.
+ */
+export interface SharedMiddlewareEntry {
+  /** The middleware to run. */
+  middleware: MiddlewareFunction;
+
+  /** Name, priority, and the service/method filters. */
+  config?: Partial<MiddlewareConfig>;
+
+  /**
+   * Pipeline stage.
+   * @default MiddlewareStage.PRE_REQUEST
+   */
+  stage?: MiddlewareStage;
 }
 
 /**

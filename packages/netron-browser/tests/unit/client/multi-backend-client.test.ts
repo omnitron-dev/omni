@@ -9,6 +9,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MultiBackendClient, createMultiBackendClient } from '../../../src/client/multi-backend-client.js';
 import type { BackendConfig, MultiBackendClientOptions } from '../../../src/types/multi-backend.js';
 import { ConnectionState } from '../../../src/types/index.js';
+import { MiddlewareStage } from '../../../src/middleware/types.js';
+import type { ClientMiddlewareContext } from '../../../src/middleware/types.js';
+
+/** A minimal context the pipeline can be driven with. */
+function middlewareContext(service = 'users', method = 'findAll'): ClientMiddlewareContext {
+  return {
+    service,
+    method,
+    args: [],
+    timing: { start: performance.now(), middlewareTimes: new Map() },
+    metadata: new Map(),
+  };
+}
 
 // Create mock for BackendClient
 const createMockBackendClient = (name: string, config: BackendConfig, baseUrl: string) => {
@@ -127,15 +140,12 @@ vi.mock('../../../src/client/backend-client.js', () => {
 });
 
 // Mock MiddlewarePipeline as a class
-vi.mock('../../../src/middleware/pipeline.js', () => {
-  const MockMiddlewarePipeline = class {
-    use = vi.fn();
-    execute = vi.fn().mockResolvedValue(undefined);
-    clear = vi.fn();
-    getMetrics = vi.fn().mockReturnValue({ executions: 0, errors: 0, avgTime: 0 });
-  };
-  return { MiddlewarePipeline: MockMiddlewarePipeline };
-});
+// MiddlewarePipeline is deliberately NOT mocked. It is a pure in-memory
+// registry with no I/O, so a stub buys nothing and costs the only assertions
+// that matter: with `use` and `execute` replaced by `vi.fn()`, a client that
+// registers a no-op — or nothing at all — looks identical to one that wires the
+// caller's middleware up correctly. That is precisely the bug the tests below
+// exist to catch. BackendClient stays mocked; it opens sockets.
 
 describe('MultiBackendClient', () => {
   const baseUrl = 'https://api.example.com';
@@ -464,6 +474,116 @@ describe('MultiBackendClient', () => {
       const result = client.use(middleware);
 
       expect(result).toBe(client); // Returns this for chaining
+    });
+
+    it('runs middleware registered through use()', async () => {
+      // `use()` returning `this` says nothing about whether the function is
+      // ever called. Drive the pipeline and check the middleware actually ran.
+      const client = new MultiBackendClient({ baseUrl, backends });
+
+      const calls: string[] = [];
+      client.use(
+        async (_ctx, next) => {
+          calls.push('ran');
+          await next();
+        },
+        { name: 'probe' }
+      );
+
+      await client.getMiddleware().execute(middlewareContext(), MiddlewareStage.PRE_REQUEST);
+
+      expect(calls).toEqual(['ran']);
+    });
+
+    it('runs middleware supplied through shared.middleware', async () => {
+      // `shared.middleware` used to be typed `MiddlewareConfig[]` — config with
+      // no function — and the constructor registered a no-op in its place under
+      // the caller's name. Every entry was silently inert: an auth header, a
+      // retry, an audit hook, all registered and none running.
+      const calls: string[] = [];
+
+      const client = new MultiBackendClient({
+        baseUrl,
+        backends,
+        shared: {
+          middleware: [
+            {
+              middleware: async (ctx, next) => {
+                calls.push(`shared:${ctx.service}.${ctx.method}`);
+                await next();
+              },
+              config: { name: 'shared-probe' },
+            },
+          ],
+        },
+      });
+
+      await client.getMiddleware().execute(middlewareContext(), MiddlewareStage.PRE_REQUEST);
+
+      expect(calls).toEqual(['shared:users.findAll']);
+    });
+
+    it('honours the stage and config of a shared middleware entry', async () => {
+      const seen: string[] = [];
+
+      const client = new MultiBackendClient({
+        baseUrl,
+        backends,
+        shared: {
+          middleware: [
+            {
+              middleware: async (_ctx, next) => {
+                seen.push('post');
+                await next();
+              },
+              config: { name: 'post-probe' },
+              stage: MiddlewareStage.POST_RESPONSE,
+            },
+            {
+              middleware: async (_ctx, next) => {
+                seen.push('orders-only');
+                await next();
+              },
+              config: { name: 'orders-probe', services: ['orders'] },
+            },
+          ],
+        },
+      });
+
+      const middleware = client.getMiddleware();
+
+      // Wrong stage and wrong service: neither entry applies.
+      await middleware.execute(middlewareContext(), MiddlewareStage.PRE_REQUEST);
+      expect(seen).toEqual([]);
+
+      await middleware.execute(middlewareContext(), MiddlewareStage.POST_RESPONSE);
+      expect(seen).toEqual(['post']);
+
+      await middleware.execute(middlewareContext('orders'), MiddlewareStage.PRE_REQUEST);
+      expect(seen).toEqual(['post', 'orders-only']);
+    });
+
+    it('runs shared middleware in priority order', async () => {
+      const order: string[] = [];
+      const record = (name: string) => async (_ctx: unknown, next: () => Promise<void>) => {
+        order.push(name);
+        await next();
+      };
+
+      const client = new MultiBackendClient({
+        baseUrl,
+        backends,
+        shared: {
+          middleware: [
+            { middleware: record('late'), config: { name: 'late', priority: 200 } },
+            { middleware: record('early'), config: { name: 'early', priority: 1 } },
+          ],
+        },
+      });
+
+      await client.getMiddleware().execute(middlewareContext(), MiddlewareStage.PRE_REQUEST);
+
+      expect(order).toEqual(['early', 'late']);
     });
   });
 

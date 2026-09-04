@@ -32,24 +32,26 @@ if (skipTests) {
 const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('Discovery Service - Infrastructure Tests', () => {
-  let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
+  let testContainer: Awaited<ReturnType<typeof RedisTestManager.createRedisContainer>>;
   let redis: Redis;
   let logger: ILogger;
   let service: DiscoveryService;
 
   beforeEach(async () => {
-    const redisManager = RedisTestManager.getInstance();
-    testContainer = await redisManager.createContainer();
-    redis = testContainer.client!;
+    // RedisTestManager exposes static factories and returns a DockerContainer
+    // (host/port/cleanup) — it has no instance API and carries no client.
+    testContainer = await RedisTestManager.createRedisContainer();
+    redis = new Redis({ host: testContainer.host, port: testContainer.port! });
     logger = createMockLogger();
   });
 
   afterEach(async () => {
     if (service) {
-      await service.stop();
+      await service.onStop();
     }
     if (redis) {
       await redis.flushdb();
+      redis.disconnect();
     }
     if (testContainer) {
       await testContainer.cleanup();
@@ -96,7 +98,7 @@ describeOrSkip('Discovery Service - Infrastructure Tests', () => {
   describe('Node Registration and Heartbeat', () => {
     it('should register node on start', async () => {
       service = new DiscoveryService(redis, logger);
-      await service.start();
+      await service.onStart();
       await delay(100);
 
       expect(service.isRegistered()).toBe(true);
@@ -112,7 +114,7 @@ describeOrSkip('Discovery Service - Infrastructure Tests', () => {
       };
 
       service = new DiscoveryService(redis, logger, options);
-      await service.start();
+      await service.onStart();
       await delay(100);
 
       const isActive1 = await service.isNodeActive(service.getNodeId());
@@ -126,13 +128,13 @@ describeOrSkip('Discovery Service - Infrastructure Tests', () => {
 
     it('should deregister node on stop', async () => {
       service = new DiscoveryService(redis, logger);
-      await service.start();
+      await service.onStart();
       await delay(100);
 
       const isActive1 = await service.isNodeActive(service.getNodeId());
       expect(isActive1).toBe(true);
 
-      await service.stop();
+      await service.onStop();
       await delay(100);
 
       const isActive2 = await service.isNodeActive(service.getNodeId());
@@ -146,7 +148,7 @@ describeOrSkip('Discovery Service - Infrastructure Tests', () => {
     });
 
     it('should find active nodes', async () => {
-      await service.start();
+      await service.onStart();
       await delay(100);
 
       const nodes = await service.findNodes();
@@ -156,7 +158,7 @@ describeOrSkip('Discovery Service - Infrastructure Tests', () => {
     it('should find nodes by service name', async () => {
       const svc: ServiceInfo = { name: 'TestService', version: '1.0.0' };
       await service.registerService(svc);
-      await service.start();
+      await service.onStart();
       await delay(100);
 
       const nodes = await service.findNodesByService('TestService');

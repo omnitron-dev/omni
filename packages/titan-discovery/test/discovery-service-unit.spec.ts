@@ -32,7 +32,7 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
   afterEach(async () => {
     if (service) {
       try {
-        await service.stop();
+        await service.onStop();
       } catch (_e) {
         // ignore
       }
@@ -172,7 +172,7 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
     });
 
     it('should deregister node', async () => {
-      await service.start();
+      await service.onStart();
       const nodeId = service.getNodeId();
 
       await service.deregisterNode(nodeId);
@@ -183,7 +183,7 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
     });
 
     it('should check if node exists', async () => {
-      await service.start();
+      await service.onStart();
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -275,7 +275,7 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
       const options: DiscoveryOptions = { clientMode: true };
       service = new DiscoveryService(redis, logger, options);
 
-      await service.start();
+      await service.onStart();
 
       expect(service.isRegistered()).toBe(false);
     });
@@ -284,7 +284,7 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
       const options: DiscoveryOptions = { clientMode: true };
       service = new DiscoveryService(redis, logger, options);
 
-      await service.start();
+      await service.onStart();
 
       const nodes = await service.findNodes();
       expect(Array.isArray(nodes)).toBe(true);
@@ -297,29 +297,29 @@ describeOrSkip('DiscoveryService - Core Unit Tests', () => {
     });
 
     it('should start service', async () => {
-      await expect(service.start()).resolves.not.toThrow();
+      await expect(service.onStart()).resolves.not.toThrow();
     });
 
     it('should stop service', async () => {
-      await service.start();
-      await expect(service.stop()).resolves.not.toThrow();
+      await service.onStart();
+      await expect(service.onStop()).resolves.not.toThrow();
     });
 
     it('should handle multiple stop calls', async () => {
-      await service.start();
+      await service.onStart();
 
-      await service.stop();
-      await service.stop();
-      await service.stop();
+      await service.onStop();
+      await service.onStop();
+      await service.onStop();
 
       expect(true).toBe(true);
     });
 
     it('should not restart after stop', async () => {
-      await service.start();
-      await service.stop();
+      await service.onStart();
+      await service.onStop();
 
-      await expect(service.start()).rejects.toThrow('Cannot start a stopped DiscoveryService');
+      await expect(service.onStart()).rejects.toThrow('Cannot start a stopped DiscoveryService');
     });
   });
 

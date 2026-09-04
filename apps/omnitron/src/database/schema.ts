@@ -84,6 +84,10 @@ export interface OmnitronUsersTable {
   pgpPublicKey: string | null;
   pgpEnabled: ColumnType<boolean, boolean, boolean>;
   lastLoginAt: Timestamp | null;
+  /** Consecutive failed sign-ins; reset to 0 on success (migration 006). */
+  failedLoginAttempts: ColumnType<number, number | undefined, number>;
+  /** Set while the account is locked out after repeated failures (migration 006). */
+  lockedUntil: Timestamp | null;
   createdAt: CreatedAt;
   updatedAt: UpdatedAt;
 }

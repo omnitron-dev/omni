@@ -16,6 +16,12 @@ import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { OMNITRON_DB_TOKEN, JWT_SECRET_TOKEN } from '../shared/tokens.js';
+import type {
+  OmnitronSignInRequest,
+  OmnitronSignInResult,
+  OmnitronAuthUser,
+  OmnitronActiveSession,
+} from '../shared/dto/auth.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -23,41 +29,13 @@ const scryptAsync = promisify(scrypt);
 // Types
 // =============================================================================
 
-export interface OmnitronSignInRequest {
-  username: string;
-  password: string;
-  ipAddress?: string;
-  userAgent?: string;
-}
-
-export interface OmnitronSignInResult {
-  user: OmnitronAuthUser;
-  session: OmnitronSessionInfo;
-  accessToken: string;
-}
-
-export interface OmnitronAuthUser {
-  id: string;
-  username: string;
-  displayName: string | null;
-  role: string;
-  totpEnabled: boolean;
-  pgpEnabled: boolean;
-}
-
-export interface OmnitronSessionInfo {
-  id: string;
-  expiresAt: Date;
-}
-
-export interface OmnitronActiveSession {
-  id: string;
-  ipAddress: string | null;
-  userAgent: string | null;
-  createdAt: Date;
-  expiresAt: Date;
-  current: boolean;
-}
+export type {
+  OmnitronSignInRequest,
+  OmnitronSignInResult,
+  OmnitronAuthUser,
+  OmnitronSessionInfo,
+  OmnitronActiveSession,
+} from '../shared/dto/auth.js';
 
 // =============================================================================
 // Constants
@@ -68,6 +46,13 @@ const KEY_LENGTH = 64;
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const JWT_EXPIRY = '1h';
 
+/** Consecutive failures tolerated before the account locks. */
+const MAX_FAILED_ATTEMPTS = 5;
+/** First lockout duration; doubles with each further failure. */
+const LOCKOUT_BASE_MS = 60_000; // 1 minute
+/** Ceiling for the exponential lockout. */
+const LOCKOUT_MAX_MS = 30 * 60_000; // 30 minutes
+
 // =============================================================================
 // Auth Service
 // =============================================================================
@@ -75,6 +60,8 @@ const JWT_EXPIRY = '1h';
 @Injectable()
 export class AuthService {
   private readonly jwtSecret: Uint8Array;
+  /** Lazily-computed decoy hash — see `decoyHash()`. */
+  private decoyHashPromise: Promise<string> | null = null;
 
   // T-2 part 2 — @Inject + useClass replaces the prior useFactory.
   // The jwtSecret string used to ride a non-DI ctor param; it now
@@ -102,7 +89,7 @@ export class AuthService {
   // ===========================================================================
 
   async signIn(request: OmnitronSignInRequest): Promise<OmnitronSignInResult> {
-    const { username, password, ipAddress, userAgent } = request;
+    const { username, password, userAgent } = request;
 
     // 1. Find user
     const user = await this.db
@@ -111,17 +98,29 @@ export class AuthService {
       .where('username', '=', username)
       .executeTakeFirst();
 
-    if (!user) {
+    // 2. Reject while locked out, before spending a scrypt on it.
+    if (user?.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      const seconds = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 1000);
+      throw new Error(`Account temporarily locked — try again in ${seconds}s`);
+    }
+
+    // 3. Verify password.
+    //
+    // An unknown username still costs a full scrypt against a throwaway hash.
+    // Returning early on "no such user" made sign-in measurably faster for
+    // absent accounts than for present ones, which is a username oracle on
+    // the infrastructure control plane: scrypt here takes ~100ms, so the
+    // difference was trivially observable over the network.
+    const valid = user
+      ? await this.verifyPassword(password, user.passwordHash)
+      : await this.verifyPassword(password, await this.decoyHash());
+
+    if (!user || !valid) {
+      if (user) await this.registerFailedAttempt(user.id, user.failedLoginAttempts);
       throw new Error('Invalid credentials');
     }
 
-    // 2. Verify password
-    const valid = await this.verifyPassword(password, user.passwordHash);
-    if (!valid) {
-      throw new Error('Invalid credentials');
-    }
-
-    // 3. Create session (include role in JWT for RBAC enforcement)
+    // 4. Create session (include role in JWT for RBAC enforcement)
     const sessionId = randomUUID();
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
     const accessToken = await this.issueToken(user.id, sessionId, user.role);
@@ -133,15 +132,15 @@ export class AuthService {
         userId: user.id,
         token: accessToken,
         expiresAt,
-        ipAddress: ipAddress ?? null,
+        ipAddress: null,
         userAgent: userAgent ?? null,
       })
       .execute();
 
-    // 4. Update last login
+    // 5. Update last login and clear the failure streak
     await this.db
       .updateTable('omnitron_users')
-      .set({ lastLoginAt: new Date() })
+      .set({ lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null })
       .where('id', '=', user.id)
       .execute();
 
@@ -157,6 +156,45 @@ export class AuthService {
       session: { id: sessionId, expiresAt },
       accessToken,
     };
+  }
+
+  // ===========================================================================
+  // Brute-force throttling
+  // ===========================================================================
+
+  /**
+   * Record a failed sign-in and lock the account once the streak crosses the
+   * threshold. The lockout grows exponentially with each additional failure
+   * past the threshold, capped at LOCKOUT_MAX_MS.
+   *
+   * State is persisted rather than held in memory: a daemon restart — which
+   * an attacker may be able to provoke — must not hand back a clean slate.
+   */
+  private async registerFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
+    const attempts = currentAttempts + 1;
+    const overThreshold = attempts - MAX_FAILED_ATTEMPTS;
+
+    const lockedUntil =
+      overThreshold >= 0
+        ? new Date(Date.now() + Math.min(LOCKOUT_BASE_MS * 2 ** overThreshold, LOCKOUT_MAX_MS))
+        : null;
+
+    await this.db
+      .updateTable('omnitron_users')
+      .set({ failedLoginAttempts: attempts, lockedUntil })
+      .where('id', '=', userId)
+      .execute();
+  }
+
+  /**
+   * A scrypt hash of a random secret, computed once per process.
+   *
+   * Used to spend the same CPU on an unknown username as on a known one, so
+   * response time cannot distinguish the two.
+   */
+  private async decoyHash(): Promise<string> {
+    this.decoyHashPromise ??= this.hashPassword(randomBytes(32).toString('hex'));
+    return this.decoyHashPromise;
   }
 
   // ===========================================================================

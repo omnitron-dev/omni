@@ -540,8 +540,37 @@ export interface IProcessEvents {
  * Process metrics
  */
 export interface IProcessMetrics {
+  /**
+   * Cumulative CPU time consumed since the process started, in SECONDS.
+   *
+   * Monotonically increasing, not a utilisation figure. The unit was
+   * undocumented, and the auto-scaler read it as a percentage — so a worker
+   * crossed a "70% CPU" threshold after 70 seconds of CPU time and never came
+   * back under it. Use `cpuPercent` for a rate.
+   */
   cpu: number;
+  /**
+   * Resident heap in BYTES (`process.memoryUsage().heapUsed`).
+   *
+   * Also read as a percentage by the auto-scaler, which made "memory above
+   * 80%" true for any worker holding more than eighty bytes. Use
+   * `memoryPercent` for a proportion.
+   */
   memory: number;
+  /** Resident set size in bytes, when the reporter provides it. */
+  memoryRss?: number;
+  /**
+   * CPU utilisation over the interval between the last two samples, as a
+   * percentage. Absent until a second sample exists, and absent from
+   * reporters that do not track an interval — a consumer must treat "absent"
+   * as "unknown", never as zero.
+   */
+  cpuPercent?: number;
+  /**
+   * Memory as a percentage of the configured per-worker limit. Absent when no
+   * limit is known, with the same rule: absent means unknown.
+   */
+  memoryPercent?: number;
   requests?: number;
   errors?: number;
   latency?: ILatencyMetrics;

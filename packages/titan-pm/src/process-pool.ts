@@ -127,6 +127,11 @@ export class ProcessPool<T> {
 
   // Memory management configuration
   private readonly memoryLimitBytes: number;
+  /**
+   * Last CPU reading per worker, for turning cumulative CPU seconds into a
+   * utilisation percentage. Cleared with the worker.
+   */
+  private readonly cpuSamples = new Map<string, { seconds: number; at: number }>();
   private readonly memoryWarningThreshold: number; // Percentage (0-1)
 
   // Queue batch processing configuration
@@ -351,20 +356,40 @@ export class ProcessPool<T> {
     let totalMemory = 0;
     let healthyWorkers = 0;
 
+    // Percentages are averaged only over the workers that reported one, so a
+    // worker still awaiting its second CPU sample does not drag the average
+    // toward zero and read as an idle pool.
+    let totalCpuPercent = 0;
+    let cpuPercentSamples = 0;
+    let totalMemoryPercent = 0;
+    let memoryPercentSamples = 0;
+
     this.workers.forEach((worker) => {
       if (worker.metrics) {
         totalCpu += worker.metrics.cpu;
         totalMemory += worker.metrics.memory;
+        if (typeof worker.metrics.cpuPercent === 'number') {
+          totalCpuPercent += worker.metrics.cpuPercent;
+          cpuPercentSamples++;
+        }
+        if (typeof worker.metrics.memoryPercent === 'number') {
+          totalMemoryPercent += worker.metrics.memoryPercent;
+          memoryPercentSamples++;
+        }
       }
       if (worker.health === 'healthy') healthyWorkers++;
     });
 
     const avgCpu = this.workers.size > 0 ? totalCpu / this.workers.size : 0;
     const avgMemory = this.workers.size > 0 ? totalMemory / this.workers.size : 0;
+    const avgCpuPercent = cpuPercentSamples > 0 ? totalCpuPercent / cpuPercentSamples : undefined;
+    const avgMemoryPercent = memoryPercentSamples > 0 ? totalMemoryPercent / memoryPercentSamples : undefined;
 
     return {
       cpu: avgCpu,
       memory: avgMemory,
+      ...(avgCpuPercent !== undefined ? { cpuPercent: avgCpuPercent } : {}),
+      ...(avgMemoryPercent !== undefined ? { memoryPercent: avgMemoryPercent } : {}),
       queueSize: this.queue.length,
       activeWorkers: this.active,
       totalWorkers: this.workers.size,
@@ -1361,7 +1386,8 @@ export class ProcessPool<T> {
 
           // Also get metrics
           if ('__getMetrics' in worker.proxy) {
-            worker.metrics = await (worker.proxy as any).__getMetrics();
+            const raw = (await (worker.proxy as any).__getMetrics()) as IProcessMetrics;
+            worker.metrics = this.withDerivedPercentages(worker.id, raw);
           }
         } catch (error) {
           // Edge-transition log: WARN on first failure, DEBUG on
@@ -1456,30 +1482,59 @@ export class ProcessPool<T> {
       this.autoScaleRunning = true;
 
       try {
-        const cooldownPeriod = this.poolOptions.autoScale?.cooldownPeriod || 60000;
+        // `??`, not `||`: zero is a meaningful setting for every number in
+        // this block — "no cooldown", "scale at any utilisation" — and `||`
+        // silently replaced it with the default, so those configurations could
+        // not take effect at all.
+        const cooldownPeriod = this.poolOptions.autoScale?.cooldownPeriod ?? 60000;
 
         if (now - this.lastScaleCheck < cooldownPeriod) return;
 
         const metrics = this.metrics;
         const config = this.poolOptions.autoScale!;
 
-        // Check if we need to scale up
+        // Check if we need to scale up.
+        //
+        // `metrics.cpuPercent` and `metrics.memoryPercent` are the only figures
+        // comparable to these thresholds. `metrics.cpu` is cumulative CPU
+        // SECONDS and `metrics.memory` is BYTES, and comparing those against 70
+        // and 80 is what made this pool a ratchet: memory above "80%" was true
+        // for any worker holding more than eighty bytes, so every cooldown
+        // scaled up until `max`, while scale-down required memory below 40
+        // bytes and so could never fire. Observed on a live stand as two pools
+        // configured for 2 instances each running 8 apiece, growing one step
+        // per 30s cooldown and never shrinking.
+        //
+        // A percentage that is absent means "not measured yet" — that rule
+        // abstains rather than voting. Voting zero would read as idle and
+        // trigger scale-down on a pool nobody has measured.
         const queueThreshold = config.queueThreshold ?? 50;
+        const targetCpu = config.targetCPU ?? 70;
+        const targetMemory = config.targetMemory ?? 80;
+
+        const cpuOverTarget = metrics.cpuPercent !== undefined && metrics.cpuPercent > targetCpu;
+        const memoryOverTarget = metrics.memoryPercent !== undefined && metrics.memoryPercent > targetMemory;
+
         const shouldScaleUp =
-          metrics.cpu > (config.targetCPU || 70) ||
-          metrics.memory > (config.targetMemory || 80) ||
-          (metrics.saturation || 0) > (config.scaleUpThreshold || 0.8) ||
+          cpuOverTarget ||
+          memoryOverTarget ||
+          (metrics.saturation ?? 0) > (config.scaleUpThreshold ?? 0.8) ||
           this.queue.length > queueThreshold;
 
-        // Check if we need to scale down (proportional to target thresholds)
-        const scaleDownCpu = (config.targetCPU ?? 70) * 0.4; // 40% of target = idle
-        const scaleDownMemory = (config.targetMemory ?? 80) * 0.5; // 50% of target = idle
-        const shouldScaleDown =
-          metrics.cpu < scaleDownCpu &&
-          metrics.memory < scaleDownMemory &&
-          (metrics.saturation || 0) < (config.scaleDownThreshold || 0.3);
+        // Check if we need to scale down (proportional to target thresholds).
+        // Same rule, mirrored: an unmeasured resource cannot be called idle, so
+        // its absence blocks scale-down rather than permitting it.
+        const scaleDownCpu = targetCpu * 0.4; // 40% of target = idle
+        const scaleDownMemory = targetMemory * 0.5; // 50% of target = idle
+        const cpuIdle = metrics.cpuPercent !== undefined && metrics.cpuPercent < scaleDownCpu;
+        const memoryIdle = metrics.memoryPercent !== undefined && metrics.memoryPercent < scaleDownMemory;
 
-        if (shouldScaleUp && this.workers.size < (config.max || 10)) {
+        const shouldScaleDown =
+          cpuIdle &&
+          memoryIdle &&
+          (metrics.saturation ?? 0) < (config.scaleDownThreshold ?? 0.3);
+
+        if (shouldScaleUp && this.workers.size < (config.max ?? 10)) {
           // Proportional scaling: scale step based on queue pressure
           const queuePressure = this.queue.length / queueThreshold;
           const scaleStep = Math.max(1, Math.ceil(queuePressure));
@@ -1489,8 +1544,8 @@ export class ProcessPool<T> {
           this.lastScaleCheck = now;
           // T#80: success — reset failure counter.
           this.autoScaleConsecutiveFailures = 0;
-        } else if (shouldScaleDown && this.workers.size > (config.min || 1)) {
-          const newSize = Math.max(this.workers.size - 1, config.min || 1);
+        } else if (shouldScaleDown && this.workers.size > (config.min ?? 1)) {
+          const newSize = Math.max(this.workers.size - 1, config.min ?? 1);
           await this.scale(newSize);
           this.lastScaleCheck = now;
           this.autoScaleConsecutiveFailures = 0;
@@ -1846,6 +1901,46 @@ export class ProcessPool<T> {
   /**
    * Private: Calculate saturation
    */
+  /**
+   * Turns a worker's raw reading into the percentages the scaling rules need.
+   *
+   * The raw payload reports cumulative CPU seconds and heap bytes. Those are
+   * the right things to report — they are what the process actually knows —
+   * but they are not comparable to `targetCPU` and `targetMemory`, which are
+   * percentages by name, by default value (70 and 80) and by the company they
+   * keep (`scaleUpThreshold` is a 0..1 ratio).
+   *
+   * CPU becomes a rate here rather than in the worker because a rate needs two
+   * samples and an interval, and the pool is what holds both. The first sample
+   * for a worker therefore yields no percentage at all — deliberately absent
+   * rather than zero, so a rule can decline to vote instead of voting "idle".
+   */
+  private withDerivedPercentages(workerId: string, raw: IProcessMetrics): IProcessMetrics {
+    const now = Date.now();
+    const derived: IProcessMetrics = { ...raw };
+
+    if (typeof raw.cpu === 'number') {
+      const previous = this.cpuSamples.get(workerId);
+      if (previous) {
+        const elapsedSeconds = (now - previous.at) / 1000;
+        const cpuSeconds = raw.cpu - previous.seconds;
+        // A restarted worker resets its counter; a zero interval divides by
+        // zero. Either way there is no rate to report for this sample.
+        if (elapsedSeconds > 0 && cpuSeconds >= 0) {
+          derived.cpuPercent = (cpuSeconds / elapsedSeconds) * 100;
+        }
+      }
+      this.cpuSamples.set(workerId, { seconds: raw.cpu, at: now });
+    }
+
+    const footprint = typeof raw.memoryRss === 'number' ? raw.memoryRss : raw.memory;
+    if (typeof footprint === 'number' && this.memoryLimitBytes > 0) {
+      derived.memoryPercent = (footprint / this.memoryLimitBytes) * 100;
+    }
+
+    return derived;
+  }
+
   private calculateSaturation(): number {
     const totalCapacity = this.workers.size * 2; // Assume each worker can handle 2 concurrent
     const currentLoad = this.active + this.queue.length;

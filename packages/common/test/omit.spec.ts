@@ -341,21 +341,48 @@ describe('omit', () => {
   });
 
   it('should be fast with large arrays of keys', () => {
-    const obj: Record<string, number> = {};
-    const keys: string[] = [];
-
-    for (let i = 0; i < 10000; i++) {
-      obj[`key${i}`] = i;
-      if (i % 2 === 0) {
-        keys.push(`key${i}`);
+    // Absolute wall-clock bounds say nothing portable — this used to assert
+    // `< 50ms` and failed at 147ms whenever the machine was busy. What the test
+    // is really about is that `omit` does not scan the key list once per
+    // property: a naive `keys.includes(k)` inside the property loop is O(n*m)
+    // and blows up quadratically. Compare two input sizes instead; the ratio is
+    // measured on the same machine at the same moment, so load cancels out.
+    const build = (size: number) => {
+      const obj: Record<string, number> = {};
+      const keys: string[] = [];
+      for (let i = 0; i < size; i++) {
+        obj[`key${i}`] = i;
+        if (i % 2 === 0) keys.push(`key${i}`);
       }
-    }
+      return { obj, keys };
+    };
 
-    const start = performance.now();
-    omit(obj, keys);
-    const end = performance.now();
+    // Best of several runs: the minimum is the estimator least disturbed by GC
+    // pauses and scheduler preemption.
+    const bestOf = (size: number, runs = 5) => {
+      const { obj, keys } = build(size);
+      let best = Infinity;
+      for (let r = 0; r < runs; r++) {
+        const start = performance.now();
+        omit(obj, keys);
+        best = Math.min(best, performance.now() - start);
+      }
+      return best;
+    };
 
-    expect(end - start).toBeLessThan(50);
+    const small = bestOf(4_000);
+    const large = bestOf(16_000);
+
+    // Correctness first — the original test asserted nothing about the result.
+    const { obj, keys } = build(4_000);
+    const result = omit(obj, keys);
+    expect(Object.keys(result)).toHaveLength(2_000);
+    expect(result['key0']).toBeUndefined();
+    expect(result['key1']).toBe(1);
+
+    // 4x the input. Linear would be ~4x; quadratic would be ~16x. A ceiling of
+    // 8x separates the two with room for measurement noise.
+    expect(large).toBeLessThan(Math.max(small, 0.05) * 8);
   });
 
   it('should handle multiple dot notation paths', () => {

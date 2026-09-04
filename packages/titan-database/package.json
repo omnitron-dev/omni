@@ -68,7 +68,7 @@
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^13.0.3",
     "mysql2": "^3.20.0",
     "pg": "^8.20.0"
   },

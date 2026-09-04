@@ -90,8 +90,28 @@ describe('Performance Benchmarks', () => {
       console.log(`HttpInterface: ${httpDuration.toFixed(2)}ms`);
       console.log(`FluentInterface: ${fluentDuration.toFixed(2)}ms`);
 
-      // FluentInterface may be slightly slower due to additional features, but should be reasonable
-      expect(fluentDuration).toBeLessThan(httpDuration * 3);
+      // Both loops finish in well under a millisecond, so a single sample is
+      // mostly scheduler noise — this compared two ~0.2ms numbers and failed
+      // whenever one of them was preempted. Re-measure with enough work that
+      // the timer resolution is irrelevant, best-of-N on each side.
+      const bestOf = (build: () => unknown, runs = 5, iterations = 20_000) => {
+        for (let i = 0; i < 1_000; i++) build(); // warm up
+        let best = Infinity;
+        for (let r = 0; r < runs; r++) {
+          const start = performance.now();
+          for (let i = 0; i < iterations; i++) build();
+          best = Math.min(best, performance.now() - start);
+        }
+        return best;
+      };
+
+      const httpBest = bestOf(() => new HttpInterface<IUserService>(transport, definition));
+      const fluentBest = bestOf(
+        () => new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager)
+      );
+
+      // FluentInterface does more per construction, but not multiples more.
+      expect(fluentBest).toBeLessThan(httpBest * 3);
     });
   });
 

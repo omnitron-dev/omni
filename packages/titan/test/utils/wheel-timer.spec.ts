@@ -72,7 +72,7 @@ describe('WheelTimer', () => {
       });
 
       timer.schedule(1, 50, callback);
-    }, 1000);
+    }), 1000);
 
     it('should fire multiple callbacks independently', () => new Promise<void>((done) => {
       const results: number[] = [];
@@ -99,7 +99,7 @@ describe('WheelTimer', () => {
         results.push(3);
         checkDone();
       });
-    }, 1000);
+    }), 1000);
 
     it('should handle delays longer than single wheel rotation', () => new Promise<void>((done) => {
       // With resolution=10 and wheelSize=100, one rotation = 1000ms
@@ -113,7 +113,7 @@ describe('WheelTimer', () => {
 
       // 150ms delay requires more than one rotation (100ms)
       timer.schedule(1, 150, callback);
-    }, 2000);
+    }), 2000);
   });
 
   describe('cancel()', () => {
@@ -185,7 +185,7 @@ describe('WheelTimer', () => {
           done();
         }, 10);
       });
-    }, 1000);
+    }), 1000);
   });
 
   describe('size', () => {
@@ -277,18 +277,32 @@ describe('WheelTimer', () => {
         throw new Error('Test error');
       });
       timer.schedule(2, 40, successCallback);
-    }, 1000);
+    }), 1000);
 
     it('should log callback errors', () => new Promise<void>((done) => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // WheelTimer reports through the injected ILogger (a null logger by
+      // default), not console.error. Spying on the console meant this test
+      // waited for a call that could never come and sat until the 120s timeout.
+      const logger = {
+        error: vi.fn(),
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn(),
+      };
+      const loggingTimer = new WheelTimer<number>({ resolution: 10, wheelSize: 100, logger: logger as never });
 
-      timer.schedule(1, 20, () => {
+      loggingTimer.schedule(1, 20, () => {
         throw new Error('Test error');
       });
 
       setTimeout(() => {
-        expect(consoleError).toHaveBeenCalled();
-        consoleError.mockRestore();
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.objectContaining({ err: expect.any(Error) }),
+          'WheelTimer callback error'
+        );
+        loggingTimer.stop?.();
         done();
       }, 100);
     }));
@@ -369,7 +383,7 @@ describe('WheelTimer', () => {
       });
 
       timer.schedule(1, 0, callback);
-    }, 500);
+    }), 500);
 
     it('should handle negative delay as minimum 1 tick', () => new Promise<void>((done) => {
       const callback = vi.fn(() => {
@@ -378,7 +392,7 @@ describe('WheelTimer', () => {
       });
 
       timer.schedule(1, -100, callback);
-    }, 500);
+    }), 500);
 
     it('should handle very small resolution', () => new Promise<void>((done) => {
       timer = new WheelTimer({ resolution: 1, wheelSize: 100 });
@@ -389,7 +403,7 @@ describe('WheelTimer', () => {
       });
 
       timer.schedule(1, 10, callback);
-    }, 500);
+    }), 500);
 
     it('should handle scheduling during callback', () => new Promise<void>((done) => {
       let phase = 1;
@@ -404,6 +418,6 @@ describe('WheelTimer', () => {
           done();
         });
       });
-    }, 1000);
+    }), 1000);
   });
 });

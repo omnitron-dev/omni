@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { Redis } from 'ioredis';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
 import type { RotifConfig, Subscription, RotifMessage } from '../../../src/rotif/types.js';
-import { createRedisTestHelper, isRedisInMockMode } from '../../modules/redis/utils/redis-test-utils.js';
+import { isRedisInMockMode } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
 
 // Skip these tests in regular runs - they require dedicated Redis and have timing dependencies

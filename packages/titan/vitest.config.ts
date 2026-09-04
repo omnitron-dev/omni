@@ -37,8 +37,6 @@ export default defineConfig({
       'test/nexus/runtime/bun-*',
       'test/nexus/runtime/deno-*',
       'test/nexus/bun/**',
-      // Rotif (messaging) extracted — depends on ioredis + moved source files
-      'test/rotif/**',
       // Service-discovery integration tests — depend on extracted redis/discovery modules
       'test/integration/integration-sd-*',
       'test/integration/pm-http-cluster*',

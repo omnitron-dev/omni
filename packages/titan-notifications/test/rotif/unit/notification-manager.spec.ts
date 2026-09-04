@@ -353,9 +353,15 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await manager.publish('test.channel', { msg: 2 });
       await manager.publish('test.channel', { msg: 3 });
 
-      await delay(500);
-
-      const stats = sub.stats();
+      // Poll rather than sleeping a fixed 500ms — the consumer loop does not
+      // promise to have drained three messages by then, and the shortfall
+      // surfaced as "expected 2 to be 3".
+      let stats = sub.stats();
+      const deadline = Date.now() + 10_000;
+      while (stats.messages < 3 && Date.now() < deadline) {
+        await delay(50);
+        stats = sub.stats();
+      }
 
       expect(stats.messages).toBe(3);
       expect(stats.lastMessageAt).toBeGreaterThan(0);

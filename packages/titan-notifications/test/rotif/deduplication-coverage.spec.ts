@@ -1,6 +1,6 @@
 import { delay } from '@omnitron-dev/common';
 import { isRedisInMockMode } from './helpers/test-utils.js';
-import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 import { getTestRedisUrl, createTestNotificationManager } from './helpers/test-utils.js';
 import { generateDedupKey } from '../../src/rotif/utils.js';
 

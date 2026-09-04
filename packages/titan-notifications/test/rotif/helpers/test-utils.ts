@@ -46,7 +46,21 @@ export function getTestRedisUrl(db?: number): string {
 
   const defaultPort = process.env.TEST_REDIS_PORT ?? '16379';
   const baseUrl = process.env['REDIS_URL'] || process.env['TEST_REDIS_URL'] || globalRedis?.url || `redis://localhost:${defaultPort}`;
-  return db !== undefined ? `${baseUrl}/${db}` : baseUrl;
+  return db !== undefined ? `${baseUrl}/${toTestDb(db)}` : baseUrl;
+}
+
+/**
+ * Host/port/db form of the same endpoint, for specs that build an ioredis
+ * client by parts rather than from a URL.
+ */
+export function getTestRedisConfig(db = 0): { url: string; host: string; port: number; db: number } {
+  const url = new URL(getTestRedisUrl(db));
+  return {
+    url: url.toString(),
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    db: toTestDb(db),
+  };
 }
 
 /**
@@ -62,7 +76,7 @@ export function toTestDb(db: number): number {
 
 export function createTestConfig(db: number = 1, additionalConfig: any = {}) {
   return {
-    redis: getTestRedisUrl(toTestDb(db)),
+    redis: getTestRedisUrl(db),
     ...additionalConfig,
   };
 }

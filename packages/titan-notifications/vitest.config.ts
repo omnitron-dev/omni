@@ -27,6 +27,13 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     clearMocks: true,
+    // Every suite in this package talks to a shared Redis and most of them call
+    // `flushdb()` in beforeEach. Twenty-two suites ask for logical DB 0 and
+    // thirty-one for DB 1, so running files in parallel means they erase each
+    // other's streams mid-test — which surfaced as subscribers receiving
+    // nothing at all. Redis has 16 logical DBs and this package has 33 spec
+    // files, so per-file isolation is not available; run them one at a time.
+    fileParallelism: false,
     alias: [
       { find: /^@omnitron-dev\/titan\/nexus$/, replacement: resolve(__dirname, '../titan/src/nexus/index.ts') },
       { find: /^@omnitron-dev\/titan\/nexus\/(.*)$/, replacement: resolve(__dirname, '../titan/src/nexus/$1') },

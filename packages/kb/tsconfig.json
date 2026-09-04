@@ -13,7 +13,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noEmit": false
+    "noEmit": false,
+    // This package is a Node CLI (process, node:path, node:readline).
+    // TypeScript 7 no longer pulls every visible @types package in by
+    // default, and this tsconfig does not extend the workspace root
+    // where `types: ["node"]` is set, so it has to say so itself.
+    "types": ["node"]
   },
   "include": [
     "src/**/*.ts"

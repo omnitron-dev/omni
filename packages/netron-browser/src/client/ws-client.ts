@@ -604,7 +604,11 @@ export class WebSocketClient extends EventEmitter {
 
     // Encode packet to MessagePack binary format
     const encoded = encodePacket(packet);
-    this.ws.send(encoded);
+    // SmartBuffer allocates a plain ArrayBuffer, but since TS 5.7 `Uint8Array`
+    // is generic over `ArrayBufferLike`, which includes `SharedArrayBuffer` —
+    // a backing store `WebSocket.send()` refuses. Narrow rather than copy: this
+    // is the hot send path.
+    this.ws.send(encoded as Uint8Array<ArrayBuffer>);
   }
 
   /**

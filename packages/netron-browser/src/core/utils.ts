@@ -58,7 +58,11 @@ export function detectRuntime(): RuntimeEnvironment {
   if (typeof (globalThis as any).Bun !== 'undefined') {
     return 'bun';
   }
-  if (typeof (global as any)?.Deno !== 'undefined') {
+  // `globalThis`, not `global`: `global` is a Node identifier, and `typeof
+  // (global as any)?.Deno` does NOT guard it — the optional chain protects the
+  // property access, not the reference to `global` itself, so this line threw
+  // ReferenceError in exactly the runtime it was trying to detect.
+  if (typeof (globalThis as any)?.Deno !== 'undefined') {
     return 'deno';
   }
   return 'node';

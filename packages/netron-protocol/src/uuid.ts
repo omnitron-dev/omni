@@ -12,6 +12,18 @@
 
 const HEX: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
+/**
+ * Minimal Web Crypto surface.
+ *
+ * `globalThis.crypto` is provided by browsers and by Node 19+, but this package
+ * compiles with `lib: ["ES2022"]` and no DOM/Node types on purpose — it is
+ * shared by the server and the browser. Declaring just what is used keeps it
+ * that way instead of taking a type dependency on either platform.
+ */
+declare const globalThis: {
+  crypto: { getRandomValues<T extends Uint8Array>(array: T): T };
+};
+
 let _lastMs = 0;
 let _seq = 0;
 

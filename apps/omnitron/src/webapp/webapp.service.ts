@@ -34,7 +34,31 @@ const exec = promisify(execFile);
 // Nginx Config Template
 // =============================================================================
 
-function generateNginxConfig(apiHost: string, apiPort: number, wsPort: number): string {
+/**
+ * The console's security headers.
+ *
+ * Repeated verbatim in every location block that sets any header of its own:
+ * nginx's `add_header` does not merge with an outer scope — declaring one
+ * header inside a location DROPS every header inherited from `server`. That
+ * rule silently stripped Referrer-Policy and Permissions-Policy from
+ * index.html the first time this config was deployed.
+ */
+const SECURITY_HEADERS = [
+  'add_header X-Content-Type-Options "nosniff" always;',
+  'add_header Referrer-Policy "no-referrer" always;',
+  'add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;',
+  // style-src allows 'unsafe-inline' because Emotion (MUI's engine) injects
+  // component styles as inline <style> at runtime; script-src does not, which
+  // is the half that matters for injection.
+  `add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;`,
+];
+
+/** Render the header set at a given indentation. */
+function securityHeaders(indent: string): string {
+  return SECURITY_HEADERS.map((h) => `${indent}${h}`).join('\n');
+}
+
+export function generateNginxConfig(apiHost: string, apiPort: number, wsPort: number): string {
   return `
 worker_processes auto;
 
@@ -58,6 +82,9 @@ http {
     gzip_min_length 1024;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
 
+    # Don't advertise the nginx version on every response / error page.
+    server_tokens off;
+
     server {
         listen 80;
         server_name _;
@@ -65,6 +92,16 @@ http {
         # Webapp static files
         root /usr/share/nginx/html;
         index index.html;
+
+        # --- Security headers -------------------------------------------------
+        # The console is an infrastructure control plane: it can start and stop
+        # processes, read logs and hold an operator session. It had no security
+        # headers at all, so a single injected script or a framing page was
+        # enough to drive it.
+        #
+        # The 'always' flag is required — without it nginx omits the header on
+        # error responses, which is exactly where an injection would surface.
+${securityHeaders('        ')}
 
         # API Gateway — proxy to daemon Netron HTTP
         location /netron/ {
@@ -105,15 +142,34 @@ http {
             proxy_read_timeout 3600s;
         }
 
+        # Vite emits content-hashed asset filenames — "alerts-CEojylud.js":
+        # a DASH, then a base64url hash. (An earlier pattern here expected a
+        # dot and lowercase hex, matched nothing, and quietly demoted every
+        # asset to the 1-hour bucket below.) A changed file gets a new name,
+        # so these are immutable. Must precede the SPA fallback location.
+        location ~* "-[A-Za-z0-9_-]{8,}\\.(js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico|map)$" {
+            add_header Cache-Control "public, max-age=31536000, immutable" always;
+${securityHeaders('            ')}
+            try_files $uri =404;
+        }
+
+        # Unhashed assets still get a short cache with revalidation.
+        location ~* "\\.(js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico)$" {
+            add_header Cache-Control "public, max-age=3600, must-revalidate" always;
+${securityHeaders('            ')}
+            try_files $uri =404;
+        }
+
+        # index.html must never be cached: it carries the hashed asset names,
+        # so a stale copy pins the whole app to a previous deploy.
+        location = /index.html {
+            add_header Cache-Control "no-cache, must-revalidate" always;
+${securityHeaders('            ')}
+        }
+
         # SPA fallback — all non-file routes serve index.html
         location / {
             try_files $uri $uri/ /index.html;
-        }
-
-        # Cache static assets aggressively
-        location ~* \\.(js|css|woff2|ttf|png|jpg|svg|ico)$ {
-            expires 7d;
-            add_header Cache-Control "public";
         }
     }
 }
@@ -178,8 +234,26 @@ export class WebappService {
   async start(options?: { force?: boolean }): Promise<void> {
     const force = options?.force ?? false;
 
-    // 1. Check if container is already running
-    if (!force) {
+    // 1. Render the config we WANT before deciding whether to keep the running
+    //    container.
+    //
+    //    This ordering matters. `start()` used to return as soon as it saw a
+    //    healthy container, without ever comparing configuration — so an
+    //    edit to the nginx template took effect only if someone happened to
+    //    remove the container by hand. The security headers added in this
+    //    same change went live only after a manual recreate, which is exactly
+    //    the drift the infrastructure reconciler already guards against for
+    //    every other managed container.
+    //
+    //    WS transport lives on httpPort + 2; daemon HTTP (apiPort) is
+    //    httpPort + 1.
+    const nginxConfig = generateNginxConfig('host.docker.internal', this.apiPort, this.apiPort + 1);
+    const configPath = path.join(this.configDir, 'nginx.conf');
+    const appliedConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : null;
+    const configChanged = appliedConfig !== nginxConfig;
+
+    // 2. Keep a healthy container only when it is running the current config.
+    if (!force && !configChanged) {
       const state = await getContainerState('omnitron-nginx');
       if (state?.status === 'running') {
         if (state.health === 'healthy') {
@@ -189,19 +263,17 @@ export class WebappService {
         // Running but not healthy — stop and recreate
         this.logger.warn('Nginx container running but not healthy — recreating...');
       }
+    } else if (configChanged && appliedConfig !== null) {
+      this.logger.info('Nginx config changed — recreating the console container');
     }
 
-    // 2. Check webapp is built
+    // 3. Check webapp is built
     const distPath = path.join(this.webappDir, 'dist');
     if (!fs.existsSync(path.join(distPath, 'index.html'))) {
       this.logger.info('Webapp not built — building now...');
       await this.build();
     }
 
-    // 3. Generate nginx config
-    // WS transport lives on httpPort + 2; daemon HTTP (apiPort) is httpPort + 1.
-    const nginxConfig = generateNginxConfig('host.docker.internal', this.apiPort, this.apiPort + 1);
-    const configPath = path.join(this.configDir, 'nginx.conf');
     fs.writeFileSync(configPath, nginxConfig, 'utf-8');
     this.logger.info({ configPath }, 'Generated nginx config');
 

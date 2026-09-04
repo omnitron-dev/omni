@@ -47,7 +47,15 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     redisHost = 'localhost';
     redisPort = dockerFixture.port;
 
-    // Generate unique namespace for this test run
+    // Generate unique namespace for this test run.
+    //
+    // Isolation between the three clients comes from the database number
+    // below, not from a key prefix: `keyPrefix` is not an option this module
+    // has — `IRedisClientOptions` has no such field and
+    // `toInternalClientOptions` does not carry one — so the three configs used
+    // to declare a prefix that was silently dropped, and every key landed
+    // unprefixed. Only one assertion ever depended on it, and it read 0 keys
+    // where it expected 100.
     testNamespace = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
     // Create test application with Redis module
@@ -61,7 +69,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
           host: redisHost,
           port: redisPort,
           db: 15,
-          keyPrefix: `${testNamespace}:default:`,
           lazyConnect: false,
         },
         {
@@ -69,7 +76,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
           host: redisHost,
           port: redisPort,
           db: 14,
-          keyPrefix: `${testNamespace}:cache:`,
           enableOfflineQueue: true,
           maxRetriesPerRequest: 5,
           lazyConnect: false,
@@ -79,7 +85,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
           host: redisHost,
           port: redisPort,
           db: 13,
-          keyPrefix: `${testNamespace}:pubsub:`,
           lazyConnect: false,
         },
       ],
@@ -176,7 +181,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
         host: redisHost,
         port: redisPort,
         db: 12,
-        keyPrefix: `${testNamespace}:dynamic:`,
       });
 
       expect(dynamicClient).toBeDefined();
@@ -721,13 +725,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
 
       // Scan through all keys
       do {
-        const [newCursor, batch] = await client.scan(
-          cursor,
-          'MATCH',
-          `${testNamespace}:default:scan-key-*`,
-          'COUNT',
-          10
-        );
+        const [newCursor, batch] = await client.scan(cursor, 'MATCH', 'scan-key-*', 'COUNT', 10);
         cursor = newCursor;
         keys.push(...batch);
       } while (cursor !== '0');
@@ -927,7 +925,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
               host: redisHost,
               port: redisPort,
               db: 10,
-              keyPrefix: `${testNamespace}:async-default:`,
               lazyConnect: false,
             },
             {
@@ -935,7 +932,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
               host: redisHost,
               port: redisPort,
               db: 10,
-              keyPrefix: `${testNamespace}:async:`,
               lazyConnect: false,
             },
           ],
@@ -974,7 +970,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
             host: redisHost,
             port: redisPort,
             db: 9,
-            keyPrefix: `${testNamespace}:feature-default:`,
             lazyConnect: false,
           },
           {
@@ -982,7 +977,6 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
             host: redisHost,
             port: redisPort,
             db: 9,
-            keyPrefix: `${testNamespace}:feature:`,
             lazyConnect: false,
           },
         ],

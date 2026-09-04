@@ -5,6 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { describeError } from '@omnitron-dev/common';
 import { performance } from 'node:perf_hooks';
 import { generateUuidV7 } from '../../utils/id.js';
 import { computeBackoff } from '../../utils/backoff.js';
@@ -256,10 +257,29 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       this.reconnectAttempts++;
       this.setState(ConnectionState.RECONNECTING);
       this.emit('reconnect', this.reconnectAttempts);
-      this.doReconnect().catch((error) => {
-        if (this.reconnectAttempts >= (this.options.reconnect?.maxAttempts ?? 5)) {
-          this.emit('reconnect_failed');
+      this.doReconnect().catch((error: unknown) => {
+        const attempts = this.reconnectAttempts;
+        if (attempts >= (this.options.reconnect?.maxAttempts ?? 5)) {
+          // The retry budget is spent. Move to a terminal state BEFORE
+          // announcing it: this used to leave `state` at RECONNECTING forever,
+          // so anything deciding by polling `connection.state` — the omnitron
+          // daemon does — waited for a recovery that was never coming and a
+          // supervisor never recreated the peer.
+          this.setState(ConnectionState.DISCONNECTED);
+          const cause = error instanceof Error ? error : new Error(describeError(error));
+          // Carry the cause with the event. It used to be swallowed here, which
+          // made "why did reconnection fail" unanswerable from both the logs and
+          // the event stream.
+          this.logger?.error(
+            { err: cause, connectionId: this.id, attempts },
+            `Reconnection gave up after ${attempts} attempt(s): ${describeError(error)}`
+          );
+          this.emit('reconnect_failed', { attempts, error: cause });
         } else {
+          this.logger?.debug(
+            { err: error, connectionId: this.id, attempts },
+            `Reconnection attempt ${attempts} failed: ${describeError(error)}`
+          );
           this.handleDisconnect('Reconnection failed');
         }
       });

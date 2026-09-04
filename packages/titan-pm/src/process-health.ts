@@ -211,10 +211,32 @@ export class ProcessHealthChecker extends EventEmitter {
    */
   private async basicHealthCheck(proxy: ServiceProxy<any>, timeout: number): Promise<IHealthStatus> {
     try {
-      // Try to get metrics as a basic check
-      if ('__getMetrics' in proxy) {
-        await this.withTimeout(proxy.__getMetrics(), timeout);
+      // `__getMetrics` is used here as a liveness ping — the question is
+      // whether anything at all can be called on this process, not what the
+      // numbers are.
+      //
+      // The call used to be wrapped in `if ('__getMetrics' in proxy)`, which
+      // is not a check: on a Netron interface proxy `in` answers true for every
+      // name. Worse than useless, it was dangerous in the one case it would
+      // have fired — a plain object without the method — because the function
+      // then fell straight through to `status: 'healthy'` having probed
+      // nothing. "I could not check" must never be reported as "it is fine".
+      const probe = (proxy as { __getMetrics?: () => Promise<unknown> }).__getMetrics;
+      if (typeof probe !== 'function') {
+        return {
+          status: 'unhealthy',
+          checks: [
+            {
+              name: 'connectivity',
+              status: 'fail',
+              message: 'Process exposes no callable probe',
+            },
+          ],
+          timestamp: Date.now(),
+        };
       }
+
+      await this.withTimeout(probe.call(proxy), timeout);
 
       return {
         status: 'healthy',

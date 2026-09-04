@@ -37,13 +37,6 @@ export default defineConfig({
       'test/nexus/runtime/bun-*',
       'test/nexus/runtime/deno-*',
       'test/nexus/bun/**',
-      // Service-discovery integration tests — depend on extracted redis/discovery modules
-      'test/integration/integration-sd-*',
-      'test/integration/pm-http-cluster*',
-      // Scheduler extracted
-      'test/scheduler/**',
-      // Redis utilities that depend on extracted redis module
-      'test/utils/redis-*',
     ],
     testTimeout: 120_000, // 2 minutes for Docker-based tests
     hookTimeout: 120_000,

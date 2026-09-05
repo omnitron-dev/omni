@@ -22,6 +22,7 @@ import type {
   SendOptions,
   SendResult,
   BroadcastOptions,
+  RecipientFilter,
   BroadcastResult,
   ScheduleResult,
   IRateLimiter,
@@ -220,15 +221,22 @@ export class NotificationsService implements ILifecycle {
     payload: NotificationPayload,
     options?: BroadcastOptions
   ): Promise<BroadcastResult> {
-    // Filter recipients based on preferences
-    let filteredRecipients = recipients;
+    // Apply the caller's recipient filters FIRST: they express who the
+    // broadcast is for, and excluding here also spares a preference lookup per
+    // dropped recipient.
+    let filteredRecipients = options?.filters?.length
+      ? recipients.filter((r) => options.filters!.every((f) => matchesRecipientFilter(r, f)))
+      : recipients;
+
+    // Then narrow further by preferences
     if (this.preferenceStore) {
       // preferenceStore is guaranteed to exist within this block
       const store = this.preferenceStore;
-      const prefPromises = recipients.map((r) => store.getPreferences(r.id));
+      const candidates = filteredRecipients;
+      const prefPromises = candidates.map((r) => store.getPreferences(r.id));
       const preferences = await Promise.all(prefPromises);
 
-      filteredRecipients = recipients.filter((recipient, index) => {
+      filteredRecipients = candidates.filter((recipient, index) => {
         const pref = preferences[index];
         if (!pref) return true;
         if (pref.globalMute) return false;
@@ -652,6 +660,46 @@ export class NotificationsService implements ILifecycle {
   private buildChannel(recipient: NotificationRecipient, payload: NotificationPayload): string {
     // Build channel pattern: notifications.{type}.{recipientId}
     return 'notifications.' + payload.type + '.' + recipient.id;
+  }
+}
+
+/**
+ * Does a recipient satisfy one `RecipientFilter`?
+ *
+ * A missing field must NOT satisfy an equality filter: this option's failure
+ * mode is sending to people the caller meant to exclude, so every unknown case
+ * resolves to "excluded" rather than "included".
+ */
+function matchesRecipientFilter(recipient: NotificationRecipient, filter: RecipientFilter): boolean {
+  const actual = (recipient as unknown as Record<string, unknown>)[filter.field];
+  const expected = filter.value;
+
+  switch (filter.operator) {
+    case 'eq':
+      return actual === expected;
+    case 'ne':
+      return actual !== expected;
+    case 'in':
+      return Array.isArray(expected) && expected.includes(actual as never);
+    case 'nin':
+      return Array.isArray(expected) && !expected.includes(actual as never);
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte': {
+      // Ordering comparisons on undefined are all false in JS, which is the
+      // answer we want anyway — an absent field orders against nothing.
+      if (actual === undefined || actual === null) return false;
+      const a = actual as string | number;
+      const b = expected as string | number;
+      if (filter.operator === 'gt') return a > b;
+      if (filter.operator === 'gte') return a >= b;
+      if (filter.operator === 'lt') return a < b;
+      return a <= b;
+    }
+    default:
+      // An operator we do not implement must not silently pass everyone.
+      return false;
   }
 }
 

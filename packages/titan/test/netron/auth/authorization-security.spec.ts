@@ -183,21 +183,28 @@ describe('AuthorizationManager Security Tests', () => {
         };
 
         // First call compiles regex
-        const start1 = Date.now();
-        authzManager.canAccessService('userTestService', userContext);
-        const _time1 = Date.now() - start1;
+        // The claim is "the compiled regex is reused", and it is asserted as
+        // that — the cache holds ONE entry for one ACL pattern no matter how
+        // many services are checked against it.
+        //
+        // It used to be asserted as `avgTime < 1` over 100 calls timed with
+        // `Date.now()`, whose resolution is 1 ms while these calls take
+        // microseconds: almost the whole measurement was quantisation noise,
+        // and a single GC pause or scheduler preemption across 100 samples
+        // could carry the average over. (The uncached first call was measured
+        // too, into a variable named `_time1`, and never compared — someone
+        // had already found the relative version unreliable and abandoned it.)
+        const cache = (authzManager as unknown as { patternCache: Map<string, RegExp> }).patternCache;
+        cache.clear();
 
-        // Subsequent calls should use cached regex (faster)
-        const times: number[] = [];
+        authzManager.canAccessService('userTestService', userContext);
+        expect(cache.size, 'one ACL pattern should compile to one cache entry').toBe(1);
+
         for (let i = 0; i < 100; i++) {
-          const start = Date.now();
           authzManager.canAccessService(`userService${i}`, userContext);
-          times.push(Date.now() - start);
         }
 
-        const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
-        // Cached calls should be very fast
-        expect(avgTime).toBeLessThan(1);
+        expect(cache.size, 'checking 100 services must not recompile the pattern').toBe(1);
       });
 
       it('should limit pattern cache size to prevent memory exhaustion', () => {
@@ -213,11 +220,28 @@ describe('AuthorizationManager Security Tests', () => {
           permissions: [],
         };
 
-        // Create many unique patterns to test cache limit
-        // Note: Pattern cache is internal, but we can verify it doesn't crash
-        for (let i = 0; i < 2000; i++) {
-          authzManager.canAccessService(`test${i}`, userContext);
+        // The cache is keyed by PATTERN, not by service name, so the loop that
+        // used to stand here — 2000 distinct service names against the single
+        // `test*` ACL — filled exactly one entry and never approached the
+        // bound. It asserted only that nothing crashed, which an unbounded
+        // cache satisfies just as well: the test named for a memory-exhaustion
+        // guard never created the condition it guards against. (My first
+        // rewrite kept that loop and added a size assertion; it stayed green
+        // with eviction disabled, which is how the miss surfaced.)
+        const cache = (authzManager as unknown as { patternCache: Map<string, RegExp> }).patternCache;
+
+        for (let i = 0; i < 1500; i++) {
+          authzManager.registerACL({ service: `svc${i}-*`, allowedRoles: ['user'] });
         }
+
+        // The name must match NOTHING: `findMatchingACL` stops considering
+        // candidates registered after the first match (`candidate.order >
+        // best.order` → continue), so a name matching an early ACL compiles
+        // two patterns, not 1500. A name that matches none forces the full
+        // scan — which is also the shape of the attack the bound exists for.
+        authzManager.canAccessService('no-acl-matches-this-name', userContext);
+
+        expect(cache.size, 'pattern cache must stay bounded under unique patterns').toBeLessThanOrEqual(1000);
 
         // Should still work after many pattern compilations
         expect(authzManager.canAccessService('testFinal', userContext)).toBe(true);

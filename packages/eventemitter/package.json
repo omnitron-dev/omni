@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:bun": "bun test test/runtime/bun-all.test.ts",
     "test:deno": "deno test --allow-read --allow-write --allow-env test/runtime/deno.test.ts",

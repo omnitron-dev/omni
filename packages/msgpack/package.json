@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:bun": "bun test",
     "test:all": "npm run test && npm run test:bun"

@@ -31,7 +31,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -270,6 +270,10 @@ export default function AlertsPage() {
   // one says "what you just asked for did not happen", the other "this view
   // may be behind".
   const [actionError, setActionError] = useState<string | null>(null);
+  // Deleting an alert rule used to happen on one click. The rule an operator
+  // removes by accident is the one that would have told them about the next
+  // incident, and nothing here says which rule is about to go.
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<string | null>(null);
 
   const rules = data?.rules ?? [];
   const activeAlerts = data?.activeAlerts ?? [];
@@ -290,9 +294,12 @@ export default function AlertsPage() {
     }
   };
 
-  const handleDeleteRule = async (ruleId: string) => {
+  const handleDeleteRule = async () => {
+    const ruleId = confirmDeleteRule;
+    if (!ruleId) return;
     try {
       await alerts.deleteRule({ id: ruleId });
+      setConfirmDeleteRule(null);
       await fetchData();
     } catch (err: any) {
       setActionError(err?.message ?? 'Failed to delete rule');
@@ -558,7 +565,7 @@ export default function AlertsPage() {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => handleDeleteRule(rule.id)}
+                            onClick={() => setConfirmDeleteRule(rule.id)}
                           >
                             <DeleteIcon sx={{ fontSize: 18 }} />
                           </IconButton>
@@ -572,6 +579,20 @@ export default function AlertsPage() {
           </Table>
         </TableContainer>
       </Card>
+      <ConfirmDialog
+        open={confirmDeleteRule !== null}
+        onClose={() => setConfirmDeleteRule(null)}
+        onConfirm={handleDeleteRule}
+        title="Delete alert rule?"
+        content={
+          <>
+            <b>{rules.find((r) => r.id === confirmDeleteRule)?.name ?? confirmDeleteRule}</b> will stop
+            firing. Alerts it has already raised are kept.
+          </>
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+      />
       <CreateAlertRuleDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}

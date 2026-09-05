@@ -31,7 +31,7 @@ import {
   CloseIcon,
   LogsIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -199,6 +199,10 @@ export default function ContainersPage() {
 
   // Filter containers by stack context (container names: project-stack-service)
   const [actionError, setActionError] = useState<string | null>(null);
+  // Removing a container used to happen on one click. These are the project's
+  // Postgres, Redis and MinIO: the container goes, and with it anything not on
+  // a named volume.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const containers = (allContainers ?? []).filter((c: Container) => {
     if (!activeProject) return true;
@@ -234,10 +238,13 @@ export default function ContainersPage() {
     }
   };
 
-  const handleRemove = async (containerName: string) => {
+  const handleRemove = async () => {
+    const containerName = confirmRemove;
+    if (!containerName) return;
     try {
       await infra.removeContainer({ name: containerName });
-      fetchContainers();
+      setConfirmRemove(null);
+      await fetchContainers();
     } catch (err: any) {
       setActionError(err?.message ?? 'Failed to remove container');
     }
@@ -256,6 +263,20 @@ export default function ContainersPage() {
 
   return (
     <Stack spacing={3}>
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        onConfirm={handleRemove}
+        title="Remove container?"
+        content={
+          <>
+            <b>{confirmRemove}</b> will be removed. Data outside a named volume is lost, and the
+            daemon recreates the container on the next <code>omnitron up</code>.
+          </>
+        }
+        confirmLabel="Remove"
+        confirmColor="error"
+      />
       {/* Header */}
       <Breadcrumbs
         links={[{ name: 'Containers' }]}
@@ -396,7 +417,7 @@ export default function ContainersPage() {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => handleRemove(container.name)}
+                            onClick={() => setConfirmRemove(container.name)}
                           >
                             <CloseIcon fontSize="small" />
                           </IconButton>

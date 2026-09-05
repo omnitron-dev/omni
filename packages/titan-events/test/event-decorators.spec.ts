@@ -438,63 +438,13 @@ describe('Event Decorators', () => {
     });
   });
 
-  describe('@EmitEvent', () => {
-    it('should emit event after method execution', async () => {
-      const emittedEvents: any[] = [];
-
-      eventsService.subscribe('user.created.success', (data) => {
-        emittedEvents.push(data);
-      });
-
-      @Injectable()
-      class UserService {
-        @EmitEvent({ event: 'user.created' })
-        async createUser(name: string) {
-          return { id: 1, name };
-        }
-      }
-
-      const service = new UserService();
-
-      // Note: EmitEvent decorator needs actual implementation to work
-      // This is a simplified test showing expected behavior
-      const result = await service.createUser('John');
-
-      // Manually emit for test purposes
-      await eventsService.emit('user.created.success', result);
-
-      expect(emittedEvents).toHaveLength(1);
-      expect(emittedEvents[0]).toMatchObject({ id: 1, name: 'John' });
-    });
-
-    it('should emit error event on failure', async () => {
-      const errors: any[] = [];
-
-      eventsService.subscribe('user.created.error', (error) => {
-        errors.push(error);
-      });
-
-      @Injectable()
-      class UserService {
-        @EmitEvent({ event: 'user.created' })
-        async createUser(name: string) {
-          throw new Error('Creation failed');
-        }
-      }
-
-      const service = new UserService();
-
-      try {
-        await service.createUser('John');
-      } catch (error) {
-        // Manually emit for test purposes
-        await eventsService.emit('user.created.error', error);
-      }
-
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toBeInstanceOf(Error);
-    });
-  });
+  // @EmitEvent lives in test/emit-event-decorator.spec.ts.
+  //
+  // The two cases that were here emitted the event themselves ("Manually emit
+  // for test purposes") and then asserted it had arrived, so they passed with
+  // the decorator's emission removed — verified. That is how it stayed
+  // unrecorded that the decorator emits `<event>.success` rather than
+  // `<event>`, and finds its emitter by convention.
 
   describe('@EventEmitter', () => {
     it('should mark class as event emitter', () => {

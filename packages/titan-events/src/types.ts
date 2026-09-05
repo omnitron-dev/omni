@@ -190,6 +190,11 @@ export interface IEmitEventOptions {
 
   /**
    * Emit event before method execution
+   *
+   * NOT IMPLEMENTED — `@EmitEvent` accepts only `{ event, mapResult, mapError }`
+   * (its own options type says so), and the interceptor emits after the method
+   * returns or throws. Same for `includeArgs` and `includeResult` below: this
+   * interface describes a richer decorator than the one that exists.
    */
   before?: boolean;
 

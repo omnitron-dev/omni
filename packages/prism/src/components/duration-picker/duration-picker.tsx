@@ -105,7 +105,24 @@ function decomposeSeconds(seconds: number): { amount: number; unit: TimeUnit } {
 export function DurationPicker({ value, onChange, size = 'small', disabled = false, labels }: DurationPickerProps) {
   const theme = useTheme();
 
-  const activeKey = useMemo(() => resolveActiveKey(value), [value]);
+  const presetKey = useMemo(() => resolveActiveKey(value), [value]);
+
+  /**
+   * Whether the operator chose "Custom", as opposed to landing on a value
+   * that happens not to match a preset.
+   *
+   * It has to be remembered rather than derived, because the two are not the
+   * same question and the value cannot answer the first one. Deriving it made
+   * the Custom button unusable in its default state: clicking it emitted
+   * 1 hour, 1 hour IS the `1h` preset, so the very next render resolved the
+   * mode back to `1h` and the custom row never appeared. The same collision
+   * swallowed "24 hours", "1 week" and "7 days".
+   */
+  const [customChosen, setCustomChosen] = useState(() => presetKey === CUSTOM_KEY);
+
+  // A value outside every preset is custom whoever set it — including a
+  // parent that set it directly.
+  const activeKey = customChosen || presetKey === CUSTOM_KEY ? CUSTOM_KEY : presetKey;
 
   // Local state for custom input — only used when custom is active
   const [customAmount, setCustomAmount] = useState<number>(() => {
@@ -121,6 +138,18 @@ export function DurationPicker({ value, onChange, size = 'small', disabled = fal
     return 'hours';
   });
 
+  /**
+   * What the amount field currently shows, which is not always a number.
+   *
+   * Deriving the field's contents from the numeric amount meant an empty
+   * field was impossible: clearing it parsed as NaN, fell back to 1, and
+   * re-rendered as "1" — so typing "3" produced "13" and typing "24"
+   * produced "124". Replacing the amount required selecting it first, which
+   * nothing tells the operator to do. The text is held separately so the
+   * field can be transiently empty; only a positive number is emitted.
+   */
+  const [customText, setCustomText] = useState<string>(() => String(customAmount));
+
   const isCustom = activeKey === CUSTOM_KEY;
 
   // ------- Handlers -------
@@ -130,24 +159,36 @@ export function DurationPicker({ value, onChange, size = 'small', disabled = fal
       if (newKey === null) return; // MUI fires null on deselect — ignore
       if (newKey === CUSTOM_KEY) {
         // Switch to custom — emit current custom values
+        setCustomChosen(true);
         onChange(customAmount * UNIT_SECONDS[customUnit]);
         return;
       }
       const preset = PRESETS.find((p) => p.key === newKey);
-      if (preset) onChange(preset.value);
+      if (preset) {
+        setCustomChosen(false);
+        onChange(preset.value);
+      }
     },
     [onChange, customAmount, customUnit]
   );
 
   const handleCustomAmountChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = parseInt(e.target.value, 10);
-      const clamped = Number.isFinite(raw) && raw > 0 ? raw : 1;
-      setCustomAmount(clamped);
-      onChange(clamped * UNIT_SECONDS[customUnit]);
+      const text = e.target.value;
+      setCustomText(text);
+
+      const parsed = parseInt(text, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) return; // not a duration yet
+      setCustomAmount(parsed);
+      onChange(parsed * UNIT_SECONDS[customUnit]);
     },
     [onChange, customUnit]
   );
+
+  /** Put a readable number back once the operator leaves an empty field. */
+  const handleCustomAmountBlur = useCallback(() => {
+    setCustomText(String(customAmount));
+  }, [customAmount]);
 
   const handleCustomUnitChange = useCallback(
     (e: SelectChangeEvent<TimeUnit>) => {
@@ -200,7 +241,7 @@ export function DurationPicker({ value, onChange, size = 'small', disabled = fal
 
       <ToggleButtonGroup
         exclusive
-        value={isCustom ? CUSTOM_KEY : activeKey}
+        value={activeKey}
         onChange={handlePresetChange}
         size={size}
         disabled={disabled}
@@ -247,8 +288,9 @@ export function DurationPicker({ value, onChange, size = 'small', disabled = fal
         >
           <TextField
             type="number"
-            value={customAmount}
+            value={customText}
             onChange={handleCustomAmountChange}
+            onBlur={handleCustomAmountBlur}
             disabled={disabled}
             size={size}
             slotProps={{

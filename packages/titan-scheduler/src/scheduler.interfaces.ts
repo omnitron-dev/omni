@@ -646,6 +646,17 @@ export interface ISchedulerModuleAsyncOptions {
   useFactory?: (...args: any[]) => Promise<ISchedulerModuleOptions> | ISchedulerModuleOptions;
   inject?: InjectionToken<any>[];
   useExisting?: InjectionToken<ISchedulerModuleOptions>;
+
+  /**
+   * Custom persistence provider. Same meaning as on the synchronous options,
+   * and declared here so `forRootAsync` is not a second-class citizen: the
+   * providers are chosen when the module is built, not inside the factory, so
+   * they cannot come from the resolved config.
+   */
+  persistenceProvider?: InjectionToken<any>;
+
+  /** Custom metrics provider. See `persistenceProvider`. */
+  metricsProvider?: InjectionToken<any>;
 }
 
 /**

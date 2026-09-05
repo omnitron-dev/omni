@@ -77,10 +77,19 @@ export function usePollingEffect(
     const onVisibility = () => (documentVisible() ? start() : stop());
 
     if (documentVisible()) start();
-    document.addEventListener('visibilitychange', onVisibility);
+
+    // Guarded on the same condition `documentVisible` already contemplates.
+    // Testing for a missing `document` on one line and dereferencing it on
+    // the next is how a defence ends up covering the half that was never at
+    // risk.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
       stop();
     };
   }, [intervalMs, enabled]);
@@ -112,7 +121,13 @@ export function usePolledResource<T>(
     []
   );
 
-  useEffect(() => () => runner.stop(), [runner]);
+  // Paired, not one-way: see `PollRunner.resume`. A cleanup runs on every
+  // `StrictMode` remount, not only at unmount, so a runner stopped here has
+  // to be usable again.
+  useEffect(() => {
+    runner.resume();
+    return () => runner.stop();
+  }, [runner]);
 
   usePollingEffect(() => void runner.tick(), { intervalMs, enabled });
 

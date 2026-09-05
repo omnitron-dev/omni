@@ -107,6 +107,22 @@ export class PollRunner<T> {
     this.stopped = true;
   }
 
+  /**
+   * Deliver state again after a `stop()`.
+   *
+   * Needed because a React effect's cleanup is not only run at unmount.
+   * `StrictMode` mounts, cleans up, and mounts again on purpose — to catch
+   * exactly the code that cannot survive it. This class could not: `stop()`
+   * was terminal, so the simulated unmount permanently silenced a runner the
+   * remount then went on using. The first fetch's result was dropped and no
+   * later tick ran, leaving every page built on `usePolledResource` showing
+   * its loading state forever — in development, which is where the console
+   * is looked at most.
+   */
+  resume(): void {
+    this.stopped = false;
+  }
+
   private emit(next: PollState<T>): void {
     this.state = next;
     this.options.onState(next);

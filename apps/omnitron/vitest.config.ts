@@ -1,10 +1,26 @@
+import path from 'node:path';
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The console's own alias, mirrored from `webapp/vite.config.ts`. Its
+      // 146 `src/...` imports are unresolvable without it, so a test that
+      // touches any console module fails to transform rather than to
+      // assert. Nothing under `apps/omnitron/src` uses this prefix, so it
+      // cannot shadow the daemon's own imports.
+      src: path.resolve(import.meta.dirname, 'webapp/src'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',
-    include: ['test/**/*.test.ts', 'test/**/*.spec.ts'],
+    // `.tsx` too: the console is 20k lines of React, and until this line
+    // existed no test in this package could render any of it. The defect
+    // that prompted it — a polling hook that never fetched under
+    // `StrictMode` — is invisible without a renderer.
+    include: ['test/**/*.test.ts', 'test/**/*.spec.ts', 'test/**/*.test.tsx'],
     exclude: [
       '**/node_modules/**',
       // NOT RUN, and the reason is specific rather than "restructured":

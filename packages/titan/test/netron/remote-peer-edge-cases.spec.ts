@@ -221,10 +221,18 @@ describe('RemotePeer Edge Cases', () => {
       const peer = await n2.connect('ws://localhost:8081');
 
       const handler = vi.fn();
+      const runTask = vi.spyOn(peer as any, 'runTask');
 
       // Should not throw when unsubscribing from non-existent event
       await peer.unsubscribe('non-existent-event', handler);
 
+      // …and should leave no trace: no empty subscriber list minted for the
+      // name, and no 'unsubscribe' task sent for a subscription the remote
+      // side never had. Not throwing was the only thing asserted here before.
+      expect(peer.eventSubscribers.has('non-existent-event')).toBe(false);
+      expect(runTask).not.toHaveBeenCalled();
+
+      runTask.mockRestore();
       await peer.disconnect();
       await n2.stop();
     });

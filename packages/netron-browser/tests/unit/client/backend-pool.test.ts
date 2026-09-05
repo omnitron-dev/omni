@@ -255,8 +255,15 @@ describe('BackendPool', () => {
         backends,
       });
 
-      // Should not throw
-      await pool.disconnect('core');
+      // "Should not throw" was the whole test, and it was implicit — nothing
+      // said what the call must leave behind.
+      await expect(pool.disconnect('core')).resolves.toBeUndefined();
+
+      // Disconnecting must not lazily construct the client it was about to
+      // disconnect, nor flip a pool entry that never held a connection.
+      expect(pool.isConnected('core')).toBe(false);
+      expect(pool.getPoolEntry('core')).toMatchObject({ name: 'core', connected: false });
+      expect((pool as unknown as { backendClients: Map<string, unknown> }).backendClients.has('core')).toBe(false);
     });
   });
 

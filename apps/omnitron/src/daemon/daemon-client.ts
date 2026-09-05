@@ -83,6 +83,8 @@ export class DaemonClient implements IDaemonService {
   private peer: RemotePeer | null = null;
   private proxy: IDaemonService | null = null;
   private connected = false;
+  /** The in-flight connect, shared by everyone who arrives during it. */
+  private connecting: Promise<void> | null = null;
   private readonly serviceCache = new Map<string, unknown>();
 
   constructor(
@@ -94,11 +96,34 @@ export class DaemonClient implements IDaemonService {
     this.netron.setTransportOptions('unix', { requestTimeout });
   }
 
+  /**
+   * Connect once, however many callers arrive at once.
+   *
+   * `connected` is set after the awaits, so on its own it guards the second
+   * CALL and not the second CALLER: every method here opens with
+   * `await this.ensureConnected()`, so `Promise.all([a(), b()])` had both see
+   * `false`, both open a socket, and both `queryInterface`. The last
+   * assignment wins and the earlier peer is leaked — `disconnect()` can only
+   * tear down the one the fields point at.
+   *
+   * Sharing the in-flight promise covers exactly the window the flag was
+   * written for. It is released in a `finally` however the attempt ends:
+   * holding a rejected promise would replay the first failure forever, so a
+   * daemon that was merely still starting could never be reached again.
+   */
   private async ensureConnected(): Promise<void> {
     if (this.connected) return;
-    this.peer = await this.netron.connect(`unix://${this.socketPath}`, false) as RemotePeer;
-    this.proxy = await this.peer.queryInterface<IDaemonService>(DAEMON_SERVICE_ID);
-    this.connected = true;
+    if (this.connecting) return this.connecting;
+
+    this.connecting = (async () => {
+      this.peer = (await this.netron.connect(`unix://${this.socketPath}`, false)) as RemotePeer;
+      this.proxy = await this.peer.queryInterface<IDaemonService>(DAEMON_SERVICE_ID);
+      this.connected = true;
+    })().finally(() => {
+      this.connecting = null;
+    });
+
+    return this.connecting;
   }
 
   // ---------------------------------------------------------------------------
@@ -261,6 +286,17 @@ export class DaemonClient implements IDaemonService {
 
   async disconnect(): Promise<void> {
     try {
+      // Settle an in-flight connect before tearing anything down. Otherwise
+      // the connect completes AFTER the disconnect and sets `connected` back
+      // to true around a peer nothing points at — a socket that survives a
+      // clean shutdown and surfaces a lifetime later.
+      //
+      // Awaiting it is also what makes clearing `connecting` below
+      // unnecessary: its own `finally` has already run by this point. A line
+      // doing it anyway would read as defensive and be unreachable, which is
+      // worse than absent — nothing can tell you it stopped being needed.
+      if (this.connecting) await this.connecting.catch(() => undefined);
+
       if (this.connected) {
         await this.netron.stop();
         this.connected = false;
@@ -282,6 +318,8 @@ export class RemoteDaemonClient {
   private netron: Netron;
   private peer: RemotePeer | null = null;
   private connected = false;
+  /** The in-flight connect, shared by everyone who arrives during it. */
+  private connecting: Promise<void> | null = null;
   private readonly serviceCache = new Map<string, unknown>();
 
   constructor(
@@ -292,10 +330,19 @@ export class RemoteDaemonClient {
     this.netron.registerTransport('tcp', () => new TcpTransport());
   }
 
+  /** As `DaemonClient.ensureConnected` — the same shape over TCP. */
   private async ensureConnected(): Promise<void> {
     if (this.connected) return;
-    this.peer = await this.netron.connect(`tcp://${this.host}:${this.port}`, false) as RemotePeer;
-    this.connected = true;
+    if (this.connecting) return this.connecting;
+
+    this.connecting = (async () => {
+      this.peer = (await this.netron.connect(`tcp://${this.host}:${this.port}`, false)) as RemotePeer;
+      this.connected = true;
+    })().finally(() => {
+      this.connecting = null;
+    });
+
+    return this.connecting;
   }
 
   async service<T>(serviceName: string): Promise<T> {
@@ -323,6 +370,17 @@ export class RemoteDaemonClient {
 
   async disconnect(): Promise<void> {
     try {
+      // Settle an in-flight connect before tearing anything down. Otherwise
+      // the connect completes AFTER the disconnect and sets `connected` back
+      // to true around a peer nothing points at — a socket that survives a
+      // clean shutdown and surfaces a lifetime later.
+      //
+      // Awaiting it is also what makes clearing `connecting` below
+      // unnecessary: its own `finally` has already run by this point. A line
+      // doing it anyway would read as defensive and be unreachable, which is
+      // worse than absent — nothing can tell you it stopped being needed.
+      if (this.connecting) await this.connecting.catch(() => undefined);
+
       if (this.connected) {
         await this.netron.stop();
         this.connected = false;

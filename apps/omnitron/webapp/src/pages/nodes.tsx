@@ -29,7 +29,7 @@ import InputLabel from '@mui/material/InputLabel';
 import Divider from '@mui/material/Divider';
 import { keyframes, useTheme, type Theme } from '@mui/material/styles';
 
-import { Breadcrumbs, useSnackbar } from '@omnitron-dev/prism';
+import { Breadcrumbs, useSnackbar, FormAlert, EmptyContent } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import {
@@ -643,14 +643,27 @@ export default function NodesPage() {
   const [editNode, setEditNode] = useState<INodeWithStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uptimeBars, setUptimeBars] = useState<Record<string, UptimeBucket[]>>({});
+  const [listError, setListError] = useState<string | null>(null);
+
+  /** The last list that arrived, so a failed poll can return it unchanged. */
+  const nodeListRef = useRef<INodeWithStatus[]>([]);
+  nodeListRef.current = nodeList;
 
   const fetchNodes = useCallback(async () => {
     try {
       const list: INodeWithStatus[] = await nodesRpc.listNodes();
       setNodeList(list);
+      setListError(null);
       return list;
-    } catch { setNodeList([]); return []; }
-    finally { setLoading(false); }
+    } catch (err) {
+      // Keep whatever was on screen. This page polls, so blanking the list
+      // on a failed call means one bad poll reports an EMPTY FLEET — on the
+      // page whose entire job is to show the fleet, and indistinguishably
+      // from a fleet with nothing registered. The last good answer plus a
+      // visible reason is strictly more information than an empty grid.
+      setListError((err as Error)?.message ?? 'Could not reach the daemon');
+      return nodeListRef.current;
+    } finally { setLoading(false); }
   }, []);
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
@@ -665,7 +678,9 @@ export default function NodesPage() {
   }, []);
 
   const fetchSshKeys = useCallback(async () => {
-    try { setSshKeys(await nodesRpc.listSshKeys()); } catch { setSshKeys([]); }
+    // Same reasoning, higher stakes: the key list feeds the Add Node dialog,
+    // and "no keys" invites an operator to add one that already exists.
+    try { setSshKeys(await nodesRpc.listSshKeys()); } catch { /* keep the last good list */ }
   }, []);
 
   // Nodes and their uptime bars refresh together — the bars are per-node, so
@@ -762,10 +777,26 @@ export default function NodesPage() {
         }
       />
 
+      {listError && (
+        <FormAlert severity="warning" onClose={() => setListError(null)}>
+          Could not refresh the node list — {listError}. The cards below are the
+          last state the daemon reported.
+        </FormAlert>
+      )}
+
       {loading ? (
         <Grid container spacing={3}>
           {[1, 2, 3].map((i) => <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}><Skeleton variant="rounded" height={300} /></Grid>)}
         </Grid>
+      ) : sorted.length === 0 ? (
+        <EmptyContent
+          title={listError ? 'No nodes to show' : 'No nodes registered'}
+          description={
+            listError
+              ? 'The list could not be refreshed, so this may not be the whole picture.'
+              : 'Add a node to manage a remote host from here.'
+          }
+        />
       ) : (
         <Grid container spacing={3}>
           {sorted.map((node) => (

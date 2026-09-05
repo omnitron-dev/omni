@@ -50,6 +50,7 @@ import {
   INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN,
   INFRA_STATE_ACCESSOR_TOKEN,
 } from '../shared/tokens.js';
+import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
 import { AuthService } from '../services/auth.service.js';
 import { LogCollectorService } from '../services/log-collector.service.js';
 import { FleetService } from '../services/fleet.service.js';
@@ -469,7 +470,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
             if (!pass && isProduction()) {
               throw new Error('secrets.passphrase must be configured in production mode');
             }
-            return pass ?? 'omnitron-dev-passphrase';
+            return pass ?? DEFAULT_SECRETS_PASSPHRASE;
           })(),
         },
       ],

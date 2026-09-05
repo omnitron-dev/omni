@@ -27,6 +27,23 @@ export const DEFAULT_SOCKET_PATH = path.join(OMNITRON_HOME, 'daemon.sock');
 /** Default secrets file path */
 export const DEFAULT_SECRETS_PATH = path.join(OMNITRON_HOME, 'secrets.enc');
 
+/**
+ * Passphrase used when `daemon.secrets.passphrase` is unset.
+ *
+ * One constant because there are two ways into the same encrypted store —
+ * the daemon's `OmnitronSecrets` RPC and the CLI's direct-file fallback —
+ * and they each had their own default: 'omnitron-dev-passphrase' in
+ * daemon.module.ts, 'omnitron-default-passphrase' in commands/secret.ts.
+ * A secret written through one could not be read through the other, and the
+ * failure surfaced as "Failed to decrypt secrets. Wrong passphrase?" from
+ * whichever side lost — with no passphrase configured anywhere, which is
+ * what makes it baffling.
+ *
+ * Production still refuses to start without an explicit passphrase; this is
+ * only the development convenience, and it is now one value.
+ */
+export const DEFAULT_SECRETS_PASSPHRASE = 'omnitron-dev-passphrase';
+
 export const DEFAULT_PORTS: Record<string, number> = {
   main: 3001,
   storage: 3002,

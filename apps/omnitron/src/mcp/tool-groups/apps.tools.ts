@@ -1,10 +1,11 @@
 import type { IMcpToolDef } from '../types.js';
+import type { DaemonClient } from '../../daemon/daemon-client.js';
 
 /**
  * App management MCP tools.
  * Bridges to DaemonService RPC for app lifecycle management.
  */
-export function createAppsTools(daemonClient: any): IMcpToolDef[] {
+export function createAppsTools(daemonClient: DaemonClient): IMcpToolDef[] {
   return [
     {
       name: 'apps.list',
@@ -38,7 +39,7 @@ export function createAppsTools(daemonClient: any): IMcpToolDef[] {
       },
       handler: async (params: any) => {
         if (params.name) return daemonClient.stopApp({ name: params.name, force: params.force });
-        return daemonClient.stopAll();
+        return daemonClient.stopAll({ force: params.force ?? false });
       },
     },
     {
@@ -85,7 +86,7 @@ export function createAppsTools(daemonClient: any): IMcpToolDef[] {
         },
         required: ['name', 'count'],
       },
-      handler: async (params: any) => daemonClient.scale(params.name, params.count),
+      handler: async (params: any) => daemonClient.scale({ name: params.name, instances: params.count }),
     },
     {
       name: 'apps.inspect',

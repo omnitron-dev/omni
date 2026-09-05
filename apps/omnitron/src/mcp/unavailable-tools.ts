@@ -26,15 +26,15 @@ import type { IMcpToolDef } from './types.js';
 export const DAEMON_TOOL_NAMES: readonly string[] = [
   'apps.list', 'apps.start', 'apps.stop', 'apps.restart',
   'apps.status', 'apps.logs', 'apps.scale', 'apps.inspect',
-  'infra.up', 'infra.down', 'infra.status', 'infra.logs',
-  'infra.psql', 'infra.redis', 'infra.migrate', 'stack.list',
-  'stack.create', 'stack.status', 'stack.start', 'stack.stop',
-  'secret.list', 'secret.get', 'secret.set', 'backup.create',
-  'backup.list', 'backup.restore', 'deploy.app', 'deploy.build',
-  'deploy.rollback', 'cluster.status', 'fleet.status', 'fleet.health',
-  'project.list', 'project.scan', 'webapp.status', 'webapp.build',
-  'pipeline.list', 'pipeline.run', 'pipeline.status', 'health.check',
-  'metrics.get', 'metrics.app', 'logs.query',
+  'infra.status', 'infra.containers', 'infra.connection', 'infra.start',
+  'infra.stop', 'infra.logs', 'infra.log_stats', 'project.list',
+  'project.scan', 'project.apps', 'stack.list', 'stack.status',
+  'stack.start', 'stack.stop', 'secret.list', 'secret.get',
+  'secret.set', 'backup.create', 'backup.list', 'backup.restore',
+  'backup.schedules', 'deploy.app', 'deploy.rollback', 'deploy.history',
+  'fleet.status', 'fleet.summary', 'pipeline.list', 'pipeline.run',
+  'pipeline.status', 'health.check', 'metrics.get', 'metrics.app',
+  'logs.query', 'logs.tail', 'logs.stats',
 ];
 
 /** Tool names in the knowledge-base group. */

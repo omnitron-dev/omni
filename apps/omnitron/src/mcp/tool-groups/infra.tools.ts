@@ -1,81 +1,101 @@
 import type { IMcpToolDef } from '../types.js';
+import type { DaemonClient } from '../../daemon/daemon-client.js';
+import type {
+  IOmnitronInfraService,
+  IOmnitronLogsService,
+} from '../../shared/dto/services.js';
 
 /**
  * Infrastructure management MCP tools.
- * Docker compose, database, Redis operations.
+ *
+ * Every handler reaches its RPC service through `client.service<T>(name)` —
+ * the same path the CLI uses. The previous version called methods like
+ * `daemonClient.infraUp()` that `DaemonClient` does not have: the parameter
+ * was typed `any`, so nothing checked, and each tool failed at call time with
+ * `TypeError: daemonClient.infraUp is not a function`. Verified against a
+ * running daemon before this rewrite.
+ *
+ * `infra.psql` and `infra.redis` are gone rather than repaired. They took a
+ * raw SQL string and a raw Redis command from an agent and offered no RPC
+ * that executes either — `OmnitronInfra` exposes container lifecycle and
+ * connection info, nothing that runs a query. Reinstating them would mean
+ * building an arbitrary-statement endpoint reachable by anyone the agent
+ * talks to, which is a decision for an operator, not a repair.
  */
-export function createInfraTools(daemonClient: any): IMcpToolDef[] {
+export function createInfraTools(client: DaemonClient): IMcpToolDef[] {
+  const infra = () => client.service<IOmnitronInfraService>('OmnitronInfra');
+  const logs = () => client.service<IOmnitronLogsService>('OmnitronLogs');
+
   return [
     {
-      name: 'infra.up',
-      description: 'Provision all infrastructure services (Docker Compose up).',
+      name: 'infra.status',
+      description:
+        'State of every managed infrastructure container (PostgreSQL, Redis, MinIO, …): image, status, ports, health.',
       inputSchema: { type: 'object', properties: {} },
-      handler: async () => daemonClient.infraUp(),
+      handler: async () => (await infra()).getState(),
     },
     {
-      name: 'infra.down',
-      description: 'Stop all infrastructure services.',
+      name: 'infra.containers',
+      description: 'List managed infrastructure containers.',
+      inputSchema: { type: 'object', properties: {} },
+      handler: async () => (await infra()).listContainers(),
+    },
+    {
+      name: 'infra.connection',
+      description:
+        'Resolved host, port and credentials for a logical service — what an app would be given for it.',
       inputSchema: {
         type: 'object',
         properties: {
-          volumes: { type: 'boolean', description: 'Also remove volumes', default: false },
+          service: { type: 'string', description: 'Logical service name, e.g. "postgres", "redis"' },
         },
+        required: ['service'],
       },
-      handler: async (params: any) => daemonClient.infraDown({ volumes: params.volumes }),
+      handler: async (params: any) => (await infra()).getConnectionInfo({ service: params.service }),
     },
     {
-      name: 'infra.status',
-      description: 'Get status of all infrastructure services (PostgreSQL, Redis, etc.).',
-      inputSchema: { type: 'object', properties: {} },
-      handler: async () => daemonClient.infraStatus(),
+      name: 'infra.start',
+      description: 'Start a managed infrastructure container.',
+      inputSchema: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Container name' } },
+        required: ['name'],
+      },
+      handler: async (params: any) => (await infra()).startContainer({ name: params.name }),
+    },
+    {
+      name: 'infra.stop',
+      description: 'Stop a managed infrastructure container.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Container name' },
+          timeout: { type: 'number', description: 'Seconds to wait before killing' },
+        },
+        required: ['name'],
+      },
+      handler: async (params: any) =>
+        (await infra()).stopContainer({ name: params.name, timeout: params.timeout }),
     },
     {
       name: 'infra.logs',
-      description: 'Get logs from an infrastructure service.',
+      description: 'Tail the logs of one infrastructure container.',
       inputSchema: {
         type: 'object',
         properties: {
-          service: { type: 'string', description: 'Service name (e.g. "postgres", "redis")' },
-          lines: { type: 'number', description: 'Number of lines', default: 50 },
+          name: { type: 'string', description: 'Container name' },
+          tail: { type: 'number', description: 'Lines to return', default: 50 },
         },
+        required: ['name'],
       },
-      handler: async (params: any) => daemonClient.infraLogs(params),
+      handler: async (params: any) =>
+        (await infra()).getContainerLogs({ name: params.name, tail: params.tail ?? 50 }),
     },
     {
-      name: 'infra.psql',
-      description: 'Execute a SQL query against PostgreSQL.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'SQL query to execute' },
-          database: { type: 'string', description: 'Database name (default: main)' },
-        },
-        required: ['query'],
-      },
-      handler: async (params: any) => daemonClient.infraPsql(params),
-    },
-    {
-      name: 'infra.redis',
-      description: 'Execute a Redis command.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: 'Redis command (e.g. "INFO", "KEYS *")' },
-        },
-        required: ['command'],
-      },
-      handler: async (params: any) => daemonClient.infraRedis(params),
-    },
-    {
-      name: 'infra.migrate',
-      description: 'Run database migrations for an application.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          app: { type: 'string', description: 'App name (omit for all)' },
-        },
-      },
-      handler: async (params: any) => daemonClient.infraMigrate(params),
+      name: 'infra.log_stats',
+      description: 'Log ingestion counters: rows stored, rows dropped, buffer depth.',
+      inputSchema: { type: 'object', properties: {} },
+      handler: async () => (await logs()).getIngestionStats(),
     },
   ];
 }

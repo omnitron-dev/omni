@@ -112,10 +112,24 @@ export class SystemInfoService {
 
         memory: {
           total: memory?.total ?? 0,
+          // `systeminformation`'s `used` is `total - free`, and on macOS and
+          // Linux `free` excludes everything the kernel is holding as cache
+          // — reclaimable the moment a process asks. So `used` sat at 97.8%
+          // on this host while `available` on the same card read 31.9 GB:
+          // two numbers side by side that cannot both be a useful reading.
+          //
+          // `used` and `free` are still reported as the library gives them,
+          // because they are what those words mean to the tools an operator
+          // compares against. `committed` is the one to render: memory that
+          // is genuinely spoken for, and it agrees with `available`.
           used: memory?.used ?? 0,
           free: memory?.free ?? 0,
           available: memory?.available ?? 0,
-          usedPercent: memory ? (memory.used / memory.total) * 100 : 0,
+          committed: memory ? Math.max(0, memory.total - (memory.available ?? memory.free ?? 0)) : 0,
+          usedPercent:
+            memory && memory.total > 0
+              ? (Math.max(0, memory.total - (memory.available ?? memory.free ?? 0)) / memory.total) * 100
+              : 0,
           swapTotal: memory?.swaptotal ?? 0,
           swapUsed: memory?.swapused ?? 0,
         },

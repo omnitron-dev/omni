@@ -37,6 +37,9 @@ export interface SystemSnapshot {
     used: number;
     free: number;
     available: number;
+    /** Memory genuinely spoken for: total minus available. Prefer this over
+     * `used`, which counts reclaimable cache on macOS and Linux. */
+    committed: number;
     usedPercent: number;
     swapTotal: number;
     swapUsed: number;

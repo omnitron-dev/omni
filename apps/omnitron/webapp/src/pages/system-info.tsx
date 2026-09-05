@@ -247,7 +247,12 @@ export default function SystemInfoPage() {
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               {d?.memory && (
                 <>
-                  <UsageBar label="RAM" used={d.memory.used} total={d.memory.total} color="primary" />
+                  {/* `committed`, not `used`: the library reports `used` as
+                      `total - free`, and `free` excludes the cache the kernel
+                      will hand back on demand. This bar read 97.8% while the
+                      Available line below it said 31.9 GB — two numbers on
+                      one card that cannot both be a useful reading. */}
+                  <UsageBar label="RAM" used={d.memory.committed} total={d.memory.total} color="primary" />
                   {d.memory.swapTotal > 0 && (
                     <UsageBar label="Swap" used={d.memory.swapUsed} total={d.memory.swapTotal} color="warning" />
                   )}

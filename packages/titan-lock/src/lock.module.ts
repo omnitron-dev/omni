@@ -9,7 +9,8 @@
 import { Module } from '@omnitron-dev/titan/decorators';
 import type { DynamicModule, ProviderDefinition, InjectionToken, Provider } from '@omnitron-dev/titan/nexus';
 import { DistributedLockService } from './lock.service.js';
-import { LOCK_SERVICE_TOKEN, LOCK_OPTIONS_TOKEN } from './lock.tokens.js';
+import { LOCK_SERVICE_TOKEN, LOCK_OPTIONS_TOKEN, LOCK_REDIS_TOKEN } from './lock.tokens.js';
+import { REDIS_MANAGER } from '@omnitron-dev/titan-redis';
 import type { ILockModuleOptions, ILockModuleAsyncOptions } from './lock.types.js';
 
 /**
@@ -80,6 +81,16 @@ export class TitanLockModule {
         },
       ],
       [
+        LOCK_REDIS_TOKEN,
+        {
+          // Resolves `redisClientName` at runtime, which a parameter decorator
+          // cannot do: `@InjectRedis()` binds when the class is defined.
+          useFactory: (manager: { getClient(namespace?: string): unknown }, opts: ILockModuleOptions) =>
+            manager.getClient(opts.redisClientName),
+          inject: [REDIS_MANAGER, LOCK_OPTIONS_TOKEN],
+        },
+      ],
+      [
         LOCK_SERVICE_TOKEN,
         {
           useClass: DistributedLockService,
@@ -118,6 +129,16 @@ export class TitanLockModule {
             return DEFAULT_OPTIONS;
           },
           inject: (options.inject ?? []) as InjectionToken<unknown>[],
+        },
+      ],
+      [
+        LOCK_REDIS_TOKEN,
+        {
+          // Resolves `redisClientName` at runtime, which a parameter decorator
+          // cannot do: `@InjectRedis()` binds when the class is defined.
+          useFactory: (manager: { getClient(namespace?: string): unknown }, opts: ILockModuleOptions) =>
+            manager.getClient(opts.redisClientName),
+          inject: [REDIS_MANAGER, LOCK_OPTIONS_TOKEN],
         },
       ],
       [

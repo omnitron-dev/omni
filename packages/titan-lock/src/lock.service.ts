@@ -15,11 +15,11 @@
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
-import { InjectRedis, type IRedisClient } from '@omnitron-dev/titan-redis';
+import type { IRedisClient } from '@omnitron-dev/titan-redis';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
 import { generateUuidV7, FailureTracker, type IFailureDecision } from '@omnitron-dev/titan/utils';
 import type { IDistributedLockService, ILockModuleOptions, IWithLockOptions } from './lock.types.js';
-import { LOCK_OPTIONS_TOKEN, DEFAULT_LOCK_PREFIX } from './lock.tokens.js';
+import { LOCK_OPTIONS_TOKEN, LOCK_REDIS_TOKEN, DEFAULT_LOCK_PREFIX } from './lock.tokens.js';
 
 /**
  * Lua script for safe lock release.
@@ -111,7 +111,7 @@ export class DistributedLockService implements IDistributedLockService {
   private readonly statusFailures = new FailureTracker();
 
   constructor(
-    @InjectRedis() private readonly redis: IRedisClient,
+    @Inject(LOCK_REDIS_TOKEN) private readonly redis: IRedisClient,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject(LOCK_OPTIONS_TOKEN) options: ILockModuleOptions
   ) {

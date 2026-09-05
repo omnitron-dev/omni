@@ -178,7 +178,12 @@ describe('DatabaseHealthIndicator', () => {
       indicator.setConnection({} as any);
       const result = await indicator.check();
       expect(result.status).toBe('unhealthy');
-      expect(result.message).toContain('does not support any known query method');
+      // Assert the message NAMES what it looked for: the common way to reach
+      // this branch is passing a Kysely instance, and "no known query method"
+      // alone leaves the caller with nothing to try.
+      expect(result.message).toContain('raw()');
+      expect(result.message).toContain('execute()');
+      expect(result.message).toContain('query()');
     });
   });
 });

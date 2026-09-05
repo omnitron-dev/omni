@@ -158,7 +158,10 @@ export class DatabaseHealthIndicator extends HealthIndicator {
   private async executeHealthQuery(): Promise<void> {
     const conn = this.connection!;
 
-    // Kysely pattern: raw().execute()
+    // Knex pattern: raw().execute(). NOT Kysely — a Kysely instance has none
+    // of the three methods below (only `executeQuery`, which takes a compiled
+    // query, not a string), so passing one here reaches the throw at the end.
+    // Wrap it: `{ execute: (q) => sql.raw(q).execute(db) }`.
     if (typeof conn.raw === 'function') {
       await conn.raw(this.options.healthQuery).execute();
       return;
@@ -176,6 +179,10 @@ export class DatabaseHealthIndicator extends HealthIndicator {
       return;
     }
 
-    throw new Error('Database connection does not support any known query method');
+    throw new Error(
+      'Database connection supports none of raw(), execute() or query(). ' +
+        'A Kysely instance is the common case — wrap it as ' +
+        '{ execute: (q) => sql.raw(q).execute(db) }.'
+    );
   }
 }

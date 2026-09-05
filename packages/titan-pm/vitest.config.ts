@@ -24,12 +24,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.spec.ts', 'test/**/*.test.ts'],
-    exclude: [
-      // Enterprise features not yet implemented — these import non-existent source files
-      'test/enterprise/**',
-      // Uses unimplemented enterprise classes (DistributedLock, GeoSpatialQuery, etc.)
-      'test/comprehensive.spec.ts',
-    ],
+    exclude: [],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     clearMocks: true,

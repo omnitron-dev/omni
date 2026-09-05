@@ -82,13 +82,41 @@ describe('checkAppInternals', () => {
   });
 
   it('reports a declared sub-process that never started', async () => {
+    // `uptime` matters here and the fixture default (1ms) is not it. An app
+    // that came online a millisecond ago is still bringing its topology up,
+    // and that is a different finding — see the next test. This one is an
+    // app that has been online for five minutes with a process that never
+    // arrived.
     const [finding] = await run([
-      app({ processes: [sub({ name: 'collector', type: 'custom', status: 'stopped', pid: null })] }),
+      app({
+        uptime: 5 * 60_000,
+        processes: [sub({ name: 'collector', type: 'custom', status: 'stopped', pid: null })],
+      }),
     ]);
 
     expect(finding!.id).toBe('app.subprocess-stopped');
     expect(finding!.severity).toBe('warning');
     expect(finding!.title).toContain('collector');
+    expect(finding!.title).toContain('not running');
+  });
+
+  it('does not call a sub-process missing while the app is still starting up', async () => {
+    // An app reports `online` from its main process; the topology processes
+    // come up alongside it. Reporting that window as a fault puts a warning
+    // on every restart, and a warning that appears every restart is one
+    // nobody reads.
+    const [finding] = await run([
+      app({
+        uptime: 2_000,
+        processes: [sub({ name: 'collector', type: 'custom', status: 'stopped', pid: null })],
+      }),
+    ]);
+
+    expect(finding!.id).toBe('app.subprocess-stopped');
+    expect(finding!.severity).toBe('info');
+    expect(finding!.title).toContain('has not started yet');
+    // Still says how long, so a reader can judge rather than trust.
+    expect(finding!.evidence.join(' ')).toContain('2s');
   });
 
   it('reports a pool that has grown past its declaration', async () => {

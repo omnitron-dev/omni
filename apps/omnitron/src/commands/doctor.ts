@@ -57,6 +57,26 @@ import {
  */
 const SLOW_DAEMON_MS = 3_000;
 
+/**
+ * How long an app may spend in a transitional state before it is stuck.
+ *
+ * Matches the daemon's own `resources.timeout` for a spawn (60s), doubled:
+ * a bootstrap app under load legitimately takes most of that budget, and a
+ * diagnostic that fires while the supervisor is still waiting would be
+ * reporting on the supervisor rather than on the app.
+ */
+const STARTUP_BUDGET_MS = 120_000;
+
+/**
+ * How long after an app goes `online` its topology processes may still be
+ * starting.
+ *
+ * An app reports online from its main process; the rest come up alongside
+ * it. Thirty seconds is generous for that and short enough that a process
+ * which never starts is still reported within a minute.
+ */
+const SUBPROCESS_SETTLE_MS = 30_000;
+
 // ---------------------------------------------------------------------------
 // Findings
 // ---------------------------------------------------------------------------
@@ -373,10 +393,39 @@ async function checkApps(
       evidence.push(`could not read diagnostics: ${describeError(err)}`);
     }
 
+    // `starting` and `stopping` are transitions, not faults. An app three
+    // seconds into a restart is doing exactly what it should, and reporting
+    // it as an error next to a crashed one teaches an operator that the
+    // error column means nothing.
+    //
+    // A transition that has outlasted the start-up budget is a different
+    // thing: nothing is coming, and the app is hung rather than starting.
+    // `uptime` on a transitional app measures how long it has been in that
+    // state, which is the only clock available here.
+    const transitional = app.status === 'starting' || app.status === 'stopping';
+    const stuck = transitional && app.uptime > STARTUP_BUDGET_MS;
+
+    if (transitional && !stuck) {
+      findings.add({
+        id: `app.${app.status}`,
+        severity: 'info',
+        title: `App "${app.name}" is ${app.status}`,
+        evidence: [`status: ${app.status}`, `for ${Math.round(app.uptime / 1000)}s`],
+        remedy: `Run \`omnitron doctor\` again — if it is still ${app.status}, it is stuck rather than slow.`,
+      });
+      continue;
+    }
+
+    if (stuck) {
+      evidence.push(`in this state for ${Math.round(app.uptime / 1000)}s`);
+      evidence.push(`the start-up budget is ${STARTUP_BUDGET_MS / 1000}s`);
+      remedy = `It is not starting slowly, it is not starting. \`omnitron logs ${app.name}\` shows how far it got.`;
+    }
+
     findings.add({
       id: `app.${app.status}`,
       severity: app.critical ? 'error' : 'warning',
-      title: `${app.critical ? 'Critical app' : 'App'} "${app.name}" is ${app.status}`,
+      title: `${app.critical ? 'Critical app' : 'App'} "${app.name}" is ${stuck ? `stuck ${app.status}` : app.status}`,
       evidence,
       remedy,
     });
@@ -434,12 +483,25 @@ export async function checkAppInternals(findings: Findings, apps: ProcessInfoDto
       }
 
       if (proc.status === 'stopped') {
+        // An app reports `online` as soon as its main process is up, and its
+        // topology processes come up around the same time — so a child that
+        // is still stopped a few seconds in is being started, not missing.
+        // Reported either way, because it may be the last thing said before
+        // it never starts, but at the weight the age warrants.
+        const settling = app.uptime < SUBPROCESS_SETTLE_MS;
         findings.add({
           id: 'app.subprocess-stopped',
-          severity: 'warning',
-          title: `"${app.name}" is online but its "${proc.name}" process is not running`,
-          evidence: [`${proc.name}: ${proc.type}, declared in the app's topology, no pid`],
-          remedy: `Whatever this process does is not happening. \`omnitron inspect ${app.name}\` shows the resolved topology.`,
+          severity: settling ? 'info' : 'warning',
+          title: settling
+            ? `"${app.name}" is online and its "${proc.name}" process has not started yet`
+            : `"${app.name}" is online but its "${proc.name}" process is not running`,
+          evidence: [
+            `${proc.name}: ${proc.type}, declared in the app's topology, no pid`,
+            `app online for ${Math.round(app.uptime / 1000)}s`,
+          ],
+          remedy: settling
+            ? `Run \`omnitron doctor\` again — after ${SUBPROCESS_SETTLE_MS / 1000}s this stops being start-up.`
+            : `Whatever this process does is not happening. \`omnitron inspect ${app.name}\` shows the resolved topology.`,
         });
         continue;
       }

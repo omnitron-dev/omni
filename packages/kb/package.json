@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/kb",
   "version": "0.2.0",
-  "description": "Knowledge base framework — code intelligence, semantic search, and documentation for Titan ecosystem",
+  "description": "Knowledge base framework \u2014 code intelligence, semantic search, and documentation for Titan ecosystem",
   "keywords": [
     "knowledge-base",
     "code-intelligence",
@@ -76,6 +76,7 @@
     }
   },
   "devDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
     "@types/node": "25.6.0",
     "ts-morph": "^28.0.0",
     "typescript": "^7.0.2",

@@ -25,9 +25,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && pnpm build:webapp",
+    "build": "tsc -p tsconfig.build.json",
     "build:backend": "tsc -p tsconfig.build.json",
-    "build:webapp": "cd webapp && npx vite build",
+    "build:webapp": "pnpm --filter @omnitron/console build",
     "start": "node dist/cli/omnitron.js",
     "up": "node dist/cli/omnitron.js up",
     "down": "node dist/cli/omnitron.js down",

@@ -88,6 +88,11 @@
     "uuid": "^14.0.2"
   },
   "devDependencies": {
+    "@omnitron-dev/eventemitter": "workspace:*",
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-database": "workspace:*",
+    "@omnitron-dev/titan-pm": "workspace:*",
+    "@omnitron-dev/titan-redis": "workspace:*",
     "@types/bun": "^1.4.1",
     "ioredis": "^5.11.1",
     "pino": "^10.3.1",

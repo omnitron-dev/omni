@@ -96,14 +96,17 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
     private readonly isWorkerThread: boolean,
     public readonly proxy?: any,
     initialStatus: ProcessStatus = ProcessStatus.STARTING,
-    public readonly transportConfig?: ITransportConfig
+    public readonly transportConfig?: ITransportConfig,
+    forwardChildLogs: boolean = true
   ) {
     super();
     this._status = initialStatus;
     this.worker = worker;
     this.netronClient = netronClient;
     this.setupMessageHandlers();
-    this.setupDefaultLogForwarding();
+    // Off when the consumer routes `onLog` itself — otherwise the same line is
+    // logged twice, once under the child's name and once under the parent's.
+    if (forwardChildLogs) this.setupDefaultLogForwarding();
   }
 
   private emitExit(code: number | null, signal: NodeJS.Signals | null): void {
@@ -722,7 +725,8 @@ export class ProcessSpawner implements IProcessSpawner {
           useWorkerThreads,
           proxy,
           ProcessStatus.RUNNING,
-          transport
+          transport,
+          this.config.forwardChildLogs ?? true
         );
       } else {
         // Direct communication without Netron
@@ -737,7 +741,8 @@ export class ProcessSpawner implements IProcessSpawner {
           useWorkerThreads,
           undefined,
           ProcessStatus.RUNNING,
-          transport
+          transport,
+          this.config.forwardChildLogs ?? true
         );
       }
     } catch (error) {

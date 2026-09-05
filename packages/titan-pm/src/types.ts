@@ -1119,6 +1119,28 @@ export interface IProcessManagerConfig {
    */
   handleSignals?: boolean;
 
+  /**
+   * Re-emit each child process log line through the parent logger.
+   * Default: true.
+   *
+   * This is the right default for a consumer with no log pipeline of its
+   * own — without it a child's output goes nowhere. It becomes duplication
+   * the moment the consumer also subscribes to `WorkerHandle.onLog` and
+   * routes lines itself, because both paths carry the SAME line: once under
+   * the child's application name, and once more through the parent's logger
+   * under the parent's name.
+   *
+   * The duplicate is not just storage. Any per-application count is then
+   * wrong by a factor that depends on which component emitted the line, and
+   * each individual number still looks plausible — which is why it survives.
+   * Measured on a live omnitron log table: 42,958 rows under `omnitron`
+   * against 36,160 under every other application combined, with
+   * (timestamp, message) pairs matching across the two names.
+   *
+   * Set to false when you consume `onLog` yourself.
+   */
+  forwardChildLogs?: boolean;
+
   /** Advanced options */
   advanced?: {
     tempDir?: string;

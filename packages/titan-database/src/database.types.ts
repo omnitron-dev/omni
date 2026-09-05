@@ -220,9 +220,21 @@ export interface DatabaseModuleOptions {
   /** NOT IMPLEMENTED — nothing reads this; see `autoMigrate`. */
   failOnMigrationError?: boolean;
   healthCheck?: boolean;
+  /** Bounds closeAll(): after this many ms it stops waiting on connections
+   *  whose destroy() has not settled and logs which ones they were. */
   shutdownTimeout?: number;
+  /**
+   * NOT IMPLEMENTED — nothing reads this. There is no entry point to apply it
+   * to: `runInTransaction` takes `RunInTransactionOptions`, which has no
+   * isolation level (see the note on `TransactionOptions`).
+   */
   defaultIsolationLevel?: TransactionIsolationLevel;
+  /** NOT IMPLEMENTED — nothing reads this. Kysely has no dialect-independent
+   *  query timeout; per-dialect it is a server setting (PostgreSQL
+   *  `statement_timeout`, MySQL `MAX_EXECUTION_TIME`), so it would have to be
+   *  applied at pool-connection level, not here. */
   queryTimeout?: number;
+  /** NOT IMPLEMENTED — nothing reads this; see `queryTimeout`. */
   statementTimeout?: number;
   logger?: import('./database.internal-types.js').Logger;
 }

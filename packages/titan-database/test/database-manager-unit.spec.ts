@@ -507,7 +507,11 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
   });
 
   describe('Configuration Options', () => {
-    it('should respect pool configuration', async () => {
+    // These three assert that the manager still initializes with the option
+    // set — not that the option does anything. `pool` and `debug` are read
+    // elsewhere; `queryTimeout` is not read at all (see database.types.ts),
+    // and the old name 'should respect query timeout' claimed otherwise.
+    it('initializes with a pool configuration', async () => {
       manager = new DatabaseManager(
         {
           connection: {
@@ -526,7 +530,7 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
       expect(manager.isConnected('default')).toBe(true);
     });
 
-    it('should respect debug mode', async () => {
+    it('initializes with debug mode on', async () => {
       manager = new DatabaseManager(
         {
           connection: {
@@ -542,7 +546,7 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
       expect(manager.isConnected('default')).toBe(true);
     });
 
-    it('should respect query timeout', async () => {
+    it('initializes with queryTimeout set (the option itself is inert)', async () => {
       manager = new DatabaseManager(
         {
           connection: {
@@ -559,19 +563,43 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
     });
 
     it('should respect shutdown timeout', async () => {
+      // The previous version set shutdownTimeout, opened a connection, closed
+      // it and asserted nothing — which is why nobody noticed that no code
+      // outside the options type ever read the field. A connection whose
+      // destroy() never settles used to hang closeAll() forever.
       manager = new DatabaseManager(
         {
           connection: {
             dialect: 'sqlite',
             connection: ':memory:',
           },
-          shutdownTimeout: 10000,
+          shutdownTimeout: 150,
         },
         mockLogger
       );
 
       await manager.init();
+
+      const info = (manager as unknown as { connections: Map<string, { instance: { destroy: () => Promise<void> } }> })
+        .connections.get('default')!;
+      let released!: () => void;
+      const hang = new Promise<void>((resolve) => {
+        released = resolve;
+      });
+      info.instance.destroy = () => hang;
+
+      const started = Date.now();
       await manager.closeAll();
+      const elapsed = Date.now() - started;
+
+      expect(elapsed).toBeGreaterThanOrEqual(140);
+      expect(elapsed).toBeLessThan(1000);
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ pending: ['default'], shutdownTimeout: 150 }),
+        expect.stringContaining('did not close')
+      );
+
+      released();
     });
   });
 

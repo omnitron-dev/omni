@@ -1341,11 +1341,42 @@ export class DatabaseManager implements IDatabaseManager {
 
     // Get keys before iteration since close() removes from map
     const connectionNames = Array.from(this.connections.keys());
+    const pending = new Set(connectionNames);
     const closePromises = connectionNames.map((name) =>
-      this.close(name).catch((error) => this.logger.error({ name, error }, 'Error closing connection'))
+      this.close(name)
+        .catch((error) => this.logger.error({ name, error }, 'Error closing connection'))
+        .finally(() => pending.delete(name))
     );
 
-    await Promise.all(closePromises);
+    // shutdownTimeout bounds the wait. A driver that never settles its
+    // destroy() — a pg client stuck mid-query, a socket with no keepalive —
+    // otherwise holds the process open forever and shutdown is decided by
+    // whatever SIGKILLs it. We stop waiting; we do not cancel, because the
+    // driver gives us no way to. Naming the connections still pending is the
+    // whole point: without them the operator sees a process that would not
+    // exit and nothing that says which database it was waiting on.
+    const shutdownTimeout = this.options.shutdownTimeout;
+    if (shutdownTimeout !== undefined && shutdownTimeout > 0) {
+      let timer: NodeJS.Timeout | undefined;
+      const timedOut = await Promise.race([
+        Promise.all(closePromises).then(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(true), shutdownTimeout);
+          timer.unref?.();
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+
+      if (timedOut) {
+        this.logger.error(
+          { pending: Array.from(pending), shutdownTimeout },
+          'Database connections did not close within shutdownTimeout; abandoning the wait'
+        );
+        return;
+      }
+    } else {
+      await Promise.all(closePromises);
+    }
 
     this.logger.info('All database connections closed');
   }

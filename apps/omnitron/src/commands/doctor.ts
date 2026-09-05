@@ -233,35 +233,74 @@ async function checkDatabase(findings: Findings): Promise<void> {
   }
 }
 
+/** A table this large is worth a finding at all. */
+const TABLE_WARN_BYTES = 1024 ** 3;
+
 /**
- * How much disk the database is holding, and in which tables.
+ * Bytes per live row above which the space is not the rows.
  *
- * This is the other half of the disk check: on this platform the largest
- * consumer is not the log FILES — which rotate — but the `logs` TABLE, which
- * until recently did not. 22.5 million rows and 13 GB of a 17 GB schema, on a
- * host that had already lost its database, its containers and its Tor onion
- * to a full disk once.
+ * A log line is a few hundred bytes and the widest row this schema holds is
+ * well under a kilobyte, so 8 KiB — one Postgres page per row — is far past
+ * anything the contents can explain, and far below the ~207 KiB per row this
+ * host was measured at.
+ */
+const BLOAT_BYTES_PER_ROW = 8 * 1024;
+
+/** Space each surviving row is costing. `Infinity` when nothing survives. */
+export function bytesPerLiveRow(bytes: number, live: number): number {
+  return live > 0 ? bytes / live : Infinity;
+}
+
+/**
+ * Is a table's size explained by its contents?
  *
- * Deliberately no threshold on the age of the oldest row: the retention
- * window is an operator's choice (`logging.databaseRetentionDays`, 14 by
- * default, 0 to disable), and ninety days of history is a legitimate one. So
- * the finding fires on size — which is what actually fills a disk — and puts
- * the age beside it, which is what lets the operator see at a glance whether
- * pruning is running at all.
+ * Split out so the judgement can be tested against real figures without a
+ * database: the SQL that gathers them is exercised by running the command.
+ */
+export function looksBloated(bytes: number, live: number): boolean {
+  return bytes >= TABLE_WARN_BYTES && bytesPerLiveRow(bytes, live) > BLOAT_BYTES_PER_ROW;
+}
+
+/**
+ * How much disk the database is holding, and whether the rows justify it.
+ *
+ * On this platform the largest consumer is the `logs` table, which until
+ * recently had no retention at all: 22.5 million rows and 13 GB of a 17 GB
+ * schema. Retention now runs — and the table is still 13 GB, because
+ * `DELETE` does not return space to the operating system. Plain `VACUUM`
+ * marks the pages reusable INSIDE the file; it truncates the file only when
+ * the free pages happen to sit at the end. So a table can hold 62 000 live
+ * rows in thirteen gigabytes indefinitely, and every measurement taken from
+ * its size alone — a growth rate, a projection of when the disk fills — is
+ * arithmetic on a number that stopped meaning "contents" long ago.
+ *
+ * That is why the check divides. Size on its own says "large"; size per live
+ * row says which KIND of large, and the two have opposite remedies: shorten
+ * the retention window, or reclaim the file.
  */
 async function checkTableGrowth(findings: Findings, db: unknown, target: string): Promise<void> {
-  const WARN_BYTES = 1024 ** 3;
   const ERROR_BYTES = 5 * 1024 ** 3;
-
+  /**
+   * Bytes per live row above which the space is not the rows.
+   *
+   * A log line is a few hundred bytes and the widest row this schema holds
+   * is well under a kilobyte, so 8 KB — one Postgres page per row — is far
+   * past anything the contents can explain, and far below the ~218 KB per
+   * row this host was measured at.
+   */
   const { sql } = await import('kysely');
-  const sizes = await sql<{ relname: string; bytes: string; total: string }>`
+  const gib = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GiB`;
+
+  const sizes = await sql<{ relname: string; bytes: string; live: string; total: string }>`
     SELECT c.relname,
            pg_total_relation_size(c.oid)::text AS bytes,
+           COALESCE(st.n_live_tup, 0)::text AS live,
            (SELECT sum(pg_total_relation_size(i.oid))::text
               FROM pg_class i JOIN pg_namespace m ON m.oid = i.relnamespace
              WHERE m.nspname = 'public' AND i.relkind = 'r') AS total
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
+      LEFT JOIN pg_stat_user_tables st ON st.relid = c.oid
      WHERE n.nspname = 'public' AND c.relkind = 'r'
      ORDER BY pg_total_relation_size(c.oid) DESC
      LIMIT 3
@@ -269,9 +308,37 @@ async function checkTableGrowth(findings: Findings, db: unknown, target: string)
 
   if (sizes.rows.length === 0) return;
   const total = Number(sizes.rows[0]!.total ?? 0);
-  if (!Number.isFinite(total) || total < WARN_BYTES) return;
+  if (!Number.isFinite(total) || total < TABLE_WARN_BYTES) return;
 
-  const gib = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GiB`;
+  const biggest = sizes.rows[0]!;
+  const bytes = Number(biggest.bytes);
+  const live = Number(biggest.live);
+  const perRow = bytesPerLiveRow(bytes, live);
+
+  // Bloat first: when it is the answer, the size finding below would send an
+  // operator to shorten a retention window that is already working.
+  if (looksBloated(bytes, live)) {
+    const disk = await diskAtHome();
+    findings.add({
+      id: 'db.bloated',
+      severity: 'warning',
+      title: `Table "${biggest.relname}" occupies ${gib(bytes)} for ${live.toLocaleString('en-US')} live row(s)`,
+      evidence: [
+        `target: ${target}`,
+        `${(perRow / 1024).toFixed(0)} KiB per live row — the rows are a few hundred bytes`,
+        ...(disk ? [`${gib(disk.free)} free on the filesystem holding ${OMNITRON_HOME}`] : []),
+      ],
+      remedy:
+        'Retention is doing its job; the space it frees is not being returned. `DELETE` leaves the pages inside ' +
+        'the file, and plain `VACUUM` only makes them reusable — the file shrinks only when the free pages ' +
+        `happen to be at the end. Reclaim it with \`VACUUM FULL ${biggest.relname}\` (an ACCESS EXCLUSIVE lock ` +
+        'for the duration, so schedule it) or `pg_repack` (no long lock, needs the extension). Until then this ' +
+        'space is unavailable to anything else on the disk, and a full disk on this host has been diagnosed ' +
+        'once as an auth fault and once as a Docker networking fault.',
+    });
+    return;
+  }
+
   const evidence = [
     `target: ${target}`,
     `largest: ${sizes.rows.map((r) => `${r.relname} ${gib(Number(r.bytes))}`).join(', ')}`,
@@ -287,7 +354,7 @@ async function checkTableGrowth(findings: Findings, db: unknown, target: string)
     const at = oldest.rows[0]?.oldest;
     if (at) {
       const days = (Date.now() - new Date(at).getTime()) / 86_400_000;
-      evidence.push(`oldest surviving log row is ${days.toFixed(0)} day(s) old`);
+      evidence.push(`oldest surviving log row is ${days < 1 ? '<1' : days.toFixed(0)} day(s) old`);
     }
   } catch {
     // No `logs` table, or no `timestamp` column on it. The size finding
@@ -805,20 +872,24 @@ async function checkBuildFreshness(findings: Findings, daemonStartedMs: number |
  * unpacked, and those need gigabytes, not percentages. A 2 TB disk at 3% free
  * still has 60 GB and is fine; a 32 GB disk at 10% free has 3 GB and is not.
  */
+/** Free and total bytes where omnitron writes, or null when unreadable. */
+async function diskAtHome(): Promise<{ free: number; total: number } | null> {
+  try {
+    const st = await fs.promises.statfs(OMNITRON_HOME);
+    return { free: st.bavail * st.bsize, total: st.blocks * st.bsize };
+  } catch {
+    // No statfs, or the home does not exist yet. Neither is a disk fault.
+    return null;
+  }
+}
+
 export async function checkDiskSpace(findings: Findings): Promise<void> {
   const ERROR_BYTES = 2 * 1024 ** 3;
   const WARN_BYTES = 10 * 1024 ** 3;
 
-  let free: number;
-  let total: number;
-  try {
-    const st = await fs.promises.statfs(OMNITRON_HOME);
-    free = st.bavail * st.bsize;
-    total = st.blocks * st.bsize;
-  } catch {
-    // No statfs, or the home does not exist yet. Neither is a disk fault.
-    return;
-  }
+  const disk = await diskAtHome();
+  if (!disk) return;
+  const { free, total } = disk;
 
   if (free >= WARN_BYTES) return;
 

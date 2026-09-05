@@ -399,13 +399,22 @@ export default function TopologyPage() {
             mr: detailPanel.open ? '400px' : 0,
           }}
         >
-          {/* Error snackbar */}
+          {/* Error snackbar.
+              Stays up while the diagram is empty. An auto-hiding warning over
+              a blank canvas leaves the operator with the canvas, and a blank
+              topology reads as "nothing is running" rather than "nothing
+              could be read". Partial results dismiss normally — the diagram
+              itself carries the news. */}
           <Snackbar
             open={!!error}
-            autoHideDuration={6000}
+            autoHideDuration={storeNodes.length === 0 ? null : 6000}
             anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
           >
-            <Alert severity="warning" variant="filled" sx={{ width: '100%' }}>
+            <Alert
+              severity={storeNodes.length === 0 ? 'error' : 'warning'}
+              variant="filled"
+              sx={{ width: '100%' }}
+            >
               {error}
             </Alert>
           </Snackbar>

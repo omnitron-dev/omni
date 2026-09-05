@@ -72,6 +72,21 @@ export interface AdminDataTableProps<T> {
   onSort?: (column: string) => void;
   /** Message shown when no data */
   emptyMessage?: string;
+  /**
+   * Why the table has no rows, when the reason is a failure rather than an
+   * absence.
+   *
+   * "No data found" and "we could not load this" look identical without it,
+   * and the first reads as a healthy answer. That confusion is not
+   * hypothetical: the omnitron console's traces page had both of its queries
+   * failing against the database schema, had never returned a row, and
+   * displayed "No traces collected yet" — a plausible answer that was not the
+   * true one, for as long as the page had existed.
+   *
+   * When set, the empty state says the data could not be loaded and shows
+   * this text as the reason, instead of `emptyMessage`.
+   */
+  loadError?: string | null;
   /** Extract unique key from row */
   rowKey?: (row: T) => string;
   /** Row click handler */
@@ -231,6 +246,7 @@ export function AdminDataTable<T>({
   sortOrder = 'asc',
   onSort,
   emptyMessage = 'No data found',
+  loadError = null,
   rowKey,
   onRowClick,
   pageSizeOptions = [10, 25, 50, 100],
@@ -381,11 +397,19 @@ export function AdminDataTable<T>({
           }}
         >
           <EmptyIcon />
-          <Typography variant="body2" sx={{
-            color: "text.disabled"
-          }}>
-            {emptyMessage}
+          <Typography
+            variant="body2"
+            // `text.secondary` rather than `text.disabled` for a failure: a
+            // reason the reader needs must not be the palette's quietest text.
+            sx={{ color: loadError ? 'text.secondary' : 'text.disabled' }}
+          >
+            {loadError ? 'Could not load this data' : emptyMessage}
           </Typography>
+          {loadError && (
+            <Typography variant="caption" sx={{ color: 'text.disabled', maxWidth: 420, textAlign: 'center' }}>
+              {loadError}
+            </Typography>
+          )}
         </Box>
       </StyledTableContainer>
     );

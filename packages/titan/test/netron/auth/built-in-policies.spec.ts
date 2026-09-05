@@ -828,30 +828,39 @@ describe('BuiltInPolicies', () => {
         expect(() => policy.onDestroy?.()).not.toThrow();
       });
 
-      it('should not leak memory with many different users', async () => {
+      it('keeps a separate budget per user across many users', async () => {
+        // The old version ran a hundred users through the policy and closed
+        // with "No assertions needed - just verify no crashes". It could not
+        // check what it was named for either: the limiter's cleanup runs on a
+        // five-minute timer, so nothing observable happens inside the test.
+        //
+        // What a hundred distinct users does exercise is isolation — that one
+        // user's requests do not consume another's budget. A limiter keyed by
+        // something other than the user (or not keyed at all) would exhaust
+        // after five requests and deny the sixth user outright.
         const policy = BuiltInPolicies.rateLimit(5, 1000);
 
-        // Simulate many different users
-        for (let i = 0; i < 100; i++) {
-          const context: ExecutionContext = {
-            auth: {
-              userId: `user${i}`,
-              roles: [],
-              permissions: [],
-            },
+        try {
+          const contextFor = (userId: string): ExecutionContext => ({
+            auth: { userId, roles: [], permissions: [] },
             service: { name: 'testService', version: '1.0.0' },
-          };
+          });
 
-          await policy.evaluate(context);
+          for (let i = 0; i < 100; i++) {
+            const decision = await policy.evaluate(contextFor(`user${i}`));
+            expect(decision.allowed, `user${i} was denied its first request`).toBe(true);
+          }
+
+          // And the limit still applies within one user.
+          const heavy = contextFor('heavy-user');
+          for (let i = 0; i < 5; i++) {
+            expect((await policy.evaluate(heavy)).allowed, `request ${i} should be allowed`).toBe(true);
+          }
+          const denied = await policy.evaluate(heavy);
+          expect(denied.allowed, 'the sixth request within the window was allowed').toBe(false);
+        } finally {
+          policy.onDestroy?.();
         }
-
-        // RateLimiter internally cleans up old entries
-        // This test verifies the refactored policy uses RateLimiter
-        // which has automatic cleanup (every 5 minutes)
-        // No assertions needed - just verify no crashes
-
-        // Cleanup
-        policy.onDestroy?.();
       });
     });
 

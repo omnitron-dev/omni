@@ -26,7 +26,7 @@ const lightPalette: PresetPalette = {
     main: '#42A5F5',
     dark: '#1E88E5',
     darker: '#1565C0',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   info: {
     lighter: '#E0F7FA',
@@ -34,7 +34,7 @@ const lightPalette: PresetPalette = {
     main: '#26C6DA',
     dark: '#00ACC1',
     darker: '#00838F',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   success: {
     lighter: '#E8F5E9',
@@ -42,7 +42,7 @@ const lightPalette: PresetPalette = {
     main: '#66BB6A',
     dark: '#43A047',
     darker: '#2E7D32',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   warning: {
     lighter: '#FFF8E1',
@@ -99,7 +99,7 @@ const darkPalette: PresetPalette = {
     main: '#42A5F5',
     dark: '#1E88E5',
     darker: '#1565C0',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   secondary: {
     lighter: '#E3F2FD',
@@ -107,7 +107,7 @@ const darkPalette: PresetPalette = {
     main: '#64B5F6',
     dark: '#42A5F5',
     darker: '#1E88E5',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   info: {
     lighter: '#E0F7FA',
@@ -115,7 +115,7 @@ const darkPalette: PresetPalette = {
     main: '#4DD0E1',
     dark: '#26C6DA',
     darker: '#00ACC1',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   success: {
     lighter: '#E8F5E9',
@@ -123,7 +123,7 @@ const darkPalette: PresetPalette = {
     main: '#81C784',
     dark: '#66BB6A',
     darker: '#4CAF50',
-    contrastText: '#FFFFFF',
+    contrastText: '#000000',
   },
   warning: {
     lighter: '#FFF8E1',

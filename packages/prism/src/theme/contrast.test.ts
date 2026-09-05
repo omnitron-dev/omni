@@ -20,6 +20,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { createPrismTheme } from './create-theme.js';
+import { presetNames } from './presets/index.js';
 import { getContrastText, getContrastRatio } from './utils/color.js';
 
 /** WCAG AA for body text. */
@@ -108,5 +109,49 @@ describe('a themed palette stays readable', () => {
     const theme = createPrismTheme({ mode: 'light', preset: 'default-light' });
     const primary = primaryOf(theme, 'light');
     expect(getContrastRatio(primary.main, primary.contrastText)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe('every preset', () => {
+  /**
+   * 3:1 is the WCAG floor for UI components and large text; 4.5:1 is the one
+   * for body text. Preset palettes sit between the two on purpose — white on
+   * a mid-tone brand colour is the convention this design system follows, and
+   * changing that is a design decision rather than an audit finding.
+   *
+   * Below 3:1 is not a judgement call. `arctic` had seven such pairs, the
+   * worst at 1.84 (white on `#4DD0E1`), where black scored 11.43 — the wrong
+   * choice by a factor of six, in a preset an operator can select from the
+   * settings drawer.
+   */
+  const SURFACES = ['primary', 'secondary', 'error', 'warning', 'info', 'success'] as const;
+
+  it('found the presets to check', () => {
+    // An empty list would make the assertion below pass by checking nothing.
+    expect(presetNames.length).toBeGreaterThan(8);
+  });
+
+  it('keeps every colour pair above the UI-component floor', () => {
+    const failures: string[] = [];
+
+    for (const preset of presetNames) {
+      for (const mode of ['light', 'dark'] as const) {
+        const theme = createPrismTheme({ preset, mode }) as any;
+        const palette = theme.palette ?? theme.colorSchemes?.[mode]?.palette;
+        if (!palette) continue;
+
+        for (const surface of SURFACES) {
+          const colour = palette[surface];
+          if (!colour?.main || !colour?.contrastText) continue;
+          const ratio = getContrastRatio(colour.main, colour.contrastText);
+          if (ratio < 3) {
+            failures.push(`${preset}/${mode}/${surface}: ${colour.main} on ${colour.contrastText} = ${ratio.toFixed(2)}`);
+          }
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
   });
 });

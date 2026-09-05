@@ -50,4 +50,33 @@ describe('RemotePeer.sendRequest — response-handler cleanup on send failure (T
 
     await netron.stop();
   });
+
+  it('registers a handler when the send succeeds', async () => {
+    // Without this, the test above cannot fail for the right reason. Every one
+    // of its assertions — handler count 0 before, after, and after again — is
+    // equally true of a `sendRequest` that never registers a handler at all,
+    // so "cleanup works" and "registration never happened" look identical.
+    // This pins the half the negative assertions depend on.
+    const netron = new Netron(createMockLogger(), { id: 't44-handler-registered' });
+    const mockSocket: any = {
+      readyState: 1,
+      // Succeeds: the callback is invoked with no error.
+      send: vi.fn((_d: any, _o: any, cb?: (err?: Error) => void) => cb?.()),
+      on: vi.fn(),
+      close: vi.fn(),
+    };
+    const peer = new RemotePeer(mockSocket, netron, 'healthy-peer');
+    (peer as any).definitions.set('def-1', { id: 'def-1', meta: {} });
+
+    expect((peer as any).responseHandlers.size).toBe(0);
+
+    // Deliberately not awaited: the response never arrives, so the handler
+    // stays registered — which is precisely what we are checking for.
+    const pending = peer.call('def-1', 'doIt', []);
+    pending.catch(() => {}); // the peer is torn down below; do not leak a rejection
+
+    expect((peer as any).responseHandlers.size).toBe(1);
+
+    await netron.stop();
+  });
 });

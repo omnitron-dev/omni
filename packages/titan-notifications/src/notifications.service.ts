@@ -406,6 +406,13 @@ export class NotificationsService implements ILifecycle {
    * Destroy the notifications service (ILifecycle)
    */
   async onDestroy(): Promise<void> {
+    // `NotificationChannel.shutdown()` is documented as "Shutdown the channel
+    // and cleanup resources" and the built-ins leave it empty for subclasses to
+    // override — but nothing in this package ever called `shutdownAll()`, so a
+    // subclass closing an SMTP pool or an APNs connection there was never asked
+    // to. Channels stop delivering before the bus underneath them goes away.
+    await this.channelRegistry?.shutdownAll();
+
     if (this.transport.destroy) {
       await this.transport.destroy();
     }

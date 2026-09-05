@@ -122,6 +122,13 @@ export class ChannelRegistry {
       return;
     }
 
+    // Claim the state BEFORE awaiting. A flag assigned after an await guards
+    // the second call but not the second caller: `shutdownAll()` arriving
+    // during initialization used to read `false`, conclude there was nothing to
+    // shut down and return, leaving every channel initialized and no
+    // `shutdown()` ever issued.
+    this.initialized = true;
+
     const initPromises: Promise<void>[] = [];
     for (const channel of this.channels.values()) {
       if (channel.initialize) {
@@ -129,8 +136,11 @@ export class ChannelRegistry {
       }
     }
 
+    // Deliberately not re-asserting `this.initialized` here: a `shutdownAll()`
+    // issued while these initializers were in flight has already cleared it,
+    // and setting it back would leave the registry claiming to be initialized
+    // after it had been torn down.
     await Promise.all(initPromises);
-    this.initialized = true;
   }
 
   /**
@@ -142,6 +152,8 @@ export class ChannelRegistry {
       return;
     }
 
+    this.initialized = false;
+
     const shutdownPromises: Promise<void>[] = [];
     for (const channel of this.channels.values()) {
       if (channel.shutdown) {
@@ -150,7 +162,6 @@ export class ChannelRegistry {
     }
 
     await Promise.all(shutdownPromises);
-    this.initialized = false;
   }
 
   /**

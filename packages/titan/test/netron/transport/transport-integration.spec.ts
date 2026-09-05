@@ -685,30 +685,58 @@ describe('Transport Integration Tests', () => {
     });
 
     it('should handle microservices communication scenario', async () => {
-      // Service A - TCP
+      // "For now, just test basic connectivity" used to mean: send one frame
+      // and assert nothing. The request never had to reach Service B and no
+      // reply ever had to come back — the test passed on the sends alone.
+      // Drive the hop it names instead: Client -> Service A -> Service B and
+      // the reply back out the same path.
+      const decode = (data: any) => JSON.parse(Buffer.from(data).toString());
+
+      // Service B - Unix/Named Pipe. Answers every request it is handed.
+      const unixTransport = process.platform === 'win32' ? new NamedPipeTransport() : new UnixSocketTransport();
+      const atServiceB: any[] = [];
+      const serviceB = await unixTransport.createServer(socketPath);
+      serviceB.on('connection', (conn: any) => {
+        const handle = async (data: any) => {
+          const request = decode(data);
+          atServiceB.push(request);
+          await conn.send(Buffer.from(JSON.stringify({ reply: request.request, by: 'service-b' })));
+        };
+        conn.on('data', handle);
+        conn.on('packet', handle);
+      });
+
+      // Service A - TCP. Relays in both directions over its link to B.
       const tcpTransport = new TcpTransport();
       const serviceA = await tcpTransport.createServer(`tcp://127.0.0.1:${tcpPort}`);
-
-      // Service B - Unix/Named Pipe
-      const unixTransport = process.platform === 'win32' ? new NamedPipeTransport() : new UnixSocketTransport();
-      const serviceB = await unixTransport.createServer(socketPath);
-
-      // Service A connects to Service B
       const aToB = await unixTransport.connect(socketPath);
+      serviceA.on('connection', (conn: any) => {
+        const toB = async (data: any) => {
+          await aToB.send(Buffer.from(data));
+        };
+        conn.on('data', toB);
+        conn.on('packet', toB);
+        const toClient = async (data: any) => {
+          await conn.send(Buffer.from(data));
+        };
+        aToB.on('data', toClient);
+        aToB.on('packet', toClient);
+      });
 
-      // Client connects to Service A
+      const atClient: any[] = [];
       const client = await tcpTransport.connect(`tcp://127.0.0.1:${tcpPort}`);
+      const collect = (data: any) => {
+        atClient.push(decode(data));
+      };
+      client.on('data', collect);
+      client.on('packet', collect);
 
-      // Request flow: Client -> Service A -> Service B
-      // For now, just test basic connectivity
-      await client.send(
-        Buffer.from(
-          JSON.stringify({
-            request: 'process',
-            serviceId: 'service-b',
-          })
-        )
-      );
+      await client.send(Buffer.from(JSON.stringify({ request: 'process', serviceId: 'service-b' })));
+
+      await eventually(() => {
+        expect(atServiceB).toEqual([{ request: 'process', serviceId: 'service-b' }]);
+        expect(atClient).toEqual([{ reply: 'process', by: 'service-b' }]);
+      });
 
       // Clean up
       await client.close();

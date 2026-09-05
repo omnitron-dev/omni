@@ -324,14 +324,35 @@ describe('Netron - End-to-End Communication', () => {
       expect(maxStartDiff).toBeLessThan(20);
     });
 
-    it('should delete special events when requested', () => {
-      netron.emitSpecial('deletable-event', 'delete-id', {});
+    it('should delete special events when requested', async () => {
+      // This asserted nothing at all — it emitted, deleted, and ended, so a
+      // deleteSpecialEvents() that did nothing whatsoever passed it.
+      const received: string[] = [];
+      let releaseFirst!: () => void;
+      const firstHeld = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
 
-      // The event should be in the queue
+      netron.on('deletable-event', async (data: any) => {
+        received.push(data.tag);
+        // Hold the queue open inside the first event so the rest are pending
+        // when the delete arrives.
+        if (received.length === 1) await firstHeld;
+      });
+
+      const drain = netron.emitSpecial('deletable-event', 'delete-id', { tag: 'first' });
+      await netron.emitSpecial('deletable-event', 'delete-id', { tag: 'second' });
+      await netron.emitSpecial('deletable-event', 'delete-id', { tag: 'third' });
+      expect(received).toEqual(['first']);
+
       netron.deleteSpecialEvents('delete-id');
 
-      // Queue should be cleared for that ID
-      // (Internal state check - implementation dependent)
+      releaseFirst();
+      await drain;
+
+      // The event already in flight cannot be recalled; the two queued behind
+      // it must never reach the listener.
+      expect(received).toEqual(['first']);
     });
   });
 

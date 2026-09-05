@@ -1389,32 +1389,45 @@ describe('useQuery Integration Tests', () => {
       expect(requestCount).toBeLessThanOrEqual(initialCount + 3);
     });
 
-    it('should properly cleanup on unmount during fetch', async () => {
-      let _fetchCompleted = false;
+    it('releases its cache observer when unmounted mid-fetch', async () => {
+      // This asserted nothing before: it unmounted, waited, and ended. A hook
+      // that never unsubscribed passed it just as happily as one that did.
+      // The leak is observable — the subscription lives in the shared
+      // QueryCache, and a retained observer both keeps the callback alive and
+      // pins the entry against garbage collection forever.
+      const cache = client.getQueryCache();
+      const queryKey = ['cleanup-test'];
 
+      let releaseFetch!: (value: { done: boolean }) => void;
       const { unmount } = renderHook(
         () =>
           useQuery({
-            queryKey: ['cleanup-test'],
-            queryFn: async () => {
-              await new Promise((resolve) => setTimeout(resolve, 100));
-              _fetchCompleted = true;
-              return { done: true };
-            },
+            queryKey,
+            queryFn: () =>
+              new Promise<{ done: boolean }>((resolve) => {
+                releaseFetch = resolve;
+              }),
           }),
         { wrapper }
       );
 
-      // Unmount immediately
+      // Unmount while the fetch is genuinely in flight, not after it settled.
+      await waitFor(() => expect(cache.isFetching(queryKey)).toBe(true));
+      expect(cache.getStats().observerCount).toBeGreaterThan(0);
+
       unmount();
 
-      // Wait for what would have been the fetch completion
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 150));
-      });
+      expect(cache.getStats().observerCount).toBe(0);
 
-      // The fetch may or may not complete, but there should be no errors
-      // This test mainly ensures no memory leaks or state updates after unmount
+      // The shared in-flight fetch is still allowed to settle — other observers
+      // may be waiting on the same promise — but it must not stay 'fetching',
+      // which would leave the entry permanently un-refetchable.
+      await act(async () => {
+        releaseFetch({ done: true });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(cache.isFetching(queryKey)).toBe(false));
+      expect(cache.getStats().observerCount).toBe(0);
     });
 
     it('should handle concurrent queries with different keys', async () => {

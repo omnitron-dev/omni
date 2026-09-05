@@ -272,11 +272,17 @@ describeOrSkip('Netron - Comprehensive Tests', () => {
     it('should delete special events', () => {
       // NET-3: the special-event queue now lives in the SpecialEventBuffer
       // collaborator; deleteSpecialEvents delegates to it.
-      const buffer = netron['specialEvents'] as unknown as { ownEvents: Map<string, unknown[]> };
-      buffer.ownEvents.set('event-123', []);
+      const buffer = netron['specialEvents'] as unknown as {
+        ownEvents: Map<string, { events: unknown[]; processed: number; draining: boolean; cancelled: boolean }>;
+      };
+      const queue = { events: [{ name: 'queued', data: {} }], processed: 0, draining: true, cancelled: false };
+      buffer.ownEvents.set('event-123', queue);
       netron.deleteSpecialEvents('event-123');
 
       expect(buffer.ownEvents.has('event-123')).toBe(false);
+      // Unmapping alone left an in-flight drain emitting from the queue it had
+      // already captured; the cancel flag is what actually stops it.
+      expect(queue.cancelled).toBe(true);
     });
   });
 

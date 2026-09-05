@@ -26,6 +26,7 @@ import { deploy } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
@@ -252,15 +253,11 @@ export default function DeploymentsPage() {
                   </TableRow>
                 ))
               ) : deployments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
-                      No deployments yet
-                    </Typography>
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                      colSpan={8}
+                      message="No deployments yet"
+                      error={error ?? partialFailure}
+                    />
               ) : (
                 deployments.map((dep) => (
                   <TableRow

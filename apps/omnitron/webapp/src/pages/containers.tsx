@@ -35,6 +35,7 @@ import { Breadcrumbs } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { TableEmptyRow } from 'src/components/table-empty-row';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -334,15 +335,11 @@ export default function ContainersPage() {
                   </TableRow>
                 ))
               ) : containers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
-                      No containers found. Infrastructure containers will appear here when Docker is running.
-                    </Typography>
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                      colSpan={6}
+                      message="No containers found. Infrastructure containers will appear here when Docker is running."
+                      error={error}
+                    />
               ) : (
                 containers.map((container) => (
                   <TableRow

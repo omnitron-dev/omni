@@ -40,57 +40,6 @@ interface MetricsSummary {
   logIngestionRate: number | null;
 }
 
-interface TimeSeriesPoint {
-  x: number; // timestamp ms
-  y: number;
-}
-
-// ---------------------------------------------------------------------------
-// Mock data generators (will be replaced with real metrics_raw queries in Phase 2)
-// ---------------------------------------------------------------------------
-
-function generateMockTimeSeries(
-  points: number,
-  minVal: number,
-  maxVal: number,
-  intervalMs: number,
-): TimeSeriesPoint[] {
-  const now = Date.now();
-  const data: TimeSeriesPoint[] = [];
-  let value = minVal + Math.random() * (maxVal - minVal) * 0.5;
-  for (let i = points - 1; i >= 0; i--) {
-    // Random walk with mean-reversion
-    value += (Math.random() - 0.5) * (maxVal - minVal) * 0.1;
-    value = Math.max(minVal, Math.min(maxVal, value));
-    data.push({ x: now - i * intervalMs, y: Math.round(value * 10) / 10 });
-  }
-  return data;
-}
-
-function generateMockLogVolume(points: number, intervalMs: number) {
-  const now = Date.now();
-  const levels = ['info', 'warn', 'error', 'debug'] as const;
-  const ranges: Record<string, [number, number]> = {
-    info: [20, 80],
-    warn: [2, 15],
-    error: [0, 5],
-    debug: [10, 40],
-  };
-  return Object.fromEntries(
-    levels.map((level) => {
-      const [min, max] = ranges[level]!;
-      const data: TimeSeriesPoint[] = [];
-      for (let i = points - 1; i >= 0; i--) {
-        data.push({
-          x: now - i * intervalMs,
-          y: Math.round(min + Math.random() * (max - min)),
-        });
-      }
-      return [level, data];
-    }),
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Chart theme config
 // ---------------------------------------------------------------------------
@@ -195,7 +144,6 @@ function GaugeCard({ title, value, suffix, icon, color, loading }: GaugeCardProp
 // Metrics Page
 // ---------------------------------------------------------------------------
 
-const MOCK_APPS = ['main', 'storage', 'worker'];
 const DATA_POINTS = 30; // 5 minutes at 10s intervals
 const INTERVAL_MS = 10_000;
 
@@ -306,19 +254,15 @@ export default function MetricsPage() {
           data: s.points.map((p: any) => ({ x: new Date(p.timestamp).getTime(), y: Math.round(p.value / (1024 * 1024)) })),
         })));
       } else {
-        // Fallback: mock time-series
-        setCpuSeries(
-          MOCK_APPS.map((app) => ({
-            name: app,
-            data: generateMockTimeSeries(DATA_POINTS, 5, 60, INTERVAL_MS),
-          })),
-        );
-        setMemSeries(
-          MOCK_APPS.map((app) => ({
-            name: app,
-            data: generateMockTimeSeries(DATA_POINTS, 50, 500, INTERVAL_MS),
-          })),
-        );
+        // No series for this window — say so by drawing nothing.
+        //
+        // This used to fall back to `generateMockTimeSeries` for three
+        // hardcoded app names, so a daemon that had just restarted showed an
+        // operator plausible CPU and memory history for apps that might not
+        // exist. Absence rendered as invented data is worse than absence
+        // rendered as zero: there is nothing about it to disbelieve.
+        setCpuSeries([]);
+        setMemSeries([]);
       }
 
       // Log volume — query real log stats, fall back to mock if unavailable
@@ -326,26 +270,23 @@ export default function MetricsPage() {
         const { logs } = await import('src/netron/client');
         const logStats = await logs.getLogStats();
         if (logStats?.byLevel && logStats.byLevel.length > 0) {
-          // LogStats.byLevel gives cumulative counts; distribute evenly across DATA_POINTS
-          // buckets so the chart shows a meaningful distribution.
-          const now = Date.now();
-          setLogSeries(
-            logStats.byLevel.map(({ level, count }) => ({
-              name: level,
-              data: Array.from({ length: DATA_POINTS }, (_, i) => ({
-                x: now - (DATA_POINTS - 1 - i) * INTERVAL_MS,
-                y: Math.round(count / DATA_POINTS),
-              })),
-            })),
-          );
+          // `byLevel` is a cumulative count per level with no time dimension.
+          // It used to be spread as `count / DATA_POINTS` across thirty
+          // buckets and drawn on a time axis — a flat line presented as
+          // history, under a y-axis labelled "Lines / interval". One bar per
+          // level is what the data actually is.
+          setLogSeries([
+            {
+              name: 'lines',
+              data: logStats.byLevel.map(({ level, count }) => ({ x: level, y: count })),
+            },
+          ]);
         } else {
           throw new Error('no data');
         }
       } catch {
-        const logVol = generateMockLogVolume(DATA_POINTS, INTERVAL_MS);
-        setLogSeries(
-          Object.entries(logVol).map(([level, data]) => ({ name: level, data })),
-        );
+        // Same rule as the series above: nothing, rather than something made up.
+        setLogSeries([]);
       }
 
       setError(null);
@@ -396,11 +337,16 @@ export default function MetricsPage() {
   const logChartOptions = useMemo<ApexCharts.ApexOptions>(
     () => ({
       ...baseChartOptions,
-      chart: { ...baseChartOptions.chart, type: 'bar', stacked: true },
-      plotOptions: { bar: { columnWidth: '60%', borderRadius: 2 } },
+      chart: { ...baseChartOptions.chart, type: 'bar' },
+      plotOptions: { bar: { columnWidth: '40%', borderRadius: 2, distributed: true } },
+      legend: { show: false },
+      // A category axis, not a time axis. `byLevel` has no time dimension —
+      // the shared `baseChartOptions` uses `datetime`, which is right for the
+      // CPU and memory charts and wrong here.
+      xaxis: { ...baseChartOptions.xaxis, type: 'category' },
       yaxis: {
         ...baseChartOptions.yaxis,
-        title: { text: 'Lines / interval', style: { color: '#999' } },
+        title: { text: 'Lines (total)', style: { color: '#999' } },
       },
       colors: ['#3b82f6', '#f59e0b', '#ef4444', '#6b7280'],
     }),
@@ -522,9 +468,9 @@ export default function MetricsPage() {
       {/* Log Volume Chart */}
       <Card variant="outlined">
         <CardHeader
-          title="Log Volume"
+          title="Log Lines by Level"
           titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
-          subheader="Log lines grouped by level"
+          subheader="Cumulative totals in the log store — not a rate over time"
           subheaderTypographyProps={{ variant: 'caption' }}
         />
         <CardContent sx={{ pt: 0 }}>

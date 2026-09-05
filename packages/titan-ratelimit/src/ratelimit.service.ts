@@ -18,6 +18,7 @@ import type {
 } from './ratelimit.types.js';
 import { RATE_LIMIT_OPTIONS_TOKEN, RATE_LIMIT_STORAGE_TOKEN, DEFAULT_RATE_LIMIT_PREFIX } from './ratelimit.tokens.js';
 import { type IRateLimitAlgorithm, createAlgorithm } from './ratelimit.algorithms.js';
+import { setAmbientRateLimitService, getAmbientRateLimitService } from './ratelimit.decorators.js';
 
 /**
  * Default options for rate limit service
@@ -99,6 +100,24 @@ export class RateLimitService implements IRateLimitService {
       activeKeys: 0,
     };
     this.tierStats = new Map();
+
+    // Publish for the decorators. `@RateLimit` reads
+    // `this.__rateLimitService__` off the decorated instance, so a class that
+    // does not inject that exact field falls into the decorator's graceful
+    // degradation and allows every request. Making the configured service
+    // reachable without per-class injection is what lets a declared limit
+    // actually apply; an injected field still wins over this.
+    setAmbientRateLimitService(this);
+  }
+
+  /**
+   * Withdraw the ambient reference so a disposed service cannot keep
+   * answering decorator calls in a re-initialised container (tests, mainly).
+   */
+  async onDestroy(): Promise<void> {
+    if (getAmbientRateLimitService() === this) {
+      setAmbientRateLimitService(undefined);
+    }
   }
 
   /**

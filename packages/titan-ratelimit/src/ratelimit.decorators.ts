@@ -10,13 +10,46 @@
  */
 
 import 'reflect-metadata';
-import type { IRateLimitDecoratorOptions, IRateLimitContext, IRateLimitCheckOptions } from './ratelimit.types.js';
+import type {
+  IRateLimitDecoratorOptions,
+  IRateLimitContext,
+  IRateLimitCheckOptions,
+  IRateLimitService,
+} from './ratelimit.types.js';
 
 /**
  * Metadata key for storing rate limit configuration on methods
  * @internal
  */
 const RATE_LIMIT_METADATA_KEY = Symbol.for('titan:ratelimit:metadata');
+
+/**
+ * Rate-limit service of last resort for the decorators.
+ *
+ * `@RateLimit` reads `this.__rateLimitService__` off the instance, so a class
+ * that does not inject that exact field gets the decorator's graceful
+ * degradation: the request is allowed and, if the instance happens to carry a
+ * logger, a warning is written. In this repository thirty of the fifty-four
+ * classes carrying `@RateLimit` had no such field, so the limit they declared
+ * did nothing — while every app configured the module and paid for the Redis
+ * round trips of the ones that did.
+ *
+ * The module publishes its service here at init and withdraws it on destroy,
+ * so a decorator on a class that did not inject anything still enforces. An
+ * explicitly injected `__rateLimitService__` continues to win, which keeps
+ * per-class overrides and test doubles working.
+ */
+let ambientRateLimitService: IRateLimitService | undefined;
+
+/** @internal — called by TitanRateLimitModule at init. */
+export function setAmbientRateLimitService(service: IRateLimitService | undefined): void {
+  ambientRateLimitService = service;
+}
+
+/** @internal — visible for tests. */
+export function getAmbientRateLimitService(): IRateLimitService | undefined {
+  return ambientRateLimitService;
+}
 
 /**
  * @RateLimit Decorator
@@ -151,7 +184,7 @@ export function RateLimit(options: IRateLimitDecoratorOptions = {}): MethodDecor
 
     // Replace method with rate-limited version
     descriptor.value = async function (this: IRateLimitContext, ...args: unknown[]) {
-      const rateLimitService = this.__rateLimitService__;
+      const rateLimitService = this.__rateLimitService__ ?? ambientRateLimitService;
 
       // Graceful degradation: if no rate limit service is injected, allow request
       // This is useful for:

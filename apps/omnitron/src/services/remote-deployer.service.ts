@@ -28,6 +28,52 @@ function shellEscape(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+/**
+ * A name that is safe to place in a remote filesystem path.
+ *
+ * Project, app and version names are interpolated into
+ * `/opt/omnitron/artifacts/<project>/<app>/<version>` and the result is sent
+ * to a remote shell running as the SSH user, which defaults to root. Quoting
+ * makes that safe against injection but not against the path itself: a
+ * project literally named `../..` resolves outside the artifact root, and
+ * `mkdir -p` then creates it there. Quoting is not a substitute for the
+ * value meaning what the path assumes it means.
+ *
+ * These names come from the project registry and the console's own forms —
+ * operator-supplied, not attacker-supplied in the ordinary case. It is
+ * defence in depth, and the cost of it is a regular expression.
+ *
+ * @throws Error naming the segment and what is allowed.
+ */
+export function assertRemotePathSegment(kind: string, value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) || value.includes('..')) {
+    throw new Error(
+      `Refusing to deploy: ${kind} ${JSON.stringify(value)} is not usable in a remote path. ` +
+        `Allowed: letters, digits, dot, dash and underscore, starting with a letter or digit, and no "..".`
+    );
+  }
+  return value;
+}
+
+/**
+ * A shell command that writes `content` to `path` on the remote.
+ *
+ * This was a heredoc with a fixed `OMNITRON_EOF` delimiter, and the comment
+ * above it said it "avoids shell escaping issues with complex content". It
+ * avoids most of them. It does not avoid content that contains a line equal
+ * to the delimiter — there the heredoc ends early and everything after it is
+ * executed as a command by the remote shell. `generateSlaveConfig`
+ * interpolates the project name into the file it writes, so the delimiter
+ * was reachable from a name.
+ *
+ * base64 has no delimiter to collide with and an alphabet the shell does not
+ * touch, so the content cannot influence the command at all.
+ */
+export function writeRemoteFileCommand(path: string, content: string): string {
+  const encoded = Buffer.from(content, 'utf8').toString('base64');
+  return `printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}`;
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -96,7 +142,10 @@ export class RemoteDeployer {
       await this.verifySSH(node);
 
       // 2. Ensure remote directory structure
-      const remotePath = `/opt/omnitron/artifacts/${project}/${artifact.app}/${artifact.version}`;
+      const remotePath =
+        `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
+        `/${assertRemotePathSegment('app name', artifact.app)}` +
+        `/${assertRemotePathSegment('version', artifact.version)}`;
       await this.sshExec(node, `mkdir -p ${shellEscape(remotePath)}`);
 
       // 3. Transfer artifact
@@ -245,10 +294,12 @@ export class RemoteDeployer {
       // 4. Generate slave config
       this.emitProgress(nodeKey, '*', 'extracting', 50, 'Configuring slave daemon...');
       const configDir = '/etc/omnitron';
+      // Validated here as well as in `deployToNode`: this path provisions a
+      // slave without going through artifact deployment first.
+      assertRemotePathSegment('project name', project);
       const configContent = this.generateSlaveConfig(masterHost, masterPort, node.port ?? 9700, project);
       await this.sshExec(node, `mkdir -p ${shellEscape(configDir)}`);
-      // Write config via heredoc (avoids shell escaping issues with complex content)
-      await this.sshExec(node, `cat > ${shellEscape(configDir + '/omnitron.config.ts')} << 'OMNITRON_EOF'\n${configContent}\nOMNITRON_EOF`);
+      await this.sshExec(node, writeRemoteFileCommand(`${configDir}/omnitron.config.ts`, configContent));
 
       // 5. Start slave daemon (or restart if already running)
       this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
@@ -281,17 +332,32 @@ export class RemoteDeployer {
   /**
    * Generate omnitron.config.ts content for a slave daemon.
    */
+  /**
+   * The slave's `omnitron.config.ts`, as text.
+   *
+   * Values go in through `JSON.stringify`, not inside quotes of our own. The
+   * file is TypeScript that the remote daemon executes, so `name: '${'$'}{project}'`
+   * meant a project name containing an apostrophe produced a file that would
+   * not parse — and one containing `', evil: …, x: '` produced a file that
+   * parsed and did something else. A quote written by us around a value we
+   * did not check is the whole bug; `JSON.stringify` writes the quotes and
+   * the escaping together, which is why it cannot be got wrong the same way.
+   *
+   * The project name is also validated as a path segment before this is
+   * reached, so this is the second of two locks on the same door.
+   */
   private generateSlaveConfig(masterHost: string, masterPort: number, slavePort: number, project: string): string {
+    const q = (v: string): string => JSON.stringify(v);
     return `/**
  * Omnitron Slave Configuration
  * Auto-generated by master during remote/cluster deployment.
- * Project: ${project}
+ * Project: ${JSON.stringify(project)}
  */
 export default {
-  name: '${project}',
+  name: ${q(project)},
   apps: [],
   role: 'slave',
-  master: { host: '${masterHost}', port: ${masterPort} },
+  master: { host: ${q(masterHost)}, port: ${masterPort} },
   sync: {
     interval: 30000,
     batchSize: 1000,
@@ -356,7 +422,10 @@ export default {
       scpArgs.push('-i', node.ssh.privateKey);
     }
 
-    scpArgs.push(localPath, `${user}@${node.host}:${remotePath}`);
+    // The remote half of an scp target is expanded by a shell on the remote
+    // side, so it needs the same quoting as anything passed to `sshExec`.
+    // The local half does not — `execFile` runs scp without a shell.
+    scpArgs.push(localPath, `${user}@${node.host}:${shellEscape(remotePath)}`);
 
     await exec('scp', scpArgs, { timeout: 300_000 }); // 5 min for large artifacts
   }

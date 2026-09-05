@@ -111,6 +111,13 @@ export function useCookies<T>(key: string, initialState: T, options?: UseCookies
   const updateState = useCallback(
     (newState: T | Partial<T>) => {
       if (isObjectState) {
+        // The object branch writes the cookie INSIDE the updater and the
+        // scalar branch writes it outside — an asymmetry that reads like an
+        // oversight and is not. Merging needs the previous value, and taking
+        // it from a ref instead would break composition: two `setField`
+        // calls in one handler would both merge into the same snapshot and
+        // the first field would be lost. See `useLocalStorage.setValue` for
+        // the same trade-off and what it costs.
         setStateInternal((prev) => {
           const updatedState = { ...prev, ...newState } as T;
           setCookie(key, updatedState, cookieOptions);

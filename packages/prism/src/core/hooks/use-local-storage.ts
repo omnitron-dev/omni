@@ -112,7 +112,24 @@ export function useLocalStorage<T>(key: string, initialValue: T): UseLocalStorag
     }
   });
 
-  // Update localStorage when state changes
+  /**
+   * Write and set, in that order, inside the updater.
+   *
+   * The write is a side effect and an updater is supposed to be pure, so
+   * this is deliberate rather than overlooked. Moving it out means reading
+   * the previous value from a ref, and a ref does not compose within a
+   * batch: two `setValue(prev => …)` calls in one handler would both read
+   * the same value and the first would be lost. That is a correctness
+   * regression traded for a purity one.
+   *
+   * What it costs, written down so the next reader need not re-derive it:
+   * under `StrictMode` the updater runs twice, so the same value is written
+   * to `localStorage` twice — idempotent, and one extra synchronous write.
+   * And if React ever discards a render, storage will hold a value the state
+   * never took. Both are acceptable here because the value written is always
+   * the one computed from the state React is about to commit; neither would
+   * be acceptable for a side effect that is not idempotent.
+   */
   const setValue = useCallback(
     (value: T | ((prev: T) => T)) => {
       setStoredValue((prev) => {

@@ -168,8 +168,10 @@ export class SchedulerService implements ILifecycle {
     }
     this.timeoutHandles.clear();
 
-    // Cancel all running jobs
-    this.executor.cancelAllJobs();
+    // Cancel all running jobs. The reason reaches
+    // `IJobListener.onJobCancelled`, so an audit trail can tell a shutdown
+    // apart from an operator cancelling one job.
+    this.executor.cancelAllJobs('scheduler shutdown');
 
     // Wait for graceful shutdown
     const timeout = this.config?.shutdownTimeout || 30000;

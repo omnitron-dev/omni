@@ -651,6 +651,56 @@ describe('Scheduler Executor', () => {
       );
     });
 
+    /**
+     * `onJobCancelled` was declared on `IJobListener`, exported, and shown in
+     * the module docs as part of an audit listener — and never invoked.
+     * `cancelJob`/`cancelAllJobs` aborted the signal and returned, so every
+     * cancellation reached an audit trail as silence. `SCHEDULER_EVENTS
+     * .JOB_CANCELLED` existed and was never emitted either.
+     */
+    it('notifies listeners when a running job is cancelled', async () => {
+      const listener: IJobListener = { onJobCancelled: vi.fn() };
+      const executorWithListener = new SchedulerExecutor(config, [listener]);
+
+      let executionId = '';
+      const job = createMockJob(
+        'cancelledJob',
+        vi.fn(async () => {
+          await new Promise((r) => setTimeout(r, 2000));
+        })
+      );
+
+      const running = executorWithListener.executeJob(job);
+      await vi.waitFor(() => {
+        executionId = [...(executorWithListener as any).runningJobs.keys()][0] ?? '';
+        expect(executionId).toBeTruthy();
+      });
+
+      expect(executorWithListener.cancelJob(executionId, 'operator cancelled')).toBe(true);
+
+      await vi.waitFor(() => expect(listener.onJobCancelled).toHaveBeenCalledWith(job, 'operator cancelled'));
+      await running.catch(() => undefined);
+    });
+
+    it('notifies for every job when all are cancelled', async () => {
+      const listener: IJobListener = { onJobCancelled: vi.fn() };
+      const executorWithListener = new SchedulerExecutor(config, [listener]);
+
+      const slow = () => vi.fn(async () => { await new Promise((r) => setTimeout(r, 2000)); });
+      const jobA = createMockJob('cancelAllA', slow());
+      const jobB = createMockJob('cancelAllB', slow());
+
+      const running = [executorWithListener.executeJob(jobA), executorWithListener.executeJob(jobB)];
+      await vi.waitFor(() => expect((executorWithListener as any).runningJobs.size).toBe(2));
+
+      executorWithListener.cancelAllJobs('scheduler shutdown');
+
+      await vi.waitFor(() => expect(listener.onJobCancelled).toHaveBeenCalledTimes(2));
+      expect(listener.onJobCancelled).toHaveBeenCalledWith(jobA, 'scheduler shutdown');
+      expect(listener.onJobCancelled).toHaveBeenCalledWith(jobB, 'scheduler shutdown');
+      await Promise.all(running.map((p) => p.catch(() => undefined)));
+    });
+
     it('should notify listeners on job error', async () => {
       const listener: IJobListener = {
         onJobError: vi.fn(),

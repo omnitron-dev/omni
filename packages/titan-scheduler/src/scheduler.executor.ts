@@ -33,7 +33,16 @@ function isCancellation(error: unknown): boolean {
  */
 @Injectable()
 export class SchedulerExecutor {
-  private runningJobs: Map<string, AbortController> = new Map();
+  /**
+   * In-flight executions, keyed by execution id.
+   *
+   * Carries the job alongside its controller so `cancelJob`/`cancelAllJobs`
+   * can tell listeners WHICH job was cancelled. Storing only the controller is
+   * why `IJobListener.onJobCancelled` — declared, exported and documented —
+   * was never invoked: cancellation aborted the signal and returned, and an
+   * audit listener implementing the hook silently recorded nothing.
+   */
+  private runningJobs: Map<string, { controller: AbortController; job: IScheduledJob }> = new Map();
 
   /**
    * SC-4: authoritative set of job NAMES currently executing, owned solely by
@@ -79,7 +88,7 @@ export class SchedulerExecutor {
     };
 
     // Store abort controller for cancellation
-    this.runningJobs.set(executionId, abortController);
+    this.runningJobs.set(executionId, { controller: abortController, job });
 
     // SC-4: a retry (attempt > 1) is a continuation of the first attempt, which
     // still holds the overlap lock — it must bypass the gate, not self-cancel.
@@ -440,11 +449,12 @@ export class SchedulerExecutor {
   /**
    * Cancel a running job
    */
-  cancelJob(executionId: string): boolean {
-    const controller = this.runningJobs.get(executionId);
-    if (controller) {
-      controller.abort();
+  cancelJob(executionId: string, reason?: string): boolean {
+    const entry = this.runningJobs.get(executionId);
+    if (entry) {
+      entry.controller.abort();
       this.runningJobs.delete(executionId);
+      void this.notifyJobCancelled(entry.job, reason);
       return true;
     }
     return false;
@@ -453,11 +463,15 @@ export class SchedulerExecutor {
   /**
    * Cancel all running jobs
    */
-  cancelAllJobs(): void {
-    for (const controller of this.runningJobs.values()) {
+  cancelAllJobs(reason?: string): void {
+    const cancelled = [...this.runningJobs.values()];
+    for (const { controller } of cancelled) {
       controller.abort();
     }
     this.runningJobs.clear();
+    for (const { job } of cancelled) {
+      void this.notifyJobCancelled(job, reason);
+    }
   }
 
   /**
@@ -609,6 +623,31 @@ export class SchedulerExecutor {
             await listener.onJobRetry(job, attempt, error);
           } catch {
             // Error in job retry listener
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Notify job cancelled.
+   *
+   * `SCHEDULER_EVENTS.JOB_CANCELLED` and `IJobListener.onJobCancelled` both
+   * existed and neither was ever reached: `cancelJob`/`cancelAllJobs` aborted
+   * the signal and returned. So a subscriber to the event saw nothing, and a
+   * listener implementing the hook — the shape the docs give for audit
+   * trails — recorded every cancellation as silence.
+   */
+  private async notifyJobCancelled(job: IScheduledJob, reason?: string): Promise<void> {
+    this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_CANCELLED, { job, reason });
+
+    if (this.listeners) {
+      for (const listener of this.listeners) {
+        if (listener.onJobCancelled) {
+          try {
+            await listener.onJobCancelled(job, reason);
+          } catch {
+            // Error in job cancelled listener
           }
         }
       }

@@ -728,7 +728,10 @@ backup
 
 backup
   .command('schedule <target> <cron>')
-  .description("Schedule recurring backups (target 'all' = every stack DB; cron: hourly|daily|weekly|<ms>)")
+  .description(
+    "Schedule recurring backups (target 'all' = every stack DB; " +
+      'cron: "0 3 * * *" | hourly|daily|weekly | <ms>)'
+  )
   .action(async (target, cron) => {
     const { backupScheduleCommand } = await import('../commands/backup.js');
     await backupScheduleCommand(target, cron);

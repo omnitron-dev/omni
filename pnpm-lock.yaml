@@ -163,6 +163,9 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      cron-parser:
+        specifier: ^5.10.0
+        version: 5.10.0
       jose:
         specifier: ^6.2.11
         version: 6.2.11
@@ -472,7 +475,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -733,7 +736,7 @@ importers:
         version: 19.2.7(@types/react@19.2.18)
       '@vitejs/plugin-react-swc':
         specifier: ^4.3.3
-        version: 4.3.3(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+        version: 4.3.3(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       '@vitest/coverage-v8':
         specifier: ^5.0.0
         version: 5.0.0(vitest@5.0.0)
@@ -763,10 +766,10 @@ importers:
         version: 7.0.2
       vite:
         specifier: ^8.2.2
-        version: 8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+        version: 8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/testing:
     dependencies:
@@ -9327,11 +9330,11 @@ snapshots:
     optionalDependencies:
       maplibre-gl: 6.7.0
 
-  '@vitejs/plugin-react-swc@4.3.3(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))':
+  '@vitejs/plugin-react-swc@4.3.3(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       '@swc/core': 1.16.1
-      vite: 8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
     transitivePeerDependencies:
       - '@swc/helpers'
 
@@ -9353,7 +9356,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   '@vitest/istanbul-lib-coverage@1.0.1': {}
 
@@ -9420,7 +9423,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.1.1
-      vitest: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.27.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   '@vitest/utils@4.1.11':
     dependencies:

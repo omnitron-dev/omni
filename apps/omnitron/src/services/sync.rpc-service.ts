@@ -27,6 +27,14 @@ export class SyncRpcService {
    * keyed on the slave's entry id, so a batch replayed after a lost
    * acknowledgement is recognised rather than ingested twice.
    */
+  // `service_role` cannot be presented today: the daemon issues JWTs whose
+  // role comes from `omnitron_users.role` (admin | operator | viewer), and
+  // titan-auth only mints a service context from `validateApiKey()`, which
+  // needs a `serviceKey` the daemon does not configure. It is left named
+  // because this is one end of an unfinished cross-daemon path — the other
+  // end, `SyncService.setMasterConnection()`, has no production caller
+  // either — and removing it would erase the only statement of the intent.
+  // Reachable in practice by admin and operator.
   @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
   async receiveBatch(data: SyncBatch): Promise<IngestBatchResult> {
     return this.syncService.receiveBatch(data);

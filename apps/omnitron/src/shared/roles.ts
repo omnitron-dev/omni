@@ -31,6 +31,20 @@ const ROLE_HIERARCHY: Record<string, number> = {
  * Check if a user's roles satisfy the minimum required role.
  * Uses hierarchical comparison: admin satisfies operator, operator satisfies viewer, etc.
  */
+/**
+ * Whether any of `userRoles` ranks at or above `minimumRole`.
+ *
+ * NOT on the request path, and deliberately kept: `@Public({ auth: { roles }})`
+ * takes an explicit list, and the three lists below are what every method
+ * declares. This function is the only place the rank order is written down,
+ * which makes it useful for reading — and a trap for anyone who assumes the
+ * wire enforces a minimum. It does not: it enforces membership of a list.
+ *
+ * The difference shows when a role is added. `service_role` — named on
+ * `OmnitronSync`'s methods — has no entry in ROLE_HIERARCHY, so it ranks 0
+ * here, and it is absent from all three lists, so it is permitted nowhere.
+ * Both answers happen to be safe; neither is a decision anyone made.
+ */
 export function hasMinimumRole(userRoles: string[], minimumRole: OmnitronRole): boolean {
   const requiredLevel = ROLE_HIERARCHY[minimumRole] ?? 0;
   return userRoles.some((role) => (ROLE_HIERARCHY[role] ?? 0) >= requiredLevel);

@@ -184,8 +184,13 @@ describe('Application Module Management', () => {
 
       app.use(module);
 
-      await app.start(); // Should not throw
-      await app.stop(); // Should not throw
+      // "Should not throw" was the whole check; assert the lifecycle actually
+      // completed, which a start that silently gave up would not satisfy.
+      await app.start();
+      expect(app.state).toBe(ApplicationState.Started);
+
+      await app.stop();
+      expect(app.state).toBe(ApplicationState.Stopped);
     });
 
     it('runs the lifecycle hooks of a @Module-decorated class', async () => {

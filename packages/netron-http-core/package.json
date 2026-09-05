@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/netron-http-core",
   "version": "0.1.0",
-  "description": "Shared, environment-neutral HTTP fluent-interface primitives (cache manager, retry manager, query builder, request batcher) consumed by both @omnitron-dev/titan and @omnitron-dev/netron-browser. Single source of truth — eliminates the drifting per-package copies.",
+  "description": "Shared, environment-neutral HTTP fluent-interface primitives (cache manager, retry manager, query builder, request batcher) consumed by both @omnitron-dev/titan and @omnitron-dev/netron-browser. Single source of truth \u2014 eliminates the drifting per-package copies.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"

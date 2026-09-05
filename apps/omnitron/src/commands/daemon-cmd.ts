@@ -11,7 +11,8 @@
 import { fork } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';

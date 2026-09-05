@@ -2,7 +2,8 @@
  * omnitron scale <app> <count>
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 export async function scaleCommand(appName: string, count: string): Promise<void> {

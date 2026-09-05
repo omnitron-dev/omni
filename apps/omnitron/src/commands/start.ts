@@ -4,7 +4,8 @@
  * Starts app(s). Auto-starts daemon if not running.
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { daemonStart } from './daemon-cmd.js';
 

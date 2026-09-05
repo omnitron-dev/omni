@@ -4,7 +4,8 @@
  * omnitron rollback <app> --target <server> — Rollback to previous version
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { ServerRegistry } from '../infrastructure/server-registry.js';
 import { createRemoteDaemonClient } from '../daemon/daemon-client.js';
 

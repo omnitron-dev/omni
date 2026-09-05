@@ -2,7 +2,8 @@
  * omnitron reload [app|all] — Zero-downtime reload
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 export async function reloadCommand(appName?: string): Promise<void> {

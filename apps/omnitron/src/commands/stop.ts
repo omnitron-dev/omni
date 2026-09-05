@@ -5,7 +5,8 @@
  * Falls back to PID-based cleanup when the socket is unreachable.
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';

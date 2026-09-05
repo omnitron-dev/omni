@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
 import { getFreePort, waitForEvent } from '../../utils/index.js';
+import { eventually } from '../../async-assert.js';
 
 // Transport test configuration
 interface TransportTestConfig {
@@ -574,11 +575,23 @@ describe('Isomorphic Transport Test Suite', () => {
             // Expected to fail
           }
 
-          // Some transports might not emit error immediately
-          const _errorOrTimeout = await Promise.race([
+          // The old version raced the error against a 1s timer, assigned the
+          // outcome to `_errorOrTimeout` — underscored so the linter would not
+          // object that it is unused — and asserted nothing. Which transport
+          // emits 'error' and how fast is genuinely transport-specific, but
+          // one consequence is not: once the server is gone the client must
+          // stop believing it is connected. A client left CONNECTED against a
+          // dead peer keeps accepting writes that go nowhere.
+          await Promise.race([
             errorPromise,
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
           ]);
+
+          await eventually(() => {
+            expect(client.state, 'the client is still CONNECTED after the server closed').not.toBe(
+              ConnectionState.CONNECTED
+            );
+          }, 3000);
 
           // Clean up
           await client.close();

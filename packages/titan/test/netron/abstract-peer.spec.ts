@@ -876,12 +876,21 @@ describe('AbstractPeer', () => {
 
   describe('Cleanup and Disposal', () => {
     it('should dispose definition cache', () => {
+      // The old version called it twice and asserted nothing, so a dispose()
+      // that did nothing passed. What it releases is the cache's cleanup
+      // interval, which otherwise keeps a timer alive for every peer ever
+      // created — check that, and check it was there to release.
       const newPeer = new TestPeer(netron, 'dispose-test-peer');
+      const cache = (newPeer as unknown as { definitionCache: { cleanupTimer?: unknown } }).definitionCache;
+
+      expect(cache.cleanupTimer, 'no cleanup timer to dispose — the test would prove nothing').toBeDefined();
 
       newPeer.disposeDefinitionCache();
+      expect(cache.cleanupTimer, 'the cache cleanup interval survived dispose').toBeUndefined();
 
-      // Should be safe to call multiple times
+      // Safe to call again.
       newPeer.disposeDefinitionCache();
+      expect(cache.cleanupTimer).toBeUndefined();
     });
 
     it('should unexpose all services', async () => {

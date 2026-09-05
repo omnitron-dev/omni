@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Application } from '../../src/application.js';
 import { ApplicationState } from '../../src/types.js';
 import {
+  titan,
   service,
   module,
   inject,
@@ -17,7 +18,7 @@ import {
   createModule,
   defineModule,
 } from '../../src/application/simple.js';
-import { Injectable } from '../../src/decorators/index.js';
+import { Injectable, Module } from '../../src/decorators/index.js';
 
 describe('Titan Simple API', () => {
   let app: Application | undefined;
@@ -320,17 +321,42 @@ describe('Titan Simple API', () => {
   });
 
   describe('titan() main function', () => {
+    // All three of these were empty bodies holding a comment — "Skip this
+    // test as it requires full core modules which may need external
+    // dependencies" — and reported success for a function they never called.
+    // The core modules are Logger, Config and Netron; the rest of this suite
+    // starts applications with them routinely. Nothing external is needed.
+
     it('should create and start app with no arguments', async () => {
-      // Skip this test as it requires full core modules
-      // which may need external dependencies
+      app = await titan();
+
+      expect(app.state).toBe(ApplicationState.Started);
+      expect(app.name).toBe('titan-app');
+      expect(globalThis.__titanApp, 'titan() did not register the app globally').toBe(app);
     });
 
     it('should accept module class as argument', async () => {
-      // Skip this test as it requires full core modules
+      let started = false;
+
+      @Module({})
+      class RootModule {
+        async onStart() {
+          started = true;
+        }
+      }
+
+      app = await titan(RootModule);
+
+      expect(app.state).toBe(ApplicationState.Started);
+      expect(started, 'the module passed to titan() was never started').toBe(true);
     });
 
     it('should accept options object', async () => {
-      // Skip this test as it requires full core modules
+      app = await titan({ name: 'named-app', version: '2.3.4', gracefulShutdown: false } as never);
+
+      expect(app.state).toBe(ApplicationState.Started);
+      expect(app.name).toBe('named-app');
+      expect(app.version).toBe('2.3.4');
     });
   });
 

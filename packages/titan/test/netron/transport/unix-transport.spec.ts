@@ -14,6 +14,8 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
 import { waitForEvent } from '../../utils/index.js';
+import { existsSync } from 'node:fs';
+import { within } from '../../async-assert.js';
 
 // Helper to generate unique socket path
 function getSocketPath(): string {
@@ -133,7 +135,12 @@ describe('Unix Domain Socket Transport', () => {
 
       const listeningPromise = waitForEvent(server, 'listening');
       await server.listen();
-      await listeningPromise;
+
+      // Awaiting the event was the whole test: if it never fired the run hung
+      // to the timeout rather than failing, and nothing checked that the
+      // server was actually up when it did.
+      await within(listeningPromise, 5000, "the unix server's 'listening' event");
+      expect(existsSync(socketPath), 'listening fired but no socket exists').toBe(true);
 
       await server.close();
     });

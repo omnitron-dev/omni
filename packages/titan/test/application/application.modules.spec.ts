@@ -188,6 +188,41 @@ describe('Application Module Management', () => {
       await app.stop(); // Should not throw
     });
 
+    it('runs the lifecycle hooks of a @Module-decorated class', async () => {
+      // The registry gave an unnamed module a name by spread-cloning it:
+      // `instance = { ...instance, name }`. A spread copies own enumerable
+      // properties only, so for a class — which is exactly what @Module
+      // produces — the clone arrived without its prototype, and with it
+      // without onRegister/onStart/onStop. Every lifecycle hook on every
+      // decorated module class was silently dropped, for the sake of a name.
+      const calls: string[] = [];
+
+      @Module({})
+      class DecoratedLifecycleModule {
+        async onRegister() {
+          calls.push('register');
+        }
+        async onStart() {
+          calls.push('start');
+        }
+        async onStop() {
+          calls.push('stop');
+        }
+      }
+
+      app = await Application.create({
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+        modules: [DecoratedLifecycleModule],
+      });
+
+      await app.start();
+      expect(calls, 'the decorated module never started').toContain('start');
+
+      await app.stop();
+      expect(calls, 'the decorated module never stopped').toContain('stop');
+    });
+
     it('should pass application instance to lifecycle methods', async () => {
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
       let registerApp: any, startApp: any, stopApp: any;

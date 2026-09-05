@@ -259,11 +259,23 @@ export class ModuleRegistry {
     //    decorator metadata → class name on the dynamic module → bare
     //    class name → constructor name. Anything still missing falls
     //    back to 'UnnamedModule' so the token below is non-empty.
-    let instance = resolved.instance;
+    const instance = resolved.instance;
     if (!instance.name) {
       const named = nameFromMetadata(metadata, resolved);
-      instance = { ...instance, name: named };
-      resolved.instance = instance;
+      // Define the property on the instance rather than spread-cloning it.
+      // A spread copies own enumerable properties only, so for a class —
+      // which is exactly what the `@Module` decorator produces — the clone
+      // lost the prototype and with it onStart/onStop/onRegister. Every
+      // lifecycle hook on a decorated module class was silently dropped, and
+      // the clone was taken for nothing but a name. Step 3 above already
+      // notes the spread loses the class; it worked around that for metadata
+      // and not for the methods.
+      Object.defineProperty(instance, 'name', {
+        value: named,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
 
     // 5. Pull `providers`/`imports`/`exports` from EITHER decorator

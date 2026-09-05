@@ -2326,6 +2326,17 @@ export class OrchestratorService extends EventEmitter {
       errors += reported.errors ?? 0;
     }
 
+    // A sample that produced nothing for an app that HAS live processes is a
+    // failed sample, not a measurement of zero — `ps` can time out under load,
+    // and it did: an app was observed reporting 0 MB one second and 143 MB the
+    // next. Overwriting the last known reading with zeros would put the exact
+    // placeholder this method exists to remove back on the dashboard, so the
+    // previous reading is kept instead.
+    const sampledNothing = batch.size === 0 && [...pidsByEntry.values()].some((pids) => pids.length > 0);
+    if (sampledNothing && handle.lastMetrics) {
+      return handle.lastMetrics;
+    }
+
     handle.childMetrics = sampled;
     return { cpu, memory, requests, errors };
   }

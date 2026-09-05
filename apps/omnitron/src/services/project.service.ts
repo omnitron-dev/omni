@@ -802,7 +802,7 @@ export class ProjectService extends EventEmitter {
           const dbConfig = typeof config.database === 'object' ? config.database : {};
           databases[appName] = {
             migrate: true,
-            ...(dbConfig.pool ? {} : {}),
+            ...(dbConfig.extensions?.length ? { extensions: dbConfig.extensions } : {}),
           };
         }
       }

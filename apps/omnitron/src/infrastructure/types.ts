@@ -38,6 +38,17 @@ export interface PostgresDatabaseConfig {
   migrate?: boolean;
   /** Migration directory relative to app root */
   migrationDir?: string;
+  /**
+   * PostgreSQL extensions to create in this database, e.g. `['postgis']`.
+   *
+   * `CREATE EXTENSION IF NOT EXISTS` runs after the database is created. The
+   * extension must be present in the image: the stock `postgres:17-alpine`
+   * carries the contrib set (uuid-ossp, pg_trgm, hstore, …) but not postgis,
+   * so a service needing that also needs an `image` override — the
+   * provisioner says which extension failed and why rather than leaving the
+   * app to fail on its first query.
+   */
+  extensions?: string[];
 }
 
 export interface RedisServiceConfig {

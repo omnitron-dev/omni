@@ -28,6 +28,7 @@ export interface ProjectRequirements {
     app: string;
     database: string;
     pool?: { min?: number; max?: number } | undefined;
+    extensions?: string[] | undefined;
   }>;
 
   /** Redis requirements aggregated across apps */
@@ -165,6 +166,7 @@ export async function scanRequirements(
         app: entry.name,
         database: entry.name, // database name = app name
         pool: dbConfig.pool,
+        extensions: dbConfig.extensions,
       });
     }
 
@@ -220,7 +222,10 @@ export function buildInfraFromRequirements(
   if (reqs.databases.length > 0) {
     const databases: Record<string, Record<string, unknown>> = {};
     for (const db of reqs.databases) {
-      databases[db.database] = db.pool ? { pool: db.pool } : {};
+      databases[db.database] = {
+        ...(db.pool ? { pool: db.pool } : {}),
+        ...(db.extensions?.length ? { extensions: db.extensions } : {}),
+      };
     }
     infra.postgres = {
       databases,

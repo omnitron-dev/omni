@@ -18,9 +18,19 @@ import { MockProcessSpawner } from './mock-process-spawner.js';
 export interface ITestProcessManagerConfig extends IProcessManagerConfig {
   /** Use mock spawner for faster tests */
   mock?: boolean;
-  /** Control time for testing */
+  /**
+   * Control time for testing
+   *
+   * NOT IMPLEMENTED — read by nothing; no clock is installed or advanced.
+   */
   controlTime?: boolean;
-  /** Record all operations for verification */
+  /**
+   * Record all operations for verification
+   *
+   * NOT READ as a toggle: recording is always on. The default object below
+   * sets it to `true` and nothing consults it, so setting `false` records
+   * anyway.
+   */
   recordOperations?: boolean;
 }
 

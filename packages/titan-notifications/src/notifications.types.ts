@@ -13,6 +13,7 @@ export interface NotificationsModuleOptions {
   rateLimiter?: IRateLimiter;
   preferenceStore?: IPreferenceStore;
   channelRouter?: IChannelRouter;
+  /** NOT IMPLEMENTED — nothing reads this; no default routing is applied. */
   defaultChannels?: string[];
   isGlobal?: boolean;
 
@@ -141,6 +142,11 @@ export interface SendOptions {
   scheduledAt?: Date | number;
   retries?: number;
   timeout?: number;
+  /**
+   * NOT IMPLEMENTED — nothing reads this. A send whose channel fails is not
+   * retried on the channels listed here, which is worth knowing before relying
+   * on it for delivery guarantees.
+   */
   fallbackChannels?: string[];
   metadata?: Record<string, unknown>;
 }

@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest';
 import { Redis } from 'ioredis';
 import { Container } from '@omnitron-dev/titan/nexus';
+import { REDIS_MANAGER } from '@omnitron-dev/titan-redis';
 import { DiscoveryService } from '../src/discovery.service.js';
 import { createDiscoveryModule } from '../src/discovery.module.js';
 import {
@@ -612,101 +613,83 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
   });
 
   describe('Module Integration', () => {
-    it.skip('should work with DiscoveryModule - needs proper Application context', async () => {
-      // Create a container for testing the module
+    /**
+     * `createDiscoveryModule()` returns a DynamicModule — a declaration of
+     * providers — and the framework is what registers them. These two tests
+     * used to call `module.onRegister(mockApp)`, a hook that no longer exists:
+     * providers moved to `forRoot()` so they are available during
+     * `eagerlyInitialize()`, and the module instance kept only the runtime
+     * hooks. Both were skipped as "needs proper Application context", which
+     * left the module's own wiring untested.
+     *
+     * Registering the declared providers is what an Application does with a
+     * DynamicModule, so do exactly that.
+     */
+    const applyModule = (target: Container, module: ReturnType<typeof createDiscoveryModule>): void => {
+      for (const [token, provider] of module.providers ?? []) {
+        target.register(token as never, provider as never);
+      }
+    };
+
+    /**
+     * The module declares REDIS_TOKEN itself, bridging from `REDIS_MANAGER`.
+     * So a consumer supplies the MANAGER, exactly as RedisModule does — a test
+     * that registers REDIS_TOKEN directly collides with the module's own
+     * provider and never exercises the bridge.
+     */
+    const registerRedisManager = (target: Container, log = logger): void => {
+      target.register(LOGGER_TOKEN, { useValue: log });
+      target.register(REDIS_MANAGER as never, {
+        useValue: { getInternalClient: () => redis },
+      } as never);
+    };
+
+    it('declares the providers a consumer resolves the service through', async () => {
       container = new Container();
+      registerRedisManager(container);
 
-      // Register Redis and logger
-      container.register(REDIS_TOKEN, { useValue: redis });
-      container.register(LOGGER_TOKEN, { useValue: logger });
-
-      // Create the discovery module
       const module = createDiscoveryModule({
+        heartbeatInterval: 1000,
+        clientMode: false,
+        // No redisUrl/redisOptions, so the module bridges REDIS_TOKEN from
+        // REDIS_MANAGER — the path a real app takes, and the one worth
+        // covering.
+        enableNetronIntegration: false,
+      });
+
+      applyModule(container, module);
+
+      expect(container.has(DISCOVERY_SERVICE_TOKEN)).toBe(true);
+      expect(module.exports).toContain(DISCOVERY_SERVICE_TOKEN);
+
+      const moduleService = container.resolve(DISCOVERY_SERVICE_TOKEN) as DiscoveryService;
+      expect(moduleService).toBeInstanceOf(DiscoveryService);
+
+      // The options declared by forRoot must be the ones the service sees —
+      // that join is the whole purpose of the module.
+      expect(container.resolve(DISCOVERY_OPTIONS_TOKEN)).toMatchObject({
         heartbeatInterval: 1000,
         clientMode: false,
       });
 
-      // Simulate app registration (normally done by Titan Application)
-      const mockApp = {
-        resolve: container.resolve.bind(container),
-        hasProvider: container.has.bind(container),
-        register: container.register.bind(container),
-      };
-
-      // Register the module
-      await module.onRegister(mockApp as any);
-
-      // The module should have registered the DISCOVERY_SERVICE_TOKEN
-      // Verify it was registered
-      expect(container.has(DISCOVERY_SERVICE_TOKEN)).toBe(true);
-
-      // Resolve the discovery service
-      const moduleService = container.resolve(DISCOVERY_SERVICE_TOKEN);
-      expect(moduleService).toBeInstanceOf(DiscoveryService);
-
-      // Start the module
-      await module.onStart(mockApp as any);
-
-      // Give it some time to register
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Check if registered - if not, try manually triggering a heartbeat
-      if (!moduleService.isRegistered()) {
-        // Force a heartbeat by calling the private method directly
-        // @ts-ignore - accessing private method for testing
-        await moduleService.publishHeartbeat?.();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
+      await moduleService.onStart();
+      await waitFor(() => moduleService.isRegistered(), 3000);
       expect(moduleService.isRegistered()).toBe(true);
 
-      // Stop the module
-      await module.onStop(mockApp as any);
+      await moduleService.onStop();
     });
 
-    it.skip('should share discovery between multiple modules - needs proper Application context', async () => {
-      // Create containers for each module
+    it('should share discovery between multiple modules', async () => {
       const container1 = new Container();
+      registerRedisManager(container1);
+      applyModule(container1, createDiscoveryModule({ heartbeatInterval: 1000, enableNetronIntegration: false }));
+
       const container2 = new Container();
+      registerRedisManager(container2, createMockLogger());
+      applyModule(container2, createDiscoveryModule({ heartbeatInterval: 1000, enableNetronIntegration: false }));
 
-      // Setup first module
-      container1.register(REDIS_TOKEN, { useValue: redis });
-      container1.register(LOGGER_TOKEN, { useValue: logger });
-      container1.register(DiscoveryService, { useClass: DiscoveryService });
-
-      // Setup second module with separate logger
-      container2.register(REDIS_TOKEN, { useValue: redis });
-      container2.register(LOGGER_TOKEN, { useValue: createMockLogger() });
-      container2.register(DiscoveryService, { useClass: DiscoveryService });
-
-      // Create modules
-      const module1 = createDiscoveryModule({ heartbeatInterval: 1000 });
-      const module2 = createDiscoveryModule({ heartbeatInterval: 1000 });
-
-      // Mock app instances
-      const mockApp1 = {
-        resolve: container1.resolve.bind(container1),
-        hasProvider: container1.has.bind(container1),
-        register: container1.register.bind(container1),
-      };
-
-      const mockApp2 = {
-        resolve: container2.resolve.bind(container2),
-        hasProvider: container2.has.bind(container2),
-        register: container2.register.bind(container2),
-      };
-
-      // Register modules
-      await module1.onRegister(mockApp1 as any);
-      await module2.onRegister(mockApp2 as any);
-
-      // Get services - use DiscoveryService if token not registered
-      const service1 = container1.has(DISCOVERY_SERVICE_TOKEN)
-        ? container1.resolve(DISCOVERY_SERVICE_TOKEN)
-        : container1.resolve(DiscoveryService);
-      const service2 = container2.has(DISCOVERY_SERVICE_TOKEN)
-        ? container2.resolve(DISCOVERY_SERVICE_TOKEN)
-        : container2.resolve(DiscoveryService);
+      const service1 = container1.resolve(DISCOVERY_SERVICE_TOKEN) as DiscoveryService;
+      const service2 = container2.resolve(DISCOVERY_SERVICE_TOKEN) as DiscoveryService;
 
       await service1.onStart();
       await service1.registerService({ name: 'ModuleService1', version: '1.0.0' });
@@ -716,7 +699,7 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
 
       await waitFor(() => service1.isRegistered() && service2.isRegistered(), 3000);
 
-      // Each service should be able to discover the other
+      // Two independently-wired modules on one Redis see each other.
       const nodes1 = await service1.findNodes();
       const nodes2 = await service2.findNodes();
 

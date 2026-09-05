@@ -38,6 +38,23 @@ interface AuthState {
   setUser: (user: ConsoleUser | null) => void;
 }
 
+/**
+ * Shown when the server did not send a role.
+ *
+ * These three sites defaulted to `'admin'`. `OmnitronAuthUser.role` is a
+ * required field, so the fallback should never fire — which is exactly why
+ * it was free to be wrong, and why it stayed the most privileged value
+ * available. The console only displays the role (the settings page shows it
+ * as a chip; nothing is gated on it client-side, and the daemon enforces
+ * roles on the wire regardless), so the cost is not access — it is telling
+ * an operator they are an admin when the server declined to say what they
+ * are.
+ *
+ * An absent answer is not evidence of the highest privilege. It is not
+ * evidence of anything.
+ */
+const UNKNOWN_ROLE = 'unknown';
+
 // ---------------------------------------------------------------------------
 // Session event handler
 // ---------------------------------------------------------------------------
@@ -97,7 +114,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             id: result.user.id,
             username: result.user.username,
             displayName: result.user.displayName ?? result.user.username,
-            role: result.user.role ?? 'admin',
+            role: result.user.role ?? UNKNOWN_ROLE,
           },
           sessionId,
           initialized: true,
@@ -126,7 +143,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 id: retryResult.user.id,
                 username: retryResult.user.username,
                 displayName: retryResult.user.displayName ?? retryResult.user.username,
-                role: retryResult.user.role ?? 'admin',
+                role: retryResult.user.role ?? UNKNOWN_ROLE,
               },
               sessionId: getSessionId(),
               initialized: true,
@@ -164,7 +181,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: data.user.id,
           username: data.user.username,
           displayName: data.user.displayName ?? data.user.username,
-          role: data.user.role ?? 'admin',
+          role: data.user.role ?? UNKNOWN_ROLE,
         },
         sessionId: sid,
         loading: false,

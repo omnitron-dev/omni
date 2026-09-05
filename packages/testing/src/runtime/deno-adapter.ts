@@ -6,7 +6,7 @@
 // @ts-expect-error - Deno specific imports
 import { FakeTime } from 'https://deno.land/std@0.208.0/testing/time.ts';
 // @ts-expect-error - Deno specific imports
-import { expect as denoExpect } from 'https://deno.land/x/expect@v0.3.0/mod.ts';
+import { expect as denoExpect, addMatchers } from 'https://deno.land/x/expect@v0.3.0/mod.ts';
 // @ts-expect-error - Deno specific imports
 import { it as denoIt, describe as denoDescribe } from 'https://deno.land/std@0.208.0/testing/bdd.ts';
 
@@ -105,9 +105,14 @@ function mockFn(implementation?: (...args: any[]) => any) {
   const calls: any[][] = [];
   const results: any[] = [];
 
-  const fn = (...args: any[]) => {
+  // `function`, not an arrow, and `.apply` rather than a spread call: a mock
+  // must forward `this`. An arrow has no own `this` to forward, so
+  // `map.forEach(mock, context)` — or any callback whose contract includes a
+  // receiver — silently ran with the wrong one, and the assertion inside the
+  // callback failed in a way that pointed at the code under test.
+  const fn = function (this: any, ...args: any[]) {
     calls.push(args);
-    const result = implementation ? implementation(...args) : undefined;
+    const result = implementation ? implementation.apply(this, args) : undefined;
     results.push(result);
     return result;
   };
@@ -186,6 +191,81 @@ const fakeTimers = {
     }
   },
 };
+
+/**
+ * Vitest-shaped mocking surface for Deno.
+ *
+ * `vi` is what specs written against vitest actually import, and its absence
+ * here was the last thing keeping a cross-runtime run from working at all: a
+ * spec doing `import { vi } from 'vitest'` fails to LOAD under Deno, taking the
+ * whole file with it before a single test runs. Built from the pieces this
+ * adapter already had — `mockFn` and `fakeTimers` — so it covers what specs in
+ * this monorepo use (`fn`, `spyOn`, and the four timer controls) rather than
+ * pretending to be all of vitest.
+ */
+const vi = {
+  fn: mockFn,
+  mock: mockFn,
+  spyOn: (obj: any, method: string) => {
+    const original = obj[method];
+    const spy = mockFn(original);
+    obj[method] = spy;
+    (spy as any).mockRestore = () => {
+      obj[method] = original;
+    };
+    return spy;
+  },
+  isMockFunction: (fn: any) => typeof fn === 'function' && typeof (fn as any).mock !== 'undefined',
+  useFakeTimers: fakeTimers.useFakeTimers,
+  useRealTimers: fakeTimers.useRealTimers,
+  advanceTimersByTime: fakeTimers.advanceTimersByTime,
+  runAllTimers: fakeTimers.runAllTimers,
+  clearAllTimers: fakeTimers.clearAllTimers,
+};
+
+/**
+ * Call matchers for OUR mocks.
+ *
+ * `deno.land/x/expect` implements `toHaveBeenCalled*` only for functions made
+ * by its own `mock.fn`, and throws "callCount only available on mock
+ * functions" for anything else — so a vitest-shaped spec asserting on a
+ * callback failed on the matcher rather than on the behaviour. Its `mock.fn`
+ * is not a substitute: it drops `this`, which is the bug fixed in `mockFn`
+ * below.
+ *
+ * `addMatchers` is the module's supported extension point and overrides the
+ * built-ins. Assigning onto the object returned by `expect(...)` does not:
+ * tried first, and the built-in kept winning.
+ */
+const callsOf = (v: any): any[][] => (v && v.mock && Array.isArray(v.mock.calls) ? v.mock.calls : []);
+const sameArgs = (a: any[], b: any[]) =>
+  a.length === b.length && a.every((x, i) => Deno.inspect(x) === Deno.inspect(b[i]));
+
+addMatchers({
+  toHaveBeenCalled(value: any) {
+    const n = callsOf(value).length;
+    return n > 0 ? { pass: true } : { pass: false, message: 'expected mock to have been called' };
+  },
+  toHaveBeenCalledTimes(value: any, times: number) {
+    const n = callsOf(value).length;
+    return n === times
+      ? { pass: true }
+      : { pass: false, message: `expected ${times} call(s), got ${n}` };
+  },
+  toHaveBeenCalledWith(value: any, ...expected: any[]) {
+    const calls = callsOf(value);
+    return calls.some((c) => sameArgs(c, expected))
+      ? { pass: true }
+      : { pass: false, message: `expected a call with ${Deno.inspect(expected)}; calls: ${Deno.inspect(calls)}` };
+  },
+  toHaveBeenLastCalledWith(value: any, ...expected: any[]) {
+    const calls = callsOf(value);
+    const last = calls[calls.length - 1];
+    return last && sameArgs(last, expected)
+      ? { pass: true }
+      : { pass: false, message: `last call was ${Deno.inspect(last)}, expected ${Deno.inspect(expected)}` };
+  },
+});
 
 // Custom expect wrapper that adds missing methods
 const expect = (value: any) => {
@@ -298,4 +378,5 @@ export {
   beforeAll,
   beforeEach,
   fakeTimers,
+  vi,
 };

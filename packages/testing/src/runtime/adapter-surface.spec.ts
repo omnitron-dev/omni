@@ -19,8 +19,14 @@ import { describe, it, expect } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** The names every adapter must expose. Mocking is deliberately absent: it is
- *  `vi` on node/bun and `mockFn` on deno, and unifying it is a design call. */
+/** The names every adapter must expose.
+ *
+ * `vi` is in the list because a spec doing `import { vi } from 'vitest'` fails
+ * to LOAD on a runtime whose adapter lacks it — the whole file is lost before a
+ * test runs, which is how `packages/common` had a Deno runner that could not
+ * execute a single one of its own specs. Deno's `vi` is built from `mockFn` and
+ * `fakeTimers` and covers `fn`, `spyOn` and the timer controls, not all of
+ * vitest. */
 const SURFACE = [
   'describe',
   'it',
@@ -31,6 +37,7 @@ const SURFACE = [
   'beforeAll',
   'afterAll',
   'fakeTimers',
+  'vi',
 ] as const;
 
 function stripComments(src: string): string {

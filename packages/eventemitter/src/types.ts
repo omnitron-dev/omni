@@ -36,6 +36,7 @@ export interface EmitOptions {
   metadata?: Partial<EventMetadata>;
   async?: boolean;
   timeout?: number;
+  /** NOT IMPLEMENTED — read by nothing; emission never propagates anywhere. */
   propagate?: boolean;
   validate?: boolean;
 }
@@ -45,6 +46,11 @@ export interface WildcardOptions {
   delimiter?: string;
   wildcard?: boolean;
   globstar?: boolean;
+  /**
+   * NOT IMPLEMENTED — read by nothing. Node's own `setMaxListeners` is what
+   * bounds listener counts here; a value set on this options object does not
+   * reach it, so the warning threshold stays at the default.
+   */
   maxListeners?: number;
 }
 
@@ -96,6 +102,11 @@ export interface ScheduleOptions {
   at?: Date;
   cron?: string;
   retry?: RetryOptions;
+  /**
+   * NOT IMPLEMENTED — read by nothing, and nothing in this package persists a
+   * schedule: every scheduled emission lives in memory and is lost on restart,
+   * whatever this says.
+   */
   persistent?: boolean;
 }
 

@@ -154,6 +154,7 @@ export interface RedisClusterOptions {
   /** Network name (auto-generated if not provided) */
   network?: string;
   /** Timeout in ms for cluster to become ready (default: 120000) */
+  /** NOT IMPLEMENTED — read by nothing; readiness uses the manager's own wait loop. */
   readyTimeout?: number;
   /** Pre-initialization delay in ms after containers start (default: 5000) */
   preInitDelay?: number;

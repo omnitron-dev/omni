@@ -16,7 +16,14 @@ export interface IKbConfig {
   extract: IExtractConfig;
   /** Path to specs directory (relative to kb/) */
   specs: string;
-  /** Declared relationships to other modules */
+  /**
+   * Declared relationships to other modules
+   *
+   * NOT READ — discovery writes `relationships: {}` into every module it
+   * produces and nothing ever consults the field, so a module that declares
+   * dependencies or dependents in its spec contributes nothing to any query
+   * or map.
+   */
   relationships?: IModuleRelationships;
 }
 
@@ -320,7 +327,15 @@ export interface IQueryOptions {
   kind?: SymbolKind | SymbolKind[];
   /** Filter by tags */
   tags?: string[];
-  /** Include embedding scores in results */
+  /**
+   * Include embedding scores in results
+   *
+   * NOT IMPLEMENTED, together with `IQueryResult.scores` below: this flag is
+   * read by nothing and nothing ever populates that array. The pair is worth
+   * noting as a pair — the result field's own comment says "(if includeScores
+   * was true)", and a documented dependency between two absent things makes
+   * both look present.
+   */
   includeScores?: boolean;
 }
 
@@ -331,7 +346,7 @@ export interface IQueryResult {
   totalTokens: number;
   /** Sources that contributed results */
   sources: Array<'spec' | 'api' | 'chunk' | 'gotcha' | 'pattern'>;
-  /** Search scores (if includeScores was true) */
+  /** Search scores — NEVER POPULATED; see `IQueryOptions.includeScores`. */
   scores?: number[];
 }
 
@@ -443,9 +458,19 @@ export interface IKbModuleConfig {
   embeddings?: IEmbeddingConfig;
   /** Auto-index on module init */
   autoIndex?: boolean;
-  /** Watch files for incremental updates */
+  /**
+   * Watch files for incremental updates
+   *
+   * NOT IMPLEMENTED — read by nothing; no watcher exists in this package.
+   * Turning it on leaves the index as stale as leaving it off.
+   */
   watchMode?: boolean;
-  /** Additional spec paths to include */
+  /**
+   * Additional spec paths to include
+   *
+   * NOT IMPLEMENTED — read by nothing. Only the paths discovery finds on its
+   * own are indexed; a spec listed here is not.
+   */
   additionalSpecs?: string[];
 }
 

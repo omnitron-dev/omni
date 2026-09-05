@@ -465,6 +465,14 @@ export interface CacheConfig {
  * placeholder ("DevTools not yet implemented"). Nothing here is read; the
  * honest note lives with the component.
  */
+/**
+ * NOT IMPLEMENTED — and declared twice.
+ *
+ * A second `DevToolsConfig` lives in `devtools/index.ts`; this one is read by
+ * nothing. `position`, `initialIsOpen` and `panels` describe a panel this
+ * package does not render, so importing THIS type (the obvious one, from
+ * `core/types`) and configuring it changes nothing at all.
+ */
 export interface DevToolsConfig {
   /** Position on screen */
   position?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';

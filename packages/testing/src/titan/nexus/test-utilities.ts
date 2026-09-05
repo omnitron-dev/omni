@@ -54,6 +54,7 @@ export interface TestModuleConfig {
  * Test harness configuration
  */
 export interface TestHarnessConfig {
+  /** NOT READ — the harness never resolves or mounts this. */
   component?: Constructor<any>;
   providers?: Array<[InjectionToken<any>, ProviderDefinition<any>] | TestProvider<any>>;
   zone?: {

@@ -126,7 +126,17 @@ export function Process(options: IProcessOptions = {}): ClassDecorator {
 }
 
 /**
- * Apply rate limiting to a process method
+ * Record a rate limit on a process method.
+ *
+ * DECLARATIVE ONLY — this writes `metadata.rateLimit` and nothing reads it:
+ * the worker runtime consults `public` and `healthCheck` from that metadata
+ * and no more. A method carrying it is not rate limited.
+ *
+ * Note the name collision, which is the part that bites: `RateLimit` from
+ * `@omnitron-dev/titan-ratelimit` DOES enforce, takes `{ limit, windowMs }`
+ * rather than `{ rps, strategy }`, and is what almost every caller in this
+ * repository imports. Two decorators, one name, opposite behaviour — picking
+ * the import from this package silently turns the limit off.
  */
 export function RateLimit(options: IRateLimitOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {

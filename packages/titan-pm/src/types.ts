@@ -239,11 +239,17 @@ export interface IProcessPoolOptions {
   metrics?: boolean;
   recycleAfter?: number;
   maxLifetime?: number;
+  /** NOT IMPLEMENTED — nothing reads this; an idle worker is never retired
+   *  for idleness alone. `recycleAfter` and `maxLifetime` are applied. */
   idleTimeout?: number;
   warmup?: boolean;
   maxQueueSize?: number;
   requestTimeout?: number;
+  /** NOT IMPLEMENTED — nothing reads this. An unhealthy worker is handled by
+   *  the health path regardless of what this is set to. */
   replaceUnhealthy?: boolean;
+  /** NOT IMPLEMENTED — nothing reads this; there is no per-worker concurrency
+   *  cap. `maxQueueSize` bounds the queue instead. */
   maxConcurrency?: number;
 
   /**
@@ -300,7 +306,11 @@ export interface IProcessPoolOptions {
     interval?: number;
     /** Timeout for heartbeat response in ms @default 5000 */
     timeout?: number;
-    /** Number of missed heartbeats before marking unhealthy @default 3 */
+    /**
+     * NOT IMPLEMENTED — nothing reads this, despite the documented default.
+     * The consecutive-failure count that does mark a worker unhealthy is
+     * `healthCheck.unhealthyThreshold`.
+     */
     maxMissed?: number;
   };
 
@@ -313,11 +323,15 @@ export interface IProcessPoolOptions {
     enabled?: boolean;
     min?: number;
     max?: number;
+    /** NOT IMPLEMENTED — nothing reads this. The CPU figure the scaler
+     *  compares against is `targetCPU`. */
     cpuThreshold?: number;
     targetCPU?: number;
     targetMemory?: number;
     queueThreshold?: number;
     checkInterval?: number;
+    /** NOT IMPLEMENTED — nothing reads this. The wait between scaling actions
+     *  is `cooldownPeriod`. */
     scaleDownDelay?: number;
     scaleUpThreshold?: number;
     scaleDownThreshold?: number;

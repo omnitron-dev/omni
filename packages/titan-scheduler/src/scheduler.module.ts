@@ -49,8 +49,19 @@ export class SchedulerModule {
         // Core services — Singleton scope ensures shared instances across deps
         [SCHEDULER_REGISTRY_TOKEN, { useClass: SchedulerRegistry, scope: Scope.Singleton }],
         [SCHEDULER_EXECUTOR_TOKEN, { useClass: SchedulerExecutor, scope: Scope.Singleton }],
-        [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence, scope: Scope.Singleton }],
-        [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService, scope: Scope.Singleton }],
+        // `persistenceProvider` / `metricsProvider` are declared in
+        // ISchedulerModuleOptions as customisation points and were read by
+        // nothing: the built-in classes were registered unconditionally, so a
+        // caller who supplied their own token got the built-in one and their
+        // jobs persisted somewhere other than where they configured. When a
+        // token is given it is aliased here; otherwise the default stands, so
+        // nothing changes for callers who pass neither.
+        options.persistenceProvider
+          ? [SCHEDULER_PERSISTENCE_TOKEN, { useExisting: options.persistenceProvider }]
+          : [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence, scope: Scope.Singleton }],
+        options.metricsProvider
+          ? [SCHEDULER_METRICS_TOKEN, { useExisting: options.metricsProvider }]
+          : [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService, scope: Scope.Singleton }],
         [SCHEDULER_DISCOVERY_TOKEN, { useClass: SchedulerDiscovery, scope: Scope.Singleton }],
         [SCHEDULER_SERVICE_TOKEN, { useClass: SchedulerService, scope: Scope.Singleton }],
         // Export main service alias
@@ -113,8 +124,12 @@ export class SchedulerModule {
     providers.push(
       [SCHEDULER_REGISTRY_TOKEN, { useClass: SchedulerRegistry, scope: Scope.Singleton }] as any,
       [SCHEDULER_EXECUTOR_TOKEN, { useClass: SchedulerExecutor, scope: Scope.Singleton }] as any,
-      [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence, scope: Scope.Singleton }] as any,
-      [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService, scope: Scope.Singleton }] as any,
+      (options.persistenceProvider
+        ? [SCHEDULER_PERSISTENCE_TOKEN, { useExisting: options.persistenceProvider }]
+        : [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence, scope: Scope.Singleton }]) as any,
+      (options.metricsProvider
+        ? [SCHEDULER_METRICS_TOKEN, { useExisting: options.metricsProvider }]
+        : [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService, scope: Scope.Singleton }]) as any,
       [SCHEDULER_DISCOVERY_TOKEN, { useClass: SchedulerDiscovery, scope: Scope.Singleton }] as any,
       [SCHEDULER_SERVICE_TOKEN, { useClass: SchedulerService, scope: Scope.Singleton }] as any,
       [SchedulerService, { useExisting: SCHEDULER_SERVICE_TOKEN }] as any

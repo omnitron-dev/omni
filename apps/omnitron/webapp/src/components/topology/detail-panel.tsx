@@ -105,7 +105,7 @@ function AppOverview({ data }: { data: AppNodeData }) {
           </>
         )}
       </Stack>
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+      <Divider sx={{ borderColor: 'divider' }} />
       {/* Info rows */}
       <InfoRow label="Status">
         <Chip
@@ -129,27 +129,27 @@ function AppOverview({ data }: { data: AppNodeData }) {
       <InfoRow label="Restarts">{data.restarts}</InfoRow>
       {isOnline && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider sx={{ borderColor: 'divider' }} />
 
           <Stack spacing={1}>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Resources
             </Typography>
             <Stack direction="row" spacing={1} sx={{
               alignItems: "center"
             }}>
-              <Typography variant="caption" sx={{ fontSize: 12, color: '#94a3b8', width: 60 }}>CPU</Typography>
+              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.secondary', width: 60 }}>CPU</Typography>
               <Box sx={{ flex: 1, ...miniBarSx(data.cpu, data.cpu > 80 ? '#ef4444' : '#22c55e', 6) }} />
-              <Typography variant="caption" sx={{ fontSize: 12, color: '#e2e8f0', width: 50, textAlign: 'right' }}>
+              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.primary', width: 50, textAlign: 'right' }}>
                 {data.cpu.toFixed(1)}%
               </Typography>
             </Stack>
             <Stack direction="row" spacing={1} sx={{
               alignItems: "center"
             }}>
-              <Typography variant="caption" sx={{ fontSize: 12, color: '#94a3b8', width: 60 }}>Memory</Typography>
+              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.secondary', width: 60 }}>Memory</Typography>
               <Box sx={{ flex: 1, ...miniBarSx(Math.min(100, (data.memory / (512 * 1024 * 1024)) * 100), '#3b82f6', 6) }} />
-              <Typography variant="caption" sx={{ fontSize: 12, color: '#e2e8f0', width: 50, textAlign: 'right' }}>
+              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.primary', width: 50, textAlign: 'right' }}>
                 {formatMemory(data.memory)}
               </Typography>
             </Stack>
@@ -159,8 +159,8 @@ function AppOverview({ data }: { data: AppNodeData }) {
       {/* Sub-processes */}
       {data.processes && data.processes.length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Divider sx={{ borderColor: 'divider' }} />
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Process Topology
           </Typography>
           {data.processes.map((proc) => {
@@ -174,10 +174,10 @@ function AppOverview({ data }: { data: AppNodeData }) {
                 <Chip
                   label={proc.type}
                   size="small"
-                  sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+                  sx={{ height: 20, fontSize: 10, bgcolor: 'action.hover', color: 'text.secondary' }}
                 />
                 {proc.pid && (
-                  <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b' }}>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.disabled' }}>
                     {proc.pid}
                   </Typography>
                 )}
@@ -240,14 +240,14 @@ function GatewayOverview({ data }: { data: GatewayNodeData }) {
         />
       </InfoRow>
       <InfoRow label="Tor">{data.hasTor ? 'Active' : 'Disabled'}</InfoRow>
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-      <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <Divider sx={{ borderColor: 'divider' }} />
+      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
         Routes ({data.routes.length})
       </Typography>
       {data.routes.map((r) => (
         <Stack key={r.path} direction="row" spacing={1}>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#60a5fa', fontSize: 12 }}>{r.path}</Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#64748b', fontSize: 12 }}>{r.target}</Typography>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'info.main', fontSize: 12 }}>{r.path}</Typography>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.disabled', fontSize: 12 }}>{r.target}</Typography>
         </Stack>
       ))}
     </Stack>
@@ -268,7 +268,7 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
         <Chip
           label={data.role}
           size="small"
-          sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1', textTransform: 'capitalize' }}
+          sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: 'action.hover', color: 'text.primary', textTransform: 'capitalize' }}
         />
       </InfoRow>
       <InfoRow label="Status">
@@ -284,8 +284,8 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
       </InfoRow>
       {data.apps.length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Divider sx={{ borderColor: 'divider' }} />
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Applications
           </Typography>
           <Stack
@@ -295,7 +295,7 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
               gap: 0.5
             }}>
             {data.apps.map((a) => (
-              <Chip key={a} label={a} size="small" sx={{ height: 22, fontSize: 11, bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }} />
+              <Chip key={a} label={a} size="small" sx={{ height: 22, fontSize: 11, bgcolor: 'action.hover', color: 'text.primary' }} />
             ))}
           </Stack>
         </>
@@ -328,7 +328,7 @@ function LogsTab({ appName }: { appName?: string }) {
   if (loading) {
     return (
       <Stack spacing={0.5}>
-        {[...Array(8)].map((_, i) => <Skeleton key={i} height={18} sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} />)}
+        {[...Array(8)].map((_, i) => <Skeleton key={i} height={18} sx={{ bgcolor: 'action.hover' }} />)}
       </Stack>
     );
   }
@@ -361,12 +361,12 @@ function LogsTab({ appName }: { appName?: string }) {
           spacing={0.75}
           sx={{
             py: 0.25,
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
+            '&:hover': { bgcolor: 'action.hover' },
           }}
         >
           <Typography
             component="span"
-            sx={{ fontSize: 10, color: '#475569', flexShrink: 0 }}
+            sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}
           >
             {formatTimestamp(log.timestamp)}
           </Typography>
@@ -378,7 +378,7 @@ function LogsTab({ appName }: { appName?: string }) {
           </Typography>
           <Typography
             component="span"
-            sx={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            sx={{ fontSize: 11, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             {log.message}
           </Typography>
@@ -404,7 +404,7 @@ function ConfigTab({ appName }: { appName: string }) {
   }, [appName]);
 
   if (loading) {
-    return <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 1, bgcolor: 'rgba(255,255,255,0.04)' }} />;
+    return <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 1, bgcolor: 'action.hover' }} />;
   }
 
   if (!config) {
@@ -421,7 +421,7 @@ function ConfigTab({ appName }: { appName: string }) {
       sx={{
         fontFamily: 'monospace',
         fontSize: 11,
-        color: '#cbd5e1',
+        color: 'text.primary',
         bgcolor: 'rgba(0,0,0,0.3)',
         borderRadius: 1,
         p: 1.5,
@@ -472,10 +472,10 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
             alignItems: "center",
             justifyContent: "space-between"
           }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             CPU Usage
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: 12 }}>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary', fontSize: 12 }}>
             {cpu !== undefined ? `${cpu.toFixed(1)}%` : '--'}
           </Typography>
         </Stack>
@@ -488,10 +488,10 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
             alignItems: "center",
             justifyContent: "space-between"
           }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Memory Usage
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: 12 }}>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary', fontSize: 12 }}>
             {memory !== undefined ? formatMemory(memory) : '--'}
           </Typography>
         </Stack>
@@ -505,7 +505,7 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
         />
       </Stack>
       {cpuHistory.length < 3 && (
-        <Typography variant="caption" sx={{ color: '#475569', textAlign: 'center', pt: 1 }}>
+        <Typography variant="caption" sx={{ color: 'text.disabled', textAlign: 'center', pt: 1 }}>
           Collecting samples... metrics will populate over the next few seconds.
         </Typography>
       )}
@@ -539,7 +539,7 @@ function MiniSparkline({
   if (data.length < 2) {
     return (
       <Box sx={{ width: '100%', height, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="caption" sx={{ color: '#334155', fontSize: 10 }}>Waiting for data...</Typography>
+        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }}>Waiting for data...</Typography>
       </Box>
     );
   }
@@ -629,9 +629,9 @@ export function DetailPanel() {
         flexShrink: 0,
         '& .MuiDrawer-paper': {
           width: DRAWER_WIDTH,
-          bgcolor: '#0c0c14',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
-          color: '#e2e8f0',
+          bgcolor: 'background.paper',
+          borderLeft: '1px solid', borderLeftColor: 'divider',
+          color: 'text.primary',
           pt: 0,
         },
       }}
@@ -644,7 +644,7 @@ export function DetailPanel() {
           justifyContent: "space-between",
           px: 2.5,
           py: 2,
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid', borderBottomColor: 'divider',
           bgcolor: 'rgba(0,0,0,0.2)'
         }}>
         <Stack spacing={0.25}>
@@ -656,11 +656,11 @@ export function DetailPanel() {
             }}>
             {data.label}
           </Typography>
-          <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'capitalize' }}>
+          <Typography variant="caption" sx={{ color: 'text.disabled', textTransform: 'capitalize' }}>
             {nodeType} node
           </Typography>
         </Stack>
-        <IconButton size="small" onClick={closeDetail} sx={{ color: '#94a3b8' }}>
+        <IconButton size="small" onClick={closeDetail} sx={{ color: 'text.secondary' }}>
           <CloseIcon />
         </IconButton>
       </Stack>
@@ -670,17 +670,17 @@ export function DetailPanel() {
         onChange={(_, v) => setTab(v)}
         variant="fullWidth"
         sx={{
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid', borderBottomColor: 'divider',
           minHeight: 40,
           '& .MuiTab-root': {
-            color: '#64748b',
+            color: 'text.disabled',
             fontSize: 12,
             fontWeight: 600,
             minHeight: 40,
             textTransform: 'none',
-            '&.Mui-selected': { color: '#e2e8f0' },
+            '&.Mui-selected': { color: 'text.primary' },
           },
-          '& .MuiTabs-indicator': { bgcolor: '#818cf8' },
+          '& .MuiTabs-indicator': { bgcolor: 'primary.main' },
         }}
       >
         <Tab label="Overview" />
@@ -733,7 +733,7 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
         alignItems: "center",
         justifyContent: "space-between"
       }}>
-      <Typography variant="caption" sx={{ color: '#64748b', fontSize: 12 }}>
+      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 12 }}>
         {label}
       </Typography>
       <Typography variant="body2" sx={{ fontSize: 13, fontFamily: typeof children === 'string' || typeof children === 'number' ? 'monospace' : undefined }}>

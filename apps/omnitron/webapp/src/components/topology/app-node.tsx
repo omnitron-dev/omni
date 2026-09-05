@@ -78,7 +78,7 @@ function AppNodeComponent({ data, selected }: NodeProps) {
               alignItems: "center"
             }}>
               {nodeData.port && (
-                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
                   :{nodeData.port}
                 </Typography>
               )}
@@ -86,7 +86,7 @@ function AppNodeComponent({ data, selected }: NodeProps) {
                 <Chip
                   label={`x${nodeData.instances}`}
                   size="small"
-                  sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
+                  sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(99,102,241,0.15)', color: 'primary.main' }}
                 />
               )}
             </Stack>
@@ -129,7 +129,7 @@ function AppNodeComponent({ data, selected }: NodeProps) {
             }}
           />
           {nodeData.pid && (
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 10, color: '#64748b' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.disabled' }}>
               PID {nodeData.pid}
             </Typography>
           )}
@@ -137,7 +137,7 @@ function AppNodeComponent({ data, selected }: NodeProps) {
             <Chip
               label={`${nodeData.restarts} restarts`}
               size="small"
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,68,68,0.12)', color: '#f87171' }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,68,68,0.12)', color: 'error.main' }}
             />
           )}
         </Stack>
@@ -148,22 +148,22 @@ function AppNodeComponent({ data, selected }: NodeProps) {
             <Stack direction="row" spacing={1} sx={{
               alignItems: "center"
             }}>
-              <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
                 CPU
               </Typography>
               <Box sx={miniBarSx(cpuPct, cpuPct > 80 ? '#ef4444' : cpuPct > 50 ? '#f59e0b' : '#22c55e')} />
-              <Typography variant="caption" sx={{ fontSize: 10, color: '#94a3b8', width: 36, textAlign: 'right', flexShrink: 0 }}>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
                 {nodeData.cpu.toFixed(1)}%
               </Typography>
             </Stack>
             <Stack direction="row" spacing={1} sx={{
               alignItems: "center"
             }}>
-              <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
                 MEM
               </Typography>
               <Box sx={miniBarSx(memPct, memPct > 80 ? '#ef4444' : memPct > 50 ? '#f59e0b' : '#3b82f6')} />
-              <Typography variant="caption" sx={{ fontSize: 10, color: '#94a3b8', width: 36, textAlign: 'right', flexShrink: 0 }}>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
                 {formatMemory(nodeData.memory)}
               </Typography>
             </Stack>
@@ -177,10 +177,10 @@ function AppNodeComponent({ data, selected }: NodeProps) {
             sx={{
               mt: 1,
               pt: 1,
-              borderTop: '1px solid rgba(255,255,255,0.06)',
+              borderTop: '1px solid', borderTopColor: 'divider',
             }}
           >
-            <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
               Processes
             </Typography>
             {nodeData.processes.map((proc) => {
@@ -190,10 +190,10 @@ function AppNodeComponent({ data, selected }: NodeProps) {
                   alignItems: "center"
                 }}>
                   <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: procColor, flexShrink: 0 }} />
-                  <Typography variant="caption" sx={{ fontSize: 11, color: '#cbd5e1', flex: 1 }}>
+                  <Typography variant="caption" sx={{ fontSize: 11, color: 'text.primary', flex: 1 }}>
                     {proc.name}
                   </Typography>
-                  <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b' }}>
+                  <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
                     {proc.type}
                   </Typography>
                 </Stack>

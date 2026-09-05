@@ -110,14 +110,14 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
       slotProps={{
         paper: {
           sx: {
-            bgcolor: '#0c0c14',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#e2e8f0',
+            bgcolor: 'background.paper',
+            border: '1px solid', borderColor: 'divider',
+            color: 'text.primary',
           },
         },
       }}
     >
-      <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: 700 }}>
+      <DialogTitle sx={{ borderBottom: '1px solid', borderBottomColor: 'divider', fontWeight: 700 }}>
         Add Server
       </DialogTitle>
       <DialogContent sx={{ pt: 3 }}>
@@ -147,13 +147,13 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
             fullWidth
             size="small"
             slotProps={{
-              inputLabel: { sx: { color: '#94a3b8' } },
+              inputLabel: { sx: { color: 'text.secondary' } },
               input: {
                 sx: {
-                  color: '#e2e8f0',
+                  color: 'text.primary',
                   fontFamily: 'monospace',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                  '& fieldset': { borderColor: 'divider' },
+                  '&:hover fieldset': { borderColor: 'text.disabled' },
                 },
               },
             }}
@@ -169,13 +169,13 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
               fullWidth
               size="small"
               slotProps={{
-                inputLabel: { sx: { color: '#94a3b8' } },
+                inputLabel: { sx: { color: 'text.secondary' } },
                 input: {
                   sx: {
-                    color: '#e2e8f0',
+                    color: 'text.primary',
                     fontFamily: 'monospace',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    '& fieldset': { borderColor: 'divider' },
+                    '&:hover fieldset': { borderColor: 'text.disabled' },
                   },
                 },
               }}
@@ -187,13 +187,13 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
               sx={{ width: 120 }}
               size="small"
               slotProps={{
-                inputLabel: { sx: { color: '#94a3b8' } },
+                inputLabel: { sx: { color: 'text.secondary' } },
                 input: {
                   sx: {
-                    color: '#e2e8f0',
+                    color: 'text.primary',
                     fontFamily: 'monospace',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    '& fieldset': { borderColor: 'divider' },
+                    '&:hover fieldset': { borderColor: 'text.disabled' },
                   },
                 },
               }}
@@ -208,12 +208,12 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
             fullWidth
             size="small"
             slotProps={{
-              inputLabel: { sx: { color: '#94a3b8' } },
+              inputLabel: { sx: { color: 'text.secondary' } },
               input: {
                 sx: {
-                  color: '#e2e8f0',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                  color: 'text.primary',
+                  '& fieldset': { borderColor: 'divider' },
+                  '&:hover fieldset': { borderColor: 'text.disabled' },
                 },
               },
             }}
@@ -233,20 +233,20 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
             fullWidth
             size="small"
             slotProps={{
-              inputLabel: { sx: { color: '#94a3b8' } },
+              inputLabel: { sx: { color: 'text.secondary' } },
               input: {
                 sx: {
-                  color: '#e2e8f0',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                  color: 'text.primary',
+                  '& fieldset': { borderColor: 'divider' },
+                  '&:hover fieldset': { borderColor: 'text.disabled' },
                 },
               },
             }}
           />
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.06)', px: 3, py: 2 }}>
-        <Button onClick={handleClose} disabled={submitting} sx={{ color: '#94a3b8', textTransform: 'none' }}>
+      <DialogActions sx={{ borderTop: '1px solid', borderTopColor: 'divider', px: 3, py: 2 }}>
+        <Button onClick={handleClose} disabled={submitting} sx={{ color: 'text.secondary', textTransform: 'none' }}>
           Cancel
         </Button>
         <Button

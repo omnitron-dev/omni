@@ -388,15 +388,25 @@ export class DaemonStateStore {
    */
   async getDb(): Promise<Kysely<DaemonStateDatabase>> {
     if (this.db) return this.db;
-    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
-    const BetterSqlite3 = (await import('better-sqlite3')).default;
-    const database = new BetterSqlite3(this.dbPath);
-    // WAL mode + busy_timeout + synchronous=NORMAL is the same
-    // recipe SlaveStorageService uses; battle-tested under the
-    // metrics drain workload.
-    database.pragma('journal_mode = WAL');
-    database.pragma('busy_timeout = 5000');
-    database.pragma('synchronous = NORMAL');
+    // Reuse the sync handle when `initSync()` got here first, and publish
+    // ours when it did not. The two used to be separate connections to the
+    // same file despite the comment on `rawSqlite` promising otherwise —
+    // a second fd, a second WAL reader, and a same-process writer that
+    // could only wait out the other on `busy_timeout`. One handle, one
+    // lifetime, and the documented invariant becomes true.
+    let database = this.rawSqlite;
+    if (!database) {
+      fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+      const BetterSqlite3 = (await import('better-sqlite3')).default;
+      database = new BetterSqlite3(this.dbPath);
+      // WAL mode + busy_timeout + synchronous=NORMAL is the same
+      // recipe SlaveStorageService uses; battle-tested under the
+      // metrics drain workload.
+      database.pragma('journal_mode = WAL');
+      database.pragma('busy_timeout = 5000');
+      database.pragma('synchronous = NORMAL');
+      this.rawSqlite = database;
+    }
     const dialect = new SqliteDialect({ database });
     this.db = new Kysely<DaemonStateDatabase>({ dialect });
     if (!this.initialized) {
@@ -407,11 +417,39 @@ export class DaemonStateStore {
     return this.db;
   }
 
+  /**
+   * Close both handles and return the store to its pre-`init` state.
+   *
+   * Two things here are load-bearing and were previously missing.
+   *
+   * `rawSqlite` is cleared as well as `db`. Before the two were unified
+   * they were separate connections to the same file, and destroying only
+   * the Kysely one left the sync handle open — so `kvGetSync()` kept
+   * answering, and kept its WAL lock, on a store the caller had closed.
+   * They share a handle now, but the field still has to be dropped or the
+   * next `getDb()` would wrap a closed database.
+   *
+   * `initialized` is reset. It guards `createTables()`, so leaving it
+   * set means a store reopened after `dispose()` never re-applies the
+   * DDL. Today the tables live in a file and survive, which is why this
+   * has never bitten; it stops being harmless the moment `createTables`
+   * gains a statement (a reopened store would silently lack the new
+   * table) or the path is `:memory:` (every query would fail with `no
+   * such table`). The flag buys four `CREATE TABLE IF NOT EXISTS` on an
+   * already-open handle — not enough to be worth a resurrection trap.
+   */
   async dispose(): Promise<void> {
     if (this.db) {
       await this.db.destroy();
       this.db = null;
     }
+    if (this.rawSqlite) {
+      // `db.destroy()` above already closed the shared handle when Kysely
+      // held it; better-sqlite3 throws on a double close, so ask first.
+      if (this.rawSqlite.open) this.rawSqlite.close();
+      this.rawSqlite = null;
+    }
+    this.initialized = false;
   }
 
   // ===========================================================================

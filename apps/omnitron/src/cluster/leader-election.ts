@@ -309,6 +309,19 @@ export class LeaderElection extends EventEmitter {
   }
 
   /**
+   * Run an election now instead of waiting for the timeout.
+   *
+   * Exists so tests can exercise the election itself rather than the
+   * scheduler around it: the interesting behaviour — what an unreadable
+   * registry means, what an empty one means — is decided inside
+   * `startElection`, while reaching it otherwise costs a 5-15s randomised
+   * wait. Not called in production; the timer is the only trigger there.
+   */
+  async forceElection(): Promise<void> {
+    await this.startElection();
+  }
+
+  /**
    * Start an election. Transition to candidate, increment term,
    * vote for self, and request votes from all peers.
    */
@@ -332,13 +345,33 @@ export class LeaderElection extends EventEmitter {
     try {
       peers = await this.fleetService.listNodes();
       peers = peers.filter((n) => n.id !== this.nodeId && n.status === 'online');
-    } catch {
-      // Can't reach fleet registry — become leader by default (single node)
-      this.becomeLeader();
+    } catch (err) {
+      // An unreadable registry is not a one-node cluster. This used to call
+      // `becomeLeader()` under the comment "become leader by default (single
+      // node)" — a conclusion, not an observation: the registry says nothing
+      // about how many nodes exist when it cannot be read at all. Three nodes
+      // losing Postgres together each concluded they were alone and each
+      // became leader, which is the exact split-brain the election exists to
+      // prevent, arrived at by the election itself.
+      //
+      // Not knowing the membership is a reason to stand down, not to take
+      // charge. The node returns to follower and tries again on the next
+      // election timeout; if the registry comes back and it really is alone,
+      // the empty-peers branch below elects it then. Leadership deferred
+      // costs an interval of master-only work; leadership duplicated costs
+      // two nodes writing as leader at once.
+      this.logger.warn(
+        { nodeId: this.nodeId, term: this.term, error: (err as Error).message },
+        'Fleet registry unreachable — standing down rather than assuming a single-node cluster'
+      );
+      this.setState('follower');
+      this.resetElectionTimer();
       return;
     }
 
-    // Single-node cluster — win immediately
+    // Genuinely alone: the registry answered, and it holds no other online
+    // node. Distinct from the catch above — an answer of "nobody" is a
+    // measurement, a failure to answer is not.
     if (peers.length === 0) {
       this.becomeLeader();
       return;

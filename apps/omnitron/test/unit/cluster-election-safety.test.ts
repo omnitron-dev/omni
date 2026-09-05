@@ -38,6 +38,48 @@ function election(fleet: unknown, nodeId = 'self') {
   return new LeaderElection(nodeId, fleet as never, silentLogger);
 }
 
+describe('what an unreadable registry means', () => {
+  it('does not make a node leader', async () => {
+    // The defect: `catch { this.becomeLeader() }` under the comment "become
+    // leader by default (single node)". A registry that cannot be read says
+    // nothing about how many nodes exist — three nodes losing Postgres
+    // together each concluded they were alone, and each took charge. The
+    // election produced the split-brain it exists to prevent.
+    const e = election({ listNodes: async () => { throw new Error('pg down'); } });
+    await e.start();
+
+    await e.forceElection();
+
+    expect(e.getClusterState().state).not.toBe('leader');
+    await e.stop();
+  });
+
+  it('does make a node leader when the registry answers and holds no peers', async () => {
+    // The distinction the fix rests on: an answer of "nobody" is a
+    // measurement; a failure to answer is not. Without this the fix could be
+    // "never become leader", which breaks every single-node deployment.
+    const e = election(fleetOf());
+    await e.start();
+
+    await e.forceElection();
+
+    expect(e.getClusterState().state).toBe('leader');
+    await e.stop();
+  });
+
+  it('keeps trying rather than giving up', async () => {
+    // Standing down is only safe if the node comes back to it. A node that
+    // stood down permanently would leave a cluster leaderless once the
+    // registry recovered.
+    const e = election({ listNodes: async () => { throw new Error('pg down'); } });
+    await e.start();
+    await e.forceElection();
+
+    expect(e.getClusterState().state).toBe('follower');
+    await e.stop();
+  });
+});
+
 describe('who may be heard', () => {
   it('ignores a heartbeat from a node that is not in the fleet', async () => {
     // The attack this blocks: `leaderHeartbeat({ leaderId: 'x', term: 1e9 })`

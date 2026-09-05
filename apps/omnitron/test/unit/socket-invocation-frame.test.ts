@@ -66,11 +66,22 @@ describe('the ALS frame around a socket call', () => {
 
   it('still calls through when no wrapper is configured', () => {
     // Inventing a frame where none was asked for would change behaviour for
-    // every transport that never had one.
+    // every transport that never had one — and, as it turned out, timing
+    // too: an `async` wrapper adds a microtask hop before `sendResponse`,
+    // which let a streaming method's STREAM packets overtake the response
+    // carrying the stream reference. The no-wrapper path must return `fn()`
+    // directly.
+    //
+    // This assertion used to anchor on `private async withInvocationFrame`
+    // and broke the moment that `async` was correctly removed — a test
+    // watching a signature rather than the property. It now looks for the
+    // early return regardless of how the method is declared.
     const src = read(remotePeer);
-    const frame = src.slice(src.indexOf('private async withInvocationFrame'));
+    const start = src.indexOf('withInvocationFrame<T>');
+    const frame = src.slice(start, start + 1400);
 
-    expect(frame.slice(0, 400)).toMatch(/if \(!this\.invocationWrapper\) return fn\(\)/);
+    expect(start, 'withInvocationFrame not found').toBeGreaterThan(0);
+    expect(frame).toMatch(/if \(!this\.invocationWrapper\)[\s\S]{0,40}return fn\(\)/);
   });
 
   it('is passed to the socket transports by both Omnitron call sites', () => {

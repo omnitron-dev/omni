@@ -403,6 +403,11 @@ export function hasRole(
   if (!user?.roles?.length) return false;
 
   const roles = Array.isArray(role) ? role : [role];
+  // An empty requirement grants nothing. Under `all`, `[].every()` is `true`
+  // — a vacuous truth that reads as "every requirement is met" and means "no
+  // requirement was checked". A list arriving empty from config or from a
+  // filtered array would open whatever it guards.
+  if (roles.length === 0) return false;
 
   return strategy === 'all' ? roles.every((r) => user.roles!.includes(r)) : roles.some((r) => user.roles!.includes(r));
 }
@@ -424,6 +429,11 @@ export function hasPermission(
   if (!user?.permissions?.length) return false;
 
   const permissions = Array.isArray(permission) ? permission : [permission];
+  // Same vacuous truth as `hasRole`, and here it was reachable by default:
+  // `hasPermission(user, [])` returned `true` for any user holding at least
+  // one permission, because the default strategy is `all` and `[].every()`
+  // is `true`. Measured before this line existed.
+  if (permissions.length === 0) return false;
 
   return strategy === 'all'
     ? permissions.every((p) => user.permissions!.includes(p))

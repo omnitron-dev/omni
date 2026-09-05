@@ -256,18 +256,19 @@ describe('MetricsCollector', () => {
   });
 
   describe('memory tracking', () => {
-    it('should track memory usage when enabled', () => {
-      if (typeof process === 'undefined' || !process.memoryUsage) {
-        // Skip in environments without process.memoryUsage
-        return;
+    // `it.skipIf` rather than an early `return`: a runtime without
+    // process.memoryUsage used to report this as PASSED, which is
+    // indistinguishable from having verified the tracking.
+    it.skipIf(typeof process === 'undefined' || !process.memoryUsage)(
+      'should track memory usage when enabled',
+      () => {
+        metrics = new MetricsCollector({ trackMemory: true });
+        metrics.enable();
+
+        const data = metrics.getMetrics();
+        expect(data.memoryUsage).toBeGreaterThan(0);
       }
-
-      metrics = new MetricsCollector({ trackMemory: true });
-      metrics.enable();
-
-      const data = metrics.getMetrics();
-      expect(data.memoryUsage).toBeGreaterThan(0);
-    });
+    );
 
     it('should not track memory when disabled', () => {
       metrics = new MetricsCollector({ trackMemory: false });

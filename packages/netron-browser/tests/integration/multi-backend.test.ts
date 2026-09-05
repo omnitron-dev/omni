@@ -644,7 +644,6 @@ describe('Multi-Backend with Titan Servers', () => {
   let gateway: ApiGateway;
   let coreServer: TitanServerFixture;
   let storageServer: TitanServerFixture;
-  let setupFailed = false;
 
   beforeAll(async () => {
     try {
@@ -672,9 +671,18 @@ describe('Multi-Backend with Titan Servers', () => {
 
       await gateway.start();
     } catch (error) {
-      // Mark setup as failed - tests will be skipped
-      setupFailed = true;
-      console.warn('Titan server setup failed (port conflict?), skipping tests:', error);
+      // This used to set a `setupFailed` flag that every test body checked and
+      // returned on — so a failed setup reported four PASSING tests, the one
+      // outcome that cannot be told apart from success.
+      //
+      // The "(port conflict?)" in the old message was right, and hiding it is
+      // what kept it unfixed for so long: rethrowing surfaced EADDRINUSE on
+      // ::1:3000 immediately, from a fixture that had asked for `port: 0`.
+      // titan's HttpServer read that port as `options.port || 3000`, so the
+      // request for an ephemeral port became a request for a fixed one and the
+      // two servers here collided. Fixed in titan; this stays a throw, because
+      // a setup that cannot run is a failure and not a pass.
+      throw new Error(`Titan server setup failed: ${(error as Error).message}`, { cause: error });
     }
   });
 
@@ -694,10 +702,6 @@ describe('Multi-Backend with Titan Servers', () => {
 
   describe('Titan Backend Integration', () => {
     it('should route to real Titan services through gateway', async () => {
-      if (setupFailed) {
-        return; // Skip test if setup failed
-      }
-
       const client = new HttpClient({
         url: `${gateway.getUrl()}/core`,
         timeout: 5000,
@@ -713,10 +717,6 @@ describe('Multi-Backend with Titan Servers', () => {
     });
 
     it('should handle requests to different Titan backends', async () => {
-      if (setupFailed) {
-        return; // Skip test if setup failed
-      }
-
       const coreClient = new HttpClient({
         url: `${gateway.getUrl()}/core`,
         timeout: 5000,
@@ -741,10 +741,6 @@ describe('Multi-Backend with Titan Servers', () => {
     });
 
     it('should handle user service through gateway', async () => {
-      if (setupFailed) {
-        return; // Skip test if setup failed
-      }
-
       const client = new HttpClient({
         url: `${gateway.getUrl()}/core`,
         timeout: 5000,
@@ -763,10 +759,6 @@ describe('Multi-Backend with Titan Servers', () => {
     });
 
     it('should handle echo service for complex data', async () => {
-      if (setupFailed) {
-        return; // Skip test if setup failed
-      }
-
       const client = new HttpClient({
         url: `${gateway.getUrl()}/core`,
         timeout: 5000,

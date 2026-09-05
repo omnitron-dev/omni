@@ -45,39 +45,27 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
   let eventTracker: EventListenerTracker;
   let manager: RedisManager;
   let client: Redis;
-  let testsSkipped = false;
-
   beforeAll(async () => {
-    if (SKIP_DOCKER_TESTS) {
-      console.log(
-        '⏭️  Skipping redis.decorators.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true or SKIP_DOCKER_TESTS=true)'
-      );
-      return;
-    }
-    // Skip if explicitly disabled
-    if (SKIP_DOCKER_TESTS) {
-      console.warn('⚠️  Skipping Redis decorator tests - SKIP_DOCKER_TESTS is set');
-      testsSkipped = true;
-      return;
-    }
+    // `describeOrSkip` above already decides, at REGISTRATION time, whether
+    // this file runs at all — so an environment without real Redis reports
+    // these as skipped rather than passed.
+    //
+    // Past that gate a failing fixture is a failure, not a skip. This used to
+    // catch the error, set `testsSkipped`, and have all 23 tests return early
+    // — reporting a full green suite when Docker was broken and nothing had
+    // been verified. Let it throw: beforeAll failing is how a suite says it
+    // could not run.
+    fixture = await createRedisTestFixture({
+      withManager: true,
+      withService: true,
+      db: 15,
+    });
 
-    // Create Docker-based test fixture (no fallback)
-    try {
-      fixture = await createRedisTestFixture({
-        withManager: true,
-        withService: true,
-        db: 15,
-      });
+    manager = fixture.manager!;
+    client = fixture.client;
 
-      manager = fixture.manager!;
-      client = fixture.client;
-
-      // Set global manager for decorators
-      global.__titanRedisManager = manager;
-    } catch (error) {
-      console.warn('⚠️  Skipping Redis decorator tests - Failed to create Docker fixture:', (error as Error).message);
-      testsSkipped = true;
-    }
+    // Set global manager for decorators
+    global.__titanRedisManager = manager;
   });
 
   afterAll(async () => {
@@ -88,9 +76,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
   });
 
   beforeEach(async () => {
-    if (testsSkipped) {
-      return;
-    }
     eventTracker = new EventListenerTracker();
   });
 
@@ -102,9 +87,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('@RedisCache', () => {
     it('should cache method results with real Redis', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       let callCount = 0;
 
@@ -144,9 +126,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should use custom key function', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -168,9 +147,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle different namespaces', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       // Cache namespace already exists from test fixture
 
@@ -199,9 +175,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle cache misses and errors gracefully', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       let callCount = 0;
 
@@ -231,9 +204,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle complex data types', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -266,9 +236,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('@RedisLock', () => {
     it('should acquire and release locks', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       let _executions = 0;
 
@@ -306,9 +273,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should retry acquiring lock', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -338,9 +302,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle lock acquisition failure', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -365,9 +326,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should use custom key function', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -395,9 +353,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should release lock on error', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -418,9 +373,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should prevent concurrent execution for same key', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -453,9 +405,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('@RedisRateLimit', () => {
     it('should enforce rate limits', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -487,9 +436,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should use custom key function', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -519,9 +465,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should set TTL only on first request', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -545,9 +488,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -573,9 +513,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should track rate limits per key', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -607,9 +544,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('Multiple Decorators', () => {
     it('should work with multiple decorators', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       let executions = 0;
 
@@ -647,9 +581,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should work with cache and lock combination', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -711,9 +642,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('Error Scenarios', () => {
     it('should handle missing manager gracefully', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       delete global.__titanRedisManager;
 
@@ -735,9 +663,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle invalid namespace', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -756,9 +681,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle Redis connection errors', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -788,9 +710,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
 
   describe('Performance', () => {
     it('should handle high concurrency with caching', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;
@@ -827,9 +746,6 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should handle burst requests with rate limiting', async () => {
-      if (testsSkipped) {
-        return;
-      }
 
       class TestService {
         private redisManager = manager;

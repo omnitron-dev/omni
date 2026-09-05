@@ -109,34 +109,70 @@ export async function isDockerAvailable(): Promise<boolean> {
  */
 export async function listManagedContainers(): Promise<ContainerState[]> {
   try {
-    return await withAdapter(async (adapter) => {
-      const allNames: string[] = await adapter.listContainers(true);
-      const managed: ContainerState[] = [];
+    const names = await withAdapter((adapter) => adapter.listContainers(true) as Promise<string[]>);
+    if (names.length === 0) return [];
 
-      for (const name of allNames) {
-        try {
-          const info = await adapter.inspectContainer(name);
-          const labels = info?.Config?.Labels ?? {};
-          if (labels['omnitron.managed'] === 'true') {
-            const failure = describeContainerFailure(info.State);
-            managed.push({
-              name: (info.Name ?? name).replace(/^\//, ''),
-              image: info.Config?.Image ?? '',
-              status: mapInspectStatus(info.State?.Status),
-              containerId: info.Id?.slice(0, 12),
-              health: mapInspectHealth(info.State?.Health?.Status),
-              ...(failure && { error: failure }),
-            });
-          }
-        } catch {
-          // Container may have been removed between list and inspect
-        }
-      }
+    // One `docker inspect` for every container, not one per container.
+    //
+    // The per-container loop this replaces issued a subprocess each: on a host
+    // with 28 containers that is 28 spawns, and the console polls this every
+    // ten seconds. Measured on that host: 0.042s for one inspect, 0.225s for
+    // all 28 in a single call — so the loop cost roughly 1.2s of process
+    // churn per poll when it was working, and under load it stopped returning
+    // at all, leaving the containers page in its loading state indefinitely.
+    const inspected = await inspectContainers(names);
 
-      return managed;
-    });
+    const managed: ContainerState[] = [];
+    for (const info of inspected) {
+      if (info?.Config?.Labels?.['omnitron.managed'] !== 'true') continue;
+      const failure = describeContainerFailure(info.State);
+      managed.push({
+        name: (info.Name ?? '').replace(/^\//, ''),
+        image: info.Config?.Image ?? '',
+        status: mapInspectStatus(info.State?.Status),
+        containerId: info.Id?.slice(0, 12),
+        health: mapInspectHealth(info.State?.Health?.Status),
+        ...(failure && { error: failure }),
+      });
+    }
+
+    return managed;
   } catch {
     return [];
+  }
+}
+
+/**
+ * Inspect many containers in one call.
+ *
+ * `docker inspect` takes any number of names and returns a JSON array. Names
+ * that no longer exist are reported on stderr and simply absent from the
+ * array — which is the behaviour wanted here, since a container can be
+ * removed between listing and inspecting.
+ */
+async function inspectContainers(names: string[]): Promise<any[]> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+
+  try {
+    const { stdout } = await execFileAsync('docker', ['inspect', ...names], {
+      timeout: 15_000,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(stdout || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    // A non-zero exit means SOME name was unknown; docker still prints the
+    // ones it found, so the output is worth parsing rather than discarding.
+    const stdout = (err as { stdout?: string }).stdout;
+    if (!stdout) return [];
+    try {
+      const parsed = JSON.parse(stdout);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 }
 

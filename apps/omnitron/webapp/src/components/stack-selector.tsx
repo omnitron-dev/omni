@@ -21,22 +21,17 @@ import {
   useActiveProjectStacks,
 } from '../stores/project.store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
+import { getStatusColor } from 'src/components/topology/shared-styles';
 
 // =============================================================================
 // Status dot colors
 // =============================================================================
 
-const STATUS_COLORS: Record<string, string> = {
-  running: '#22c55e',
-  starting: '#eab308',
-  stopping: '#eab308',
-  degraded: '#f97316',
-  error: '#ef4444',
-  stopped: '#6b7280',
-};
-
 function statusDot(status: string) {
-  const color = STATUS_COLORS[status] ?? STATUS_COLORS.stopped!;
+  // Was a third hex map, in which `starting` was #eab308 and `degraded`
+  // #f97316 — neither matching the topology view's #f59e0b for the same two
+  // states.
+  const color = getStatusColor(status);
   return (
     <Box
       component="span"

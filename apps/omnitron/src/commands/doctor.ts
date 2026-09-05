@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url';
 import { box, log, prism } from '@xec-sh/kit';
 
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import type { IDaemonConfig } from '../config/types.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
@@ -696,6 +698,87 @@ async function checkBuildFreshness(findings: Findings, daemonStartedMs: number |
   }
 }
 
+/**
+ * What the daemon answers to a caller holding no credentials, and who can
+ * reach it.
+ *
+ * Measured rather than read off the config: the question is not "which
+ * decorators say allowAnonymous" but "what does this daemon, as configured
+ * and running right now, hand a stranger". Two services turned out to be
+ * fully anonymous by way of the packages that declare them —
+ * `Health@1.0.0` from titan-health, `OmnitronMetrics` from titan-metrics —
+ * and neither appears in apps/omnitron at all, so no amount of reading this
+ * repository would have found them.
+ *
+ * `live` / `ready` / `getPrometheusText` are anonymous on purpose: a kubelet
+ * probe and a Prometheus scrape carry no token. `getSnapshot` is a different
+ * matter — it returns every managed app by name with its CPU, memory and
+ * status, which is the platform's inventory.
+ *
+ * Severity follows reachability, because that is what decides the cost. On
+ * loopback this is a note; bound to an interface, the inventory of
+ * everything running on the host is readable by anyone who can route to it.
+ */
+export async function checkAnonymousSurface(findings: Findings, dc: IDaemonConfig): Promise<void> {
+  const httpPort = (dc.httpPort ?? 9800) + 1;
+  const host = dc.host ?? '127.0.0.1';
+  const reachableFromNetwork = host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
+
+  /** Call a method with no Authorization header; true when it answers. */
+  const answersAnonymously = async (service: string, method: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${httpPort}/netron/invoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service, method, input: [], id: 'doctor-anon' }),
+        signal: AbortSignal.timeout(3000),
+      });
+      const body = (await res.json()) as { success?: boolean };
+      return body?.success === true;
+    } catch {
+      // Unreachable is not "open" — say nothing rather than guess.
+      return false;
+    }
+  };
+
+  const probes: Array<{ service: string; method: string; what: string }> = [
+    { service: 'OmnitronMetrics', method: 'getSnapshot', what: 'every managed app by name, with CPU, memory and status' },
+    { service: 'Health@1.0.0', method: 'listIndicators', what: 'the health indicators this daemon runs' },
+  ];
+
+  const open: string[] = [];
+  for (const probe of probes) {
+    if (await answersAnonymously(probe.service, probe.method)) {
+      open.push(`${probe.service}.${probe.method}() → ${probe.what}`);
+    }
+  }
+
+  if (open.length === 0) return;
+
+  findings.add({
+    id: 'auth.anonymous-surface',
+    severity: reachableFromNetwork ? 'warning' : 'info',
+    title: reachableFromNetwork
+      ? `${open.length} RPC method(s) answer without credentials, on a daemon bound to ${host}`
+      : `${open.length} RPC method(s) answer without credentials (loopback only)`,
+    evidence: [
+      ...open,
+      `daemon.host: ${host}`,
+      reachableFromNetwork
+        ? 'anything that can route to this host can read the above'
+        : 'only processes on this machine can reach it',
+    ],
+    ...(reachableFromNetwork
+      ? {
+          remedy:
+            'Set `daemon.host` back to 127.0.0.1 and reach the daemon through a proxy that authenticates, ' +
+            'or accept the exposure deliberately. These methods are declared allowAnonymous in titan-metrics ' +
+            'and titan-health, so the daemon cannot gate them on its own.',
+        }
+      : {}),
+  });
+}
+
 /** Infrastructure containers the daemon manages. */
 async function checkInfrastructure(findings: Findings, client: ReturnType<typeof createDaemonClient>): Promise<void> {
   try {
@@ -870,6 +953,7 @@ export async function doctorCommand(): Promise<void> {
       () => checkAppInternals(findings, apps),
       () => checkPorts(findings, apps),
       () => checkInfrastructure(findings, client),
+      () => checkAnonymousSurface(findings, DEFAULT_DAEMON_CONFIG),
     ]) {
       try {
         await check();

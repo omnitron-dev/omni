@@ -15,7 +15,11 @@ import {
 } from 'src/utils/backend-health';
 
 const PROBE_INTERVAL_MS = 30_000;
-const PROBE_TIMEOUT_MS = 5_000;
+// Generous on purpose. The probe competes with everything else on the host,
+// and the cost of waiting is a banner appearing a few seconds later; the cost
+// of giving up early is telling an operator their daemon is down. Measured at
+// 8.2 s on a loaded machine against a daemon answering in 3 ms.
+const PROBE_TIMEOUT_MS = 15_000;
 
 interface BackendStatusState {
   status: BackendStatus;

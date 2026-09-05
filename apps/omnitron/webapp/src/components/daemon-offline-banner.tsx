@@ -6,7 +6,7 @@ import { useBackendStatusStore, useBackendStatus } from 'src/stores/backend-stat
 
 export function DaemonOfflineBanner() {
   const status = useBackendStatus();
-  const { probe, startPolling } = useBackendStatusStore();
+  const { probe, startPolling, consecutiveUnreachable } = useBackendStatusStore();
 
   useEffect(() => {
     const stop = startPolling();
@@ -35,10 +35,16 @@ export function DaemonOfflineBanner() {
             backend
           </>
         ) : (
-          // One probe that did not complete. Saying "offline" here would tell
-          // an operator to start a daemon that is very likely running — which
-          // is what this banner used to do on a loaded machine.
-          <>The daemon did not answer the last check — this view may be out of date</>
+          // Probes that did not complete. This never becomes "offline",
+          // however many there are: saying so would tell an operator to start
+          // a daemon that is very likely running, which is what this banner
+          // did on a loaded machine while the daemon answered the CLI in 3 ms.
+          // The count is shown instead — insistent without asserting a cause.
+          <>
+            {consecutiveUnreachable > 1
+              ? `The daemon has not answered ${consecutiveUnreachable} checks — it may be down, or the connection to it may be blocked`
+              : 'The daemon did not answer the last check — this view may be out of date'}
+          </>
         )}
       </Alert>
     </Collapse>

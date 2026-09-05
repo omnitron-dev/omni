@@ -42,7 +42,36 @@ describe('classifyHealthResponse', () => {
 
   it('takes a 200 that does not say "online" at its word', () => {
     expect(classifyHealthResponse(200, 'application/json', { status: 'starting' })).toBe('down');
-    expect(classifyHealthResponse(200, 'application/json', null)).toBe('down');
+  });
+
+  it('does not read a body it could not parse as a dead daemon', () => {
+    // This line used to assert `down` alongside the case above, on the
+    // reasoning that a 200 not saying "online" should be taken at its word.
+    // A null body is not the daemon saying something else — it is the daemon
+    // saying nothing we could read: `probeHealth` produces null both for
+    // malformed JSON and for an empty body.
+    //
+    // The distinction is what the whole module is for. `down` is the only
+    // outcome that reaches `offline`, and the banner behind `offline` reads
+    // "run `omnitron up`" — an instruction, issued here on the strength of a
+    // parse failure. `unreachable` degrades instead, which is what "I could
+    // not find out" deserves.
+    expect(classifyHealthResponse(200, 'application/json', null)).toBe('unreachable');
+    expect(classifyHealthResponse(204, null, null)).toBe('unreachable');
+  });
+
+  it('never escalates repeated non-observation to offline', () => {
+    // Pinned here because it is the rule the outcome above depends on:
+    // reporting `unreachable` is only safe while repetition cannot promote
+    // it. Learned live on a loaded host where the probe took 8.2s against a
+    // 5s timeout while the daemon answered the same query in 3ms.
+    let count = 0;
+    for (let i = 0; i < 10; i++) {
+      const next = nextBackendStatus('unreachable', count);
+      expect(next.status).toBe('degraded');
+      count = next.consecutiveUnreachable;
+    }
+    expect(count).toBe(10);
   });
 });
 

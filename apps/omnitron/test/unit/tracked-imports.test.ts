@@ -86,7 +86,14 @@ function resolveSpecifier(fromFile: string, spec: string, aliasRoot: string): st
 function sourcesUnder(tracked: Set<string>, relDir: string): string[] {
   return [...tracked]
     .filter((f) => f.startsWith(relDir) && /\.tsx?$/.test(f) && !f.endsWith('.d.ts'))
-    .map((f) => path.join(repoRoot, f));
+    .map((f) => path.join(repoRoot, f))
+    // Git lists what is committed, which briefly includes files already
+    // deleted from the working tree. Reading one throws ENOENT and the sweep
+    // dies before checking anything — a guard that fails on a deletion
+    // reports the deletion as an import problem, which is the wrong thing in
+    // the wrong place. What it exists to catch is the opposite case: a file
+    // present on disk and absent from git.
+    .filter((f) => fs.existsSync(f));
 }
 
 describe('local imports resolve to tracked files', () => {

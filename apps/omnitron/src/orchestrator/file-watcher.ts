@@ -365,6 +365,28 @@ export class FileWatcher {
       // Resolve actual app handle name — in stack mode it's namespaced (e.g., 'omni/dev/main')
       const appName = this.orchestrator.resolveAppName?.(app.entry.name) ?? app.entry.name;
 
+      // …and check it is the same app.
+      //
+      // `resolveAppName` matches on the short name, which is what makes
+      // stack namespacing work: a config entry `main` finds the running
+      // `daos/dev/main`. It also makes a DIFFERENT app named `main` find it,
+      // and an ecosystem config left in the daemon's working directory —
+      // `omnitron init` writes one — declares exactly those names. A change
+      // under that config's tree then restarts an app it has nothing to do
+      // with.
+      //
+      // Comparing the entry point settles it: the same app has the same one.
+      const handle = this.orchestrator.getHandle?.(appName);
+      const runningEntry = handle?.entry?.bootstrap ?? handle?.entry?.script;
+      const watchedEntry = app.entry.bootstrap ?? app.entry.script;
+      if (handle && runningEntry && watchedEntry && runningEntry !== watchedEntry) {
+        this.logger.error(
+          { watchedApp: app.entry.name, resolvedTo: appName, watchedEntry, runningEntry },
+          'Refusing to restart — the watched config and the running app share a name but not an entry point'
+        );
+        return;
+      }
+
       try {
         await this.orchestrator.restartApp(appName);
         this.logger.info({ app: appName }, 'Restart complete');

@@ -49,9 +49,10 @@ function createMockLogger() {
   };
 }
 
-function createMockOrchestrator() {
+function createMockOrchestrator(overrides: Record<string, unknown> = {}) {
   return {
     restartApp: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   } as unknown as OrchestratorService;
 }
 
@@ -196,6 +197,50 @@ describe('FileWatcher', () => {
     const w = startWatcher();
     expect(w.watchedDirs).toEqual([appDir]);
     expect(w.watchedDirs[0]).not.toBe(tmpDir);
+  });
+
+  it('refuses to restart an app that only shares a name', async () => {
+    // `resolveAppName` matches on the short name — that is what makes stack
+    // namespacing work, and it is also what lets a stray ecosystem config
+    // in the daemon's working directory (`omnitron init` writes one, with
+    // apps called `main`, `storage`, `paysys`) point at somebody else's
+    // running app. A change under that config's tree then restarts an app it
+    // has nothing to do with.
+    //
+    // Observed: four DAOS apps restarted in the same millisecond from one
+    // edit to `apps/omnitron/src/commands/doctor.ts`.
+    const restartApp = vi.fn().mockResolvedValue(undefined);
+    orchestrator = createMockOrchestrator({
+      restartApp,
+      getAppStatus: () => 'online',
+      resolveAppName: () => 'daos/dev/test-app',
+      getHandle: () => ({ entry: { name: 'daos/dev/test-app', bootstrap: '/elsewhere/src/bootstrap.ts' } }),
+    });
+
+    const w = startWatcher();
+    w.emit('src/changed.ts');
+    await settle();
+
+    expect(restartApp, 'a different entry point is a different app').not.toHaveBeenCalled();
+  });
+
+  it('restarts when the entry points agree', async () => {
+    // The other half — without this the check above passes by refusing
+    // everything, which would be worse than the defect.
+    const restartApp = vi.fn().mockResolvedValue(undefined);
+    const script = path.join(appDir, 'src', 'bootstrap.ts');
+    orchestrator = createMockOrchestrator({
+      restartApp,
+      getAppStatus: () => 'online',
+      resolveAppName: () => 'daos/dev/test-app',
+      getHandle: () => ({ entry: { name: 'daos/dev/test-app', script } }),
+    });
+
+    const w = startWatcher(50, [{ name: 'test-app', script }]);
+    w.emit('src/changed.ts');
+    await settle();
+
+    expect(restartApp).toHaveBeenCalledWith('daos/dev/test-app');
   });
 
   it('watches only the named apps when a filter is given', () => {

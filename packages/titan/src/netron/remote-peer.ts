@@ -193,6 +193,80 @@ export class RemotePeer extends AbstractPeer {
    * @param {number} [requestTimeout] - Request timeout in milliseconds (overrides default)
    * @param {DefinitionCacheOptions} [cacheOptions] - Optional cache configuration for definition caching
    */
+  /**
+   * Per-invocation wrapper from the transport server that accepted this peer.
+   *
+   * `TransportOptions.invocationWrapper` was read by the HTTP server only. Every
+   * socket transport — WebSocket, TCP, Unix — dispatches through this class,
+   * and the CALL branch went straight into `stub.call()` with no frame around
+   * it. So an application that establishes its RLS scope in the wrapper (which
+   * is what it is for) got no scope at all on a WebSocket call.
+   *
+   * kysera fails CLOSED without a scope — impossible predicate on SELECT, zero
+   * rows touched on UPDATE/DELETE — so this leaked nothing. It surfaced as a
+   * realtime page that was simply empty, which is why it could last: the wrong
+   * answer looked like no data rather than an error. (Found by omni-4b, who
+   * measured it and left the fix here, in the owning zone.)
+   */
+  private invocationWrapper?: (metadata: Map<string, unknown>, fn: () => Promise<unknown>) => Promise<unknown>;
+
+  /** Called by the server when it accepts this peer. */
+  setInvocationWrapper(
+    wrapper: ((metadata: Map<string, unknown>, fn: () => Promise<unknown>) => Promise<unknown>) | undefined,
+  ): void {
+    this.invocationWrapper = wrapper;
+  }
+
+  /**
+   * Run a service invocation inside the transport's wrapper, if one is set.
+   *
+   * The metadata map mirrors what the HTTP server passes, so a wrapper written
+   * against HTTP works unchanged here: `authContext` is the key consumers
+   * actually read.
+   */
+  private withInvocationFrame<T>(
+    serviceName: () => string | undefined,
+    methodName: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    // NOT `async`, deliberately. An async function wraps its return in a
+    // second promise, adding one microtask hop before `sendResponse` — and a
+    // streaming method starts emitting STREAM packets from inside `stub.call`.
+    // With the extra hop the data packets overtook the response carrying the
+    // stream reference, and the client collected an empty stream. Returning
+    // `fn()` directly keeps the no-wrapper path timed exactly as it was.
+    //
+    // Nothing is computed or dereferenced unless a wrapper is configured. The
+    // service name arrives as a thunk for the same reason: reading it eagerly
+    // made dispatch depend on `stub.definition`, which callers holding a
+    // narrower stub do not have.
+    if (!this.invocationWrapper) return fn();
+    return this.wrapInvocation(serviceName, methodName, fn);
+  }
+
+  private async wrapInvocation<T>(
+    serviceName: () => string | undefined,
+    methodName: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const metadata = new Map<string, unknown>([
+      ['serviceName', serviceName() ?? ''],
+      ['methodName', methodName],
+      ['peerId', this.id],
+    ]);
+    const auth = this.getAuthContext();
+    if (auth) {
+      metadata.set('authContext', auth);
+      metadata.set('authenticated', true);
+    } else {
+      metadata.set('authenticated', false);
+    }
+    // Non-null: the only caller checks it first. Read into a local so a
+    // concurrent `setInvocationWrapper(undefined)` cannot null it mid-call.
+    const wrapper = this.invocationWrapper!;
+    return (await wrapper(metadata, fn as () => Promise<unknown>)) as T;
+  }
+
   constructor(
     private socket: RemotePeerSocket,
     netron: INetron,
@@ -919,7 +993,14 @@ export class RemotePeer extends AbstractPeer {
           // entry point on the wire, and the one that mattered most in
           // the audit (RPC method invocations).
           await this.enforceMethodAccess(stub, method, args, 'call');
-          await this.sendResponse(packet, await stub.call(method, args, this));
+          await this.sendResponse(
+            packet,
+            await this.withInvocationFrame(
+              () => stub.definition?.meta?.name,
+              method,
+              () => stub.call(method, args, this),
+            ),
+          );
         } catch (err: unknown) {
           this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
           try {

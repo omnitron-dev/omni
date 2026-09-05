@@ -308,7 +308,21 @@ export class DistributedLockService implements IDistributedLockService {
    * @returns Function result
    * @throws Error if lock cannot be acquired after retries (unless skipOnLockFailure is true)
    */
-  async withLock<T>(key: string, fn: () => Promise<T>, options?: IWithLockOptions): Promise<T> {
+  async withLock<T>(
+    key: string,
+    fn: () => Promise<T>,
+    options: IWithLockOptions & { skipOnLockFailure: true },
+  ): Promise<T | undefined>;
+  async withLock<T>(key: string, fn: () => Promise<T>, options?: IWithLockOptions): Promise<T>;
+  /**
+   * The overloads above exist because the skip path returns `undefined as T` —
+   * a value the signature said could not occur. Both call sites in the DAOS
+   * paysys worker already write `if (result === undefined)` against a type
+   * declaring it impossible: they knew, and the compiler did not. With
+   * `skipOnLockFailure: true` the return type now says so, and a caller who
+   * forgets the check is told.
+   */
+  async withLock<T>(key: string, fn: () => Promise<T>, options?: IWithLockOptions): Promise<T | undefined> {
     const ttl = options?.ttl ?? this.options.defaultTtl;
     const retries = options?.retries ?? this.options.defaultRetries;
     const retryDelay = options?.retryDelay ?? this.options.defaultRetryDelay;
@@ -375,7 +389,7 @@ export class DistributedLockService implements IDistributedLockService {
 
     if (skipOnLockFailure) {
       this.logger.debug({ key, retries }, '[DistributedLock] Lock acquisition failed, skipping');
-      return undefined as T;
+      return undefined;
     }
 
     throw new Error(`Failed to acquire lock for key: ${key} after ${attempts} attempt(s)`);
@@ -384,8 +398,19 @@ export class DistributedLockService implements IDistributedLockService {
   /**
    * Check if a key is currently locked.
    *
+   * **Advisory only, and it answers `false` when Redis cannot be reached.**
+   * That is the wrong direction for a lock — "not locked" is a definite answer
+   * produced from a failure to obtain one — and it is tolerable here for one
+   * reason: nothing gates on this. It exists for status surfaces, and every
+   * mutual-exclusion decision goes through `acquireLock`/`withLock`, which
+   * fail CLOSED (a Redis error there returns no lockId, so the caller does not
+   * proceed).
+   *
+   * Do not build a "check then act" on top of this. Besides the failure mode,
+   * the answer is stale the moment it returns.
+   *
    * @param key - Lock key
-   * @returns true if locked
+   * @returns true if locked; false if not locked OR if the check itself failed
    */
   async isLocked(key: string): Promise<boolean> {
     const lockKey = this.getLockKey(key);
@@ -427,3 +452,26 @@ export class DistributedLockService implements IDistributedLockService {
     return `${this.options.keyPrefix}:${key}`;
   }
 }
+
+/**
+ * Compile-time guard for the `withLock` overloads.
+ *
+ * Two different things protect the two ways of collapsing them back, and it is
+ * worth knowing which does what:
+ *
+ *   - Collapsing to `Promise<T>` — the original lie — is refused by the METHOD
+ *     BODY, because the skip path now returns a plain `undefined` instead of
+ *     `undefined as T`. Deleting that cast is what made the compiler an ally
+ *     here; verified by trying the collapse (TS2322 on the return).
+ *   - Collapsing to `Promise<T | undefined>` compiles fine and quietly forces
+ *     every ordinary caller to handle a value they cannot receive. That is
+ *     what the assertion below catches.
+ */
+type _Expect<T extends true> = T;
+type _HasUndefined<T> = undefined extends T ? true : false;
+declare const _guardLocks: DistributedLockService;
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _WithLockWithoutSkipIsNotOptional = _Expect<
+  _HasUndefined<Awaited<ReturnType<typeof _guardLocks.withLock<number>>>> extends false ? true : false
+>;

@@ -763,18 +763,23 @@ describe('ProcessPool', () => {
 
   describe('Event Emission', () => {
     it('should emit worker:spawned on worker creation', async () => {
+      // The old version awaited a promise that only ever resolved on the
+      // second event and asserted nothing. If the event stopped firing the
+      // test did not fail — it hung to the 120s timeout and reported a
+      // timeout, which says nothing about worker:spawned. Collect instead,
+      // and check the payload as well as the count.
       pool = new ProcessPool(mockManager, 'TestProcess', { size: 2 }, mockLogger as any);
 
-      const spawnedPromise = new Promise<void>((resolve) => {
-        let count = 0;
-        pool.on('worker:spawned', () => {
-          count++;
-          if (count === 2) resolve();
-        });
+      const spawned: Array<{ workerId: string; class: string }> = [];
+      pool.on('worker:spawned', (event: { workerId: string; class: string }) => {
+        spawned.push(event);
       });
 
       await pool.initialize();
-      await spawnedPromise;
+
+      expect(spawned).toHaveLength(2);
+      expect(spawned.every((e) => e.class === 'TestProcess')).toBe(true);
+      expect(new Set(spawned.map((e) => e.workerId)).size, 'worker ids must be distinct').toBe(2);
     });
 
     it('should emit worker:unhealthy when worker becomes unhealthy', async () => {

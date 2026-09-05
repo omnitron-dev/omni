@@ -485,7 +485,12 @@ export type ReconcileAction =
 export interface ResolvedContainer {
   name: string;
   image: string;
-  ports: Array<{ host: number; container: number }>;
+  /**
+   * Published ports. `bindHost` restricts which interface Docker publishes
+   * on — omitted means every interface, which is Docker's default and is
+   * almost never what a control plane wants.
+   */
+  ports: Array<{ host: number; container: number; bindHost?: string }>;
   environment: Record<string, string>;
   volumes: Array<{ source: string; target: string; readonly?: boolean }>;
   command?: string[] | undefined;

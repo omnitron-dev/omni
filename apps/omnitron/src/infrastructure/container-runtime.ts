@@ -246,6 +246,19 @@ export async function getContainerState(name: string): Promise<ContainerState | 
 }
 
 /**
+ * One `-p` value.
+ *
+ * `9800:80` publishes on every interface — Docker's default, and the reason
+ * the console's nginx was reachable from the network while the daemon it
+ * proxies binds to 127.0.0.1. A `bindHost` prefixes the address, so a
+ * service can be published to loopback only. Absent still means Docker's
+ * default, because not every managed container wants loopback.
+ */
+export function portArg(p: { host: number; container: number; bindHost?: string }): string {
+  return p.bindHost ? `${p.bindHost}:${p.host}:${p.container}` : `${p.host}:${p.container}`;
+}
+
+/**
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer): Promise<string> {
@@ -284,9 +297,8 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     args.push('--network', config.network);
   }
 
-  // Port mappings
   for (const p of config.ports) {
-    args.push('-p', `${p.host}:${p.container}`);
+    args.push('-p', portArg(p));
   }
 
   // Environment variables
@@ -635,4 +647,4 @@ function mapInspectHealth(health?: string): 'healthy' | 'unhealthy' | 'starting'
  * the payloads worth testing are the ones a live Docker will not produce on
  * demand — a refused port bind, an OOM kill.
  */
-export const __test__ = { describeContainerFailure };
+export const __test__ = { describeContainerFailure, portArg };

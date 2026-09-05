@@ -425,4 +425,89 @@ describe('WheelTimer', () => {
       });
     }), 1000);
   });
+
+  describe('slot arithmetic', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /**
+     * `schedule()` puts an entry `ceil(delayMs / resolution)` slots ahead of the
+     * CURRENT slot but measures `expiresAt` from the calling instant. With `d`
+     * the milliseconds since the last tick, the slot is reached at
+     * `ticks * resolution` while the entry expires at `d + delayMs`, so it fires
+     * on time only when `d <= ticks * resolution - delayMs` — which is zero for
+     * every delay that is an exact multiple of the resolution.
+     *
+     * Missing that window used to cost a whole revolution, because `tick()` left
+     * the unexpired entry in a slot the wheel would not read again until
+     * `wheelSize * resolution` ms later.
+     */
+    it('fires an entry scheduled between ticks without waiting a whole revolution', () => {
+      vi.useFakeTimers();
+      timer = new WheelTimer<number>({ resolution: 10, wheelSize: 100 });
+
+      const firedAt: Record<string, number> = {};
+      // Keeps the wheel running, so the entry below inherits tick boundaries
+      // instead of starting the interval itself (which would make d = 0).
+      timer.schedule(1, 1000, () => {
+        firedAt['keepalive'] = Date.now();
+      });
+
+      // 5 ms past the last tick: a schedule() issued from inside a callback on
+      // a machine under load, which is how this first showed up — as a 1000 ms
+      // timeout in 'should handle scheduling during callback', with no
+      // assertion error, on a test whose own work is about 40 ms.
+      vi.advanceTimersByTime(5);
+      const scheduledAt = Date.now();
+      timer.schedule(2, 20, () => {
+        firedAt['late'] = Date.now();
+      });
+
+      vi.advanceTimersByTime(200);
+
+      // Before the fix this was still empty here and the entry fired at
+      // +1015 ms — one full wheel revolution for a 20 ms timer.
+      expect(firedAt['late']).toBeDefined();
+      expect(firedAt['late']! - scheduledAt).toBeLessThan(100);
+    });
+
+    it('never fires an entry before its expiry', () => {
+      vi.useFakeTimers();
+      timer = new WheelTimer<number>({ resolution: 10, wheelSize: 100 });
+
+      timer.schedule(1, 1000, () => {});
+
+      vi.advanceTimersByTime(5);
+      const scheduledAt = Date.now();
+      let firedAt = -1;
+      timer.schedule(2, 20, () => {
+        firedAt = Date.now();
+      });
+
+      vi.advanceTimersByTime(200);
+
+      // Deferring by one slot must not become "fire early": the entry is moved
+      // forward, not released ahead of `expiresAt`.
+      expect(firedAt).toBeGreaterThanOrEqual(scheduledAt + 20);
+    });
+
+    it('re-slots at most once, so a wheel of size 1 still fires', () => {
+      vi.useFakeTimers();
+      timer = new WheelTimer<number>({ resolution: 10, wheelSize: 1 });
+
+      let fired = false;
+      timer.schedule(1, 1000, () => {});
+      vi.advanceTimersByTime(5);
+      timer.schedule(2, 20, () => {
+        fired = true;
+      });
+
+      // wheelSize 1 makes "the next slot" the same slot; the deferral is applied
+      // after the iteration precisely so this cannot revisit the entry forever.
+      vi.advanceTimersByTime(200);
+
+      expect(fired).toBe(true);
+    });
+  });
 });

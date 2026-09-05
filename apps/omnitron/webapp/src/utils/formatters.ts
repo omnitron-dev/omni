@@ -6,7 +6,11 @@
  */
 
 export function formatUptime(ms: number): string {
-  if (ms <= 0) return '--';
+  // `< 0`, not `<= 0`. An app that started this instant has an uptime of
+  // zero, which is a measurement; rendering it as `--` says the opposite —
+  // that nothing is known — and during a restart an operator cannot tell
+  // "just came up" from "no reading yet".
+  if (ms < 0 || !Number.isFinite(ms)) return '--';
   const seconds = Math.floor(ms / 1000);
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -19,12 +23,15 @@ export function formatUptime(ms: number): string {
 }
 
 export function formatMemory(bytes: number): string {
-  if (bytes <= 0) return '--';
+  // Same distinction. Since the orchestrator stopped overwriting a failed
+  // sample with zeros, a zero here means the process really is holding
+  // nothing measurable — and `--` would claim the sample never happened.
+  if (bytes < 0 || !Number.isFinite(bytes)) return '--';
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function formatMemoryMb(bytes: number): string {
-  if (bytes <= 0) return '--';
+  if (bytes < 0 || !Number.isFinite(bytes)) return '--';
   return `${(bytes / (1024 * 1024)).toFixed(1)}`;
 }
 
@@ -68,7 +75,9 @@ export function formatDateShort(date: Date | string): string {
 
 export function timeAgo(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  const diff = Date.now() - d.getTime();
+  // Clock skew between the daemon and the browser puts events slightly in the
+  // future; without the clamp that reads as `-1m ago`.
+  const diff = Math.max(0, Date.now() - d.getTime());
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

@@ -172,6 +172,13 @@ export class Netron extends EventEmitter implements INetron {
   private isStarted: boolean = false;
 
   /**
+   * The in-flight `start()`, or null. Present so a concurrent `start()` can be
+   * refused and so `stop()` can wait for a startup it overlaps instead of
+   * tearing down a half-built instance.
+   */
+  private startPromise: Promise<void> | null = null;
+
+  /**
    * Map of exposed services.
    * Key: qualified service name (name:version), Value: ServiceStub instance
    * Used to track and manage all available services.
@@ -592,11 +599,23 @@ export class Netron extends EventEmitter implements INetron {
    * console.log('All transport servers started successfully');
    */
   async start() {
-    if (this.isStarted) {
+    // `isStarted` is only assigned once every transport server has bound, so on
+    // its own it does not guard a start that is still in flight: two concurrent
+    // calls both passed and both bound the configured servers. The in-flight
+    // promise closes that window while keeping the documented contract — a
+    // second start is a conflict, not a join.
+    if (this.isStarted || this.startPromise) {
       this.logger.warn('Netron instance already started');
       throw Errors.conflict('Netron already started');
     }
 
+    this.startPromise = this.doStart().finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
+
+  private async doStart() {
     this.logger.info('Starting Netron instance');
 
     // StreamReference is registered eagerly + synchronously at module load by
@@ -864,6 +883,15 @@ export class Netron extends EventEmitter implements INetron {
    */
   async stop() {
     this.logger.debug('Stopping Netron instance');
+
+    // Let an in-flight start() finish first. Tearing down while it is still
+    // creating transport servers meant the teardown ran against a set that did
+    // not include them yet, and start() then installed the servers AFTER the
+    // shutdown had resolved — leaving sockets listening past a clean stop, and
+    // the next boot meeting EADDRINUSE.
+    if (this.startPromise) {
+      await this.startPromise.catch(() => undefined);
+    }
 
     // Stop connection manager first (handles graceful connection cleanup)
     await this.connectionManager.stop();

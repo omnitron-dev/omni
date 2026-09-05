@@ -344,6 +344,12 @@ export class LifecycleController {
         const remaining = this.opts.totalTimeoutMs - elapsed;
         if (remaining <= 0) {
           this.opts.logger?.warn?.({ phase, elapsed }, 'total shutdown deadline reached — skipping remaining phases');
+          // Skipping phases is the loudest thing that happens in a shutdown
+          // that ran out of budget, and until now it happened silently as far
+          // as any consumer could tell: only a log line, while `shutdown()`
+          // resolved normally. Callers deciding whether the shutdown was
+          // clean need this as an event, not as text.
+          this.emitPhaseEvent({ phase, kind: 'phase-timeout' });
           break;
         }
         const phaseDeadline = Math.min(this.opts.bucketTimeoutMs, remaining);

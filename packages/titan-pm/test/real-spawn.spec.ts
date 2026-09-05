@@ -238,6 +238,52 @@ class Worker {
     expect(health.status).toBe('degraded');
   }, 60_000);
 
+  // Each documented transport, against a process that is actually spawned.
+  //
+  // `real-transports.spec.ts` is titled "Tests all documented IPC transport
+  // types with real process spawning" and installs a mock spawner, so it checks
+  // that a transport name is accepted and carried into the spawn context — not
+  // that bytes cross a process boundary over it. These do: the assertion is a
+  // round trip through a worker running in another process, which fails if the
+  // socket is never opened, if the URL is malformed, or if the child cannot
+  // dial back.
+  // `expectedType` is what the spawner should resolve the option to — note
+  // that 'websocket' maps to 'ws'. Asserting it matters: without it all three
+  // cases would pass identically if the option stopped reaching the spawner
+  // and everything fell back to the default unix socket, which is the failure
+  // this file exists to make visible.
+  for (const [name, transport, expectedType] of [
+    ['unix', 'unix', 'unix'],
+    ['tcp', 'tcp', 'tcp'],
+    ['websocket', 'websocket', 'ws'],
+  ] as const) {
+    it(`carries a call over the ${name} transport`, async () => {
+      const file = writeWorker(`transport-${name}`, `
+class Worker {
+  static __public = ['echo'];
+  async echo(value) { return { value, pid: process.pid }; }
+}`);
+
+      const pm = manager();
+      const proc = await pm.spawn(file, {
+        name: `transport-${name}`,
+        netron: { transport },
+      } as never);
+
+      const result = (await (proc as unknown as {
+        echo(v: string): Promise<{ value: string; pid: number }>;
+      }).echo('over-the-wire'));
+
+      expect(result.value).toBe('over-the-wire');
+      // Same proof as elsewhere: the work happened somewhere else.
+      expect(result.pid).not.toBe(process.pid);
+
+      // And it went over the transport that was asked for.
+      const handle = [...(pm as unknown as { workers: Map<string, { transportConfig?: { type: string } }> }).workers.values()][0];
+      expect(handle?.transportConfig?.type).toBe(expectedType);
+    }, 60_000);
+  }
+
   it('stops the OS process on shutdown', async () => {
     const file = writeWorker('stoppable', `
 class Worker {

@@ -1349,16 +1349,33 @@ export class OrchestratorService extends EventEmitter {
 
     // Populate omnitronConfig from app's config/default.json if not set by bootstrap
     if (definition && !definition.omnitronConfig) {
+      // The catch used to cover both "no config file" and "the config file
+      // does not parse", under a comment naming only the first. They are not
+      // the same event: an app without a `config/default.json` is ordinary,
+      // while one with a malformed default.json is an operator who edited it,
+      // made a typo, and got an app running on defaults with nothing said.
+      const srcDir = path.dirname(bootstrapAbsPath);
+      const appRoot = path.resolve(srcDir, '..');
+      const configPath = path.join(appRoot, 'config', 'default.json');
+      let content: string | null = null;
       try {
-        const srcDir = path.dirname(bootstrapAbsPath);
-        const appRoot = path.resolve(srcDir, '..');
-        const configPath = path.join(appRoot, 'config', 'default.json');
-        const content = fs.readFileSync(configPath, 'utf-8');
-        const json = JSON.parse(content);
-        if (json.omnitron) {
-          definition.omnitronConfig = json.omnitron;
+        content = fs.readFileSync(configPath, 'utf-8');
+      } catch {
+        // Absent, or unreadable — ordinary, and the app has defaults.
+      }
+      if (content !== null) {
+        try {
+          const json = JSON.parse(content);
+          if (json.omnitron) {
+            definition.omnitronConfig = json.omnitron;
+          }
+        } catch (err) {
+          this.logger.error(
+            { app: entry.name, configPath, error: (err as Error).message },
+            'config/default.json does not parse — its `omnitron` section is being ignored'
+          );
         }
-      } catch { /* config file missing — skip */ }
+      }
     }
 
     // Resolve infrastructure config and inject as env vars.

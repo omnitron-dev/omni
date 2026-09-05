@@ -283,10 +283,31 @@ export class ServiceRouter {
   /**
    * Weighted selection
    */
-  private selectWeighted(_backends: BackendStatus[]): BackendStatus | null {
-    // Note: weights are not in BackendStatus, would need to be passed separately
-    // For now, fall back to random selection
-    return this.selectRandom(_backends);
+  private selectWeighted(backends: BackendStatus[]): BackendStatus | null {
+    if (backends.length === 0) return null;
+
+    // An UNSET weight is 1 — the ordinary share, which is what weighting only
+    // some backends means. An EXPLICIT zero or negative is 0: someone writing
+    // `weight: 0` is saying "send nothing here", and collapsing that into the
+    // same case as "unspecified" would send traffic to a backend deliberately
+    // drained.
+    const weights = backends.map((b) => {
+      if (typeof b.weight !== 'number') return 1;
+      return b.weight > 0 ? b.weight : 0;
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+
+    // Nothing positive to weight by: the caller still asked for a backend, so
+    // answer uniformly rather than not at all.
+    if (total <= 0) return this.selectRandom(backends);
+
+    let roll = Math.random() * total;
+    for (let i = 0; i < backends.length; i++) {
+      roll -= weights[i]!;
+      if (roll < 0) return backends[i] ?? null;
+    }
+    // Floating-point drift only; the last positive-weight backend owns the end.
+    return backends[backends.length - 1] ?? null;
   }
 
   /**

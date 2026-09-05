@@ -227,10 +227,15 @@ export class RotifTransport implements MessagingTransport {
         };
       }
 
-      // Measure latency with a simple PING command
-      const start = Date.now();
+      // Measure latency with a simple PING command.
+      // performance.now(), not Date.now(): a local Redis PING answers in well
+      // under a millisecond, and Date.now()'s 1ms granularity reports that as
+      // 0 — "too fast to measure" published as "zero latency", which is the
+      // absence of a measurement dressed as a value inside the valid range.
+      // A health report is exactly where that misleads.
+      const start = performance.now();
       await this.manager.redis.ping();
-      const latency = Date.now() - start;
+      const latency = performance.now() - start;
 
       // Determine health status based on latency
       let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';

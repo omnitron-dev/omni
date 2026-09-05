@@ -30,11 +30,13 @@ export class NotificationsHealthIndicator {
    * @returns Health status including transport health and latency
    */
   async check(): Promise<NotificationsHealthStatus> {
-    const startTime = Date.now();
+    // performance.now() for the same reason as the transport's own probe:
+    // Date.now()'s 1ms granularity turns a sub-millisecond check into 0.
+    const startTime = performance.now();
 
     try {
       const transportHealth = await this.transport.healthCheck();
-      const latency = Date.now() - startTime;
+      const latency = performance.now() - startTime;
 
       return {
         status: transportHealth.status,
@@ -43,7 +45,7 @@ export class NotificationsHealthIndicator {
         latency,
       };
     } catch (error) {
-      const latency = Date.now() - startTime;
+      const latency = performance.now() - startTime;
 
       return {
         status: 'unhealthy',

@@ -420,8 +420,20 @@ export class NotificationManager {
     this.patternMatcherCache.clear();
     this.backpressureStates.clear();
 
-    // Close all Redis connections
-    await Promise.all([this.redis?.quit(), this.subClient?.quit(), this.dlqClient?.quit()].filter(Boolean));
+    // Close all Redis connections.
+    //
+    // Guarded on `status`, the way `stopAll()` already does it. Unguarded,
+    // `quit()` on a connection that is already closed throws "Connection is
+    // closed" — so the natural teardown order, `stopAll()` then `destroy()`,
+    // threw every time. Errors are swallowed rather than raised because this
+    // is the teardown path: a connection we could not close politely is being
+    // discarded anyway, and a throw here replaces whatever the caller was
+    // actually doing.
+    await Promise.all(
+      [this.redis, this.subClient, this.dlqClient]
+        .filter((client): client is NonNullable<typeof client> => !!client && client.status !== 'end')
+        .map((client) => client.quit().catch(() => client.disconnect()))
+    );
   }
 
   /**
@@ -479,9 +491,17 @@ export class NotificationManager {
 
     for (const pattern of matchingPatterns) {
       const streamKey = getStreamKey(pattern);
+      // `options.dedupKey` reaches `generateDedupKey`'s `explicitKey`, which
+      // has existed for this the whole time and was never passed anything: the
+      // key was always derived from a hash of the payload. So two messages
+      // with DIFFERENT payloads and the same explicit `dedupKey` — the entire
+      // point of supplying one — hashed differently and both published, while
+      // the caller had every reason to believe the second was suppressed.
+      // A configured `generateDedupKey` still wins, since that is the more
+      // specific instruction.
       const dedupKey = options?.exactlyOnce
         ? (this.config.generateDedupKey?.({ channel, payload, pattern }) ??
-          generateDedupKey({ channel, payload, pattern, side: 'pub' }))
+          generateDedupKey({ channel, payload, pattern, side: 'pub', explicitKey: options.dedupKey }))
         : '';
       try {
         const result = await this.runLuaScript(
@@ -646,8 +666,17 @@ export class NotificationManager {
       },
       resume: () => {
         sub.isPaused = false;
-        // Trigger immediate pending message recovery in the consumer loop
-        // so that messages left unacked during pause get redelivered
+        // Ask the consumer loop to reclaim the messages left unacked while
+        // paused, so they get redelivered.
+        //
+        // NOT immediate, despite what this used to claim. The loop observes
+        // the flag at the top of an iteration, and it spends each iteration
+        // parked in `XREADGROUP ... BLOCK` — `blockInterval`, 5s by default.
+        // So redelivery lands somewhere between "at once" (a message arrives
+        // and ends the block) and one block window later. Callers that need a
+        // tighter bound should lower `blockInterval`, which trades idle
+        // round-trips for responsiveness; there is no way to cancel a blocking
+        // Redis command from outside it.
         const loopKey = `${stream}:${group}`;
         const loop = this.consumerLoops.get(loopKey);
         if (loop) {

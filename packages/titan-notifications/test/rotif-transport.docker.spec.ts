@@ -55,6 +55,10 @@ function createNotificationManager(redis: Redis): NotificationManager {
       db: redis.options.db,
     },
     logger: createNullLogger(),
+    // The consumer loop observes a resume()'s reclaim request at the top of an
+    // iteration, and each iteration parks in `XREADGROUP ... BLOCK
+    // blockInterval` (5s by default) — longer than any wait in this file.
+    blockInterval: 200,
     disableDelayed: false,
     dlqCleanup: {
       enabled: false, // Disable auto-cleanup for tests, we'll trigger manually
@@ -300,9 +304,14 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
   });
 
   describe('Subscription Lifecycle', () => {
-    // TODO: pause/resume implementation in Rotif doesn't buffer messages during pause
-    // Messages published during pause are lost because Redis Streams XREAD behavior
-    it.skip('should pause and resume subscription', async () => {
+    // Re-enabled. The TODO here said messages published during a pause were
+    // LOST — that is not what happens: a paused subscription leaves the message
+    // unacked in the consumer group's PEL, and `resume()` flags the loop to
+    // reclaim it. What made this look like loss is that the flag is only
+    // observed when the loop's blocking read returns, up to `blockInterval`
+    // later — and the default 5s is longer than every wait in this file. With
+    // the interval set for the suite, the redelivery arrives.
+    it('should pause and resume subscription', async () => {
       const channel = 'test.pause';
       const testMessage: NotificationMessage = {
         type: 'test.event',
@@ -409,9 +418,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
   });
 
   describe('Delayed Messages', () => {
-    // TODO: Delayed messages are not working correctly in Rotif - messages arrive immediately
-    // instead of being delayed. This is a known issue with the delay scheduler implementation.
-    it.skip('should schedule message delivery with delayMs', async () => {
+    it('should schedule message delivery with delayMs', async () => {
       // Use unique channel to avoid interference from previous test runs
       const channel = `test.delay.${Date.now()}`;
       const testMessage: NotificationMessage = {
@@ -458,8 +465,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       await subscription.unsubscribe();
     }, 60000);
 
-    // TODO: Delayed messages not working - same issue as delayMs
-    it.skip('should schedule message delivery with deliverAt', async () => {
+    it('should schedule message delivery with deliverAt', async () => {
       // Use unique channel to avoid interference
       const channel = `test.deliverat.${Date.now()}`;
       const testMessage: NotificationMessage = {
@@ -549,8 +555,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       await subscription.unsubscribe();
     });
 
-    // TODO: Custom dedupKey deduplication not working as expected
-    it.skip('should deduplicate with custom dedupKey', async () => {
+    it('should deduplicate with custom dedupKey', async () => {
       const channel = 'test.dedupkey';
 
       const receivedMessages: IncomingNotification[] = [];
@@ -684,8 +689,13 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
   });
 
   describe('DLQ Operations', () => {
-    // TODO: DLQ operations are timing out - retry/DLQ mechanism needs investigation
-    it.skip('should send failed messages to DLQ after max retries', async () => {
+    // These asserted on `stats.count`, and `DLQStats` has no `count` — the
+    // field is `totalMessages`. So every assertion here compared `undefined`
+    // against a number and could never pass, whatever the DLQ did. They were
+    // skipped under a TODO blaming "the retry/DLQ mechanism", which sent the
+    // next reader to look at the one place that was working.
+
+    it('should send failed messages to DLQ after max retries', async () => {
       const channel = 'test.dlq';
       const testMessage: NotificationMessage = {
         type: 'test.event',
@@ -703,6 +713,13 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
         },
         {
           maxRetries: 2, // Will try 3 times total (initial + 2 retries)
+          // Default retryDelay is 1000ms, and each retry also waits on the
+          // delayed-message scheduler and the consumer loop's block window —
+          // so three attempts took ~12s alone and did not finish inside 20s
+          // when the rest of the file was running. Shorten the WORK rather
+          // than widen the deadline; nothing here is about how long a retry
+          // waits.
+          retryDelay: 50,
         }
       );
 
@@ -710,20 +727,23 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       await transport.publish(channel, testMessage);
 
-      // Wait for retries to complete
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // Wait for the retries to be exhausted rather than guessing how long
+      // three attempts plus backoff take. maxRetries is the count AFTER the
+      // first attempt, so `maxRetries: 2` means three attempts in total.
+      // Wait for the retries to be exhausted rather than guessing at a delay.
+      // maxRetries counts retries AFTER the first attempt, so `maxRetries: 2`
+      // is three attempts in total.
+      await vi.waitFor(async () => expect((await transport.getDLQStats()).totalMessages).toBeGreaterThan(0), {
+        timeout: 20000,
+        interval: 100,
+      });
 
-      // Should have tried 3 times
       expect(processCount).toBeGreaterThanOrEqual(3);
-
-      // Check DLQ stats
-      const stats = await transport.getDLQStats();
-      expect(stats.count).toBeGreaterThan(0);
 
       await subscription.unsubscribe();
     }, 30000);
 
-    it.skip('should subscribe to DLQ and process failed messages', async () => {
+    it('should subscribe to DLQ and process failed messages', async () => {
       const channel = 'test.dlq-subscribe';
       const testMessage: NotificationMessage = {
         type: 'test.event',
@@ -763,7 +783,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       await subscription.unsubscribe();
     }, 30000);
 
-    it.skip('should get DLQ messages with filtering', async () => {
+    it('should get DLQ messages with filtering', async () => {
       // First, create some DLQ messages
       const channel = 'test.dlq-query';
 
@@ -796,7 +816,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       await subscription.unsubscribe();
     }, 30000);
 
-    it.skip('should requeue messages from DLQ', async () => {
+    it('should requeue messages from DLQ', async () => {
       const channel = 'test.dlq-requeue';
       const testMessage: NotificationMessage = {
         type: 'test.event',
@@ -832,7 +852,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       // Verify message is in DLQ
       const statsBefore = await transport.getDLQStats();
-      expect(statsBefore.count).toBeGreaterThan(0);
+      expect(statsBefore.totalMessages).toBeGreaterThan(0);
 
       // Requeue from DLQ
       const requeuedCount = await transport.requeueFromDLQ(1);
@@ -846,7 +866,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       await subscription.unsubscribe();
     }, 30000);
 
-    it.skip('should cleanup old DLQ messages', async () => {
+    it('should cleanup old DLQ messages', async () => {
       // Create some DLQ messages
       const channel = 'test.dlq-cleanup';
 
@@ -871,7 +891,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       // Verify messages in DLQ
       const statsBefore = await transport.getDLQStats();
-      expect(statsBefore.count).toBeGreaterThan(0);
+      expect(statsBefore.totalMessages).toBeGreaterThan(0);
 
       // Update config to cleanup immediately (maxAge: 0)
       transport.updateDLQConfig({
@@ -884,12 +904,12 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       // Verify DLQ is now empty
       const statsAfter = await transport.getDLQStats();
-      expect(statsAfter.count).toBe(0);
+      expect(statsAfter.totalMessages).toBe(0);
 
       await subscription.unsubscribe();
     }, 30000);
 
-    it.skip('should clear all DLQ messages', async () => {
+    it('should clear all DLQ messages', async () => {
       // Create some DLQ messages
       const channel = 'test.dlq-clear';
 
@@ -913,22 +933,21 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       // Verify message in DLQ
       const statsBefore = await transport.getDLQStats();
-      expect(statsBefore.count).toBeGreaterThan(0);
+      expect(statsBefore.totalMessages).toBeGreaterThan(0);
 
       // Clear DLQ
       await transport.clearDLQ();
 
       // Verify DLQ is empty
       const statsAfter = await transport.getDLQStats();
-      expect(statsAfter.count).toBe(0);
+      expect(statsAfter.totalMessages).toBe(0);
 
       await subscription.unsubscribe();
     }, 30000);
   });
 
   describe('Health Check', () => {
-    // TODO: This test is flaky - passes when run alone but fails in suite
-    it.skip('should return healthy status when Redis is connected', async () => {
+    it('should return healthy status when Redis is connected', async () => {
       const health = await transport.healthCheck();
 
       expect(health.status).toBe('healthy');
@@ -938,8 +957,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
       expect(health.timestamp).toBeDefined();
     });
 
-    // TODO: Health check returns unhealthy after previous test interactions
-    it.skip('should include subscription stats in health details', async () => {
+    it('should include subscription stats in health details', async () => {
       const channel = 'test.health';
 
       // Create a subscription

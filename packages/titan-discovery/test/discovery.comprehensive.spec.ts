@@ -18,29 +18,48 @@ import {
   type ServiceInfo,
   type DiscoveryOptions,
 } from '../src/types.js';
-import { createTestRedisClient, cleanupRedis, createMockLogger, waitFor } from './test-utils.js';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  createTestRedisClient,
+  cleanupRedis,
+  createMockLogger,
+  waitFor,
+  isRedisInMockMode,
+} from './test-utils.js';
 
 /**
- * Check if real Redis is available from global setup
+ * Is real Redis actually reachable?
+ *
+ * This used to answer by looking for `.redis-test-info.json` in `process.cwd()`
+ * and returning false when it was absent. Only `packages/titan/globalSetup.ts`
+ * writes that file, and it writes it into titan's OWN directory — so from this
+ * package the file is never there, and all 31 tests below were skipped on every
+ * run regardless of whether Redis was up. The other 90 tests in this package
+ * ran fine the whole time, because `getTestRedisConfig()` falls back to the
+ * compose stack; only this file asked the question a different way and got a
+ * different answer.
+ *
+ * Ask Redis instead of asking the filesystem about Redis.
  */
-function isRealRedisAvailable(): boolean {
+async function isRealRedisAvailable(): Promise<boolean> {
+  if (isRedisInMockMode()) return false;
+  const client = createTestRedisClient(15);
   try {
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
-    if (existsSync(infoPath)) {
-      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
-      // Real Redis is available if we have a port and it's not mock mode
-      return info.port > 0 && !info.isMock;
-    }
+    await client.connect();
+    await client.ping();
+    return true;
   } catch {
-    // Ignore errors
+    return false;
+  } finally {
+    client.disconnect();
   }
-  return false;
 }
 
-// Skip entire test suite if Redis is not available
-const describeWithRedis = isRealRedisAvailable() ? describe : describe.skip;
+// Decided once, before the suite is registered.
+const redisAvailable = await isRealRedisAvailable();
+if (!redisAvailable) {
+  console.warn('[SKIP] Discovery comprehensive tests require real Redis');
+}
+const describeWithRedis = redisAvailable ? describe : describe.skip;
 
 describeWithRedis('Discovery Module - Comprehensive Tests', () => {
   let redis: Redis;
@@ -387,8 +406,13 @@ describeWithRedis('Discovery Module - Comprehensive Tests', () => {
     });
 
     afterEach(async () => {
-      await service1?.stop();
-      await service2?.stop();
+      // `onStop()`, not `stop()` — DiscoveryService has never had a `stop`.
+      // Every other block in this file already called it correctly; this one
+      // threw in afterEach and failed all seven of its tests. It went
+      // unnoticed because the whole file was gated on a `.redis-test-info.json`
+      // that this package never writes, so none of it had run.
+      await service1?.onStop();
+      await service2?.onStop();
     });
 
     it('should find all active nodes', async () => {

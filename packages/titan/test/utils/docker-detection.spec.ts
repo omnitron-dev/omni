@@ -8,7 +8,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DockerTestManager } from './docker-test-manager.js';
+// The canonical implementation, not the copy that used to sit beside this
+// file. That copy predated the container-ownership fix in @omnitron-dev/testing
+// and still carried five `label=test.cleanup=true` cleanup filters — the broad
+// selector that lets one vitest worker delete another's containers. A stale
+// duplicate of a fixed file is worse than no duplicate: the fix looks applied
+// everywhere it is read, and is not applied where it runs.
+import { DockerTestManager } from '@omnitron-dev/testing/docker';
 
 // Skip tests if in CI or mock mode to avoid long timeouts
 const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';

@@ -185,6 +185,14 @@ export class LeaderElection extends EventEmitter {
   async onHeartbeat(data: LeaderHeartbeatData): Promise<void> {
     if (!this.running) return;
 
+    if (!(await this.isFleetMember(data.leaderId))) {
+      this.logger.warn(
+        { nodeId: this.nodeId, leaderId: data.leaderId },
+        'Ignored heartbeat from a node that is not in the fleet registry'
+      );
+      return;
+    }
+
     if (data.term >= this.term) {
       const previousState = this.state;
       if (data.term > this.term) {
@@ -218,6 +226,14 @@ export class LeaderElection extends EventEmitter {
       return { granted: false, term: this.term };
     }
 
+    if (!(await this.isFleetMember(request.candidateId))) {
+      this.logger.warn(
+        { nodeId: this.nodeId, candidateId: request.candidateId },
+        'Rejected vote request from a node that is not in the fleet registry'
+      );
+      return { granted: false, term: this.term };
+    }
+
     // If candidate has higher term, step down and update term
     if (request.term > this.term) {
       this.term = request.term;
@@ -246,6 +262,27 @@ export class LeaderElection extends EventEmitter {
   // ===========================================================================
   // Election Protocol — Outgoing (Election Cycle)
   // ===========================================================================
+
+  /**
+   * The port a peer answers `/netron/invoke` on.
+   *
+   * `FleetNode.port` is the daemon's Netron TCP port (9700 by default) and
+   * this call is HTTP, so addressing it there reaches a socket that does not
+   * speak the protocol — `fetch` fails to connect and the `catch` below turns
+   * that into "peer unreachable". Every vote request and every heartbeat in a
+   * multi-node cluster failed that way, silently and identically to a genuinely
+   * dead peer: no node could reach a majority, and followers re-elected
+   * forever. Measured against a running daemon: POST to :9700 returns no HTTP
+   * response at all, the same request to the daemon's HTTP port answers.
+   *
+   * The daemon records its HTTP RPC port at registration; a peer without one
+   * predates that and cannot be called, which is a configuration fact worth
+   * saying rather than a delivery failure to swallow.
+   */
+  private rpcPortOf(peer: FleetNode): number | null {
+    const port = peer.metadata?.['rpcPort'];
+    return typeof port === 'number' && port > 0 ? port : null;
+  }
 
   /**
    * Call a remote peer's RPC method via HTTP Netron invoke.
@@ -311,12 +348,20 @@ export class LeaderElection extends EventEmitter {
     const majority = Math.floor((peers.length + 1) / 2) + 1;
 
     // Request votes from all peers concurrently via HTTP Netron RPC
-    const votePromises = peers.map((peer) =>
-      this.callPeerRpc(peer.address, peer.port, 'requestVote', {
+    const votePromises = peers.map((peer) => {
+      const rpcPort = this.rpcPortOf(peer);
+      if (rpcPort === null) {
+        this.logger.warn(
+          { peer: peer.id, address: peer.address },
+          'Peer registered no HTTP RPC port — cannot request its vote'
+        );
+        return Promise.resolve(null);
+      }
+      return this.callPeerRpc(peer.address, rpcPort, 'requestVote', {
         candidateId: this.nodeId,
         term: this.term,
-      })
-    );
+      });
+    });
     const responses = await Promise.allSettled(votePromises);
 
     // Tally votes — abort if we're no longer a candidate (state changed during RPC)
@@ -499,14 +544,54 @@ export class LeaderElection extends EventEmitter {
     };
 
     for (const peer of peers.filter((p) => p.id !== this.nodeId)) {
+      const rpcPort = this.rpcPortOf(peer);
+      if (rpcPort === null) {
+        this.logger.warn(
+          { peer: peer.id, address: peer.address },
+          'Peer registered no HTTP RPC port — cannot send it a heartbeat'
+        );
+        continue;
+      }
       // Fire-and-forget — don't block on individual peer responses
-      this.callPeerRpc(peer.address, peer.port, 'leaderHeartbeat', heartbeatData).catch(() => {});
+      this.callPeerRpc(peer.address, rpcPort, 'leaderHeartbeat', heartbeatData).catch(() => {});
     }
   }
 
   // ===========================================================================
   // Internal Helpers
   // ===========================================================================
+
+  /**
+   * Is this node id one the fleet registry knows about?
+   *
+   * `requestVote` and `leaderHeartbeat` are `allowAnonymous` because peers
+   * call them with no credentials, so before this check ANY caller who could
+   * reach the port could send `leaderHeartbeat({ leaderId: 'x', term: 1e9 })`
+   * and every node would step down, adopt that term and treat the caller as
+   * leader — each further heartbeat resetting the election timer, so the real
+   * cluster never recovers on its own. Master-only work (alert evaluation,
+   * fleet heartbeat, telemetry relay) stops with it.
+   *
+   * Membership is not authentication: the ids are readable from
+   * `getClusterState`, and nothing stops a caller from claiming one. It is
+   * the strongest check available without inventing a credential scheme, and
+   * it costs an attacker a step they did not previously need. The real fix is
+   * a fleet credential on these two calls; see the note in
+   * cluster.rpc-service.ts.
+   *
+   * A registry that cannot be read is treated as "unknown", not "trusted" —
+   * an election is worth losing over an unavailable registry, and the node
+   * that cannot read it cannot be a useful leader anyway.
+   */
+  private async isFleetMember(nodeId: string | undefined): Promise<boolean> {
+    if (!nodeId || nodeId === this.nodeId) return false;
+    try {
+      const nodes = await this.fleetService.listNodes();
+      return nodes.some((n) => n.id === nodeId);
+    } catch {
+      return false;
+    }
+  }
 
   private setState(newState: ElectionState): void {
     const previousState = this.state;

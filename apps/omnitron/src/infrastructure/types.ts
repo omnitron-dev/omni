@@ -20,10 +20,12 @@ export interface PostgresServiceConfig {
   config?: {
     maxConnections?: number; // Default: 200
     sharedBuffers?: string; // Default: '256MB'
+    /** Unset means postgres decides — better than a number picked without
+     * knowing the machine. Same for the three below. */
     effectiveCacheSize?: string;
     workMem?: string;
     maintenanceWorkMem?: string;
-    logMinDurationStatement?: number; // ms, -1 to disable
+    logMinDurationStatement?: number; // ms, default 1000, -1 to disable
   };
   resources?: ResourceLimits;
 }
@@ -43,8 +45,16 @@ export interface RedisServiceConfig {
   port?: number; // Default: 6379
   password?: string | SecretRef;
   config?: {
-    maxmemory?: string; // Default: '2gb'
-    maxmemoryPolicy?: string; // Default: 'noeviction'
+    /**
+     * Memory ceiling, e.g. '2gb'. No default — unset means redis has none,
+     * which is what it had regardless of this field until the preset started
+     * reading it. An eviction policy without a ceiling never evicts.
+     */
+    maxmemory?: string;
+    /** Default: 'allkeys-lru'. Documented as 'noeviction' while the preset
+     * hardcoded 'allkeys-lru' — the two say the opposite thing about what
+     * happens when memory fills. */
+    maxmemoryPolicy?: string;
     appendonly?: boolean; // Default: true
   };
   /** Named DB allocations: { main: 0, storage: 1, messaging: 2 } */

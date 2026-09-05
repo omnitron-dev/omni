@@ -28,14 +28,53 @@ export const postgresPreset: IServicePreset = {
     retries: 30,
   },
 
+  buildCommand(userConfig: Record<string, unknown>): string[] {
+    const cfg = (userConfig['config'] ?? {}) as {
+      maxConnections?: number;
+      sharedBuffers?: string;
+      effectiveCacheSize?: string;
+      workMem?: string;
+      maintenanceWorkMem?: string;
+      logMinDurationStatement?: number;
+    };
+
+    const command = ['postgres'];
+    const set = (key: string, value: string | number | undefined): void => {
+      if (value === undefined || value === null || value === '') return;
+      command.push('-c', `${key}=${value}`);
+    };
+
+    set('max_connections', cfg.maxConnections ?? 200);
+    set('shared_buffers', cfg.sharedBuffers ?? '256MB');
+    // Optional with no default: unset means "let postgres decide", which is
+    // a better answer than a number picked without knowing the machine.
+    set('effective_cache_size', cfg.effectiveCacheSize);
+    set('work_mem', cfg.workMem);
+    set('maintenance_work_mem', cfg.maintenanceWorkMem);
+    set('log_statement', 'none');
+    // -1 disables slow-query logging, and is a value an operator may mean —
+    // so `?? 1000` rather than a truthiness test, which would treat 0 and -1
+    // as absent and silently restore the default.
+    set('log_min_duration_statement', cfg.logMinDurationStatement ?? 1000);
+    // Safety: kill leaked connections from crashed/restarted processes.
+    // Not configurable — these protect the daemon from its own clients.
+    set('idle_in_transaction_session_timeout', 60000);
+    set('tcp_keepalives_idle', 60);
+    set('tcp_keepalives_interval', 10);
+    set('tcp_keepalives_count', 3);
+
+    return command;
+  },
+
   defaultDocker: {
+    // Mirrors `buildCommand({})`. Kept because `defaultDocker` is the
+    // fallback for any path that does not run the builder.
     command: [
       'postgres',
       '-c', 'max_connections=200',
       '-c', 'shared_buffers=256MB',
       '-c', 'log_statement=none',
       '-c', 'log_min_duration_statement=1000',
-      // Safety: kill leaked connections from crashed/restarted processes
       '-c', 'idle_in_transaction_session_timeout=60000',
       '-c', 'tcp_keepalives_idle=60',
       '-c', 'tcp_keepalives_interval=10',

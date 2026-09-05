@@ -78,10 +78,15 @@ export class PresetRegistry {
       Object.assign(dockerEnv, config.docker.environment);
     }
 
-    // Merge Docker config
+    // Merge Docker config. The command comes from the preset's own builder
+    // when it has one, so the `config` block actually reaches the container;
+    // an explicit `docker.command` still wins, because a caller who spelled
+    // out the command means it.
+    const built = preset.buildCommand?.(config.config ?? {});
     const docker: IDockerServiceConfig = {
       image: config.image ?? preset.defaultImage,
       ...preset.defaultDocker,
+      ...(built ? { command: built } : {}),
       ...config.docker,
       environment: dockerEnv,
     };
@@ -89,7 +94,19 @@ export class PresetRegistry {
     // Build health check — customize user secret (e.g., pg_isready -U <user>)
     let healthCheck = preset.defaultHealthCheck;
     if (preset.name === 'postgres' && mergedSecrets['user']) {
-      healthCheck = { ...healthCheck, target: `pg_isready -U ${mergedSecrets['user']}` };
+      // Parametrise the user, keep the check. This used to replace the whole
+      // target with `pg_isready -U <user>` — the exact check the preset
+      // spends a paragraph explaining is not good enough, because it returns
+      // 0 the moment the postmaster accepts connections, while WAL replay or
+      // extension creation may still be running. So configuring a user
+      // silently downgraded the health check to the one the preset warns
+      // against, and only for the deployments that configure a user.
+      const user = mergedSecrets['user'];
+      healthCheck = {
+        ...healthCheck,
+        type: 'command',
+        target: `sh -c "psql -U ${user} -d postgres -h /var/run/postgresql -tAc \\"SELECT 1\\" | grep -q 1"`,
+      };
     }
     if (preset.name === 'redis' && mergedSecrets['password']) {
       healthCheck = { ...healthCheck, type: 'command', target: `redis-cli -a ${mergedSecrets['password']} ping` };

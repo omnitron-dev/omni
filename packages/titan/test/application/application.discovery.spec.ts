@@ -81,6 +81,37 @@ module.exports = { TestDiscoveredModule2 };
       expect(app.hasModule('discovered-2')).toBe(true);
     });
 
+    it('discovers a module written in the @Module decorator style', async () => {
+      // Every other test in this file hand-writes `this.name = '...'` in the
+      // constructor — the shape the discovery check happens to demand. A class
+      // decorated with @Module has no `name` instance property at all: the
+      // decorator records metadata and sets __titanModule, and the name comes
+      // from that metadata or the class itself. Discovery rejected the entire
+      // documented module style, and titan() — which turns autoDiscovery on
+      // unconditionally — could not start an application because of it.
+      const decorated = `
+class DecoratedModule {
+  async onStart() {}
+}
+DecoratedModule.__titanModule = true;
+DecoratedModule.__titanModuleMetadata = { providers: [] };
+module.exports = { DecoratedModule };
+`;
+      // Its own directory: tempDir is shared by every test in this file, and
+      // a file left behind changes what the later scans find.
+      const decoratedDir = path.join(process.cwd(), 'test', '.tmp-decorated-module');
+      fs.mkdirSync(decoratedDir, { recursive: true });
+      try {
+        fs.writeFileSync(path.join(decoratedDir, 'decorated.cjs'), decorated);
+
+        await app.discoverModules(decoratedDir);
+
+        expect(app.hasModule('DecoratedModule'), '@Module-style class was not discovered').toBe(true);
+      } finally {
+        fs.rmSync(decoratedDir, { recursive: true, force: true });
+      }
+    });
+
     it('should discover modules with glob pattern', async () => {
       // Create test module files
       const module1Content = `
@@ -286,17 +317,29 @@ module.exports = { TestDiscoveredModule3 };`;
     });
 
     it('should validate discovered modules', async () => {
-      // Create invalid module file (missing required properties)
+      // This used to write a class with __titanModule and no `name` and
+      // require discovery to reject it — which is exactly the shape the
+      // @Module decorator produces, so the test pinned the rejection of the
+      // documented module style as intended behaviour. A module that cannot
+      // be constructed is the genuinely invalid case.
       const invalidModuleContent = `
 class InvalidModule {
-  // Missing name property
+  constructor() {
+    throw new Error('cannot construct this module');
+  }
 }
 InvalidModule.__titanModule = true;
 module.exports = { InvalidModule };
 `;
-      fs.writeFileSync(path.join(tempDir, 'invalid-module.cjs'), invalidModuleContent);
+      const invalidDir = path.join(process.cwd(), 'test', '.tmp-invalid-module');
+      fs.mkdirSync(invalidDir, { recursive: true });
+      try {
+        fs.writeFileSync(path.join(invalidDir, 'invalid-module.cjs'), invalidModuleContent);
 
-      await expect(app.discoverModules(tempDir)).rejects.toThrow();
+        await expect(app.discoverModules(invalidDir)).rejects.toThrow(/cannot construct this module/);
+      } finally {
+        fs.rmSync(invalidDir, { recursive: true, force: true });
+      }
     });
   });
 

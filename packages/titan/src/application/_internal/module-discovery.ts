@@ -38,6 +38,29 @@ export interface DiscoveryDeps {
   getLogger(): ILogger | undefined;
 }
 
+/**
+ * Name a discovered module the way ModuleRegistry does: an explicit `name` on
+ * the instance (the IModule object style), then the decorator's metadata,
+ * then the class name.
+ *
+ * Exported because Application.create() re-instantiates each discovered class
+ * to key it, and deriving the name a second time by a different rule is how a
+ * decorator module ended up tokenised under an empty name.
+ */
+export function resolveDiscoveredModuleName(
+  exported: Function,
+  instance: unknown,
+  exportName?: string,
+): string | undefined {
+  const named = instance as { name?: unknown } | undefined;
+  if (typeof named?.name === 'string' && named.name) return named.name;
+
+  const metadata = (exported as { __titanModuleMetadata?: { name?: unknown } }).__titanModuleMetadata;
+  if (metadata && typeof metadata.name === 'string' && metadata.name) return metadata.name;
+
+  return exported.name || exportName || undefined;
+}
+
 export class ModuleDiscovery {
   constructor(private readonly deps: DiscoveryDeps) {}
 
@@ -107,21 +130,46 @@ export class ModuleDiscovery {
 
             try {
               const instance = new exported();
-              if (!instance.name) {
+
+              // A class decorated with @Module has no `name` instance
+              // property: the decorator records metadata and sets
+              // __titanModule, and the name lives in that metadata or in the
+              // class itself — which is how ModuleRegistry resolves it. The
+              // old check demanded `instance.name` and rejected the entire
+              // documented module style as "missing required 'name'
+              // property", so titan(), which turns autoDiscovery on
+              // unconditionally, could not start an application at all.
+              // Nothing that reaches this branch could satisfy the check:
+              // only functions carrying __titanModule get here.
+              const moduleName = resolveDiscoveredModuleName(exported, instance, exportName);
+              if (!moduleName) {
                 const error = Errors.badRequest(
-                  `Module ${exported.name || exportName} is missing required 'name' property`,
+                  `Module ${exported.name || exportName} has no resolvable name`,
                 );
                 validationErrors.push(error);
                 logger?.warn(`Invalid module: ${error.message}`);
                 continue;
               }
-              modules.push(exported as ModuleConstructor);
-              logger?.debug(`Discovered module: ${exported.name || exportName} from ${file}`);
+              // The registry keys modules by `instance.name` and hasByName()
+              // compares it, so a decorator module has to leave here as a
+              // conforming IModule. Normalising it is what this layer is for:
+              // turning a decorated class into the shape the registry takes.
+              if (!instance.name) {
+                Object.defineProperty(instance, 'name', {
+                  value: moduleName,
+                  enumerable: true,
+                  configurable: true,
+                  writable: true,
+                });
+              }
 
-              const token = createToken<IModule>(instance.name);
+              modules.push(exported as ModuleConstructor);
+              logger?.debug(`Discovered module: ${moduleName} from ${file}`);
+
+              const token = createToken<IModule>(moduleName);
               if (!this.deps.has(token)) {
                 this.deps.cacheDiscovered(token, instance);
-                logger?.debug(`Registered module: ${instance.name}`);
+                logger?.debug(`Registered module: ${moduleName}`);
               }
             } catch (err) {
               const error = Errors.internal(
@@ -150,12 +198,17 @@ export class ModuleDiscovery {
     }
 
     if (validationErrors.length > 0) {
+      // Escalate on the kind of failure, not on its wording. This used to
+      // throw only when a message contained the substring "missing required",
+      // so the single validation error that could escalate was the one whose
+      // text happened to match — and a module tagged __titanModule that could
+      // not even be constructed was logged at warn level and dropped. Every
+      // error collected here is by definition an explicitly tagged module
+      // that failed the contract, which is what the class doc calls "almost
+      // always a programming bug".
       logger?.warn(`Module discovery found ${validationErrors.length} validation error(s)`);
-      const hasInvalid = validationErrors.some((e) => e.message.includes('missing required'));
-      if (hasInvalid) {
-        const joined = validationErrors.map((e) => e.message).join('; ');
-        throw Errors.badRequest(`Module discovery failed: ${joined}`);
-      }
+      const joined = validationErrors.map((e) => e.message).join('; ');
+      throw Errors.badRequest(`Module discovery failed: ${joined}`);
     }
     if (criticalErrors.length > 0) {
       const joined = criticalErrors.map((e) => e.message).join('; ');
@@ -220,4 +273,5 @@ export class ModuleDiscovery {
     }
     return collected;
   }
+
 }

@@ -22,7 +22,7 @@ export {
   makeRootContextModule,
   ROOT_CONTEXT_NAME,
 } from './module-registry.js';
-export { ModuleDiscovery } from './module-discovery.js';
+export { ModuleDiscovery, resolveDiscoveredModuleName } from './module-discovery.js';
 export {
   ShutdownCoordinator,
   INTERNAL_TASK_DI_STOP,

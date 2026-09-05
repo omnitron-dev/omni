@@ -78,6 +78,7 @@ import {
   LifecycleStateMachine,
   makeRootContextModule,
   ModuleDiscovery,
+  resolveDiscoveredModuleName,
   ModuleRegistry,
   ProcessHost,
   ServiceExposer,
@@ -261,7 +262,12 @@ export class Application implements IApplication {
       const discovered = await app.discoverModules(options.scanPaths, options.excludePaths);
       for (const ModuleClass of discovered) {
         const instance = new ModuleClass();
-        const token = createToken<IModule>(instance.name);
+        // Same rule discovery used. Reading `instance.name` directly here
+        // produced an empty token name for every @Module-decorated class,
+        // since the decorator puts the name in metadata, not on the instance.
+        const name = resolveDiscoveredModuleName(ModuleClass, instance);
+        if (!name) continue;
+        const token = createToken<IModule>(name);
         if (!app._modules.has(token)) await app.registerModule(ModuleClass);
       }
     }

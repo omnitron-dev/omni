@@ -135,7 +135,19 @@ export interface MetricsOptions {
   trackMemory?: boolean;
 }
 
-// Error handling options
+/**
+ * NOT IMPLEMENTED — this whole family is unreachable.
+ *
+ * `ErrorHandlingOptions` is referenced in exactly one place: the type of a
+ * private `errorHandlers` Map in `EnhancedEventEmitter` that nothing writes to
+ * and nothing reads from. `CircuitOptions` is referenced only from the
+ * `circuit` field below, so it has no reachable use at all.
+ *
+ * `errorBoundary` and `onError` are honoured — but through `ListenerOptions`
+ * on `onEnhanced()`, not through this type. Reading these declarations, a
+ * caller would reasonably expect per-event isolation, a fallback handler and a
+ * circuit breaker; none of the three exists anywhere in this package.
+ */
 export interface ErrorHandlingOptions {
   isolation?: boolean;
   retry?: RetryOptions;
@@ -145,7 +157,7 @@ export interface ErrorHandlingOptions {
   onError?: (error: Error, data: any, metadata: EventMetadata) => void;
 }
 
-// Circuit breaker options
+/** NOT IMPLEMENTED — see `ErrorHandlingOptions`. No circuit breaker exists here. */
 export interface CircuitOptions {
   threshold?: number;
   timeout?: number;
@@ -200,12 +212,35 @@ export interface PatternCache {
 }
 
 // Listener options
+/**
+ * Options for `onEnhanced()` / `onTyped()`.
+ *
+ * PARTIALLY implemented, which is the awkward part: `errorBoundary`, `onError`,
+ * `timeout` and `retry` work, and their working vouches for the two that do
+ * not. A caller writing `{ timeout: 100, priority: 10 }` gets the timeout and
+ * silently loses the ordering.
+ */
 export interface ListenerOptions {
+  /**
+   * NOT IMPLEMENTED — read by nothing; listeners fire in REGISTRATION order.
+   * Measured: registering priorities 1, 100, 50 in that order calls them
+   * 1 → 100 → 50.
+   *
+   * Honouring it here would mean reordering the base emitter's own listener
+   * storage, with `once`, wildcard dispatch and prepend semantics to preserve
+   * — a change to delivery order for every consumer, which is a decision
+   * rather than a fix.
+   *
+   * Ordered dispatch DOES exist one layer up: `@omnitron-dev/titan-events`
+   * sorts subscriptions by priority (`event-discovery.service.ts`). Use that
+   * if the order matters.
+   */
   priority?: number;
   errorBoundary?: boolean;
   onError?: (error: Error, data: any, metadata?: EventMetadata) => void;
   timeout?: number;
   retry?: RetryOptions;
+  /** NOT IMPLEMENTED — see `CircuitOptions`. No circuit breaker exists here. */
   circuit?: CircuitOptions;
 }
 

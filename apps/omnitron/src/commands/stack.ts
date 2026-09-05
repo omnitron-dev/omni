@@ -86,6 +86,7 @@ export async function stackListCommand(options?: { project?: string }): Promise<
       }
 
       table({
+        width: 'auto',
         data: stacks.map((s) => ({
           status: `${statusIcon(s.status)} ${s.status}`,
           name: s.name,
@@ -140,6 +141,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
     // Nodes
     if (stack.nodes.length > 0) {
       table({
+        width: 'auto',
         data: stack.nodes.map((n) => ({
           status: n.connected ? prism.green('●') : prism.dim('○'),
           host: `${n.host}:${n.port}`,
@@ -164,6 +166,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       const online = stack.apps.filter((a) => a.status === 'online').length;
       log.info(`\nApps (${online}/${stack.apps.length} online)`);
       table({
+        width: 'auto',
         data: stack.apps.map((a) => ({
           status: a.status === 'online' ? prism.green('●') : a.status === 'crashed' || a.status === 'errored' ? prism.red('●') : prism.dim('○'),
           name: a.name,

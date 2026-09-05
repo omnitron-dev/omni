@@ -53,6 +53,7 @@ export async function nodeListCommand(): Promise<void> {
     // ssh-keys` failed every time they had something to show; the empty case
     // returns earlier, which is the only path that ever worked.
     table({
+      width: 'auto',
       data: list.map((n: any) => ({
         id: n.isLocal ? n.id : n.id.slice(0, 8),
         name: n.name,
@@ -217,6 +218,7 @@ export async function nodeSshKeysCommand(): Promise<void> {
     }
 
     table({
+      width: 'auto',
       data: keys.map((k: any) => ({ name: k.name, type: k.type, path: k.path })),
       columns: [
         { key: 'name', header: 'Name', width: 24 },

@@ -51,6 +51,7 @@ export async function remoteListCommand(): Promise<void> {
   }
 
   table({
+    width: 'auto',
     data: servers.map((s) => ({
       alias: s.alias,
       host: `${s.host}:${s.port}`,

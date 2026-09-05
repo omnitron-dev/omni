@@ -89,17 +89,22 @@ export async function infraStatusCommand(): Promise<void> {
   }
 
   table({
+    width: 'auto',
     data: containers.map((c) => ({
       name: c.name,
       image: c.image,
       status: c.status === 'running' ? prism.green(c.status) : c.status === 'exited' ? prism.red(c.status) : prism.yellow(c.status ?? 'unknown'),
       health: c.health === 'healthy' ? prism.green(c.health) : c.health === 'unhealthy' ? prism.red(c.health) : prism.dim(c.health ?? 'n/a'),
     })),
+    // No fixed widths: with `width: 'auto'` the table sizes to its content,
+    // and a cap here only truncates. `btcpayserver/bitcoin:31.0` rendered as
+    // `btcpayserver/bitcoin:...` — the version tag cut off, which is the
+    // half of an image name anyone reads this column for.
     columns: [
-      { key: 'name', header: 'Name', width: 24 },
-      { key: 'image', header: 'Image', width: 24 },
-      { key: 'status', header: 'Status', width: 12 },
-      { key: 'health', header: 'Health', width: 12 },
+      { key: 'name', header: 'Name' },
+      { key: 'image', header: 'Image' },
+      { key: 'status', header: 'Status' },
+      { key: 'health', header: 'Health' },
     ],
   });
 }

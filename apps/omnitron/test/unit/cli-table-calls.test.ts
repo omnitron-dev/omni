@@ -60,6 +60,32 @@ describe('table() call sites', () => {
     expect(offenders, 'table() needs { data, columns } — a bare array throws at runtime').toEqual([]);
   });
 
+  it('sizes every table to its content', () => {
+    // `table` defaults to `width: 'full'`, which fits the table to the
+    // terminal by dividing what is left after the widest column. With nine
+    // columns and an 80-column terminal that leaves about five characters
+    // each, and every value AND every header renders as an ellipsis —
+    // `omnitron list`, the primary command of the tool, was unreadable:
+    //
+    //     │ NAME              │ ST... │ PID  │ ... │ CPU │ ... │ RST │ ... │
+    //     │ * daos/dev/main   │ on... │ 2... │ ... │ ... │ ... │   0 │ ... │
+    //
+    // It is not a narrow-terminal problem: `COLUMNS=200` renders the same,
+    // because a non-TTY reports 80 regardless. `'auto'` sizes to content and
+    // lets the terminal scroll, which is what every other CLI does.
+    const missing: string[] = [];
+
+    for (const { file, source } of sources) {
+      for (const m of source.matchAll(/(?<![A-Za-z])table\(\s*\{([\s\S]{0,4000}?)\n\s*\}\);/g)) {
+        if (!/width\s*:\s*'auto'/.test(m[1]!)) {
+          missing.push(`${file}: ${m[1]!.slice(0, 40).replace(/\s+/g, ' ')}…`);
+        }
+      }
+    }
+
+    expect(missing.sort(), "every table() needs width: 'auto' or it renders as ellipses").toEqual([]);
+  });
+
   it('names both data and columns at every call site', () => {
     // `{ data }` without `columns` throws too — "Table must have at least
     // one column" — and is just as invisible to the compiler.

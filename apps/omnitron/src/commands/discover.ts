@@ -41,6 +41,7 @@ export async function discoverCommand(): Promise<void> {
       lines.push('');
 
       table({
+        width: 'auto',
         data: scan.docker.map((t: any) => ({
           name: t.name,
           status: t.status === 'running' ? prism.green(t.status) : prism.red(t.status),
@@ -68,6 +69,7 @@ export async function discoverCommand(): Promise<void> {
       lines.push('');
 
       table({
+        width: 'auto',
         data: scan.ssh.map((t: any) => ({
           name: t.name,
           status: t.status === 'reachable' ? prism.green(t.status) : prism.red(t.status),
@@ -126,6 +128,7 @@ async function localDockerDiscovery(): Promise<void> {
     });
 
     table({
+      width: 'auto',
       data: containers,
       columns: [
         { key: 'name', header: 'NAME' },

@@ -74,6 +74,7 @@ export async function monitCommand(): Promise<void> {
       }));
 
       table({
+        width: 'auto',
         data,
         columns: [
           { key: 'name', header: 'NAME', width: 'content' },

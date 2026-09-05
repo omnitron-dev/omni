@@ -39,6 +39,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
     }));
 
     table({
+      width: 'auto',
       data,
       columns: [
         { key: 'name', header: 'NAME' },

@@ -446,16 +446,26 @@ export interface IRateLimitModuleOptions {
    * Enable request queueing for graceful degradation.
    *
    * @defaultValue false
+   *
+   * NOT IMPLEMENTED — this field and the two below appear only in the defaults
+   * objects and are read by nothing afterwards. There is no queue: a request
+   * over the limit is rejected, whatever these say. The default is `false`, so
+   * current behaviour matches the documented default and only a caller who
+   * turns it ON is misled — which is the caller who most needs to know.
    */
   queueEnabled?: boolean;
 
   /**
    * Maximum number of requests to hold in the queue.
+   *
+   * NOT IMPLEMENTED — see `queueEnabled`.
    */
   maxQueueSize?: number;
 
   /**
    * Maximum time (ms) a request can wait in the queue.
+   *
+   * NOT IMPLEMENTED — see `queueEnabled`.
    */
   queueTimeoutMs?: number;
 
@@ -595,6 +605,9 @@ export interface IRateLimitHttpOptions extends IRateLimitModuleOptions {
 
   /**
    * Global maximum requests per second for the entire server.
+   *
+   * NOT IMPLEMENTED — read by nothing. Limits are enforced per key only, so
+   * there is no server-wide ceiling regardless of what is set here.
    */
   globalMaxRequests?: number;
 

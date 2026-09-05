@@ -36,6 +36,8 @@ import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useAuthStore } from 'src/auth/store';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -250,28 +252,27 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 
 export default function AlertsPage() {
   const { namespacePrefix, displayName } = useStackContext();
-  const [rules, setRules] = useState<AlertRule[]>([]);
-  const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [rulesList, alertsList] = await Promise.allSettled([
-        alerts.getRules(),
-        alerts.getActiveAlerts(),
-      ]);
+  const { data, loading, error, refresh: fetchData } = usePolledResource(
+    async () => {
+      const { first, second, partialFailure } = await settledPair<AlertRule[], ActiveAlert[]>(
+        [alerts.getRules(), alerts.getActiveAlerts()],
+        [[], []]
+      );
+      return { rules: first, activeAlerts: second, partialFailure };
+    },
+    { intervalMs: 15_000 }
+  );
 
-      if (rulesList.status === 'fulfilled') setRules(Array.isArray(rulesList.value) ? rulesList.value : []);
-      if (alertsList.status === 'fulfilled') setActiveAlerts(Array.isArray(alertsList.value) ? alertsList.value : []);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch alerts');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Failures from a button press are a different thing from a stale poll:
+  // one says "what you just asked for did not happen", the other "this view
+  // may be behind".
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const rules = data?.rules ?? [];
+  const activeAlerts = data?.activeAlerts ?? [];
+  const partialFailure = data?.partialFailure ?? null;
 
   useEffect(() => {
     fetchData();
@@ -285,18 +286,21 @@ export default function AlertsPage() {
   const handleToggleRule = async (ruleId: string, enabled: boolean) => {
     try {
       await alerts.updateRule({ id: ruleId, updates: { enabled } });
-      setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled } : r)));
+      // Re-read rather than patching the local copy: the rule the server
+      // stored is what should be on screen, and the optimistic edit this
+      // replaces could not be told apart from a write that silently failed.
+      await fetchData();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to update rule');
+      setActionError(err?.message ?? 'Failed to update rule');
     }
   };
 
   const handleDeleteRule = async (ruleId: string) => {
     try {
       await alerts.deleteRule({ id: ruleId });
-      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+      await fetchData();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to delete rule');
+      setActionError(err?.message ?? 'Failed to delete rule');
     }
   };
 
@@ -305,11 +309,9 @@ export default function AlertsPage() {
       // The server records WHO acknowledged; it is part of the audit trail.
       const actor = useAuthStore.getState().user?.username ?? 'unknown';
       await alerts.acknowledgeAlert({ alertId, acknowledgedBy: actor });
-      setActiveAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)),
-      );
+      await fetchData();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to acknowledge alert');
+      setActionError(err?.message ?? 'Failed to acknowledge alert');
     }
   };
 
@@ -341,9 +343,9 @@ export default function AlertsPage() {
           </Stack>
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {(error || actionError || partialFailure) && (
+        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
         </Alert>
       )}
       {/* Summary Cards */}
@@ -582,7 +584,7 @@ export default function AlertsPage() {
       <CreateAlertRuleDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
-        onCreated={(rule) => setRules((prev) => [...prev, rule])}
+        onCreated={() => void fetchData()}
       />
     </Stack>
   );

@@ -1,4 +1,15 @@
 {
+  "imports": {
+    // The runtime adapters live in a sibling workspace package that `common`
+    // does not depend on. Deno resolves through this map rather than
+    // node_modules, so the mapping is enough here; the Bun runner still needs
+    // the devDependency.
+    "@omnitron-dev/testing/runtime/deno": "../testing/dist/runtime/deno-adapter.js",
+    // The spec files this runner imports do `import { describe } from 'vitest'`,
+    // which cannot work under Deno. The adapter provides the same names, and an
+    // import map is the one place that can say so without editing every spec.
+    "vitest": "../testing/dist/runtime/deno-adapter.js"
+  },
   "compilerOptions": {
     "allowJs": true,
     "lib": ["deno.window"],

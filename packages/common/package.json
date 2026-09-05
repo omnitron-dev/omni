@@ -14,8 +14,8 @@
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
     "test": "vitest run",
     "test:node": "vitest run",
-    "test:bun": "/Users/taaliman/.bun/bin/bun test test/runtime/bun-all.test.ts",
-    "test:deno": "/Users/taaliman/.deno/bin/deno test --no-check --allow-read --allow-write --allow-env --unstable-sloppy-imports test/runtime/deno-all.test.ts",
+    "test:bun": "bun test test/runtime/bun-all.test.ts",
+    "test:deno": "deno test --no-check --allow-read --allow-write --allow-env --unstable-sloppy-imports test/runtime/deno-all.test.ts",
     "test:legacy": "vitest run && bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts"
   },
   "devDependencies": {

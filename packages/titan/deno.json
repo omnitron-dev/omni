@@ -15,6 +15,8 @@
     "@omnitron-dev/common": "../common/dist/index.js",
     "@omnitron-dev/msgpack": "../msgpack/dist/index.js",
     "@omnitron-dev/msgpack/smart-buffer": "../msgpack/dist/smart-buffer.js",
+    "@omnitron-dev/netron-protocol": "../netron-protocol/dist/index.js",
+    "@omnitron-dev/netron-http-core": "../netron-http-core/dist/index.js",
     "long": "npm:long@^5.3.2",
     "buffer": "npm:buffer@^6.0.3",
     "events": "node:events",

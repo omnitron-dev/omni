@@ -28,7 +28,25 @@ export const redisPreset: IServicePreset = {
     retries: 30,
   },
 
+  buildCommand(userConfig: Record<string, unknown>): string[] {
+    const cfg = (userConfig['config'] ?? {}) as {
+      maxmemory?: string;
+      maxmemoryPolicy?: string;
+      appendonly?: boolean;
+    };
+
+    const command = ['redis-server'];
+    command.push('--appendonly', cfg.appendonly === false ? 'no' : 'yes');
+    command.push('--maxmemory-policy', cfg.maxmemoryPolicy ?? 'allkeys-lru');
+    // No default. An eviction policy without a memory ceiling never evicts,
+    // so `maxmemory` was the one setting here that mattered — and it was the
+    // one the preset never passed at all, whatever the config said.
+    if (cfg.maxmemory) command.push('--maxmemory', cfg.maxmemory);
+    return command;
+  },
+
   defaultDocker: {
+    // Mirrors `buildCommand({})`.
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'allkeys-lru'],
     volumes: {
       data: { target: '/data', source: '' },

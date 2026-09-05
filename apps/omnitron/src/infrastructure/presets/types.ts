@@ -51,6 +51,24 @@ export interface IServicePreset {
   defaultSecrets: Record<string, string>;
 
   /**
+   * Build the container command from the user's `config` block.
+   *
+   * Without this the command is whatever `defaultDocker.command` hardcodes,
+   * and the tuning options the service config declares reach nothing. That
+   * was the state of things: `PostgresServiceConfig.config` documented six
+   * settings with defaults, the postgres preset hardcoded `max_connections`
+   * and `shared_buffers` into its command, and an operator who raised
+   * `sharedBuffers` to 4GB in omnitron.stacks.json got 256MB and no word
+   * about it. `config.config` was carried as far as `_presetConfig` and
+   * handed only to `postProvision`, which reads `databases` and nothing
+   * else.
+   *
+   * Falls back to `defaultDocker.command` when a preset does not implement
+   * it, and is overridden entirely by an explicit `docker.command`.
+   */
+  buildCommand?: (userConfig: Record<string, unknown>) => string[];
+
+  /**
    * Post-provision hook — runs after the container is healthy.
    * Used for setup like CREATE DATABASE, creating S3 buckets, etc.
    */

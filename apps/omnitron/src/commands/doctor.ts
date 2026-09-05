@@ -43,6 +43,12 @@ import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
 import type { ProcessInfoDto } from '../config/types.js';
 import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
+import {
+  findDominantErrors,
+  findRetryLoops,
+  findDuplicatedLogs,
+  describeFinding,
+} from './log-health.js';
 
 /**
  * How long the daemon may take to answer before that is itself a finding.
@@ -178,6 +184,9 @@ async function checkDatabase(findings: Findings): Promise<void> {
           'Run `omnitron infra migrate`. Until these exist, alert evaluation and session cleanup fail on every tick and log a warning each time.',
       });
     }
+
+    // What the log table itself says about the platform's health.
+    if (present.has('logs')) await checkLogHealth(findings, db);
   } catch (err) {
     findings.add({
       id: 'db.query-failed',
@@ -188,6 +197,106 @@ async function checkDatabase(findings: Findings): Promise<void> {
     });
   } finally {
     await db.destroy().catch(() => undefined);
+  }
+}
+
+/**
+ * The log table as a symptom.
+ *
+ * A message repeated far more often than anything else is a loop that cannot
+ * make progress, and it is invisible from every surface an operator normally
+ * looks at: the logs page shows the most recent lines, which are all the same
+ * line; the alerts page shows rules nobody wrote for a failure nobody
+ * predicted; and the daemon reports itself healthy throughout, because it is.
+ *
+ * This host carried 2.5 million copies of one message across three days —
+ * one event retried 799 289 times — and 13 GB of log table, most of it that.
+ * Nothing said so.
+ */
+async function checkLogHealth(findings: Findings, db: unknown): Promise<void> {
+  const { sql } = await import('kysely');
+  // The Kysely instance, typed loosely: this module holds no schema type for
+  // the omnitron database and the query is raw SQL either way.
+  const database = db as never;
+
+  // A day: long enough that a loop stands out against ordinary noise, short
+  // enough that yesterday's fixed problem does not keep reporting itself.
+  const rows = await sql<{ app: string; message: string; count: string; max_retry: string | null }>`
+    SELECT app,
+           left(message, 80) AS message,
+           count(*)::text AS count,
+           max((metadata->>'retryCount')::bigint)::text AS max_retry
+    FROM logs
+    WHERE level IN ('error', 'fatal')
+      AND timestamp > now() - interval '24 hours'
+    GROUP BY app, left(message, 80)
+    ORDER BY count(*) DESC
+    LIMIT 50
+  `.execute(database);
+
+  const counts = rows.rows.map((r) => ({
+    app: r.app,
+    message: r.message,
+    count: Number(r.count),
+    retryCount: Number(r.max_retry ?? 0),
+  }));
+
+  for (const finding of findDominantErrors(counts)) {
+    findings.add({
+      id: 'logs.dominant-error',
+      severity: 'warning',
+      title: `One message is ${Math.round((finding.share ?? 0) * 100)}% of the last day's errors`,
+      evidence: [
+        describeFinding(finding),
+        'a message repeating at this share is a loop that cannot make progress, not background noise',
+      ],
+      remedy: `Read it: \`omnitron logs ${finding.app} --level error\`. The same line repeating means the work behind it is not getting done.`,
+    });
+  }
+
+  // Lines stored under two app names at the same instant. A join over a
+  // short window rather than the whole table: the point is to detect the
+  // condition, not to count every instance of it.
+  const dupes = await sql<{ app: string; other_app: string; count: string }>`
+    SELECT a.app, b.app AS other_app, count(*)::text AS count
+    FROM logs a
+    JOIN logs b ON a.timestamp = b.timestamp AND a.message = b.message AND a.app < b.app
+    WHERE a.timestamp > now() - interval '15 minutes'
+    GROUP BY a.app, b.app
+  `.execute(database);
+
+  const recentTotal = await sql<{ count: string }>`
+    SELECT count(*)::text AS count FROM logs WHERE timestamp > now() - interval '15 minutes'
+  `.execute(database);
+
+  for (const finding of findDuplicatedLogs(
+    dupes.rows.map((r) => ({ app: r.app, otherApp: r.other_app, count: Number(r.count) })),
+    Number(recentTotal.rows[0]?.count ?? 0)
+  )) {
+    findings.add({
+      id: 'logs.duplicated',
+      severity: 'warning',
+      title: 'Log lines are being stored twice',
+      evidence: [
+        describeFinding(finding),
+        'titan-pm re-logs child output through the daemon logger while the orchestrator is already capturing it',
+        'the table pays for both copies, and every per-app count is wrong by whichever component emitted the line',
+      ],
+      remedy: 'Nothing to do at runtime — the duplicate path is in the process spawner, not in configuration.',
+    });
+  }
+
+  for (const finding of findRetryLoops(counts.filter((c) => c.retryCount > 0))) {
+    findings.add({
+      id: 'logs.retry-loop',
+      severity: 'error',
+      title: 'An operation is being retried without limit',
+      evidence: [
+        describeFinding(finding),
+        'a retry policy has a ceiling; a count this high means there is none, and the work will never complete',
+      ],
+      remedy: `Find the stuck item and either fix or discard it — retrying is not going to work. \`omnitron logs ${finding.app} --level error\` carries its id.`,
+    });
   }
 }
 

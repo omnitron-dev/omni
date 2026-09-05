@@ -50,6 +50,14 @@ export class DockerTestManager extends EventEmitter {
   private cleanupInProgress = false;
 
   private dockerPath: string;
+
+  /**
+   * How many times a `docker run` may be re-attempted with freshly drawn `auto`
+   * host ports after docker refuses the published port. Small on purpose: this
+   * covers losing a race, not a machine with no free ports.
+   */
+  private static readonly PORT_COLLISION_RETRIES = 3;
+
   private basePort: number;
   private maxRetries: number;
   private startupTimeout: number;
@@ -447,11 +455,20 @@ export class DockerTestManager extends EventEmitter {
       // Container doesn't exist, which is fine
     }
 
-    // Process port mappings
+    // Process port mappings.
+    //
+    // `auto` ports are re-drawn if docker refuses the run: findAvailablePort()
+    // binds, reads the port and releases it, so between that check and
+    // `docker run` anything else on the machine can take it — another suite in
+    // this repo, another session, a container someone restarted. The window is
+    // small and the machine is shared, which is exactly the combination that
+    // produces a red test blaming the code under test.
+    const autoPorts = new Set<number>();
     const portMappings = new Map<number, number>();
     if (options.ports) {
       for (const [containerPort, hostPort] of Object.entries(options.ports)) {
         const cPort = parseInt(containerPort);
+        if (hostPort === 'auto') autoPorts.add(cPort);
         const hPort = hostPort === 'auto' ? await this.findAvailablePort() : hostPort;
         portMappings.set(cPort, hPort);
       }
@@ -460,10 +477,21 @@ export class DockerTestManager extends EventEmitter {
     // Build docker run command
     const dockerArgs: string[] = ['run', '-d', '--name', name];
 
-    // Add ports
-    portMappings.forEach((hostPort, containerPort) => {
-      dockerArgs.push('-p', `${hostPort}:${containerPort}`);
-    });
+    // Add ports. The slice is remembered so a collision retry can rewrite just
+    // these entries instead of rebuilding the whole command.
+    const portArgsStart = dockerArgs.length;
+    const writePortArgs = () => {
+      const args: string[] = [];
+      portMappings.forEach((hostPort, containerPort) => {
+        args.push('-p', `${hostPort}:${containerPort}`);
+      });
+      return args;
+    };
+    dockerArgs.push(...writePortArgs());
+    const portArgsLength = dockerArgs.length - portArgsStart;
+    const rebuildPortArgs = () => {
+      dockerArgs.splice(portArgsStart, portArgsLength, ...writePortArgs());
+    };
 
     // Add environment variables
     const environment = options.environment || {};
@@ -549,6 +577,9 @@ export class DockerTestManager extends EventEmitter {
     }
 
     // Start container using execFileSync to properly handle arguments with spaces
+    // The loop only ever repeats for a host-port collision on an `auto` port;
+    // every other failure throws on the first pass, unchanged.
+    for (let portAttempt = 0; ; portAttempt++) {
     try {
       this.log(`Starting container: ${name}`, { image: options.image });
       const result = execFileSync(this.dockerPath, dockerArgs, {
@@ -558,6 +589,7 @@ export class DockerTestManager extends EventEmitter {
       if (this.verbose && result) {
         console.log(result);
       }
+      break;
     } catch (error) {
       // Clean up allocated ports before throwing
       portMappings.forEach((port) => {
@@ -583,6 +615,35 @@ export class DockerTestManager extends EventEmitter {
         );
       }
 
+      // Somebody took the host port between findAvailablePort() and here.
+      // Re-draw the `auto` ones and try again; explicit host ports are the
+      // caller's contract and are never silently changed.
+      const portTaken =
+        stderr.includes('port is already allocated') ||
+        stderr.includes('address already in use') ||
+        stderr.includes('Bind for ');
+      if (portTaken && autoPorts.size > 0 && portAttempt < DockerTestManager.PORT_COLLISION_RETRIES) {
+        // A run that fails on the port bind still LEAVES the container behind
+        // in `created` state, so re-running the same `--name` collides with
+        // itself. Remove it before drawing new ports — otherwise the retry
+        // reports a name conflict and the port collision it was fixing never
+        // appears in the error at all.
+        try {
+          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+        } catch {
+          // Nothing to remove.
+        }
+        for (const cPort of autoPorts) {
+          const hPort = await this.findAvailablePort();
+          portMappings.set(cPort, hPort);
+        }
+        rebuildPortArgs();
+        this.log(`Host port collision for ${name}, retrying with fresh ports`, {
+          attempt: portAttempt + 1,
+        });
+        continue;
+      }
+
       throw new Error(
         `Failed to start container ${name}:\n` +
           `Command: docker ${dockerArgs.join(' ')}\n` +
@@ -592,6 +653,7 @@ export class DockerTestManager extends EventEmitter {
           (message && !stderr && !stdout ? `Error: ${message}` : ''),
         { cause: error }
       );
+    }
     }
 
     // Wait for container to be ready

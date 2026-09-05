@@ -114,17 +114,35 @@ describe('NodeManagerService — Worker Integration', () => {
       expect(handler).toHaveBeenCalledWith('local', expect.objectContaining({ nodeId: 'local' }));
     });
 
-    it('skips summaries without lastCheck', () => {
-      const summaries: INodeHealthSummary[] = [{
+    it('leaves the previous status alone for a summary with no check', () => {
+      // "Should not throw" was the whole assertion here, and it is satisfied
+      // by a method that does nothing at all — including one that had
+      // discarded the existing status. What the skip must preserve is the
+      // last real reading: a worker that could not check a node this round
+      // has not learned that the node is down.
+      const checkResult = {
         nodeId: 'local',
-        status: 'unknown',
-        lastCheck: null,
-        lastSeenOnline: null,
-        consecutiveFailures: 0,
-      }];
+        pingReachable: true,
+        pingLatencyMs: 1,
+        sshConnected: true,
+        sshLatencyMs: 2,
+        omnitronConnected: true,
+        checkedAt: new Date().toISOString(),
+      } as never;
 
-      // Should not throw
-      service.updateStatusCacheFromWorker(summaries);
+      service.updateStatusCacheFromWorker([
+        { nodeId: 'local', status: 'online', lastCheck: checkResult, lastSeenOnline: null, consecutiveFailures: 0 },
+      ] as never);
+
+      expect(service.getNode('local')!.status!.pingReachable).toBe(true);
+
+      service.updateStatusCacheFromWorker([
+        { nodeId: 'local', status: 'unknown', lastCheck: null, lastSeenOnline: null, consecutiveFailures: 0 },
+      ] as never);
+
+      const after = service.getNode('local')!.status;
+      expect(after).not.toBeNull();
+      expect(after!.pingReachable).toBe(true);
     });
 
     it('handles error fields correctly', () => {
@@ -173,7 +191,7 @@ describe('NodeManagerService — Worker Integration', () => {
     });
 
     it('includes offlineTimeout from node config', async () => {
-      const node = service.addNode({
+      const node = await service.addNode({
         name: 'test-remote',
         host: '192.168.1.100',
         offlineTimeout: 120_000,
@@ -189,8 +207,8 @@ describe('NodeManagerService — Worker Integration', () => {
   });
 
   describe('offlineTimeout in CRUD', () => {
-    it('addNode accepts offlineTimeout', () => {
-      const node = service.addNode({
+    it('addNode accepts offlineTimeout', async () => {
+      const node = await service.addNode({
         name: 'timeout-test',
         host: '10.0.0.1',
         offlineTimeout: 60_000,
@@ -199,9 +217,9 @@ describe('NodeManagerService — Worker Integration', () => {
       service.removeNode(node.id);
     });
 
-    it('updateNode can set offlineTimeout', () => {
-      const node = service.addNode({ name: 'update-test', host: '10.0.0.2' });
-      const updated = service.updateNode(node.id, { offlineTimeout: 30_000 });
+    it('updateNode can set offlineTimeout', async () => {
+      const node = await service.addNode({ name: 'update-test', host: '10.0.0.2' });
+      const updated = await service.updateNode(node.id, { offlineTimeout: 30_000 });
       expect(updated.offlineTimeout).toBe(30_000);
       service.removeNode(node.id);
     });

@@ -1,6 +1,30 @@
 /**
  * Netron Auth Security Tests
- * Tests for security vulnerabilities and attack resistance
+ *
+ * WHAT A GREEN RUN HERE MEANS — and does not.
+ *
+ * Most of these assert current behaviour under hostile input: SQL and XSS
+ * payloads are stored verbatim rather than executed, oversized and malformed
+ * credentials are rejected, sessions survive a flood. Those are real checks and
+ * they fail if the behaviour changes.
+ *
+ * But the file also PRINTS findings it does not assert. Six `console.log` lines
+ * report gaps — no brute-force protection, no credential-stuffing detection,
+ * session fixation possible, sessions replayable, a memory ceiling — and the
+ * run stays green either way. A reader seeing this file pass will reasonably
+ * conclude the auth layer was audited and cleared; what actually happened is
+ * that the gaps were noted in output nobody reads.
+ *
+ * Two of those are pinned by assertions that document the gap rather than
+ * denying it: "100 attempts complete in under a second" IS the statement that
+ * there is no rate limiting, and it will fail the day someone adds it — which
+ * is the right time to revisit this file. The rest are notes.
+ *
+ * Where rate limiting and brute-force protection belong is a design question
+ * (they may well sit in @omnitron-dev/titan-ratelimit or at the gateway rather
+ * than in AuthenticationManager), so the notes are left as notes. What is
+ * corrected is the impression: this is an audit record with some tests in it,
+ * not a clean bill of health.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -124,72 +148,51 @@ describe('Auth Security Tests', () => {
   });
 
   describe('Timing Attack Resistance', () => {
-    it('should use constant-time comparison for credentials', async () => {
-      const authManager = new AuthenticationManager(mockLogger);
-
-      // Measure time for correct vs incorrect passwords
-      const timings: { correct: number[]; incorrect: number[] } = {
-        correct: [],
-        incorrect: [],
-      };
-
+    it('does not itself distinguish an unknown user from a wrong password', async () => {
+      // This replaces a test that measured timings, printed the verdict to the
+      // console and asserted nothing — it could not fail, and what it timed was
+      // its own mock's `===` comparison rather than any production code.
+      //
+      // Constant-time comparison is a property of the `authenticate` function a
+      // caller supplies; AuthenticationManager never sees a stored password and
+      // cannot make that guarantee. What it CAN guarantee, and what an attacker
+      // probes for, is that the manager adds no shortcut of its own: an unknown
+      // username and a known username with a wrong password must take the same
+      // path through it — one call to the configured function, no early return,
+      // no negative caching that would make the second probe faster.
+      const seen: string[] = [];
       const mockAuth = vi.fn(async (creds: AuthCredentials) => {
-        const correctPassword = 'correct-password-with-long-value';
-
-        // Simulate constant-time comparison (crypto.timingSafeEqual would be better)
-        const match = creds.password === correctPassword;
-
-        if (match) {
-          return {
-            userId: 'user123',
-            roles: ['user'],
-            permissions: [],
-          };
-        }
+        seen.push(creds.username!);
         throw new Error('Invalid credentials');
       });
 
+      const authManager = new AuthenticationManager(mockLogger);
       authManager.configure({ authenticate: mockAuth });
 
-      // Test with correct password
-      for (let i = 0; i < 50; i++) {
-        const start = performance.now();
-        await authManager.authenticate({
-          username: 'testuser',
-          password: 'correct-password-with-long-value',
-        });
-        timings.correct.push(performance.now() - start);
-      }
+      const unknownUser = await authManager.authenticate({
+        username: 'no-such-user',
+        password: 'whatever',
+      });
+      const knownUserWrongPassword = await authManager.authenticate({
+        username: 'testuser',
+        password: 'wrong',
+      });
 
-      // Test with incorrect password (same length)
-      for (let i = 0; i < 50; i++) {
-        const start = performance.now();
-        await authManager.authenticate({
-          username: 'testuser',
-          password: 'incorrect-password-same-len',
-        });
-        timings.incorrect.push(performance.now() - start);
-      }
+      // Both reached the configured function — neither was short-circuited on
+      // a property the manager could only know by leaking it.
+      expect(mockAuth).toHaveBeenCalledTimes(2);
+      expect(seen).toEqual(['no-such-user', 'testuser']);
 
-      // Calculate average timings
-      const avgCorrect = timings.correct.reduce((a, b) => a + b, 0) / timings.correct.length;
-      const avgIncorrect = timings.incorrect.reduce((a, b) => a + b, 0) / timings.incorrect.length;
+      // And both produced the same shape of answer, with no hint of which
+      // half of the credential pair was wrong.
+      expect(unknownUser.success).toBe(false);
+      expect(knownUserWrongPassword.success).toBe(false);
+      expect(unknownUser.error).toBe(knownUserWrongPassword.error);
 
-      // Timing difference should be minimal (< 10% variation)
-      const timingDifference = Math.abs(avgCorrect - avgIncorrect);
-      const maxTiming = Math.max(avgCorrect, avgIncorrect);
-      const percentDifference = (timingDifference / maxTiming) * 100;
-
-      console.log(`   Avg timing - Correct: ${avgCorrect.toFixed(3)}ms, Incorrect: ${avgIncorrect.toFixed(3)}ms`);
-      console.log(`   Timing difference: ${percentDifference.toFixed(2)}%`);
-
-      // FINDING: Timing may vary based on comparison implementation
-      // RECOMMENDATION: Use crypto.timingSafeEqual for password comparison
-      if (percentDifference > 10) {
-        console.log(`⚠️  SECURITY: Potential timing attack vulnerability`);
-      } else {
-        console.log(`✓ SECURITY: Timing attack resistant (< 10% variance)`);
-      }
+      // Repeating a rejected pair calls through again rather than answering
+      // from a cache — a cached rejection is measurable from outside.
+      await authManager.authenticate({ username: 'no-such-user', password: 'whatever' });
+      expect(mockAuth).toHaveBeenCalledTimes(3);
     });
   });
 

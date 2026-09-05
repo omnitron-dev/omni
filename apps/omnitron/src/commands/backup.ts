@@ -5,6 +5,7 @@
  */
 
 import { log } from '@xec-sh/kit';
+import { formatBackupSize } from '../services/backup-pipeline.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 async function invokeRpc(method: string, data?: any): Promise<any> {
@@ -32,7 +33,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
         return;
       }
       for (const r of results) {
-        if (r.ok) log.success(`  ✓ ${r.database} — ${(r.size / (1024 * 1024)).toFixed(2)} MB [${r.id.slice(0, 8)}]`);
+        if (r.ok) log.success(`  ✓ ${r.database} — ${formatBackupSize(r.size)} [${r.id.slice(0, 8)}]`);
         else log.error(`  ✗ ${r.database}: ${r.error}`);
       }
       const ok = results.filter((r) => r.ok).length;
@@ -42,8 +43,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
 
     log.info(`Creating backup for '${database}'...`);
     const backup: any = await invokeRpc('createBackup', { database, compress: true });
-    const sizeMB = (backup.size / (1024 * 1024)).toFixed(2);
-    log.success(`Backup created: ${backup.filename} (${sizeMB} MB)`);
+    log.success(`Backup created: ${backup.filename} (${formatBackupSize(backup.size)})`);
     log.info(`  ID: ${backup.id}`);
     log.info(`  Database: ${backup.database}`);
   } catch (err) {
@@ -66,7 +66,7 @@ export async function backupListCommand(): Promise<void> {
     log.info('-'.repeat(100));
 
     for (const b of backups) {
-      const sizeMB = (b.size / (1024 * 1024)).toFixed(2) + ' MB';
+      const sizeMB = formatBackupSize(b.size);
       const created = new Date(b.createdAt).toLocaleString();
       log.info([
         b.database.padEnd(25),
@@ -89,7 +89,7 @@ export async function backupFullCommand(): Promise<void> {
       return;
     }
     for (const r of results) {
-      if (r.ok) log.success(`  ✓ ${r.target} — ${((r.size ?? 0) / (1024 * 1024)).toFixed(2)} MB [${(r.id || '').slice(0, 8)}]`);
+      if (r.ok) log.success(`  ✓ ${r.target} — ${formatBackupSize(r.size ?? 0)} [${(r.id || '').slice(0, 8)}]`);
       else log.error(`  ✗ ${r.target}: ${r.error}`);
     }
     const ok = results.filter((r) => r.ok).length;

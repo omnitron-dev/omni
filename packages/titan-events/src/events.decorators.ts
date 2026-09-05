@@ -160,11 +160,28 @@ export const OnAnyEvent = createDecorator<{
   .build();
 
 /**
- * Event emitter decorator - emits events based on method results
+ * Event emitter decorator - emits events based on method results.
+ *
+ * Two parts of the contract are easy to get wrong, because nothing reports
+ * either of them:
+ *
+ * **The emitted names are suffixed.** `event: 'user.created'` emits
+ * `user.created.success` on return and `user.created.error` on throw (the
+ * error is rethrown either way). Subscribing to `user.created` receives
+ * nothing.
+ *
+ * **The emitter is found by convention, not injected.** The decorator reads
+ * `this.__eventEmitter__`, then `this.eventEmitter`. On an instance with
+ * neither, it runs the method and emits nothing — no warning, no error. A
+ * service that calls its emitter `events` or `bus` gets a decorator that does
+ * nothing at all.
  *
  * @example
  * ```typescript
  * class UserService {
+ *   // The property name is part of the contract.
+ *   constructor(private readonly eventEmitter: IEventEmitter) {}
+ *
  *   @EmitEvent({
  *     event: 'user.created',
  *     mapResult: (user) => ({ id: user.id, name: user.name })
@@ -174,6 +191,8 @@ export const OnAnyEvent = createDecorator<{
  *     return user;
  *   }
  * }
+ *
+ * // subscribe to 'user.created.success', not 'user.created'
  * ```
  */
 export const EmitEvent = createMethodInterceptor<{

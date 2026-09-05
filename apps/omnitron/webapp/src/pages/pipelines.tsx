@@ -25,7 +25,7 @@ import Collapse from '@mui/material/Collapse';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -225,6 +225,9 @@ export default function PipelinesPage() {
 
   // A failed button press is a different thing from a stale poll.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Deleting a pipeline used to happen on one click, next to the button that
+  // runs it — and its run history goes with it.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const pipelineList = data?.pipelineList ?? [];
   const runs = data?.runs ?? [];
@@ -239,17 +242,35 @@ export default function PipelinesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+    const id = confirmDelete;
+    if (!id) return;
     try {
       await pipelines.deletePipeline({ id });
-      fetchData();
+      setConfirmDelete(null);
+      await fetchData();
     } catch (err: any) {
       setActionError(err?.message ?? 'Failed to delete pipeline');
     }
   };
 
+  const pendingDelete = pipelineList.find((p) => p.id === confirmDelete);
+
   return (
     <Stack spacing={3}>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete pipeline?"
+        content={
+          <>
+            <b>{pendingDelete?.name ?? confirmDelete}</b> and its run history will be removed.
+          </>
+        }
+        confirmLabel="Delete"
+        confirmColor="error"
+      />
       {/* Header */}
       <Breadcrumbs
         links={[{ name: 'Pipelines' }]}
@@ -336,7 +357,7 @@ export default function PipelinesPage() {
                       <Stack direction="row" spacing={0.5} sx={{
                         justifyContent: "flex-end"
                       }}>
-                        <IconButton size="small" color="error" onClick={() => handleDelete(p.id)} title="Delete">
+                        <IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
                           <CloseIcon />
                         </IconButton>
                         <IconButton size="small" onClick={() => handleRun(p.id)} title="Run">

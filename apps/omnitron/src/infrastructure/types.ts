@@ -146,6 +146,7 @@ export interface ContainerState {
   image: string;
   status: ContainerStatus;
   containerId?: string | undefined;
+  /** Published ports as `"80/tcp" -> 9800`. Absent when nothing is published. */
   ports?: Record<string, number> | undefined;
   health?: 'healthy' | 'unhealthy' | 'starting' | 'none' | undefined;
   startedAt?: string | undefined;

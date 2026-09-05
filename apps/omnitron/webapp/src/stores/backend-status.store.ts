@@ -7,65 +7,81 @@
 
 import { create } from 'zustand';
 
+import {
+  classifyHealthResponse,
+  nextBackendStatus,
+  type BackendStatus,
+  type ProbeOutcome,
+} from 'src/utils/backend-health';
+
 const PROBE_INTERVAL_MS = 30_000;
 const PROBE_TIMEOUT_MS = 5_000;
-
-type BackendStatus = 'unknown' | 'online' | 'offline';
 
 interface BackendStatusState {
   status: BackendStatus;
   lastChecked: number | null;
+  /** Probes that failed to complete, in a row. Reset by any conclusive answer. */
+  consecutiveUnreachable: number;
   /** Trigger an immediate probe and await the result */
   probe: () => Promise<void>;
   /** Start the background polling loop */
   startPolling: () => () => void;
 }
 
-async function checkHealth(): Promise<boolean> {
+async function probeHealth(): Promise<ProbeOutcome> {
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
     const res = await fetch('/api/health', { signal: ac.signal, cache: 'no-store' });
     clearTimeout(timer);
-    // 502/503 = proxy can't reach daemon
-    if (res.status === 502 || res.status === 503) return false;
-    // SPA fallback (text/html) means the route isn't proxied to the daemon
-    const ct = res.headers.get('content-type') ?? '';
-    if (ct.includes('text/html')) return false;
-    if (!res.ok) return false;
-    const body = (await res.json().catch(() => null)) as { status?: string } | null;
-    return body?.status === 'online';
+
+    const contentType = res.headers.get('content-type');
+    const body = res.ok
+      ? ((await res.json().catch(() => null)) as { status?: string } | null)
+      : null;
+
+    return classifyHealthResponse(res.status, contentType, body);
   } catch {
-    return false;
+    // Timeout, abort, network error — the request did not complete, which
+    // says nothing about whether the daemon is running.
+    return 'unreachable';
   }
 }
 
-export const useBackendStatusStore = create<BackendStatusState>((set) => ({
+/** Run one probe and fold its outcome into the store. */
+async function runProbe(
+  set: (partial: Partial<BackendStatusState>) => void,
+  get: () => BackendStatusState
+): Promise<void> {
+  const outcome = await probeHealth();
+  const next = nextBackendStatus(outcome, get().consecutiveUnreachable);
+  set({
+    status: next.status,
+    consecutiveUnreachable: next.consecutiveUnreachable,
+    lastChecked: Date.now(),
+  });
+}
+
+export const useBackendStatusStore = create<BackendStatusState>((set, get) => ({
   status: 'unknown',
   lastChecked: null,
+  consecutiveUnreachable: 0,
 
   probe: async () => {
-    const ok = await checkHealth();
-    set({ status: ok ? 'online' : 'offline', lastChecked: Date.now() });
+    await runProbe(set, get);
   },
 
   startPolling: () => {
-    // Immediate probe on start
-    checkHealth().then((ok) =>
-      set({ status: ok ? 'online' : 'offline', lastChecked: Date.now() })
-    );
-
-    const id = setInterval(async () => {
-      const ok = await checkHealth();
-      set({ status: ok ? 'online' : 'offline', lastChecked: Date.now() });
-    }, PROBE_INTERVAL_MS);
-
+    void runProbe(set, get);
+    const id = setInterval(() => void runProbe(set, get), PROBE_INTERVAL_MS);
     return () => clearInterval(id);
   },
 }));
 
 /** Convenience selectors */
+// `degraded` counts as usable: one probe that did not complete is not a
+// reason to disable sign-in on a daemon that is very likely running.
 export const useBackendOnline = () =>
-  useBackendStatusStore((s) => s.status === 'online' || s.status === 'unknown');
+  useBackendStatusStore((s) => s.status !== 'offline');
 
 export const useBackendStatus = () => useBackendStatusStore((s) => s.status);

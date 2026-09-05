@@ -14,9 +14,9 @@ export function DaemonOfflineBanner() {
   }, [startPolling]);
 
   return (
-    <Collapse in={status === 'offline'} unmountOnExit>
+    <Collapse in={status === 'offline' || status === 'degraded'} unmountOnExit>
       <Alert
-        severity="error"
+        severity={status === 'offline' ? 'error' : 'warning'}
         variant="filled"
         sx={{
           borderRadius: 0,
@@ -29,7 +29,17 @@ export function DaemonOfflineBanner() {
           </Button>
         }
       >
-        Daemon offline — run <code style={{ margin: '0 4px' }}>omnitron dev</code> to start the backend
+        {status === 'offline' ? (
+          <>
+            Daemon offline — run <code style={{ margin: '0 4px' }}>omnitron dev</code> to start the
+            backend
+          </>
+        ) : (
+          // One probe that did not complete. Saying "offline" here would tell
+          // an operator to start a daemon that is very likely running — which
+          // is what this banner used to do on a loaded machine.
+          <>The daemon did not answer the last check — this view may be out of date</>
+        )}
       </Alert>
     </Collapse>
   );

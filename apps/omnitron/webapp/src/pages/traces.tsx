@@ -26,6 +26,7 @@ import { Breadcrumbs } from '@omnitron-dev/prism';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -168,10 +169,6 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
 
 export default function TracesPage() {
   const { displayName, namespacePrefix } = useStackContext();
-  const [traceList, setTraceList] = useState<Trace[]>([]);
-  const [serviceMap, setServiceMap] = useState<ServiceMapEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [expandedTrace, setExpandedTrace] = useState<string | null>(null);
 
   // Filters
@@ -179,8 +176,15 @@ export default function TracesPage() {
   const [operationFilter, setOperationFilter] = useState('');
   const [minDuration, setMinDuration] = useState('');
 
-  const fetchData = useCallback(async () => {
-    try {
+  // Shared polling loop — see `use-polled-resource`.
+  //
+  // `Promise.allSettled` is kept: the trace list and the service map come
+  // from separate RPCs, and one being unavailable should not blank the other.
+  // What changes is that a rejection is no longer silently discarded — the
+  // old code checked only `status === 'fulfilled'` and left the failed half
+  // showing its previous value with no indication anything was wrong.
+  const { data, loading, error, refresh } = usePolledResource(
+    async () => {
       const filter: any = { limit: 50 };
       if (serviceFilter) filter.service = serviceFilter;
       if (operationFilter) filter.operation = operationFilter;
@@ -191,23 +195,27 @@ export default function TracesPage() {
         traces.getServiceMap(),
       ]);
 
-      if (tracesResult.status === 'fulfilled')
-        setTraceList(Array.isArray(tracesResult.value) ? tracesResult.value : []);
-      if (mapResult.status === 'fulfilled')
-        setServiceMap(Array.isArray(mapResult.value) ? mapResult.value : []);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch traces');
-    } finally {
-      setLoading(false);
-    }
-  }, [serviceFilter, operationFilter, minDuration]);
+      const failures = [tracesResult, mapResult]
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map((r) => (r.reason as { message?: string })?.message ?? 'request failed');
+      if (failures.length === 2) throw new Error(failures[0]);
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15_000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+      return {
+        traceList: tracesResult.status === 'fulfilled' && Array.isArray(tracesResult.value)
+          ? (tracesResult.value as Trace[])
+          : [],
+        serviceMap: mapResult.status === 'fulfilled' && Array.isArray(mapResult.value)
+          ? (mapResult.value as ServiceMapEntry[])
+          : [],
+        partialFailure: failures.length === 1 ? failures[0] : null,
+      };
+    },
+    { intervalMs: 15_000 }
+  );
+
+  const traceList = data?.traceList ?? [];
+  const serviceMap = data?.serviceMap ?? [];
+  const partialFailure = data?.partialFailure ?? null;
 
   return (
     <Stack spacing={3}>
@@ -215,14 +223,14 @@ export default function TracesPage() {
       <Breadcrumbs
         links={[{ name: 'Traces' }]}
         action={
-          <IconButton size="small" onClick={fetchData} title="Refresh">
+          <IconButton size="small" onClick={() => void refresh()} title="Refresh">
             <RefreshIcon />
           </IconButton>
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {(error || partialFailure) && (
+        <Alert severity="warning" variant="outlined">
+          {error ?? `Some trace data is unavailable: ${partialFailure}`}
         </Alert>
       )}
       {/* Filters */}

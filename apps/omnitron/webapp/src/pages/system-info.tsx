@@ -13,7 +13,7 @@
  * Auto-refreshes every 5s via polling (uses OmnitronSystemInfo RPC).
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CardHeader from '@mui/material/CardHeader';
@@ -29,6 +29,7 @@ import Box from '@mui/material/Box';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { systemInfo } from 'src/netron/client';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { formatMemory } from 'src/utils/formatters';
 
 // =============================================================================
@@ -109,28 +110,14 @@ function formatDuration(ms: number): string {
 
 export default function SystemInfoPage() {
   const theme = useTheme();
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const isFirstLoad = useRef(true);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const snapshot = await systemInfo.getSnapshot();
-      setData(snapshot);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch system info');
-    } finally {
-      if (isFirstLoad.current) { setLoading(false); isFirstLoad.current = false; }
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const timer = setInterval(fetchData, 5000);
-    return () => clearInterval(timer);
-  }, [fetchData]);
+  // Shared polling loop — see `use-polled-resource`. The `isFirstLoad` ref
+  // this replaces existed to stop the skeleton reappearing on every refresh;
+  // `loading` is now true only until the first attempt settles, so the effect
+  // it was guarding cannot happen.
+  const { data, loading, error } = usePolledResource<any>(
+    () => systemInfo.getSnapshot(),
+    { intervalMs: 5_000 }
+  );
 
   if (loading) {
     return (

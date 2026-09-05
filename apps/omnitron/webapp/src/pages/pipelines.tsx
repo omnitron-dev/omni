@@ -27,7 +27,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
 import { Breadcrumbs } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
-import { formatDate } from 'src/utils/formatters';
+import { formatDate, formatDuration } from 'src/utils/formatters';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,14 +64,7 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'info' | 'warning' | '
   cancelled: 'default',
 };
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return '--';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return `${m}m ${rem}s`;
-}
+
 
 // ---------------------------------------------------------------------------
 // Create Pipeline Dialog

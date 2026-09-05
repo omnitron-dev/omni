@@ -73,6 +73,22 @@ export function formatDateShort(date: Date | string): string {
   });
 }
 
+/**
+ * A duration in ms as `45s` or `3m 20s`.
+ *
+ * Was copied into deployments.tsx and pipelines.tsx, both with the `<= 0`
+ * confusion the other formatters here had: a deployment that finished in
+ * under a millisecond, or a pipeline step that was instantaneous, read as
+ * `--` — "we do not know how long it took" rather than "no time at all".
+ */
+export function formatDuration(ms: number): string {
+  if (ms < 0 || !Number.isFinite(ms)) return '--';
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  return `${mins}m ${seconds % 60}s`;
+}
+
 export function timeAgo(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   // Clock skew between the daemon and the browser puts events slightly in the

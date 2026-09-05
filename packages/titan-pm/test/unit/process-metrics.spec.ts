@@ -384,7 +384,15 @@ describe('ProcessMetricsCollector', () => {
       expect(metrics).not.toBeNull();
     });
 
-    it('should return fallback metrics when proxy lacks __getMetrics', async () => {
+    it('records no sample when the proxy cannot report metrics', async () => {
+      // This used to assert `cpu === 0` and `memory === 0` — it pinned the
+      // fabricated fallback as the contract. Those zeros went into
+      // `metricsHistory`, which `getAggregatedMetrics` averages, so each failed
+      // collection dragged the reported average down and a process that could
+      // not be measured at all looked perfectly idle.
+      //
+      // A sample that was never taken is not a sample of zero. The history now
+      // gets a gap instead, which a reader can recognise as missing data.
       const proxy = {
         __processId: 'test-process',
         __destroy: vi.fn(),
@@ -394,9 +402,26 @@ describe('ProcessMetricsCollector', () => {
       collector.startCollection('proc-1', proxy, 1000);
       await vi.advanceTimersByTimeAsync(1500);
 
-      const metrics = collector.getMetrics('proc-1');
-      expect(metrics?.cpu).toBe(0);
-      expect(metrics?.memory).toBe(0);
+      expect(collector.getMetrics('proc-1')).toBeNull();
+      expect(collector.getMetricsHistory('proc-1')).toEqual([]);
+      expect(collector.getAggregatedMetrics('proc-1')).toBeNull();
+    });
+
+    it('records no sample when the metrics call rejects', async () => {
+      // Same rule for the other failure path: a rejection used to be stored as
+      // `{ cpu: 0, memory: 0, errors: 1 }`, which is three fabricated readings
+      // to carry one bit of information.
+      const proxy = {
+        __processId: 'test-process',
+        __destroy: vi.fn(),
+        __getMetrics: vi.fn().mockRejectedValue(new Error('worker unreachable')),
+      } as any;
+
+      collector.startCollection('proc-2', proxy, 1000);
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(collector.getMetrics('proc-2')).toBeNull();
+      expect(collector.getMetricsHistory('proc-2')).toEqual([]);
     });
   });
 

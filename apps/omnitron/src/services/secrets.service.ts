@@ -35,8 +35,16 @@ import {
   SECRETS_LEGACY_PATH_TOKEN,
 } from '../shared/tokens.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
 
 const scryptAsync = promisify(scrypt);
+
+/**
+ * The passphrase `commands/secret.ts` used to fall back to, before both
+ * entry points were pointed at `DEFAULT_SECRETS_PASSPHRASE`. Kept only to
+ * read stores written under it; nothing encrypts with it.
+ */
+const RETIRED_CLI_PASSPHRASE = 'omnitron-default-passphrase';
 
 // =============================================================================
 // Types
@@ -271,7 +279,48 @@ export class SecretsService {
       this.cache = await this.decrypt(envelope);
       return this.cache;
     } catch (err) {
+      // Before the two entry points shared one default, the CLI's
+      // direct-file path used a different passphrase from the daemon's, so a
+      // store written through the CLI on a host with no configured
+      // passphrase is encrypted under a value neither side uses any more.
+      // Read it once with the retired default and re-encrypt under the
+      // current one, so unifying the default does not silently strand
+      // secrets that were readable yesterday.
+      //
+      // Only attempted when no passphrase is configured: with an explicit
+      // one, a decryption failure means the operator's passphrase is wrong,
+      // and trying a hardcoded value would be both useless and alarming.
+      const recovered = await this.tryRetiredPassphrase(envelope);
+      if (recovered) {
+        this.cache = recovered;
+        await this.save(recovered);
+        return this.cache;
+      }
       throw new Error(`Failed to decrypt secrets: ${(err as Error).message}. Wrong passphrase?`, { cause: err });
+    }
+  }
+
+  /**
+   * One-shot migration for stores written under the CLI's old default.
+   *
+   * Returns the secrets if they decrypt under the retired passphrase, null
+   * otherwise — including when a passphrase is configured, where a failure
+   * is the operator's to resolve.
+   */
+  private async tryRetiredPassphrase(envelope: SecretsEnvelope): Promise<SecretsMap | null> {
+    if (this.passphrase !== DEFAULT_SECRETS_PASSPHRASE) return null;
+
+    const current = this.passphrase;
+    this.passphrase = RETIRED_CLI_PASSPHRASE;
+    try {
+      const secrets = await this.decrypt(envelope);
+      return secrets;
+    } catch {
+      return null;
+    } finally {
+      // Restored before `save()` runs, so the re-encryption below uses the
+      // current passphrase rather than the retired one it just read with.
+      this.passphrase = current;
     }
   }
 

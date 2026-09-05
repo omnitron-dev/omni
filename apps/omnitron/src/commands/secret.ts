@@ -11,19 +11,44 @@
 import { log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
+/**
+ * Decide whether to fall back to direct file access, and say so when the
+ * fallback is hiding something.
+ *
+ * The four commands below each carried `catch { /* Fall through *\/ }`. A
+ * daemon that is not running is the case the fallback exists for, and
+ * silence there is right. A daemon that IS running and whose RPC failed is a
+ * different event entirely, and it was reported as success: `omnitron secret
+ * list` printed the keys it read from disk while the daemon could not
+ * decrypt the same file — the two sides had different default passphrases,
+ * and the CLI's silent fallback is why that could persist unnoticed while
+ * the console and the MCP tools failed.
+ *
+ * Returns true when the caller should read the file directly.
+ */
+function warnIfHidingAFailure(err: unknown, reachable: boolean): void {
+  if (!reachable) return;
+  log.warn(
+    `Daemon is running but its secrets RPC failed: ${(err as Error)?.message ?? String(err)}`
+  );
+  log.warn('Falling back to direct file access — these two can disagree; the daemon\'s answer is what the console and MCP tools see.');
+}
+
 export async function secretSetCommand(key: string, value: string): Promise<void> {
   // Try daemon RPC first, fall back to direct file access
   const client = createDaemonClient();
 
+  let reachable = false;
   try {
-    if (await client.isReachable()) {
+    reachable = await client.isReachable();
+    if (reachable) {
       await invokeSecretsRpc(client, 'set', { key, value });
       log.success(`Secret '${key}' set`);
       await client.disconnect();
       return;
     }
-  } catch {
-    // Fall through to direct mode
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
   }
   await client.disconnect();
 
@@ -36,8 +61,10 @@ export async function secretSetCommand(key: string, value: string): Promise<void
 export async function secretGetCommand(key: string): Promise<void> {
   const client = createDaemonClient();
 
+  let reachable = false;
   try {
-    if (await client.isReachable()) {
+    reachable = await client.isReachable();
+    if (reachable) {
       const result = await invokeSecretsRpc(client, 'get', { key });
       if (result.value !== null) {
         // Output raw value to stdout for scripting compatibility
@@ -48,8 +75,8 @@ export async function secretGetCommand(key: string): Promise<void> {
       await client.disconnect();
       return;
     }
-  } catch {
-    // Fall through
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
   }
   await client.disconnect();
 
@@ -66,15 +93,17 @@ export async function secretGetCommand(key: string): Promise<void> {
 export async function secretListCommand(): Promise<void> {
   const client = createDaemonClient();
 
+  let reachable = false;
   try {
-    if (await client.isReachable()) {
+    reachable = await client.isReachable();
+    if (reachable) {
       const result = await invokeSecretsRpc(client, 'list');
       printKeys(result.keys);
       await client.disconnect();
       return;
     }
-  } catch {
-    // Fall through
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
   }
   await client.disconnect();
 
@@ -87,8 +116,10 @@ export async function secretListCommand(): Promise<void> {
 export async function secretDeleteCommand(key: string): Promise<void> {
   const client = createDaemonClient();
 
+  let reachable = false;
   try {
-    if (await client.isReachable()) {
+    reachable = await client.isReachable();
+    if (reachable) {
       const result = await invokeSecretsRpc(client, 'delete', { key });
       if (result.existed) {
         log.success(`Secret '${key}' deleted`);
@@ -98,8 +129,8 @@ export async function secretDeleteCommand(key: string): Promise<void> {
       await client.disconnect();
       return;
     }
-  } catch {
-    // Fall through
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
   }
   await client.disconnect();
 
@@ -148,7 +179,7 @@ async function invokeSecretsRpc(client: any, method: string, data?: any): Promis
 async function createDirectService(): Promise<import('../services/secrets.service.js').SecretsService> {
   const { SecretsService } = await import('../services/secrets.service.js');
   const { DaemonStateStore } = await import('../daemon/daemon-state-store.service.js');
-  const { DEFAULT_DAEMON_CONFIG } = await import('../config/defaults.js');
+  const { DEFAULT_DAEMON_CONFIG, DEFAULT_SECRETS_PASSPHRASE } = await import('../config/defaults.js');
   const { expandPath } = await import('../shared/paths.js');
   const dc = DEFAULT_DAEMON_CONFIG;
 
@@ -169,7 +200,7 @@ async function createDirectService(): Promise<import('../services/secrets.servic
   const store = new DaemonStateStore(noopLogger);
 
   const legacyPath = expandPath(dc.secrets?.path ?? '~/.omnitron/secrets.enc');
-  const passphrase = dc.secrets?.passphrase ?? 'omnitron-default-passphrase';
+  const passphrase = dc.secrets?.passphrase ?? DEFAULT_SECRETS_PASSPHRASE;
 
   return new SecretsService(store, passphrase, legacyPath);
 }

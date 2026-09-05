@@ -297,9 +297,18 @@ export class ProjectRegistry {
       }
       // Done — drop the file so subsequent boots skip this branch.
       try { fs.unlinkSync(LEGACY_REGISTRY_FILE); } catch { /* best-effort */ }
-    } catch {
-      // Corrupted legacy file — leave it in place, log nothing here
-      // (the constructor caller has no logger handle).
+    } catch (err) {
+      // Corrupted legacy file — leave it in place. There is no logger at
+      // this point (the constructor caller has none), but silence is the
+      // wrong reading of that: the visible effect is every pre-migration
+      // project missing from `omnitron project list`, with the file that
+      // still holds them sitting on disk unmentioned. stderr is always
+      // available, and on the daemon it lands in the daemon log.
+      process.stderr.write(
+        `[omnitron] legacy project registry at ${LEGACY_REGISTRY_FILE} could not be imported ` +
+          `(${(err as Error).message}) — it has been left in place, and projects recorded only ` +
+          `there will not be listed\n`
+      );
     }
   }
 }

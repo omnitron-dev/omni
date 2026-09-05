@@ -968,13 +968,31 @@ export class ProjectService extends EventEmitter {
             const srcDir = path.dirname(bootstrapAbsPath);
             const appRoot = path.resolve(srcDir, '..');
             const configPath = path.join(appRoot, 'config', 'default.json');
+            // Absent and malformed are different events under one comment
+            // naming only the first: an app without a `config/default.json`
+            // is ordinary, one whose default.json does not parse is an
+            // operator who edited it and got defaults with nothing said.
+            // Same shape as `orchestrator.service.ts`, which reads the same
+            // file for the same reason.
+            let content: string | null = null;
             try {
-              const content = fs.readFileSync(configPath, 'utf-8');
-              const json = JSON.parse(content);
-              if (json.omnitron) {
-                definition.omnitronConfig = json.omnitron as OmnitronAppConfig;
+              content = fs.readFileSync(configPath, 'utf-8');
+            } catch {
+              // Absent, or unreadable — the app has defaults.
+            }
+            if (content !== null) {
+              try {
+                const json = JSON.parse(content);
+                if (json.omnitron) {
+                  definition.omnitronConfig = json.omnitron as OmnitronAppConfig;
+                }
+              } catch (err) {
+                this.logger.error(
+                  { app: entry.name, configPath, error: (err as Error).message },
+                  'config/default.json does not parse — its `omnitron` section is being ignored'
+                );
               }
-            } catch { /* config file missing — skip */ }
+            }
           }
 
           appDefinitions.set(entry.name, definition);

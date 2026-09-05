@@ -502,6 +502,12 @@ describeOrSkip('Rotif - Edge Cases', () => {
     });
 
     it('should handle malformed messages in stream', async () => {
+      // This used to end at the comment "Should not crash, message should be
+      // acked" with no assertion — and the comment was wrong besides. An
+      // unparseable payload is moved to the DLQ, deliberately, so that it is
+      // neither delivered nor silently dropped. Both halves matter: without
+      // the DLQ check a message that vanished would pass, and without the
+      // handler check a message delivered as garbage would pass.
       const received: any[] = [];
 
       await manager.subscribe('test.malformed', async (msg) => {
@@ -510,7 +516,6 @@ describeOrSkip('Rotif - Edge Cases', () => {
 
       await delay(100);
 
-      // Add malformed message directly to stream
       await redis.xadd(
         'rotif:stream:test.malformed',
         '*',
@@ -522,9 +527,31 @@ describeOrSkip('Rotif - Edge Cases', () => {
         String(Date.now())
       );
 
-      await delay(500);
+      // Wait for the DLQ entry rather than for a fixed delay.
+      let dlq: string[] = [];
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        dlq = await redis.xrange('rotif:dlq', '-', '+');
+        if (dlq.length > 0) break;
+        await delay(25);
+      }
 
-      // Should not crash, message should be acked
+      expect(dlq.length, 'unparseable message never reached the DLQ').toBe(1);
+      const fields = dlq[0]![1] as unknown as string[];
+      const dlqEntry: Record<string, string> = {};
+      for (let i = 0; i < fields.length; i += 2) dlqEntry[fields[i]!] = fields[i + 1]!;
+      expect(dlqEntry['channel']).toBe('test.malformed');
+      expect(dlqEntry['payload']).toBe('invalid-json');
+
+      expect(received, 'malformed message was delivered to the handler').toEqual([]);
+
+      // And it is out of the pending list — a poison message that stayed
+      // pending would be redelivered on every claim cycle forever.
+      const pending = (await redis.xpending('rotif:stream:test.malformed', 'grp:test.malformed')) as [
+        number,
+        ...unknown[],
+      ];
+      expect(pending[0], 'unparseable message left pending — it will be redelivered forever').toBe(0);
     });
   });
 });

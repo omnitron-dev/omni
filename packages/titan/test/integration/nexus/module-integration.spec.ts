@@ -12,6 +12,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Container, createToken, Scope, forwardRef } from '@nexus';
 import type { IModule } from '@nexus';
 
+import { after } from '../../async-assert.js';
+
 // Tokens for testing
 const DatabaseToken = createToken<DatabaseService>('DatabaseService');
 const CacheToken = createToken<CacheService>('CacheService');
@@ -410,12 +412,11 @@ describe('Nexus Container - Module Integration', () => {
       container.loadModule(module);
       container.loadModule(module);
 
-      // Wait for async init
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          expect(loadCount).toBe(1);
-          resolve();
-        }, 20);
+      // Wait for async init. `after`, not `eventually`: the property is
+      // "loaded exactly once", and a poll for `=== 1` would stop at the first
+      // tick and never notice a second load arriving later.
+      return after(20, () => {
+        expect(loadCount).toBe(1);
       });
     });
 
@@ -456,12 +457,9 @@ describe('Nexus Container - Module Integration', () => {
 
       container.loadModule(moduleA);
 
-      // Wait for async init
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          expect(dLoadCount).toBe(1);
-          resolve();
-        }, 20);
+      // Wait for async init — see the note above on `after` vs `eventually`.
+      return after(20, () => {
+        expect(dLoadCount).toBe(1);
       });
     });
   });

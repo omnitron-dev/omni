@@ -3,7 +3,13 @@
  * This file imports and runs all *.spec.ts tests
  */
 
-import '@omnitron-dev/testing/runtime/bun';
+// Relative, and to the SOURCE, on purpose. Declaring `@omnitron-dev/testing`
+// as a dependency of `common` closes a build cycle — testing depends on titan,
+// titan on common — and turbo then refuses to build anything at all. A runner's
+// need for an adapter must not become an edge in the build graph, so it is
+// resolved the way the Deno runner resolves it: outside that graph. Source
+// rather than dist for the same reason — no build ordering to get wrong.
+import '../../../testing/src/runtime/bun-adapter.ts';
 import { describe, test, expect } from 'bun:test';
 
 // Import all test files

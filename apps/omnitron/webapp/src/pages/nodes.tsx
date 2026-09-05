@@ -389,8 +389,18 @@ function NodeCard({
           <Stack direction="row" spacing={0}>
             {!node.isLocal && (
               <Tooltip title={checking ? 'Checking...' : 'Check SSH connection'}>
+                {/* MUI needs a span to hold a tooltip over a DISABLED button,
+                    and the tooltip's label lands on that span rather than on
+                    the button — so the button itself announced as just
+                    "button". Every other icon button in the console gets its
+                    name from its tooltip; this one has to say it directly. */}
                 <span>
-                  <IconButton size="small" onClick={() => onCheckSsh(node.id)} disabled={checking}>
+                  <IconButton
+                    size="small"
+                    aria-label="Check SSH connection"
+                    onClick={() => onCheckSsh(node.id)}
+                    disabled={checking}
+                  >
                     <RefreshIcon sx={{ fontSize: 18, ...(checking && { animation: `${spin} 1s linear infinite` }) }} />
                   </IconButton>
                 </span>

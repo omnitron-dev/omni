@@ -696,6 +696,13 @@ export interface IDaemonConfig {
    * `trustProxy` is off by default because the forwarded header is
    * client-controlled unless the proxy is known to overwrite it.
    */
+  /**
+   * Largest WebSocket frame the daemon will accept, in bytes. Default: 8 MB.
+   *
+   * The WebSocket transport takes no rate limit — this is the only bound it
+   * offers — and unset it inherits `ws`'s 100 MB default.
+   */
+  wsMaxPayload?: number;
   httpRateLimit?: {
     /** Default: true. */
     enabled?: boolean;

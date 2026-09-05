@@ -440,9 +440,16 @@ export class OmnitronDaemon {
         host: localHost,
         cors: true,
         invocationWrapper: authContextWrapper,
-        // Volume cap on the RPC surface. Password guessing is bounded by the
-        // per-account lockout in AuthService; this bounds everything else,
-        // including attempts to flood the daemon into unresponsiveness.
+        // Volume cap on the HTTP RPC surface, and only that one. Password
+        // guessing is bounded by the per-account lockout in AuthService.
+        //
+        // The WebSocket surface below is NOT covered: netron's WebSocket
+        // transport has no rate-limit option — `maxPayload` is the only
+        // bound it accepts — and the console talks over WebSocket. This
+        // comment used to say the limit bounded "everything else, including
+        // attempts to flood the daemon into unresponsiveness", which
+        // describes a protection that covers one of the two transports an
+        // attacker can reach.
         rateLimit: {
           enabled: rl.enabled ?? true,
           windowMs: rl.windowMs ?? 60_000,
@@ -463,6 +470,12 @@ export class OmnitronDaemon {
         port: wsPort,
         host: localHost,
         invocationWrapper: authContextWrapper,
+        // The only bound this transport accepts. Left unset it inherits
+        // `ws`'s 100 MB default, which is a lot of memory to hand a single
+        // frame on a control-plane socket that carries RPC arguments and
+        // event pushes. 8 MB is well above anything the console sends and
+        // well below anything worth allocating for a stranger.
+        maxPayload: dc.wsMaxPayload ?? 8 * 1024 * 1024,
       },
     });
   }

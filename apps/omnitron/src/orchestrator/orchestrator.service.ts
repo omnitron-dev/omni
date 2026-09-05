@@ -11,7 +11,13 @@
  *
  * Classic mode:
  *   - child_process.fork() with manual exit handling (legacy compat)
- *   - Real CPU/memory metrics via pidusage
+ *
+ * Metrics for both modes come from one `ps -o pid=,rss=,%cpu=` call covering
+ * every managed pid — supervisor children and pool workers alike. This line
+ * used to say "real CPU/memory metrics via pidusage"; `pidusage` is not a
+ * dependency of this package and appears nowhere else in the source. The
+ * sentence outlived the code it described, in the one area where a stale
+ * claim is hardest to catch: metrics that are wrong still look like metrics.
  *
  * Architecture:
  *   pm.supervisor({ children: [{ process: bootstrap-process.js, ... }] })
@@ -1589,7 +1595,12 @@ export class OrchestratorService extends EventEmitter {
         size: instances,
         strategy: PoolStrategy.POWER_OF_TWO,
         metrics: true,
-        replaceUnhealthy: true,
+        // `replaceUnhealthy` is deliberately not set: titan-pm declares it
+        // and reads it nowhere. An unhealthy worker is replaced by the
+        // health path regardless, so `true` was a no-op that happened to
+        // match the behaviour — and `false` would have been a no-op that did
+        // not, leaving an operator believing they had turned replacement off.
+        // What actually governs it is `healthCheck.unhealthyThreshold`.
         requestTimeout: 120_000,
         maxQueueSize: 200,
         spawnOptions: {
@@ -1840,7 +1851,8 @@ export class OrchestratorService extends EventEmitter {
         size: instances,
         strategy: PoolStrategy.ROUND_ROBIN,
         metrics: true,
-        replaceUnhealthy: true,
+        // See the note on the other pool: `replaceUnhealthy` is declared by
+        // titan-pm and read by nothing.
         healthCheck: {
           enabled: true,
           interval: config.monitoring.healthCheck.interval,

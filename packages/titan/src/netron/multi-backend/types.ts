@@ -168,6 +168,15 @@ export interface BackendStatus {
   avgLatency?: number;
 
   /**
+   * Weight for weighted load balancing, carried from `BackendConfig.weight`.
+   *
+   * The router receives statuses, not configs, and `selectWeighted` used to
+   * note that "weights are not in BackendStatus" and fall back to random —
+   * silently turning a capacity decision into a coin toss. They are here now.
+   */
+  weight?: number;
+
+  /**
    * Last health check timestamp
    */
   lastHealthCheck?: number;

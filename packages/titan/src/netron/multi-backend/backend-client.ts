@@ -435,6 +435,7 @@ export class BackendClient extends EventEmitter {
       responsesReceived: this.metrics.responsesReceived,
       errors: this.metrics.errors,
       avgLatency,
+      weight: this.config.weight,
       lastHealthCheck: this.metrics.lastHealthCheck,
       lastSuccess: this.metrics.lastSuccess,
       lastError: this.metrics.lastError,

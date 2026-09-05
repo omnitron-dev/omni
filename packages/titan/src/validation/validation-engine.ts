@@ -26,7 +26,13 @@ export interface ValidationOptions {
   skipValidation?: boolean;
   errorFormat?: 'simple' | 'detailed';
   errorMap?: z.ZodErrorMap;
+  /**
+   * NOT IMPLEMENTED — nothing reads this. Compiled validators are cached
+   * unconditionally, so `false` does not disable the cache. The package README
+   * documents it as a working option, which is how it went unnoticed.
+   */
   cacheValidators?: boolean;
+  /** NOT IMPLEMENTED — nothing reads this; see `cacheValidators`. */
   lazyCompilation?: boolean;
   stripUnknown?: boolean;
   coerceTypes?: boolean;

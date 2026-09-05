@@ -108,6 +108,44 @@ interface MethodDescriptor<TInput = unknown, TOutput = unknown> {
  * Native HTTP Server implementation
  * Handles Netron v1.0 protocol with native JSON messaging
  */
+/**
+ * Request body ceiling in bytes.
+ *
+ * `TransportOptions.maxRequestSize` is the declared, documented option —
+ * "Maximum request size (HTTP only). Accepts human-readable strings like
+ * '10mb', '1gb'" — and nothing read it. The server read `maxBodySize` instead,
+ * through `(this.options as any)`, so the knob that worked was undeclared and
+ * the knob that was declared did nothing: a caller setting `maxRequestSize:
+ * '50mb'` still got 413 at ten megabytes.
+ *
+ * Both are accepted now, `maxRequestSize` first, with `maxBodySize` kept for
+ * callers already relying on it.
+ */
+const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
+
+export function resolveMaxBodyBytes(options: unknown): number {
+  const opts = (options ?? {}) as { maxRequestSize?: string | number; maxBodySize?: number };
+
+  if (typeof opts.maxRequestSize === 'number' && opts.maxRequestSize > 0) {
+    return opts.maxRequestSize;
+  }
+  if (typeof opts.maxRequestSize === 'string') {
+    const match = opts.maxRequestSize.trim().match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i);
+    if (match) {
+      const multiplier = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[
+        (match[2] ?? 'b').toLowerCase()
+      ]!;
+      const bytes = Math.floor(parseFloat(match[1]!) * multiplier);
+      if (bytes > 0) return bytes;
+    }
+    // An unparseable value must not silently widen the limit.
+  }
+
+  return typeof opts.maxBodySize === 'number' && opts.maxBodySize > 0
+    ? opts.maxBodySize
+    : DEFAULT_MAX_BODY_BYTES;
+}
+
 export class HttpServer extends EventEmitter implements ITransportServer {
   readonly connections = new Map<string, ITransportConnection>();
 
@@ -659,7 +697,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           port,
           hostname: host,
           fetch: this.handleRequest.bind(this),
-          maxRequestBodySize: (this.options as any).maxBodySize || 10 * 1024 * 1024,
+          maxRequestBodySize: resolveMaxBodyBytes(this.options),
         });
       } else {
         throw Errors.notImplemented('Bun runtime detected but Bun.serve not available');
@@ -1992,7 +2030,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         this.metrics.totalBytesReceived += chunk.length;
 
         // OPTIMIZATION: Prevent memory exhaustion from oversized requests
-        const maxSize = (this.options as any)?.maxBodySize || 10 * 1024 * 1024; // 10MB
+        const maxSize = resolveMaxBodyBytes(this.options);
         if (totalLength > maxSize) {
           req.destroy();
           reject(

@@ -61,7 +61,16 @@ export const LONG_REQUEST_TIMEOUT = 10 * 60_000;
 export function isRequestTimeout(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const e = err as { code?: unknown; message?: unknown };
+
+  // The code is the answer whenever there is one.
   if (e.code === 408 || e.code === 'REQUEST_TIMEOUT') return true;
+  if (e.code !== undefined && e.code !== null) return false;
+
+  // Only an error that arrived WITHOUT a code — serialised across a boundary
+  // that dropped it — falls back to its wording. Reading the text of a coded
+  // error would let a 500 whose message happens to mention a timeout be
+  // reported as "we stopped waiting", which is the opposite conclusion: one
+  // says the operation may still be running, the other that it failed.
   return typeof e.message === 'string' && e.message.includes('timed out after');
 }
 

@@ -81,6 +81,16 @@ export function createRedisClient(options: InternalRedisClientOptions = {}): Int
     lazyConnect: options.lazyConnect ?? true,
   };
 
+  // `url` is documented as overriding the other connection options, and was
+  // read by nothing: a client configured with a connection string quietly
+  // connected to localhost:6379 instead, and succeeded whenever a local Redis
+  // happened to be running. ioredis takes the string as its first argument and
+  // lets the options object supply everything the URL does not carry.
+  if (options.url) {
+    const { host: _host, port: _port, ...rest } = redisOptions;
+    return new Redis(options.url, rest);
+  }
+
   return new Redis(redisOptions);
 }
 

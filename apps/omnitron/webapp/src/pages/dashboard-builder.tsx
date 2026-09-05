@@ -52,6 +52,7 @@ import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';
 
 import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
+import { readStoredJson, writeStoredJson } from '../utils/storage';
 
 // =============================================================================
 // Types
@@ -81,16 +82,13 @@ interface DashboardConfig {
 const STORAGE_KEY = 'omnitron_dashboards_v2';
 
 function loadDashboards(): DashboardConfig[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return readStoredJson<DashboardConfig[]>(STORAGE_KEY, []);
 }
 
 function saveDashboards(configs: DashboardConfig[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+  // Best-effort. The read was already guarded; this write was not, and it
+  // runs from a click handler — a full quota threw out of the save button.
+  writeStoredJson(STORAGE_KEY, configs);
 }
 
 const SIZE_MAP: Record<string, Record<string, number>> = {

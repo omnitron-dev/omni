@@ -48,7 +48,7 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           cursor: 'pointer',
           minWidth: 300,
           background: 'rgba(15, 15, 25, 0.92)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '1px solid', borderColor: 'divider',
           ...(selected && {
             borderColor: 'rgba(99, 102, 241, 0.6)',
             boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
@@ -88,7 +88,7 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               }}>
               {nodeData.hostname}
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
               {nodeData.address}
             </Typography>
           </Stack>
@@ -148,11 +148,11 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               <Stack direction="row" spacing={1} sx={{
                 alignItems: "center"
               }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
                   CPU
                 </Typography>
                 <Box sx={miniBarSx(nodeData.cpu, nodeData.cpu > 80 ? '#ef4444' : nodeData.cpu > 50 ? '#f59e0b' : '#22c55e')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#94a3b8', width: 36, textAlign: 'right', flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
                   {nodeData.cpu.toFixed(0)}%
                 </Typography>
               </Stack>
@@ -161,11 +161,11 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               <Stack direction="row" spacing={1} sx={{
                 alignItems: "center"
               }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
                   MEM
                 </Typography>
                 <Box sx={miniBarSx(nodeData.memory, nodeData.memory > 80 ? '#ef4444' : nodeData.memory > 50 ? '#f59e0b' : '#3b82f6')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#94a3b8', width: 36, textAlign: 'right', flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
                   {nodeData.memory.toFixed(0)}%
                 </Typography>
               </Stack>
@@ -174,11 +174,11 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               <Stack direction="row" spacing={1} sx={{
                 alignItems: "center"
               }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#64748b', width: 28, flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
                   DSK
                 </Typography>
                 <Box sx={miniBarSx(nodeData.disk, nodeData.disk > 90 ? '#ef4444' : nodeData.disk > 70 ? '#f59e0b' : '#94a3b8')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: '#94a3b8', width: 36, textAlign: 'right', flexShrink: 0 }}>
+                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
                   {nodeData.disk.toFixed(0)}%
                 </Typography>
               </Stack>
@@ -191,14 +191,14 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           <Stack
             direction="row"
             spacing={0.5}
-            sx={{ mt: 1.5, pt: 1, borderTop: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: 0.5 }}
+            sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderTopColor: 'divider', flexWrap: 'wrap', gap: 0.5 }}
           >
             {nodeData.apps.map((app) => (
               <Chip
                 key={app}
                 label={app}
                 size="small"
-                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'action.hover', color: 'text.primary' }}
               />
             ))}
           </Stack>

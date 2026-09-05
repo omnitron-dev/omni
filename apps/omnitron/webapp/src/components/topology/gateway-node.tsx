@@ -56,7 +56,7 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               flexShrink: 0,
             }}
           >
-            <DeployIcon sx={{ fontSize: 20, color: '#60a5fa' }} />
+            <DeployIcon sx={{ fontSize: 20, color: 'info.main' }} />
           </Box>
 
           <Stack spacing={0} sx={{ minWidth: 0, flex: 1 }}>
@@ -69,7 +69,7 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               }}>
               {nodeData.label}
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
               :{nodeData.port}
             </Typography>
           </Stack>
@@ -116,7 +116,7 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
                 fontSize: 11,
                 fontWeight: 600,
                 bgcolor: 'rgba(124, 58, 237, 0.15)',
-                color: '#a78bfa',
+                color: 'secondary.main',
                 border: '1px solid rgba(124, 58, 237, 0.3)',
               }}
             />
@@ -130,12 +130,12 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
             sx={{
               mt: 1,
               pt: 1,
-              borderTop: '1px solid rgba(255,255,255,0.06)',
+              borderTop: '1px solid', borderTopColor: 'divider',
             }}
           >
             <Typography
               variant="caption"
-              sx={{ fontSize: 10, color: '#64748b', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}
+              sx={{ fontSize: 10, color: 'text.disabled', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}
             >
               Routes
             </Typography>
@@ -145,20 +145,20 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               }}>
                 <Typography
                   variant="caption"
-                  sx={{ fontSize: 11, color: '#60a5fa', fontFamily: 'monospace' }}
+                  sx={{ fontSize: 11, color: 'info.main', fontFamily: 'monospace' }}
                 >
                   {route.path}
                 </Typography>
                 <Typography
                   variant="caption"
-                  sx={{ fontSize: 10, color: '#475569' }}
+                  sx={{ fontSize: 10, color: 'text.disabled' }}
                 >
                   {route.target}
                 </Typography>
               </Stack>
             ))}
             {nodeData.routes.length > 6 && (
-              <Typography variant="caption" sx={{ fontSize: 10, color: '#475569' }}>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
                 +{nodeData.routes.length - 6} more
               </Typography>
             )}

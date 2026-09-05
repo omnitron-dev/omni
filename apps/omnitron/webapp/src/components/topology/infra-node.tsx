@@ -83,7 +83,7 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
             </Typography>
             <Typography
               variant="caption"
-              sx={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}
+              sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}
             >
               :{nodeData.port}
             </Typography>
@@ -127,7 +127,7 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               sx={{
                 fontFamily: 'monospace',
                 fontSize: 10,
-                color: '#64748b',
+                color: 'text.disabled',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 maxWidth: 100,
@@ -147,7 +147,7 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               mt: 1,
               fontFamily: 'monospace',
               fontSize: 10,
-              color: '#475569',
+              color: 'text.disabled',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',

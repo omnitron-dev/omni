@@ -270,9 +270,6 @@ importers:
 
   packages/common:
     devDependencies:
-      '@omnitron-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@types/bun':
         specifier: latest
         version: 1.4.1

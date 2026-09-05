@@ -266,7 +266,15 @@ export class RemoteDeployer {
 
       // 2. Ensure runtime (Node.js or Bun)
       this.emitProgress(nodeKey, '*', 'extracting', 10, 'Checking runtime...');
-      const hasNode = await this.sshExec(node, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""').catch(() => '');
+      // No `.catch(() => '')`. The remote command already answers "absent"
+      // with an empty string — that is what the `|| echo ""` is for — so
+      // swallowing an SSH failure here converts "could not ask the host"
+      // into "the host has no runtime", and the next line acts on it by
+      // running `curl | bash` and a package-manager install against a host
+      // that very likely already has Node. Step 1 above treats SSH failure
+      // as failure; so does the install below. These two probes were the
+      // only places that did not.
+      const hasNode = await this.sshExec(node, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""');
       if (!hasNode.trim()) {
         this.logger.info({ host: node.host }, 'Installing Node.js on remote node...');
         this.emitProgress(nodeKey, '*', 'extracting', 15, 'Installing Node.js...');
@@ -281,7 +289,8 @@ export class RemoteDeployer {
 
       // 3. Install omnitron
       this.emitProgress(nodeKey, '*', 'extracting', 30, 'Installing omnitron...');
-      const hasOmnitron = await this.sshExec(node, 'which omnitron 2>/dev/null || echo ""').catch(() => '');
+      // As above: an unreachable host must not read as "omnitron is missing".
+      const hasOmnitron = await this.sshExec(node, 'which omnitron 2>/dev/null || echo ""');
       if (!hasOmnitron.trim()) {
         try {
           await this.sshExec(node, 'npm install -g @omnitron-dev/omnitron', 120_000);

@@ -102,7 +102,7 @@ export async function backupFullCommand(): Promise<void> {
 export async function backupScheduleCommand(target: string, cron: string): Promise<void> {
   try {
     await invokeRpc('setSchedule', { database: target, cron });
-    log.success(`Scheduled backup of '${target}' every '${cron}'`);
+    log.success(`Scheduled backup of '${target}': ${cron}`);
     log.info(`  (use 'all' to back up every running-stack database)`);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);

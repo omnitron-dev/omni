@@ -21,6 +21,12 @@ import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitro
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
 import { dumpToFile, restoreFromFile } from './backup-pipeline.js';
+import {
+  parseSchedule,
+  nextCronDelay,
+  describeSchedule,
+  type SchedulePlan,
+} from './backup-schedule.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { ProjectService } from './project.service.js';
 import type {
@@ -36,8 +42,18 @@ export type {
 } from '../shared/dto/backups.js';
 interface ScheduleEntry {
   database: string;
+  /** The specification as the operator wrote it — cron, preset, or ms. */
   cron: string;
+  plan: SchedulePlan;
+  /**
+   * `setInterval` for the interval forms, `setTimeout` for cron (each run
+   * arms the next one, because cron occurrences are not evenly spaced).
+   * `clearTimeout` and `clearInterval` are interchangeable in Node, so a
+   * single field and a single cancel path are enough.
+   */
   timer?: NodeJS.Timeout;
+  /** Set once a cron schedule has been cancelled, so an in-flight tick stops. */
+  cancelled?: boolean;
 }
 
 
@@ -467,17 +483,27 @@ export class BackupService {
    * so it survives daemon restarts (re-armed via restoreSchedules on boot).
    */
   async setSchedule(database: string, cron: string): Promise<void> {
-    this.armSchedule(database, cron);
+    // Parse before arming and before persisting: a specification the daemon
+    // cannot read must reach the operator as an error now, not as a backup
+    // running at a time nobody chose. `parseSchedule` throws rather than
+    // defaulting, which is the entire contract.
+    const plan = parseSchedule(cron);
+    this.armSchedule(database, plan);
     const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
     map[database] = cron;
     this.store.kvSetSync(BackupService.SCHEDULES_KV_KEY, map);
-    this.logger.info({ database, cron }, 'Backup schedule set + persisted');
+    this.logger.info({ database, cron, schedule: describeSchedule(plan) }, 'Backup schedule set + persisted');
   }
 
   /** Cancel + un-persist a schedule. */
   async removeSchedule(database: string): Promise<void> {
     const existing = this.schedules.get(database);
-    if (existing?.timer) clearInterval(existing.timer);
+    if (existing) {
+      // Order matters: a cron tick already running re-arms itself when it
+      // finishes, and it checks this flag to decide not to.
+      existing.cancelled = true;
+      if (existing.timer) clearTimeout(existing.timer);
+    }
     this.schedules.delete(database);
     const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
     delete map[database];
@@ -489,11 +515,30 @@ export class BackupService {
   async restoreSchedules(): Promise<void> {
     const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
     let n = 0;
+    const rejected: string[] = [];
     for (const [database, cron] of Object.entries(map)) {
-      this.armSchedule(database, cron);
-      n++;
+      // A stored row can be unreadable — written before this was validated,
+      // or hand-edited. Neither reaction is obvious, so both are wrong on
+      // their own: refusing to boot over one bad backup schedule is out of
+      // proportion, and quietly arming a default would put the backup at a
+      // time nobody chose, which is what this whole change is about. The row
+      // is skipped and named at `error` level; `backup schedules` still lists
+      // it, so it stays visible as configured-but-not-running.
+      try {
+        this.armSchedule(database, parseSchedule(cron));
+        n++;
+      } catch (err) {
+        rejected.push(database);
+        this.logger.error(
+          { database, cron, error: (err as Error).message },
+          'Persisted backup schedule is unreadable — NOT armed; this database is not being backed up'
+        );
+      }
     }
     if (n > 0) this.logger.info({ count: n }, 'Restored persisted backup schedules');
+    if (rejected.length > 0) {
+      this.logger.error({ databases: rejected }, 'Backup schedules skipped — fix them with `omnitron backup schedule`');
+    }
   }
 
   async listSchedules(): Promise<Record<string, string>> {
@@ -505,24 +550,51 @@ export class BackupService {
   }
 
   /** In-memory timer arm (no persistence) — shared by setSchedule/restore. */
-  private armSchedule(database: string, cron: string): void {
+  private armSchedule(database: string, plan: SchedulePlan): void {
     const existing = this.schedules.get(database);
-    if (existing?.timer) clearInterval(existing.timer);
-    const intervalMs = this.parseCronInterval(cron);
-    const timer = setInterval(() => {
-      void (async () => {
-        try {
-          if (database === 'full') await this.createFullBackup();
-          else if (database === 'all') await this.createAllBackups();
-          else await this.createBackup(database, { compress: true });
-          await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
-        } catch (err) {
-          this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
-        }
-      })();
-    }, intervalMs);
-    timer.unref();
-    this.schedules.set(database, { database, cron, timer });
+    if (existing) {
+      existing.cancelled = true;
+      if (existing.timer) clearTimeout(existing.timer);
+    }
+
+    const entry: ScheduleEntry = { database, cron: plan.spec, plan };
+    this.schedules.set(database, entry);
+
+    if (plan.kind === 'interval') {
+      entry.timer = setInterval(() => void this.runScheduledBackup(database), plan.intervalMs);
+      entry.timer.unref();
+    } else {
+      // Cron occurrences are not evenly spaced — "0 3 * * *" is 23 or 25
+      // hours apart across a DST boundary, and "0 0 1 * *" is 28 to 31 days.
+      // Each run computes the next one from the clock rather than adding a
+      // fixed interval, so the schedule cannot drift off its stated time.
+      const armNext = (): void => {
+        if (entry.cancelled) return;
+        const delay = nextCronDelay(plan.expression);
+        entry.timer = setTimeout(() => {
+          void this.runScheduledBackup(database).finally(armNext);
+        }, delay);
+        entry.timer.unref();
+      };
+      armNext();
+    }
+
+    this.logger.debug({ database, schedule: describeSchedule(plan) }, 'Backup schedule armed');
+  }
+
+  /**
+   * One scheduled tick. Extracted so both timer shapes share it, and so a
+   * failure is reported the same way from either.
+   */
+  private async runScheduledBackup(database: string): Promise<void> {
+    try {
+      if (database === 'full') await this.createFullBackup();
+      else if (database === 'all') await this.createAllBackups();
+      else await this.createBackup(database, { compress: true });
+      await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
+    } catch (err) {
+      this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
+    }
   }
 
   /**
@@ -547,7 +619,11 @@ export class BackupService {
 
   dispose(): void {
     for (const entry of this.schedules.values()) {
-      if (entry.timer) clearInterval(entry.timer);
+      // Flag first: clearing the timer does not stop a cron tick that is
+      // already running, and that tick re-arms itself when it finishes.
+      // Without the flag a disposed service keeps scheduling backups.
+      entry.cancelled = true;
+      if (entry.timer) clearTimeout(entry.timer);
     }
     this.schedules.clear();
   }
@@ -718,24 +794,6 @@ export class BackupService {
     return results;
   }
 
-  private parseCronInterval(cron: string): number {
-    // Simple interval parsing for MVP:
-    // "daily" = 24h, "hourly" = 1h, "weekly" = 7d, or numeric ms
-    const presets: Record<string, number> = {
-      'hourly': 3_600_000,
-      'daily': 86_400_000,
-      'weekly': 604_800_000,
-    };
-
-    const preset = presets[cron.toLowerCase()];
-    if (preset) return preset;
-
-    const num = parseInt(cron, 10);
-    if (!isNaN(num) && num > 0) return num;
-
-    // Default: daily
-    return 86_400_000;
-  }
 }
 
 interface DbConfig {

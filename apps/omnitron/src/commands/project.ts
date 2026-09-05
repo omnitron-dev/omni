@@ -87,6 +87,7 @@ export async function projectListCommand(): Promise<void> {
     }
 
     table({
+      width: 'auto',
       data: projects.map((p) => ({
         name: p.name,
         path: p.path,

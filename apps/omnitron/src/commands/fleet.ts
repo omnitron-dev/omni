@@ -52,6 +52,7 @@ export async function fleetStatusCommand(): Promise<void> {
   }
 
   table({
+    width: 'auto',
     data: results,
     columns: [
       { key: 'alias', header: 'SERVER' },
@@ -133,6 +134,7 @@ export async function fleetMetricsCommand(): Promise<void> {
       });
 
       table({
+        width: 'auto',
         data,
         columns: [
           { key: 'app', header: 'APP' },

@@ -31,6 +31,7 @@ export async function clusterStatusCommand(): Promise<void> {
 
       if (fleetSummary.nodes.length > 0) {
         table({
+          width: 'auto',
           data: fleetSummary.nodes.map((n: any) => ({
             id: n.id.slice(0, 8),
             hostname: n.hostname,

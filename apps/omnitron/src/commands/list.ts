@@ -80,6 +80,12 @@ export async function listCommand(): Promise<void> {
 
     table({
       data,
+      // 'auto' sizes to content. The default is 'full', which fits the table
+      // to the terminal by dividing what is left after the widest column —
+      // with nine columns and an 80-column terminal that leaves about five
+      // characters each, so every value AND every header rendered as an
+      // ellipsis. The primary command of the tool was unreadable.
+      width: 'auto',
       columns: [
         { key: 'name', header: 'NAME', width: 'content' },
         { key: 'status', header: 'STATUS', width: 'content' },

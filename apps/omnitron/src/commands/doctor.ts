@@ -485,12 +485,24 @@ async function checkInfrastructure(findings: Findings, client: ReturnType<typeof
         continue;
       }
 
+      // A container that was created and never started is a different fault
+      // from one that ran and exited, and Docker knows which: `created` with
+      // a non-zero exit code means the start itself was refused, and the
+      // reason — a port already bound, an image that will not run — is in
+      // `error`. Recreating is what fixes that; `omnitron up` will not,
+      // because the husk still holds the name.
+      const neverStarted = c.status === 'created';
       findings.add({
-        id: 'infra.not-running',
+        id: neverStarted ? 'infra.start-refused' : 'infra.not-running',
         severity: 'warning',
-        title: `Container "${c.name}" is ${c.status}`,
-        evidence: [`image: ${c.image}`, ...(c.error ? [`error: ${c.error}`] : [])],
-        remedy: 'Run `omnitron up` to reconcile infrastructure.',
+        title: neverStarted
+          ? `Container "${c.name}" was created but never started`
+          : `Container "${c.name}" is ${c.status}`,
+        evidence: [`image: ${c.image}`, ...(c.error ? [`reason: ${c.error}`] : [])],
+        remedy: neverStarted
+          ? `Remove it and let the daemon recreate it: \`docker rm -f ${c.name}\`, then \`omnitron up\`. ` +
+            `A container in this state keeps its name, so the next attempt fails the same way until it is gone.`
+          : 'Run `omnitron up` to reconcile infrastructure.',
       });
     }
   } catch {

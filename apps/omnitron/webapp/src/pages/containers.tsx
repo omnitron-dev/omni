@@ -34,6 +34,7 @@ import {
 import { Breadcrumbs } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,12 +179,27 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
 
 export default function ContainersPage() {
   const { activeProject, activeStack } = useStackContext();
-  const [allContainers, setAllContainers] = useState<Container[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // One shared polling loop (see `use-polled-resource`): no overlapping
+  // requests when the daemon is slow, no polling from a hidden tab, and a
+  // failed poll no longer blanks the table — it used to set `[]`, so the view
+  // an operator was reading disappeared exactly when something went wrong.
+  const {
+    data: allContainers,
+    loading,
+    error,
+    refresh: fetchContainers,
+  } = usePolledResource<Container[]>(
+    async () => {
+      const result = await infra.listContainers();
+      return Array.isArray(result) ? result : [];
+    },
+    { intervalMs: 10_000 }
+  );
 
   // Filter containers by stack context (container names: project-stack-service)
-  const containers = allContainers.filter((c) => {
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const containers = (allContainers ?? []).filter((c: Container) => {
     if (!activeProject) return true;
     const prefix = activeStack ? `${activeProject}-${activeStack}-` : `${activeProject}-`;
     return c.name.startsWith(prefix) || c.name.startsWith('omnitron-');
@@ -193,27 +209,6 @@ export default function ContainersPage() {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalContainer, setLogModalContainer] = useState('');
   const [logModalLines, setLogModalLines] = useState<string[]>([]);
-
-  const fetchContainers = useCallback(async () => {
-    try {
-      // Real data from infrastructure RPC service
-      const result = await infra.listContainers();
-      setAllContainers(Array.isArray(result) ? result : []);
-      setError(null);
-    } catch (err: any) {
-      // Graceful fallback — infra service may not be available yet
-      setAllContainers([]);
-      setError(err?.message ?? 'Failed to fetch containers');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchContainers();
-    const interval = setInterval(fetchContainers, 10000);
-    return () => clearInterval(interval);
-  }, [fetchContainers]);
 
   const totalCount = containers.length;
   const runningCount = containers.filter((c) => c.status === 'running').length;
@@ -225,7 +220,7 @@ export default function ContainersPage() {
       await infra.startContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to start container');
+      setActionError(err?.message ?? 'Failed to start container');
     }
   };
 
@@ -234,7 +229,7 @@ export default function ContainersPage() {
       await infra.stopContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to stop container');
+      setActionError(err?.message ?? 'Failed to stop container');
     }
   };
 
@@ -243,7 +238,7 @@ export default function ContainersPage() {
       await infra.removeContainer({ name: containerName });
       fetchContainers();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to remove container');
+      setActionError(err?.message ?? 'Failed to remove container');
     }
   };
 
@@ -254,7 +249,7 @@ export default function ContainersPage() {
       setLogModalLines(logs ? logs.split('\n') : []);
       setLogModalOpen(true);
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch container logs');
+      setActionError(err?.message ?? 'Failed to fetch container logs');
     }
   };
 
@@ -269,9 +264,9 @@ export default function ContainersPage() {
           </IconButton>
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {(error || actionError) && (
+        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+          {actionError ?? error}
         </Alert>
       )}
       {/* Summary Cards */}

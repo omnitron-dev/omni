@@ -204,8 +204,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   get port(): number | undefined {
-    return this.options?.port || 3000;
+    // Once listening, report the port actually bound. With `port: 0` the OS
+    // picks one, and a caller that has to reach into `(server as any).server
+    // .address()` to find out — as the netron-browser fixtures did — is being
+    // told the request instead of the result.
+    if (this.boundPort !== undefined) return this.boundPort;
+    // `||` treated `port: 0` — the standard "give me any free port" — as
+    // absent and substituted 3000. Two servers both asking for an ephemeral
+    // port therefore collided on a fixed well-known one, and the failure named
+    // a port the caller never mentioned (EADDRINUSE ::1:3000).
+    return this.options?.port ?? 3000;
   }
+
+  /** Port assigned by the OS once listening; undefined before that. */
+  private boundPort: number | undefined;
 
   constructor(options?: TransportOptions) {
     super();
@@ -682,7 +694,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     const runtime = detectRuntime();
-    const port = this.port || 3000;
+    const port = this.options?.port ?? 3000;
     const host = this.address || 'localhost';
 
     this.startTime = Date.now();
@@ -749,13 +761,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         this.server.once('error', errorHandler);
         this.server.listen(port, host, () => {
           this.server.removeListener('error', errorHandler);
+          const address = this.server.address();
+          if (address && typeof address === 'object') this.boundPort = address.port;
           resolve();
         });
       });
     }
 
     this.status = 'online';
-    this.emit('listening', { port, host });
+    this.emit('listening', { port: this.boundPort ?? port, host });
   }
 
   /**
@@ -2289,6 +2303,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       this.server = null;
     }
+
+    // A closed server holds no port. Keeping the last bound one would make
+    // `port` report an address nothing is listening on, and a restart with
+    // `port: 0` would report the previous run's port instead of the new one.
+    this.boundPort = undefined;
 
     this.connections.clear();
     this.isDraining = false;

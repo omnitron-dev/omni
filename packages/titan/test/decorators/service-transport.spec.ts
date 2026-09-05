@@ -157,12 +157,10 @@ describe('Service Decorator with Transports', () => {
       expect(metadata._transports).toEqual(transports);
     });
 
-    it('should support Unix socket transport on non-Windows platforms', () => {
-      // Skip on Windows
-      if (process.platform === 'win32') {
-        return;
-      }
-
+    // `it.skipIf` rather than an early `return`: on the other platform this
+    // used to report PASSED, which cannot be told apart from having verified
+    // it.
+    it.skipIf(process.platform === 'win32')('should support Unix socket transport on non-Windows platforms', () => {
       const unixTransport = new UnixSocketTransport({ path: '/tmp/test.sock' });
 
       @Service({
@@ -185,12 +183,7 @@ describe('Service Decorator with Transports', () => {
       expect(metadata._transports![0]).toBe(unixTransport);
     });
 
-    it('should support Named Pipe transport on Windows', () => {
-      // Skip on non-Windows
-      if (process.platform !== 'win32') {
-        return;
-      }
-
+    it.skipIf(process.platform !== 'win32')('should support Named Pipe transport on Windows', () => {
       const pipeTransport = new NamedPipeTransport({ pipeName: 'test-pipe' });
 
       @Service({

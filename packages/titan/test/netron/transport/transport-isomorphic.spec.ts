@@ -137,6 +137,13 @@ function makeTransportConfigs(): TransportTestConfig[] {
   ];
 }
 
+// Fourteen bodies here used to open with `if (!config.transport.capabilities
+// .server ...) return;`. Every transport in the table above declares
+// `capabilities.server: true` and no config supplies `setupServer`, so the
+// guards could not fire — but had one ever become false, the affected tests
+// would have reported PASSED while testing nothing. Removed rather than
+// converted to `it.skipIf`: an isomorphic suite whose transports must all
+// serve should fail loudly if one stops, not quietly skip.
 describe('Isomorphic Transport Test Suite', () => {
   describe('Core Transport Capabilities', () => {
     makeTransportConfigs().forEach((config) => {
@@ -233,10 +240,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should establish basic connection', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            console.log(`Skipping server test for ${config.name} - no server support`);
-            return;
-          }
 
           const client = await config.transport.connect(config.clientAddress);
 
@@ -248,10 +251,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should handle connection lifecycle', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            console.log(`Skipping server test for ${config.name} - no server support`);
-            return;
-          }
 
           const client = await config.transport.connect(config.clientAddress);
 
@@ -276,10 +275,6 @@ describe('Isomorphic Transport Test Suite', () => {
 
         if (config.transport.capabilities.binary) {
           it('should transfer binary data', async () => {
-            if (!config.transport.capabilities.server && !externalServer) {
-              console.log(`Skipping server test for ${config.name} - no server support`);
-              return;
-            }
 
             const serverConnPromise = server
               ? waitForEvent(server, 'connection')
@@ -321,10 +316,6 @@ describe('Isomorphic Transport Test Suite', () => {
 
         if (config.transport.capabilities.streaming) {
           it('should support streaming data', async () => {
-            if (!config.transport.capabilities.server && !externalServer) {
-              console.log(`Skipping server test for ${config.name} - no server support`);
-              return;
-            }
 
             const serverConnPromise = server
               ? waitForEvent(server, 'connection')
@@ -362,10 +353,6 @@ describe('Isomorphic Transport Test Suite', () => {
 
         if (config.transport.capabilities.bidirectional) {
           it('should support bidirectional communication', async () => {
-            if (!config.transport.capabilities.server && !externalServer) {
-              console.log(`Skipping server test for ${config.name} - no server support`);
-              return;
-            }
 
             const serverConnPromise = server
               ? waitForEvent(server, 'connection')
@@ -432,9 +419,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should correctly encode and decode packets', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            return;
-          }
 
           const serverConnPromise = server
             ? waitForEvent(server, 'connection')
@@ -482,9 +466,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should handle multiple packets in sequence', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            return;
-          }
 
           const serverConnPromise = server
             ? waitForEvent(server, 'connection')
@@ -550,9 +531,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should emit error events on connection issues', async () => {
-          if (!config.transport.capabilities.server) {
-            return;
-          }
 
           const server = await config.transport.createServer!(config.serverAddress);
           if (server.listen) {
@@ -599,9 +577,6 @@ describe('Isomorphic Transport Test Suite', () => {
 
         if (config.transport.capabilities.reconnection) {
           it('should support reconnection', async () => {
-            if (!config.transport.capabilities.server) {
-              return;
-            }
 
             let server = await config.transport.createServer!(config.serverAddress);
             if (server.listen) {
@@ -702,9 +677,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should handle rapid message sending', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            return;
-          }
 
           const serverConnPromise = server
             ? waitForEvent(server, 'connection')
@@ -743,9 +715,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should handle large messages', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            return;
-          }
 
           const serverConnPromise = server
             ? waitForEvent(server, 'connection')
@@ -773,9 +742,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should handle concurrent connections', async () => {
-          if (!config.transport.capabilities.server && !externalServer) {
-            return;
-          }
 
           const connectionCount = 10;
           const clients: ITransportConnection[] = [];
@@ -823,9 +789,6 @@ describe('Isomorphic Transport Test Suite', () => {
     makeTransportConfigs().forEach((config) => {
       describe(`${config.name} Transport`, () => {
         it('should track connection metrics', async () => {
-          if (!config.transport.capabilities.server) {
-            return;
-          }
 
           const server = await config.transport.createServer!(config.serverAddress);
           if (server.listen) {
@@ -850,9 +813,6 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should track server metrics', async () => {
-          if (!config.transport.capabilities.server) {
-            return;
-          }
 
           const server = await config.transport.createServer!(config.serverAddress);
           if (server.listen) {

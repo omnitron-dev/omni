@@ -61,8 +61,16 @@ describe('AdminDataTable — empty versus unable', () => {
    */
   const columns = [{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }];
 
+  /**
+   * The pagination props the component requires. Omitted here originally,
+   * which the runtime tolerated and `tsc` did not — the suite was green while
+   * the package's typecheck was red, because the build does not typecheck
+   * tests. Two checks, one of them not consulted.
+   */
+  const paging = { total: 0, page: 1, pageSize: 25, onPageChange: () => {} };
+
   it('says there is nothing when there is nothing', () => {
-    render(<AdminDataTable data={[]} columns={columns} emptyMessage="No orders yet" />);
+    render(<AdminDataTable {...paging} data={[]} columns={columns} emptyMessage="No orders yet" />);
 
     expect(screen.getByText('No orders yet')).toBeInTheDocument();
     expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
@@ -71,6 +79,7 @@ describe('AdminDataTable — empty versus unable', () => {
   it('says it could not load, and why, when the load failed', () => {
     render(
       <AdminDataTable
+        {...paging}
         data={[]}
         columns={columns}
         emptyMessage="No orders yet"
@@ -86,7 +95,7 @@ describe('AdminDataTable — empty versus unable', () => {
   });
 
   it('shows rows rather than either message when there is data', () => {
-    render(<AdminDataTable data={[{ name: 'row' }]} columns={columns} loadError="stale" />);
+    render(<AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} loadError="stale" />);
 
     expect(screen.getByText('row')).toBeInTheDocument();
     expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
@@ -95,7 +104,7 @@ describe('AdminDataTable — empty versus unable', () => {
   it('treats an empty error string as no error', () => {
     // A caller threading `error ?? ''` through must not flip the table into
     // its failure state with nothing to say.
-    render(<AdminDataTable data={[]} columns={columns} emptyMessage="No orders yet" loadError="" />);
+    render(<AdminDataTable {...paging} data={[]} columns={columns} emptyMessage="No orders yet" loadError="" />);
 
     expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });

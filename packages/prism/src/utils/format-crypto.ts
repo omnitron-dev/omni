@@ -195,6 +195,48 @@ export function sumDecimalStrings(
 }
 
 /**
+ * Subtract decimal strings exactly, returning a decimal string.
+ *
+ * The companion to `sumDecimalStrings`, and the one a wallet needs more
+ * often: available balance is total minus locked, and computing it with
+ * `parseFloat` produces `0.19999999999999998` from `0.30000000 - 0.10000000`.
+ * A formatter capped at the coin's precision rounds that back, but the raw
+ * value does not always reach a formatter — a tooltip, a CSV column, a
+ * "max" button that fills an amount field, or a value posted back to the
+ * server all show it as it is. Small amounts are worse than wrong: they
+ * become exponential notation, and `1.0999999999999999e-7` is not a number
+ * any balance field will accept.
+ *
+ * Unparseable inputs are treated as absent — `null` when the minuend cannot
+ * be read, since a difference from an unknown quantity is unknown, and
+ * subtracting nothing when a subtrahend cannot be read.
+ *
+ * @param clampAtZero return '0' rather than a negative result. On for the
+ *        available-balance case, where a negative would be a display artefact
+ *        of two readings taken a moment apart, not a debt.
+ */
+export function subtractDecimalStrings(
+  minuend: string | number | null | undefined,
+  subtrahends: Iterable<string | number | null | undefined>,
+  decimals: number,
+  options?: { clampAtZero?: boolean }
+): string | null {
+  if (minuend === null || minuend === undefined || minuend === '') return null;
+
+  let total = toScaledInteger(typeof minuend === 'number' ? String(minuend) : minuend, decimals);
+  if (total === null) return null;
+
+  for (const value of subtrahends) {
+    if (value === null || value === undefined || value === '') continue;
+    const scaled = toScaledInteger(typeof value === 'number' ? String(value) : value, decimals);
+    if (scaled !== null) total -= scaled;
+  }
+
+  if (options?.clampAtZero && total < 0n) total = 0n;
+  return fromScaledInteger(total, decimals);
+}
+
+/**
  * Format a crypto amount for display.
  *
  * Input can be a string (preferred — preserves full precision

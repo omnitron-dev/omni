@@ -19,6 +19,7 @@ import {
   sumDecimalStrings,
   toScaledInteger,
   fromScaledInteger,
+  subtractDecimalStrings,
 } from '../format-crypto.js';
 
 describe('formatCoinAmount', () => {
@@ -177,6 +178,75 @@ describe('sumDecimalStrings', () => {
 
   it('rounds each value half-up at the accumulation scale', () => {
     expect(sumDecimalStrings(['0.005', '0.005'], 2)).toBe('0.02');
+  });
+});
+
+describe('subtractDecimalStrings', () => {
+  it('is exact where floating point is not', () => {
+    // The case a wallet hits on its first render: available = total - locked.
+    // `parseFloat('0.30000000') - parseFloat('0.10000000')` is
+    // 0.19999999999999998, and `.toString()` shows every digit of it.
+    expect(subtractDecimalStrings('0.30000000', ['0.10000000'], 8)).toBe('0.20000000');
+    expect(subtractDecimalStrings('1.1', ['0.7'], 8)).toBe('0.40000000');
+  });
+
+  it('does not fall into exponential notation on small amounts', () => {
+    // `0.00000012 - 0.00000001` through floats is 1.0999999999999999e-7 —
+    // not merely imprecise but a shape no balance field accepts.
+    const result = subtractDecimalStrings('0.00000012', ['0.00000001'], 8);
+    expect(result).toBe('0.00000011');
+    expect(result).not.toContain('e');
+  });
+
+  it('keeps the digits a 12-decimal coin actually has', () => {
+    // Through a float, 12345678.123456789012 rounds to 12345678.12345679 —
+    // six digits gone, silently.
+    expect(subtractDecimalStrings('12345678.123456789012', ['0.000000000001'], 12)).toBe(
+      '12345678.123456789011'
+    );
+  });
+
+  it('subtracts several values', () => {
+    expect(subtractDecimalStrings('1.0', ['0.1', '0.2', '0.3'], 8)).toBe('0.40000000');
+  });
+
+  it('clamps at zero only when asked', () => {
+    // A negative available balance is a display artefact of two readings
+    // taken a moment apart, not a debt — but that is the caller's judgement,
+    // not this function's.
+    expect(subtractDecimalStrings('1.0', ['2.0'], 8)).toBe('-1.00000000');
+    expect(subtractDecimalStrings('1.0', ['2.0'], 8, { clampAtZero: true })).toBe('0.00000000');
+  });
+
+  it('returns null when the minuend cannot be read', () => {
+    // A difference from an unknown quantity is unknown. Returning '0' here
+    // would put a number on the screen that nothing supports.
+    for (const bad of [null, undefined, '', 'abc', 'NaN']) {
+      expect(subtractDecimalStrings(bad, ['1'], 8), String(bad)).toBeNull();
+    }
+  });
+
+  it('skips a subtrahend it cannot read rather than poisoning the result', () => {
+    expect(subtractDecimalStrings('1.0', ['0.5', 'abc', null, undefined, ''], 8)).toBe('0.50000000');
+  });
+
+  it('accepts numbers through their decimal representation', () => {
+    expect(subtractDecimalStrings(1.5, [0.5], 8)).toBe('1.00000000');
+  });
+
+  it('rounds each operand to the requested scale before subtracting', () => {
+    // Inherited from `toScaledInteger`, which is what `sumDecimalStrings`
+    // uses too. Worth pinning rather than assuming: at 2 decimals `1.005`
+    // becomes 1.01 and `0.001` becomes 0, so the result is 1.01 and not
+    // 1.004. A caller who needs the full value passes the coin's own
+    // precision, which is what `getCoinDecimals` is for.
+    expect(subtractDecimalStrings('1.005', ['0.001'], 2)).toBe('1.01');
+    expect(subtractDecimalStrings('1.005', ['0.001'], 8)).toBe('1.00400000');
+  });
+
+  it('never returns negative zero', () => {
+    expect(subtractDecimalStrings('1.0', ['1.0'], 8)).toBe('0.00000000');
+    expect(subtractDecimalStrings('1.0', ['1.0'], 8)).not.toContain('-');
   });
 });
 

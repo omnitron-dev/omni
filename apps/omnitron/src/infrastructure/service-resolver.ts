@@ -243,32 +243,39 @@ export function resolveAppInfrastructure(
 function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: Record<string, number>): ContainerHealthCheck | undefined {
   if (!check) return undefined;
 
-  const parseInterval = (s?: string): string => s ?? '30s';
+  // One helper per default, not one helper for every duration field. A
+  // single `(s) => s ?? '30s'` used to serve all three, which gave `timeout`
+  // the interval's default: probes ran with a 30s deadline where the type
+  // and the documentation both promise 10s, so an unresponsive service was
+  // marked unhealthy up to three times later than stated — and with the
+  // deadline equal to the gap between probes, they can overlap.
+  const everyDefault = (s?: string): string => s ?? '30s';
+  const deadlineDefault = (s?: string): string => s ?? '10s';
 
   switch (check.type) {
     case 'command':
       return {
         test: ['CMD-SHELL', check.target],
-        interval: parseInterval(check.interval),
-        timeout: parseInterval(check.timeout),
+        interval: everyDefault(check.interval),
+        timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,
-        startPeriod: parseInterval(check.startPeriod),
+        startPeriod: everyDefault(check.startPeriod),
       };
     case 'tcp':
       return {
         test: ['CMD-SHELL', `nc -z localhost ${check.target} || exit 1`],
-        interval: parseInterval(check.interval),
-        timeout: parseInterval(check.timeout),
+        interval: everyDefault(check.interval),
+        timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,
-        startPeriod: parseInterval(check.startPeriod),
+        startPeriod: everyDefault(check.startPeriod),
       };
     case 'http':
       return {
         test: ['CMD-SHELL', `curl -sf http://localhost${check.target} || exit 1`],
-        interval: parseInterval(check.interval),
-        timeout: parseInterval(check.timeout),
+        interval: everyDefault(check.interval),
+        timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,
-        startPeriod: parseInterval(check.startPeriod),
+        startPeriod: everyDefault(check.startPeriod),
       };
     case 'jsonrpc': {
       const portName = check.jsonrpc?.port ?? 'rpc';
@@ -279,10 +286,10 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
       const rpcPath = check.jsonrpc?.path ?? '/json_rpc';
       return {
         test: ['CMD-SHELL', `curl -sf ${authStr} -X POST http://localhost:${port}${rpcPath} -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"health","method":"${method}"}' || exit 1`],
-        interval: parseInterval(check.interval),
-        timeout: parseInterval(check.timeout),
+        interval: everyDefault(check.interval),
+        timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,
-        startPeriod: parseInterval(check.startPeriod),
+        startPeriod: everyDefault(check.startPeriod),
       };
     }
     default:

@@ -183,8 +183,26 @@ export class MultiBackendClient extends EventEmitter {
   async connect(): Promise<void> {
     if (this.isConnected) return;
 
-    await this.pool.start();
+    // Claim the state BEFORE awaiting, the way `BackendPool.start()` does one
+    // layer down. A flag written after an await guards the second call but not
+    // the second caller: a `disconnect()` arriving during the await used to
+    // read `isConnected === false`, conclude there was nothing to shut down and
+    // resolve — leaving every backend socket and the health-check probe open
+    // while its caller had been told the client was closed. Shutdown during
+    // startup is the ordinary way to reach that, not an exotic interleaving.
     this.isConnected = true;
+    try {
+      await this.pool.start();
+    } catch (error) {
+      this.isConnected = false;
+      throw error;
+    }
+
+    // Cleared while we were connecting: a disconnect() already ran and this
+    // connection is unwanted. Announcing it would tell every listener the
+    // opposite of what the caller asked for.
+    if (!this.isConnected) return;
+
     this.emit('connect');
   }
 
@@ -194,8 +212,8 @@ export class MultiBackendClient extends EventEmitter {
   async disconnect(): Promise<void> {
     if (!this.isConnected) return;
 
-    await this.pool.stop();
     this.isConnected = false;
+    await this.pool.stop();
     this.emit('disconnect');
   }
 

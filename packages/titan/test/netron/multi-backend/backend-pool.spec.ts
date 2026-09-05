@@ -426,3 +426,44 @@ describe('BackendPool', () => {
     });
   });
 });
+
+describe('BackendPool - stop during start', () => {
+  const createConfig = (id: string): BackendConfig => ({
+    id,
+    url: `http://${id}.example.com`,
+    services: ['service1'],
+  });
+
+  it('does not install a health-check probe after stop() has run', async () => {
+    const pool = new BackendPool({
+      healthChecks: true,
+      healthCheckInterval: 60_000,
+      unhealthyThreshold: 3,
+      healthyThreshold: 2,
+    });
+    const backend = pool.addBackend(createConfig('backend-1'));
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(backend, 'connect').mockImplementation(async () => {
+      await gate;
+    });
+    vi.spyOn(backend, 'disconnect').mockResolvedValue(undefined);
+
+    const starting = pool.start();
+    // stop() clears isStarted and stops the probe while the connections above
+    // are still in flight.
+    await pool.stop();
+    release();
+    await starting;
+
+    // start()'s tail used to run unconditionally and install a fresh probe on a
+    // pool that had already been shut down — a periodic task with nothing left
+    // to stop it.
+    expect((pool as any).healthCheckProbe).toBeUndefined();
+
+    await pool.dispose();
+  });
+});

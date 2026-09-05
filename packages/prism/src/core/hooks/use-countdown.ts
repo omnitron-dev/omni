@@ -149,6 +149,29 @@ export function useCountdown(options: UseCountdownOptions): UseCountdownReturn {
   const onCompleteRef = useRef(onComplete);
   const onTickRef = useRef(onTick);
 
+  /**
+   * The remaining time, tracked outside React state.
+   *
+   * The tick needs to read the current value and act on it in the same
+   * breath, and doing that inside a `setSeconds` updater is what broke this
+   * hook: an updater must be pure, and React is entitled to run it more than
+   * once — which under `StrictMode` it does, deliberately, to surface exactly
+   * this. Measured before the fix, a two-second countdown called `onTick`
+   * ten times with `[1, 1, 0, 0, -1, -1, …]` and `onComplete` eight times.
+   */
+  const remainingRef = useRef(duration);
+
+  /**
+   * Whether `onComplete` has already been delivered for this run.
+   *
+   * The old guard was `next <= 0`, a property of the computed value rather
+   * than of the countdown, so every tick after zero satisfied it again. The
+   * interval kept firing until the effect tore down, and each firing
+   * completed the countdown once more — four times without `StrictMode`.
+   * `onComplete` is where a caller submits the quiz.
+   */
+  const completedRef = useRef(false);
+
   // Update refs to avoid stale closures
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -176,18 +199,28 @@ export function useCountdown(options: UseCountdownOptions): UseCountdownReturn {
     }
 
     intervalRef.current = setInterval(() => {
-      setSeconds((prev) => {
-        const next = prev - 1;
-        onTickRef.current?.(next);
+      // Stopping is the effect's job, but it can only do it on the next
+      // render, and several ticks can queue before one happens — a long task,
+      // a burst of work, a test advancing a fake clock. The callback has to
+      // be inert on its own once the countdown is over, not merely
+      // uninteresting.
+      if (completedRef.current) return;
 
-        if (next <= 0) {
-          setIsRunning(false);
+      // Everything here is a side effect, so none of it belongs in a state
+      // updater. The arithmetic reads a ref, the state is set from the
+      // result, and the callbacks fire once each.
+      const next = Math.max(0, remainingRef.current - 1);
+      remainingRef.current = next;
+      setSeconds(next);
+      onTickRef.current?.(next);
+
+      if (next === 0) {
+        setIsRunning(false);
+        if (!completedRef.current) {
+          completedRef.current = true;
           onCompleteRef.current?.();
-          return 0;
         }
-
-        return next;
-      });
+      }
     }, interval);
 
     return () => {
@@ -210,11 +243,15 @@ export function useCountdown(options: UseCountdownOptions): UseCountdownReturn {
 
   const reset = useCallback(() => {
     setIsRunning(false);
+    remainingRef.current = duration;
+    completedRef.current = false;
     setSeconds(duration);
   }, [duration]);
 
   const setDuration = useCallback((newDuration: number) => {
     setIsRunning(false);
+    remainingRef.current = newDuration;
+    completedRef.current = false;
     setSeconds(newDuration);
   }, []);
 

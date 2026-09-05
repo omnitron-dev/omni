@@ -81,24 +81,52 @@ export async function dumpToFile(
 
   const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
+  // Attached before anything is awaited, so neither event can be missed and
+  // no 'error' arrives without a listener.
+  const started = new Promise<void>((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
+  const exited = new Promise<number>((resolve, reject) => {
+    child.once('close', resolve);
+    child.once('error', reject);
+  });
+  // A spawn failure rejects both promises, and only `started` is awaited on
+  // that path — leaving `exited` rejected with nobody listening, which under
+  // Node's default is a crash of the whole process. Marking it handled here
+  // costs nothing and is not a swallowed error: the same failure still
+  // arrives through `started`.
+  exited.catch(() => undefined);
+
+  let pumping: Promise<void> | undefined;
+
   try {
+    // Wait for the process to exist before creating the file. `spawn` reports
+    // ENOENT asynchronously, so the previous version had already opened the
+    // write stream by then: the catch below removed the file, and the stream
+    // — still opening — recreated it a moment later. A failed dump left an
+    // empty file on disk, which is the one thing this module's own comment
+    // says must not happen. It showed up as a test failing only in a loaded
+    // full run, because load is what decides which side of the race wins.
+    await started;
+
     const out = fs.createWriteStream(outputPath);
+    pumping = compress ? pipeline(child.stdout, createGzip(), out) : pipeline(child.stdout, out);
 
     // Both of these must be awaited together. Awaiting only the stream would
     // resolve on a clean EOF from a command that then exits non-zero — which
     // is exactly the failure the shell version could not see.
-    const [, code] = await Promise.all([
-      compress ? pipeline(child.stdout, createGzip(), out) : pipeline(child.stdout, out),
-      new Promise<number>((resolve, reject) => {
-        child.once('error', reject);
-        child.once('close', resolve);
-      }),
-    ]);
+    const [, code] = await Promise.all([pumping, exited]);
 
     if (code !== 0) {
       throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
     }
   } catch (err) {
+    // Let the pipeline finish failing before removing the file. Otherwise the
+    // same race returns by the other door: `Promise.all` rejects on the exit
+    // code while the stream is still writing, and the write lands after the
+    // removal. Its rejection is also the one nothing else is waiting on.
+    if (pumping) await pumping.catch(() => undefined);
     // A partial file is worse than none: it has a plausible size and restores
     // nothing.
     await fs.promises.rm(outputPath, { force: true });
@@ -132,22 +160,41 @@ export async function restoreFromFile(
 
   const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
-  try {
-    const input = fs.createReadStream(inputPath);
+  const started = new Promise<void>((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
+  const exited = new Promise<number>((resolve, reject) => {
+    child.once('close', resolve);
+    child.once('error', reject);
+  });
+  // A spawn failure rejects both promises, and only `started` is awaited on
+  // that path — leaving `exited` rejected with nobody listening, which under
+  // Node's default is a crash of the whole process. Marking it handled here
+  // costs nothing and is not a swallowed error: the same failure still
+  // arrives through `started`.
+  exited.catch(() => undefined);
 
-    const [, code] = await Promise.all([
-      compressed
-        ? pipeline(input, createGunzip(), child.stdin)
-        : pipeline(input, child.stdin),
-      new Promise<number>((resolve, reject) => {
-        child.once('error', reject);
-        child.once('close', resolve);
-      }),
-    ]);
+  let pumping: Promise<void> | undefined;
+
+  try {
+    // Same reason as `dumpToFile`: nothing is opened until the process is
+    // known to exist. Here it costs less — a read stream on a missing command
+    // leaves no artefact — but a file handle opened for a process that never
+    // started is still a handle nobody closes.
+    await started;
+
+    const input = fs.createReadStream(inputPath);
+    pumping = compressed ? pipeline(input, createGunzip(), child.stdin) : pipeline(input, child.stdin);
+
+    const [, code] = await Promise.all([pumping, exited]);
 
     if (code !== 0) {
       throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
     }
+  } catch (err) {
+    if (pumping) await pumping.catch(() => undefined);
+    throw err;
   } finally {
     clearTimeout(timer);
   }

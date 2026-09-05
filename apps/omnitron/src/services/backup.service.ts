@@ -20,6 +20,7 @@ import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
+import { dumpToFile, restoreFromFile } from './backup-pipeline.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { ProjectService } from './project.service.js';
 import type {
@@ -230,9 +231,18 @@ export class BackupService {
   }
 
   private async execToFile(cmd: string, outputPath: string, timeoutMs = 600_000): Promise<void> {
-    await this.execShell(cmd, timeoutMs);
-    if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
-      throw new Error('backup produced an empty file');
+    try {
+      await this.execShell(cmd, timeoutMs);
+      if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+        throw new Error('backup produced an empty file');
+      }
+    } catch (err) {
+      // The empty-file check was already here and works — it kept these out
+      // of the index. What it did not do was clean up: 22 zero-byte
+      // `tor-keys` files had accumulated in the backup directory, on disk but
+      // in no listing, which is the worst place for a file to be.
+      fs.rmSync(outputPath, { force: true });
+      throw err;
     }
   }
 
@@ -552,26 +562,12 @@ export class BackupService {
     outputPath: string,
     compress: boolean
   ): Promise<void> {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-
-    if (compress) {
-      // pg_dump inside container, pipe through gzip, write to host
-      const cmd = `docker exec ${container} pg_dump -U ${config.user} -d ${config.database} | gzip > "${outputPath}"`;
-      const { execFile: ef } = await import('node:child_process');
-      await new Promise<void>((resolve, reject) => {
-        ef('/bin/sh', ['-c', cmd], { timeout: 600_000, maxBuffer: 100 * 1024 * 1024 }, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    } else {
-      const { stdout } = await exec('docker', [
-        'exec', container, 'pg_dump', '-U', config.user, '-d', config.database,
-      ], { timeout: 600_000, maxBuffer: 100 * 1024 * 1024 });
-      fs.writeFileSync(outputPath, stdout);
-    }
+    await dumpToFile(
+      'docker',
+      ['exec', container, 'pg_dump', '-U', config.user, '-d', config.database],
+      outputPath,
+      compress
+    );
   }
 
   private async pgRestoreDocker(
@@ -580,17 +576,12 @@ export class BackupService {
     inputPath: string,
     compressed: boolean
   ): Promise<void> {
-    const cmd = compressed
-      ? `gunzip -c "${inputPath}" | docker exec -i ${container} psql -U ${config.user} -d ${config.database}`
-      : `docker exec -i ${container} psql -U ${config.user} -d ${config.database} < "${inputPath}"`;
-
-    const { execFile } = await import('node:child_process');
-    await new Promise<void>((resolve, reject) => {
-      execFile('/bin/sh', ['-c', cmd], { timeout: 600_000, maxBuffer: 100 * 1024 * 1024 }, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await restoreFromFile(
+      'docker',
+      ['exec', '-i', container, 'psql', '-U', config.user, '-d', config.database],
+      inputPath,
+      compressed
+    );
   }
 
   // ===========================================================================
@@ -598,42 +589,25 @@ export class BackupService {
   // ===========================================================================
 
   private async pgDumpLocal(config: DbConfig, outputPath: string, compress: boolean): Promise<void> {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-
-    const env = { ...process.env, PGPASSWORD: config.password };
-    const pgArgs = ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database];
-
-    if (compress) {
-      const cmd = `pg_dump ${pgArgs.join(' ')} | gzip > "${outputPath}"`;
-      await new Promise<void>((resolve, reject) => {
-        execFile('/bin/sh', ['-c', cmd], { timeout: 600_000, maxBuffer: 100 * 1024 * 1024, env }, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    } else {
-      const { stdout } = await exec('pg_dump', pgArgs, { timeout: 600_000, maxBuffer: 100 * 1024 * 1024, env });
-      fs.writeFileSync(outputPath, stdout);
-    }
+    // The uncompressed path used to buffer the whole dump in memory with a
+    // 100 MB ceiling, which an ordinary database exceeds. Both paths stream.
+    await dumpToFile(
+      'pg_dump',
+      ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      outputPath,
+      compress,
+      { env: { ...process.env, PGPASSWORD: config.password } }
+    );
   }
 
   private async pgRestoreLocal(config: DbConfig, inputPath: string, compressed: boolean): Promise<void> {
-    const env = { ...process.env, PGPASSWORD: config.password };
-    const pgArgs = `-h ${config.host} -p ${config.port} -U ${config.user} -d ${config.database}`;
-
-    const cmd = compressed
-      ? `gunzip -c "${inputPath}" | psql ${pgArgs}`
-      : `psql ${pgArgs} < "${inputPath}"`;
-
-    const { execFile } = await import('node:child_process');
-    await new Promise<void>((resolve, reject) => {
-      execFile('/bin/sh', ['-c', cmd], { timeout: 600_000, maxBuffer: 100 * 1024 * 1024, env }, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await restoreFromFile(
+      'psql',
+      ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      inputPath,
+      compressed,
+      { env: { ...process.env, PGPASSWORD: config.password } }
+    );
   }
 
   // ===========================================================================

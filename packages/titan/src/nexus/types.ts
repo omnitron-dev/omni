@@ -453,8 +453,15 @@ export interface IContainer {
    * @returns this container for chaining
    */
   register<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>, options?: RegistrationOptions): this;
-  register<T>(provider: Provider<T>, options?: RegistrationOptions): this;
   register<T>(token: Constructor<T>): this;
+  // NOTE: there is deliberately no `register(provider, options?)` overload.
+  // One was declared and the implementation never supported it: with two
+  // arguments it always reads the first as the token and the second as the
+  // provider. Since `Provider<T>` includes `Constructor<T>`, that overload
+  // also made `register(MyClass, { override: true })` typecheck, where the
+  // options object was taken as the provider — InvalidProviderError, promised
+  // as valid by the type. A single argument must be a constructor; anything
+  // else needs its token passed separately.
 
   /**
    * Resolve a dependency.

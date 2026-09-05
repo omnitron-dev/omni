@@ -48,7 +48,16 @@ export function classifyHealthResponse(
   if ((contentType ?? '').includes('text/html')) return 'unreachable';
 
   if (status < 200 || status >= 300) return 'unreachable';
-  return body?.status === 'online' ? 'up' : 'down';
+
+  // A 2xx whose body did not parse is not the daemon reporting itself down —
+  // it is an answer we could not read. `body` is null both when the JSON was
+  // malformed and when the response was empty, and neither says anything
+  // about the daemon's state. Calling that `down` would put "offline — run
+  // `omnitron up`" in front of an operator on the strength of a parse
+  // failure.
+  if (body === null) return 'unreachable';
+
+  return body.status === 'online' ? 'up' : 'down';
 }
 
 /**

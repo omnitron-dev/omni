@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { pLimit, type Limit } from '@omnitron-dev/common';
+import type { ListenerLike } from './types.js';
 
 // Type for event listener
 type EventListener = {
-  fn: Function;
+  fn: ListenerLike;
   context: any;
   once: boolean;
 };
@@ -13,7 +14,7 @@ type EventListener = {
 export class EventEmitter {
   private _events: Map<string | symbol, EventListener | EventListener[]> = new Map();
   private _eventsCount: number = 0;
-  private onceListeners = new WeakMap<Function, Function>(); // Map to store listeners that should only be called once
+  private onceListeners = new WeakMap<ListenerLike, ListenerLike>(); // Map to store listeners that should only be called once
   private hasOnceListener = new Map<string | symbol, boolean>(); // Track if event has any once listeners
   private limiter?: Limit; // Optional limiter for controlling concurrency
 
@@ -34,7 +35,7 @@ export class EventEmitter {
   /**
    * Return the listeners registered for a given event
    */
-  listeners(event: string | symbol): Function[] {
+  listeners(event: string | symbol): ListenerLike[] {
     const handlers = this._events.get(event);
 
     if (!handlers) return [];
@@ -92,14 +93,14 @@ export class EventEmitter {
   /**
    * Add a listener for a given event
    */
-  on(event: string | symbol, fn: Function, context?: any): this {
+  on(event: string | symbol, fn: ListenerLike, context?: any): this {
     return this.addListener(event, fn, context, false);
   }
 
   /**
    * Add a listener for a given event (alias for on)
    */
-  addListener(event: string | symbol, fn: Function, context?: any, once: boolean = false): this {
+  addListener(event: string | symbol, fn: ListenerLike, context?: any, once: boolean = false): this {
     if (typeof fn !== 'function') {
       throw new TypeError('The listener must be a function');
     }
@@ -132,7 +133,7 @@ export class EventEmitter {
   /**
    * Add a one-time listener for a given event
    */
-  once(event: string | symbol, fn: Function, context?: any): this {
+  once(event: string | symbol, fn: ListenerLike, context?: any): this {
     if (typeof fn !== 'function') {
       throw new TypeError('The listener must be a function');
     }
@@ -155,7 +156,7 @@ export class EventEmitter {
   /**
    * Remove a listener from a given event
    */
-  removeListener(event: string | symbol, fn: Function): this {
+  removeListener(event: string | symbol, fn: ListenerLike): this {
     // Check if this is a once listener
     const onceListener = this.onceListeners.get(fn);
     if (onceListener) {
@@ -204,7 +205,7 @@ export class EventEmitter {
   /**
    * Remove listener (alias for removeListener)
    */
-  off(event: string | symbol, fn: Function): this {
+  off(event: string | symbol, fn: ListenerLike): this {
     return this.removeListener(event, fn);
   }
 
@@ -312,7 +313,7 @@ export class EventEmitter {
   /**
    * Private method to execute a listener with optional concurrency control
    */
-  private _executeListener(listener: Function, args: any[]): Promise<any> {
+  private _executeListener(listener: ListenerLike, args: any[]): Promise<any> {
     try {
       if (this.limiter) {
         return this.limiter(() => listener(...args));

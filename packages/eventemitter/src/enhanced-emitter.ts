@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 
 import { EventEmitter } from './emitter.js';
+import type { ListenerLike } from './types.js';
 import { EventHistory } from './history.js';
 import { WildcardMatcher } from './wildcard.js';
 import { EventScheduler } from './scheduler.js';
@@ -234,7 +235,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   /**
    * Enhanced on with options
    */
-  onEnhanced(event: string, listener: Function, options?: ListenerOptions): this {
+  onEnhanced(event: string, listener: ListenerLike, options?: ListenerOptions): this {
     // Wrap listener with error boundary if requested
     if (options?.errorBoundary) {
       const originalListener = listener;

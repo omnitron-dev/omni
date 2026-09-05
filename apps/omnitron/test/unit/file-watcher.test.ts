@@ -164,6 +164,40 @@ describe('FileWatcher', () => {
     expect(w.watchedDirs).toEqual([appDir]);
   });
 
+  it('watches nothing when the entry file is not where the base says', () => {
+    // The defect this guards. `bootstrap: './apps/storage/src/bootstrap.ts'`
+    // is relative to the PROJECT root; when the entry carries no `cwd` the
+    // base falls back to the daemon's cwd. Resolving against the wrong base
+    // gives a path that does not exist — and walking UP from it finds the
+    // first `package.json` on the way to the filesystem root, which was the
+    // daemon's own package.
+    //
+    // Every DAOS app ended up watching `apps/omnitron`. One edit to
+    // `src/commands/doctor.ts` restarted four of them in the same
+    // millisecond, and editing their own sources restarted nothing.
+    // The entry must be a path that does NOT exist but sits under a
+    // directory that DOES have a package.json — that is what makes the walk
+    // find something. A nonexistent path with no package.json above it fails
+    // for a different reason and would let the defect through; the first
+    // version of this test did exactly that and passed with the fix removed.
+    const w = startWatcher(50, [
+      { name: 'ghost', script: path.join(appDir, 'nested', 'no-such', 'main.ts') },
+    ]);
+
+    expect(w.watchedDirs, 'must not fall back to an ancestor package').toEqual([]);
+    expect(w.getWatchedApps()).toEqual([]);
+  });
+
+  it('does not climb out of the app when the entry is real', () => {
+    // The other half: a real entry must still resolve to its own package,
+    // not to an ancestor that happens to have a package.json. `appDir` has
+    // one; `tmpDir` above it does not, but the walk must stop at the first
+    // either way.
+    const w = startWatcher();
+    expect(w.watchedDirs).toEqual([appDir]);
+    expect(w.watchedDirs[0]).not.toBe(tmpDir);
+  });
+
   it('watches only the named apps when a filter is given', () => {
     const app2Dir = path.join(tmpDir, 'other-app');
     const app2Src = path.join(app2Dir, 'src');

@@ -401,8 +401,43 @@ export class FileWatcher {
    * Resolve the app's root directory from its bootstrap/script entry path.
    * Walks up from the entry file until a package.json is found.
    */
+  /**
+   * The directory to watch for an app, from its entry file.
+   *
+   * Returns null when the entry file is not where the base says it is,
+   * rather than walking up from a path that does not exist.
+   *
+   * That walk was the defect. `watch: { directory: './apps/storage' }` and
+   * `bootstrap: './apps/storage/src/bootstrap.ts'` are relative to the
+   * PROJECT root; when `entry.cwd` is unset the base falls back to the
+   * daemon's cwd, which here is `apps/omnitron`. Resolving gives
+   * `apps/omnitron/apps/storage/src/bootstrap.ts` — nothing — and the walk
+   * up from it finds the first `package.json` on the way to the filesystem
+   * root, which is `apps/omnitron` itself.
+   *
+   * So every DAOS app was watching the daemon's own source tree. Editing one
+   * file in `src/commands/` restarted all six of them, and editing their own
+   * sources restarted nothing: hot reload was broken in both directions and
+   * looked like it worked, because restarts kept happening.
+   *
+   * Measured on this host: `Watching for changes` named
+   * `/…/apps/omnitron` for paysys, messaging, storage and priceverse, and
+   * one edit to `src/commands/doctor.ts` produced four restarts in the same
+   * millisecond.
+   */
   private resolveAppRoot(entryPath: string, base: string = this.cwd): string | null {
     const absPath = path.resolve(base, entryPath);
+
+    if (!fs.existsSync(absPath)) {
+      this.logger.error(
+        { entry: entryPath, base, resolved: absPath },
+        'Entry file does not exist at the resolved path — cannot determine a watch directory. ' +
+          'A relative entry is resolved against the project root; if the daemon was started elsewhere ' +
+          'and the entry carries no cwd, this is where that goes wrong.'
+      );
+      return null;
+    }
+
     let dir = path.dirname(absPath);
     const root = path.parse(dir).root;
 
@@ -415,7 +450,8 @@ export class FileWatcher {
       dir = parent;
     }
 
-    // Fallback: use the entry file's directory
+    // No package.json above it — the entry file's own directory is the best
+    // answer available, and it is at least a directory the entry lives in.
     return path.dirname(absPath);
   }
 }

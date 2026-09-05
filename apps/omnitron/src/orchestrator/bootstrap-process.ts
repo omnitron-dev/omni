@@ -284,17 +284,11 @@ class BootstrapProcess {
         ...(wsConfig.keepAlive && { keepAlive: { enabled: true, ...wsConfig.keepAlive } }),
       };
 
-      // Passed, but NOT APPLIED: netron's WebSocket transport does not read
-      // `invocationWrapper` — only the HTTP one does. For an app that uses
-      // the wrapper to establish an RLS context, this means a call arriving
-      // over WebSocket runs with no context at all. kysera's RLS plugin
-      // fails closed there (SELECT gets an impossible predicate, UPDATE and
-      // DELETE touch no rows), so the symptom is empty results rather than
-      // leaked rows — safe, and silent.
-      //
-      // Kept so the intent survives and the wiring works the day the
-      // transport honours it; the gap itself is pinned by
-      // test/unit/websocket-wrapper-gap.test.ts.
+      // Applied per invocation by `remote-peer.ts`, so an app that
+      // establishes its RLS scope in this wrapper gets that scope on
+      // WebSocket calls too. It did not until recently: only the HTTP server
+      // read the option, and a WS call ran with no scope at all — kysera
+      // fails closed, so the symptom was empty results, not leaked rows.
       if (auth?.invocationWrapper) {
         wsOptions['invocationWrapper'] = auth.invocationWrapper;
       }

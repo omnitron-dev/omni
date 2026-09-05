@@ -283,4 +283,19 @@ expect.extend = (matchers: Record<string, any>) => {
 };
 
 // Export everything
-export { it, expect, mockFn, describe, afterAll, inherits, afterEach, beforeAll, beforeEach };
+// `test` is an alias of `it`, and `fakeTimers` is part of the surface on the
+// other runtimes — see the note in bun-adapter.ts. Absent names come back as
+// `undefined` from `loadRuntimeAdapter()`, never as an import error.
+export {
+  it,
+  it as test,
+  expect,
+  mockFn,
+  describe,
+  afterAll,
+  inherits,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  fakeTimers,
+};

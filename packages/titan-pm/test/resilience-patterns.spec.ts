@@ -192,18 +192,31 @@ describe('Resilience Patterns - Retry with Backoff', () => {
   });
 
   it('should fail after max retries exceeded', async () => {
+    // This asserted `successful.length > 0` — that some of ten random queries
+    // SUCCEED — under a name promising the opposite, and the outcome was a coin
+    // toss either way. It never exercised exhaustion at all: it passed whenever
+    // randomness happened to let one query through, which is almost always.
     const service = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
-    // Force failures by making many rapid queries
-    const promises = Array.from({ length: 10 }, (_, i) =>
-      service.executeQuery(`SELECT * FROM table${i}`, { maxRetries: 2 })
+    // Three scripted failures against maxRetries: 2 — one more than the budget,
+    // so exhaustion is the only possible outcome.
+    await service.failNext(3);
+
+    await expect(service.executeQuery('SELECT 1', { maxRetries: 2 })).rejects.toThrow(
+      /failed after 2 attempts/i
     );
+  });
 
-    const results = await Promise.allSettled(promises);
+  it('recovers on the attempt after the last scripted failure', async () => {
+    // The other half of the contract, and the half the fixture's comment used
+    // to claim without delivering: exactly N scripted failures, then success.
+    const service = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
-    // At least some should succeed
-    const successful = results.filter((r) => r.status === 'fulfilled');
-    expect(successful.length).toBeGreaterThan(0);
+    await service.failNext(2);
+
+    const result = await service.executeQuery('SELECT 1', { maxRetries: 3 });
+    expect(result.success).toBe(true);
+    expect(result.attempts).toBe(3);
   });
 });
 

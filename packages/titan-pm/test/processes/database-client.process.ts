@@ -51,16 +51,33 @@ export default class DatabaseClientService {
   /**
    * Number of upcoming attempts that must fail, set by `failNext()`.
    *
-   * Without it this fixture is random — 30% on the first two attempts plus 10%
-   * on every one — and a test that asserts a query succeeds is asserting the
-   * outcome of a coin toss. With `maxRetries: 3` all three attempts fail about
-   * once in seventy runs, which is exactly how often
-   * "should retry failed operations with exponential backoff" failed.
+   * Without a script this fixture is random — 30% on the first two attempts
+   * plus 10% on every one — so a test asserting that a query SUCCEEDS is
+   * asserting the outcome of a coin toss.
+   *
+   * The first fix removed the randomness from the failures and left it on the
+   * success, and the comment here recorded a guarantee the code did not give:
+   * "a test asking for two failures gets two, then a success". Only the prefix
+   * was exact. `failNext(2)` scripted attempts 1 and 2; attempt 3 then fell
+   * through to the 10% branch, so the test still failed about one run in ten —
+   * worse than the one-in-seventy the first fix was aimed at. (Caught by
+   * omni-4b with the log saved.)
    */
   private scriptedFailures = 0;
 
+  /**
+   * Set by `failNext()` and never cleared: once a test scripts this fixture,
+   * NEITHER random branch fires again for the life of the instance.
+   *
+   * Scripting only the failures is not enough — `failNext(0)` means "fail
+   * nothing", and two attempts without a script still meet the 30% branch. The
+   * point of a script is that the whole scenario is determined, not its prefix.
+   */
+  private scripted = false;
+
   @Public()
   async failNext(count: number): Promise<void> {
+    this.scripted = true;
     this.scriptedFailures = count;
   }
 
@@ -68,14 +85,15 @@ export default class DatabaseClientService {
     this.connectionAttempts++;
 
     // A scripted failure takes precedence and is exact: a test asking for two
-    // failures gets two, then a success.
+    // failures gets two, then a success — and the success is now as certain as
+    // the failures, because `scripted` silences both random branches below.
     if (this.scriptedFailures > 0) {
       this.scriptedFailures--;
       throw new Error('Connection timeout');
     }
 
     // Simulate connection issues (30% failure rate on first 2 attempts)
-    if (this.connectionAttempts <= 2 && Math.random() < 0.3) {
+    if (!this.scripted && this.connectionAttempts <= 2 && Math.random() < 0.3) {
       throw new Error('Connection timeout');
     }
 
@@ -83,7 +101,7 @@ export default class DatabaseClientService {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     // Occasionally fail
-    if (Math.random() < 0.1) {
+    if (!this.scripted && Math.random() < 0.1) {
       throw new Error('Query execution failed');
     }
   }

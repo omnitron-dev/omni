@@ -29,6 +29,7 @@ import { Breadcrumbs } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
@@ -302,15 +303,11 @@ export default function PipelinesPage() {
                   </TableRow>
                 ))
               ) : pipelineList.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
-                      No pipelines defined
-                    </Typography>
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                      colSpan={6}
+                      message="No pipelines defined"
+                      error={error ?? partialFailure}
+                    />
               ) : (
                 pipelineList.map((p) => (
                   <TableRow key={p.id} hover>
@@ -381,15 +378,11 @@ export default function PipelinesPage() {
                   </TableRow>
                 ))
               ) : runs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
-                      No pipeline runs yet
-                    </Typography>
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                      colSpan={5}
+                      message="No pipeline runs yet"
+                      error={error ?? partialFailure}
+                    />
               ) : (
                 runs.map((run) => {
                   const pipeline = pipelineList.find((p) => p.id === run.pipelineId);

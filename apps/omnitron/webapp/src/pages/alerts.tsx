@@ -37,6 +37,7 @@ import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
@@ -490,15 +491,11 @@ export default function AlertsPage() {
                   </TableRow>
                 ))
               ) : rules.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
-                      No alert rules configured. Create a rule to get started.
-                    </Typography>
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                      colSpan={6}
+                      message="No alert rules configured. Create a rule to get started."
+                      error={error ?? partialFailure}
+                    />
               ) : (
                 rules.map((rule) => (
                   <TableRow

@@ -27,6 +27,7 @@ import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { TableEmptyRow } from 'src/components/table-empty-row';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -295,15 +296,11 @@ export default function TracesPage() {
                       </TableRow>
                     ))
                   ) : traceList.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
-                        <Typography variant="body2" sx={{
-                          color: "text.secondary"
-                        }}>
-                          No traces collected yet
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <TableEmptyRow
+                      colSpan={5}
+                      message="No traces collected yet"
+                      error={error ?? partialFailure}
+                    />
                   ) : (
                     traceList.map((trace) => {
                       const hasErrors = trace.spans.some((s) => s.status === 'error');
@@ -416,15 +413,11 @@ export default function TracesPage() {
                       </TableRow>
                     ))
                   ) : serviceMap.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} sx={{ textAlign: 'center', py: 4 }}>
-                        <Typography variant="caption" sx={{
-                          color: "text.secondary"
-                        }}>
-                          No service map data
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <TableEmptyRow
+                      colSpan={5}
+                      message="No service map data"
+                      error={error ?? partialFailure}
+                    />
                   ) : (
                     serviceMap.map((entry, i) => (
                       <TableRow key={i} hover>

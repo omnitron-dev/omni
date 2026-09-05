@@ -852,10 +852,35 @@ export class NotificationManager {
               const timestamp = parseInt(fields['timestamp'] ?? Date.now().toString(), 10);
               const attempt = parseInt(fields['attempt'] ?? '1', 10);
 
+              // The DLQ is where unparseable payloads are SENT: the main
+              // consumer loop routes a message here precisely because
+              // `JSON.parse` rejected it, and `move-to-dlq.lua` stores the
+              // verbatim string it could not parse. Parsing it again here
+              // without a guard threw out of this loop, past the per-message
+              // try below, into the stream-level catch — which sleeps and
+              // re-reads with '>', a cursor that never returns entries already
+              // moved to the PEL. The poison entry and every entry behind it in
+              // its batch were dropped from the one surface whose job is to not
+              // drop things.
+              //
+              // Hand the raw string to the handler instead. A DLQ consumer is
+              // an operator looking at what failed, and a message whose defect
+              // IS its malformed body is best reported by showing that body.
+              let payload: unknown;
+              try {
+                payload = JSON.parse(payloadStr);
+              } catch (parseError) {
+                this.logger.error(
+                  { err: parseError, messageId: id, channel, payloadStr },
+                  '[DLQ] Unparseable payload, passing the raw string to the handler'
+                );
+                payload = payloadStr;
+              }
+
               const msg: RotifMessage = {
                 id,
                 channel,
-                payload: JSON.parse(payloadStr),
+                payload,
                 timestamp,
                 attempt,
                 ack: async () => {

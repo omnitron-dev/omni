@@ -381,12 +381,16 @@ export class DLQManager {
             break;
           }
 
-          let payload = {};
+          // Keep the raw string when it will not parse. `{}` reads as "this
+          // message had an empty body", which is the one thing it did not have:
+          // the main consumer routes a message to the DLQ precisely when
+          // `JSON.parse` rejects its payload, so an operator listing failed
+          // messages is exactly the reader who needs to see the malformed text.
+          let payload: any;
           try {
             payload = JSON.parse(fieldsObj['payload'] || '{}');
           } catch {
-            // If payload is not valid JSON, default to empty object
-            payload = {};
+            payload = fieldsObj['payload'];
           }
 
           filtered.push({

@@ -392,7 +392,13 @@ describe('Rotif - DLQManager', () => {
       const messages = await manager.getMessages();
 
       expect(messages.length).toBe(1);
-      expect(messages[0]?.payload).toEqual({});
+      // The raw text, not `{}`. This assertion used to expect `{}` — the same
+      // value the test above gets for a message with NO payload field at all,
+      // so the two situations were indistinguishable in the one view an
+      // operator uses to diagnose them. A message reaches the DLQ precisely
+      // because `JSON.parse` rejected its body, which makes that body the
+      // single most useful thing this listing can show.
+      expect(messages[0]?.payload).toBe('invalid-json');
     });
   });
 });

@@ -1090,7 +1090,13 @@ export class EventsService implements ILifecycle {
         // Handle with retry if specified
         if (options?.retry) {
           let attempts = 0;
-          const maxAttempts = options.retry.attempts || 3;
+          // Two defects in one expression. `||` discarded a configured
+          // `attempts: 0`; and zero would then have meant "never run the
+          // handler at all", because `while (attempts < 0)` does not execute.
+          // "No retries" must still run the handler once — the same shape
+          // fixed in titan-lock's `withLock({ retries: 0 })`, which skipped
+          // its body entirely and never contacted Redis.
+          const maxAttempts = Math.max(1, options.retry.attempts ?? 3);
 
           while (attempts < maxAttempts) {
             attempts++;

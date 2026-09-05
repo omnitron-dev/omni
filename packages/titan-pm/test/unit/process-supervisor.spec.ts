@@ -439,6 +439,52 @@ describe('ProcessSupervisor', () => {
       });
     });
 
+    describe('maxRestarts: 0', () => {
+      it('does not restart a child when restarts are disabled', async () => {
+        // Zero is a deliberate instruction — "do not bring this back" — for a
+        // one-shot job, or a process where an automatic restart is unsafe.
+        // `this.options.maxRestarts || 3` discarded it and restarted three
+        // times. The comparison itself always handled zero correctly
+        // (`recent.length >= 0` is true on the first crash); the value never
+        // reached it.
+        const children = new Map<string, ISupervisorChild>([
+          ['worker', { name: 'worker', processClass: MockWorkerProcess, propertyKey: 'worker' }],
+        ]);
+
+        const SupervisorClass = createSupervisorClass(children);
+        const supervisor = new ProcessSupervisor(
+          mockManager,
+          SupervisorClass,
+          { strategy: SupervisionStrategy.ONE_FOR_ONE, maxRestarts: 0, window: 60000 },
+          mockLogger,
+        );
+
+        await supervisor.start();
+
+        const workerSpawnCall = (mockManager.spawn as vi.Mock).mock.results[0];
+        const workerProxy = await workerSpawnCall.value;
+        const workerProcessId = workerProxy.__processId;
+
+        (mockManager.spawn as vi.Mock).mockClear();
+
+        mockManager.emit(
+          'process:crash',
+          {
+            id: workerProcessId,
+            name: 'worker',
+            status: ProcessStatus.CRASHED,
+            startTime: 1000,
+            restartCount: 0,
+          } as IProcessInfo,
+          new Error('Worker crashed'),
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(mockManager.spawn).not.toHaveBeenCalled();
+      });
+    });
+
     describe('ONE_FOR_ALL strategy', () => {
       it('should restart all children when one fails', async () => {
         const children = new Map<string, ISupervisorChild>([

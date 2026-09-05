@@ -8,6 +8,28 @@
 import { log, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
+/**
+ * How long ago a node's status was taken.
+ *
+ * `checkedAt` travels all the way from the service to the console's own type
+ * declaration and is displayed nowhere, so a node that went down an hour ago
+ * reads as reachable until someone re-checks it. A reachability answer
+ * without its age is the reading most likely to be believed and least likely
+ * to be current.
+ */
+export function formatCheckedAt(iso: string | undefined): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return 'never';
+  if (ms < 0) return 'just now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export async function nodeListCommand(): Promise<void> {
   const client = createDaemonClient();
   if (!(await client.isReachable())) {
@@ -25,19 +47,34 @@ export async function nodeListCommand(): Promise<void> {
       return;
     }
 
-    const rows = list.map((n: any) => ({
-      ID: n.isLocal ? n.id : n.id.slice(0, 8),
-      Name: n.name,
-      Host: n.host,
-      'SSH Port': n.sshPort,
-      'Daemon Port': n.daemonPort,
-      Runtime: n.runtime,
-      SSH: n.isLocal ? '-' : (n.status?.sshConnected ? '● connected' : '○ disconnected'),
-      Omnitron: n.status?.omnitronConnected ? `● v${n.status.omnitronVersion ?? '?'}` : '○ offline',
-      Tags: n.tags.join(', ') || '-',
-    }));
-
-    table(rows);
+    // `table` takes an options object — `{ data, columns }` — and throws
+    // `TypeError: Table data must be an array` on a bare array. Both calls in
+    // this file passed one, so `omnitron node list` and `omnitron node
+    // ssh-keys` failed every time they had something to show; the empty case
+    // returns earlier, which is the only path that ever worked.
+    table({
+      data: list.map((n: any) => ({
+        id: n.isLocal ? n.id : n.id.slice(0, 8),
+        name: n.name,
+        // The SSH port rides along with the host and the daemon port is
+        // left to `omnitron node show`: extra columns are the difference
+        // between a readable table and one where every cell is an ellipsis.
+        host: `${n.host}:${n.sshPort}`,
+        ssh: n.isLocal ? '-' : n.status?.sshConnected ? '● up' : '○ down',
+        omnitron: n.status?.omnitronConnected ? `● v${n.status.omnitronVersion ?? '?'}` : '○ offline',
+        checked: formatCheckedAt(n.status?.checkedAt),
+        tags: n.tags.join(', ') || '-',
+      })),
+      columns: [
+        { key: 'id', header: 'ID', width: 9 },
+        { key: 'name', header: 'Name', width: 16 },
+        { key: 'host', header: 'Host:SSH', width: 21 },
+        { key: 'ssh', header: 'SSH', width: 7 },
+        { key: 'omnitron', header: 'Daemon', width: 12 },
+        { key: 'checked', header: 'Seen', width: 9 },
+        { key: 'tags', header: 'Tags', width: 12 },
+      ],
+    });
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   } finally {
@@ -179,13 +216,14 @@ export async function nodeSshKeysCommand(): Promise<void> {
       return;
     }
 
-    const rows = keys.map((k: any) => ({
-      Name: k.name,
-      Type: k.type,
-      Path: k.path,
-    }));
-
-    table(rows);
+    table({
+      data: keys.map((k: any) => ({ name: k.name, type: k.type, path: k.path })),
+      columns: [
+        { key: 'name', header: 'Name', width: 24 },
+        { key: 'type', header: 'Type', width: 12 },
+        { key: 'path', header: 'Path', width: 48 },
+      ],
+    });
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   } finally {

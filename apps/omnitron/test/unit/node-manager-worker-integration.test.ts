@@ -23,6 +23,7 @@ vi.mock('../../src/services/remote-ops.service.js', () => {
 
 // Must import after mocks
 const { NodeManagerService } = await import('../../src/services/node-manager.service.js');
+const { CLI_VERSION } = await import('../../src/config/defaults.js');
 
 describe('NodeManagerService — Worker Integration', () => {
   let service: InstanceType<typeof NodeManagerService>;
@@ -36,7 +37,17 @@ describe('NodeManagerService — Worker Integration', () => {
       debug: vi.fn(),
       child: vi.fn(() => mockLogger),
     };
-    service = new NodeManagerService(mockLogger);
+    // The store argument is required. It used to be omitted, and `load()`
+    // swallows its own failure, so the service came up with an empty
+    // registry and no complaint — a mock missing a dependency, cancelling
+    // the check it was written to make.
+    service = new NodeManagerService(mockLogger, {
+      selectNodesSync: () => [],
+      upsertNodeSync: () => {},
+      deleteNodeSync: () => {},
+      kvGetSync: () => null,
+      kvSetSync: () => {},
+    } as any);
   });
 
   describe('updateStatusCacheFromWorker', () => {
@@ -75,10 +86,17 @@ describe('NodeManagerService — Worker Integration', () => {
       expect(node!.status).not.toBeNull();
       expect(node!.status!.pingReachable).toBe(true);
       expect(node!.status!.omnitronConnected).toBe(true);
-      expect(node!.status!.omnitronVersion).toBe('0.1.0');
-      expect(node!.status!.omnitronPid).toBe(1234);
-      expect(node!.status!.omnitronRole).toBe('master');
       expect(node!.status!.os).toEqual({ platform: 'darwin', arch: 'arm64', hostname: 'test', release: '24.0' });
+      expect(node!.status!.checkedAt).toBe(checkResult.checkedAt);
+
+      // For the LOCAL node the daemon's own facts win over the worker's:
+      // version, pid, uptime and role are read from `process` on each call.
+      // This test used to assert `'0.1.0'` — the value a string literal in
+      // the service hardcoded while the package was at 0.2.0 — so it pinned
+      // the defect rather than the behaviour.
+      expect(node!.status!.omnitronVersion).toBe(CLI_VERSION);
+      expect(node!.status!.omnitronPid).toBe(process.pid);
+      expect(node!.status!.omnitronRole).toBe('master');
     });
 
     it('emits node:status events', () => {

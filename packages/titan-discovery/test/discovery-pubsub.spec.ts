@@ -96,10 +96,29 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
         timestamp: Date.now(),
       };
 
-      (service as any).eventEmitter.emit('discovery:event', event);
+      // Deliver it the way Redis would. The previous version emitted straight
+      // into `eventEmitter`, which is DOWNSTREAM of the filter — the check
+      // lives in the pub/sub message handler and drops the event before it is
+      // emitted. So that route could never observe the filtering, which is
+      // presumably why the test asserted nothing and called the behaviour
+      // "implementation-specific".
+      const deliver = (service as unknown as {
+        messageHandler: (channel: string, message: string) => void;
+      }).messageHandler;
+      deliver(options.pubSubChannel ?? 'titan:discovery:events', JSON.stringify(event));
 
-      // Handler should not be called for own events (filtered internally)
-      // This behavior is implementation-specific
+      // Own event: dropped.
+      expect(handler).not.toHaveBeenCalled();
+
+      // The same event from another node does reach the handler — without this
+      // half, the assertion above would also pass if the handler were simply
+      // never wired up.
+      deliver(
+        options.pubSubChannel ?? 'titan:discovery:events',
+        JSON.stringify({ ...event, nodeId: 'some-other-node' }),
+      );
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0]).toMatchObject({ nodeId: 'some-other-node' });
     });
   });
 

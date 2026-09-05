@@ -31,7 +31,7 @@ export function DaemonOfflineBanner() {
       >
         {status === 'offline' ? (
           <>
-            Daemon offline — run <code style={{ margin: '0 4px' }}>omnitron dev</code> to start the
+            Daemon offline — run <code style={{ margin: '0 4px' }}>omnitron up</code> to start the
             backend
           </>
         ) : (

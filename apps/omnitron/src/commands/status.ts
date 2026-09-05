@@ -28,8 +28,9 @@ export async function statusCommand(): Promise<void> {
       if (rawPid !== null) {
         if (PidManager.isProcessAlive(rawPid)) {
           log.warn(`Daemon process exists (PID: ${rawPid}) but socket is not responding`);
-          log.info('The daemon may still be starting. Retry in a few seconds, or kill it:');
-          log.info(`  omnitron daemon kill`);
+          log.info('The daemon may still be starting. Retry in a few seconds, or stop it:');
+          log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
+          log.info('  omnitron kill          # force immediately');
         } else {
           // Stale PID — clean up
           const cleaned = pidManager.cleanupStale(socketPath);

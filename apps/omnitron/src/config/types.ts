@@ -68,25 +68,6 @@ export interface IAppDefinition {
   env?: Record<string, string>;
   cwd?: string;
 
-  /**
-   * Development mode overrides — applied when running via `omnitron dev`.
-   * Allows apps to customize their behavior in dev mode without
-   * affecting production configuration.
-   *
-   * Note: file watching is configured at the ecosystem level (omnitron.config.ts)
-   * via `IEcosystemAppEntry.watch`, not here — watching is an orchestrator concern.
-   */
-  dev?: {
-    /** Override HTTP port in dev mode */
-    port?: number;
-    /** Override log level in dev mode (default: 'debug') */
-    logLevel?: string;
-    /** Enable source maps (default: true in dev) */
-    sourceMaps?: boolean;
-    /** Additional env vars for dev mode */
-    env?: Record<string, string>;
-  };
-
   observability?: {
     metrics?: boolean | { export?: 'prometheus' | 'statsd'; interval?: number };
     tracing?: boolean | { sampler?: number; propagator?: 'w3c' | 'jaeger' };
@@ -228,7 +209,7 @@ export type StackName = 'dev' | 'test' | 'staging' | 'prod' | string;
 export interface IStackConfig {
   /** Stack deployment type */
   type: 'local' | 'remote' | 'cluster';
-  /** Enable file watching (default: true for dev stacks, false for others) */
+  /** Enable file watching (default: true for every managed app) */
   watch?: boolean;
   /** Nodes for remote/cluster stacks */
   nodes?: IStackNode[];
@@ -601,7 +582,12 @@ export interface IEcosystemAppEntry {
   /** Startup timeout in ms (overrides global resources.timeout). Useful for apps with slow init (e.g. blockchain wallet connections) */
   startupTimeout?: number;
   /**
-   * Watch configuration for dev mode (`omnitron dev`).
+   * Watch configuration. Watching is on for every managed app by default —
+   * there is no stack-based gating; `omnitron up --no-watch` (or
+   * `OMNITRON_NO_WATCH=1`) turns it off daemon-wide, `watch: false` per app.
+   *
+   * Bootstrap-mode apps are watched through esbuild's import graph instead of
+   * `fs.watch`, so this entry configures the latter only.
    *
    * - `string`: directory to watch (relative to cwd or absolute)
    * - `IWatchConfig`: full watch configuration

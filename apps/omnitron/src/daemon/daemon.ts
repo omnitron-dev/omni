@@ -1539,7 +1539,7 @@ export class OmnitronDaemon {
 
   /**
    * Trigger graceful shutdown via Application's lifecycle system.
-   * Called by DaemonRpcService.shutdown() for the `omnitron shutdown` CLI command.
+   * Called by DaemonRpcService.shutdown() for the `omnitron down` CLI command.
    */
   async stop(): Promise<void> {
     if (!this.app) return;

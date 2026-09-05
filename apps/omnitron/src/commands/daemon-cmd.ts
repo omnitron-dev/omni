@@ -1,5 +1,11 @@
 /**
- * omnitron daemon start|stop|ping|kill
+ * Daemon lifecycle, as reached from the CLI:
+ *
+ *   `omnitron up`   → daemonStart   `omnitron ping` → daemonPing
+ *   `omnitron down` → daemonStop    `omnitron kill` → daemonKill
+ *
+ * There is no `daemon` command group; the names here predate its removal and
+ * are kept because callers import them.
  */
 
 import { fork } from 'node:child_process';

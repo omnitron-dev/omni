@@ -54,7 +54,7 @@ program
   .option('-p, --project <name>', 'Initial project (default: auto-detect from CWD)')
   .option('-f, --foreground', 'Run in foreground (block terminal)')
   .option('--no-infra', 'Skip Docker infrastructure provisioning')
-  .option('--no-watch', 'Disable file watching for dev stacks')
+  .option('--no-watch', 'Disable file watching daemon-wide')
   .option('--master', 'Configure as master node (first-run setup)')
   .option('--slave [address]', 'Configure as slave node (first-run setup). Optional: host:port of master')
   .option('--webapp', 'Enable Console UI (webapp) auto-start')

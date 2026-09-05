@@ -9,9 +9,32 @@ import * as CacheModule from '../src/index.js';
 
 describe('Cache Module Exports', () => {
   describe('Types', () => {
-    it('should export type definitions', () => {
-      // These are compile-time checks - types are exported
-      expect(true).toBe(true);
+    // `expect(true).toBe(true)` stood here under the title "should export type
+    // definitions", which asserts nothing: the test passed with every export
+    // removed. Types cannot be checked at runtime, but the VALUE surface they
+    // travel with can — and that is what a consumer's import actually breaks on.
+    it('exports the value surface a consumer imports', () => {
+      const missing = [
+        'CACHE_SERVICE_TOKEN',
+        'CACHE_DEFAULT_TOKEN',
+        'CACHE_OPTIONS_TOKEN',
+        'DEFAULT_CACHE_NAME',
+        'getCacheToken',
+        'TitanCacheModule',
+      ].filter((name) => (CacheModule as Record<string, unknown>)[name] === undefined);
+
+      expect(missing, 'exports named in the package README/consumers').toEqual([]);
+    });
+
+    it('exports nothing undefined', () => {
+      // A re-export of a name that no longer exists lands here as `undefined`
+      // rather than as an import error, and stays invisible until a caller
+      // uses it.
+      const undefinedExports = Object.entries(CacheModule)
+        .filter(([, v]) => v === undefined)
+        .map(([k]) => k);
+
+      expect(undefinedExports).toEqual([]);
     });
   });
 

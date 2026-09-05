@@ -25,6 +25,7 @@ import {
   stopContainer,
   waitForHealthy,
   ensureImage,
+  containerSpecHash,
 } from '../infrastructure/container-runtime.js';
 import { resolveOmnitronNginx } from '../infrastructure/service-resolver.js';
 
@@ -188,7 +189,22 @@ export class WebappService {
     private readonly logger: ILogger,
     _projectRoot?: string,
     private readonly apiPort: number = 9801,
-    private readonly publicPort: number = 9800
+    private readonly publicPort: number = 9800,
+    /**
+     * Interface the console's port is published on. Loopback by default.
+     *
+     * The daemon binds its own HTTP transport to 127.0.0.1, but the console's
+     * nginx container published `-p 9800:80` — every interface — and proxies
+     * `/netron/` straight to that daemon port. So the whole RPC surface was
+     * reachable from the network, and the methods that carry
+     * `allowAnonymous` were reachable without credentials: app metrics could
+     * be read, and `OmnitronTelemetry.pushBatch` accepted arbitrary rows into
+     * the daemon's `logs` table. Verified by writing one and deleting it.
+     *
+     * Set `daemon.consoleBindHost` to '0.0.0.0' to publish it, deliberately,
+     * to a network where something else is doing the authenticating.
+     */
+    private readonly bindHost: string = '127.0.0.1'
   ) {
     // Resolve webapp dir — find it relative to this module's location (not CWD)
     const thisDir = path.dirname(new URL(import.meta.url).pathname);
@@ -252,11 +268,39 @@ export class WebappService {
     const appliedConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : null;
     const configChanged = appliedConfig !== nginxConfig;
 
-    // 2. Keep a healthy container only when it is running the current config.
+    // The container spec we want, needed here rather than at creation time
+    // because step 2 compares it against what is actually running.
+    const distPathForSpec = path.join(this.webappDir, 'dist');
+    const desiredSpec = resolveOmnitronNginx({
+      port: this.publicPort,
+      internalApiPort: this.apiPort,
+      webappDistPath: distPathForSpec,
+      bindHost: this.bindHost,
+    });
+    desiredSpec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
+    const desiredHash = containerSpecHash(desiredSpec);
+
+    // 2. Keep a healthy container only when it is running the current config
+    //    AND the current spec.
+    //
+    //    The config comparison alone was not enough: changing the published
+    //    port, its bind address, the image or a volume leaves nginx.conf
+    //    identical, so a healthy container kept running with the old spec and
+    //    the change took effect only if someone removed it by hand. Found by
+    //    binding the port to loopback and watching `docker ps` still report
+    //    0.0.0.0 after a full daemon restart.
+    //
+    //    Every other managed container is reconciled on this hash already;
+    //    the console was the one that reconciled on a file instead.
     if (!force && !configChanged) {
       const state = await getContainerState('omnitron-nginx');
       if (state?.status === 'running') {
-        if (state.health === 'healthy') {
+        if (state.specHash && state.specHash !== desiredHash) {
+          this.logger.info(
+            { current: state.specHash, desired: desiredHash },
+            'Console container spec changed — recreating'
+          );
+        } else if (state.health === 'healthy') {
           this.logger.info({ port: this.publicPort }, 'Omnitron Console is already running');
           return;
         }
@@ -281,18 +325,8 @@ export class WebappService {
     await removeContainer('omnitron-nginx');
 
     // 5. Create container
-    const containerSpec = resolveOmnitronNginx({
-      port: this.publicPort,
-      internalApiPort: this.apiPort,
-      webappDistPath: distPath,
-    });
-
-    // Add nginx config mount
-    containerSpec.volumes.push({
-      source: configPath,
-      target: '/etc/nginx/nginx.conf',
-      readonly: true,
-    });
+    // Same spec the comparison above used, so what runs is what was compared.
+    const containerSpec = desiredSpec;
 
     await ensureImage(containerSpec.image);
     await createContainer(containerSpec);

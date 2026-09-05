@@ -703,6 +703,17 @@ export interface IDaemonConfig {
    * offers — and unset it inherits `ws`'s 100 MB default.
    */
   wsMaxPayload?: number;
+  /**
+   * Interface the console's nginx publishes on. Default: '127.0.0.1'.
+   *
+   * The daemon binds its own HTTP transport to loopback, but the console
+   * container published on every interface and proxies `/netron/` straight
+   * to it — so the RPC surface was reachable from the network, and the
+   * `allowAnonymous` methods on it were reachable without credentials.
+   *
+   * Set to '0.0.0.0' only where something else authenticates the traffic.
+   */
+  consoleBindHost?: string;
   httpRateLimit?: {
     /** Default: true. */
     enabled?: boolean;

@@ -266,7 +266,13 @@ export class OmnitronDaemon {
       if (savedConfig?.webapp) {
         try {
           const { WebappService } = await import('../webapp/webapp.service.js');
-          const webapp = new WebappService(logger, process.cwd(), (this.dc.httpPort ?? 9800) + 1, this.dc.httpPort ?? 9800);
+          const webapp = new WebappService(
+            logger,
+            process.cwd(),
+            (this.dc.httpPort ?? 9800) + 1,
+            this.dc.httpPort ?? 9800,
+            this.dc.consoleBindHost ?? '127.0.0.1'
+          );
           await webapp.start();
         } catch (err) {
           logger.warn({ error: (err as Error).message }, 'Webapp failed to start — Console UI may not be available');

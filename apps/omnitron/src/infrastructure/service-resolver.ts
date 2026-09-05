@@ -479,6 +479,8 @@ export function resolveOmnitronNginx(options?: {
   internalApiPort?: number;
   image?: string;
   webappDistPath?: string;
+  /** Interface to publish on. Loopback unless the caller says otherwise. */
+  bindHost?: string;
 }): ResolvedContainer {
   const image = options?.image ?? 'nginx:alpine';
   const port = options?.port ?? 9800;
@@ -493,7 +495,7 @@ export function resolveOmnitronNginx(options?: {
   return applyManagedDefaults({
     name: `${CONTAINER_PREFIX}-nginx`,
     image,
-    ports: [{ host: port, container: 80 }],
+    ports: [{ host: port, container: 80, bindHost: options?.bindHost ?? '127.0.0.1' }],
     environment: {
       OMNITRON_API_HOST: 'host.docker.internal',
       OMNITRON_API_PORT: String(internalPort),

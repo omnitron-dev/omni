@@ -43,6 +43,19 @@ export interface FrequencyLimits {
   maxPerDay?: number;
 }
 
+/**
+ * NOT IMPLEMENTED — the whole block, not just a field of it.
+ *
+ * Digest preferences are stored, merged on update and read back, and nothing
+ * acts on them: there is no scheduler that batches notifications and no sender
+ * that delivers a digest. A recipient who asks for a weekly summary on Monday
+ * at 09:00 gets each notification as it happens, or — if they also disabled
+ * the channel expecting the digest to carry it — nothing at all.
+ *
+ * Distinct from the neighbouring preferences, which ARE enforced in
+ * shouldSend(): globalMute, per-channel and per-category enables, quiet hours
+ * and frequency limits all take effect.
+ */
 export interface DigestConfig {
   enabled: boolean;
   frequency: 'daily' | 'weekly' | 'monthly';

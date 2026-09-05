@@ -42,6 +42,7 @@ import {
 } from './notifications.tokens.js';
 import { NotificationWorkerService } from './worker/notification-worker.js';
 import {
+  NOTIFICATION_WORKER_OPTIONS,
   NOTIFICATION_TARGET_RESOLVER,
   NOTIFICATION_PERSISTER,
   NOTIFICATION_REALTIME_SIGNALER,
@@ -737,6 +738,14 @@ export class NotificationsModule {
         useToken: options.realtimeSignaler,
       },
     ]);
+
+    // Module-level worker tuning. Declared on the options since the worker
+    // mode was added and never delivered anywhere: the worker reads its
+    // options from start(), which the app calls, so every knob on this field
+    // was inert.
+    if (options.workerOptions) {
+      providers.push([NOTIFICATION_WORKER_OPTIONS, { useValue: options.workerOptions }]);
+    }
 
     // Register the worker service itself
     providers.push(NotificationWorkerService);

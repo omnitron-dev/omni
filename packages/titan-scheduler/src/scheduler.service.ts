@@ -330,7 +330,39 @@ export class SchedulerService implements ILifecycle {
    * skip it. Manual `triggerJob()` bypasses this entirely (it calls the executor
    * directly) — an explicit per-node action that should always run locally.
    */
+  /**
+   * A job's configured window, if any.
+   *
+   * `ICronOptions` declares `startTime` and `endTime`; scheduleCronJob passed
+   * node-cron only `timezone`, so both were dropped. A job told to stop at a
+   * given time ran forever and one told to start later ran at once — the
+   * operator sets a window and the scheduler ignores it. Enforced here rather
+   * than in the cron branch so an interval or timeout job declaring the same
+   * options is bounded too.
+   */
+  private isWithinWindow(job: IScheduledJob, now = Date.now()): boolean {
+    const options = job.options as { startTime?: Date | string; endTime?: Date | string };
+
+    const at = (value: Date | string | undefined): number | undefined => {
+      if (value === undefined) return undefined;
+      const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+      // An unparseable bound is not a reason to stop running: it is a
+      // configuration error, and silently never firing is the worse failure.
+      return Number.isNaN(ms) ? undefined : ms;
+    };
+
+    const start = at(options.startTime);
+    if (start !== undefined && now < start) return false;
+
+    const end = at(options.endTime);
+    if (end !== undefined && now > end) return false;
+
+    return true;
+  }
+
   private async executeJob(job: IScheduledJob): Promise<void> {
+    if (!this.isWithinWindow(job)) return;
+
     const distributed = this.config?.distributed;
     if (distributed?.enabled && this.lockProvider) {
       const key = this.fireWindowKey(job);

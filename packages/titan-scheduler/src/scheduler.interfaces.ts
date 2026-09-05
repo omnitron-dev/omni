@@ -111,22 +111,26 @@ export interface ICronOptions extends IBaseJobOptions {
   timezone?: string;
 
   /**
-   * UTC offset
+   * NOT IMPLEMENTED — nothing reads this, and node-cron has no equivalent
+   * parameter. Use `timezone`, which is applied.
    */
   utcOffset?: number;
 
   /**
-   * Start time for the job
+   * Earliest time the job may run. Fires before it are skipped; the schedule
+   * itself is unaffected.
    */
   startTime?: Date | string;
 
   /**
-   * End time for the job
+   * Latest time the job may run. Fires after it are skipped.
    */
   endTime?: Date | string;
 
   /**
-   * Whether to start immediately
+   * NOT IMPLEMENTED for cron jobs — only the interval branch honours it
+   * (scheduleIntervalJob). A cron job declaring it waits for the first
+   * matching tick like any other.
    */
   immediate?: boolean;
 }
@@ -435,6 +439,11 @@ export interface ISchedulerConfig {
     enabled: boolean;
     lockProvider?: 'redis' | 'database';
     lockTTL?: number;
+    /**
+     * NOT IMPLEMENTED — nothing reads this. The distributed lock is keyed by
+     * job and fire window (see fireWindowKey), which is what makes the
+     * exactly-once guarantee hold without any node needing an identity.
+     */
     nodeId?: string;
   };
 

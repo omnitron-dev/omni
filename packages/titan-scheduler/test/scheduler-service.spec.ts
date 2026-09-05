@@ -712,3 +712,86 @@ describe('Scheduler Service', () => {
     });
   });
 });
+
+describe('cron job time window', () => {
+  let scheduler: SchedulerService;
+  let registry: SchedulerRegistry;
+  let executor: SchedulerExecutor;
+  let persistence: SchedulerPersistence;
+
+  const config: ISchedulerConfig = { enabled: true, maxConcurrent: 5, queueSize: 100, shutdownTimeout: 5000 };
+
+  beforeEach(async () => {
+    registry = new SchedulerRegistry(config);
+    executor = new SchedulerExecutor(config);
+    persistence = new SchedulerPersistence(config);
+    scheduler = new SchedulerService(registry, executor, config, persistence);
+    await scheduler.onInit();
+  });
+
+  afterEach(async () => {
+    if (scheduler.isRunning()) await scheduler.onStop();
+  });
+
+  /**
+   * ICronOptions declares startTime, endTime, utcOffset and immediate;
+   * scheduleCronJob passed node-cron only `timezone`. A job configured to stop
+   * at a given time ran forever, and one configured to start later ran at
+   * once — the operator sets a window and the scheduler ignores it.
+   *
+   * These drive the scheduled callback rather than waiting for a real minute
+   * boundary: node-cron owns the timing, the window is ours.
+   */
+  function fireNow(name: string): Promise<void> {
+    const task = (scheduler as unknown as { cronJobs: Map<string, { _fire?: () => Promise<void> }> }).cronJobs.get(
+      name
+    );
+    expect(task, `no cron task registered for ${name}`).toBeDefined();
+    return (scheduler as unknown as { executeJob: (job: unknown) => Promise<void> }).executeJob(
+      registry.getJob(name)
+    );
+  }
+
+  it('does not run a job before its startTime', async () => {
+    const handler = vi.fn();
+    scheduler.addCronJob('later', CronExpression.EVERY_MINUTE as never, handler, {
+      startTime: new Date(Date.now() + 60_000),
+    });
+
+    await fireNow('later');
+
+    expect(handler, 'the job ran before its startTime').not.toHaveBeenCalled();
+  });
+
+  it('does not run a job after its endTime', async () => {
+    const handler = vi.fn();
+    scheduler.addCronJob('expired', CronExpression.EVERY_MINUTE as never, handler, {
+      endTime: new Date(Date.now() - 60_000),
+    });
+
+    await fireNow('expired');
+
+    expect(handler, 'the job ran after its endTime').not.toHaveBeenCalled();
+  });
+
+  it('runs a job inside its window', async () => {
+    const handler = vi.fn();
+    scheduler.addCronJob('current', CronExpression.EVERY_MINUTE as never, handler, {
+      startTime: new Date(Date.now() - 60_000),
+      endTime: new Date(Date.now() + 60_000),
+    });
+
+    await fireNow('current');
+
+    expect(handler, 'the job did not run inside its own window').toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a job with no window at all', async () => {
+    const handler = vi.fn();
+    scheduler.addCronJob('always', CronExpression.EVERY_MINUTE as never, handler, {});
+
+    await fireNow('always');
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});

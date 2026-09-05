@@ -10,6 +10,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Kysely } from 'kysely';
+
+import { planRetention, batchesPerPass } from './log-retention.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { EventEmitter } from 'node:events';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
@@ -45,6 +47,16 @@ function escapeLike(str: string): string {
 }
 
 const FLUSH_INTERVAL_MS = 1_000;
+
+/**
+ * How often to prune old log rows. Hourly: the table grows over days, so a
+ * pass more often than this is work for its own sake, and one much less often
+ * lets a burst accumulate between passes.
+ */
+const RETENTION_INTERVAL_MS = 60 * 60 * 1_000;
+
+/** Cadence while a backlog is still draining — see `scheduleRetention`. */
+const RETENTION_BACKLOG_INTERVAL_MS = 60 * 1_000;
 const FLUSH_THRESHOLD = 100;
 /**
  * Hard ceiling on buffered entries. During a DB outage every flush fails and
@@ -85,9 +97,121 @@ export class LogCollectorService extends EventEmitter {
   private ingestedTotal = 0;
   private droppedTotal = 0;
 
+  private retentionTimer: NodeJS.Timeout | null = null;
+  /** Days of history to keep in the table. Zero or less disables pruning. */
+  private retentionDays = 0;
+  /**
+   * Set alongside retention rather than injected.
+   *
+   * The service is registered with `useClass` and takes the database as its
+   * only constructor dependency; adding a second is a change to the module's
+   * wiring, and a wrong one there fails at runtime rather than at compile
+   * time — twice today already. One setter, one call site, nothing to get out
+   * of order.
+   */
+  private logger: {
+    info?: (obj: object, msg?: string) => void;
+    error?: (obj: object, msg?: string) => void;
+  } | null = null;
+
   constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
     super();
     this.startFlushTimer();
+  }
+
+  /**
+   * Turn on table retention.
+   *
+   * Off until called, because the number belongs to the daemon config and
+   * this service is constructed before it is read. A default chosen here
+   * would be a policy decision made in the wrong place — and a wrong one
+   * deletes an operator's history.
+   */
+  setRetentionDays(days: number, logger?: LogCollectorService['logger']): void {
+    this.retentionDays = days;
+    if (logger) this.logger = logger;
+    if (this.retentionTimer) {
+      clearTimeout(this.retentionTimer);
+      this.retentionTimer = null;
+    }
+    if (planRetention(days) === null) {
+      this.logger?.info?.({ days }, 'Log table retention disabled');
+      return;
+    }
+    this.scheduleRetention(0);
+  }
+
+  /**
+   * Arm the next retention pass.
+   *
+   * The per-pass ceiling exists to keep each statement short; it should not
+   * also decide how long a backlog takes to clear. A pass that hits its
+   * ceiling means there is more waiting, so the next one comes in a minute
+   * rather than an hour — thirteen million stale rows drain in half an hour
+   * instead of a day, with every individual statement still bounded. A pass
+   * that finishes early returns to the hourly cadence.
+   *
+   * `setTimeout` chained rather than `setInterval`, so the cadence is a
+   * decision made after each pass with its result in hand.
+   */
+  private scheduleRetention(delayMs: number): void {
+    if (this.retentionTimer) clearTimeout(this.retentionTimer);
+    if (this.disposed) return;
+
+    this.retentionTimer = setTimeout(() => {
+      void this.pruneOldLogs().then((removed) => {
+        const plan = planRetention(this.retentionDays);
+        if (!plan || this.disposed) return;
+        this.scheduleRetention(
+          removed >= plan.maxThisPass ? RETENTION_BACKLOG_INTERVAL_MS : RETENTION_INTERVAL_MS
+        );
+      });
+    }, delayMs);
+    this.retentionTimer.unref();
+  }
+
+  /**
+   * Delete rows past the retention window, in bounded batches.
+   *
+   * Batched because a single `DELETE` over 13 GB holds its transaction for
+   * the duration and blocks the flush path behind it — a retention pass would
+   * show up as the log pipeline stalling, which is the opposite of the point.
+   */
+  async pruneOldLogs(): Promise<number> {
+    const plan = planRetention(this.retentionDays);
+    if (!plan || this.disposed) return 0;
+
+    let removed = 0;
+    try {
+      for (let i = 0; i < batchesPerPass(plan); i++) {
+        if (this.disposed) break;
+        const doomed = await this.db
+          .selectFrom('logs')
+          .select('id')
+          .where('timestamp', '<', plan.cutoff)
+          .limit(plan.batchSize)
+          .execute();
+
+        if (doomed.length === 0) break;
+        await this.db
+          .deleteFrom('logs')
+          .where('id', 'in', doomed.map((r) => String(r.id)))
+          .execute();
+        removed += doomed.length;
+      }
+
+      if (removed > 0) {
+        this.logger?.info?.(
+          { removed, cutoff: plan.cutoff.toISOString(), retentionDays: this.retentionDays },
+          'Pruned log rows past retention'
+        );
+      }
+    } catch (err) {
+      // Reported rather than swallowed: a retention pass that keeps failing
+      // is the disk filling up in slow motion, and the only warning of it.
+      this.logger?.error?.({ error: (err as Error).message, removed }, 'Log retention pass failed');
+    }
+    return removed;
   }
 
   // ===========================================================================
@@ -416,6 +540,11 @@ export class LogCollectorService extends EventEmitter {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
+    }
+
+    if (this.retentionTimer) {
+      clearTimeout(this.retentionTimer);
+      this.retentionTimer = null;
     }
 
     // Wait for any in-progress flush to complete before final flush

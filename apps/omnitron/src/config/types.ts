@@ -789,9 +789,21 @@ export interface IEcosystemConfig {
 
   logging: {
     level: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
+    /** Rotated log FILES on disk. Says nothing about the database table. */
     maxSize: string;
+    /** Rotated log FILES on disk. Says nothing about the database table. */
     maxFiles: number;
     compress: boolean;
+    /**
+     * Days of log history kept in the `logs` table. 0 disables pruning.
+     *
+     * Distinct from `maxSize`/`maxFiles`, which govern the rotated files and
+     * read like retention without being it. The table had none: 22.5 million
+     * rows and 13 GB on the development host, growing at whatever rate the
+     * platform logs, on a machine that has already lost its database and its
+     * containers to a full disk once.
+     */
+    databaseRetentionDays: number;
   };
 }
 

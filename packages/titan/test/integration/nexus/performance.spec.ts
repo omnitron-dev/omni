@@ -155,11 +155,23 @@ describe('Nexus Container - Performance', () => {
       // First resolution to warm up
       container.resolve(token);
 
-      const { duration } = measureTime(() => {
-        for (let i = 0; i < 10000; i++) {
-          container.resolve(token);
-        }
-      });
+      // Best of three, for the same reason the calibration above takes the
+      // best of three: SLOWDOWN is measured once at module load, and a
+      // preemption that lands after it — a parallel suite starting, a Docker
+      // container coming up — inflates this one measurement and nothing else.
+      // The calibration defends itself that way; the measurement it scales
+      // should too.
+      let duration = Infinity;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        duration = Math.min(
+          duration,
+          measureTime(() => {
+            for (let i = 0; i < 10000; i++) {
+              container.resolve(token);
+            }
+          }).duration
+        );
+      }
 
       // Singleton resolution (cache hit) should be very fast
       expect(duration).toBeLessThan(budget(500));

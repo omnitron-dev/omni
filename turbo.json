@@ -37,6 +37,12 @@
         "coverage/**"
       ]
     },
+    "typecheck": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
+    },
     "lint": {},
     "kb:extract": {
       "dependsOn": [

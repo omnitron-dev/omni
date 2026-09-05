@@ -42,6 +42,22 @@ const describeOrSkip = SKIP_DOCKER ? describe.skip : describe;
 // Docker Integration Tests (Real Redis)
 // ============================================================================
 
+/**
+ * Wait until `predicate` holds, or give up at the deadline.
+ *
+ * The assertions below that count DELIVERED messages used a flat 100ms sleep,
+ * which is a guess at how long publish -> stream -> consumer takes. Under a
+ * full-suite run the guess was sometimes short and the test failed with
+ * "expected 0 to be 1" for a message that was merely late — a false report
+ * about delivery, not a delivery failure.
+ */
+async function waitUntil(predicate: () => boolean, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 describeOrSkip('NotificationsService - Docker Integration', () => {
   let fixture: NotificationsTestFixture;
 
@@ -80,8 +96,8 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
 
       const result = await fixture.service.send(recipient, payload);
 
-      // Wait for message to be processed
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for the message to actually arrive.
+      await waitUntil(() => receivedMessages.length >= 1);
 
       expect(result.status).toBe('sent');
       expect(result.notificationId).toBeDefined();
@@ -459,8 +475,8 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
 
       await fixture.service.send(recipient, payload);
 
-      // Wait a bit for async middleware
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for the hooks rather than sleeping past them.
+      await waitUntil(() => beforePublish.mock.calls.length > 0 && afterPublish.mock.calls.length > 0);
 
       expect(beforePublish).toHaveBeenCalled();
       expect(afterPublish).toHaveBeenCalled();

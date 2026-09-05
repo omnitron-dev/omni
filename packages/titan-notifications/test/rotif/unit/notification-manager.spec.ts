@@ -12,6 +12,22 @@ if (skipTests) {
 }
 const describeOrSkip = skipTests ? describe.skip : describe;
 
+/**
+ * Wait until `predicate` holds, or fail loudly at the deadline.
+ *
+ * Replaces `await delay(N)` before an assertion that something ARRIVED. A fixed
+ * wait is a guess about how long publish -> stream -> consumer takes, and under
+ * a loaded full-suite run those guesses were short: tests here failed with
+ * "expected 0 to be 1" for messages that were merely late. Proving something
+ * did NOT arrive still needs a window, so those assertions keep their sleep.
+ */
+async function waitUntil(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await delay(10);
+  }
+}
+
 describeOrSkip('Rotif - NotificationManager Integration', () => {
   let manager: NotificationManager;
   let redis: Redis;
@@ -92,7 +108,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(100);
 
       await manager.publish('test.channel', { data: 'test-payload' });
-      await delay(2000);
+      await waitUntil(() => received.length >= 1);
 
       expect(received.length).toBe(1);
       expect(received[0].payload).toEqual({ data: 'test-payload' });
@@ -150,7 +166,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await manager.publish('test.events', { data: 'message1' });
       await manager.publish('test.events', { data: 'message2' });
 
-      await delay(300);
+      await waitUntil(() => received.length >= 2);
 
       expect(received.length).toBe(2);
       expect(received[0]?.payload).toEqual({ data: 'message1' });
@@ -170,7 +186,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await manager.publish('test.two', {});
       await manager.publish('other.channel', {});
 
-      await delay(300);
+      await waitUntil(() => received.includes('test.one') && received.includes('test.two'));
 
       expect(received).toContain('test.one');
       expect(received).toContain('test.two');
@@ -195,15 +211,26 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(100);
 
       await manager.publish('test.channel', { msg: 1 });
-      await delay(200);
+
+      // Wait for the first message to arrive instead of sleeping 200ms and
+      // hoping. Under a full-suite run that window is sometimes too short, and
+      // the test then failed with `received.length === 0` — a false negative
+      // about unsubscribe, which had not been exercised yet at that point.
+      const deadline = Date.now() + 10_000;
+      while (received.length === 0 && Date.now() < deadline) {
+        await delay(10);
+      }
+      expect(received.length).toBe(1);
 
       await sub.unsubscribe();
       await delay(100);
 
       await manager.publish('test.channel', { msg: 2 });
-      await delay(200);
 
-      // Should only receive first message
+      // The second half genuinely needs a window: proving a message does NOT
+      // arrive can only be done by waiting. This one is generous, and its
+      // failure is unambiguous — an extra delivery after unsubscribe.
+      await delay(500);
       expect(received.length).toBe(1);
     });
 
@@ -321,7 +348,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(100);
 
       await manager.publish('test.channel', { msg: 'test' });
-      await delay(300);
+      await waitUntil(() => ['beforePublish', 'afterPublish', 'beforeProcess', 'afterProcess'].every((hook) => hooks.includes(hook)));
 
       expect(hooks).toContain('beforePublish');
       expect(hooks).toContain('afterPublish');
@@ -347,7 +374,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(100);
 
       await manager.publish('test.channel', {});
-      await delay(500);
+      await waitUntil(() => errors.length > 0);
 
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0]?.message).toBe('Handler error');
@@ -519,7 +546,7 @@ describeOrSkip('Rotif - NotificationManager Integration', () => {
       await delay(500);
 
       await manager.publish('test.channel', { msg: 'second' });
-      await delay(200);
+      await waitUntil(() => callCount > 1);
 
       expect(callCount).toBeGreaterThan(1);
     });

@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 import { project as projectRpc } from '../netron/client';
+import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
 import type {
   IProjectInfo,
   IStackInfo,
@@ -73,33 +74,31 @@ const STORAGE_KEY_ROUTES = 'omnitron_workspace_routes';
 const OMNITRON_WORKSPACE_KEY = '__omnitron__';
 
 function persistWorkspace(project: string | null, stack: string | null): void {
-  if (project) {
-    localStorage.setItem(STORAGE_KEY_PROJECT, project);
-  } else {
-    localStorage.removeItem(STORAGE_KEY_PROJECT);
-  }
-  if (stack) {
-    localStorage.setItem(STORAGE_KEY_STACK, stack);
-  } else {
-    localStorage.removeItem(STORAGE_KEY_STACK);
-  }
+  if (project) writeStored(STORAGE_KEY_PROJECT, project);
+  else removeStored(STORAGE_KEY_PROJECT);
+
+  if (stack) writeStored(STORAGE_KEY_STACK, stack);
+  else removeStored(STORAGE_KEY_STACK);
 }
 
+/**
+ * Runs while the store is being constructed, i.e. at import.
+ *
+ * The routes read was already guarded; the two plain `getItem` calls beside
+ * it were not, and in a browser that blocks site data even reading throws.
+ * A throw here happens before any component mounts and above every error
+ * boundary, so the console renders nothing at all.
+ */
 function loadPersistedWorkspace(): { project: string | null; stack: string | null; routes: Record<string, string> } {
-  let routes: Record<string, string> = {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_ROUTES);
-    if (raw) routes = JSON.parse(raw);
-  } catch { /* ignore */ }
   return {
-    project: localStorage.getItem(STORAGE_KEY_PROJECT),
-    stack: localStorage.getItem(STORAGE_KEY_STACK),
-    routes,
+    project: readStored(STORAGE_KEY_PROJECT),
+    stack: readStored(STORAGE_KEY_STACK),
+    routes: readStoredJson<Record<string, string>>(STORAGE_KEY_ROUTES, {}),
   };
 }
 
 function persistRoutes(routes: Record<string, string>): void {
-  localStorage.setItem(STORAGE_KEY_ROUTES, JSON.stringify(routes));
+  writeStoredJson(STORAGE_KEY_ROUTES, routes);
 }
 
 // =============================================================================
@@ -156,8 +155,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         stacksByProject: { ...state.stacksByProject, [projectName]: stacks },
       }));
 
-      // Auto-select stack if exactly one exists and none is selected
-      if (stacks.length === 1 && !get().activeStack) {
+      // Auto-select stack if exactly one exists and none is selected.
+      //
+      // Only for the project the operator is actually in. This call is not
+      // awaited by its callers and can land after they have moved on: switch
+      // from A to B while A's listing is in flight, and the late response
+      // used to set A's stack as active under project B — and persist the
+      // pair `A/<stack-of-A>`, so the mismatch survived a reload.
+      if (get().activeProject === projectName && stacks.length === 1 && !get().activeStack) {
         const stackName = stacks[0]!.name;
         set({ activeStack: stackName });
         persistWorkspace(projectName, stackName);

@@ -48,6 +48,7 @@ import { auth, getSessionId, nodes as nodesRpc } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
 
 import type { OmnitronActiveSession } from '@omnitron-dev/omnitron/dto/services';
+import { readStored, writeStored } from '../utils/storage';
 
 // =============================================================================
 // Shared
@@ -61,12 +62,12 @@ const LS_SOUND_ALERTS = 'omnitron_sound_alerts';
 const LS_ALERT_SEVERITY = 'omnitron_alert_severity';
 
 function readLocalBool(key: string, fallback: boolean): boolean {
-  const v = localStorage.getItem(key);
+  const v = readStored(key);
   return v === null ? fallback : v === 'true';
 }
 
 function writeLocalBool(key: string, value: boolean): void {
-  localStorage.setItem(key, String(value));
+  writeStored(key, String(value));
 }
 
 const cardSx = { borderRadius: 2 } as const;
@@ -297,7 +298,7 @@ function SessionsSection() {
 // =============================================================================
 
 function AppearanceSection() {
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem(LS_THEME_MODE) as 'light' | 'dark' | 'system') || 'dark');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (readStored(LS_THEME_MODE) as 'light' | 'dark' | 'system') || 'dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalBool(LS_SIDEBAR_COLLAPSED, false));
   const [compactDensity, setCompactDensity] = useState(() => readLocalBool(LS_COMPACT_DENSITY, false));
 
@@ -313,7 +314,7 @@ function AppearanceSection() {
                 fontWeight: 600,
                 mb: 1
               }}>Theme Mode</Typography>
-            <ToggleButtonGroup value={themeMode} exclusive onChange={(_, v) => { if (v) { setThemeMode(v); localStorage.setItem(LS_THEME_MODE, v); } }} size="small" fullWidth>
+            <ToggleButtonGroup value={themeMode} exclusive onChange={(_, v) => { if (v) { setThemeMode(v); writeStored(LS_THEME_MODE, v); } }} size="small" fullWidth>
               <ToggleButton value="light" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Light</ToggleButton>
               <ToggleButton value="dark" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Dark</ToggleButton>
               <ToggleButton value="system" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>System</ToggleButton>
@@ -351,7 +352,7 @@ function AppearanceSection() {
 function NotificationsSection() {
   const [desktopNotifications, setDesktopNotifications] = useState(() => readLocalBool(LS_DESKTOP_NOTIFICATIONS, false));
   const [soundAlerts, setSoundAlerts] = useState(() => readLocalBool(LS_SOUND_ALERTS, true));
-  const [alertSeverity, setAlertSeverity] = useState<string>(() => localStorage.getItem(LS_ALERT_SEVERITY) || 'error');
+  const [alertSeverity, setAlertSeverity] = useState<string>(() => readStored(LS_ALERT_SEVERITY) || 'error');
   const [permissionState, setPermissionState] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
 
   const handleDesktopToggle = async (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
@@ -403,7 +404,7 @@ function NotificationsSection() {
                 display: 'block'
               }}>Only receive notifications at or above this level</Typography>
             <FormControl size="small" fullWidth>
-              <Select value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); localStorage.setItem(LS_ALERT_SEVERITY, e.target.value); }}>
+              <Select value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); writeStored(LS_ALERT_SEVERITY, e.target.value); }}>
                 <MenuItem value="info">Info</MenuItem>
                 <MenuItem value="warn">Warning</MenuItem>
                 <MenuItem value="error">Error</MenuItem>

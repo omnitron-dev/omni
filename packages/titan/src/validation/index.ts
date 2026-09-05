@@ -20,6 +20,19 @@
  * The validation module exports are maintained for backward compatibility with existing code
  * that uses ValidationEngine.
  *
+ * ### The consequence to plan around: `instanceof` does not cross the two
+ *
+ * They are different classes, so `catch (e) { if (e instanceof ValidationError) }`
+ * matches only errors thrown by the implementation you imported — measured, not
+ * inferred. A handler importing from `/errors` silently fails to recognise what
+ * `ValidationEngine` throws, and falls through to whatever generic branch
+ * follows. Pick one import per catch site and check `err.code === 'VALIDATION_ERROR'`
+ * (both set it) when the source could be either.
+ *
+ * The HTTP surface is NOT affected, and it is worth knowing before anyone
+ * "fixes" it: `toTitanError` reads `.statusCode`, which both carry, so both
+ * reach a client as 422 — verified by running them through it.
+ *
  * @example
  * ```typescript
  * // For ValidationEngine usage

@@ -1158,12 +1158,32 @@ describe('AuthorizationManager Security Tests', () => {
           permissions: manyPermissions,
         };
 
-        const startTime = Date.now();
-        const result = authzManager.canAccessService('service', userContext);
-        const duration = Date.now() - startTime;
+        // The point is that a 1000-permission ACL is not quadratic, which a
+        // flat millisecond bound measures only on an idle machine — this read
+        // 107ms against a limit of 100 while a Docker cluster was starting,
+        // and the code had not changed. Compare against the same check with a
+        // tenth of the permissions, taken in the same conditions: linear (or
+        // better) work stays within a small multiple, and an accidental
+        // quadratic path cannot.
+        const time = (permissions: string[]): number => {
+          authzManager.registerACL({ service: 'timed', requiredPermissions: permissions });
+          const context: AuthContext = { userId: 'user1', roles: [], permissions };
+          const start = performance.now();
+          for (let i = 0; i < 50; i++) authzManager.canAccessService('timed', context);
+          return performance.now() - start;
+        };
 
+        const small = Math.max(time(manyPermissions.slice(0, 100)), 0.001);
+        const large = time(manyPermissions);
+
+        const result = authzManager.canAccessService('service', userContext);
         expect(result).toBe(true);
-        expect(duration).toBeLessThan(100);
+        // Ten times the input, at most fifty times the work. Quadratic would
+        // be a hundred.
+        expect(
+          large / small,
+          `1000 permissions cost ${(large / small).toFixed(1)}x what 100 do`
+        ).toBeLessThan(50);
       });
     });
 

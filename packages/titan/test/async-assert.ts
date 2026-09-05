@@ -45,3 +45,21 @@ export async function eventually(assertions: () => void, timeoutMs = 5000, stepM
     }
   }
 }
+
+/**
+ * Bound an await that would otherwise hang.
+ *
+ * `await new Promise(resolve => emitter.on('end', resolve))` never fails — it
+ * hangs until the runner's timeout and reports "Test timed out", which names
+ * the test but not the event that never arrived. Wrap it and say what was
+ * being waited for.
+ */
+export function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const bound = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms waiting for ${what}`)), ms);
+  });
+  return Promise.race([promise, bound]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
+}

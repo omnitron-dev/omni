@@ -6,7 +6,7 @@
  * delayed messages, exactly-once delivery, middleware, DLQ operations, and health checks.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { Redis } from 'ioredis';
 import { RedisTestManager, type DockerContainer } from '@omnitron-dev/testing/docker';
 import { NotificationManager } from '../src/rotif/rotif.js';
@@ -976,15 +976,19 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
   describe('Lifecycle', () => {
     it('should wait until transport is ready', async () => {
-      // Create a new transport
+      // "Should not throw" was the whole check, and a waitUntilReady() that
+      // returned immediately without connecting anything would pass it. Ask
+      // the transport whether it is actually up.
       const newManager = createNotificationManager(redis);
       const newTransport = new RotifTransport(newManager);
 
-      // Should not throw
       await newTransport.waitUntilReady();
 
+      const health = await newTransport.healthCheck();
+      expect(health.status, 'ready, but not healthy').toBe('healthy');
+      expect(health.connected).toBe(true);
+
       await newTransport.destroy();
-      // Manager is already destroyed by transport.destroy()
     }, 30000);
 
     it('should shutdown gracefully', async () => {
@@ -1022,8 +1026,22 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Destroy should complete
+      const manager = newManager as unknown as {
+        active: boolean;
+        subscriptions: Map<unknown, unknown>;
+        delayTimeoutId?: unknown;
+        healthCheckTimer?: unknown;
+      };
+      expect(manager.subscriptions.size, 'nothing was registered to release').toBeGreaterThan(0);
+
       await newTransport.destroy();
+
+      // "release all resources" is the claim in the name, and a destroy()
+      // that released nothing satisfied the old version equally well.
+      expect(manager.active, 'the manager is still active after destroy').toBe(false);
+      expect(manager.subscriptions.size, 'subscriptions survived destroy').toBe(0);
+      expect(manager.delayTimeoutId, 'the delay scheduler interval survived destroy').toBeUndefined();
+      expect(manager.healthCheckTimer, 'the health-check interval survived destroy').toBeUndefined();
 
       // Cleanup
       try {
@@ -1046,9 +1064,23 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
       await newTransport.waitUntilReady();
 
-      // Multiple shutdowns should not throw
+      // shutdown() swallows errors from stopAll() by design ("best-effort"),
+      // so "does not throw" says nothing at all here — it is true even when
+      // the second call fails outright. Watch that both calls actually reach
+      // stopAll and that neither reports an error through the logger.
+      const stopAll = vi.spyOn(newManager, 'stopAll');
+      const errorLog = vi.spyOn(
+        (newTransport as unknown as { logger: { error: (...args: unknown[]) => void } }).logger,
+        'error'
+      );
+
       await newTransport.shutdown();
       await newTransport.shutdown();
+
+      expect(stopAll).toHaveBeenCalledTimes(2);
+      expect(errorLog, 'the second shutdown failed and was swallowed').not.toHaveBeenCalled();
+      stopAll.mockRestore();
+      errorLog.mockRestore();
 
       // Destroy may throw if connections are already closed by shutdown
       try {

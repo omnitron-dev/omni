@@ -13,6 +13,7 @@ import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
 import { createMockLogger } from './test-utils.js';
 import type { ILogger } from '../../src/modules/logger/logger.types.js';
+import { within } from '../async-assert.js';
 
 describe('NetronReadableStream', () => {
   let netron: Netron;
@@ -447,18 +448,20 @@ describe('NetronReadableStream', () => {
   });
 
   describe('Stream Closing', () => {
-    it('should close stream gracefully with closeStream', () =>
-      new Promise<void>((done) => {
-        const stream = new NetronReadableStream({ peer, streamId: 50 });
+    it('should close stream gracefully with closeStream', async () => {
+      const stream = new NetronReadableStream({ peer, streamId: 50 });
 
-        // Need to consume data for end event to fire
-        stream.on('data', () => {});
-        stream.on('end', () => {
-          done();
-        });
+      // Need to consume data for end event to fire
+      stream.on('data', () => {});
+      const ended = new Promise<void>((resolve) => stream.on('end', () => resolve()));
 
-        stream.closeStream();
-      }));
+      stream.closeStream();
+
+      // Awaiting the event alone could only hang, never fail, and said
+      // nothing about the stream's state afterwards.
+      await within(ended, 2000, "the readable stream's 'end' event");
+      expect(stream.readableEnded).toBe(true);
+    });
 
     it('should not close live stream without force flag', () => {
       const stream = new NetronReadableStream({ peer, streamId: 51, isLive: true });

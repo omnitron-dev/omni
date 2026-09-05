@@ -12,6 +12,7 @@ import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
 import { createMockLogger } from './test-utils.js';
 import type { ILogger } from '../../src/modules/logger/logger.types.js';
+import { within } from '../async-assert.js';
 
 describe('NetronWritableStream', () => {
   let netron: Netron;
@@ -477,16 +478,16 @@ describe('NetronWritableStream', () => {
       expect(peer.logger.warn).toHaveBeenCalledWith({ streamId: 241 }, 'Attempt to close already closed stream');
     });
 
-    it('should end stream when closing', () =>
-      new Promise<void>((done) => {
-        const stream = new NetronWritableStream({ peer, streamId: 242 });
+    it('should end stream when closing', async () => {
+      const stream = new NetronWritableStream({ peer, streamId: 242 });
 
-        stream.on('finish', () => {
-          done();
-        });
+      const finished = new Promise<void>((resolve) => stream.on('finish', () => resolve()));
 
-        stream.closeStream();
-      }));
+      stream.closeStream();
+
+      await within(finished, 2000, "the writable stream's 'finish' event");
+      expect(stream.writableEnded).toBe(true);
+    });
   });
 
   describe('Destroy Operations', () => {

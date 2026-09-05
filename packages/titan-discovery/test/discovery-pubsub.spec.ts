@@ -178,22 +178,36 @@ describeOrSkip('DiscoveryService - PubSub Tests', () => {
 
   describe('Custom PubSub Channel', () => {
     it('should use custom channel when specified', async () => {
+      // The old version installed a spy on `redis.subscribe` *after*
+      // onStart() had already run, named it `_subscribeSpy` so the linter
+      // would not complain that it is unused, slept 100ms and asserted
+      // nothing. Two ways of not looking: too late, and not at all. The
+      // subscriber is a duplicate() of the injected client, so the spy has to
+      // go on the duplicate anyway.
       const customChannel = 'my:custom:channel';
-      const options: DiscoveryOptions = {
-        pubSubEnabled: true,
-        pubSubChannel: customChannel,
-      };
+      const subscribed: string[] = [];
+      const realDuplicate = redis.duplicate.bind(redis);
+      const duplicateSpy = vi.spyOn(redis, 'duplicate').mockImplementation(((...args: never[]) => {
+        const client = realDuplicate(...args);
+        const realSubscribe = client.subscribe.bind(client);
+        vi.spyOn(client, 'subscribe').mockImplementation((async (...channels: never[]) => {
+          subscribed.push(...(channels as unknown as string[]));
+          return realSubscribe(...channels);
+        }) as never);
+        return client;
+      }) as never);
 
-      service = new DiscoveryService(redis, logger, options);
-      await service.onStart();
+      try {
+        service = new DiscoveryService(redis, logger, {
+          pubSubEnabled: true,
+          pubSubChannel: customChannel,
+        } as DiscoveryOptions);
+        await service.onStart();
 
-      const _subscribeSpy = vi.spyOn(redis, 'subscribe');
-
-      // Check that custom channel is used
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // The service should have subscribed to the custom channel
-      // This is verified by checking the internal subscriber setup
+        expect(subscribed, 'the service did not subscribe to the configured channel').toContain(customChannel);
+      } finally {
+        duplicateSpy.mockRestore();
+      }
     });
   });
 

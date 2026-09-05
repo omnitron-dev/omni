@@ -151,13 +151,20 @@ export class RedisTestManager {
     const networkId = networkName.split('-').pop() || randomBytes(4).toString('hex');
 
     try {
-      // Create master nodes with dynamically allocated ports
-      for (let i = 0; i < masterCount; i++) {
-        // Use dynamic port allocation instead of fixed basePort to avoid conflicts
-        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
-        allocatedPorts.push(port);
-        const name = `redis-cluster-${networkId}-master-${i}`;
-
+      // Containers are created in PARALLEL.
+      //
+      // They were created one at a time, each waiting on a healthcheck whose
+      // startPeriod is 10s, so a 3-master/3-replica cluster could not finish
+      // in under sixty seconds of start periods alone — and the tests that
+      // call this allow exactly sixty. They did not fail because the machine
+      // was slow; they could not pass as written. Nothing orders these
+      // containers against each other: the cluster is formed afterwards, by
+      // `redis-cli --cluster create`, once they are all up.
+      //
+      // Ports are still allocated one at a time, before any container starts:
+      // findAvailablePort() binds, reads the port and releases, so two
+      // concurrent calls can be handed the same one.
+      const spec = (kind: 'master' | 'replica', index: number, port: number) => {
         const command = [
           'redis-server',
           '--cluster-enabled',
@@ -179,14 +186,16 @@ export class RedisTestManager {
           command.push('--masterauth', password);
         }
 
-        const container = await RedisTestManager.getDockerManager().createContainer({
-          name,
+        return {
+          name: `redis-cluster-${networkId}-${kind}-${index}`,
           image: 'redis:7-alpine',
           ports: { 6379: port },
           networks: [networkName],
           command: command.join(' '),
           healthcheck: {
-            test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+            test: password
+              ? (['CMD', 'redis-cli', '-a', password, 'ping'] as string[])
+              : (['CMD', 'redis-cli', 'ping'] as string[]),
             interval: '1s',
             timeout: '5s',
             retries: 30,
@@ -196,60 +205,34 @@ export class RedisTestManager {
             healthcheck: true,
             timeout: 60000,
           },
-        });
+        };
+      };
 
-        masters.push(container);
-        nodes.push({ host: container.host, port });
+      const replicaCount = masterCount * replicasPerMaster;
+      const plan: Array<{ kind: 'master' | 'replica'; index: number; port: number }> = [];
+      for (let i = 0; i < masterCount; i++) {
+        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
+        allocatedPorts.push(port);
+        plan.push({ kind: 'master', index: i, port });
+      }
+      for (let i = 0; i < replicaCount; i++) {
+        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
+        allocatedPorts.push(port);
+        plan.push({ kind: 'replica', index: i, port });
       }
 
-      // Create replica nodes with dynamically allocated ports
-      for (let i = 0; i < masterCount * replicasPerMaster; i++) {
-        // Use dynamic port allocation
-        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
-        allocatedPorts.push(port);
-        const name = `redis-cluster-${networkId}-replica-${i}`;
+      const created = await Promise.all(
+        plan.map(async ({ kind, index, port }) => ({
+          kind,
+          port,
+          container: await RedisTestManager.getDockerManager().createContainer(
+            spec(kind, index, port) as never
+          ),
+        }))
+      );
 
-        const command = [
-          'redis-server',
-          '--cluster-enabled',
-          'yes',
-          '--cluster-config-file',
-          'nodes.conf',
-          '--cluster-node-timeout',
-          '5000',
-          '--appendonly',
-          'no',
-          '--save',
-          '',
-          '--port',
-          '6379',
-        ];
-
-        if (password) {
-          command.push('--requirepass', password);
-          command.push('--masterauth', password);
-        }
-
-        const container = await RedisTestManager.getDockerManager().createContainer({
-          name,
-          image: 'redis:7-alpine',
-          ports: { 6379: port },
-          networks: [networkName],
-          command: command.join(' '),
-          healthcheck: {
-            test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
-            interval: '1s',
-            timeout: '5s',
-            retries: 30,
-            startPeriod: '10s',
-          },
-          waitFor: {
-            healthcheck: true,
-            timeout: 60000,
-          },
-        });
-
-        replicas.push(container);
+      for (const { kind, port, container } of created) {
+        (kind === 'master' ? masters : replicas).push(container);
         nodes.push({ host: container.host, port });
       }
 

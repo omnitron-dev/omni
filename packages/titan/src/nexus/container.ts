@@ -92,6 +92,8 @@ export class Container implements IContainer {
   private scopedInstances = new Map<string, Map<InjectionToken<unknown>, unknown>>();
   private parent?: IContainer;
   private disposed = false;
+  /** The in-flight `dispose()`, so a concurrent caller joins instead of re-running the teardown. */
+  private disposePromise: Promise<void> | null = null;
   private initialized = false;
   private initializableInstances = new Set<unknown>();
   private disposableInstances = new Set<unknown>();
@@ -1976,6 +1978,22 @@ export class Container implements IContainer {
   async dispose(): Promise<void> {
     if (this.disposed) return;
 
+    // A dispose() already under way: join it rather than run the teardown a
+    // second time. `this.disposed` is only assigned at the END of the teardown
+    // — it has to be, because `checkDisposed()` throws and the onDispose hooks
+    // and module disposers below legitimately `resolve()` from the container
+    // while it is being torn down — so on its own that flag does not guard a
+    // disposal in flight. Two concurrent calls (a signal handler and an
+    // explicit shutdown, SIGTERM then SIGINT, a test teardown racing an app
+    // stop) both passed it and ran every hook and every user disposer twice.
+    // Joining, not throwing: a caller asking for disposal wants it done.
+    if (this.disposePromise) return this.disposePromise;
+
+    this.disposePromise = this.doDispose();
+    return this.disposePromise;
+  }
+
+  private async doDispose(): Promise<void> {
     // NX-6: emit ContainerDisposing BEFORE teardown so `addHook('onDispose', …)`
     // handlers actually run while the container is still usable. The hook was
     // wired to this event (see addHook) but the event was never emitted, leaving
@@ -2022,6 +2040,7 @@ export class Container implements IContainer {
     resetContextManager();
 
     this.disposed = true;
+    this.disposePromise = null;
   }
 
   /**

@@ -237,7 +237,14 @@ function FilePreview({ files, thumbnail, onRemove }: FilePreviewProps): ReactNod
               )}
             </Box>
             {onRemove && (
-              <IconButton size="small" onClick={() => onRemove(file)} sx={{ flexShrink: 0 }}>
+              <IconButton
+                size="small"
+                onClick={() => onRemove(file)}
+                // The glyph IS the accessible name without this: a screen
+                // reader announces the button as "multiplication x".
+                aria-label={`Remove ${fileName}`}
+                sx={{ flexShrink: 0 }}
+              >
                 ✕
               </IconButton>
             )}

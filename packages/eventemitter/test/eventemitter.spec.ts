@@ -1,6 +1,6 @@
 /* eslint-disable func-names */
 import { vi } from 'vitest';
-import { EventEmitter } from '../src/emitter';
+import { EventEmitter } from '../src/emitter.js';
 
 describe('EventEmitter', () => {
   describe('Basic functionality', () => {

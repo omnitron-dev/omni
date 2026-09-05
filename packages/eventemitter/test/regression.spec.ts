@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WildcardMatcher } from '../src/wildcard';
-import { EnhancedEventEmitter } from '../src/enhanced-emitter';
-import { EventScheduler } from '../src/scheduler';
-import type { ScheduleOptions } from '../src/types';
+import { WildcardMatcher } from '../src/wildcard.js';
+import { EnhancedEventEmitter } from '../src/enhanced-emitter.js';
+import { EventScheduler } from '../src/scheduler.js';
+import type { ScheduleOptions } from '../src/types.js';
 
 describe('Regression Tests', () => {
   describe('WildcardMatcher - Consecutive Delimiters', () => {

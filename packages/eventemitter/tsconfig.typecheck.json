@@ -1,0 +1,26 @@
+{
+  // Type-checks the TESTS as well as the sources.
+  //
+  // The package's own `tsconfig.json` drives the BUILD, so it includes `src`
+  // only — which left every test file unchecked. That is where the dangerous
+  // form of this hole lives: a test importing a type its module does not
+  // export, hidden behind a cast, stays green under vitest (which strips
+  // types) and is seen by nothing.
+  //
+  // `node_modules/vitest/globals.d.ts` is included by PATH on purpose.
+  // `"types": ["vitest/globals"]` does not resolve from inside a workspace
+  // package here, and without the declarations tsc reports every `describe`
+  // and `expect` as an unknown name — 807 phantom errors in this package
+  // alone, which reads as catastrophe and is entirely configuration.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The build pins rootDir to `src`; including `test` needs it widened.
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "node_modules/vitest/globals.d.ts"],
+  // `test/runtime/**` holds the Bun and Deno runners, which import `bun:test`
+  // and remote Deno modules — unresolvable under a Node typecheck by
+  // construction, not by neglect.
+  "exclude": ["node_modules/.pnpm", "dist", "test/runtime/**"]
+}

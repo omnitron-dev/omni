@@ -42,7 +42,7 @@ export interface DateRangePickerTranslations {
   startDate?: string;
   /** End-date input label (mobile/input variant) — "End date" */
   endDate?: string;
-  /** Helper text when end < start — "End date must be later than start date" */
+  /** Helper text when end < start — "End date cannot be earlier than start date" */
   errorRange?: string;
   /** Cancel button — "Cancel" */
   cancel?: string;
@@ -90,7 +90,9 @@ export function DateRangePicker({
   const txTitle = translations?.title ?? title ?? 'Select date range';
   const txStart = translations?.startDate ?? 'Start date';
   const txEnd = translations?.endDate ?? 'End date';
-  const txErrorRange = translations?.errorRange ?? 'End date must be later than start date';
+  // "Later than" overstates the rule: the guard is `isAfter`, so an equal
+  // pair is a valid one-day range and the label formats it as a single date.
+  const txErrorRange = translations?.errorRange ?? 'End date cannot be earlier than start date';
   const txCancel = translations?.cancel ?? 'Cancel';
   const txApply = translations?.apply ?? 'Apply';
   const mdUp = useMediaQuery((theme: any) => theme.breakpoints.up('md'));

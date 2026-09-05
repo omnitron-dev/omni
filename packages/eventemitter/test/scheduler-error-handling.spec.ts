@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { EventScheduler } from '../src/scheduler';
+import { EventScheduler } from '../src/scheduler.js';
 
 describe('EventScheduler - Error Handling', () => {
   let scheduler: EventScheduler;

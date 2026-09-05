@@ -10,8 +10,8 @@ import {
   assertRejects,
   assertExists,
 } from 'https://deno.land/std@0.218.0/assert/mod.ts';
-import { EventEmitter } from '../../src/emitter.ts';
-import { EnhancedEmitter } from '../../src/enhanced-emitter.ts';
+import { EventEmitter } from '../../src/emitter.ts.js';
+import { EnhancedEmitter } from '../../src/enhanced-emitter.ts.js';
 
 // Mock function helper for Deno
 class MockFunction<T extends (...args: any[]) => any> {

@@ -510,45 +510,37 @@ describe('PolicyEngine - Comprehensive Tests', () => {
       expect(opsPerSecond).toBeGreaterThan(10000);
     }, 10000);
 
-    it('should maintain memory efficiency with 1M evaluations', async () => {
+    it('does not accumulate cache entries across repeated evaluations', async () => {
+      // This was a heapUsed delta asserted to be under a fixed number of MB.
+      // It measured whatever V8 had not got round to collecting — the
+      // global.gc() calls guarding the measurement only run under
+      // --expose-gc, which the test runner does not set — and its threshold
+      // had already been raised once, from 30MB to 35MB, "to account for
+      // legitimate overhead". A test whose bound is widened each time it
+      // fails is not measuring anything; under a loaded parallel run it read
+      // 43MB and failed again.
+      //
+      // The property it was reaching for is exact and cheap to check: the
+      // cache is keyed by (policy, context), so a hundred thousand
+      // evaluations of one policy with one context must leave exactly one
+      // entry — not one per call.
       const policy: PolicyDefinition = {
         name: 'memory-test',
         evaluate: () => ({ allowed: true }),
       };
 
       policyEngine.registerPolicy(policy);
+      policyEngine.clearCache();
 
-      const iterations = 100000; // Reduced for test speed
-
-      // Force GC if available to get baseline
-      if (global.gc) {
-        global.gc();
-      }
-
-      // Additional delay to ensure GC completes
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const memBefore = process.memoryUsage().heapUsed;
-
+      const iterations = 100000;
       for (let i = 0; i < iterations; i++) {
         await policyEngine.evaluate('memory-test', mockContext);
       }
 
-      // Hint to GC before final measurement
-      if (global.gc) {
-        global.gc();
-      }
-
-      // Additional delay to ensure GC completes
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const memAfter = process.memoryUsage().heapUsed;
-      const memDelta = (memAfter - memBefore) / 1024 / 1024; // MB
-
-      // Should not leak significantly (allow up to 35MB for 100k ops)
-      // Cache will hold some entries, which is expected
-      // Increased from 30MB to 35MB to account for legitimate overhead from caching and trace data
-      expect(memDelta).toBeLessThan(35);
+      const stats = policyEngine.getCacheStats();
+      expect(stats.size, 'the cache grew with the number of evaluations').toBe(1);
+      expect(stats.hits).toBe(iterations - 1);
+      expect(stats.misses).toBe(1);
     }, 30000);
   });
 

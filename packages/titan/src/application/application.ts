@@ -346,6 +346,11 @@ export class Application implements IApplication {
           const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
           this._logger = loggerService.logger;
           this._events.setLogger(this._logger);
+          // The container's lifecycle handlers report @PostConstruct, onInit,
+          // onDestroy and dispose failures through a logger of their own —
+          // and nothing ever set it, so seventeen error sites were no-ops and
+          // a service that failed to initialize did so in silence.
+          this._container.setLogger(this._logger);
           this._logger.info({ state: this._lifecycle.state }, 'Application starting');
           this._events.emit(ApplicationEvent.ModuleStarted, { module: 'logger' });
         } catch { /* logger optional during boot */ }
@@ -930,6 +935,7 @@ export class Application implements IApplication {
         const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
         this._logger = loggerService.logger;
         this._events.setLogger(this._logger);
+        this._container.setLogger(this._logger);
       } catch { /* logger optional */ }
     }
     return this._logger;
@@ -1042,6 +1048,7 @@ export class Application implements IApplication {
         const loggerService = (await this._container.resolveAsync(LOGGER_SERVICE_TOKEN)) as ILoggerModule;
         this._logger = loggerService.logger;
         this._events.setLogger(this._logger);
+        this._container.setLogger(this._logger);
         this._logger.info({ module: 'Application' }, 'Logger module initialized');
       } catch { /* logger optional */ }
     }

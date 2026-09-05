@@ -156,7 +156,11 @@ describe('RemotePeer Edge Cases', () => {
 
       await remotePeer.handlePacket(packet);
 
-      // Should not throw - warning is logged
+      // "Should not throw - warning is logged" was the whole assertion, and it
+      // checked neither half. Silently dropping the packet also does not
+      // throw, and that is the failure worth catching: a stream frame that
+      // vanishes without a trace.
+      expect((remotePeer as any).logger.warn).toHaveBeenCalledWith('Received STREAM packet without streamId');
     });
 
     it('should handle unknown packet type', async () => {
@@ -171,12 +175,16 @@ describe('RemotePeer Edge Cases', () => {
 
       const remotePeer = new RemotePeer(mockSocket, netron, 'test-peer');
 
-      // Create packet with unknown type (255 is not a valid type)
+      // The type field is four bits wide, so 255 arrives as 15 — still an
+      // unassigned type (the protocol defines 0x00..0x07), which is what this
+      // test needs. Asserting on the value the peer actually saw also pins
+      // that truncation: a change to the header layout would show up here
+      // rather than as a packet silently interpreted as some other type.
       const packet = createPacket(Packet.nextId(), 1, 255 as any, {});
 
       await remotePeer.handlePacket(packet);
 
-      // Should not throw - warning is logged
+      expect((remotePeer as any).logger.warn).toHaveBeenCalledWith({ value: 15 }, 'Unknown packet type:');
     });
   });
 

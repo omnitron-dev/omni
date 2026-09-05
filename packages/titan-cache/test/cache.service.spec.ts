@@ -185,8 +185,17 @@ describe('CacheService', () => {
     });
 
     it('should be idempotent', async () => {
+      // "Should not throw" was the whole test. A second dispose() that threw
+      // was the only failure it could see — not one that resurrected a cache
+      // or left the service reporting entries it no longer has.
+      service.getCache();
+      expect(service.listCaches().length).toBeGreaterThan(0);
+
       await service.dispose();
-      await service.dispose(); // Should not throw
+      expect(service.listCaches()).toEqual([]);
+
+      await service.dispose();
+      expect(service.listCaches()).toEqual([]);
     });
   });
 

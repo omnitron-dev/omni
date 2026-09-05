@@ -61,6 +61,20 @@ export class ShutdownCoordinator {
   private readonly cleanupHandlers = new Set<() => Promise<void> | void>();
 
   private _isShuttingDown = false;
+
+  /**
+   * Phases abandoned because the shutdown budget ran out.
+   *
+   * A non-critical task that misses its own deadline is deliberately NOT
+   * fatal — siblings still get their chance. Running out of budget is
+   * different: the controller stops starting work and returns normally, so
+   * `shutdown()` used to learn about it only if its own `setTimeout` happened
+   * to fire before the controller resolved. Two timers of the same duration,
+   * and the winner decided whether the operator saw a timeout or "Graceful
+   * shutdown completed successfully" for the same hung task. Recording the
+   * event replaces that race with an observation.
+   */
+  private _abandonedPhases = new Set<string>();
   private _shutdownPromise: Promise<void> | null = null;
 
   constructor(private readonly deps: ShutdownCoordinatorDeps) {}
@@ -224,6 +238,7 @@ export class ShutdownCoordinator {
     logger?.info({ reason, details }, 'Starting graceful shutdown');
     this.deps.emit(ApplicationEvent.ShutdownStart, { reason, details });
 
+    this._abandonedPhases.clear();
     this._shutdownPromise = this.executeViaController(reason, details);
 
     const timeoutPromise = new Promise<void>((_, reject) => {
@@ -233,6 +248,15 @@ export class ShutdownCoordinator {
 
     try {
       await Promise.race([this._shutdownPromise, timeoutPromise]);
+      // The controller can finish successfully with a task's deadline already
+      // blown — it swallows non-critical failures on purpose. Report it here
+      // rather than leaving it to whichever timer fired first.
+      if (this._abandonedPhases.size > 0) {
+        throw Errors.timeout(
+          `Shutdown — budget exhausted, skipped: ${[...this._abandonedPhases].join(', ')}`,
+          this.deps.shutdownTimeoutMs,
+        );
+      }
       logger?.info('Graceful shutdown completed successfully');
       this.deps.emit(ApplicationEvent.ShutdownComplete, { reason, success: true });
     } catch (error) {
@@ -334,6 +358,9 @@ export class ShutdownCoordinator {
    * stream.
    */
   private handlePhaseEvent(event: LifecyclePhaseEvent): void {
+    if (event.kind === 'phase-timeout') {
+      this._abandonedPhases.add(event.taskName ? `${event.phase} (${event.taskName})` : String(event.phase));
+    }
     if (event.kind === 'task-finish' && event.taskName) {
       if (INTERNAL_TASK_IDS.has(event.taskName)) return;
       this.deps.getLogger()?.debug({ taskName: event.taskName }, 'Shutdown task completed');

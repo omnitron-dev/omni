@@ -9,7 +9,9 @@ import { Container } from '@omnitron-dev/titan/nexus';
 import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 
 import { EventMetadataService } from './event-metadata.service.js';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
+import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, LOGGER_TOKEN } from './tokens.js';
+
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 import type { IEventHandlerMetadata, IEventDiscoveryResult, IEventListenerOptions } from './types.js';
 
@@ -29,7 +31,7 @@ export class EventDiscoveryService {
   private registeredHandlers: Map<any, Map<string, (...args: any[]) => any>> = new Map();
   private initialized = false;
   private destroyed = false;
-  private logger: any = null;
+  private logger: ILogger | null = null;
 
   constructor(
     // Container is marked @Optional() so the events module can still
@@ -38,8 +40,11 @@ export class EventDiscoveryService {
     // absent — listeners registered manually via EventBus still work.
     @Optional() @Inject(Container) private readonly container: Container | null,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
-  ) {}
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
+    @Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null
+  ) {
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

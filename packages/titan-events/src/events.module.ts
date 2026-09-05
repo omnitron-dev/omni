@@ -190,7 +190,7 @@ export interface IEventsModuleOptions {
       EVENTS_SERVICE_TOKEN,
       {
         useClass: EventsService,
-        inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+        inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ] as ProviderTuple,
@@ -209,7 +209,7 @@ export interface IEventsModuleOptions {
       EVENT_DISCOVERY_SERVICE_TOKEN,
       {
         useClass: EventDiscoveryService,
-        inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+        inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ] as ProviderTuple,
@@ -219,7 +219,7 @@ export interface IEventsModuleOptions {
       EVENT_BUS_SERVICE_TOKEN,
       {
         useClass: EventBusService,
-        inject: [EVENT_EMITTER_TOKEN],
+        inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ] as ProviderTuple,
@@ -229,7 +229,7 @@ export interface IEventsModuleOptions {
       EVENT_SCHEDULER_SERVICE_TOKEN,
       {
         useClass: EventSchedulerService,
-        inject: [EVENT_EMITTER_TOKEN],
+        inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ] as ProviderTuple,
@@ -248,7 +248,7 @@ export interface IEventsModuleOptions {
       EVENT_HISTORY_SERVICE_TOKEN,
       {
         useClass: EventHistoryService,
-        inject: [EVENT_EMITTER_TOKEN],
+        inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ] as ProviderTuple,
@@ -342,7 +342,7 @@ export class EventsModule {
           EVENTS_SERVICE_TOKEN,
           {
             useClass: EventsService,
-            inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+            inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -361,7 +361,7 @@ export class EventsModule {
           EVENT_DISCOVERY_SERVICE_TOKEN,
           {
             useClass: EventDiscoveryService,
-            inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+            inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -371,7 +371,7 @@ export class EventsModule {
           EVENT_BUS_SERVICE_TOKEN,
           {
             useClass: EventBusService,
-            inject: [EVENT_EMITTER_TOKEN],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -381,7 +381,7 @@ export class EventsModule {
           EVENT_SCHEDULER_SERVICE_TOKEN,
           {
             useClass: EventSchedulerService,
-            inject: [EVENT_EMITTER_TOKEN],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -400,7 +400,7 @@ export class EventsModule {
           EVENT_HISTORY_SERVICE_TOKEN,
           {
             useClass: EventHistoryService,
-            inject: [EVENT_EMITTER_TOKEN],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -509,7 +509,7 @@ export class EventsModule {
           EVENTS_SERVICE_TOKEN,
           {
             useClass: EventsService,
-            inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+            inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -528,7 +528,7 @@ export class EventsModule {
           EVENT_BUS_SERVICE_TOKEN,
           {
             useClass: EventBusService,
-            inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -538,7 +538,7 @@ export class EventsModule {
           EVENT_DISCOVERY_SERVICE_TOKEN,
           {
             useClass: EventDiscoveryService,
-            inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+            inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -548,7 +548,7 @@ export class EventsModule {
           EVENT_SCHEDULER_SERVICE_TOKEN,
           {
             useClass: EventSchedulerService,
-            inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,
@@ -567,7 +567,7 @@ export class EventsModule {
           EVENT_HISTORY_SERVICE_TOKEN,
           {
             useClass: EventHistoryService,
-            inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+            inject: [EVENT_EMITTER_TOKEN, { token: LOGGER_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as ProviderTuple,

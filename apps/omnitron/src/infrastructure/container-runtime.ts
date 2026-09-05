@@ -132,6 +132,8 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status),
+        startedAt: info.State?.StartedAt,
+        ports: publishedPorts(info),
         ...(failure && { error: failure }),
       });
     }
@@ -140,6 +142,39 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Published ports, as `"80/tcp" -> 9800`.
+ *
+ * `ContainerState.ports` was declared, documented as a name→port map, and
+ * assigned by nothing — so the console's Ports column showed `--` for every
+ * container on a host where all twelve publish ports. The data was already in
+ * hand: `docker inspect` returns it, and this reads it out of the response
+ * both call sites already have.
+ *
+ * The keys are container ports rather than the logical names a service config
+ * uses (`main`, `rpc`), because that is what Docker knows. A container that
+ * exposes a port without publishing it has a null binding and is left out —
+ * it is not reachable from the host, so listing it would overstate what is
+ * available.
+ */
+function publishedPorts(info: {
+  NetworkSettings?: { Ports?: Record<string, Array<{ HostPort?: string }> | null> };
+}): Record<string, number> | undefined {
+  const raw = info.NetworkSettings?.Ports;
+  if (!raw) return undefined;
+
+  const out: Record<string, number> = {};
+  for (const [containerPort, bindings] of Object.entries(raw)) {
+    // Docker lists both the IPv4 and IPv6 binding for the same publish; they
+    // carry the same host port, so the first usable one is the answer.
+    const hostPort = bindings?.find((b) => b?.HostPort)?.HostPort;
+    if (!hostPort) continue;
+    const port = Number(hostPort);
+    if (Number.isInteger(port) && port > 0) out[containerPort] = port;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -198,6 +233,8 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status),
+        startedAt: info.State?.StartedAt,
+        ports: publishedPorts(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         networkAttached,
         ...(failure && { error: failure }),

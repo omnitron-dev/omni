@@ -47,11 +47,20 @@ import { TableEmptyRow } from 'src/components/table-empty-row';
 // fields were always undefined at runtime.
 type Container = import('@omnitron-dev/omnitron/dto/services').ContainerState;
 
-/** "5432→5432, 6379→6379" — or '--' when the container publishes nothing. */
+/**
+ * "80/tcp→9800, 443/tcp→9443" — or '--' when the container publishes nothing.
+ *
+ * The service left `ports` unset until now, so this column read '--' on a
+ * host where every container published something. '--' is a legitimate answer
+ * for a container that publishes nothing, which is why it went unquestioned.
+ */
 function formatPorts(ports: Container['ports']): string {
   const entries = Object.entries(ports ?? {});
   if (entries.length === 0) return '--';
-  return entries.map(([name, port]) => `${name}:${port}`).join(', ');
+  return entries
+    .sort(([, a], [, b]) => a - b)
+    .map(([containerPort, hostPort]) => `${containerPort}→${hostPort}`)
+    .join(', ');
 }
 
 // ---------------------------------------------------------------------------

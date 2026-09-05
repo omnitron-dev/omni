@@ -74,7 +74,21 @@ export interface TokenStorage {
   /** Get stored token */
   getToken(): string | null;
 
-  /** Set token */
+  /**
+   * Set token
+   *
+   * BEST-EFFORT in the browser implementations: `LocalTokenStorage` and
+   * `SessionTokenStorage` swallow a storage failure (SSR, private browsing, a
+   * browser configured to block site data) and return normally. The caller is
+   * left believing the token was persisted; the first sign otherwise is the
+   * user being signed out on reload.
+   *
+   * A subsequent `getToken()` returning null is the only observable, so code
+   * that needs certainty should choose its storage explicitly —
+   * `MemoryTokenStorage` for a session-lifetime token, `NoopTokenStorage` when
+   * persistence is deliberately not wanted — rather than relying on
+   * `LocalTokenStorage` degrading into one of them quietly.
+   */
   setToken(token: string): void;
 
   /** Remove token */

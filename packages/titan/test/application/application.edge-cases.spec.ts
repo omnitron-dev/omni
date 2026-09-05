@@ -203,28 +203,31 @@ describe('Titan Application Edge Cases', () => {
     });
 
     it('should handle graceful shutdown errors with signal', async () => {
-      app = createApp({ gracefulShutdownTimeout: 50 });
+      // The old version guarded the whole body behind
+      // `if (typeof (app as any).setupGracefulShutdown === 'function')`, wrapped
+      // it in a catch that swallowed everything, and asserted nothing — so it
+      // passed whether shutdown ran, threw, or was skipped outright.
+      //
+      // The property worth holding: when shutdown fails, the failure reaches
+      // the caller AND the force-exit safety net is armed, so the process
+      // cannot sit there forever with a half-stopped application.
+      vi.useFakeTimers();
+      app = createApp({ gracefulShutdownTimeout: 50, disableCoreModules: true });
 
-      // Mock stop to throw
-      app.stop = vi.fn().mockRejectedValue(new Error('Stop failed'));
+      const exits: number[] = [];
+      (app as any)._process.exit = (code: number) => {
+        exits.push(code);
+      };
+      (app as any)._shutdown.shutdown = vi.fn().mockRejectedValue(new Error('Stop failed'));
 
-      // Mock process.exit and logger
-      const exitMock = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('Process exit');
-      });
+      await expect((app as any).shutdown('signal', { signal: 'SIGTERM' })).rejects.toThrow('Stop failed');
+      expect(exits, 'exited despite the shutdown failing').toEqual([]);
 
-      // Trigger shutdown with signal
-      const shutdown = (app as any).setupGracefulShutdown;
-      if (typeof shutdown === 'function') {
-        // Call the private shutdown function directly
-        try {
-          await (app as any).shutdown('SIGTERM');
-        } catch {
-          // Expected to throw from process.exit mock
-        }
-      }
+      // The net fires after 5s and exits non-zero.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(exits, 'the force-exit safety net never fired').toEqual([1]);
 
-      exitMock.mockRestore();
+      vi.useRealTimers();
     });
   });
 

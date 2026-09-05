@@ -594,9 +594,17 @@ describe('Titan Application Comprehensive Tests', () => {
       });
 
       await app.start();
+      const before = app.metrics.uptime;
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(app.metrics.uptime).toBeGreaterThanOrEqual(100);
+      // `uptime` is a Date.now() difference, whose millisecond truncation can
+      // report a 100ms wait as 99 — asserting `>= 100` was a check on timer
+      // precision, and it failed a full run at 99. What matters is that
+      // uptime is measured from start and advances with wall time.
+      const after = app.metrics.uptime;
+      expect(after, 'uptime did not advance while the app was running').toBeGreaterThan(before);
+      expect(after).toBeGreaterThanOrEqual(80);
+      expect(after, 'uptime is not measured from start').toBeLessThan(10_000);
     });
   });
 

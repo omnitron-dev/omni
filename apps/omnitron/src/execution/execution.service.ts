@@ -48,6 +48,56 @@ export interface ExecOptions {
 }
 
 // =============================================================================
+// xec event payloads
+// =============================================================================
+
+/**
+ * The three `command:*` payloads `@xec-sh/core` emits, mirrored locally.
+ *
+ * The package declares them (`CommandStartEvent` and friends) but re-exports
+ * only `EventFilter` from its root, so importing them means reaching into
+ * `dist/types/` — a path that is not part of its public surface and would
+ * break on any repackaging. Twelve lines of structural typing buys the same
+ * checking without that coupling; if the payloads drift, the handlers below
+ * stop compiling, which is the whole point.
+ */
+interface XecCommandStart {
+  command?: string;
+  args?: string[];
+  cwd?: string;
+}
+
+interface XecCommandComplete {
+  command?: string;
+  exitCode?: number;
+  duration?: number;
+}
+
+interface XecCommandError {
+  command?: string;
+  /** Flattened by the engine: `error instanceof Error ? error.message : String(error)`. */
+  error?: string;
+  duration?: number;
+}
+
+/**
+ * Render the `command:error` reason.
+ *
+ * The contract says `string`, and the fallbacks are for the version that
+ * does not: an engine that starts passing the Error itself must not silently
+ * turn this log line back into `[object Object]`.
+ */
+export function describeXecError(error: unknown): string {
+  if (typeof error === 'string') return error || 'unknown error';
+  if (error instanceof Error) return error.message || error.name;
+  if (error && typeof error === 'object') {
+    const m = (error as { message?: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+  }
+  return error == null ? 'unknown error' : String(error);
+}
+
+// =============================================================================
 // Service
 // =============================================================================
 
@@ -71,19 +121,28 @@ export class ExecutionService {
         defaultShell: '/bin/sh',
       });
 
-      // Wire adapter events to logger
-      this.engine.on('command:start', (event: any) => {
+      // Wire adapter events to logger.
+      //
+      // The payloads are typed locally rather than inferred from `any`: the
+      // engine handle has to stay `any` (the import is dynamic and optional),
+      // and without these shapes nothing checks what the handlers read. That
+      // is not hypothetical — `command:error` carries `error` as a *string*,
+      // already flattened by the engine, and this handler used to log
+      // `event.error?.message`, which is `undefined` on a string. Every
+      // failed remote command logged `Exec error {"error":undefined}`: a
+      // warning that names the problem and then withholds it.
+      this.engine.on('command:start', (event: XecCommandStart) => {
         this.logger.debug({ command: event.command?.slice(0, 100) }, 'Exec start');
       });
-      this.engine.on('command:complete', (event: any) => {
+      this.engine.on('command:complete', (event: XecCommandComplete) => {
         this.logger.debug(
           { command: event.command?.slice(0, 100), exitCode: event.exitCode, duration: event.duration },
           'Exec complete'
         );
       });
-      this.engine.on('command:error', (event: any) => {
+      this.engine.on('command:error', (event: XecCommandError) => {
         this.logger.warn(
-          { command: event.command?.slice(0, 100), error: event.error?.message },
+          { command: event.command?.slice(0, 100), error: describeXecError(event.error), duration: event.duration },
           'Exec error'
         );
       });

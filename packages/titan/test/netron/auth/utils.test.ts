@@ -8,7 +8,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractBearerToken, safeCompare } from '../../../src/netron/auth/utils.js';
+import {
+  createPermissionChecker,
+  extractBearerToken,
+  hasPermission,
+  safeCompare,
+} from '../../../src/netron/auth/utils.js';
 
 describe('Authentication Utils', () => {
   // ==========================================================================
@@ -164,5 +169,52 @@ describe('Authentication Utils', () => {
         expect(safeCompare(sessionToken, 'eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiI0NTYifQ.different')).toBe(false);
       });
     });
+  });
+});
+
+describe('createPermissionChecker', () => {
+  // Same semantics as hasPermission, checked against it rather than restated:
+  // the indexed form exists only to make an ACL check linear, and a divergence
+  // between the two would be an authorization difference, not an optimisation.
+  const grants = ['users.read', 'admin.*', '*', 'exact.one', 'billing.write'];
+
+  const cases = [
+    'users.read',
+    'users.write',
+    'admin.users.delete',
+    'admin',
+    'exact.one',
+    'exact.two',
+    'billing.write',
+    'nothing.at.all',
+    '',
+  ];
+
+  for (const granted of [grants, grants.filter((g) => g !== '*'), ['users.read'], []]) {
+    it(`agrees with hasPermission for grants [${granted.join(', ') || 'none'}]`, () => {
+      const permitted = createPermissionChecker(granted);
+      for (const required of cases) {
+        expect(permitted(required), `disagreed on '${required}'`).toBe(hasPermission(granted, required));
+      }
+    });
+  }
+
+  it('checks an ACL in time proportional to its size', () => {
+    // requiredPermissions.every(perm => hasPermission(granted, perm)) scans the
+    // whole granted array per required permission — a million comparisons for a
+    // thousand of each, on the authorization path. Ten times the input must not
+    // cost anything like a hundred times the work.
+    const many = Array.from({ length: 1000 }, (_, i) => `perm:${i}`);
+    const time = (permissions: string[]): number => {
+      const permitted = createPermissionChecker(permissions);
+      const start = performance.now();
+      for (let i = 0; i < 50; i++) permissions.every((perm) => permitted(perm));
+      return performance.now() - start;
+    };
+
+    const small = Math.max(time(many.slice(0, 100)), 0.001);
+    const large = time(many);
+
+    expect(large / small, `1000 permissions cost ${(large / small).toFixed(1)}x what 100 do`).toBeLessThan(50);
   });
 });

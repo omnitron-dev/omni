@@ -7,7 +7,7 @@
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthContext, ServiceACL, AccessValidationResult } from './types.js';
-import { hasPermission, validateAccessRequirements } from './utils.js';
+import { createPermissionChecker, hasPermission, validateAccessRequirements } from './utils.js';
 
 /**
  * Options for pattern matching
@@ -163,7 +163,8 @@ export class AuthorizationManager {
 
     // Check permissions
     if (acl.requiredPermissions && acl.requiredPermissions.length > 0) {
-      const hasAllPermissions = acl.requiredPermissions.every((perm) => hasPermission(auth.permissions ?? [], perm));
+      const permitted = createPermissionChecker(auth.permissions ?? []);
+      const hasAllPermissions = acl.requiredPermissions.every((perm) => permitted(perm));
       if (!hasAllPermissions) {
         this.logger.debug(
           {
@@ -269,7 +270,8 @@ export class AuthorizationManager {
 
     // Check effective permissions
     if (effectivePermissions && effectivePermissions.length > 0) {
-      const hasAllPermissions = effectivePermissions.every((perm) => hasPermission(auth.permissions ?? [], perm));
+      const permitted = createPermissionChecker(auth.permissions ?? []);
+      const hasAllPermissions = effectivePermissions.every((perm) => permitted(perm));
       if (!hasAllPermissions) {
         this.logger.debug(
           {
@@ -504,7 +506,8 @@ export class AuthorizationManager {
 
     // Check permissions
     if (acl.requiredPermissions && acl.requiredPermissions.length > 0) {
-      const hasAllPermissions = acl.requiredPermissions.every((perm) => hasPermission(auth.permissions ?? [], perm));
+      const permitted = createPermissionChecker(auth.permissions ?? []);
+      const hasAllPermissions = acl.requiredPermissions.every((perm) => permitted(perm));
       if (!hasAllPermissions) {
         return false;
       }

@@ -60,6 +60,7 @@ import type {
   IAppDefinition,
 } from '../config/types.js';
 import { AppHandle } from './app-handle.js';
+import { parsePsLine, parsePsBatch } from './ps-metrics.js';
 import { launchClassic } from './classic-launcher.js';
 import { resolveStartupOrder, resolveShutdownOrder } from './dependency-resolver.js';
 import { buildRestartPolicy } from '../supervisor/restart-policy.js';
@@ -2393,15 +2394,7 @@ export class OrchestratorService extends EventEmitter {
         });
       });
 
-      for (const line of psOutput.split('\n')) {
-        const [pidText, rssKb, cpuPercent] = line.trim().split(/\s+/);
-        const pid = Number.parseInt(pidText ?? '', 10);
-        if (!Number.isFinite(pid)) continue;
-        out.set(pid, {
-          cpu: Number.parseFloat(cpuPercent ?? '0') || 0,
-          memory: (Number.parseInt(rssKb ?? '0', 10) || 0) * 1024,
-        });
-      }
+      for (const [pid, sample] of parsePsBatch(psOutput)) out.set(pid, sample);
     } catch {
       // Leave the map empty: no reading is honest, a zero reading is not.
     }
@@ -2409,23 +2402,28 @@ export class OrchestratorService extends EventEmitter {
     return out;
   }
 
-  /** Sample CPU/memory for a single OS process via `ps` (async — does not block event loop) */
-  private async sampleProcessMetrics(pid: number): Promise<{ cpu: number; memory: number }> {
+  /**
+   * Sample CPU/memory for a single OS process via `ps`.
+   *
+   * `null` when it could not be read. This used to return
+   * `{ cpu: 0, memory: 0 }` on any failure, and the caller wrote that
+   * straight over `handle.lastMetrics` — so a `ps` that timed out under load
+   * made a running classic-mode app read as idle, indistinguishable from one
+   * that genuinely was. The batch path above already treated absence as
+   * absence; these two now agree.
+   */
+  private async sampleProcessMetrics(pid: number): Promise<{ cpu: number; memory: number } | null> {
     try {
       const { execFile } = await import('node:child_process');
       const psOutput = await new Promise<string>((resolve, reject) => {
-        execFile('ps', ['-p', String(pid), '-o', 'rss=,%cpu='], { timeout: 5000 }, (err, stdout) => {
-          if (err) reject(err);
+        execFile('ps', ['-p', String(pid), '-o', 'pid=,rss=,%cpu='], { timeout: 5000 }, (err, stdout) => {
+          if (err && !stdout) reject(err);
           else resolve(stdout.trim());
         });
       });
-      const [rssKb, cpuPercent] = psOutput.split(/\s+/);
-      return {
-        cpu: parseFloat(cpuPercent ?? '0'),
-        memory: parseInt(rssKb ?? '0', 10) * 1024,
-      };
+      return parsePsLine(psOutput)?.sample ?? null;
     } catch {
-      return { cpu: 0, memory: 0 };
+      return null;
     }
   }
 
@@ -2447,7 +2445,15 @@ export class OrchestratorService extends EventEmitter {
 
         if (handle.mode === 'classic' && handle.childProcess?.pid) {
           const m = await this.sampleProcessMetrics(handle.childProcess.pid);
-          handle.lastMetrics = { ...m, requests: 0, errors: 0 };
+          // A failed read keeps the previous numbers rather than replacing
+          // them with zeros — the same rule the bootstrap path below uses.
+          if (m) {
+            handle.lastMetrics = {
+              ...m,
+              requests: handle.lastMetrics?.requests ?? 0,
+              errors: handle.lastMetrics?.errors ?? 0,
+            };
+          }
         } else if (handle.mode === 'bootstrap') {
           // Every process the app owns, not just the one on the handle.
           const m = await this.sampleAppMetrics(handle);

@@ -60,6 +60,16 @@ export interface BackendPoolOptions {
   /**
    * Enable automatic health checks
    * @default false
+   *
+   * Maintains a flag; it does NOT change where calls go. This client has no
+   * routing to change — `invoke(backend, …)` takes the backend name from the
+   * caller — so an unhealthy backend keeps receiving whatever is addressed to
+   * it. The only consumers of the result are `getHealthyBackends()` and
+   * `getUnhealthyBackends()`, which the caller must read and act on.
+   *
+   * Worth stating because the opposite is the natural assumption, and it is
+   * the kind of assumption that gets tested during an outage: turning this on
+   * buys observability, not failover.
    */
   enableHealthChecks?: boolean;
 }

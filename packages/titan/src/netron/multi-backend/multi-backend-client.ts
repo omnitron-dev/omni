@@ -43,10 +43,23 @@ export interface MultiBackendClientEvents {
  */
 interface CircuitBreakerState {
   state: 'closed' | 'open' | 'half-open';
-  failures: number;
+  /**
+   * Timestamps of the failures still inside the tracking window, oldest first.
+   *
+   * This used to be a plain `failures` counter that only a success reset, so
+   * `circuitBreaker.window` — declared, documented with a 60s default — did
+   * nothing: failures an hour apart counted the same as failures a
+   * millisecond apart, and a backend failing once a day would eventually open
+   * the circuit. A breaker that cannot forget is not measuring a failure
+   * RATE, which is the whole thing it is asked to measure.
+   */
+  failureTimes: number[];
   lastFailure?: number;
   lastAttempt?: number;
 }
+
+/** Default error-tracking window for the circuit breaker (ms). */
+const DEFAULT_CIRCUIT_WINDOW_MS = 60_000;
 
 /**
  * Default client options
@@ -158,7 +171,7 @@ export class MultiBackendClient extends EventEmitter {
       if (this.options.circuitBreaker?.enabled) {
         this.circuitBreakers.set(config.id, {
           state: 'closed',
-          failures: 0,
+          failureTimes: [],
         });
       }
     }
@@ -348,7 +361,7 @@ export class MultiBackendClient extends EventEmitter {
     // If we were half-open, close the circuit
     if (breaker.state === 'half-open') {
       breaker.state = 'closed';
-      breaker.failures = 0;
+      breaker.failureTimes.length = 0;
     }
   }
 
@@ -361,8 +374,17 @@ export class MultiBackendClient extends EventEmitter {
     const breaker = this.circuitBreakers.get(backendId);
     if (!breaker) return;
 
-    breaker.failures++;
-    breaker.lastFailure = Date.now();
+    const now = Date.now();
+    breaker.failureTimes.push(now);
+    breaker.lastFailure = now;
+
+    // Drop failures that have aged out of the window. Without this the count
+    // is cumulative and `window` means nothing.
+    const window = this.options.circuitBreaker.window ?? DEFAULT_CIRCUIT_WINDOW_MS;
+    const cutoff = now - window;
+    while (breaker.failureTimes.length > 0 && breaker.failureTimes[0]! <= cutoff) {
+      breaker.failureTimes.shift();
+    }
 
     // If we were half-open, re-open the circuit
     if (breaker.state === 'half-open') {
@@ -372,7 +394,7 @@ export class MultiBackendClient extends EventEmitter {
 
     // Check if we should open the circuit
     const threshold = this.options.circuitBreaker.threshold ?? 5;
-    if (breaker.failures >= threshold) {
+    if (breaker.failureTimes.length >= threshold) {
       breaker.state = 'open';
     }
   }
@@ -405,7 +427,7 @@ export class MultiBackendClient extends EventEmitter {
     if (this.options.circuitBreaker?.enabled) {
       this.circuitBreakers.set(config.id, {
         state: 'closed',
-        failures: 0,
+        failureTimes: [],
       });
     }
   }
@@ -475,8 +497,10 @@ export class MultiBackendClient extends EventEmitter {
     if (this.options.circuitBreaker?.enabled) {
       for (const [id, breaker] of this.circuitBreakers) {
         circuitBreakerStates[id] = {
+          // Failures still inside the tracking window — the number the
+          // threshold is actually compared against.
           state: breaker.state,
-          failures: breaker.failures,
+          failures: breaker.failureTimes.length,
           lastFailure: breaker.lastFailure,
         };
       }
@@ -530,7 +554,7 @@ export class MultiBackendClient extends EventEmitter {
     const breaker = this.circuitBreakers.get(backendId);
     if (breaker) {
       breaker.state = 'closed';
-      breaker.failures = 0;
+      breaker.failureTimes.length = 0;
     }
   }
 
@@ -543,7 +567,7 @@ export class MultiBackendClient extends EventEmitter {
     // Reset all circuit breakers
     for (const breaker of this.circuitBreakers.values()) {
       breaker.state = 'closed';
-      breaker.failures = 0;
+      breaker.failureTimes.length = 0;
     }
   }
 

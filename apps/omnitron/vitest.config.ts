@@ -7,15 +7,20 @@ export default defineConfig({
     include: ['test/**/*.test.ts', 'test/**/*.spec.ts'],
     exclude: [
       '**/node_modules/**',
-      // Tests for source files that were restructured (imports point to old locations)
-      'test/unit/define-app.test.ts',
-      'test/unit/health-service.test.ts',
-      'test/unit/metrics-service.test.ts',
-      'test/unit/omnitron-supervisor.test.ts',
-      // Integration tests that depend on restructured orchestrator internals
+      // NOT RUN, and the reason is specific rather than "restructured":
+      // `createMockPM()` in this file builds a ProcessManager without
+      // `createSupervisor`, which the real one has and the orchestrator calls
+      // — so four tests fail with "is not a function" and the rest hang,
+      // because `OrchestratorService` waits on a `daemonNetronReady` promise
+      // that nothing in the fixture resolves.
+      //
+      // Reviving it means updating a 576-line mock to match an interface it
+      // has drifted from, which reproduces a test that asserts against a
+      // fake. Left excluded deliberately, with the reason written down —
+      // the previous comment said "restructured internals", which is not
+      // what stops it and would have sent the next person looking in the
+      // wrong place.
       'test/integration/orchestrator.test.ts',
-      // Node manager worker integration depends on worker runtime
-      'test/unit/node-manager-worker-integration.test.ts',
     ],
     fileParallelism: false,
     coverage: {

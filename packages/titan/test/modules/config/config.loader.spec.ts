@@ -168,6 +168,38 @@ database.port=5432
 
       await expect(loader.load([source])).rejects.toThrow();
     });
+
+    it('names the failing file, not just its source type', async () => {
+      // A bare `rejects.toThrow()` passes for any throw at all, so it never
+      // saw that the message identified nothing: with several file sources
+      // declared, every one of them reported as "file" and the operator was
+      // left to guess which config had the typo.
+      const good = path.join(tempDir, 'good.json');
+      const bad = path.join(tempDir, 'bad.json');
+      fs.writeFileSync(good, JSON.stringify({ port: 3000 }));
+      fs.writeFileSync(bad, '{ "port": ');
+
+      const sources: FileConfigSource[] = [
+        { type: 'file', path: good, format: 'json' },
+        { type: 'file', path: bad, format: 'json' },
+      ];
+
+      await expect(loader.load(sources)).rejects.toThrow(bad);
+    });
+
+    it('prefers an explicit source name over the path', async () => {
+      const bad = path.join(tempDir, 'named.json');
+      fs.writeFileSync(bad, '{ "port": ');
+
+      const source: FileConfigSource = {
+        type: 'file',
+        name: 'app-overrides',
+        path: bad,
+        format: 'json',
+      };
+
+      await expect(loader.load([source])).rejects.toThrow('app-overrides');
+    });
   });
 
   describe('Environment source loading', () => {

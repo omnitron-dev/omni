@@ -52,6 +52,18 @@ function isRetryableConfigFetchError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * A label that identifies WHICH source failed. `name` when the caller gave
+ * one, else the path/URL, else the bare type.
+ */
+function describeSource(source: ConfigSource): string {
+  if (source.name) return source.name;
+  const s = source as { type: string; path?: string; url?: string };
+  if (s.type === 'file' && s.path) return `file ${s.path}`;
+  if (s.type === 'remote' && s.url) return `remote ${s.url}`;
+  return source.type;
+}
+
 @Injectable()
 export class ConfigLoaderService implements IConfigLoader {
   /**
@@ -79,12 +91,26 @@ export class ConfigLoaderService implements IConfigLoader {
         }
       } catch (error) {
         if (!source.optional) {
-          throw Errors.badRequest(`Failed to load required config source ${source.name || source.type}`, {
-            source: source.name || source.type,
+          // `source.type` alone is not an identifier: declare three file
+          // sources and all three report as "file". Fall back to the thing
+          // that actually distinguishes them — the path, or the URL.
+          const label = describeSource(source);
+          throw Errors.badRequest(`Failed to load required config source ${label}`, {
+            source: label,
             error: error instanceof Error ? error.message : String(error),
           });
         }
-        // Skip optional sources that fail
+        // Skip optional sources that fail.
+        //
+        // NOTE: this swallows more than absence. `loadFile` already returns
+        // `{}` for a missing optional file, so by the time an optional file
+        // source reaches here the file EXISTS and something else went wrong:
+        // unparseable content, an unsupported `format`, an unreadable file.
+        // All three are silently ignored — a typo in an optional config file
+        // changes application behaviour with no signal anywhere. Whether
+        // `optional` should cover only absence (and rethrow corruption) is a
+        // contract question: the flag carries no documentation, and the two
+        // swallow sites in this file already read it differently.
       }
     }
 

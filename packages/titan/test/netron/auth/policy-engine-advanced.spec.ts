@@ -57,13 +57,16 @@ describe('PolicyEngine Advanced Tests', () => {
       }
 
       // Circuit should be open now, returning fast failure
-      const start = Date.now();
       const result = await policyEngine.evaluate('failingPolicy', context);
-      const duration = Date.now() - start;
 
       expect(result.allowed).toBe(false);
+      // `reason` IS the proof that the policy was short-circuited rather than
+      // evaluated — deterministic, and it says which. A `duration < 10ms`
+      // assertion stood here too; it claimed the same thing by a measurement
+      // that a busy scheduler can break, and proved nothing the reason does
+      // not. Timing assertions are worth keeping only where the behaviour
+      // cannot be observed directly.
       expect(result.reason).toContain('circuit breaker open');
-      expect(duration).toBeLessThan(10); // Should fail fast
     });
 
     it('should transition from open to half-open after reset timeout', async () => {

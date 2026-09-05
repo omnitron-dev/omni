@@ -634,12 +634,13 @@ describe('PolicyEngine Security Tests', () => {
       // Circuit breaker should be open
       expect(policyEngine.getCircuitBreakerState('slow-fail-policy')).toBe('open');
 
-      // After circuit opens, subsequent requests should be fast
-      const fastStart = Date.now();
-      await policyEngine.evaluate('slow-fail-policy', mockContext);
-      const fastDuration = Date.now() - fastStart;
-
-      expect(fastDuration).toBeLessThan(10); // Should be nearly instant
+      // After the circuit opens, the policy is not evaluated at all — and the
+      // reason says so. A `fastDuration < 10ms` assertion stood here, claiming
+      // the same thing through a measurement the scheduler can break, one line
+      // below a deterministic check of the very same fact.
+      const afterOpen = await policyEngine.evaluate('slow-fail-policy', mockContext);
+      expect(afterOpen.allowed).toBe(false);
+      expect(afterOpen.reason).toContain('circuit breaker open');
     });
 
     it('should isolate circuit breakers per policy', async () => {

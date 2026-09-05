@@ -11,6 +11,7 @@ export interface IEventEmitterOptions {
   wildcard?: boolean;
   delimiter?: string;
   maxListeners?: number;
+  /** NOT IMPLEMENTED — read by nothing; leak warnings are not made verbose. */
   verboseMemoryLeak?: boolean;
   concurrency?: number;
   history?: {
@@ -198,11 +199,13 @@ export interface IEmitEventOptions {
   /**
    * Include method arguments in event data
    */
+  /** NOT IMPLEMENTED — read by nothing; arguments are not attached to the event. */
   includeArgs?: boolean;
 
   /**
    * Include method result in event data
    */
+  /** NOT IMPLEMENTED — read by nothing; the result is not attached to the event. */
   includeResult?: boolean;
 
   /**

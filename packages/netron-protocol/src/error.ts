@@ -100,6 +100,7 @@ interface ErrorStatistics {
 /** Error metrics configuration. */
 export interface MetricsOptions {
   window?: '1m' | '5m' | '15m' | '1h';
+  /** NOT IMPLEMENTED — read by nothing; metrics are not grouped by these. */
   groupBy?: Array<'code' | 'category' | 'service'>;
 }
 

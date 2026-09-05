@@ -42,6 +42,10 @@ export interface NetronDiscoveryIntegrationOptions {
    * Whether to include service metadata in discovery registration.
    * Default: false
    */
+  /**
+   * NOT IMPLEMENTED — read by nothing. Registration carries the service name
+   * and version only, whatever this says.
+   */
   includeMetadata?: boolean;
 }
 

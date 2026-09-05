@@ -227,6 +227,17 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ProcessManagerModule.forRoot({
         isolation: 'child',
         transport: 'unix',
+        // The orchestrator subscribes to `onLog` itself and feeds
+        // `LogCollector` under the app's own name. PM's default forwarding
+        // re-logs the same line through the daemon's logger, where it is
+        // ingested a second time as `omnitron` — so every child line was
+        // stored twice: the table paid for both copies (13 GB here, roughly
+        // half of it the second one), and every per-app count was wrong by
+        // whichever component happened to emit the line.
+        //
+        // Measured on this host before the fix: 42 958 rows under `omnitron`
+        // against 36 160 under every app combined, for the same hour.
+        forwardChildLogs: false,
         restartPolicy: {
           enabled: true,
           maxRestarts: ecosystemConfig.supervision.maxRestarts,

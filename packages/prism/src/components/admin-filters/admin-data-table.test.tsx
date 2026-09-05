@@ -51,6 +51,56 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('AdminDataTable — empty versus unable', () => {
+  /**
+   * "No data found" and "we could not load this" looked identical, and the
+   * first reads as a healthy answer. Not hypothetical: the omnitron console's
+   * traces page had both of its queries failing against the database schema,
+   * had never returned a row, and displayed "No traces collected yet" for as
+   * long as the page had existed.
+   */
+  const columns = [{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }];
+
+  it('says there is nothing when there is nothing', () => {
+    render(<AdminDataTable data={[]} columns={columns} emptyMessage="No orders yet" />);
+
+    expect(screen.getByText('No orders yet')).toBeInTheDocument();
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+  });
+
+  it('says it could not load, and why, when the load failed', () => {
+    render(
+      <AdminDataTable
+        data={[]}
+        columns={columns}
+        emptyMessage="No orders yet"
+        loadError="column child.trace_id does not exist"
+      />
+    );
+
+    expect(screen.getByText(/could not load/i)).toBeInTheDocument();
+    expect(screen.getByText('column child.trace_id does not exist')).toBeInTheDocument();
+    // The reassuring message must NOT also be on screen: an operator reading
+    // both would take the calmer one.
+    expect(screen.queryByText('No orders yet')).not.toBeInTheDocument();
+  });
+
+  it('shows rows rather than either message when there is data', () => {
+    render(<AdminDataTable data={[{ name: 'row' }]} columns={columns} loadError="stale" />);
+
+    expect(screen.getByText('row')).toBeInTheDocument();
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+  });
+
+  it('treats an empty error string as no error', () => {
+    // A caller threading `error ?? ''` through must not flip the table into
+    // its failure state with nothing to say.
+    render(<AdminDataTable data={[]} columns={columns} emptyMessage="No orders yet" loadError="" />);
+
+    expect(screen.getByText('No orders yet')).toBeInTheDocument();
+  });
+});
+
 describe('AdminDataTable', () => {
   it('renders a row per record and a cell per column', () => {
     renderTable();

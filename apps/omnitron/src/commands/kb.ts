@@ -13,6 +13,11 @@ export async function kbMcpCommand(): Promise<void> {
   const { createMonitoringTools } = await import('../mcp/tool-groups/monitoring.tools.js');
   const { createManagementTools } = await import('../mcp/tool-groups/management.tools.js');
 
+  const { createUnavailableTools, DAEMON_TOOL_NAMES, KB_TOOL_NAMES } = await import(
+    '../mcp/unavailable-tools.js'
+  );
+  const DAEMON_DOWN = 'The omnitron daemon is not running. Run `omnitron up` to start it.';
+
   const bridge = new McpBridge();
 
   // Initialize KB (standalone, no daemon required)
@@ -35,9 +40,16 @@ export async function kbMcpCommand(): Promise<void> {
 
     bridge.registerTools(createKbTools(kbService));
   } catch (err) {
-    // KB not available — register stub tools that return helpful errors
+    // Register stubs rather than nothing. An agent that cannot see a tool
+    // concludes the capability does not exist; one that sees it and is told
+    // why relays something the user can act on. stderr is not read by MCP
+    // clients, so the message below reaches a human tailing the process and
+    // no one else.
     process.stderr.write(`[mcp] KB initialization failed: ${err}\n`);
-    process.stderr.write('[mcp] KB tools will not be available. Run `omnitron kb index` first.\n');
+    process.stderr.write('[mcp] KB tools will report: run `omnitron kb index` first.\n');
+    bridge.registerTools(
+      createUnavailableTools(KB_TOOL_NAMES, 'The knowledge base is not indexed. Run `omnitron kb index` first.')
+    );
   }
 
   // Try connecting to daemon for management tools
@@ -52,11 +64,12 @@ export async function kbMcpCommand(): Promise<void> {
       bridge.registerTools(createMonitoringTools(daemonClient));
       bridge.registerTools(createManagementTools(daemonClient));
     } else {
-      process.stderr.write('[mcp] Daemon not running — management tools not available.\n');
-      process.stderr.write('[mcp] Run `omnitron up` to start the daemon.\n');
+      process.stderr.write('[mcp] Daemon not running — management tools will report why.\n');
+      bridge.registerTools(createUnavailableTools(DAEMON_TOOL_NAMES, DAEMON_DOWN));
     }
-  } catch {
-    process.stderr.write('[mcp] Daemon connection failed — management tools not available.\n');
+  } catch (err) {
+    process.stderr.write(`[mcp] Daemon connection failed: ${err}\n`);
+    bridge.registerTools(createUnavailableTools(DAEMON_TOOL_NAMES, DAEMON_DOWN));
   }
 
   // Start stdio MCP server

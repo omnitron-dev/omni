@@ -165,6 +165,9 @@ export function advertisedAddress(bindHost: string | undefined): string {
 export class OmnitronDaemon {
   private app: Application | null = null;
   private pidManager: PidManager | null = null;
+  /** Port this daemon serves `/netron/invoke` on; advertised to fleet peers. */
+  private rpcHttpPort: number | null = null;
+
   private fileWatcher: FileWatcher | null = null;
   private infraService: InfrastructureService | null = null;
   private eventBroadcaster: EventBroadcasterService | null = null;
@@ -485,7 +488,13 @@ export class OmnitronDaemon {
     const localHost = resolveBindHost(dc.host);
 
     // HTTP — Netron RPC API (internal port, nginx proxies from public port)
+    // The public `httpPort` (9800) is nginx in front of the console; the
+    // daemon's own Netron HTTP listener sits one above it. Remembered here
+    // because the fleet registration below must advertise the port peers can
+    // actually POST `/netron/invoke` to — not the TCP port, and not the
+    // console's.
     const internalHttpPort = (dc.httpPort ?? 9800) + 1;
+    this.rpcHttpPort = internalHttpPort;
     this.app.netron.registerTransport('http', () => new HttpTransport());
     const rl = dc.httpRateLimit ?? {};
     this.app.netron.registerTransportServer('http', {
@@ -1278,7 +1287,7 @@ export class OmnitronDaemon {
           address: advertisedAddress(this.dc.host),
           port: this.dc.port,
           role: 'leader',
-          metadata: { pid: process.pid, version: CLI_VERSION, httpPort: this.dc.httpPort },
+          metadata: { pid: process.pid, version: CLI_VERSION, httpPort: this.dc.httpPort, rpcPort: this.rpcHttpPort },
         });
       } catch {
         // Non-critical — DB may not be ready

@@ -6,9 +6,26 @@
  * - Leader heartbeats
  * - Cluster state queries
  * - Step-down commands
+ *
+ * OPEN: `requestVote` and `leaderHeartbeat` are still unauthenticated.
+ *
+ * Peers call them over plain HTTP with no credential of any kind, because no
+ * fleet credential exists — `SyncService.setMasterConnection`, the only other
+ * cross-node path, has no production caller either. `LeaderElection` now
+ * rejects both calls from ids absent from the fleet registry, which stops an
+ * arbitrary outsider, but membership is not authentication: the ids are
+ * discoverable and forgeable.
+ *
+ * What closes it is a fleet credential — a shared secret in `daemon.cluster`,
+ * a service-role token, or mTLS on the fleet plane — and which of those is
+ * right is a deployment decision, not a code cleanup. Until then the exposure
+ * is bounded by the bind address: `daemon.host` defaults to loopback, so this
+ * surface reaches the LAN only when an operator deliberately opts in.
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+
+import { VIEWER_ROLES } from '../shared/roles.js';
 import type {
   LeaderElection,
   VoteRequest,
@@ -43,8 +60,12 @@ export class ClusterRpcService {
   /**
    * Get the current cluster state of this node.
    * Used by CLI (`omnitron cluster status`) and webapp dashboard.
+   *
+   * Both callers authenticate, so there was never a reason for this to be
+   * anonymous — and it hands out the fleet's node ids, terms and leader,
+   * which is exactly the reconnaissance the two calls below are weakest to.
    */
-  @Public({ auth: { allowAnonymous: true } })
+  @Public({ auth: { roles: VIEWER_ROLES } })
   async getClusterState(): Promise<ClusterStateInfo> {
     return this.election.getClusterState();
   }

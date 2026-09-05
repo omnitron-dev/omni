@@ -31,6 +31,30 @@ interface WsClientOptions {
   heartbeatInterval?: number;
 }
 
+/**
+ * Where the console's WebSocket lives, given the page it is running on.
+ *
+ * The answer is always "this origin, path `/ws`": both nginx in front of the
+ * built console and the vite dev server proxy `/ws` to the daemon's Netron WS
+ * transport, so the client never needs to know that port — and must not
+ * guess it.
+ *
+ * It used to guess. The port came from `window.location.port || '9802'`, and
+ * the fallback fires exactly when the console is served on a default port —
+ * that is, behind a real proxy on 80 or 443. There it produced
+ * `wss://host:9802/ws`: past the proxy, straight at a daemon port that
+ * deployment does not publish, over a plaintext transport the browser blocks
+ * from an https page. The failure is silent — the socket never opens, the
+ * console falls back to polling, and nothing says why.
+ *
+ * `location.host` carries the port when there is one and omits it when the
+ * protocol's default applies, which is precisely the rule wanted here.
+ */
+export function resolveWsUrl(location: Pick<Location, 'protocol' | 'host'>): string {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${location.host}/ws`;
+}
+
 export class DaemonWsClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -49,10 +73,7 @@ export class DaemonWsClient {
   private readonly heartbeatInterval: number;
 
   constructor(options: WsClientOptions = {}) {
-    // Auto-detect WebSocket URL from current page location
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const defaultPort = (parseInt(window.location.port || '9802', 10));
-    this.url = options.url ?? `${wsProtocol}//${window.location.hostname}:${defaultPort}/ws`;
+    this.url = options.url ?? resolveWsUrl(window.location);
 
     this.autoReconnect = options.autoReconnect ?? true;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? Infinity;

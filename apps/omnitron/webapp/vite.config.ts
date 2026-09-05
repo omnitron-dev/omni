@@ -47,7 +47,14 @@ export default defineConfig({
     },
   },
   server: {
-    port: 9802, // Dev server for HMR
+    // NOT 9802. The daemon's Netron WebSocket transport binds that port
+    // (`httpPort + 2`), so a dev server asking for it collides with the very
+    // daemon this console exists to talk to — and the `/ws` proxy below,
+    // which pointed at `ws://localhost:9802`, was then aimed at the dev
+    // server itself. Whichever process started second lost, and the failure
+    // reads as "the console will not start" rather than "two things want one
+    // port". 9800-9803 all belong to the daemon (console, HTTP, WS, metrics).
+    port: 9810,
     proxy: {
       // Proxy Netron RPC to daemon internal HTTP port
       '/netron/': {
@@ -64,7 +71,9 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/api/, ''),
       },
-      // WebSocket proxy for real-time event push
+      // WebSocket proxy for real-time event push. Mirrors what nginx does
+      // in front of the built console, so the client asks for `/ws` on its
+      // own origin either way and never needs to know this port.
       '/ws': {
         target: 'ws://localhost:9802',
         ws: true,

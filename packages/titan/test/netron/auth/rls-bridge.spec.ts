@@ -52,6 +52,40 @@ describe('RLS Bridge', () => {
       expect(result.tenantId).toBe('tenant-42');
     });
 
+    it('publishes an attribute under the mapped name', () => {
+      // attributeMapping was declared on AuthToRLSOptions and read by nothing,
+      // so a caller who supplied one got the raw merge and any policy written
+      // against the mapped name saw a missing attribute.
+      const auth = {
+        userId: 'user-1',
+        roles: [],
+        permissions: [],
+        metadata: { org: 'acme', plan: 'pro' },
+      };
+
+      const result = mapAuthToRLSAuthContext(auth, { attributeMapping: { org: 'tenant_id' } });
+
+      expect(result.attributes?.['tenant_id'], 'the mapped attribute was not published').toBe('acme');
+      expect(result.attributes?.['org'], 'the original attribute was dropped').toBe('acme');
+      expect(result.attributes?.['plan'], 'an unmapped attribute was lost').toBe('pro');
+    });
+
+    it('leaves a mapping alone when its source is absent', () => {
+      const auth = {
+        userId: 'user-1',
+        roles: [],
+        permissions: [],
+        metadata: { plan: 'pro' },
+      };
+
+      const result = mapAuthToRLSAuthContext(auth, { attributeMapping: { org: 'tenant_id' } });
+
+      expect('tenant_id' in (result.attributes ?? {}), 'invented an attribute from a missing source').toBe(
+        false
+      );
+      expect(result.attributes?.['plan']).toBe('pro');
+    });
+
     it('should handle missing optional fields', () => {
       const auth = {
         userId: 'user-1',

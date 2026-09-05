@@ -17,7 +17,16 @@ import type { AuthContext } from './types.js';
 export interface AuthToRLSOptions {
   /** Default tenant ID when none provided */
   defaultTenantId?: string | number;
-  /** Map auth metadata keys to RLS attributes */
+  /**
+   * Publish an auth attribute under a second name: `{ from: to }` copies the
+   * value of attribute `from` to `to`.
+   *
+   * The original key is KEPT. Renaming would be the other reading of "map",
+   * but this option is consumed by RLS policies, and a policy that still
+   * refers to the old name would start evaluating against a missing attribute
+   * — which, depending on how it is written, denies everything or restricts
+   * nothing. Adding an alias cannot do either.
+   */
   attributeMapping?: Record<string, string>;
 }
 
@@ -46,10 +55,22 @@ export interface AuthToRLSOptions {
 export function mapAuthToRLSAuthContext(auth: AuthContext, options?: AuthToRLSOptions): RLSAuthContext {
   const claims = (auth as AuthContext & { claims?: Record<string, unknown> }).claims;
   const metadata = auth.metadata as Record<string, unknown> | undefined;
-  const attributes: Record<string, unknown> | undefined =
+  const merged: Record<string, unknown> | undefined =
     claims || metadata
       ? { ...(claims ?? {}), ...(metadata ?? {}) }
       : undefined;
+
+  // attributeMapping was declared and read by nothing: a caller who supplied
+  // one got the raw merge, and any RLS policy written against the mapped name
+  // saw a missing attribute.
+  let attributes = merged;
+  const mapping = options?.attributeMapping;
+  if (merged && mapping) {
+    attributes = { ...merged };
+    for (const [from, to] of Object.entries(mapping)) {
+      if (from in merged) attributes[to] = merged[from];
+    }
+  }
   // S2S service-role tokens carry `metadata.isServiceRole === true`
   // (set by `createSharedSessionAuthManager` when the JWT claims
   // `service_role`). Cross-backend privileged traffic is semantically

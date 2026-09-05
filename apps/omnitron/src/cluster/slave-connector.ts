@@ -385,15 +385,34 @@ export class SlaveConnector {
     try {
       const syncProxy = await conn.peer.queryInterface('OmnitronSync');
       let totalPulled = 0;
+      const seen = new Set<string>();
 
       // Pull in batches until slave buffer is empty
       while (true) {
         const batch = await syncProxy.drainBuffer({ limit: 1000 });
         if (!batch || !batch.entries || batch.entries.length === 0) break;
 
-        // Ingest into master
-        await this.syncService.receiveBatch(batch);
-        totalPulled += batch.entries.length;
+        // Ingest into master, then release on the slave — in that order.
+        // `drainBuffer` used to mark entries synced before returning them,
+        // so anything that went wrong from here on lost the data on both
+        // sides while this loop logged the failure at debug level.
+        const result = await this.syncService.receiveBatch(batch);
+        const delivered = [...(result.acceptedIds ?? []), ...(result.duplicateIds ?? [])];
+        if (delivered.length > 0) await syncProxy.ackDrained({ ids: delivered });
+        totalPulled += delivered.length;
+
+        // Entries the master rejected stay pending on the slave, so the next
+        // fetch returns them again. Without this the sweep would re-fetch and
+        // re-reject the same page until the safety limit.
+        const ids: string[] = batch.entries.map((e: { id: string }) => e.id);
+        if (!ids.some((id) => !seen.has(id))) {
+          this.logger.warn(
+            { host: conn.config.host, pending: ids.length },
+            'Sync pull stalled — the master is rejecting the slave\'s oldest entries'
+          );
+          break;
+        }
+        for (const id of ids) seen.add(id);
 
         // Safety: don't pull more than 10k entries in one sweep
         if (totalPulled >= 10_000) break;

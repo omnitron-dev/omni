@@ -38,6 +38,7 @@ import { useProjectStore } from 'src/stores/project.store';
 import { project as projectRpc } from 'src/netron/client';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import {
   PlusIcon,
   RefreshIcon,
@@ -381,11 +382,9 @@ export default function ProjectsPage() {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchProjects();
-    const iv = setInterval(fetchProjects, 15_000);
-    return () => clearInterval(iv);
-  }, [fetchProjects]);
+  // State lives in the project store; this takes the schedule only — and with
+  // it the pause on a hidden tab.
+  usePollingEffect(() => void fetchProjects(), { intervalMs: 15_000 });
 
   const handleOpenProject = useCallback(
     (name: string) => {

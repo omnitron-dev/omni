@@ -24,6 +24,7 @@ import { STATUS_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useActiveProject } from 'src/stores/project.store';
 import { useRealtimeStore } from 'src/stores/realtime.store';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type { ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
@@ -92,14 +93,11 @@ export default function AppsListPage() {
     return cleanup;
   }, [initializeRealtime]);
 
-  useEffect(() => {
-    fetchApps();
-    // When WS is up, push events trigger refreshes — slow the poll
-    // down to 15s as a safety net. When WS is down, fall back to the
-    // 5s polling cadence Dashboard uses.
-    const interval = setInterval(fetchApps, wsConnected ? 15_000 : 5_000);
-    return () => clearInterval(interval);
-  }, [fetchApps, wsConnected]);
+  // When WS is up, push events trigger refreshes — slow the poll down to 15s
+  // as a safety net. When WS is down, fall back to the 5s cadence.
+  usePollingEffect(() => void fetchApps(), {
+    intervalMs: wsConnected ? 15_000 : 5_000,
+  });
 
   // Any app-lifecycle event → refetch immediately so the table
   // reflects the new state without waiting for the next interval.

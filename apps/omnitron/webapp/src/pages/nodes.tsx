@@ -31,6 +31,7 @@ import { keyframes, useTheme, type Theme } from '@mui/material/styles';
 
 import { Breadcrumbs, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import {
   PlusIcon,
   NodesIcon,
@@ -657,12 +658,21 @@ export default function NodesPage() {
     try { setSshKeys(await nodesRpc.listSshKeys()); } catch { setSshKeys([]); }
   }, []);
 
+  // Nodes and their uptime bars refresh together — the bars are per-node, so
+  // fetching them against a stale node list would draw bars for nodes that
+  // are gone.
+  usePollingEffect(
+    () => void (async () => {
+      const n = await fetchNodes();
+      await fetchUptimeBars(n);
+    })(),
+    { intervalMs: 30_000 }
+  );
+
   useEffect(() => {
-    (async () => { const n = await fetchNodes(); await fetchUptimeBars(n); })();
-    fetchSshKeys();
-    const iv = setInterval(async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }, 30_000);
-    return () => clearInterval(iv);
-  }, [fetchNodes, fetchUptimeBars, fetchSshKeys]);
+    // SSH keys change only when an operator edits them; once is enough.
+    void fetchSshKeys();
+  }, [fetchSshKeys]);
 
   const snackbar = useSnackbar();
 

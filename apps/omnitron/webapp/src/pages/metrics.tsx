@@ -17,6 +17,7 @@ import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
 import { Breadcrumbs } from '@omnitron-dev/prism';
 import { daemon, metrics } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -300,12 +301,17 @@ export default function MetricsPage() {
     }
   }, []);
 
+  // The page owns its several series in local state, so it takes the schedule
+  // only. `autoRefresh` is the toggle the user controls; note that turning it
+  // off used to skip the interval but still fetch once per render of this
+  // effect, which is not what "off" means.
+  usePollingEffect(() => void fetchMetrics(), { intervalMs: 10_000, enabled: autoRefresh });
+
   useEffect(() => {
-    fetchMetrics();
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchMetrics, 10000);
-    return () => clearInterval(interval);
-  }, [fetchMetrics, autoRefresh]);
+    // One fetch on mount regardless of the toggle: an operator arriving with
+    // auto-refresh off still expects to see numbers.
+    void fetchMetrics();
+  }, [fetchMetrics]);
 
   const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(
     () => ({

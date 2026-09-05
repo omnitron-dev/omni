@@ -11,6 +11,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import type { NetronClient } from './netron-client.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { ServiceProxy, IProcessMetrics, IHealthStatus } from './types.js';
+import { classifyWorkerHealth } from './worker-health.js';
 
 /**
  * Options for the service proxy handler
@@ -355,7 +356,16 @@ export class ServiceProxyHandler<T> {
   private async getMetrics(): Promise<IProcessMetrics> {
     try {
       const result = await this.callRemoteMethod('__getProcessMetrics', []);
-      return result as IProcessMetrics;
+      const m = result as Partial<IProcessMetrics> | null | undefined;
+      const numeric = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+      if (m && numeric(m.cpu) && numeric(m.memory) && numeric(m.requests) && numeric(m.errors)) {
+        return { cpu: m.cpu, memory: m.memory, requests: m.requests, errors: m.errors };
+      }
+      // Same event as a failed call, so the same answer: the -1 sentinels the
+      // catch branch below documents as "collection failure". Anything else
+      // would hand the caller `undefined`s that arithmetic turns into NaN.
+      this.logger.debug({ processId: this.processId, result }, 'Unreadable metrics answer from process');
+      return { cpu: -1, memory: -1, requests: -1, errors: -1 };
     } catch (error) {
       this.logger.debug(
         { error: error instanceof Error ? error.message : String(error), processId: this.processId },
@@ -377,8 +387,13 @@ export class ServiceProxyHandler<T> {
    */
   private async getHealth(): Promise<IHealthStatus> {
     try {
-      const result = await this.callRemoteMethod('__getProcessHealth', []);
-      return result as IHealthStatus;
+      // Validated, not asserted. The catch below already reports `unhealthy`
+      // when the CALL fails; a call that succeeded and returned nonsense was
+      // the one way of not getting an answer that arrived as good news. The
+      // worker validates its own side now, but a worker on an older build —
+      // or one that is not this framework's — still answers whatever it likes,
+      // and the consumer is the last place that can tell.
+      return classifyWorkerHealth(await this.callRemoteMethod('__getProcessHealth', []));
     } catch (error) {
       this.logger.debug(
         { error: error instanceof Error ? error.message : String(error), processId: this.processId },

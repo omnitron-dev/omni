@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "_exportsNote": "Every subpath here is backed by a tsup entry in tsup.config.ts. The globs `./components/*` and `./blocks/*` used to be here and were not: they made every component directory resolvable to TypeScript while only three of them shipped JavaScript, so an import like `@omnitron-dev/prism/components/alert` typechecked and failed in the browser — the documentation recommended that style in 55 places. `./utils` was declared with no entry at all. Add an entry to tsup.config.ts and a line here together, or not at all.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -27,21 +28,17 @@
       "types": "./dist/blocks/index.d.ts",
       "import": "./dist/blocks/index.js"
     },
-    "./blocks/*": {
-      "types": "./dist/blocks/*/index.d.ts",
-      "import": "./dist/blocks/*/index.js"
-    },
     "./components": {
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js"
     },
-    "./components/*": {
-      "types": "./dist/components/*/index.d.ts",
-      "import": "./dist/components/*/index.js"
+    "./components/editor": {
+      "types": "./dist/components/editor/index.d.ts",
+      "import": "./dist/components/editor/index.js"
     },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js"
+    "./components/emoji-picker": {
+      "types": "./dist/components/emoji-picker/index.d.ts",
+      "import": "./dist/components/emoji-picker/index.js"
     },
     "./state": {
       "types": "./dist/state/index.d.ts",

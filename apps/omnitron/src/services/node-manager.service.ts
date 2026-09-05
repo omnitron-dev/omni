@@ -1,7 +1,11 @@
 /**
  * NodeManagerService — Manages infrastructure nodes (machines)
  *
- * File-based storage at ~/.omnitron/nodes.json (no PG dependency).
+ * Registry lives in the SQLite-backed `nodes` table of DaemonStateStore.
+ * `~/.omnitron/nodes.json` is read once, on a boot that finds the table
+ * empty, and then unlinked — the header claimed the JSON file was still the
+ * storage long after T-7 moved it, which is the kind of thing a reader
+ * believes because there is nothing to contradict it.
  * Always includes a "local" node for the local machine.
  * Remote nodes are accessed via SSH for provisioning and management.
  */
@@ -13,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { RemoteOpsService, type NodeCheckConfig, DEFAULT_CHECK_CONFIG } from './remote-ops.service.js';
+import { CLI_VERSION } from '../config/defaults.js';
 import type { INodeHealthSummary, INodeCheckTarget } from '../workers/types.js';
 import type { SecretsService } from './secrets.service.js';
 import type {
@@ -60,8 +65,8 @@ export class NodeManagerService extends EventEmitter {
     private readonly logger: ILogger,
     /**
      * T-7 — fleet node registry persistence moved off
-     * ~/.omnitron/nodes.json (single fs.writeFileSync per mutation)
-     * onto the SQLite-backed `nodes` table in DaemonStateStore.
+     * ~/.omnitron/nodes.json onto the SQLite-backed `nodes` table
+     * in DaemonStateStore.
      * Canonical name/host/port are denormalised into typed columns
      * for queries; the full INode payload (SSH config, tags, etc.)
      * lives in the `metadata` column as JSON.
@@ -73,7 +78,7 @@ export class NodeManagerService extends EventEmitter {
     this.remoteOps = new RemoteOpsService(logger);
     this.load();
     this.ensureLocalNode();
-    this.initLocalStatus();
+
   }
 
   /** Update check configuration (ping/SSH timeouts, ping enabled/disabled) */
@@ -92,14 +97,49 @@ export class NodeManagerService extends EventEmitter {
   listNodes(): INodeWithStatus[] {
     return Array.from(this.nodes.values()).map((node) => ({
       ...node,
-      status: this.statusCache.get(node.id) ?? null,
+      status: this.statusFor(node.id),
     }));
   }
 
   getNode(id: string): INodeWithStatus | null {
     const node = this.nodes.get(id);
     if (!node) return null;
-    return { ...node, status: this.statusCache.get(id) ?? null };
+    return { ...node, status: this.statusFor(id) };
+  }
+
+  /**
+   * Status for one node.
+   *
+   * For the local node the facts about this daemon — version, pid, uptime,
+   * role — are read from `process` on every call. They used to be written
+   * once into the cache in the constructor, so `omnitronUptime` was whatever
+   * `process.uptime()` returned a few milliseconds into boot, and the
+   * console renders that as "Uptime": a handful of seconds, however long the
+   * daemon had been up.
+   *
+   * The health-monitor worker also checks the local node, and what it
+   * reports is not worthless — whether sshd answers on loopback is a real
+   * check, and it is the only source for `checkedAt`, which dates the
+   * reachability reading rather than this call. So the worker's status is
+   * kept and only the fields the daemon knows first-hand are overwritten.
+   * Neither source is discarded, because neither one is redundant.
+   */
+  private statusFor(id: string): INodeStatus | null {
+    if (id !== LOCAL_NODE_ID) return this.statusCache.get(id) ?? null;
+
+    const live = this.localStatus();
+    const checked = this.statusCache.get(LOCAL_NODE_ID);
+    if (!checked) return live;
+
+    const merged: INodeStatus = { ...checked, omnitronConnected: true };
+    // Assigned rather than spread: the fields are optional under
+    // `exactOptionalPropertyTypes`, so writing `undefined` into them is a
+    // different thing from leaving them out.
+    if (live.omnitronVersion !== undefined) merged.omnitronVersion = live.omnitronVersion;
+    if (live.omnitronPid !== undefined) merged.omnitronPid = live.omnitronPid;
+    if (live.omnitronUptime !== undefined) merged.omnitronUptime = live.omnitronUptime;
+    if (live.omnitronRole !== undefined) merged.omnitronRole = live.omnitronRole;
+    return merged;
   }
 
   async addNode(input: AddNodeInput): Promise<INode> {
@@ -503,18 +543,26 @@ export class NodeManagerService extends EventEmitter {
   }
 
   /**
-   * Synchronously populate local node status at construction time.
-   * We ARE the daemon — no RPC/socket needed, just read process info.
+   * Status of the machine this daemon runs on.
+   *
+   * We ARE the daemon — no RPC or socket needed, just read process info, and
+   * read it now rather than at construction. The version came from a string
+   * literal `'0.1.0'` while the package was at 0.2.0, so the fleet view
+   * reported a version the daemon has never been; it is `CLI_VERSION` now,
+   * the same source `omnitron status` uses.
+   *
+   * The role is `master` unconditionally, and that is correct rather than
+   * lazy: this service is only constructed on a non-slave daemon.
    */
-  private initLocalStatus(): void {
-    this.statusCache.set(LOCAL_NODE_ID, {
+  private localStatus(): INodeStatus {
+    return {
       nodeId: LOCAL_NODE_ID,
       pingReachable: true,
       pingLatencyMs: 0,
       sshConnected: true,
       sshLatencyMs: 0,
       omnitronConnected: true,
-      omnitronVersion: '0.1.0',
+      omnitronVersion: CLI_VERSION,
       omnitronPid: process.pid,
       omnitronUptime: process.uptime() * 1000,
       omnitronRole: 'master',
@@ -525,7 +573,7 @@ export class NodeManagerService extends EventEmitter {
         release: os.release(),
       },
       checkedAt: new Date().toISOString(),
-    });
+    };
   }
 
   // ===========================================================================

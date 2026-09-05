@@ -28,6 +28,8 @@ import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/as
 import { Breadcrumbs } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,31 +206,28 @@ function RunDetail({ run }: { run: PipelineRun }) {
 // ---------------------------------------------------------------------------
 
 export default function PipelinesPage() {
-  const [pipelineList, setPipelineList] = useState<Pipeline[]>([]);
-  const [runs, setRuns] = useState<PipelineRun[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [pipelineResult, runsResult] = await Promise.allSettled([
-        pipelines.listPipelines(),
-        pipelines.listRuns({ limit: 50 }),
-      ]);
+  // Shared polling loop; `settledPair` keeps one RPC failing from blanking
+  // the other AND says so, which the `allSettled` this replaces did not.
+  const { data, loading, error, refresh: fetchData } = usePolledResource(
+    async () => {
+      const { first, second, partialFailure } = await settledPair<Pipeline[], PipelineRun[]>(
+        [pipelines.listPipelines(), pipelines.listRuns({ limit: 50 })],
+        [[], []]
+      );
+      return { pipelineList: first, runs: second, partialFailure };
+    },
+    { intervalMs: 10_000 }
+  );
 
-      if (pipelineResult.status === 'fulfilled')
-        setPipelineList(Array.isArray(pipelineResult.value) ? pipelineResult.value : []);
-      if (runsResult.status === 'fulfilled')
-        setRuns(Array.isArray(runsResult.value) ? runsResult.value : []);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch pipelines');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // A failed button press is a different thing from a stale poll.
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const pipelineList = data?.pipelineList ?? [];
+  const runs = data?.runs ?? [];
+  const partialFailure = data?.partialFailure ?? null;
 
   useEffect(() => {
     fetchData();
@@ -241,7 +240,7 @@ export default function PipelinesPage() {
       await pipelines.executePipeline({ id });
       fetchData();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to execute pipeline');
+      setActionError(err?.message ?? 'Failed to execute pipeline');
     }
   };
 
@@ -250,7 +249,7 @@ export default function PipelinesPage() {
       await pipelines.deletePipeline({ id });
       fetchData();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to delete pipeline');
+      setActionError(err?.message ?? 'Failed to delete pipeline');
     }
   };
 
@@ -275,9 +274,9 @@ export default function PipelinesPage() {
           </Stack>
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {(error || actionError || partialFailure) && (
+        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
         </Alert>
       )}
       {/* Pipeline Definitions */}

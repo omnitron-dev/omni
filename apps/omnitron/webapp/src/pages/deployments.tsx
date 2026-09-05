@@ -25,6 +25,8 @@ import { Breadcrumbs } from '@omnitron-dev/prism';
 import { deploy } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { useAuthStore } from 'src/auth/store';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -165,30 +167,25 @@ function DeployDialog({ open, onClose, onDeploy, apps }: DeployDialogProps) {
 // ---------------------------------------------------------------------------
 
 export default function DeploymentsPage() {
-  const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [availableApps, setAvailableApps] = useState<string[]>([]);
 
-  const fetchDeployments = useCallback(async () => {
-    try {
-      const [history, apps] = await Promise.allSettled([
-        deploy.getHistory(),
-        deploy.listDeployableApps(),
-      ]);
+  const { data, loading, error, refresh: fetchDeployments } = usePolledResource(
+    async () => {
+      const { first, second, partialFailure } = await settledPair<Deployment[], string[]>(
+        [deploy.getHistory(), deploy.listDeployableApps()],
+        [[], []]
+      );
+      return { deployments: first, availableApps: second, partialFailure };
+    },
+    { intervalMs: 15_000 }
+  );
 
-      if (history.status === 'fulfilled')
-        setDeployments(Array.isArray(history.value) ? history.value : []);
-      if (apps.status === 'fulfilled')
-        setAvailableApps(Array.isArray(apps.value) ? apps.value : []);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch deployments');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // A failed button press is a different thing from a stale poll.
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const deployments = data?.deployments ?? [];
+  const availableApps = data?.availableApps ?? [];
+  const partialFailure = data?.partialFailure ?? null;
 
   useEffect(() => {
     fetchDeployments();
@@ -203,7 +200,7 @@ export default function DeploymentsPage() {
       await deploy.deployApp({ app, version, strategy, deployedBy });
       fetchDeployments();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to start deployment');
+      setActionError(err?.message ?? 'Failed to start deployment');
     }
   };
 
@@ -228,9 +225,9 @@ export default function DeploymentsPage() {
           </Stack>
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {(error || actionError || partialFailure) && (
+        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
         </Alert>
       )}
       {/* Deployments Table */}

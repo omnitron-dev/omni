@@ -87,7 +87,8 @@ export async function kbIndexCommand(options: {
   full?: boolean;
   watch?: boolean;
 }): Promise<void> {
-  const { log, spinner } = await import('@xec-sh/kit');
+  const { log } = await import('@xec-sh/kit');
+  const { spinner } = await import('./spinner.js');
   const { KnowledgeBase } = await import('@omnitron-dev/kb');
   const { SurrealKbStore } = await import('@omnitron-dev/kb/surreal');
 

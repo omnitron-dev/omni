@@ -2,7 +2,8 @@
  * omnitron restart [app|all]
  */
 
-import { log, spinner } from '@xec-sh/kit';
+import { log } from '@xec-sh/kit';
+import { spinner } from './spinner.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 export async function restartCommand(appName?: string): Promise<void> {

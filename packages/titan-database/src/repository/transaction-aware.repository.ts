@@ -54,6 +54,18 @@ export interface OffsetPaginatedResult<T> {
   hasMore: boolean;
 }
 
+/**
+ * NOT USED — and worse, it is the one the package's root exports as
+ * `CursorOptions`.
+ *
+ * No method here or anywhere in this package accepts it. The type that cursor
+ * pagination actually runs on is `@kysera/repository`'s, re-exported from the
+ * package root under the alias `CursorPaginationOptions`. So the obvious
+ * import — `import type { CursorOptions } from '@omnitron-dev/titan-database'`
+ * — yields the inert one, and the working one is behind the less obvious name.
+ *
+ * Left in place because renaming a public export is a decision, not a fix.
+ */
 export interface CursorOptions {
   limit?: number;
   cursor?: string;

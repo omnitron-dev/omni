@@ -72,6 +72,14 @@ export type EventErrorHandler = (error: Error, event: string, data: EventData) =
 /**
  * Event emission options
  */
+/**
+ * NOT USED — the `EmitOptions` that `EventsService` and `EventBusService`
+ * actually accept comes from `@omnitron-dev/eventemitter`, and it has neither
+ * `parallel` nor `sequential`. This declaration is not exported from the
+ * package root, so it misleads only a reader of this file — but it describes
+ * an emission-mode switch that does not exist anywhere: the choice is made by
+ * calling `emitAsync` (parallel) or `emitSerial` (sequential).
+ */
 export interface EmitOptions {
   parallel?: boolean;
   sequential?: boolean;

@@ -390,8 +390,12 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       const [appList, status, infraState, fleetResult] = await Promise.allSettled([
         daemon.list(),
         daemon.status(),
-        infra.getState().catch(() => ({ services: {} })),
-        fleet.listNodes().catch(() => []),
+        // These two already swallow their own failures, so `allSettled`
+        // reports them as fulfilled-with-empty. Counted below via the value
+        // rather than the settle status, because "no containers" and "could
+        // not ask about containers" draw the same empty diagram.
+        infra.getState().catch(() => null),
+        fleet.listNodes().catch(() => null),
       ]);
 
       const allApps = appList.status === 'fulfilled' ? appList.value : [];
@@ -404,9 +408,23 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       const infraMap = infraValue && typeof infraValue === 'object' && 'services' in infraValue
         ? ((infraValue as { services: Record<string, ContainerState> }).services ?? {})
         : {};
-      const fleetNodes = fleetResult.status === 'fulfilled'
-        ? (Array.isArray(fleetResult.value) ? fleetResult.value : [])
+      const fleetNodes = fleetResult.status === 'fulfilled' && Array.isArray(fleetResult.value)
+        ? fleetResult.value
         : [];
+
+      // Which sources could not answer.
+      //
+      // `Promise.allSettled` never rejects, so the catch below is unreachable
+      // for a source that simply failed — and every failure was being turned
+      // into an empty array or an empty map on its way to the diagram. With
+      // the daemon down, all four failed and the topology rendered an empty
+      // canvas with `error: null`: a picture of a platform with nothing in
+      // it, which is a different claim from "I could not find out".
+      const unavailable: string[] = [];
+      if (appList.status === 'rejected') unavailable.push('applications');
+      if (status.status === 'rejected') unavailable.push('daemon status');
+      if (infraState.status !== 'fulfilled' || infraState.value === null) unavailable.push('infrastructure');
+      if (fleetResult.status !== 'fulfilled' || fleetResult.value === null) unavailable.push('fleet nodes');
 
       const { nodes, edges } = buildFlowGraph(apps, infraMap, fleetNodes);
 
@@ -418,7 +436,14 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
         nodes,
         edges,
         loading: false,
-        error: null,
+        // Partial data is still worth drawing — that is what `allSettled` is
+        // for — but not worth presenting as complete.
+        error:
+          unavailable.length === 0
+            ? null
+            : unavailable.length === 4
+              ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
+              : `Incomplete: could not read ${unavailable.join(', ')}. The rest of the diagram is current.`,
       });
     } catch (err: any) {
       set({

@@ -112,6 +112,39 @@ describe('WebSocketTransport', () => {
       await server.close();
     });
 
+    it('emits listening once when given an external HTTP server', async () => {
+      // The constructor fires handleListening() when the server was supplied
+      // through `options.server`, and listen() fires it again on next tick.
+      // The `listening` event therefore arrived twice, and serverStartTime —
+      // which `uptime` is measured from — was reset by the second one.
+      //
+      // The condition guarding the constructor's call reads
+      // `this.wss.listening || options?.server` under a suppression saying
+      // "WebSocketServer doesn't have a listening property, but it works". It
+      // does not: `wss.listening` is undefined, so only the second half ever
+      // matched, and that half is exactly the double-emit case.
+      const externalPort = await getFreePort();
+      const external = createServer();
+      await promisify(external.listen).bind(external)(externalPort);
+
+      try {
+        const server = await transport.createServer({ server: external } as never);
+
+        let count = 0;
+        server.on('listening', () => {
+          count++;
+        });
+
+        await server.listen();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(count, `listening was emitted ${count} times`).toBe(1);
+        await server.close();
+      } finally {
+        await promisify(external.close).bind(external)();
+      }
+    });
+
     it('should handle multiple WebSocket connections', async () => {
       const serverPort = await getFreePort();
       const server = await transport.createServer({ port: serverPort });

@@ -153,11 +153,20 @@ export class WebSocketServerAdapter extends BaseServer {
       this.handleClose();
     });
 
-    // If server is already listening
-    // @ts-expect-error - WebSocketServer doesn't have a listening property, but it works
-    if (this.wss.listening || (this.wss as any).options?.server) {
-      this.handleListening();
-    }
+    // No `handleListening()` here.
+    //
+    // What stood here was
+    //   // @ts-expect-error - WebSocketServer doesn't have a listening property, but it works
+    //   if (this.wss.listening || (this.wss as any).options?.server) this.handleListening();
+    // and the comment was wrong: `wss.listening` is undefined (checked against
+    // ws 8 — the flag lives on the underlying http server), so only the
+    // `options.server` half ever matched. For that case it emitted 'listening'
+    // from inside the constructor, before any caller could have attached a
+    // listener, and then listen() emitted it again on next tick — the event was
+    // not doubled only because the first one had no audience, while
+    // serverStartTime, which `uptime` is measured from, was set twice.
+    //
+    // listen() covers both configurations, so it is the single path now.
   }
 
   /**

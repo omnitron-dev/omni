@@ -88,14 +88,16 @@ export const postgresPreset: IServicePreset = {
   },
 
   async postProvision(ctx: IPostProvisionContext): Promise<void> {
-    const databases = ctx.userConfig['databases'] as Record<string, unknown> | undefined;
+    const databases = ctx.userConfig['databases'] as
+      | Record<string, { extensions?: string[] } | undefined>
+      | undefined;
     if (!databases) return;
 
     const user = ctx.secrets['user'] ?? 'postgres';
     const maxRetries = 5;
     const retryDelay = 2000;
 
-    for (const dbName of Object.keys(databases)) {
+    for (const [dbName, dbConfig] of Object.entries(databases)) {
       let created = false;
       for (let attempt = 0; attempt < maxRetries && !created; attempt++) {
         try {
@@ -119,6 +121,8 @@ export const postgresPreset: IServicePreset = {
           }
         }
       }
+
+      if (created) await createExtensions(ctx, user, dbName, dbConfig?.extensions ?? []);
     }
   },
 
@@ -128,3 +132,47 @@ export const postgresPreset: IServicePreset = {
     };
   },
 };
+
+/**
+ * Create the extensions a database declared, inside that database.
+ *
+ * `omnitronConfig.database.extensions` was declared in the type and in the
+ * zod schema and read by nothing: the resolver took `dialect` and `pool` and
+ * dropped the rest. An app asking for postgis got a plain container and
+ * failed on its first spatial query with `$libdir/postgis-3: No such file` —
+ * a message about a shared library, three layers away from the setting that
+ * was ignored. The workaround was to override the image by hand in the stack
+ * config, which is why the gap survived: it looked like an image problem.
+ *
+ * A missing extension is reported here, at provisioning time, naming the
+ * extension and the fact that the image has to carry it. Failing to create
+ * one does not abort the rest — the other databases and the other extensions
+ * are still worth having, and the app's own startup will fail loudly enough
+ * if it truly cannot run without it.
+ */
+async function createExtensions(
+  ctx: IPostProvisionContext,
+  user: string,
+  dbName: string,
+  extensions: string[],
+): Promise<void> {
+  for (const ext of extensions) {
+    // Extension names come from a config file, not from a request, but they
+    // are interpolated into SQL — so keep them to what an identifier can be.
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(ext)) {
+      ctx.logger.warn({ database: dbName, extension: ext }, 'Skipped extension: not a valid identifier');
+      continue;
+    }
+    try {
+      await ctx.execInContainer([
+        'psql', '-U', user, '-d', dbName, '-c', `CREATE EXTENSION IF NOT EXISTS "${ext}"`,
+      ]);
+      ctx.logger.info({ database: dbName, extension: ext }, 'Ensured PostgreSQL extension');
+    } catch (err) {
+      ctx.logger.error(
+        { database: dbName, extension: ext, error: (err as Error).message },
+        `Could not create extension "${ext}" — the image must ship it (postgres:17-alpine has the contrib set, not postgis; use an image override for those)`
+      );
+    }
+  }
+}

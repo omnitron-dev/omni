@@ -713,9 +713,12 @@ export function Global() {
  * })
  * async getDocument(id: string) {}
  *
- * // Transport filtering
+ * // Transport tagging — NOT filtering. This records a `method:transports`
+ * // reflect key that the framework does not read; the method stays callable
+ * // over every transport. Kept for applications that read the metadata and
+ * // enforce it themselves. (Service-level `transports` IS honoured.)
  * @Public({ transports: ['ws', 'tcp'] })
- * public wsAndTcpOnly(): void {}
+ * public taggedWsAndTcp(): void {}
  *
  * // Read-only property
  * @Public({ readonly: true })

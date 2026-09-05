@@ -52,14 +52,15 @@ export function parsePsBatch(output: string): Map<number, ProcessSample> {
   return out;
 }
 
-/**
- * Fold a fresh sample into what is already known about a process.
+/*
+ * The rule that a failed read must not overwrite a known reading — `null` is
+ * not zero — deliberately lives at its two call sites in
+ * orchestrator.service.ts (`sampleAppMetrics`, and the classic branch of the
+ * metrics timer), not in a helper here.
  *
- * `null` means the sampler could not read it — which is not the same as
- * reading zero, and must not overwrite a previous reading with one. A
- * process that has genuinely gone idle reports 0 through the normal path and
- * updates as usual.
+ * A `mergeSample(previous, fresh)` helper did sit here, exported and tested,
+ * with no caller: both paths implemented the rule inline and correctly. A
+ * third copy that looks like the canonical one but is reached by nothing is
+ * worse than no helper at all — the next reader adopts it, believes the rule
+ * is now centralised, and the two real sites keep their own.
  */
-export function mergeSample(previous: ProcessSample | null, fresh: ProcessSample | null): ProcessSample | null {
-  return fresh ?? previous;
-}

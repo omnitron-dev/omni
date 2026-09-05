@@ -293,6 +293,10 @@ export class DaemonRpcService implements IDaemonService {
     // dependsOn, restart policy all silently stale until next daemon
     // restart).
     this.orchestrator.setConfig(newConfig);
+    // Same omission as the config refs above, one layer out: the file
+    // watcher keeps its own app list, so without this a reload changed
+    // which apps get restarted but not which are watched.
+    this.daemon.applyWatchConfig(newConfig);
     return { success: true };
   }
 

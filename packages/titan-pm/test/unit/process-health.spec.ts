@@ -233,6 +233,38 @@ describe('ProcessHealthChecker', () => {
       expect(checker.isHealthy('unknown')).toBe(false);
     });
 
+    it('says whether the probe timed out or the process was unreachable', async () => {
+      // Three consecutive failures replace the worker, so the recorded reason
+      // is what an operator reads when asking why. A worker that merely
+      // answered slowly under load and one that refused the connection used to
+      // produce the same sentence, `Failed to connect to process`.
+      const slow = {
+        __processId: 'test-process',
+        __destroy: vi.fn(),
+        // Never settles: the health check's own timeout has to fire.
+        __getMetrics: vi.fn(() => new Promise(() => {})),
+      } as never;
+
+      checker.startMonitoring('slow', slow, { interval: 1000, timeout: 50 });
+      await vi.advanceTimersByTimeAsync(200);
+
+      const slowStatus = checker.getHealth('slow');
+      expect(slowStatus?.status).toBe('unhealthy');
+      expect(slowStatus?.checks[0]?.message).toMatch(/did not answer the health probe in time/);
+
+      const refusing = {
+        __processId: 'test-process',
+        __destroy: vi.fn(),
+        __getMetrics: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      } as never;
+
+      checker.startMonitoring('refusing', refusing, { interval: 1000 });
+      await vi.advanceTimersByTimeAsync(100);
+
+      const refusedStatus = checker.getHealth('refusing');
+      expect(refusedStatus?.checks[0]?.message).toMatch(/Failed to reach process: .*ECONNREFUSED/);
+    });
+
     it('returns false for a process that exposes no probe at all', async () => {
       // The basic check pings `__getMetrics` to ask "can I call anything on
       // this process". It used to skip the ping when the method was absent and

@@ -248,14 +248,24 @@ export class ProcessHealthChecker extends EventEmitter {
         ],
         timestamp: Date.now(),
       };
-    } catch (_error) {
+    } catch (error) {
+      // Say WHICH failure. Three of these in a row replace the worker, and at
+      // that point the operator needs to know whether the process refused a
+      // connection or merely failed to answer within the budget — the second
+      // happens to healthy workers on a loaded machine, and reads very
+      // differently in an incident. `Failed to connect to process` covered both
+      // and was accurate for neither.
+      const reason = error instanceof Error ? error.message : String(error);
+      const timedOut = /timeout|timed out/i.test(reason);
       return {
         status: 'unhealthy',
         checks: [
           {
             name: 'connectivity',
             status: 'fail',
-            message: 'Failed to connect to process',
+            message: timedOut
+              ? `Process did not answer the health probe in time: ${reason}`
+              : `Failed to reach process: ${reason}`,
           },
         ],
         timestamp: Date.now(),

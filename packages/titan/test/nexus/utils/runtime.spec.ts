@@ -2,7 +2,7 @@
  * Tests for Runtime Detection Utilities
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   Runtime,
   detectRuntime,
@@ -178,36 +178,44 @@ describe('Runtime Detection', () => {
   });
 
   describe('PerformanceTimer', () => {
-    it('should create timer and measure elapsed time', async () => {
-      const timer = new PerformanceTimer();
-
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const elapsed = timer.elapsed();
-
-      expect(elapsed).toBeGreaterThan(40); // Allow some variance
-      expect(elapsed).toBeLessThan(100);
+    // `PerformanceTimer` reads `performance.now()`, which vitest's fake timers
+    // control — so these assert exact values instead of tolerances.
+    //
+    // Both cases here were about wall-clock jitter before, and both lost. The
+    // ceiling version (`elapsed2 < 30`) failed at 36 ms when the 20 ms sleep
+    // was preempted. It was replaced with a RELATIVE comparison and the
+    // reasoning "for this to break, the short sleep would have to outlast the
+    // long one" — which is what then happened in a full-suite run: the 20 ms
+    // sleep measured 66 ms while the 50 ms one measured 53. A relative
+    // assertion is not robust by being relative; it is robust only while the
+    // gap dominates the jitter, and under load nothing bounds the jitter.
+    it('should create timer and measure elapsed time', () => {
+      vi.useFakeTimers();
+      try {
+        const timer = new PerformanceTimer();
+        vi.advanceTimersByTime(50);
+        expect(timer.elapsed()).toBe(50);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
-    it('should reset timer', async () => {
-      const timer = new PerformanceTimer();
+    it('should reset timer', () => {
+      vi.useFakeTimers();
+      try {
+        const timer = new PerformanceTimer();
+        vi.advanceTimersByTime(50);
+        expect(timer.elapsed()).toBe(50);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const elapsed1 = timer.elapsed();
+        timer.reset();
+        vi.advanceTimersByTime(20);
 
-      timer.reset();
-
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      const elapsed2 = timer.elapsed();
-
-      expect(elapsed1).toBeGreaterThan(40);
-      // The property is that the timer restarted, so compare the two readings
-      // instead of holding the second to a fixed ceiling: `< 30` failed at 36ms
-      // whenever the 20ms sleep was preempted. For this to break, the short
-      // sleep would have to outlast the long one.
-      expect(elapsed2).toBeLessThan(elapsed1);
-      expect(elapsed2).toBeGreaterThanOrEqual(15);
+        // The property under test: elapsed is measured from the reset, not
+        // from construction. 20, not 70.
+        expect(timer.elapsed()).toBe(20);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should use appropriate timing method', () => {

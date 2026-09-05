@@ -15,7 +15,6 @@ const skipTests =
   isRedisInMockMode() ||
   !isDockerAvailable() ||
   process.env.SKIP_DOCKER_TESTS === 'true' ||
-  process.env.SKIP_DOCKER_TESTS === 'true' ||
   process.env.SKIP_INTEGRATION_TESTS === 'true';
 
 if (skipTests) {

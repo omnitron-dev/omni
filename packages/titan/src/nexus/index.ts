@@ -229,6 +229,13 @@ export {
   type ResolutionStrategy,
   type ContextAwareProvider,
   createContextAwareProvider,
+  // The accessor for the process-wide manager. `ContextManager` (the class)
+  // was re-exported here but not this, and `./nexus` is the only public entry
+  // point to the context API — so the shared instance every consumer is meant
+  // to use was unreachable from outside the package, while the docs told
+  // readers to import it from exactly here. Constructing `new ContextManager()`
+  // gets you a different one, which is the failure this omission caused.
+  getContextManager,
 } from './context.js';
 
 /**

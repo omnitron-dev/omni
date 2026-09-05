@@ -335,6 +335,16 @@ export interface MultiBackendClientOptions {
 
     /**
      * Time window for error tracking in milliseconds
+     *
+     * NOT IMPLEMENTED. `recordFailure()` increments a cumulative counter and
+     * nothing ever expires an entry, so failures separated by hours count the
+     * same as failures separated by milliseconds — a backend that fails once a
+     * day eventually trips a threshold of 5. The counter is only reset by a
+     * success (`breaker.failures = 0`), which is the actual behaviour to
+     * reason about.
+     *
+     * What DOES work on this object: `enabled`, `threshold` (default 5), and
+     * `resetTimeout` (default 30000ms, before half-open).
      * @default 60000
      */
     window?: number;

@@ -99,6 +99,11 @@ export interface OmnitronAppConfig {
     dialect?: 'postgres' | 'mysql' | 'sqlite';
     pool?: { min?: number; max?: number };
     extensions?: string[];
+    /**
+     * NOT READ. Every app shares one PostgreSQL container with a database
+     * per app; nothing provisions a dedicated instance. Same for `redis`
+     * below.
+     */
     dedicated?: boolean;
   };
 
@@ -652,7 +657,21 @@ export interface IDaemonConfig {
    */
   cluster?: {
     enabled: boolean;
-    discovery: 'redis' | 'static';
+    /**
+     * NOT READ. Peers come from the fleet registry in Postgres —
+     * `FleetService.listNodes()` — regardless of what this says, and no
+     * code path consults either this field or `peers`.
+     *
+     * Kept because removing them from a published type breaks every config
+     * that sets them, and because they state a real intent: a static peer
+     * list would let a cluster form without Postgres, which is the one
+     * dependency the fleet registry cannot do without. Until that exists,
+     * an operator choosing between 'redis' and 'static' is making a
+     * decision with no effect — so say so here rather than let them find
+     * out from behaviour that does not change.
+     */
+    discovery?: 'redis' | 'static';
+    /** NOT READ — see `discovery`. */
     peers?: string[];
     electionTimeout?: { min: number; max: number };
     heartbeatInterval?: number;

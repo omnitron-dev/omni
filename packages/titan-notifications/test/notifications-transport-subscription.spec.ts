@@ -10,51 +10,60 @@ import Redis from 'ioredis';
 import { NotificationManager } from '../src/rotif/rotif.js';
 import { RotifTransport } from '../src/transport/rotif.transport.js';
 import type { IncomingNotification } from '../src/transport/transport.interface.js';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { getTestRedisConfig } from './rotif/helpers/test-utils.js';
 
 /**
  * Check if real Redis is available from global setup
  */
-function isRealRedisAvailable(): boolean {
+async function isRealRedisAvailable(): Promise<boolean> {
   if (process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true') {
     return false;
   }
+  // Ask Redis, not the filesystem about Redis.
+  //
+  // This used to answer by looking for `.redis-test-info.json` in
+  // `process.cwd()` and returning false when it was absent. Only
+  // `packages/titan/globalSetup.ts` writes that file, and into titan's OWN
+  // directory — so from this package it is never there, and all 22 tests below
+  // were skipped on every run whether or not Redis was up.
+  const { host, port, db } = getRedisConfig();
+  const probe = new Redis({ host, port, db, lazyConnect: true, retryStrategy: () => null });
   try {
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
-    if (existsSync(infoPath)) {
-      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
-      return info.port > 0 && !info.isMock;
-    }
+    await probe.connect();
+    await probe.ping();
+    return true;
   } catch {
-    // Ignore errors
+    return false;
+  } finally {
+    probe.disconnect();
   }
-  return false;
 }
 
-// Skip entire test suite if Redis is not available
-const describeWithRedis = isRealRedisAvailable() ? describe : describe.skip;
+/**
+ * Redis endpoint for this suite. `getTestRedisConfig` resolves the globalSetup
+ * info file, then REDIS_URL/TEST_REDIS_URL, then TEST_REDIS_PORT, defaulting to
+ * the compose stack on 16379.
+ *
+ * The local version of this defaulted to 6379 — a developer's own Redis, which
+ * this suite then flushed. Keeping the test stack off 6379 is the reason the
+ * shared helper exists.
+ */
+function getRedisConfig(): { host: string; port: number; db: number } {
+  const { host, port, db } = getTestRedisConfig(0);
+  return { host, port, db };
+}
+
+// Decided once, before the suite is registered.
+const redisAvailable = await isRealRedisAvailable();
+if (!redisAvailable) {
+  console.warn('[SKIP] Notifications transport subscription tests require real Redis');
+}
+const describeWithRedis = redisAvailable ? describe : describe.skip;
 
 describeWithRedis('Notifications Transport Subscription Control', () => {
   let redis: Redis;
   let manager: NotificationManager;
   let transport: RotifTransport;
-
-  /**
-   * Get Redis connection info from global setup
-   */
-  function getRedisConfig(): { host: string; port: number } {
-    try {
-      const infoPath = join(process.cwd(), '.redis-test-info.json');
-      if (existsSync(infoPath)) {
-        const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
-        return { host: info.host || 'localhost', port: info.port };
-      }
-    } catch {
-      // Ignore errors
-    }
-    return { host: 'localhost', port: 6379 };
-  }
 
   beforeEach(async () => {
     const redisConfig = getRedisConfig();
@@ -62,20 +71,35 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
     redis = new Redis({
       host: redisConfig.host,
       port: redisConfig.port,
+      db: redisConfig.db,
       maxRetriesPerRequest: null,
     });
 
-    // Clear all Redis keys
-    await redis.flushall();
+    // flushdb on THIS worker's database, not flushall.
+    //
+    // The suite used to call `flushall` against db 0 on the shared test Redis.
+    // Databases 0-4 belong to other suites (and, right now, to a second
+    // session working in this repo), and `flushall` ignores the selected db
+    // and erases every one of them. It never did any harm only because this
+    // whole file was gated on a file that is never present, so it had not run.
+    // `toTestDb` partitions by vitest worker precisely so a flush is safe.
+    await redis.flushdb();
 
     manager = new NotificationManager({
       redis: {
         host: redisConfig.host,
         port: redisConfig.port,
+        db: redisConfig.db,
       },
       maxRetries: 3,
       checkDelayInterval: 100,
       deduplicationTTL: 60,
+      // The consumer loop observes `resume()`'s reclaim request at the top of
+      // an iteration, and each iteration parks in `XREADGROUP ... BLOCK
+      // blockInterval` (5s by default). The pause/resume tests below therefore
+      // cannot see a redelivery inside a few hundred ms at the default. This
+      // is the knob the docs point callers at for exactly that reason.
+      blockInterval: 200,
     });
 
     await manager.waitUntilReady();
@@ -178,8 +202,7 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
       });
 
       // Wait for message to be processed
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(handler).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
 
       // Pause the subscription
       subscription.pause();
@@ -191,7 +214,9 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
       });
 
       // Wait and verify message was not processed
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Nothing to wait FOR here — the assertion is that nothing arrives —
+      // so a fixed window is right. One blockInterval plus slack.
+      await new Promise((resolve) => setTimeout(resolve, 500));
       expect(handler).toHaveBeenCalledTimes(1); // Still 1, not 2
     });
 
@@ -207,8 +232,7 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         type: 'test',
         data: { message: 'first' },
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(handler).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
 
       // Pause and publish second message
       subscription.pause();
@@ -216,13 +240,14 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         type: 'test',
         data: { message: 'second' },
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(handler).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
 
-      // Resume and wait for pending message to be processed
+      // Resume, then wait for the redelivery rather than guessing at a delay.
+      // `resume()` flags the loop to reclaim its pending messages, and the loop
+      // acts on that when its blocking read next returns — within one
+      // `blockInterval`, set to 200ms for this suite.
       subscription.resume();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      expect(handler).toHaveBeenCalledTimes(2);
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(2), { timeout: 5000, interval: 25 });
     });
   });
 
@@ -306,7 +331,10 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         data: { message: 'test' },
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await vi.waitFor(() => expect(subscription.stats().messages).toBeGreaterThan(initialCount), {
+        timeout: 5000,
+        interval: 25,
+      });
 
       const newStats = subscription.stats();
       expect(newStats.messages).toBeGreaterThan(initialCount);
@@ -328,7 +356,10 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         data: { message: 'test' },
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await vi.waitFor(() => expect(subscription.stats().messages).toBeGreaterThan(0), {
+        timeout: 5000,
+        interval: 25,
+      });
 
       const newStats = subscription.stats();
       if (newStats.lastMessageAt !== undefined) {
@@ -403,8 +434,7 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         type: 'test',
         data: { message: 'first' },
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(handler).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
 
       // Unsubscribe
       await subscription.unsubscribe();
@@ -414,7 +444,9 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
         type: 'test',
         data: { message: 'second' },
       });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Nothing to wait FOR — the assertion is that nothing arrives. One
+      // blockInterval plus slack.
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Handler should not be called again
       expect(handler).toHaveBeenCalledTimes(1);
@@ -443,18 +475,19 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
       await transport.publish('channel.1', { type: 'test', data: {} });
       await transport.publish('channel.2', { type: 'test', data: {} });
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Wait for the delivery that should happen; that the other has not
+      // fired by then is the actual claim.
+      await vi.waitFor(() => expect(handler2).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
 
       // Only handler2 should be called
       expect(handler1).toHaveBeenCalledTimes(0);
       expect(handler2).toHaveBeenCalledTimes(1);
 
-      // Resume sub1
+      // Resume sub1. The redelivery arrives when the consumer loop's blocking
+      // read next returns — within one `blockInterval` — so wait for it rather
+      // than guessing at a fixed delay.
       sub1.resume();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Now handler1 should process the pending message
-      expect(handler1).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(handler1).toHaveBeenCalledTimes(1), { timeout: 5000, interval: 25 });
     });
 
     it('should track stats independently for multiple subscriptions', async () => {
@@ -473,7 +506,13 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
       await transport.publish('channel.1', { type: 'test', data: {} });
       await transport.publish('channel.2', { type: 'test', data: {} });
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await vi.waitFor(
+        () => {
+          expect(sub1.stats().messages).toBeGreaterThan(0);
+          expect(sub2.stats().messages).toBeGreaterThan(0);
+        },
+        { timeout: 5000, interval: 25 }
+      );
 
       const stats1 = sub1.stats();
       const stats2 = sub2.stats();

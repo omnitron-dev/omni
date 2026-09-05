@@ -33,7 +33,7 @@ import { componentOverrides } from './components/index.js';
 import { createShadows } from './shadows.js';
 import { createTypography, typography } from './typography.js';
 import { mixins } from './mixins.js';
-import { generateColorScale, generatePaletteColorWithChannels } from './utils/color.js';
+import { generateColorScale, generatePaletteColorWithChannels, getContrastText } from './utils/color.js';
 import { blue, purple, green, red, orange, lightBlue, grey as baseGrey } from './colors/base.js';
 import {
   luxuryPrimary,
@@ -465,6 +465,19 @@ export const COLOR_GROUPS: ColorGroup[] = [
  * Apply primary color override to palette.
  * Uses existing color group if exact match, otherwise generates new shades.
  */
+/**
+ * Swap a palette's primary for an operator-chosen colour.
+ *
+ * `contrastText` is measured against the resulting `main` rather than taken
+ * from the far end of the generated scale. The scale's extreme is a lighter
+ * or darker shade of the SAME hue, which is not a contrast guarantee: for
+ * `primaryColor: '#FFFFFF'` it produced text and background one step apart —
+ * a ratio of 1.00, an invisible label on a button. Mid-tone brand colours
+ * landed between 2.5 and 4.3, all below WCAG AA.
+ *
+ * The presets have always used `getContrastText`; only this override path
+ * did not, so a themed console was less readable than an unthemed one.
+ */
 function applyPrimaryOverride(
   basePalette: PaletteOptions,
   primaryColor: string | null | undefined,
@@ -485,7 +498,7 @@ function applyPrimaryOverride(
             main: primaryColor,
             dark: colorGroup.palette[300],
             darker: colorGroup.palette[100],
-            contrastText: colorGroup.palette[950],
+            contrastText: getContrastText(primaryColor),
           })
         : generatePaletteColorWithChannels({
             lighter: colorGroup.palette[50],
@@ -493,7 +506,7 @@ function applyPrimaryOverride(
             main: primaryColor,
             dark: colorGroup.palette[600],
             darker: colorGroup.palette[900],
-            contrastText: colorGroup.palette[50],
+            contrastText: getContrastText(primaryColor),
           });
 
     return { ...basePalette, primary: newPrimary };
@@ -509,7 +522,7 @@ function applyPrimaryOverride(
           main: generatedScale[400],
           dark: generatedScale[300],
           darker: generatedScale[100],
-          contrastText: generatedScale[950],
+          contrastText: getContrastText(generatedScale[400]),
         })
       : generatePaletteColorWithChannels({
           lighter: generatedScale[50],
@@ -517,7 +530,7 @@ function applyPrimaryOverride(
           main: generatedScale[500],
           dark: generatedScale[600],
           darker: generatedScale[900],
-          contrastText: generatedScale[50],
+          contrastText: getContrastText(generatedScale[500]),
         });
 
   return { ...basePalette, primary: newPrimary };

@@ -52,6 +52,18 @@ export interface PoolConfig {
   max?: number;
   idleTimeoutMillis?: number;
   acquireTimeoutMillis?: number;
+  /**
+   * NOT IMPLEMENTED — the four below are `tarn`/`knex` pool option names, and
+   * the pools here are node-postgres and mysql2, which have no equivalent.
+   * The whole pool config is spread into the driver's constructor, so they are
+   * passed and ignored rather than rejected: setting `reapIntervalMillis`
+   * looks accepted and reaps nothing.
+   *
+   * What the drivers do read from this object: `max`, `idleTimeoutMillis`,
+   * and `acquireTimeoutMillis` (mapped to node-postgres's
+   * `connectionTimeoutMillis`, which bounds both the TCP connect and the wait
+   * for a free client).
+   */
   createTimeoutMillis?: number;
   destroyTimeoutMillis?: number;
   reapIntervalMillis?: number;
@@ -92,6 +104,10 @@ export interface KyseraCoreOptions {
 
 /**
  * Kysera Repository configuration options
+ *
+ * NOT IMPLEMENTED — the whole interface. It is exported from the package index
+ * and read by nothing: no repository validates its database results, chooses a
+ * validation strategy, or batches by this size.
  */
 export interface KyseraRepositoryOptions {
   validateDbResults?: boolean;
@@ -278,15 +294,31 @@ export interface TransactionOptions {
 export interface RepositoryConfig<Entity = unknown> {
   table: string;
   connection?: string;
+  softDelete?: boolean | { column?: string; includeDeleted?: boolean };
+  timestamps?: boolean | { createdAt?: string; updatedAt?: string };
+  audit?: boolean | { table?: string; captureOldValues?: boolean; captureNewValues?: boolean };
+
+  /**
+   * NOT IMPLEMENTED — the six fields below.
+   *
+   * `@Repository` stores the whole config under one metadata key, but the only
+   * fields read back out of it are `table` and `connection`, in
+   * `DatabaseModule.forFeature`, to pick the executor and construct the
+   * repository. `softDelete`, `timestamps` and `audit` work because the
+   * decorator re-publishes them under their own metadata keys, where the
+   * kysera plugin wiring looks for them.
+   *
+   * Nothing validates against `schema` / `createSchema` / `updateSchema`,
+   * nothing branches on `validate`, `getDecoratorPlugins()` derives its list
+   * from the decorator flags rather than from `plugins`, and no row is passed
+   * through `mapRow` — rows arrive exactly as the driver produced them.
+   */
   schema?: z.ZodType;
   createSchema?: z.ZodType<unknown>;
   updateSchema?: z.ZodType<unknown>;
   validate?: boolean;
   plugins?: string[];
   mapRow?: (row: Record<string, unknown>) => Entity;
-  softDelete?: boolean | { column?: string; includeDeleted?: boolean };
-  timestamps?: boolean | { createdAt?: string; updatedAt?: string };
-  audit?: boolean | { table?: string; captureOldValues?: boolean; captureNewValues?: boolean };
 }
 
 export interface MigrationStatus {

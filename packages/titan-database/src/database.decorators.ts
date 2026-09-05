@@ -97,7 +97,13 @@ export function Repository<Entity = unknown>(configOrTableName: RepositoryConfig
       Reflect.defineMetadata(METADATA_KEYS.AUDIT, auditConfig, target);
     }
 
-    // Register in global metadata for auto-discovery
+    // Register in global metadata for auto-discovery.
+    //
+    // NOT IMPLEMENTED — nothing auto-discovers from this registry. It is
+    // written on every `@Repository` and read by no code in the package;
+    // repositories reach the container only by being listed explicitly in
+    // `DatabaseModule.forFeature([...])`. Kept because it is reachable from
+    // outside via `Reflect.getMetadata('database:repositories', global)`.
     const globalRepos = Reflect.getMetadata('database:repositories', global) || [];
     globalRepos.push({
       target,

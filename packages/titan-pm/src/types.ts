@@ -14,6 +14,24 @@ import type { EventEmitter } from '@omnitron-dev/eventemitter';
 
 /**
  * Process configuration options
+ *
+ * A large part of this shape is aspirational and read by nothing. Eleven option
+ * interfaces below — tracing, geo distribution, service mesh, sandboxing, cost
+ * optimisation, sharding, multi-tenancy, self-healing, debugging, bulkheads and
+ * validation — are referenced nowhere outside this file, and the members here
+ * that point at them (`sandbox`, `cluster`, `mesh`, `multiTenant`,
+ * `selfHealing`, `scaling`, `logs`, `permissions`, `discoveryUrl`, `shared`)
+ * are equally inert.
+ *
+ * They are marked rather than deleted because they are exported API and cannot
+ * be removed without breaking whoever imports them. What matters is that
+ * setting any of them changes nothing, and until now nothing said so — a
+ * consumer reading this file would reasonably size the package by its type
+ * surface.
+ *
+ * What IS wired: name, version, transport/netron settings, health checks,
+ * restart policy, resource limits, isolation strategy (manager-level) and the
+ * pool options that `process-pool.ts` actually reads.
  */
 export interface IProcessOptions {
   /** Process name for identification */
@@ -135,6 +153,17 @@ export interface IProcessMethodMetadata {
   name: string;
   descriptor: PropertyDescriptor;
   public?: boolean;
+  /**
+   * Set by `@HealthCheck`. The worker runtime scans for this field to build
+   * the list of methods `__getProcessHealth` calls.
+   */
+  healthCheck?: { method: string; interval?: number };
+  /**
+   * The four below are recorded by `@RateLimit`, `@Cache`, `@Validate`,
+   * `@Trace` and `@Metric`, and NOT IMPLEMENTED: the worker runtime reads only
+   * `public` and `healthCheck` from this object, so none of them changes how a
+   * method behaves. The decorators are declarative markers today.
+   */
   rateLimit?: IRateLimitOptions;
   cache?: ICacheOptions;
   validate?: IValidationOptions;
@@ -646,6 +675,14 @@ export interface IScalingMetrics {
 /**
  * Sandbox options for process isolation
  */
+/**
+ * NOT IMPLEMENTED — referenced nowhere outside this file.
+ *
+ * Worth singling out: `allowedModules` and the rest describe a sandbox that
+ * does not exist, and a caller who believes a process is confined by it is
+ * wrong in the direction that matters. `security.isolation: 'vm' | 'container'`
+ * is the same promise from the other side and now warns at spawn time.
+ */
 export interface ISandboxOptions {
   allowedModules?: string[];
   timeout?: number;
@@ -674,6 +711,10 @@ export interface IMetricsOptions {
 
 /**
  * Tracing configuration
+ */
+/**
+ * NOT IMPLEMENTED — this interface is referenced nowhere outside this file.
+ * See the note on `IProcessOptions` for the group it belongs to.
  */
 export interface ITracingOptions {
   enabled?: boolean;
@@ -704,6 +745,7 @@ export interface IClusterOptions {
 /**
  * Sharding configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IShardingOptions {
   strategy?: 'consistent-hash' | 'range' | 'custom';
   replicas?: number;
@@ -712,6 +754,7 @@ export interface IShardingOptions {
 /**
  * Multi-tenancy configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IMultiTenantOptions {
   isolation?: 'strict' | 'shared';
   dataPartitioning?: boolean;
@@ -720,6 +763,7 @@ export interface IMultiTenantOptions {
 /**
  * Service mesh configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IServiceMeshOptions {
   tracing?: boolean;
   metrics?: boolean;
@@ -762,6 +806,7 @@ export interface IRetryOptions {
 /**
  * Bulkhead configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IBulkheadOptions {
   maxConcurrent?: number;
   maxQueue?: number;
@@ -770,6 +815,7 @@ export interface IBulkheadOptions {
 /**
  * Geographic distribution options
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IGeoOptions {
   regions?: string[] | 'all';
   replication?: 'active-active' | 'active-passive';
@@ -789,6 +835,7 @@ export interface ICostOptions {
 /**
  * Cost optimization strategies
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface ICostOptimizationOptions {
   spotInstances?: boolean;
   autoScaleDown?: 'conservative' | 'balanced' | 'aggressive';
@@ -799,6 +846,7 @@ export interface ICostOptimizationOptions {
 /**
  * Self-healing configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface ISelfHealingOptions {
   enabled?: boolean;
   ml?: boolean;
@@ -819,6 +867,7 @@ export interface ISelfHealAction {
 /**
  * Debug configuration
  */
+/** NOT IMPLEMENTED — referenced nowhere outside this file. */
 export interface IDebugOptions {
   recordState?: boolean;
   maxSnapshots?: number;

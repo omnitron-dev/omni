@@ -33,6 +33,12 @@ const DIST_DECORATORS = join(PACKAGE_DIR, 'dist', 'decorators.js');
 
 // The spawner forks `dist/fork-worker.js`; without a build there is nothing to
 // fork, and a test that silently passed in that case would be worthless.
+//
+// A STALE dist is the sharper hazard: these tests import the compiled
+// decorators, so a change to `src/decorators.ts` is invisible here until
+// `pnpm build` runs. That is not a quirk of the test — it is how every
+// consumer of this package resolves it, which is why the suite is worth
+// running against a fresh build rather than against sources.
 const distReady = existsSync(join(PACKAGE_DIR, 'dist', 'fork-worker.js')) && existsSync(DIST_DECORATORS);
 if (!distReady) {
   console.log('⏭️  Skipping real-spawn.spec.ts — run `pnpm build` in titan-pm first (dist/ is the fork target)');
@@ -53,12 +59,15 @@ function writeWorker(name: string, body: string): string {
   writeFileSync(
     file,
     `import 'reflect-metadata';
-import { Process, Public } from ${JSON.stringify(DIST_DECORATORS)};
+import { Process, Public, HealthCheck } from ${JSON.stringify(DIST_DECORATORS)};
 
 ${body}
 
 for (const method of Worker.__public) {
   Public()(Worker.prototype, method, Object.getOwnPropertyDescriptor(Worker.prototype, method));
+}
+if (typeof Worker.prototype.myHealth === 'function') {
+  HealthCheck()(Worker.prototype, 'myHealth', Object.getOwnPropertyDescriptor(Worker.prototype, 'myHealth'));
 }
 Process({ name: ${JSON.stringify(name)}, version: '1.0.0' })(Worker);
 
@@ -200,6 +209,33 @@ class Worker {
     const infos = pm.listProcesses().filter((info) => info.name === 'threaded');
     expect(infos).toHaveLength(1);
     expect(infos[0]!.pid).toBeUndefined();
+  }, 60_000);
+
+  it('calls a @HealthCheck method and reports what it says', async () => {
+    // `@HealthCheck` wrote its metadata under the string key 'health-check' on
+    // the prototype, while the worker runtime scans each method's entry under
+    // PROCESS_METHOD_METADATA_KEY for a `healthCheck` field. The two never met:
+    // `healthCheckMethods` was always empty, so `__getProcessHealth` answered
+    // `{ status: 'healthy', checks: [] }` for every worker — including one that
+    // knew it was degraded, which is the exact inversion a custom health check
+    // exists to prevent. The pool's health monitor consumes this answer.
+    const file = writeWorker('healthful', `
+class Worker {
+  static __public = ['ping'];
+  async ping() { return 'pong'; }
+  async myHealth() { return { status: 'degraded', message: 'deliberately degraded' }; }
+}`);
+
+    // The generated worker applies @Public from its __public list; the health
+    // method is decorated here so the runtime has something to find.
+    const proc = await manager().spawn(file, { name: 'healthful' });
+
+    const health = (await (proc as unknown as {
+      __getProcessHealth(): Promise<{ status: string; checks: Array<{ name: string; status: string }> }>;
+    }).__getProcessHealth());
+
+    expect(health.checks.map((check) => check.name)).toContain('myHealth');
+    expect(health.status).toBe('degraded');
   }, 60_000);
 
   it('stops the OS process on shutdown', async () => {

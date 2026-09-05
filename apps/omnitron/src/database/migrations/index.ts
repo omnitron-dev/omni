@@ -19,6 +19,7 @@ import * as m003 from './003_pipelines_traces.js';
 import * as m004 from './004_sync_buffer.js';
 import * as m005 from './005_node_health_checks.js';
 import * as m006 from './006_login_throttle.js';
+import * as m007 from './007_sync_ingested.js';
 
 /**
  * Every Omnitron migration, in apply order.
@@ -33,4 +34,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   { name: '004_sync_buffer', up: m004.up, down: m004.down },
   { name: '005_node_health_checks', up: m005.up, down: m005.down },
   { name: '006_login_throttle', up: m006.up, down: m006.down },
+  { name: '007_sync_ingested', up: m007.up, down: m007.down },
 ];

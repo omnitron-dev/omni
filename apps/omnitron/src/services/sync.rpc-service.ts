@@ -11,7 +11,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES } from '../shared/roles.js';
-import type { SyncService, SyncBatch } from './sync.service.js';
+import type { SyncService, SyncBatch, IngestBatchResult } from './sync.service.js';
 export type { SyncBatch };
 import type { ISyncStatus } from '../shared/dto/project.js';
 
@@ -22,20 +22,34 @@ export class SyncRpcService {
   /**
    * Receive a sync batch from a slave daemon.
    * Called over Netron TCP transport.
-   * Idempotent — safe to retry on network failure.
+   *
+   * Idempotent — and now actually so. The claim is enforced by a ledger
+   * keyed on the slave's entry id, so a batch replayed after a lost
+   * acknowledgement is recognised rather than ingested twice.
    */
   @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
-  async receiveBatch(data: SyncBatch): Promise<{ accepted: number }> {
+  async receiveBatch(data: SyncBatch): Promise<IngestBatchResult> {
     return this.syncService.receiveBatch(data);
   }
 
   /**
-   * Drain buffered sync entries — called by master over TCP.
-   * Returns pending entries and marks them as synced atomically.
+   * Hand pending entries to the master — called by the master over TCP.
+   *
+   * Returns them without releasing them. The master calls `ackDrained` once
+   * it holds them; until then a repeat call returns the same entries, which
+   * is what keeps a failure between the two from losing data.
    */
   @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
   async drainBuffer(data?: { limit?: number }): Promise<SyncBatch> {
     return this.syncService.drainBuffer(data?.limit);
+  }
+
+  /**
+   * Release entries the master has confirmed it holds.
+   */
+  @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
+  async ackDrained(data: { ids: string[] }): Promise<{ released: number }> {
+    return this.syncService.ackDrained(data?.ids ?? []);
   }
 
   /**

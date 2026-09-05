@@ -48,6 +48,8 @@ export interface OmnitronDatabase {
   traces: TracesTable;
   /** Sync WAL buffer — slave→master replication (slave-only) */
   sync_buffer: SyncBufferTable;
+  /** Master-side dedup ledger for slave sync — see SyncIngestedTable */
+  sync_ingested: SyncIngestedTable;
   /** Node health check history — written by health-monitor worker */
   node_health_checks: NodeHealthChecksTable;
 }
@@ -268,6 +270,20 @@ export interface SyncBufferTable {
   createdAt: CreatedAt;
   /** When the entry was successfully synced to master (null = pending) */
   syncedAt: Timestamp | null;
+}
+
+/**
+ * Master-side record of entries already taken from a slave.
+ *
+ * The key is the slave's own `sync_buffer.id`, stable across retries. It is
+ * what makes "sync batches are idempotent" — a claim the header of
+ * `sync.service.ts` made for a long time with nothing behind it — actually
+ * true, now that failed deliveries are retried rather than discarded.
+ */
+export interface SyncIngestedTable {
+  nodeId: string;
+  entryId: string;
+  ingestedAt: CreatedAt;
 }
 
 // =============================================================================

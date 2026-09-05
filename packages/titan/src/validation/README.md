@@ -972,8 +972,12 @@ const MyContract = contract({
       stripUnknown: true, // Strip unknown fields (same as mode: 'strip')
 
       // Performance and caching
-      cacheValidators: true, // Cache compiled validators (default: true)
-      lazyCompilation: true, // Compile validators on first use (default: true)
+      // NOTE: cacheValidators and lazyCompilation are declared on the options
+      // type but read by nothing — compiled validators are cached
+      // unconditionally and `false` does not turn that off. Left in the example
+      // with this note rather than removed, since the fields still type-check.
+      cacheValidators: true, // NOT IMPLEMENTED
+      lazyCompilation: true, // NOT IMPLEMENTED
 
       // Safety options
       skipValidation: false, // Never skip validation (default: false)

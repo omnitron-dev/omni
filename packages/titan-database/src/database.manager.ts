@@ -1332,6 +1332,15 @@ export class DatabaseManager implements IDatabaseManager {
     // Stop proactive health checks first
     this.stopProactiveHealthChecks();
 
+    // Reopen has to be possible. `init()` is idempotent on `initialized`, and
+    // nothing ever cleared the flag, so after closeAll() a manager was
+    // permanently dead: init() returned at once with a debug line reading
+    // "already initialized, skipping" while every connection was gone. Any
+    // caller that tears down and brings the manager back — a reconnect
+    // supervisor, a module restarted through the app lifecycle, a test
+    // harness — got a success and an empty manager.
+    this.initialized = false;
+
     // Early return if no connections to close
     if (this.connections.size === 0) {
       return;

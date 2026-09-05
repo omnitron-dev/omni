@@ -739,6 +739,9 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
     });
 
     it('should handle rapid connect/disconnect cycles', async () => {
+      // The loop asserted nothing, so it could only catch a throw. A manager
+      // that stopped reconnecting after the first cycle, or that accumulated a
+      // connection per cycle, passed it.
       manager = new DatabaseManager(
         {
           connection: {
@@ -751,7 +754,12 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
 
       for (let i = 0; i < 5; i++) {
         await manager.init();
+        expect(manager.isConnected('default'), `cycle ${i}: not connected after init`).toBe(true);
+        expect(manager.getConnectionNames(), `cycle ${i}: connections accumulated`).toEqual(['default']);
+
         await manager.closeAll();
+        expect(manager.isConnected('default'), `cycle ${i}: still connected after closeAll`).toBe(false);
+        expect(manager.getConnectionNames(), `cycle ${i}: connection survived closeAll`).toEqual([]);
       }
     });
 
@@ -778,6 +786,10 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
 
   describe('SQLite Specific', () => {
     it('should configure SQLite with busy timeout', async () => {
+      // This ran `SELECT 1` and called it done — it proved the connection
+      // works, which every other test here also proves, and said nothing
+      // about the busy timeout in its name. The manager sets
+      // `pragma busy_timeout = 5000`; ask SQLite what it actually holds.
       manager = new DatabaseManager(
         {
           connection: {
@@ -791,8 +803,8 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
       await manager.init();
       const db = await manager.getConnection('default');
 
-      // Test that we can execute queries
-      await sql`SELECT 1`.execute(db);
+      const result = await sql<{ timeout: number }>`PRAGMA busy_timeout`.execute(db);
+      expect(result.rows[0]?.timeout, 'busy_timeout is not the configured 5000ms').toBe(5000);
     });
 
     it('should handle SQLite shared memory mode', async () => {

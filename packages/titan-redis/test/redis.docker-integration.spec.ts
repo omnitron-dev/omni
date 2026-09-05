@@ -213,8 +213,18 @@ describeOrSkip('RedisTestManager - Standalone Redis', () => {
 });
 
 describeOrSkip('RedisTestManager - Redis Cluster', () => {
-  // Note: Cluster tests may take longer to set up
-  const clusterTimeout = 60000;
+  // The deadline has to exceed the readiness allowance these tests ask for.
+  //
+  // It was 60s while one of them requests `readyTimeout: 180000` from the
+  // fixture: a cluster that used its own stated allowance blew the test
+  // timeout three times over, by construction rather than by bad luck. The
+  // sibling spec (redis.cluster.spec.ts) gives its shared fixture 300s for
+  // the same reason.
+  //
+  // Container creation itself was the other half and is fixed at the source —
+  // packages/testing now brings the nodes up in parallel instead of serially
+  // waiting out six 10s healthcheck start periods.
+  const clusterTimeout = 240000;
 
   describe('Cluster Creation', () => {
     it(

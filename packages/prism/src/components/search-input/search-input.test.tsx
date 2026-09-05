@@ -26,16 +26,27 @@ describe('SearchInput', () => {
   });
 
   it('reports once after the debounce window', async () => {
+    // The window has to outlast the typing, and how long typing takes is a
+    // property of the machine, not of the component. At 40ms this failed
+    // roughly one run in ten under load: the debounce fired mid-word, so
+    // "still quiet" saw a call for 'a' and the count saw two. A test whose
+    // verdict depends on host speed reports load, not correctness — and the
+    // failure it produces ("expected not to be called, was called 2 times")
+    // reads like a real defect in debouncing.
+    //
+    // 500ms is far longer than typing three characters takes anywhere, and
+    // costs nothing: the assertion after it waits for the call rather than
+    // for the window.
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<SearchInput debounce={40} onChange={onChange} placeholder="Search" />);
+    render(<SearchInput debounce={500} onChange={onChange} placeholder="Search" />);
 
     await user.type(screen.getByPlaceholderText('Search'), 'abc');
 
     // Still quiet inside the window.
     expect(onChange).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('abc'));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('abc'), { timeout: 2000 });
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

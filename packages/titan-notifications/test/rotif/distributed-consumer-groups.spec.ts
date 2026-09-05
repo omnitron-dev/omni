@@ -10,6 +10,23 @@ if (skipTests) {
 }
 const describeOrSkip = skipTests ? describe.skip : describe;
 
+/**
+ * Wait until the expected number of messages has arrived, or give up at the
+ * deadline and let the assertions report what did.
+ *
+ * A flat `delay(1000)` is a bet on how fast Redis answers under whatever else
+ * is running: this file failed a full parallel run with one of two messages
+ * delivered, and passed alone. The delivery guarantee is what the tests are
+ * about; the second is not part of it.
+ */
+async function until(condition: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition() && Date.now() < deadline) {
+    await delay(25);
+  }
+}
+
+
 describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => {
   let managerA: NotificationManager;
   let managerB: NotificationManager;
@@ -36,7 +53,7 @@ describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => 
     await delay(200);
     await managerA.publish('distributed.same-group', { data: 'shared' });
 
-    await delay(1000);
+    await until(() => receivedA.length + receivedB.length >= 1);
 
     expect(receivedA.length + receivedB.length).toBe(1);
   });
@@ -68,7 +85,9 @@ describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => 
     await managerA.publish('distributed.roundrobin', { data: 'round-robin' });
     await managerA.publish('distributed.roundrobin', { data: 'round-robin-2' });
 
-    await delay(1000);
+    await until(
+      () => receivedA1.length + receivedA2.length + receivedB1.length + receivedB2.length >= 2
+    );
 
     // Two messages should be distributed randomly between two instances,
     // with a maximum of 1 message per subscriber within each instance
@@ -102,7 +121,7 @@ describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => 
     await delay(200);
     await managerA.publish('distributed.diff-groups', { data: 'different-groups' });
 
-    await delay(1000);
+    await until(() => receivedA.length >= 1 && receivedB.length >= 1);
 
     expect(receivedA.length).toBe(1);
     expect(receivedB.length).toBe(1);
@@ -151,7 +170,9 @@ describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => 
     await managerA.publish('distributed.diff-groups-rr', { data: 'diff-groups-rr' });
     await managerA.publish('distributed.diff-groups-rr', { data: 'diff-groups-rr-2' });
 
-    await delay(1000);
+    await until(
+      () => receivedA1.length + receivedA2.length >= 2 && receivedB1.length + receivedB2.length >= 2
+    );
 
     expect(receivedA1.length + receivedA2.length).toBe(2); // both messages reached group A
     expect(receivedB1.length + receivedB2.length).toBe(2); // both messages reached group B

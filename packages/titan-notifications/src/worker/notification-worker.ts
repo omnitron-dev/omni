@@ -13,7 +13,7 @@
 
 import type { Redis } from 'ioredis';
 import { Injectable } from '@omnitron-dev/titan/decorators';
-import { Inject } from '@omnitron-dev/titan/decorators';
+import { Inject, Optional } from '@omnitron-dev/titan/decorators';
 import type { ILogger } from '@omnitron-dev/titan/types';
 import { LOGGER_SERVICE_TOKEN } from '@omnitron-dev/titan/module/logger';
 import type { ILoggerModule } from '@omnitron-dev/titan/module/logger';
@@ -29,6 +29,7 @@ import {
   NOTIFICATION_TARGET_RESOLVER,
   NOTIFICATION_PERSISTER,
   NOTIFICATION_REALTIME_SIGNALER,
+  NOTIFICATION_WORKER_OPTIONS,
 } from './worker.tokens.js';
 
 /** Default stream channel pattern for notification events */
@@ -85,7 +86,10 @@ export class NotificationWorkerService {
     @Inject(NOTIFICATION_TARGET_RESOLVER) private readonly targetResolver: INotificationTargetResolver,
     @Inject(NOTIFICATION_PERSISTER) private readonly persister: INotificationPersister,
     @Inject(NOTIFICATION_REALTIME_SIGNALER) private readonly signaler: INotificationRealtimeSignaler,
-    @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerService: ILoggerModule
+    @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerService: ILoggerModule,
+    @Optional()
+    @Inject(NOTIFICATION_WORKER_OPTIONS)
+    private readonly moduleOptions?: NotificationWorkerOptions
   ) {}
 
   private get logger(): ILogger {
@@ -98,7 +102,7 @@ export class NotificationWorkerService {
    * @param redis - ioredis client instance (caller owns the connection)
    * @param options - Worker configuration overrides
    */
-  async start(redis: Redis, options: NotificationWorkerOptions = {}): Promise<void> {
+  async start(redis: Redis, startOptions: NotificationWorkerOptions = {}): Promise<void> {
     if (this.active) {
       this.logger.warn('NotificationWorkerService is already running');
       return;
@@ -106,6 +110,11 @@ export class NotificationWorkerService {
 
     this.redis = redis;
     this.active = true;
+
+    // Module-level tuning underneath, the call's own arguments on top. The
+    // module declared `workerOptions` and had nowhere to deliver it, since it
+    // does not call start() itself.
+    const options: NotificationWorkerOptions = { ...this.moduleOptions, ...startOptions };
 
     const pattern = options.streamPattern ?? DEFAULT_STREAM_PATTERN;
     this.streamKey = `rotif:stream:${pattern}`;

@@ -581,7 +581,11 @@ export class NotificationManager {
     options?: SubscribeOptions
   ): Promise<Subscription> {
     await this.initializationDefer.promise;
-    const group = getGroupName(pattern, options?.groupName);
+    // `groupNameFn` is the config-level counterpart of `consumerNameFn` on the
+    // line below; it was declared and read by nothing, so a caller who
+    // supplied one to keep group names consistent across services silently got
+    // the default `grp:<pattern>`. The per-subscription `groupName` still wins.
+    const group = getGroupName(pattern, options?.groupName ?? this.config.groupNameFn?.(pattern));
     const consumer = this.config.consumerNameFn?.() || defaultConsumerName();
     const stream = getStreamKey(pattern);
     const retryStream = `${stream}:retry`;

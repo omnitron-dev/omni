@@ -78,6 +78,13 @@ export interface WebhookChannelOptions {
   /**
    * Whether to validate SSL certificates
    * @default true
+   *
+   * NOT IMPLEMENTED — the constructor defaults it to true and nothing reads
+   * it. Requests go through `fetch`, which validates certificates and offers
+   * no per-call way to stop; disabling would mean supplying an undici
+   * dispatcher. The safe direction is the one that happens, but a caller who
+   * sets `false` to reach an internal endpoint with a self-signed certificate
+   * gets a TLS failure and an option that looks like it should have helped.
    */
   validateSSL?: boolean;
 

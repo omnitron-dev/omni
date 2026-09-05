@@ -305,6 +305,28 @@ export type Provider<T = any> =
   | Constructor<T>;
 
 /**
+ * Provider carrying its own token.
+ *
+ * `Container.loadModule()` and `createModule()` accept this shape and lift
+ * `override` / `multi` into the registration options — see the four forms
+ * enumerated in loadModule's own error message. It was supported and widely
+ * used (every module in the DAOS backends, 130 call sites in this package's
+ * tests) long before it was declared here, so code written to the documented
+ * form did not typecheck.
+ *
+ * `Constructor<T>` is deliberately excluded from the intersection: a class is
+ * its own token, so `{ provide, ...aClass }` is not a shape anything accepts.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export type ProviderWithToken<T = any> = {
+  provide: InjectionToken<T>;
+  /** Lifted into RegistrationOptions.override by loadModule. */
+  override?: boolean;
+} & (ClassProvider<T> | ValueProvider<T> | FactoryProvider<T> | TokenProvider<T>);
+
+/**
  * Provider input - what users can provide when registering.
  *
  * @stable
@@ -312,9 +334,48 @@ export type Provider<T = any> =
  */
 export type ProviderInput<T = any> =
   | Provider<T> // Provider without 'provide' field
+  | ProviderWithToken<T> // Provider carrying its token: { provide, useClass | useValue | … }
   | [ServiceIdentifier<T>, Provider<T>] // Tuple format [token, provider]
   | [ServiceIdentifier<T>, Provider<T>, RegistrationOptions] // Tuple format with options [token, provider, options]
   | Constructor<T>; // Direct constructor
+
+/**
+ * Compile-time guard for the four shapes `Container.loadModule()` accepts.
+ *
+ * These assertions exist because the union above and the runtime that consumes
+ * it drifted apart once already: the `{ provide, … }` form was accepted, tested
+ * and used everywhere while the type rejected it, so the whole modules-system
+ * documentation described code that did not compile. Nothing fails at runtime
+ * when this union loses a member — only user code does, elsewhere, later.
+ *
+ * Deleting a member below will fail the build. That is the point; if a form is
+ * genuinely being dropped, remove its branch in `loadModule` in the same change.
+ */
+type _Expect<T extends true> = T;
+type _Assignable<A, B> = A extends B ? true : false;
+/** Is some member of union `U` shaped like `Shape`? */
+type _Has<U, Shape> = [Extract<U, Shape>] extends [never] ? false : true;
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _LoadModuleAcceptsTheseShapes =
+  // A bare class, a tokenless provider, a [token, provider] tuple.
+  | _Expect<_Assignable<typeof Date, ProviderInput<Date>>>
+  | _Expect<_Assignable<{ useValue: Date }, ProviderInput<Date>>>
+  | _Expect<_Assignable<[InjectionToken<Date>, { useValue: Date }], ProviderInput<Date>>>
+  // …and a provider carrying its own token. These are `_Has`, not `_Assignable`,
+  // on purpose: `{ provide, useValue }` IS assignable to `ValueProvider` even
+  // without the member below, because assignability tolerates extra properties.
+  // What broke user code was the excess-property check on a fresh object
+  // literal (TS2353), which only a union member actually declaring `provide`
+  // silences. An `_Assignable` guard here passes with the member deleted — it
+  // was written that way first, and proved nothing.
+  | _Expect<_Has<ProviderInput<Date>, { provide: InjectionToken<Date>; useValue: unknown }>>
+  | _Expect<_Has<ProviderInput<Date>, { provide: InjectionToken<Date>; useClass: unknown }>>
+  | _Expect<_Has<ProviderInput<Date>, { provide: InjectionToken<Date>; useFactory: unknown }>>
+  | _Expect<_Has<ProviderInput<Date>, { provide: InjectionToken<Date>; useToken: unknown }>>
+  // `override` is optional, so `_Has` cannot see it — Extract needs the property
+  // required on the target. Assert it through `keyof` instead.
+  | _Expect<'override' extends keyof ProviderWithToken<Date> ? true : false>;
 
 /**
  * Provider definition type alias.
@@ -635,7 +696,9 @@ export interface Initializable {
 export interface ModuleMetadata {
   name?: string;
   imports?: Array<Constructor<any> | IModule | DynamicModule>;
-  providers?: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>;
+  providers?: Array<
+    Provider<any> | ProviderWithToken<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]
+  >;
   exports?: Array<InjectionToken<any> | Provider<any>>;
   controllers?: Constructor<any>[];
   global?: boolean;

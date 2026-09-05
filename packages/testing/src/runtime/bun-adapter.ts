@@ -125,3 +125,24 @@ if (!originalExpect.toThrowError) {
     },
   });
 }
+
+// ─── Named exports ────────────────────────────────────────────────────────
+//
+// `loadRuntimeAdapter()` hands the caller this module object, so anything not
+// exported here is `undefined` at their call site — not a resolution error, a
+// TypeError one frame later. This file used to export NOTHING: it only assigned
+// globals, so `adapter.test(...)` (the documented usage) worked on Node and
+// threw on Bun. Keep this list in step with node-adapter's; the surface test in
+// adapter-surface.spec.ts fails if it drifts.
+export {
+  bunDescribe as describe,
+  bunTest as it,
+  bunTest as test,
+  bunExpect as expect,
+  bunBeforeEach as beforeEach,
+  bunAfterEach as afterEach,
+  bunBeforeAll as beforeAll,
+  bunAfterAll as afterAll,
+};
+export { fakeTimers };
+export const vi = (global as any).vi;

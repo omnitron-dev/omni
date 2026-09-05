@@ -1,0 +1,31 @@
+{
+  "version": "5",
+  "remote": {
+    "https://deno.land/std@0.208.0/data_structures/_binary_search_node.ts": "8d99dd95901d73a0edbe105826ef7ce0e1111ce184d2d0410dbfda172c9ebf35",
+    "https://deno.land/std@0.208.0/data_structures/_red_black_node.ts": "040cdc47e2aee8c92ef3c0bb5526f25e2b6cbfef6ae86f159fe077e70722f0ca",
+    "https://deno.land/std@0.208.0/data_structures/binary_search_tree.ts": "4e802f02125c45e17cd71ae1a2a9dedff8d3a31df0585a9d7ce1fbcf46960c20",
+    "https://deno.land/std@0.208.0/data_structures/comparators.ts": "fa7f9a44cea1d270098a2a5a6f8bb30c61b595c1b1f983bd67c6297d766adffa",
+    "https://deno.land/std@0.208.0/data_structures/red_black_tree.ts": "5cd84d7715159898a64fbbbf79026d2eac16f9eacd475656d22b7017148bfa33",
+    "https://deno.land/std@0.208.0/testing/_test_suite.ts": "30f018feeb3835f12ab198d8a518f9089b1bcb2e8c838a8b615ab10d5005465c",
+    "https://deno.land/std@0.208.0/testing/_time.ts": "fecaf6fc7277d240d11b0de2e93b1c93ebbb4a3a61f0cb0b1741f66f69a4d22b",
+    "https://deno.land/std@0.208.0/testing/bdd.ts": "c41f019786c4a9112aadb7e5a7bbcc711f58429ac5904b3855fa248ba5fa0ba6",
+    "https://deno.land/std@0.208.0/testing/time.ts": "1cc627e57c88978f7cea074d762f1a6b002c7278e496ef4cb0b8d025d52f155a",
+    "https://deno.land/std@0.97.0/fmt/colors.ts": "db22b314a2ae9430ae7460ce005e0a7130e23ae1c999157e3bb77cf55800f7e4",
+    "https://deno.land/std@0.97.0/testing/_diff.ts": "961eaf6d9f5b0a8556c9d835bbc6fa74f5addd7d3b02728ba7936ff93364f7a3",
+    "https://deno.land/std@0.97.0/testing/asserts.ts": "341292d12eebc44be4c3c2ca101ba8b6b5859cef2fa69d50c217f9d0bfbcfd1f",
+    "https://deno.land/x/expect@v0.3.0/expect.ts": "5e6717eddc9df376f7b2c9be6403e016130bb2edbb1acd261a2d6ea9608ee196",
+    "https://deno.land/x/expect@v0.3.0/matchers.ts": "a37ef4577739247af77a852cdcd69484f999a41ad86ec16bb63a88a7a47a2372",
+    "https://deno.land/x/expect@v0.3.0/mock.ts": "562d4b1d735d15b0b8e935f342679096b64fe452f86e96714fe8616c0c884914",
+    "https://deno.land/x/expect@v0.3.0/mod.ts": "0304d2430e1e96ba669a8495e24ba606dcc3d152e1f81aaa8da898cea24e36c2"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@types/bun@latest",
+        "npm:@types/node@25.6.0",
+        "npm:typescript@^7.0.2",
+        "npm:vitest@5"
+      ]
+    }
+  }
+}

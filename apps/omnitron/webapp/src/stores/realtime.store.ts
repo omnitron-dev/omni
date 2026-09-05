@@ -51,11 +51,52 @@ interface RealtimeState {
   /** Last daemon event of any type */
   lastEvent: { channel: string; timestamp: number; data: unknown } | null;
 
-  /** Active deploy progress events (stack.deploy_progress) */
-  deployProgress: Array<{ node: string; app: string; status: string; progress: number; message: string; timestamp: number }>;
+  /**
+   * Deploy progress pushed by the daemon (`stack.deploy_progress`).
+   *
+   * Nothing renders this yet — the daemon emits it and the store keeps it,
+   * but no page reads it. Read it through `activeDeployProgress()` rather
+   * than directly: entries are pruned when the next event arrives, and a
+   * deploy's LAST event is terminal, so the finished row survives in the raw
+   * array until something else happens.
+   */
+  deployProgress: DeployProgressEntry[];
+
+  /** Deploy progress with finished rows past their window dropped. */
+  activeDeployProgress: () => DeployProgressEntry[];
 
   /** Initialize WebSocket connection and event handlers */
   initialize: () => () => void;
+}
+
+interface DeployProgressEntry {
+  node: string;
+  app: string;
+  status: string;
+  progress: number;
+  message: string;
+  /** The daemon's clock, for display. */
+  timestamp: number;
+  /**
+   * This browser's clock, for the retention window.
+   *
+   * The two must not be mixed. `timestamp` comes from the daemon, and the
+   * window was measured as `Date.now() - timestamp`: a daemon running a
+   * minute behind its operator's laptop makes every entry arrive already
+   * expired, and one running ahead makes them immortal. Neither failure
+   * looks like a clock problem from the console.
+   */
+  receivedAt: number;
+}
+
+/** How long a finished deploy row stays visible. */
+const DEPLOY_ROW_TTL_MS = 30_000;
+
+/** Rows still worth showing: recent, or not finished. */
+function stillActive(entries: DeployProgressEntry[], now: number): DeployProgressEntry[] {
+  return entries.filter(
+    (p) => now - p.receivedAt < DEPLOY_ROW_TTL_MS || (p.status !== 'success' && p.status !== 'failed')
+  );
 }
 
 // Module-level refcount for the shared WebSocket. Pre-fix every page
@@ -69,6 +110,28 @@ interface RealtimeState {
 let activeConsumers = 0;
 let teardown: (() => void) | null = null;
 
+/**
+ * One consumer's release, safe to call more than once.
+ *
+ * The refcount previously clamped at zero with `Math.max`, which turns a
+ * double release into a silent under-count rather than a no-op: the second
+ * call still decrements while its consumer is already gone, and the socket
+ * is torn down under whoever is left. Clamping hides that; a per-cleanup
+ * flag prevents it.
+ */
+function releaseOnce(): () => void {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeConsumers -= 1;
+    if (activeConsumers === 0 && teardown) {
+      teardown();
+      teardown = null;
+    }
+  };
+}
+
 export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   connected: false,
   appEvents: [],
@@ -78,18 +141,14 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   lastEvent: null,
   deployProgress: [],
 
+  activeDeployProgress: () => stillActive(get().deployProgress, Date.now()),
+
   initialize: () => {
     activeConsumers += 1;
     if (teardown) {
       // Already initialised by an earlier consumer; reuse the live
       // socket and just hand back a refcount-aware cleanup.
-      return () => {
-        activeConsumers = Math.max(0, activeConsumers - 1);
-        if (activeConsumers === 0 && teardown) {
-          teardown();
-          teardown = null;
-        }
-      };
+      return releaseOnce();
     }
     const ws: DaemonWsClient = getDaemonWsClient();
     const unsubscribers: Array<() => void> = [];
@@ -185,15 +244,15 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
         if (event.channel === 'stack.deploy_progress') {
           const data = event.data as any;
           set((state) => {
+            const now = Date.now();
             const filtered = state.deployProgress.filter(
               (p) => !(p.node === data.node && p.app === data.app),
             );
-            // Remove completed/failed entries after 30s
-            const active = filtered.filter(
-              (p) => Date.now() - p.timestamp < 30_000 || (p.status !== 'success' && p.status !== 'failed'),
-            );
             return {
-              deployProgress: [...active, { ...data, timestamp: event.timestamp }],
+              deployProgress: [
+                ...stillActive(filtered, now),
+                { ...data, timestamp: event.timestamp, receivedAt: now },
+              ],
               lastEvent: event,
             };
           });
@@ -220,12 +279,6 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
       ws.disconnect();
     };
 
-    return () => {
-      activeConsumers = Math.max(0, activeConsumers - 1);
-      if (activeConsumers === 0 && teardown) {
-        teardown();
-        teardown = null;
-      }
-    };
+    return releaseOnce();
   },
 }));

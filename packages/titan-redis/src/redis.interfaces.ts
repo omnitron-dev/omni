@@ -475,6 +475,34 @@ export interface IRedisClient {
   set(key: string, value: string | number | Buffer, mode: 'PX', milliseconds: number): Promise<'OK' | null>;
   set(key: string, value: string | number | Buffer, mode: 'NX'): Promise<'OK' | null>;
   set(key: string, value: string | number | Buffer, mode: 'XX'): Promise<'OK' | null>;
+  /**
+   * Expiry combined with an existence condition — `SET key val EX n NX`.
+   *
+   * Redis and ioredis have always accepted this; only these declarations were
+   * missing it, so the canonical atomic "claim this key for N seconds if
+   * nobody else has" did not typecheck. That matters beyond the compile
+   * error: with expiry and NX unavailable together, the shape the types DO
+   * permit is `set(k, v, 'NX')` followed by a separate `expire(k, n)` — two
+   * round trips with a window between them, and a crash in that window leaves
+   * a key with no TTL. For a dedup or lock key that is permanent: the event
+   * is suppressed, or the lock is held, forever.
+   */
+  set(
+    key: string,
+    value: string | number | Buffer,
+    mode: 'EX' | 'PX',
+    duration: number,
+    condition: 'NX' | 'XX',
+  ): Promise<'OK' | null>;
+  set(
+    key: string,
+    value: string | number | Buffer,
+    condition: 'NX' | 'XX',
+    mode: 'EX' | 'PX',
+    duration: number,
+  ): Promise<'OK' | null>;
+  /** `SET key val KEEPTTL` — replace the value, keep the existing expiry. */
+  set(key: string, value: string | number | Buffer, mode: 'KEEPTTL'): Promise<'OK' | null>;
 
   /**
    * Set the value and expiration of a key

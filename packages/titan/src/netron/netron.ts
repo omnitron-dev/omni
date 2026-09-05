@@ -727,10 +727,35 @@ export class Netron extends EventEmitter implements INetron {
 
         // Create RemotePeer with transport adapter for backward compatibility
         const adapter = TransportConnectionFactory.fromConnection(connection);
-        // Get transport-specific options for requestTimeout
+        // `getOptions(name)` is the CLIENT connection-options store; the server
+        // config registered by `registerTransportServer` is a different map.
+        // On this path — a connection the server ACCEPTED — the server's own
+        // option is the one an operator meant, so it wins, with the client
+        // store kept as a fallback so nothing relying on today's behaviour
+        // changes. Reading only the client store is why a `requestTimeout` set
+        // on the server was silently ignored: optional option plus neighbouring
+        // store means silence, not an error.
         const transportOpts = this.transportRegistry.getOptions(name) || {};
+        const serverRequestTimeout = config.options?.['requestTimeout'] as number | undefined;
         // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
-        const peer = new RemotePeer(adapter as RemotePeerSocket, this, peerId, transportOpts.requestTimeout);
+        const peer = new RemotePeer(
+          adapter as RemotePeerSocket,
+          this,
+          peerId,
+          serverRequestTimeout ?? transportOpts.requestTimeout,
+        );
+        // Every socket transport shares RemotePeer's dispatcher, so handing the
+        // wrapper to the peer closes WS, TCP and Unix at once. Until this, only
+        // the HTTP server read `invocationWrapper`, and an application that
+        // establishes its RLS scope there ran WebSocket calls with no scope.
+        // From the SERVER config, not `getOptions(name)` — that store holds
+        // client connection options, and `invocationWrapper` is set where the
+        // server is registered.
+        peer.setInvocationWrapper(
+          config.options?.['invocationWrapper'] as
+            | ((metadata: Map<string, unknown>, fn: () => Promise<unknown>) => Promise<unknown>)
+            | undefined,
+        );
         this.peers.set(peer.id, peer);
 
         // Propagate auth context from transport connection to RemotePeer

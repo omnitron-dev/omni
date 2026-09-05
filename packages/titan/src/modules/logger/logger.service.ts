@@ -142,6 +142,15 @@ class LoggerImpl implements ILogger {
 }
 
 /**
+ * Serialize an `error` / `cause` field the way pino serializes `err`, while
+ * leaving anything that is not an Error untouched — plenty of call sites pass
+ * `{ error: someMessage }` or a plain object, and those must survive verbatim.
+ */
+function serializeErrorField(value: unknown): unknown {
+  return value instanceof Error ? pino.stdSerializers.err(value as Error & { type?: string }) : value;
+}
+
+/**
  * Logger Service
  */
 @Injectable()
@@ -195,7 +204,22 @@ export class LoggerService implements ILoggerModule {
     const pinoOptions: ILoggerOptions = {
       level: config.level || 'info',
       name: config.name || 'titan-app',
-      serializers: pino.stdSerializers,
+      // pino binds a serializer to a FIELD NAME, and `stdSerializers` only
+      // defines `err`. Every `logger.error({ error: someError }, ...)` therefore
+      // reached the log as `{"error":{}}` — Error's own properties (message,
+      // stack) are non-enumerable, so plain JSON serialisation empties it. The
+      // failure was reported; the cause was silently discarded. Verified
+      // against pino 10: `{err}` carries type/message/stack, `{error}` and
+      // `{cause}` both produce `{}`.
+      //
+      // Aliasing the two other names people actually reach for fixes every
+      // existing call site and every future one, which renaming call sites
+      // cannot: the next `error:` would reintroduce it.
+      serializers: {
+        ...pino.stdSerializers,
+        error: serializeErrorField,
+        cause: serializeErrorField,
+      },
       redact: config.redact || [],
       base: {
         pid: process.pid,

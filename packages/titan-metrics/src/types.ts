@@ -61,7 +61,13 @@ export interface IMetricsCollectionConfig {
   system?: boolean;
   /** Collect RPC request count/latency (default: true) */
   rpc?: boolean;
-  /** Collect custom app-specific metrics (default: true) */
+  /**
+   * Collect custom app-specific metrics (default: true)
+   *
+   * NOT IMPLEMENTED — nothing reads this. Metrics recorded through the
+   * service's own API are always collected; setting `custom: false` does not
+   * turn them off.
+   */
   custom?: boolean;
 }
 

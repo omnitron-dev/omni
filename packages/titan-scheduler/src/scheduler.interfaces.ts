@@ -470,6 +470,10 @@ export interface ISchedulerConfig {
 
   /**
    * Enable debug logging
+   *
+   * NOT IMPLEMENTED — nothing reads this. Scheduler logging follows the
+   * logger's own level; turning this on produces no extra output, which is
+   * indistinguishable from a scheduler that has nothing to say.
    */
   debug?: boolean;
 

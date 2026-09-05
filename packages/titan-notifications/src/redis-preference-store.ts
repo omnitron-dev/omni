@@ -56,6 +56,13 @@ export interface FrequencyLimits {
  * shouldSend(): globalMute, per-channel and per-category enables, quiet hours
  * and frequency limits all take effect.
  */
+/**
+ * NOT IMPLEMENTED as behaviour — nothing in this package batches or sends
+ * digests. The store persists this faithfully and reads it back, which is the
+ * trap: a UI wired to these preferences will show "weekly digest: on" and stay
+ * consistent with itself while no digest is ever produced. Every field below,
+ * `enabled` and `frequency` included, is inert.
+ */
 export interface DigestConfig {
   enabled: boolean;
   frequency: 'daily' | 'weekly' | 'monthly';

@@ -232,6 +232,12 @@ export interface IRedisClientOptions {
   path?: string;
   /**
    * Protocol (resp2 or resp3)
+   *
+   * NOT IMPLEMENTED — read by nothing, and there is nothing to read it INTO:
+   * ioredis 5 has no `protocol` option (its `RedisOptions` does not declare
+   * one) and speaks RESP2 only. Setting `protocol: 3` therefore cannot fail
+   * loudly; the connection is RESP2 either way, with RESP2 reply shapes.
+   * Honouring this would mean a different client, not a forwarded field.
    */
   protocol?: 2 | 3;
 }

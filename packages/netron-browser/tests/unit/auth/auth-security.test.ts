@@ -249,21 +249,35 @@ describe('Token Security', () => {
   });
 
   describe('empty/null/undefined token handling', () => {
-    it('should handle null token gracefully', () => {
+    // These three used to end at the comment "Should not throw" with nothing
+    // asserted, and the third pinned `getToken() === ''`. What actually
+    // happened was worse than a throw: the client recorded
+    // `authenticated: true` while holding nothing to send. A falsy token now
+    // clears the session instead.
+    it('treats a null token as clearing the session', () => {
+      client.setToken('real-token');
       // @ts-expect-error - Testing null handling
       client.setToken(null);
-      // Should not throw
+
+      expect(client.getToken()).toBeUndefined();
+      expect(client.isAuthenticated()).toBe(false);
     });
 
-    it('should handle undefined token gracefully', () => {
+    it('treats an undefined token as clearing the session', () => {
+      client.setToken('real-token');
       // @ts-expect-error - Testing undefined handling
       client.setToken(undefined);
-      // Should not throw
+
+      expect(client.getToken()).toBeUndefined();
+      expect(client.isAuthenticated()).toBe(false);
     });
 
-    it('should handle empty string token', () => {
+    it('treats an empty string token as clearing the session', () => {
+      client.setToken('real-token');
       client.setToken('');
-      expect(client.getToken()).toBe('');
+
+      expect(client.getToken()).toBeUndefined();
+      expect(client.isAuthenticated()).toBe(false);
     });
 
     it('should return undefined when no token set', () => {

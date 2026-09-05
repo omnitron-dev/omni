@@ -544,7 +544,13 @@ export class ProcessSupervisor extends EventEmitter {
 
     // Default framework policy: window-based budget. Crash rate exceeded
     // → escalate (critical) or give up (non-critical).
-    const maxRestarts = this.options.maxRestarts || 3;
+    // `??`, not `||`: `maxRestarts: 0` means "do not restart this child",
+    // which is a deliberate choice for a one-shot job or a process where an
+    // automatic restart is unsafe. `||` replaced it with 3, so the supervisor
+    // restarted three times in defiance of the instruction. The comparison
+    // below already handles zero correctly — `recent.length >= 0` is always
+    // true, so every crash escalates or is ignored rather than restarted.
+    const maxRestarts = this.options.maxRestarts ?? 3;
     if (recent.length >= maxRestarts) {
       this.logger.warn(
         { child: name, recent: recent.length, maxRestarts, windowMs: window },

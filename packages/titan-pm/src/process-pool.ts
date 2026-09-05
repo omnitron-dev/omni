@@ -1131,7 +1131,7 @@ export class ProcessPool<T> {
       }
 
       // Check if worker is unhealthy
-      if (worker.errors > (this.poolOptions.healthCheck?.unhealthyThreshold || 3)) {
+      if (worker.errors > (this.poolOptions.healthCheck?.unhealthyThreshold ?? 3)) {
         worker.health = 'unhealthy';
         this.unhealthyWorkers.add(worker.id);
         this.invalidateHealthyWorkersCache(); // Invalidate cache when health changes
@@ -1155,7 +1155,10 @@ export class ProcessPool<T> {
    * Private: Queue a request
    */
   private async queueRequest(method: string, args: any[]): Promise<any> {
-    if (this.queue.length >= (this.poolOptions.maxQueueSize || 100)) {
+    // `maxQueueSize: 0` means "do not queue — reject immediately", which is
+    // how a caller asks for fail-fast backpressure. `||` gave them a queue of
+    // 100 instead.
+    if (this.queue.length >= (this.poolOptions.maxQueueSize ?? 100)) {
       throw new PoolBackpressureError(this.queue.length);
     }
 
@@ -1441,7 +1444,7 @@ export class ProcessPool<T> {
 
       // Replace unhealthy workers with restart policy
       // Only replace workers that have exceeded the unhealthy threshold
-      const unhealthyThreshold = this.poolOptions.healthCheck?.unhealthyThreshold || 3;
+      const unhealthyThreshold = this.poolOptions.healthCheck?.unhealthyThreshold ?? 3;
       for (const worker of workers) {
         if (worker.health === 'unhealthy' && worker.consecutiveFailures >= unhealthyThreshold && !this.isShuttingDown) {
           this.logger.info(

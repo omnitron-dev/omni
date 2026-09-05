@@ -11,6 +11,7 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import { daemon, alerts, nodes as nodesRpc } from 'src/netron/client';
 import { useRealtimeStore } from 'src/stores/realtime.store';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useProjectStore, useActiveProjectStacks } from 'src/stores/project.store';
 
 // =============================================================================
@@ -110,47 +111,50 @@ export function StatusBar() {
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
 
+  // The status bar sits on every page, so its loop is the one that runs the
+  // most — and it was the last hand-written one: three RPCs every ten seconds
+  // from a hidden tab, forever, with no guard against a slow daemon making
+  // them overlap.
+  //
+  // `daemonOnline: !!st` is kept as-is on purpose. Here a failed `status()`
+  // really does mean the daemon did not answer, and the bar shows that as
+  // "Offline" beside a stale timestamp rather than asserting anything about
+  // why — the banner is the surface that tells an operator what to DO, and
+  // that one now distinguishes a timeout from a refusal.
+  const { data: polled } = usePolledResource(
+    async () => {
+      const [status, nodesList, alertsResult] = await Promise.allSettled([
+        daemon.status(),
+        nodesRpc.listNodes(),
+        alerts.getSummary(),
+      ]);
+
+      const st = status.status === 'fulfilled' ? (status.value as any) : null;
+      const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
+      const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
+
+      const appList = st?.apps ?? [];
+      const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
+
+      return {
+        daemonOnline: !!st,
+        appsOnline: online,
+        appsTotal: Array.isArray(appList) ? appList.length : 0,
+        nodesOnline: Array.isArray(nd) ? nd.filter((n: any) => n.status?.omnitronConnected).length : 0,
+        nodesTotal: Array.isArray(nd) ? nd.length : 0,
+        firingAlerts: al?.firing ?? 0,
+        uptimeMs: st?.uptime ?? 0,
+        version: st?.version ?? '',
+        pid: st?.pid ?? 0,
+        lastFetch: Date.now(),
+      };
+    },
+    { intervalMs: wsConnected ? 30_000 : 10_000 }
+  );
+
   useEffect(() => {
-    let active = true;
-
-    const fetchStatus = async () => {
-      try {
-        const [status, nodesList, alertsResult] = await Promise.allSettled([
-          daemon.status(),
-          nodesRpc.listNodes(),
-          alerts.getSummary(),
-        ]);
-
-        if (!active) return;
-
-        const st = status.status === 'fulfilled' ? (status.value as any) : null;
-        const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
-        const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
-
-        const appList = st?.apps ?? [];
-        const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
-
-        setData({
-          daemonOnline: !!st,
-          appsOnline: online,
-          appsTotal: Array.isArray(appList) ? appList.length : 0,
-          nodesOnline: Array.isArray(nd) ? nd.filter((n: any) => n.status?.omnitronConnected).length : 0,
-          nodesTotal: Array.isArray(nd) ? nd.length : 0,
-          firingAlerts: al?.firing ?? 0,
-          uptimeMs: st?.uptime ?? 0,
-          version: st?.version ?? '',
-          pid: st?.pid ?? 0,
-          lastFetch: Date.now(),
-        });
-      } catch {
-        if (active) setData((prev) => prev ? { ...prev, daemonOnline: false } : null);
-      }
-    };
-
-    fetchStatus();
-    const timer = setInterval(fetchStatus, wsConnected ? 30_000 : 10_000);
-    return () => { active = false; clearInterval(timer); };
-  }, [wsConnected]);
+    if (polled) setData(polled);
+  }, [polled]);
 
   // Instant re-fetch on relevant WS events
   useEffect(() => {

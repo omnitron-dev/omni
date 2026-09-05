@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -273,12 +273,6 @@ export default function AlertsPage() {
   const rules = data?.rules ?? [];
   const activeAlerts = data?.activeAlerts ?? [];
   const partialFailure = data?.partialFailure ?? null;
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const firingCount = activeAlerts.filter((a) => !a.resolvedAt).length;
   const resolvedCount = activeAlerts.filter((a) => !!a.resolvedAt).length;

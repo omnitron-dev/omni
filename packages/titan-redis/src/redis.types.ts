@@ -107,6 +107,8 @@ export function isClientConnecting(client: InternalRedisClient): boolean {
  */
 export interface InternalRedisClientOptions extends RedisOptions {
   namespace?: string;
+  /** Connection string; when present it decides host/port/db/credentials. */
+  url?: string;
   cluster?: {
     nodes: ClusterNode[];
     options?: ClusterOptions;
@@ -275,6 +277,7 @@ export function toInternalClientOptions(options: IRedisClientOptions): InternalR
     autoResubscribe: options.autoResubscribe,
     showFriendlyErrorStack: options.showFriendlyErrorStack,
     path: options.path,
+    url: options.url,
   };
 
   // Handle TLS options

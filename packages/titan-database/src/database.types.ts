@@ -459,9 +459,30 @@ export interface IMigration {
   down?(db: Kysely<unknown>): Promise<void>;
 }
 
+/**
+ * Compile-time guard: `getConnection` must hand back the caller's schema.
+ *
+ * Without the type parameter it returned `Kysely<unknown>`, which accepts no
+ * table name — so every query through it needed a cast, and the documented
+ * example did not compile. Nothing fails at runtime if the parameter is
+ * dropped again: the instance is the same object either way. Only callers
+ * break, elsewhere, later.
+ */
+type _ExpectTrue<T extends true> = T;
+interface _GuardSchema {
+  users: { id: number };
+}
+declare const _guardManager: IDatabaseManager;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _GetConnectionCarriesTheSchema = _ExpectTrue<
+  Awaited<ReturnType<typeof _guardManager.getConnection<_GuardSchema>>> extends Kysely<_GuardSchema>
+    ? true
+    : false
+>;
+
 export interface IDatabaseManager {
   logger?: ILogger;
-  getConnection(name?: string): Promise<Kysely<unknown>>;
+  getConnection<DB = unknown>(name?: string): Promise<Kysely<DB>>;
   getPool(name?: string): Pool | mysql.Pool | Database | undefined;
   close(name?: string): Promise<void>;
   closeAll(): Promise<void>;

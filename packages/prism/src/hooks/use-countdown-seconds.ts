@@ -109,20 +109,27 @@ export function useCountdownSeconds(initialSeconds: number): UseCountdownSeconds
   useEffect(() => {
     if (!isCounting) return undefined;
 
+    // The updater only computes. Stopping used to happen inside it —
+    // `setIsCounting(false)` from within a `setValue` updater — and an
+    // updater must be pure: React is entitled to run it more than once, and
+    // under `StrictMode` it does so deliberately. Nothing visible went wrong
+    // here because stopping twice is stopping once, but the sibling hook
+    // `useCountdown` had the same shape around an `onComplete` callback and
+    // fired it four times.
     const intervalId = setInterval(() => {
-      setValue((prev) => {
-        if (prev <= 1) {
-          setIsCounting(false);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setValue((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => {
       clearInterval(intervalId);
     };
   }, [isCounting]);
+
+  // Reaching zero is what stops the countdown, and that is a decision about
+  // the state after it settles rather than part of computing it.
+  useEffect(() => {
+    if (value === 0) setIsCounting(false);
+  }, [value]);
 
   return useMemo(
     () => ({

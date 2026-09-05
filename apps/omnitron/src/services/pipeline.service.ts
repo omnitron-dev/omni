@@ -368,27 +368,82 @@ export class PipelineService {
     return true;
   }
 
-  private async runShellCommand(
+  /** @internal exported for tests via `__test__` below. */
+  async runShellCommand(
     command: string,
     env?: Record<string, string>,
     timeout = 300_000,
     signal?: AbortSignal
   ): Promise<string> {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execFileAsync = promisify(execFile);
+    const { spawn } = await import('node:child_process');
 
     const shell = process.platform === 'win32' ? 'cmd' : '/bin/sh';
     const shellArgs = process.platform === 'win32' ? ['/c', command] : ['-c', command];
 
-    const { stdout } = await execFileAsync(shell, shellArgs, {
-      timeout,
-      maxBuffer: 10 * 1024 * 1024,
-      env: { ...process.env, ...env },
-      signal: signal as any,
-    });
+    // Streamed rather than buffered.
+    //
+    // `execFile` with `maxBuffer: 10MB` failed the STEP when a command that
+    // exited 0 simply printed more than that — "stdout maxBuffer length
+    // exceeded", reported as a failed build. A verbose build is not a broken
+    // build, and a pipeline that says otherwise sends someone looking for a
+    // fault that is not there.
+    //
+    // Output is capped for RETENTION instead: the head is kept, because the
+    // start of a build log is where the useful part is, and the caller
+    // truncates further before storing.
+    const RETAIN_BYTES = 1024 * 1024;
 
-    return stdout;
+    return await new Promise<string>((resolve, reject) => {
+      const child = spawn(shell, shellArgs, {
+        env: { ...process.env, ...env },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let truncated = false;
+
+      child.stdout.on('data', (chunk) => {
+        if (stdout.length < RETAIN_BYTES) stdout += String(chunk);
+        else truncated = true;
+      });
+      // stderr is kept too: a step used to discard it on success, so warnings
+      // a build printed were lost, and on failure only the truncated copy
+      // inside the Error message survived.
+      child.stderr.on('data', (chunk) => {
+        if (stderr.length < RETAIN_BYTES) stderr += String(chunk);
+      });
+
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`Step timed out after ${timeout}ms`));
+      }, timeout);
+
+      const onAbort = () => {
+        child.kill('SIGKILL');
+        reject(new Error('Step aborted'));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      const finish = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+      };
+
+      child.once('error', (err) => {
+        finish();
+        reject(err);
+      });
+
+      child.once('close', (code) => {
+        finish();
+        if (code === 0) {
+          resolve(stdout + (truncated ? '\n… output truncated …' : '') + (stderr ? `\n${stderr}` : ''));
+        } else {
+          reject(new Error(`Command exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
+        }
+      });
+    });
   }
 
   // ===========================================================================
@@ -420,3 +475,21 @@ export class PipelineService {
     };
   }
 }
+
+/**
+ * Exported for tests only.
+ *
+ * `runShellCommand` is the piece with behaviour worth pinning — exit codes,
+ * timeouts, output retention — and the shapes that matter (a command that
+ * succeeds while printing megabytes) are awkward to reach through the full
+ * service, which wants a database and a scheduler.
+ */
+export const __test__ = {
+  runShellCommand: (
+    service: PipelineService,
+    command: string,
+    env: Record<string, string> | undefined,
+    timeout: number,
+    signal?: AbortSignal
+  ) => service.runShellCommand(command, env, timeout, signal),
+};

@@ -44,7 +44,11 @@ export class ProcessMetricsCollector {
       this.collectInProgress.add(processId);
       try {
         const metrics = await this.collectMetrics(proxy);
-        this.storeMetrics(processId, metrics);
+        // A tick that produced no sample leaves the history untouched: a gap
+        // is recoverable information, a fabricated zero is not.
+        if (metrics) {
+          this.storeMetrics(processId, metrics);
+        }
       } catch (error) {
         this.logger.error({ error, processId }, 'Failed to collect metrics');
       } finally {
@@ -131,29 +135,28 @@ export class ProcessMetricsCollector {
   /**
    * Collect metrics from a process
    */
-  private async collectMetrics(proxy: ServiceProxy<any>): Promise<IProcessMetrics> {
+  private async collectMetrics(proxy: ServiceProxy<any>): Promise<IProcessMetrics | null> {
+    // `null` on failure, never a reading of zero.
+    //
+    // Both fallbacks here used to return `{ cpu: 0, memory: 0, ... }`, and the
+    // caller stored that in `metricsHistory` — where `getAggregatedMetrics`
+    // averages it. So every failed collection pulled the reported average
+    // toward zero, and the more often collection failed the healthier the
+    // process looked. A sample that was never taken is not a sample of zero.
+    //
+    // The `'__getMetrics' in proxy` guard that stood here was also not a guard:
+    // `proxy` is a Netron interface proxy and `in` answers true for every name.
+    // Attempting the call and treating a rejection as "no sample" is the honest
+    // equivalent, and the only one available through a proxy.
     try {
-      // Try to get metrics from the process itself
-      if ('__getMetrics' in proxy) {
-        return await proxy.__getMetrics();
+      const getMetrics = (proxy as { __getMetrics?: () => Promise<IProcessMetrics> }).__getMetrics;
+      if (typeof getMetrics !== 'function') {
+        return null;
       }
-
-      // Fallback to basic metrics
-      return {
-        cpu: 0,
-        memory: 0,
-        requests: 0,
-        errors: 0,
-      };
+      return await getMetrics.call(proxy);
     } catch (error) {
       this.logger.error({ error }, 'Failed to collect process metrics');
-
-      return {
-        cpu: 0,
-        memory: 0,
-        requests: 0,
-        errors: 1,
-      };
+      return null;
     }
   }
 

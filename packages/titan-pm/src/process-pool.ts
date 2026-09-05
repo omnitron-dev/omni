@@ -1828,13 +1828,22 @@ export class ProcessPool<T> {
    * Send heartbeat to a worker
    */
   private async sendHeartbeat(worker: WorkerInfo<T>): Promise<boolean> {
+    // A heartbeat asks "can I reach this worker at all". `__getHealth` is the
+    // lightweight call used for that; if it is not callable there is nothing
+    // to reach with, and the old `return true // Assume healthy if no health
+    // endpoint` reported a worker alive without contacting it. "I could not
+    // check" is not "it is fine" — the same inversion fixed in
+    // ProcessHealthChecker.basicHealthCheck.
+    //
+    // The `'__getHealth' in worker.proxy` test it replaced was not a guard
+    // either: on a Netron interface proxy `in` is true for every name.
     try {
-      // Use __getHealth as heartbeat if available (lightweight call)
-      if ('__getHealth' in worker.proxy) {
-        await (worker.proxy as any).__getHealth();
-        return true;
+      const getHealth = (worker.proxy as { __getHealth?: () => Promise<unknown> }).__getHealth;
+      if (typeof getHealth !== 'function') {
+        return false;
       }
-      return true; // Assume healthy if no health endpoint
+      await getHealth.call(worker.proxy);
+      return true;
     } catch {
       return false;
     }

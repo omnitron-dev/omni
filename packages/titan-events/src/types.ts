@@ -12,6 +12,8 @@ export interface IEventEmitterOptions {
   delimiter?: string;
   maxListeners?: number;
   /** NOT IMPLEMENTED — read by nothing; leak warnings are not made verbose. */
+  /** NOT IMPLEMENTED — nothing reads it, and EnhancedEventEmitter has no
+   *  such option; the README documents it twice regardless. */
   verboseMemoryLeak?: boolean;
   concurrency?: number;
   history?: {

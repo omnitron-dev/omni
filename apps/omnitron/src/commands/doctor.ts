@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { box, log, prism } from '@xec-sh/kit';
 
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
@@ -78,6 +78,15 @@ const STARTUP_BUDGET_MS = 120_000;
  * which never starts is still reported within a minute.
  */
 const SUBPROCESS_SETTLE_MS = 30_000;
+
+/**
+ * How long after a container starts its published ports may still be silent.
+ *
+ * Postgres replays WAL before it listens, and an image that has to run
+ * initdb takes longer still. Fifteen seconds is past both on any machine
+ * that can run them at all.
+ */
+const CONTAINER_SETTLE_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // Findings
@@ -209,6 +218,8 @@ async function checkDatabase(findings: Findings): Promise<void> {
 
     // What the log table itself says about the platform's health.
     if (present.has('logs')) await checkLogHealth(findings, db);
+
+    await checkTableGrowth(findings, db, target);
   } catch (err) {
     findings.add({
       id: 'db.query-failed',
@@ -220,6 +231,80 @@ async function checkDatabase(findings: Findings): Promise<void> {
   } finally {
     await db.destroy().catch(() => undefined);
   }
+}
+
+/**
+ * How much disk the database is holding, and in which tables.
+ *
+ * This is the other half of the disk check: on this platform the largest
+ * consumer is not the log FILES — which rotate — but the `logs` TABLE, which
+ * until recently did not. 22.5 million rows and 13 GB of a 17 GB schema, on a
+ * host that had already lost its database, its containers and its Tor onion
+ * to a full disk once.
+ *
+ * Deliberately no threshold on the age of the oldest row: the retention
+ * window is an operator's choice (`logging.databaseRetentionDays`, 14 by
+ * default, 0 to disable), and ninety days of history is a legitimate one. So
+ * the finding fires on size — which is what actually fills a disk — and puts
+ * the age beside it, which is what lets the operator see at a glance whether
+ * pruning is running at all.
+ */
+async function checkTableGrowth(findings: Findings, db: unknown, target: string): Promise<void> {
+  const WARN_BYTES = 1024 ** 3;
+  const ERROR_BYTES = 5 * 1024 ** 3;
+
+  const { sql } = await import('kysely');
+  const sizes = await sql<{ relname: string; bytes: string; total: string }>`
+    SELECT c.relname,
+           pg_total_relation_size(c.oid)::text AS bytes,
+           (SELECT sum(pg_total_relation_size(i.oid))::text
+              FROM pg_class i JOIN pg_namespace m ON m.oid = i.relnamespace
+             WHERE m.nspname = 'public' AND i.relkind = 'r') AS total
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relkind = 'r'
+     ORDER BY pg_total_relation_size(c.oid) DESC
+     LIMIT 3
+  `.execute(db as never);
+
+  if (sizes.rows.length === 0) return;
+  const total = Number(sizes.rows[0]!.total ?? 0);
+  if (!Number.isFinite(total) || total < WARN_BYTES) return;
+
+  const gib = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GiB`;
+  const evidence = [
+    `target: ${target}`,
+    `largest: ${sizes.rows.map((r) => `${r.relname} ${gib(Number(r.bytes))}`).join(', ')}`,
+  ];
+
+  // The age of the oldest surviving row answers "is pruning happening",
+  // which the size alone does not: a large table inside its window is a busy
+  // platform, the same size outside it is a retention pass that is not running.
+  try {
+    const oldest = await sql<{ oldest: Date | null }>`
+      SELECT min(timestamp) AS oldest FROM logs
+    `.execute(db as never);
+    const at = oldest.rows[0]?.oldest;
+    if (at) {
+      const days = (Date.now() - new Date(at).getTime()) / 86_400_000;
+      evidence.push(`oldest surviving log row is ${days.toFixed(0)} day(s) old`);
+    }
+  } catch {
+    // No `logs` table, or no `timestamp` column on it. The size finding
+    // stands on its own.
+  }
+
+  findings.add({
+    id: total >= ERROR_BYTES ? 'db.oversized' : 'db.growing',
+    severity: total >= ERROR_BYTES ? 'error' : 'warning',
+    title: `The Omnitron database occupies ${gib(total)}`,
+    evidence,
+    remedy:
+      'Compare the oldest row above against `logging.databaseRetentionDays` in the ecosystem config (14 by default, ' +
+      '0 disables pruning entirely). History older than that window means the retention pass is not running — it is ' +
+      'armed by the log collector at daemon start, so a daemon that failed to arm it prunes nothing and says nothing. ' +
+      'Note that `logging.maxSize` and `logging.maxFiles` govern the rotated FILES and have no effect on the table.',
+  });
 }
 
 /**
@@ -531,6 +616,30 @@ export async function checkAppInternals(findings: Findings, apps: ProcessInfoDto
 }
 
 /**
+ * Can something on this host open a TCP connection to `port`?
+ *
+ * Shared by the app-port and container-port checks, which ask the same
+ * question of two different claimants. Deliberately a connect and nothing
+ * more: the question is whether a listener exists, not whether it speaks any
+ * particular protocol.
+ */
+async function tcpReachable(port: number, host = '127.0.0.1', timeoutMs = 1_000): Promise<boolean> {
+  const net = await import('node:net');
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const done = (ok: boolean) => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => done(true));
+    socket.once('timeout', () => done(false));
+    socket.once('error', () => done(false));
+    socket.connect(port, host);
+  });
+}
+
+/**
  * An app that answers `online` while nothing is listening on its port.
  *
  * The supervisor's notion of "online" is that the process exists. Whether it
@@ -538,25 +647,9 @@ export async function checkAppInternals(findings: Findings, apps: ProcessInfoDto
  * actually asking when a request fails.
  */
 export async function checkPorts(findings: Findings, apps: ProcessInfoDto[]): Promise<void> {
-  const net = await import('node:net');
-
-  const reachable = (port: number): Promise<boolean> =>
-    new Promise((resolve) => {
-      const socket = new net.Socket();
-      const done = (ok: boolean) => {
-        socket.destroy();
-        resolve(ok);
-      };
-      socket.setTimeout(1_000);
-      socket.once('connect', () => done(true));
-      socket.once('timeout', () => done(false));
-      socket.once('error', () => done(false));
-      socket.connect(port, '127.0.0.1');
-    });
-
   for (const app of apps) {
     if (app.status !== 'online' || app.port === null) continue;
-    if (await reachable(app.port)) continue;
+    if (await tcpReachable(app.port)) continue;
 
     findings.add({
       id: 'app.port-unreachable',
@@ -699,6 +792,91 @@ async function checkBuildFreshness(findings: Findings, daemonStartedMs: number |
 }
 
 /**
+ * Free space on the filesystem holding omnitron's own state.
+ *
+ * A disk that fills does not report itself as a disk that filled. It reports
+ * itself as Postgres refusing writes, as the daemon dying without a message,
+ * as a login endpoint answering 500 — this project has diagnosed it as an
+ * auth bug once and as a Docker networking bug once, and both times the
+ * answer was `df`. Asking directly costs one syscall.
+ *
+ * The threshold is absolute rather than proportional on purpose: what fails
+ * is a WAL segment that cannot be written or an image layer that cannot be
+ * unpacked, and those need gigabytes, not percentages. A 2 TB disk at 3% free
+ * still has 60 GB and is fine; a 32 GB disk at 10% free has 3 GB and is not.
+ */
+export async function checkDiskSpace(findings: Findings): Promise<void> {
+  const ERROR_BYTES = 2 * 1024 ** 3;
+  const WARN_BYTES = 10 * 1024 ** 3;
+
+  let free: number;
+  let total: number;
+  try {
+    const st = await fs.promises.statfs(OMNITRON_HOME);
+    free = st.bavail * st.bsize;
+    total = st.blocks * st.bsize;
+  } catch {
+    // No statfs, or the home does not exist yet. Neither is a disk fault.
+    return;
+  }
+
+  if (free >= WARN_BYTES) return;
+
+  const gib = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GiB`;
+  const evidence = [
+    `${gib(free)} available of ${gib(total)} on the filesystem holding ${OMNITRON_HOME}`,
+  ];
+
+  // Only measured when space is already low: it is the part of the disk this
+  // tool is responsible for, and naming it turns "the disk is full" into
+  // something the operator can act on without hunting.
+  const logBytes = directorySize(path.join(OMNITRON_HOME, 'logs'));
+  if (logBytes > 0) evidence.push(`omnitron's own logs account for ${gib(logBytes)}`);
+
+  findings.add({
+    id: free < ERROR_BYTES ? 'disk.exhausted' : 'disk.low',
+    severity: free < ERROR_BYTES ? 'error' : 'warning',
+    title: `${gib(free)} free on the disk omnitron writes to`,
+    evidence,
+    remedy:
+      free < ERROR_BYTES
+        ? 'Free space before anything else. At this level Postgres refuses writes and containers fail to start, ' +
+          'and both surface as application errors that say nothing about the disk. ' +
+          '`omnitron logs --clean` truncates the app logs; unused Docker volumes are the other usual holder.'
+        : 'Not yet a fault, but the margin is small enough that a single image pull or log burst crosses it.',
+  });
+}
+
+/** Recursive byte total, bounded so a pathological tree cannot stall a check. */
+export function directorySize(dir: string, budget = { entries: 20_000 }): number {
+  let total = 0;
+  let stack: string[] = [dir];
+  while (stack.length > 0 && budget.entries > 0) {
+    const current = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (budget.entries-- <= 0) break;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile()) {
+        try {
+          total += fs.statSync(full).size;
+        } catch {
+          // Removed between listing and stat; not worth a finding.
+        }
+      }
+    }
+  }
+  return total;
+}
+
+/**
  * Whether the console is actually serving.
  *
  * Asked by fetching its root, not by reading the container's state. "A
@@ -832,6 +1010,62 @@ export async function checkAnonymousSurface(findings: Findings, dc: IDaemonConfi
   });
 }
 
+/**
+ * A container whose published ports the host cannot actually reach.
+ *
+ * Docker's `running` is a statement about the container, and its healthcheck
+ * runs INSIDE it — both can pass while the host-side publishing is gone. That
+ * combination is not hypothetical here: a forced network disconnect leaves
+ * the daemon's port forwarding broken in a way that reconnecting the network
+ * does not repair, so the container reports running, attached and healthy
+ * while every connection from the host is refused. It cost this project a
+ * day, diagnosed at the time as an application fault.
+ *
+ * The reading depends on the healthcheck, which is why it is used here rather
+ * than only for `infra.unhealthy`: a HEALTHY container the host cannot reach
+ * says the break is outside the container, and recreating is the fix. Without
+ * a healthcheck the same evidence is ambiguous — the process inside may
+ * simply not be listening — so the finding says so instead of guessing.
+ */
+export async function checkPublishedPorts(
+  findings: Findings,
+  c: import('../infrastructure/types.js').ContainerState
+): Promise<void> {
+  const ports = Object.entries(c.ports ?? {}).filter(([spec]) => spec.endsWith('/tcp'));
+  if (ports.length === 0) return;
+
+  // A container still coming up has not bound anything yet, and saying so
+  // would be reporting on the clock rather than on the container.
+  if (c.health === 'starting') return;
+  const startedMs = c.startedAt ? Date.parse(c.startedAt) : NaN;
+  if (Number.isFinite(startedMs) && Date.now() - startedMs < CONTAINER_SETTLE_MS) return;
+
+  const unreachable: number[] = [];
+  for (const [, hostPort] of ports) {
+    if (!(await tcpReachable(hostPort))) unreachable.push(hostPort);
+  }
+  if (unreachable.length === 0) return;
+
+  const healthy = c.health === 'healthy';
+  findings.add({
+    id: 'infra.port-unreachable',
+    severity: healthy ? 'error' : 'warning',
+    title: `Container "${c.name}" publishes ${unreachable.join(', ')} but the host cannot connect`,
+    evidence: [
+      `status: running${c.health && c.health !== 'none' ? `, health: ${c.health}` : ''}`,
+      `published: ${ports.map(([spec, hp]) => `${spec} -> ${hp}`).join(', ')}`,
+      `TCP connect to 127.0.0.1:${unreachable.join(', 127.0.0.1:')} refused or timed out`,
+    ],
+    remedy: healthy
+      ? `Its own healthcheck passes inside the container, so the service is running and the publishing is what broke. ` +
+        `Recreate it — \`docker rm -f ${c.name}\` then \`omnitron up\`. Restarting is not enough: the forwarding is ` +
+        `established when the container is created.`
+      : `Either the process inside never bound the port, or the host-side publishing is broken. ` +
+        `\`omnitron infra logs ${c.name}\` distinguishes them: a listening service with an unreachable port is the second case, ` +
+        `and is fixed by recreating the container rather than restarting it.`,
+  });
+}
+
 /** Infrastructure containers the daemon manages. */
 async function checkInfrastructure(findings: Findings, client: ReturnType<typeof createDaemonClient>): Promise<void> {
   try {
@@ -861,6 +1095,11 @@ async function checkInfrastructure(findings: Findings, client: ReturnType<typeof
             evidence: ['its published ports are unreachable while detached'],
             remedy: 'Recreate it — a detached container cannot be reattached in place.',
           });
+        } else {
+          // Only when the container is attached: a detached one is already
+          // reported above, and probing its ports would name the same cause
+          // twice.
+          await checkPublishedPorts(findings, c);
         }
         continue;
       }
@@ -1020,6 +1259,19 @@ export async function doctorCommand(): Promise<void> {
         });
       }
     }
+  }
+
+  // Runs whether or not the daemon answered: a full disk is a plausible
+  // reason the daemon is down, and it is the reason operators reach for last.
+  try {
+    await checkDiskSpace(findings);
+  } catch (err) {
+    findings.add({
+      id: 'doctor.check-failed',
+      severity: 'warning',
+      title: 'The disk-space check could not complete',
+      evidence: [describeError(err)],
+    });
   }
 
   // Runs whether or not the daemon answered: a stale build is worth knowing

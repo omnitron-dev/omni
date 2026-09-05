@@ -600,10 +600,21 @@ export class SQLiteMetricsStorage implements IMetricsStorage {
           .columns(['timestamp', 'app', 'name'])
           .execute();
       }
+      // Only now is the table known to be there. Marking the storage
+      // initialized outside this try — as it used to — meant a DDL that
+      // genuinely failed (permissions, a full disk, a locked database) was
+      // swallowed and then declared done: every subsequent write went to a
+      // table that does not exist, reporting a missing-table error whose cause
+      // was thrown away one call earlier. There is no logger on this class to
+      // report the swallow through, so leaving `initialized` false is the only
+      // available way to keep the failure recoverable — the next write retries
+      // the DDL instead of failing forever.
+      this.initialized = true;
     } catch {
-      // Table may already exist or schema API not available
+      // Table may already exist, or the schema API is not available on this
+      // driver. Both are benign and the writes below will work regardless;
+      // anything else stays un-initialized so it can be retried.
     }
-    this.initialized = true;
   }
 
   async write(samples: MetricSample[]): Promise<void> {

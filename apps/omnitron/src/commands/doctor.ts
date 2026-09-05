@@ -31,6 +31,10 @@
  * the command is usable as a CI or pre-deploy gate.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { box, log, prism } from '@xec-sh/kit';
 
 import { createDaemonClient } from '../daemon/daemon-client.js';
@@ -38,6 +42,7 @@ import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
 import type { ProcessInfoDto } from '../config/types.js';
+import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
 
 /**
  * How long the daemon may take to answer before that is itself a finding.
@@ -135,7 +140,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
           `expected ${OMNITRON_MIGRATIONS.length} migration(s) to have run`,
         ],
         remedy:
-          'Run `omnitron migrate`. If it fails, the error it prints is the real problem — the daemon only logs migration failures as warnings at boot.',
+          'Run `omnitron infra migrate`. If it fails, the error it prints is the real problem — the daemon only logs migration failures as warnings at boot.',
       });
       return;
     }
@@ -154,7 +159,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
         severity: 'error',
         title: `${pending.length} migration(s) have not been applied`,
         evidence: [`target: ${target}`, `pending: ${pending.join(', ')}`],
-        remedy: 'Run `omnitron migrate`.',
+        remedy: 'Run `omnitron infra migrate`.',
       });
     }
 
@@ -170,7 +175,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
         title: 'Tables the daemon queries are missing',
         evidence: [`target: ${target}`, `missing: ${missing.join(', ')}`],
         remedy:
-          'Run `omnitron migrate`. Until these exist, alert evaluation and session cleanup fail on every tick and log a warning each time.',
+          'Run `omnitron infra migrate`. Until these exist, alert evaluation and session cleanup fail on every tick and log a warning each time.',
       });
     }
   } catch (err) {
@@ -452,6 +457,74 @@ async function checkDaemon(findings: Findings, client: ReturnType<typeof createD
   }
 }
 
+/**
+ * Is the daemon running the code in this checkout?
+ *
+ * Everything here loads through `dist`, and nothing else asks whether `dist`
+ * matches `src`. The two ways that goes wrong are different findings because
+ * they have different remedies: a source edited since the last build needs a
+ * build, and a daemon started before the last build needs a restart. Both
+ * present identically — as a change that appears to have had no effect.
+ *
+ * Only meaningful in a development checkout. An installed package has no
+ * `src/`, and the check produces nothing rather than guessing.
+ */
+async function checkBuildFreshness(findings: Findings, daemonStartedMs: number | null): Promise<void> {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // `dist/commands/` at runtime, `src/commands/` under a source runner.
+  const packageRoot = path.resolve(here, '../..');
+  const sourceRoot = path.join(packageRoot, 'src');
+  const buildRoot = path.join(packageRoot, 'dist');
+
+  if (!fs.existsSync(sourceRoot) || !fs.existsSync(buildRoot)) return;
+
+  const report = compareTrees(listTree(sourceRoot), listTree(buildRoot));
+  if (!report.comparable) return;
+
+  if (report.unbuilt.length > 0) {
+    findings.add({
+      id: 'build.unbuilt-sources',
+      severity: 'warning',
+      title: `${report.unbuilt.length} source file(s) have never been built`,
+      evidence: [
+        ...report.unbuilt.slice(0, 5).map((f) => `src/${f} → no dist counterpart`),
+        ...(report.unbuilt.length > 5 ? [`… and ${report.unbuilt.length - 5} more`] : []),
+        'the daemon loads dist/, so this code has not run',
+      ],
+      remedy: 'Run `pnpm build` in apps/omnitron.',
+    });
+  }
+
+  if (report.stale.length > 0) {
+    findings.add({
+      id: 'build.stale-sources',
+      severity: 'warning',
+      title: `${report.stale.length} source file(s) are newer than their build output`,
+      evidence: [
+        ...report.stale.slice(0, 5).map((f) => `src/${f}`),
+        ...(report.stale.length > 5 ? [`… and ${report.stale.length - 5} more`] : []),
+        'modification time is the signal, so a file copied back over itself counts as changed',
+      ],
+      remedy: 'Run `pnpm build` in apps/omnitron, then restart the daemon.',
+    });
+  }
+
+  const predates = processPredatesBuild(daemonStartedMs ?? 0, report.newestArtifactMs);
+  if (predates === true) {
+    findings.add({
+      id: 'build.daemon-predates-build',
+      severity: 'warning',
+      title: 'The daemon started before the current build was written',
+      evidence: [
+        `daemon started: ${new Date(daemonStartedMs!).toISOString()}`,
+        `newest build artifact: ${new Date(report.newestArtifactMs).toISOString()}`,
+        'it is running the previous build, which is no longer on disk to inspect',
+      ],
+      remedy: 'Restart the daemon: `omnitron down && omnitron up`.',
+    });
+  }
+}
+
 /** Infrastructure containers the daemon manages. */
 async function checkInfrastructure(findings: Findings, client: ReturnType<typeof createDaemonClient>): Promise<void> {
   try {
@@ -566,6 +639,13 @@ export async function doctorCommand(): Promise<void> {
 
   const daemonUp = await client.isReachable();
 
+  /**
+   * When the daemon started, in wall-clock ms — needed to tell whether it
+   * predates the build on disk. Null when the daemon is not answering, which
+   * the freshness check treats as "cannot tell" rather than "no".
+   */
+  let daemonStartedMs: number | null = null;
+
   if (!daemonUp) {
     findings.add({
       id: 'daemon.down',
@@ -602,6 +682,15 @@ export async function doctorCommand(): Promise<void> {
       });
     }
 
+    try {
+      const status = await client.status();
+      if (typeof status.uptime === 'number' && status.uptime > 0) {
+        daemonStartedMs = Date.now() - status.uptime;
+      }
+    } catch {
+      // Left null; the freshness check reports "cannot tell", not "fine".
+    }
+
     // Each check is independent: one failing must not hide the others, which
     // is the whole point of running them together.
     for (const check of [
@@ -622,6 +711,19 @@ export async function doctorCommand(): Promise<void> {
         });
       }
     }
+  }
+
+  // Runs whether or not the daemon answered: a stale build is worth knowing
+  // about even when the daemon is down, and it is a plausible reason it is.
+  try {
+    await checkBuildFreshness(findings, daemonStartedMs);
+  } catch (err) {
+    findings.add({
+      id: 'doctor.check-failed',
+      severity: 'warning',
+      title: 'The build-freshness check could not complete',
+      evidence: [describeError(err)],
+    });
   }
 
   // The database is checked directly rather than through the daemon: when the

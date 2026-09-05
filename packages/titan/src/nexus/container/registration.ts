@@ -88,6 +88,7 @@ export class RegistrationService {
     // Extract dependencies
     let dependencies: InjectionInput<any>[] | undefined;
     if ('inject' in provider && provider.inject) {
+      this.validateInjectEntries(token, provider.inject);
       dependencies = provider.inject;
     } else if ('useClass' in provider) {
       dependencies = this.extractClassDependencies(provider.useClass);
@@ -130,6 +131,31 @@ export class RegistrationService {
       dependencies,
       isAsync,
     };
+  }
+
+  /**
+   * Reject inject entries that are not a supported InjectionInput.
+   *
+   * The one shape people reach for that does not work is the tuple
+   * `[TOKEN, { optional: true }]` — it reads naturally and mirrors the
+   * provider-tuple syntax right above it, but resolution only understands a
+   * bare token or `{ token, optional }`. A tuple falls through to "resolve
+   * this array as if it were a token" and dies later with
+   * "Cannot resolve 'Unknown'", which names neither the provider nor the
+   * mistake. Provider tuples are commonly written `as any` to work around
+   * literal-type inference on `scope`, so the compiler does not catch it
+   * either. Fail at registration instead, and say what to write.
+   */
+  private validateInjectEntries(token: InjectionToken<any>, inject: readonly unknown[]): void {
+    for (let i = 0; i < inject.length; i++) {
+      if (Array.isArray(inject[i])) {
+        throw new InvalidProviderError(
+          token,
+          `inject[${i}] is an array. The tuple form [TOKEN, { optional: true }] is not a supported ` +
+            `inject entry — write { token: TOKEN, optional: true } instead (or the bare token if it is required).`
+        );
+      }
+    }
   }
 
   /**

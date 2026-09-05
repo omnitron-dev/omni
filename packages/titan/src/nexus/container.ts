@@ -508,6 +508,27 @@ export class Container implements IContainer {
   }
 
   /**
+   * Human-readable dependency list for diagnostics.
+   *
+   * `getTokenName()` on an `{ token, optional }` wrapper returns 'Unknown',
+   * so any list containing optional deps rendered as [Unknown, Unknown] —
+   * the two messages that print this exist to say which dependency is
+   * missing, and that is exactly the part they lost. Unwrap the token and
+   * mark it with '?'.
+   */
+  private describeDependencies(dependencies: readonly unknown[] | undefined): string[] {
+    return (
+      dependencies?.map((d) => {
+        if (typeof d === 'object' && d !== null && 'token' in (d as Record<string, unknown>)) {
+          const wrapped = d as { token: unknown; optional?: boolean };
+          return getTokenName(wrapped.token as any) + (wrapped.optional ? '?' : '');
+        }
+        return getTokenName(d as any);
+      }) ?? []
+    );
+  }
+
+  /**
    * Boot-time guard against positional-inject drift. For useClass
    * providers, compare the resolved-dependency count against the
    * constructor's declared arity (JS `.length` — excludes default-
@@ -532,7 +553,7 @@ export class Container implements IContainer {
     const required = ctor.length;
     if (dependencies.length >= required) return;
     const tokenName = getTokenName(registration.token);
-    const depNames = registration.dependencies?.map((d) => getTokenName(d)) ?? [];
+    const depNames = this.describeDependencies(registration.dependencies);
     // eslint-disable-next-line no-console
     console.warn(
       `[Nexus] DI arity mismatch for ${tokenName} → ${ctor.name}: ` +
@@ -1052,7 +1073,7 @@ export class Container implements IContainer {
       }
     } catch (error: unknown) {
       const tokenName = getTokenName(token);
-      const depNames = registration.dependencies?.map((d) => getTokenName(d)).join(', ');
+      const depNames = this.describeDependencies(registration.dependencies).join(', ');
       this.logger?.error(
         { err: error, token: tokenName, dependencies: depNames },
         `DI: Failed to create instance of "${tokenName}". Dependencies: [${depNames || 'none'}]`

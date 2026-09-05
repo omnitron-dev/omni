@@ -54,10 +54,10 @@ export {
       {
         useClass: LoggerService,
         inject: [
-          [LOGGER_OPTIONS_TOKEN, { optional: true }],
-          [LOGGER_TRANSPORTS_TOKEN, { optional: true }],
-          [LOGGER_PROCESSORS_TOKEN, { optional: true }],
-          [CONFIG_SERVICE_TOKEN, { optional: true }],
+          { token: LOGGER_OPTIONS_TOKEN, optional: true },
+          { token: LOGGER_TRANSPORTS_TOKEN, optional: true },
+          { token: LOGGER_PROCESSORS_TOKEN, optional: true },
+          { token: CONFIG_SERVICE_TOKEN, optional: true },
         ],
         scope: 'singleton',
       },

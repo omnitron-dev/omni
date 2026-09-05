@@ -1092,33 +1092,28 @@ describe('AuthorizationManager Security Tests', () => {
         const smallBest = bestBatch(smallManager, 'service50', smallUser);
         const largeBest = bestBatch(authzManager, 'service5000', userContext);
 
-        // MEASURED, not aspirational. `findMatchingACL` is
-        // `this.acls.find(acl => matchesPattern(...))` — a linear scan of every
-        // registered ACL on every authorization check. 5000 lookups cost ~6ms
-        // against 100 ACLs and ~500ms against 10000: 100x the data, ~80x the
-        // time. The test used to be called "without performance degradation"
-        // and assert `< 100ms`, which claimed the opposite of what the code
-        // does and failed on a loaded machine for the wrong reason.
+        // MEASURED. findMatchingACL used to be
+        // `this.acls.find(acl => matchesPattern(...))` — a linear pass over
+        // every registered ACL on every authorization check — and 5000 lookups
+        // cost ~6ms against 100 ACLs and ~500ms against 10000. It now reads an
+        // exact-match Map and scans only the wildcard patterns, so the cost no
+        // longer depends on how many services are registered: the same
+        // comparison measures 0.8x, i.e. the large registry is if anything
+        // slightly faster.
         //
-        // The bound is DERIVED from the data ratio, not measured. 100x the ACLs
-        // costs ~100x the time under a linear scan, so anything within a few
-        // multiples of that is still linear, while a quadratic regression would
-        // cost 100x MORE again (10000x) and is caught with two orders of
-        // magnitude to spare.
-        //
-        // The previous bound, `smallBest * 150`, came from an observed ~80x and
-        // was tight enough to fail on a busy machine: the large batch scans
-        // 10000 entries per lookup and suffers more from cache pressure and CPU
-        // contention than the small one, so the RATIO itself moves under load.
-        // It failed at 177x — still linear, still passing on an idle box, and
-        // still a red build for reasons that have nothing to do with the code.
-        //
-        // Making the exact-match case O(1) is filed separately: it has to
-        // preserve first-registered-wins, since `find()` returns the earliest
-        // matching ACL and a wildcard registered before an exact pattern
-        // currently wins.
+        // The bound is set against the failure it has to catch. A regression to
+        // scanning would put this back around 100x — the data ratio — so 10x
+        // leaves an order of magnitude of headroom over what was observed while
+        // still failing loudly if the index is lost. The previous form asserted
+        // `dataRatio * 3` because a linear scan was the accepted behaviour; it
+        // had already been widened once, from 150x to 300x, and failed again at
+        // 384x on a loaded machine. A bound that moves each time it fails has
+        // stopped measuring anything.
         const dataRatio = LARGE_ACL_COUNT / SMALL_ACL_COUNT;
-        expect(largeBest).toBeLessThan(smallBest * dataRatio * 3);
+        console.log(`ACL lookup ratio: ${(largeBest / smallBest).toFixed(2)}x for ${dataRatio}x the ACLs`);
+        expect(largeBest, 'ACL lookup cost tracks the number of registered ACLs again').toBeLessThan(
+          smallBest * 10
+        );
       });
 
       it('should handle user with 1000+ roles', () => {

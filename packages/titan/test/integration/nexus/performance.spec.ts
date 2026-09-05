@@ -349,15 +349,24 @@ describe('Nexus Container - Performance', () => {
         scope: Scope.Transient,
       });
 
-      // Resolve many times
+      const before = container.getMetadata().cached;
+
+      const seen = new Set<unknown>();
       for (let i = 0; i < 10000; i++) {
-        container.resolve(token);
+        seen.add(container.resolve(token));
       }
 
-      // The container should not hold references to transient instances
-      const _metadata = container.getMetadata();
-      // Transient instances should not be cached
-      // (The exact check depends on implementation)
+      // The old version fetched the metadata into `_metadata`, underscored so
+      // the linter would not object it was unused, and closed with "(The
+      // exact check depends on implementation)". It does not: a Transient
+      // provider must hand back a new instance every time and the container
+      // must keep none of them, which is exactly what "does not leak" means
+      // here and is two assertions.
+      expect(seen.size, 'Transient returned the same instance twice').toBe(10000);
+      expect(
+        container.getMetadata().cached - before,
+        'the container cached transient instances'
+      ).toBe(0);
     });
 
     it('should clean up disposed scopes', async () => {

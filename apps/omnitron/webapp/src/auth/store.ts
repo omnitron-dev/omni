@@ -72,6 +72,98 @@ function handleSessionEvent(event: 'refreshed' | 'expired') {
   }
 }
 
+/**
+ * The in-flight `initialize()`, so concurrent callers share one run.
+ *
+ * The `initialized` flag alone cannot do this: it is set at the END of the
+ * flow, several awaits in, and both guards call `initialize()` from a mount
+ * effect. `StrictMode` runs that effect twice, and a route that renders both
+ * guards would do the same — so the console opened with two concurrent
+ * `validateSession` round trips whose only difference was which one finished
+ * second. A flag set after an await guards the second call only when there
+ * is no second caller.
+ */
+let initializing: Promise<void> | null = null;
+
+/**
+ * The body of `initialize()`, so the store method can stay a thin guard.
+ */
+async function runInitialize(set: (partial: Partial<AuthState>) => void): Promise<void> {
+  const sessionId = getSessionId();
+  if (!sessionId) {
+    set({ initialized: true });
+    return;
+  }
+
+  try {
+    // A live session does not imply a live token: the session lasts 24h,
+    // the JWT one hour. Restoring from a session alone produced a console
+    // that believed it was signed in while every RPC came back 401 — the
+    // dashboard rendered "Applications 0 / No apps yet" and the status bar
+    // said "Offline", which reads as "your applications died".
+    //
+    // Refresh first when the token is stale, so the app is handed a state
+    // it can actually act on.
+    if (sessionManager.isAccessTokenStale()) {
+      await sessionManager.refresh().catch(() => false);
+    }
+
+    const result = await authRpc('validateSession', { sessionId: getSessionId() ?? sessionId });
+
+    if (result.valid && result.user) {
+      const expiresAt = result.session?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      set({
+        user: {
+          id: result.user.id,
+          username: result.user.username,
+          displayName: result.user.displayName ?? result.user.username,
+          role: result.user.role ?? UNKNOWN_ROLE,
+        },
+        sessionId,
+        initialized: true,
+      });
+
+      // Start proactive session refresh
+      sessionManager.start(expiresAt, handleSessionEvent);
+      return;
+    }
+  } catch {
+    // Session invalid or daemon unreachable — try refresh
+    try {
+      const refreshed = await sessionManager.refresh();
+      if (refreshed) {
+        // Retry validation after refresh
+        const refreshedSessionId = getSessionId();
+        if (!refreshedSessionId) {
+          clearSession();
+          set({ initialized: true });
+          return;
+        }
+        const retryResult = await authRpc('validateSession', { sessionId: refreshedSessionId });
+        if (retryResult.valid && retryResult.user) {
+          set({
+            user: {
+              id: retryResult.user.id,
+              username: retryResult.user.username,
+              displayName: retryResult.user.displayName ?? retryResult.user.username,
+              role: retryResult.user.role ?? UNKNOWN_ROLE,
+            },
+            sessionId: getSessionId(),
+            initialized: true,
+          });
+          return;
+        }
+      }
+    } catch {
+      // Refresh also failed
+    }
+  }
+
+  clearSession();
+  set({ initialized: true });
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -84,80 +176,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     if (get().initialized) return;
+    if (initializing) return initializing;
 
-    const sessionId = getSessionId();
-    if (!sessionId) {
-      set({ initialized: true });
-      return;
-    }
-
-    try {
-      // A live session does not imply a live token: the session lasts 24h,
-      // the JWT one hour. Restoring from a session alone produced a console
-      // that believed it was signed in while every RPC came back 401 — the
-      // dashboard rendered "Applications 0 / No apps yet" and the status bar
-      // said "Offline", which reads as "your applications died".
-      //
-      // Refresh first when the token is stale, so the app is handed a state
-      // it can actually act on.
-      if (sessionManager.isAccessTokenStale()) {
-        await sessionManager.refresh().catch(() => false);
-      }
-
-      const result = await authRpc('validateSession', { sessionId: getSessionId() ?? sessionId });
-
-      if (result.valid && result.user) {
-        const expiresAt = result.session?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-        set({
-          user: {
-            id: result.user.id,
-            username: result.user.username,
-            displayName: result.user.displayName ?? result.user.username,
-            role: result.user.role ?? UNKNOWN_ROLE,
-          },
-          sessionId,
-          initialized: true,
-        });
-
-        // Start proactive session refresh
-        sessionManager.start(expiresAt, handleSessionEvent);
-        return;
-      }
-    } catch {
-      // Session invalid or daemon unreachable — try refresh
-      try {
-        const refreshed = await sessionManager.refresh();
-        if (refreshed) {
-          // Retry validation after refresh
-          const refreshedSessionId = getSessionId();
-          if (!refreshedSessionId) {
-            clearSession();
-            set({ initialized: true });
-            return;
-          }
-          const retryResult = await authRpc('validateSession', { sessionId: refreshedSessionId });
-          if (retryResult.valid && retryResult.user) {
-            set({
-              user: {
-                id: retryResult.user.id,
-                username: retryResult.user.username,
-                displayName: retryResult.user.displayName ?? retryResult.user.username,
-                role: retryResult.user.role ?? UNKNOWN_ROLE,
-              },
-              sessionId: getSessionId(),
-              initialized: true,
-            });
-            return;
-          }
-        }
-      } catch {
-        // Refresh also failed
-      }
-    }
-
-    clearSession();
-    set({ initialized: true });
+    initializing = runInitialize(set).finally(() => {
+      initializing = null;
+    });
+    return initializing;
   },
 
   signIn: async (username, password) => {

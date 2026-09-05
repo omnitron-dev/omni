@@ -123,6 +123,45 @@ export interface DaemonStartOptions {
   noWatch?: boolean;
 }
 
+/**
+ * Where the daemon listens. The default is loopback; anything the operator
+ * writes is passed through literally, `0.0.0.0` included.
+ *
+ * Exported so the two call sites below and the tests agree on one
+ * definition. They previously each carried their own copy of
+ * `host !== '0.0.0.0' ? host : '127.0.0.1'`, which is how the two of them
+ * plus the config default managed to disagree about what the default was.
+ */
+export function resolveBindHost(configured: string | undefined): string {
+  return configured ?? '127.0.0.1';
+}
+
+/**
+ * The address other fleet nodes should dial to reach this one.
+ *
+ * `peer.address` is not decoration: `leader-election.ts` calls `requestVote`
+ * and `leaderHeartbeat` against it. A node bound to `0.0.0.0` therefore may
+ * not advertise `0.0.0.0` (not routable) — and must not advertise
+ * `127.0.0.1` either, which is what it did: every other node in the fleet
+ * resolves that to itself, so votes and heartbeats meant for the leader go
+ * to the sender's own loopback. A wrong answer of the right shape.
+ *
+ * When the bind address says nothing about reachability, take the first
+ * non-internal IPv4 the host has. Loopback remains the honest answer only
+ * when there is genuinely nothing else — a single-host deployment, where
+ * no other node can reach this one regardless.
+ */
+export function advertisedAddress(bindHost: string | undefined): string {
+  if (bindHost && bindHost !== '0.0.0.0' && bindHost !== '::') return bindHost;
+
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs ?? []) {
+      if (a.family === 'IPv4' && !a.internal) return a.address;
+    }
+  }
+  return '127.0.0.1';
+}
+
 export class OmnitronDaemon {
   private app: Application | null = null;
   private pidManager: PidManager | null = null;
@@ -341,15 +380,25 @@ export class OmnitronDaemon {
       metadata: { source: 'local-unix-socket' },
     });
 
-    // TCP — remote fleet communication (cross-server). Defaults to
-    // 127.0.0.1 so a single-host deployment never exposes daemon
-    // control to the LAN. Multi-host fleet operators must opt in
-    // explicitly via `daemon.host: '0.0.0.0'` (or a specific bind
-    // address) in the ecosystem config. Pre-fix `dc.host` defaulted
-    // to `'0.0.0.0'`, which combined with the missing
-    // `AuthorizationManager` below (P0-B in the audit) gave any
-    // host on the LAN unauthenticated `stopAll({force:true})`.
-    const tcpHost = dc.host && dc.host !== '0.0.0.0' ? dc.host : '127.0.0.1';
+    // TCP — remote fleet communication (cross-server). The default is
+    // 127.0.0.1 so a single-host deployment never exposes daemon control
+    // to the LAN; multi-host fleet operators opt in via `daemon.host`.
+    //
+    // The default belongs in DEFAULT_DAEMON_CONFIG, not here. It used to be
+    // enforced here instead, as `dc.host !== '0.0.0.0' ? dc.host :
+    // '127.0.0.1'` over a config default of `'0.0.0.0'` — absence encoded as
+    // a value from the domain of valid answers. `0.0.0.0` is not a marker for
+    // "unset", it is a bind address with a meaning, and it was the exact
+    // value the comment above it told fleet operators to set. Following the
+    // documentation produced loopback and no fleet, silently. It also
+    // contradicted every neighbouring knob: `consoleBindHost: '0.0.0.0'`
+    // publishes, and so does an app's transport host.
+    //
+    // (The original hazard — pre-fix this defaulted to all-interfaces while
+    // the AuthorizationManager below was missing, giving any LAN host an
+    // unauthenticated `stopAll({force:true})` — is answered by the default
+    // being loopback and by that manager now being wired.)
+    const tcpHost = resolveBindHost(dc.host);
     this.app.netron.registerTransport('tcp', () => new TcpTransport());
     this.app.netron.registerTransportServer('tcp', {
       name: 'daemon-fleet',
@@ -431,9 +480,9 @@ export class OmnitronDaemon {
 
     // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to
     // these over the same loopback; nginx fronts the public surface.
-    // Operators who proxy in from another host must opt in via
-    // `daemon.host` (same knob that controls TCP).
-    const localHost = dc.host && dc.host !== '0.0.0.0' ? dc.host : '127.0.0.1';
+    // Operators who proxy in from another host opt in via `daemon.host`
+    // (same knob that controls TCP, with the same literal meaning).
+    const localHost = resolveBindHost(dc.host);
 
     // HTTP — Netron RPC API (internal port, nginx proxies from public port)
     const internalHttpPort = (dc.httpPort ?? 9800) + 1;
@@ -1226,7 +1275,7 @@ export class OmnitronDaemon {
         const fleetService = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
         await fleetService.registerNode({
           hostname: os.hostname(),
-          address: this.dc.host === '0.0.0.0' ? '127.0.0.1' : this.dc.host,
+          address: advertisedAddress(this.dc.host),
           port: this.dc.port,
           role: 'leader',
           metadata: { pid: process.pid, version: CLI_VERSION, httpPort: this.dc.httpPort },

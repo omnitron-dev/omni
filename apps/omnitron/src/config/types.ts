@@ -620,7 +620,11 @@ export interface IDaemonConfig {
   socketPath: string;
   /** TCP port for remote omnitron ↔ omnitron fleet RPC */
   port: number;
-  /** TCP host for remote fleet RPC (use '0.0.0.0' for remote access) */
+  /**
+   * Bind address for the daemon's TCP (fleet), HTTP and WebSocket servers.
+   * Default `127.0.0.1`. Set `'0.0.0.0'` — or a specific interface — to
+   * accept connections from other hosts; the value is used literally.
+   */
   host: string;
   /** HTTP port for webapp portal ↔ daemon Netron RPC */
   httpPort: number;

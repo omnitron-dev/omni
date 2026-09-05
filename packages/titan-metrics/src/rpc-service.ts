@@ -15,6 +15,29 @@ import type {
 } from './types.js';
 
 @Service({ name: 'OmnitronMetrics' })
+/**
+ * ANONYMOUS SURFACE — what this service answers without credentials.
+ *
+ * `getSnapshot()`, `querySeries()` and `getPrometheusText()` carry
+ * `@Public({ auth: { allowAnonymous: true } })`; `cleanup()` and `flush()` do
+ * not, so the split is already read-vs-write rather than accidental.
+ *
+ * What the read half discloses is more than the numbers. Metric NAMES and
+ * LABELS describe the shape of the system: which services exist, which methods
+ * are called, which of them are failing and how often. `getPrometheusText()`
+ * returns the whole registry in one call, and `querySeries()` accepts a filter,
+ * so an anonymous caller can enumerate rather than sample.
+ *
+ * Left as it is deliberately: unauthenticated scraping is what Prometheus does,
+ * and requiring credentials here breaks the standard integration this format
+ * exists for. Whether that port faces anything but the scraper is a property of
+ * the DEPLOYMENT, which a package cannot know — and tightening it here would
+ * move the failure onto whoever upgraded, not whoever chose the exposure.
+ *
+ * The requirement this leaves is visibility, not silence: `omnitron doctor`
+ * reports the anonymous surface, and this is the explanation an operator should
+ * find when they follow it here.
+ */
 export class MetricsRpcService {
   constructor(private readonly metrics: IMetricsService) {}
 

@@ -89,6 +89,38 @@ export interface UptimeResponse {
  * const isReady = await health.ready();
  * ```
  */
+/**
+ * ANONYMOUS SURFACE — what this service answers without credentials.
+ *
+ * Seven methods carry `@Public({ auth: { allowAnonymous: true } })`, and they
+ * are not equally obliged to. The distinction is worth having in front of you
+ * before changing either half:
+ *
+ *   Anonymous BY NECESSITY — `live()` and `ready()`. An orchestrator probe
+ *   carries no credentials; requiring auth here means the pod is restarted or
+ *   pulled from rotation for failing to authenticate, which is an outage
+ *   caused by the auth setting rather than by health.
+ *
+ *   Anonymous BY INHERITANCE — `check()`, `checkIndicator()`,
+ *   `listIndicators()`, `uptime()`, `isHealthy()`. These answer questions a
+ *   probe does not ask. `check()` returns every indicator's `message` and
+ *   `error` — which, for the database indicator, names the query methods a
+ *   connection lacks, and for others can carry a driver's own text.
+ *   `listIndicators()` enumerates what this process depends on. `ready()`
+ *   discloses a subset of the same: names and messages of whatever is not
+ *   healthy.
+ *
+ * Left as it is deliberately. Which of these may be public is a property of
+ * the DEPLOYMENT — an internal port scraped by Prometheus and a public edge
+ * are different answers — and a package cannot know which it is in. Tightening
+ * the second group here would silently break every dashboard that reads it
+ * today, and the outage would land on whoever upgraded rather than on whoever
+ * chose the exposure.
+ *
+ * What an operator needs is that the surface be visible: `omnitron doctor`
+ * reports it, and this comment is the answer they should find when they come
+ * looking for why.
+ */
 @Service({ name: 'Health@1.0.0' })
 @Injectable()
 export class HealthRpcService {

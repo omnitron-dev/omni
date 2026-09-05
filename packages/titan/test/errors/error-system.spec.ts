@@ -187,16 +187,24 @@ describe('Transport-Agnostic Error System', () => {
     });
 
     it('should infer error types from contract', () => {
+      // NOTE: the @ts-expect-error lines below are the only assertions this
+      // test has, and nothing typechecks this file — tsconfig.json includes
+      // `src/**/*.ts` and excludes `**/*spec.ts` (correctly, it is the build
+      // config), and `typecheck` runs that same config. So these directives
+      // have never been compiled and would not notice inferErrorTypes
+      // regressing. Keep them, because they document the intent and will
+      // start working the day the specs are typechecked, but pair them with
+      // assertions that run.
       type GetUserErrors = inferErrorTypes<typeof userContract, 'getUser'>;
 
       // This should compile without errors
-      const _error404: GetUserErrors[404] = {
+      const error404: GetUserErrors[404] = {
         code: 'USER_NOT_FOUND',
         message: 'Not found',
         userId: '123',
       };
 
-      const _error403: GetUserErrors[403] = {
+      const error403: GetUserErrors[403] = {
         code: 'ACCESS_DENIED',
         reason: 'Insufficient permissions',
       };
@@ -209,14 +217,25 @@ describe('Transport-Agnostic Error System', () => {
       const _invalidPayload: GetUserErrors[404] = {
         code: 'WRONG_CODE',
       };
+
+      // Runtime half: the contract these types are derived from must actually
+      // declare 404 and 403 and must not declare 500.
+      const declared = Object.keys(userContract.definition['getUser']!.errors!);
+      expect(declared).toEqual(expect.arrayContaining(['404', '403']));
+      expect(declared).not.toContain('500');
+      expect(error404.userId).toBe('123');
+      expect(error403.reason).toBe('Insufficient permissions');
     });
 
-    it('should provide type-safe error throwing', () => {
-      class _UserService {
+    it('should provide type-safe error throwing', async () => {
+      // As above: the @ts-expect-error below is not compiled by anything. The
+      // class was also only declared, never instantiated, so this test used to
+      // execute a class body and nothing else. Exercise both branches and
+      // check that the contract rejects an undeclared code at runtime too.
+      class UserService {
         private contract = userContract;
 
         async getUser(input: { id: string }) {
-          // Should be able to throw only contract-defined errors
           if (!input.id) {
             throw ContractError.create(this.contract, 'getUser', 404, {
               code: 'USER_NOT_FOUND',
@@ -224,12 +243,20 @@ describe('Transport-Agnostic Error System', () => {
               userId: input.id,
             });
           }
-
-          // This should be caught by TypeScript
-          // @ts-expect-error - Error code not in contract
-          throw ContractError.create(this.contract, 'getUser', 500, {});
+          return { id: input.id };
         }
       }
+
+      const service = new UserService();
+
+      await expect(service.getUser({ id: '42' })).resolves.toEqual({ id: '42' });
+      await expect(service.getUser({ id: '' })).rejects.toBeInstanceOf(ContractError);
+
+      // This should be caught by TypeScript
+      // @ts-expect-error - Error code not in contract
+      expect(() => ContractError.create(userContract, 'getUser', 500, {})).toThrow(
+        'Error code 500 not defined in contract'
+      );
     });
   });
 

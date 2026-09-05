@@ -838,7 +838,7 @@ export class Netron extends EventEmitter implements INetron {
    * await netron.stop();
    */
   async stop() {
-    this.logger.info('Stopping Netron instance');
+    this.logger.debug('Stopping Netron instance');
 
     // Stop connection manager first (handles graceful connection cleanup)
     await this.connectionManager.stop();
@@ -876,7 +876,7 @@ export class Netron extends EventEmitter implements INetron {
     }
 
     this.isStarted = false;
-    this.logger.info('Netron instance stopped');
+    this.logger.debug('Netron instance stopped');
   }
 
   /**
@@ -902,7 +902,7 @@ export class Netron extends EventEmitter implements INetron {
    * const peer = await netron.connect('ws://example.com:8080');
    */
   async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
-    this.logger.info({ address, reconnect }, 'Connecting to remote peer');
+    this.logger.debug({ address, reconnect }, 'Connecting to remote peer');
 
     // Check if this is an HTTP connection
     const isHttp = address.startsWith('http://') || address.startsWith('https://');

@@ -1168,8 +1168,23 @@ describe('AuthorizationManager Security Tests', () => {
           return performance.now() - start;
         };
 
-        const small = Math.max(time(manyPermissions.slice(0, 100)), 0.001);
-        const large = time(manyPermissions);
+        // Interleave the two measurements and take medians. Timing them one
+        // after the other left the ratio exposed to any load arriving in
+        // between — and it can only arrive between them, so the skew is
+        // one-directional. That is why this passed alone and failed in a full
+        // parallel run, on code that had not changed. Alternating puts both
+        // samples through the same conditions; the median discards the
+        // transient rather than letting it decide the verdict.
+        const hundred = manyPermissions.slice(0, 100);
+        const smalls: number[] = [];
+        const larges: number[] = [];
+        for (let round = 0; round < 5; round++) {
+          smalls.push(time(hundred));
+          larges.push(time(manyPermissions));
+        }
+        const median = (xs: number[]): number => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+        const small = Math.max(median(smalls), 0.001);
+        const large = median(larges);
 
         const result = authzManager.canAccessService('service', userContext);
         expect(result).toBe(true);

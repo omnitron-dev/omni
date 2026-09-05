@@ -62,27 +62,17 @@ class TenantService {
   }
 }
 
-// Helper to find available port
-async function findAvailablePort(start: number = 9000): Promise<number> {
-  const max = start + 100;
-  for (let port = start; port < max; port++) {
-    try {
-      // Try to create a server on this port
-      const testNetron = new Netron(createMockLogger(), { id: 'test-port' });
-      testNetron.registerTransport('http', () => new HttpTransport());
-      const _server = await testNetron.registerTransportServer('http', {
-        name: 'http',
-        options: { host: 'localhost', port },
-      });
-      await testNetron.start();
-      await testNetron.stop();
-      return port;
-    } catch (_error) {
-      continue;
-    }
-  }
-  throw new Error('No available ports found');
-}
+// No probe-then-bind helper here any more.
+//
+// The old `findAvailablePort` stood a server up on a candidate port, closed
+// it, and returned the number for someone else to bind later. Between the
+// close and the real bind, any other file in a parallel run could take it —
+// and since every worker scanned from the same fixed start of 9000, they all
+// converged on the same few numbers. That is what made this suite fail only
+// in a full run and pass every time in isolation.
+//
+// Both transport servers report the port they actually bound, so asking for
+// `port: 0` and reading it back afterwards removes the gap entirely.
 
 describe('Netron Auth Integration Tests', () => {
   let serverNetron: Netron;
@@ -127,10 +117,6 @@ describe('Netron Auth Integration Tests', () => {
   };
 
   beforeEach(async () => {
-    // Find available ports
-    httpPort = await findAvailablePort(9000);
-    wsPort = await findAvailablePort(httpPort + 1);
-
     // Create server Netron
     const serverLogger = createMockLogger();
     serverNetron = new Netron(serverLogger, { id: 'auth-server' });
@@ -263,16 +249,23 @@ describe('Netron Auth Integration Tests', () => {
     // Register servers
     await serverNetron.registerTransportServer('http', {
       name: 'http',
-      options: { host: 'localhost', port: httpPort },
+      options: { host: 'localhost', port: 0 },
     });
 
     await serverNetron.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: wsPort },
+      options: { host: 'localhost', port: 0 },
     });
 
     // Start server
     await serverNetron.start();
+
+    // Read back the ports the OS actually assigned.
+    httpPort = serverNetron.transportServers.get('http')!.port!;
+    wsPort = serverNetron.transportServers.get('ws')!.port!;
+    expect(httpPort).toBeGreaterThan(0);
+    expect(wsPort).toBeGreaterThan(0);
+    expect(httpPort).not.toBe(wsPort);
 
     // Expose services
     await serverNetron.peer.exposeService(new TestService());

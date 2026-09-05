@@ -1041,8 +1041,13 @@ describe('AuthorizationManager Security Tests', () => {
 
     describe('Large Scale Security', () => {
       it('scales no worse than linearly in the number of registered ACLs', () => {
+        // Both counts named here, because the assertion at the end is derived
+        // from their ratio rather than from a stopwatch reading.
+        const LARGE_ACL_COUNT = 10_000;
+        const SMALL_ACL_COUNT = 100;
+
         // Register many ACLs
-        for (let i = 0; i < 10000; i++) {
+        for (let i = 0; i < LARGE_ACL_COUNT; i++) {
           authzManager.registerACL({
             service: `service${i}`,
             allowedRoles: [`role${i}`],
@@ -1079,7 +1084,7 @@ describe('AuthorizationManager Security Tests', () => {
         };
 
         const smallManager = new AuthorizationManager(mockLogger);
-        for (let i = 0; i < 100; i++) {
+        for (let i = 0; i < SMALL_ACL_COUNT; i++) {
           smallManager.registerACL({ service: `service${i}`, allowedRoles: [`role${i}`] });
         }
         const smallUser: AuthContext = { userId: 'user1', roles: ['role50'], permissions: [] };
@@ -1095,13 +1100,25 @@ describe('AuthorizationManager Security Tests', () => {
         // and assert `< 100ms`, which claimed the opposite of what the code
         // does and failed on a loaded machine for the wrong reason.
         //
-        // This bound holds the current behaviour and still catches a regression
-        // to something worse than linear (a nested scan, a per-lookup regex
-        // rebuild). Making the exact-match case O(1) is filed separately: it has
-        // to preserve first-registered-wins, since `find()` returns the earliest
+        // The bound is DERIVED from the data ratio, not measured. 100x the ACLs
+        // costs ~100x the time under a linear scan, so anything within a few
+        // multiples of that is still linear, while a quadratic regression would
+        // cost 100x MORE again (10000x) and is caught with two orders of
+        // magnitude to spare.
+        //
+        // The previous bound, `smallBest * 150`, came from an observed ~80x and
+        // was tight enough to fail on a busy machine: the large batch scans
+        // 10000 entries per lookup and suffers more from cache pressure and CPU
+        // contention than the small one, so the RATIO itself moves under load.
+        // It failed at 177x — still linear, still passing on an idle box, and
+        // still a red build for reasons that have nothing to do with the code.
+        //
+        // Making the exact-match case O(1) is filed separately: it has to
+        // preserve first-registered-wins, since `find()` returns the earliest
         // matching ACL and a wildcard registered before an exact pattern
         // currently wins.
-        expect(largeBest).toBeLessThan(smallBest * 150);
+        const dataRatio = LARGE_ACL_COUNT / SMALL_ACL_COUNT;
+        expect(largeBest).toBeLessThan(smallBest * dataRatio * 3);
       });
 
       it('should handle user with 1000+ roles', () => {

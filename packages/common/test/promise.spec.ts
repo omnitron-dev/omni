@@ -51,8 +51,14 @@ describe('defer', () => {
 });
 
 describe('delay', () => {
-  it('should be a promise', () => {
-    expect(delay(100)).toBeInstanceOf(Promise);
+  it('should be a promise', async () => {
+    // Awaited on purpose: leaving the timer dangling is harmless under vitest
+    // and fails the whole Deno run ("Promise resolution is still pending but
+    // the event loop has already resolved") AFTER every test has passed — an
+    // exit code with no failing test attached to it.
+    const pending = delay(1);
+    expect(pending).toBeInstanceOf(Promise);
+    await pending;
   });
 
   it('should be delayed', async () => {
@@ -159,6 +165,11 @@ describe('timeout', () => {
     const promise = timeout(p, 100, { unref: true });
 
     await expect(promise).rejects.toThrow('Timeout of 100ms exceeded');
+    // The underlying 200 ms timer outlives the assertion. Node does not care;
+    // Deno's sanitizer reports "timers were started in this test, but never
+    // completed" and fails the run — and it is right that a test leaves no
+    // timer behind for whatever runs next.
+    await p;
   });
 });
 

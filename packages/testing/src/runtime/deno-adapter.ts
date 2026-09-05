@@ -8,7 +8,7 @@ import { FakeTime } from 'https://deno.land/std@0.208.0/testing/time.ts';
 // @ts-expect-error - Deno specific imports
 import { expect as denoExpect, addMatchers } from 'https://deno.land/x/expect@v0.3.0/mod.ts';
 // @ts-expect-error - Deno specific imports
-import { it as denoIt, describe as denoDescribe } from 'https://deno.land/std@0.208.0/testing/bdd.ts';
+import { it as denoIt, describe as denoDescribe, beforeAll as denoBeforeAll, beforeEach as denoBeforeEach, afterAll as denoAfterAll, afterEach as denoAfterEach } from 'https://deno.land/std@0.208.0/testing/bdd.ts';
 
 // Polyfill for node:util inherits
 function inherits(ctor: any, superCtor: any) {
@@ -27,77 +27,34 @@ function inherits(ctor: any, superCtor: any) {
 
 // Store global state
 let fakeTime: FakeTime | null = null;
-const beforeEachCallbacks: Array<() => void | Promise<void>> = [];
-const afterEachCallbacks: Array<() => void | Promise<void>> = [];
-const beforeAllCallbacks: Array<() => void | Promise<void>> = [];
-const afterAllCallbacks: Array<() => void | Promise<void>> = [];
+/**
+ * Lifecycle hooks and blocks delegate to std's bdd, which already scopes hooks
+ * to the enclosing `describe`.
+ *
+ * They used to be four module-level arrays that `it` drained by hand, so a
+ * `beforeEach` registered inside one `describe` ran for EVERY test declared
+ * afterwards — across files. Concretely: `packages/common`'s
+ * `timed-map.spec.ts` installs fake timers in its `beforeEach`, and every
+ * later test in the aggregated Deno run inherited them, so `await delay(1)` in
+ * a different file never resolved. The run reported all 7 suites passed and
+ * then exited 1 with "Promise resolution is still pending but the event loop
+ * has already resolved" — an exit code with no failing test attached.
+ *
+ * `beforeAll` had a second bug in the same code: the callbacks were
+ * snapshotted BEFORE the describe body ran, so hooks registered inside the
+ * body never executed at all.
+ */
+const beforeEach = denoBeforeEach;
+const afterEach = denoAfterEach;
+const beforeAll = denoBeforeAll;
+const afterAll = denoAfterAll;
 
-// Custom describe that handles lifecycle hooks
 function describe(name: string, fn: () => void) {
-  denoDescribe(name, () => {
-    // Clear callbacks for this describe block
-    // Note: These are preserved for potential future use in nested describe blocks
-    // const localBeforeEach = [...beforeEachCallbacks];
-    // const localAfterEach = [...afterEachCallbacks];
-    const localBeforeAll = [...beforeAllCallbacks];
-    const localAfterAll = [...afterAllCallbacks];
-
-    // Run beforeAll hooks
-    if (localBeforeAll.length > 0) {
-      denoIt('beforeAll', async () => {
-        for (const cb of localBeforeAll) {
-          await cb();
-        }
-      });
-    }
-
-    fn();
-
-    // Run afterAll hooks
-    if (localAfterAll.length > 0) {
-      denoIt('afterAll', async () => {
-        for (const cb of localAfterAll) {
-          await cb();
-        }
-      });
-    }
-  });
+  denoDescribe(name, fn);
 }
 
-// Custom it/test that runs lifecycle hooks
 function it(name: string, fn: () => void | Promise<void>) {
-  denoIt(name, async () => {
-    // Run beforeEach hooks
-    for (const cb of beforeEachCallbacks) {
-      await cb();
-    }
-
-    try {
-      await fn();
-    } finally {
-      // Run afterEach hooks
-      for (const cb of afterEachCallbacks) {
-        await cb();
-      }
-    }
-  });
-}
-
-// Lifecycle hooks
-function beforeEach(fn: () => void | Promise<void>) {
-  beforeEachCallbacks.push(fn);
-}
-
-function afterEach(fn: () => void | Promise<void>) {
-  afterEachCallbacks.push(fn);
-}
-
-function beforeAll(fn: () => void | Promise<void>) {
-  beforeAllCallbacks.push(fn);
-}
-
-function afterAll(fn: () => void | Promise<void>) {
-  afterAllCallbacks.push(fn);
+  denoIt(name, fn);
 }
 
 // Mock function implementation
@@ -265,6 +222,42 @@ addMatchers({
       ? { pass: true }
       : { pass: false, message: `last call was ${Deno.inspect(last)}, expected ${Deno.inspect(expected)}` };
   },
+  // These three used to be assigned onto the object `expect(...)` returns,
+  // which this module ignores — `toStrictEqual` reached a spec as
+  // "matcher not found". Same fix, same reason: `addMatchers` is the way in.
+  toBeInstanceOf(value: any, constructor: any) {
+    return value instanceof constructor
+      ? { pass: true }
+      : { pass: false, message: `expected ${Deno.inspect(value)} to be instance of ${constructor?.name}` };
+  },
+  toStrictEqual(value: any, expected: any) {
+    return Deno.inspect(value) === Deno.inspect(expected)
+      ? { pass: true }
+      : { pass: false, message: `expected ${Deno.inspect(value)} to strictly equal ${Deno.inspect(expected)}` };
+  },
+  toThrowError(value: any, expected?: any) {
+    let error: any;
+    let thrown = false;
+    try {
+      if (typeof value === 'function') value();
+    } catch (e) {
+      error = e;
+      thrown = true;
+    }
+    if (!thrown) return { pass: false, message: 'expected function to throw' };
+    if (expected !== undefined) {
+      if (typeof expected === 'string' && !String(error?.message).includes(expected)) {
+        return { pass: false, message: `expected error message to include "${expected}"` };
+      }
+      if (expected instanceof RegExp && !expected.test(String(error?.message))) {
+        return { pass: false, message: `expected error message to match ${expected}` };
+      }
+      if (typeof expected === 'function' && !(error instanceof expected)) {
+        return { pass: false, message: `expected error to be instance of ${expected.name}` };
+      }
+    }
+    return { pass: true };
+  },
 });
 
 // Custom expect wrapper that adds missing methods
@@ -272,50 +265,6 @@ const expect = (value: any) => {
   const matcher = denoExpect(value);
 
   // Add missing matcher methods to the chain
-  matcher.toBeInstanceOf = function toBeInstanceOf(constructor: any) {
-    const pass = value instanceof constructor;
-    if (!pass) {
-      throw new Error(`expected ${value} to be instance of ${constructor.name}`);
-    }
-    return { pass };
-  };
-
-  matcher.toStrictEqual = function toStrictEqual(expected: any) {
-    return matcher.toEqual(expected);
-  };
-
-  matcher.toThrowError = function toThrowError(expected?: any) {
-    let error: any;
-    let thrown = false;
-
-    try {
-      if (typeof value === 'function') {
-        value();
-      }
-    } catch (e) {
-      error = e;
-      thrown = true;
-    }
-
-    if (!thrown) {
-      throw new Error('expected function to throw');
-    }
-
-    if (expected !== undefined) {
-      if (typeof expected === 'string' && !error.message.includes(expected)) {
-        throw new Error(`expected error message to include "${expected}"`);
-      }
-      if (expected instanceof RegExp && !expected.test(error.message)) {
-        throw new Error(`expected error message to match ${expected}`);
-      }
-      if (typeof expected === 'function' && !(error instanceof expected)) {
-        throw new Error(`expected error to be instance of ${expected.name}`);
-      }
-    }
-
-    return { pass: true };
-  };
-
   return matcher;
 };
 

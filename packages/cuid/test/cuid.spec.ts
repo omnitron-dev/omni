@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cuid, isCuid, createOptimizedCuid } from '../src/index';
+import { cuid, isCuid, createOptimizedCuid } from '../src/index.js';
 
 describe('CUID', () => {
   describe('cuid() - default generator', () => {

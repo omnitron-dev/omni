@@ -336,6 +336,8 @@ function DefaultErrorFallback({
             <IconButton
               size="small"
               onClick={() => setExpanded(!expanded)}
+              aria-label={expanded ? 'Hide stack trace' : 'Show stack trace'}
+              aria-expanded={expanded}
               sx={{
                 transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: 'transform 0.2s',

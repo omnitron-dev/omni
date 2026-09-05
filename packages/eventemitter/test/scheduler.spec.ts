@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
-import { EventScheduler } from '../src/scheduler';
-import type { ScheduleOptions } from '../src/types';
+import { EventScheduler } from '../src/scheduler.js';
+import type { ScheduleOptions } from '../src/types.js';
 
 describe('EventScheduler', () => {
   let scheduler: EventScheduler;

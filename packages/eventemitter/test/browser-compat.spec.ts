@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { EventEmitter } from '../src/emitter';
+import { EventEmitter } from '../src/emitter.js';
 
 describe('Browser Compatibility', () => {
   describe('EventEmitter in browser-like environment', () => {

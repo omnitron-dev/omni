@@ -11,6 +11,7 @@ import {
   TYPE_STREAM_ERROR,
   TYPE_STREAM_CLOSE,
 } from '../src/index.js';
+import type { PacketType } from '../src/index.js';
 
 describe('Packet', () => {
   it('round-trips type / impulse / error flags', () => {
@@ -35,10 +36,14 @@ describe('Packet', () => {
   });
 
   it('every TYPE_* opcode round-trips through setType/getType', () => {
-    for (const t of [
+    // Annotated because an unannotated array widens the literal constants to
+    // `number`, which `setType(type: PacketType)` correctly refuses. Widening
+    // is the test's doing, not the API's.
+    const types: PacketType[] = [
       TYPE_PING, TYPE_GET, TYPE_SET, TYPE_CALL, TYPE_TASK,
       TYPE_STREAM, TYPE_STREAM_ERROR, TYPE_STREAM_CLOSE,
-    ]) {
+    ];
+    for (const t of types) {
       const p = new Packet(1);
       p.setType(t);
       expect(p.getType()).toBe(t);

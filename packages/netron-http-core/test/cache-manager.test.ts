@@ -5,7 +5,7 @@
  * consume: fresh hit, miss-then-fetch, stale-while-revalidate, tag/pattern
  * invalidation, LRU eviction, TTL expiry, and the neutral logger hook.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { HttpCacheManager } from '../src/cache-manager.js';
 
 describe('HttpCacheManager (shared)', () => {
@@ -82,7 +82,10 @@ describe('HttpCacheManager (shared)', () => {
 
   it('routes debug output through an injected neutral logger', async () => {
     const debug = vi.fn();
-    const cm = new HttpCacheManager({ logger: { debug } });
+    // `warn` is part of HttpCoreLogger, so the stand-in carries it: a mock
+    // poorer than the type it satisfies fails wherever the missing member is
+    // called, which is never where the mock was written.
+    const cm = new HttpCacheManager({ logger: { debug, warn: vi.fn() } });
     await cm.get('k', async () => 'v', { maxAge: 1000 });
     expect(debug).toHaveBeenCalledWith('[Cache] MISS: k');
   });

@@ -4,8 +4,8 @@
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
-import { EventEmitter } from '../../src/emitter';
-import { EnhancedEmitter } from '../../src/enhanced-emitter';
+import { EventEmitter } from '../../src/emitter.js';
+import { EnhancedEmitter } from '../../src/enhanced-emitter.js';
 import { delay } from '@omnitron-dev/common';
 
 describe('EventEmitter (Bun)', () => {

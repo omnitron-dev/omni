@@ -1,4 +1,4 @@
-import { EventEmitter } from '../src';
+import { EventEmitter } from '../src.js';
 
 describe('EventEmitter - Concurrency with pLimit', () => {
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

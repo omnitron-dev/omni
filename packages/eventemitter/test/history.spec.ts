@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { EventHistory, MemoryEventStorage } from '../src/history';
-import type { EventRecord, EventFilter } from '../src/types';
+import { EventHistory, MemoryEventStorage } from '../src/history.js';
+import type { EventRecord, EventFilter } from '../src/types.js';
 
 describe('MemoryEventStorage', () => {
   let storage: MemoryEventStorage;

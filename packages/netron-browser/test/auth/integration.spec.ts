@@ -36,11 +36,11 @@ describe('Authentication Integration', () => {
       expect(httpClient.getState()).toBe('disconnected');
     });
 
-    it('should attach auth headers when authenticated', () => {
-      const _httpClient = new HttpClient({
-        url: 'http://localhost:3000',
-        auth: authClient,
-      });
+    it('exposes bearer headers on the auth client once authenticated', () => {
+      // An `HttpClient` was constructed here and never used — the assertion
+      // below is entirely about `authClient`. Renamed to what it checks: the
+      // old title claimed the CLIENT attaches the headers, which nothing here
+      // exercises, and an unused variable was the only trace of the gap.
 
       // Authenticate
       const context: AuthContext = {

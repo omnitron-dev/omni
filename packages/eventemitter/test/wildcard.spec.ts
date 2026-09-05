@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WildcardMatcher } from '../src/wildcard';
+import { WildcardMatcher } from '../src/wildcard.js';
 
 describe('WildcardMatcher', () => {
   let matcher: WildcardMatcher;

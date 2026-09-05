@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MetricsCollector } from '../src/metrics';
+import { MetricsCollector } from '../src/metrics.js';
 
 describe('MetricsCollector', () => {
   let metrics: MetricsCollector;

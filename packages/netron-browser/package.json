@@ -52,7 +52,7 @@
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.json --emitDeclarationOnly",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:unit": "vitest run",

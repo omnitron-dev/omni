@@ -81,6 +81,13 @@ export interface DateRangeInputTranslations {
   from?: string;
   /** Prefix for partial range with only end — "To"   → "To 31 Dec 2026" */
   to?: string;
+  /**
+   * Accessible name for the clear button — "Clear date range".
+   *
+   * The button is an icon with no text, so this string IS its name to a
+   * screen reader. Without one the control announces as "button".
+   */
+  clear?: string;
 }
 
 export interface DateRangeInputProps {
@@ -161,6 +168,7 @@ export function DateRangeInput({
   const txPlaceholder = translations?.placeholder ?? 'Select dates...';
   const txFrom = translations?.from ?? 'From';
   const txTo = translations?.to ?? 'To';
+  const txClear = translations?.clear ?? 'Clear date range';
 
   const displayLabel = useMemo(
     () => formatLabel(startDate, endDate, txFrom, txTo),
@@ -213,7 +221,7 @@ export function DateRangeInput({
             ...(hasValue && {
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton size="small" onClick={handleClear} sx={{ p: 0.25 }}>
+                  <IconButton size="small" onClick={handleClear} aria-label={txClear} sx={{ p: 0.25 }}>
                     <ClearIcon />
                   </IconButton>
                 </InputAdornment>

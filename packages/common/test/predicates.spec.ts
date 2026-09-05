@@ -191,7 +191,7 @@ describe('predicates', () => {
       // NOT plain objects - global objects
       if (typeof globalThis !== 'undefined') {
         // Bun considers globalThis a plain object, which differs from Node.js
-        const isBun = typeof Bun !== 'undefined';
+        const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
         if (isBun) {
           // Skip this test in Bun as it has different behavior
           expect(true).toBe(true);

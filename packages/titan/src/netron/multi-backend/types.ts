@@ -334,17 +334,15 @@ export interface MultiBackendClientOptions {
     threshold?: number;
 
     /**
-     * Time window for error tracking in milliseconds
+     * Time window for error tracking, in milliseconds. Default 60000.
      *
-     * NOT IMPLEMENTED. `recordFailure()` increments a cumulative counter and
-     * nothing ever expires an entry, so failures separated by hours count the
-     * same as failures separated by milliseconds — a backend that fails once a
-     * day eventually trips a threshold of 5. The counter is only reset by a
-     * success (`breaker.failures = 0`), which is the actual behaviour to
-     * reason about.
-     *
-     * What DOES work on this object: `enabled`, `threshold` (default 5), and
-     * `resetTimeout` (default 30000ms, before half-open).
+     * Only failures inside this window count towards `threshold`. This was
+     * declared and unread until now: `recordFailure()` kept a cumulative
+     * counter that nothing expired, so failures separated by hours counted
+     * the same as failures separated by milliseconds, and a backend failing
+     * once a day would eventually open the circuit at a threshold of 5. A
+     * breaker that cannot forget is not measuring a failure RATE, which is
+     * the one thing it exists to measure.
      * @default 60000
      */
     window?: number;

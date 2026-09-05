@@ -273,6 +273,70 @@ describe('MultiBackendClient', () => {
 
       expect(circuitBreakers).toBeInstanceOf(Map);
     });
+
+    /**
+     * `window` was declared, documented with a 60s default, and read by
+     * nothing: the failure count was cumulative and only a success reset it.
+     * So failures separated by hours counted the same as failures separated
+     * by milliseconds, and a backend failing once a day would eventually open
+     * the circuit at a threshold of 5. A breaker that cannot forget is not
+     * measuring a failure rate, which is the one thing it exists to measure.
+     */
+    const withBreaker = (over: Record<string, unknown> = {}) =>
+      new MultiBackendClient({
+        ...config,
+        circuitBreaker: { enabled: true, threshold: 3, window: 1_000, ...over },
+      });
+
+    const fail = (c: MultiBackendClient, id: string, times = 1) => {
+      for (let i = 0; i < times; i++) (c as any).recordFailure(id);
+    };
+    const stateOf = (c: MultiBackendClient, id: string) => (c as any).circuitBreakers.get(id);
+
+    it('opens once the threshold is reached inside the window', () => {
+      const c = withBreaker();
+      fail(c, 'backend-1', 3);
+
+      expect(stateOf(c, 'backend-1').state).toBe('open');
+    });
+
+    it('does not open when the failures are spread beyond the window', () => {
+      const c = withBreaker();
+      const now = Date.now();
+      const clock = vi.spyOn(Date, 'now');
+
+      // Three failures, each a full window apart: never three at once.
+      clock.mockReturnValue(now);
+      fail(c, 'backend-1');
+      clock.mockReturnValue(now + 1_500);
+      fail(c, 'backend-1');
+      clock.mockReturnValue(now + 3_000);
+      fail(c, 'backend-1');
+
+      // The behavioural claim first, so a regression reports "expected 'open'
+      // to be 'closed'" rather than a missing-field error.
+      expect(stateOf(c, 'backend-1').state).toBe('closed');
+      expect(stateOf(c, 'backend-1').failureTimes).toHaveLength(1);
+
+      clock.mockRestore();
+    });
+
+    it('reports the in-window count in its stats', () => {
+      const c = withBreaker();
+      const now = Date.now();
+      const clock = vi.spyOn(Date, 'now');
+
+      clock.mockReturnValue(now);
+      fail(c, 'backend-1', 2);
+      clock.mockReturnValue(now + 2_000);
+      fail(c, 'backend-1');
+      clock.mockRestore();
+
+      // Two aged out; the number a reader compares against `threshold` is 1,
+      // and the circuit stays closed because three never coincided.
+      expect(stateOf(c, 'backend-1').state).toBe('closed');
+      expect(stateOf(c, 'backend-1').failureTimes).toHaveLength(1);
+    });
   });
 
   describe('Reconnection', () => {

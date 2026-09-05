@@ -36,17 +36,25 @@ const candidates = (
 ).__test?.resolveCandidateLogPaths;
 
 describe('logs offline fallback — T#76 path probing', () => {
-  it('exposes the resolver helper for testing (skip if not available)', () => {
-    // Soft check — if the export isn't there, suggest adding it.
-    if (!candidates) {
-      console.warn(
-        '[T#76] logs.ts does not export __test.resolveCandidateLogPaths — ' +
-          'add the export to enable strict path-resolution tests',
-      );
-      return;
-    }
+  it('exposes the resolver helper', () => {
+    // Hard, and deliberately the first assertion in the file.
+    //
+    // This used to warn and return when the export was missing, and the two
+    // tests below opened with `if (!candidates) return;`. Between them, a
+    // removed export left three green tests that checked nothing — with a
+    // console warning nobody reads in a passing run, which is worse than
+    // silence because it looks like diligence.
+    //
+    // The export exists (`logs.ts` line ~155). If it is ever removed, this
+    // fails and names what to put back.
+    expect(
+      candidates,
+      'logs.ts must export __test.resolveCandidateLogPaths for these tests to mean anything'
+    ).toBeTypeOf('function');
+  });
 
-    const result = candidates('omni/dev/messaging');
+  it('probes project mode first, then standalone, then legacy, then the daemon log', () => {
+    const result = candidates!('omni/dev/messaging');
     expect(result.length).toBeGreaterThanOrEqual(3);
 
     // Project-mode path comes first (most specific).
@@ -60,8 +68,7 @@ describe('logs offline fallback — T#76 path probing', () => {
   });
 
   it('standalone-only app gets standalone + legacy candidates (no project prefix)', () => {
-    if (!candidates) return;
-    const result = candidates('messaging');
+    const result = candidates!('messaging');
     // Three parts not present → no project-mode candidate.
     expect(result.some((p) => p.includes('/projects/'))).toBe(false);
     // Standalone-dir layout present.
@@ -71,8 +78,7 @@ describe('logs offline fallback — T#76 path probing', () => {
   });
 
   it('all candidate paths are absolute (no relative drift)', () => {
-    if (!candidates) return;
-    const result = candidates('omni/dev/messaging');
+    const result = candidates!('omni/dev/messaging');
     for (const p of result) {
       expect(path.isAbsolute(p)).toBe(true);
     }

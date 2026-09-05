@@ -1033,9 +1033,15 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   /**
-   * Get a database connection by name
+   * Get a database connection by name.
+   *
+   * `DB` is the caller's schema. It defaults to `unknown`, which is what this
+   * returned before the parameter existed — and `Kysely<unknown>` accepts no
+   * table name, so `selectFrom('users')` did not compile and the connection
+   * could not be used for the thing it is for. The runtime instance was always
+   * schema-agnostic; only the declaration forced a cast at every call site.
    */
-  async getConnection(name: string = DATABASE_DEFAULT_CONNECTION): Promise<Kysely<unknown>> {
+  async getConnection<DB = unknown>(name: string = DATABASE_DEFAULT_CONNECTION): Promise<Kysely<DB>> {
     const info = this.connections.get(name);
 
     if (!info) {
@@ -1054,10 +1060,10 @@ export class DatabaseManager implements IDatabaseManager {
     // Return executor (with plugins) if available, otherwise raw instance
     // This ensures all consumers get plugin-aware queries by default
     if (info.executor) {
-      return info.executor as Kysely<unknown>;
+      return info.executor as Kysely<DB>;
     }
 
-    return info.instance;
+    return info.instance as Kysely<DB>;
   }
 
   /**

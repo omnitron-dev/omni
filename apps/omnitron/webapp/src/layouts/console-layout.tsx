@@ -5,7 +5,7 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
-import { DashboardLayout, LoadingScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
+import { ErrorBoundary, DashboardLayout, LoadingScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
 import type { ThemeMode, LayoutNavData } from '@omnitron-dev/prism';
 import { StatusBar } from 'src/components/status-bar';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
@@ -30,9 +30,9 @@ import {
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
-import { ErrorBoundary } from 'src/components/error-boundary';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { useActiveProject } from 'src/stores/project.store';
+import { reportCrash } from 'src/utils/report-crash';
 
 // =============================================================================
 // Navigation — conditional on active project
@@ -260,7 +260,7 @@ export function ConsoleLayout() {
         },
       }}
     >
-      <ErrorBoundary>
+      <ErrorBoundary showDetails onError={reportCrash}>
         <Suspense fallback={<LoadingScreen />}>
           <Outlet />
         </Suspense>

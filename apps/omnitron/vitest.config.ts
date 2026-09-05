@@ -11,6 +11,11 @@ export default defineConfig({
       // assert. Nothing under `apps/omnitron/src` uses this prefix, so it
       // cannot shadow the daemon's own imports.
       src: path.resolve(import.meta.dirname, 'webapp/src'),
+      // Prism from source, as `webapp/vite.config.ts` does — and with the
+      // subpath first, because vite matches aliases by prefix and the bare
+      // entry would otherwise swallow `/netron`.
+      '@omnitron-dev/prism/netron': path.resolve(import.meta.dirname, '../../packages/prism/src/netron/index.ts'),
+      '@omnitron-dev/prism': path.resolve(import.meta.dirname, '../../packages/prism/src/index.ts'),
     },
   },
   test: {

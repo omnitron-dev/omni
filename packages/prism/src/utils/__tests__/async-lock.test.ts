@@ -4,6 +4,24 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AsyncLock, AsyncLockTimeoutError, createAsyncLock, createTokenRefreshLock, withLock } from '../async-lock.js';
 
+/**
+ * Wait for the lock to reach a state, rather than for a duration.
+ *
+ * Several tests here started an operation and then slept 10ms "for the lock
+ * to be acquired". The sleep is not the thing being tested, and on a loaded
+ * machine it is not long enough — the assertion then reports the lock as
+ * idle, which reads as a defect in locking rather than as a test that
+ * checked too early. `getState` is public and says exactly what the sleep
+ * was waiting for.
+ */
+async function untilState(lock: AsyncLock, key: string, state: string, budgetMs = 2000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  while (lock.getState(key) !== state) {
+    if (Date.now() > deadline) throw new Error(`lock '${key}' never reached '${state}'`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 describe('AsyncLock', () => {
   let lock: AsyncLock;
 
@@ -90,8 +108,7 @@ describe('AsyncLock', () => {
         return 'done';
       });
 
-      // Wait a tick for the lock to be acquired
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'test', 'locked');
 
       const tryResult = await lock.tryAcquire('test', async () => 'would-not-run');
       expect(tryResult).toBeNull();
@@ -117,7 +134,7 @@ describe('AsyncLock', () => {
         return 'done';
       });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'test', 'locked');
       expect(lock.getState('test')).toBe('locked');
 
       await operationPromise;
@@ -135,7 +152,7 @@ describe('AsyncLock', () => {
         return 'done';
       });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'test', 'locked');
       expect(lock.isLocked('test')).toBe(true);
 
       await operationPromise;
@@ -151,7 +168,8 @@ describe('AsyncLock', () => {
       const op1 = lock.acquire('key1', () => new Promise((r) => setTimeout(r, 100)));
       const op2 = lock.acquire('key2', () => new Promise((r) => setTimeout(r, 100)));
 
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'key1', 'locked');
+      await untilState(lock, 'key2', 'locked');
       const activeLocks = lock.getActiveLocks();
       expect(activeLocks).toContain('key1');
       expect(activeLocks).toContain('key2');
@@ -176,7 +194,7 @@ describe('AsyncLock', () => {
       });
 
       await operationStarted;
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'test', 'locked');
 
       // Now add a waiter
       const waiterPromise = lock.acquire('test', async () => 'waiter-result');
@@ -200,8 +218,8 @@ describe('AsyncLock', () => {
         return 'result2';
       });
 
-      // Wait for locks to be acquired
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(lock, 'key1', 'locked');
+      await untilState(lock, 'key2', 'locked');
       expect(lock.getActiveLocks().sort()).toEqual(['key1', 'key2']);
 
       // Add waiters for both keys
@@ -242,7 +260,7 @@ describe('AsyncLock', () => {
         return 'done';
       });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await untilState(shortTimeoutLock, 'test', 'locked');
 
       const waiterPromise = shortTimeoutLock.acquire('test', async () => 'waiter');
 

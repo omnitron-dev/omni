@@ -83,8 +83,16 @@ export interface AdminDataTableProps<T> {
    * displayed "No traces collected yet" — a plausible answer that was not the
    * true one, for as long as the page had existed.
    *
-   * When set, the empty state says the data could not be loaded and shows
-   * this text as the reason, instead of `emptyMessage`.
+   * When there are no rows, the empty state says the data could not be
+   * loaded and shows this text as the reason, instead of `emptyMessage`.
+   *
+   * When there ARE rows it is a partial failure — some of the data arrived
+   * and some did not — and a bar above the table says so. That case was
+   * originally ignored, on the reasoning that rows on screen are their own
+   * answer. They are not: a list that is short because one of its sources
+   * failed looks exactly like a list that is short, which is the whole
+   * defect this prop exists to remove, surviving in the case where it does
+   * the most damage.
    */
   loadError?: string | null;
   /** Extract unique key from row */
@@ -417,6 +425,28 @@ export function AdminDataTable<T>({
 
   return (
     <StyledTableContainer sx={{ maxHeight, ...sx }}>
+      {loadError && (
+        <Box
+          role="status"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: (theme) => alpha(theme.palette.warning.main, 0.12),
+          }}
+        >
+          <Typography variant="body2" sx={{ color: 'warning.dark', fontWeight: 600 }}>
+            Some of this data could not be loaded
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {loadError}
+          </Typography>
+        </Box>
+      )}
       {showBulkBar && (
         <Stack
           direction="row"

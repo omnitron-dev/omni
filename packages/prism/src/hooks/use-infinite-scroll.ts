@@ -245,6 +245,39 @@ export function useInfiniteScroll<TData = unknown, TError = Error>(
     totalCount: undefined,
   });
 
+  /**
+   * The caller's functions and options, read through refs.
+   *
+   * Everything here is something a caller writes inline — `fetchFn` as an
+   * arrow, `onSuccess` as an arrow, `observerOptions` not at all, which
+   * makes the default `{ threshold: 0.1 }` a fresh object on every render.
+   * Each of those was a dependency, so `fetchPage` changed identity every
+   * render, and with it `fetchNextPage`, and with it `sentinelRef`.
+   *
+   * `sentinelRef` is a REF CALLBACK. React invokes a ref callback with
+   * `null` and then with the element every time its identity changes — so
+   * every render tore down the `IntersectionObserver` and built a new one,
+   * and a new observer whose target is already intersecting fires
+   * immediately. A sentinel at the bottom of a short list always is.
+   *
+   * Measured before this change, with an observer that fires on `observe`
+   * as the real one does: 53 observers created and React aborting the tree
+   * with "Maximum update depth exceeded".
+   *
+   * Reading them through refs keeps the callbacks stable without asking
+   * every caller to memoise. The cost is that changing `observerOptions`
+   * after mount no longer rebuilds the observer, which is worth saying out
+   * loud and is not something any caller does.
+   */
+  const fetchFnRef = useRef(fetchFn);
+  fetchFnRef.current = fetchFn;
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const observerOptionsRef = useRef(observerOptions);
+  observerOptionsRef.current = observerOptions;
+
   // Refs for tracking
   const fetchIdRef = useRef(0);
   const cursorRef = useRef<string | number | undefined>(initialCursor);
@@ -279,7 +312,7 @@ export function useInfiniteScroll<TData = unknown, TError = Error>(
         }));
 
         try {
-          const page = await fetchFn({ cursor, pageSize });
+          const page = await fetchFnRef.current({ cursor, pageSize });
 
           // Check if this fetch was superseded
           if (fetchIdRef.current !== currentId || !isMountedRef.current) return;
@@ -300,7 +333,7 @@ export function useInfiniteScroll<TData = unknown, TError = Error>(
           });
 
           cursorRef.current = page.pageInfo.endCursor;
-          await onSuccess?.(page);
+          await onSuccessRef.current?.(page);
         } catch (err) {
           if (fetchIdRef.current !== currentId || !isMountedRef.current) return;
 
@@ -321,13 +354,13 @@ export function useInfiniteScroll<TData = unknown, TError = Error>(
             isFetchingMore: false,
           }));
 
-          await onError?.(error);
+          await onErrorRef.current?.(error);
         }
       };
 
       return executeWithRetry(0);
     },
-    [fetchFn, pageSize, onSuccess, onError, retry, retryDelay]
+    [pageSize, retry, retryDelay]
   );
 
   // Fetch next page
@@ -422,11 +455,11 @@ export function useInfiniteScroll<TData = unknown, TError = Error>(
         if (entries[0]?.isIntersecting) {
           fetchNextPage();
         }
-      }, observerOptions);
+      }, observerOptionsRef.current);
 
       observerRef.current.observe(element);
     },
-    [fetchNextPage, observerOptions]
+    [fetchNextPage]
   );
 
   // Initial fetch on mount

@@ -4,11 +4,53 @@
  * Basic tests to verify WebSocket connection and peer functionality
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { WebSocketConnection, WebSocketPeer, ConnectionState } from '../../src/transport/ws/index.js';
 import { Packet, TYPE_CALL } from '../../src/packet/index.js';
 
 // Mock WebSocket for testing
+
+/**
+ * Every deferred dispatch these mocks make goes through here.
+ *
+ * A `setTimeout` that survives its test file outlives the happy-dom
+ * environment too: the callback then constructs a `CloseEvent` from a
+ * torn-down realm, and `EventTarget.dispatchEvent` rejects it with
+ * "parameter 1 is not of type 'Event'" — an unhandled error that vitest
+ * reports alongside "This might cause false positive tests", because it can
+ * abort a test before its assertions run. Observed under a full monorepo run,
+ * where files finish faster than the 10ms these timers wait.
+ *
+ * The delays themselves are not decoration: `WebSocketConnection` attaches its
+ * listeners after constructing the socket, so an `open` dispatched
+ * synchronously from the constructor would arrive before anyone is listening.
+ * The remedy is therefore to cancel what is still pending, not to remove the
+ * asynchrony.
+ */
+const pendingMockTimers = new Set<ReturnType<typeof setTimeout>>();
+
+function deferMockEvent(fn: () => void, delayMs: number): void {
+  const timer = setTimeout(() => {
+    pendingMockTimers.delete(timer);
+    fn();
+  }, delayMs);
+  pendingMockTimers.add(timer);
+}
+
+function clearPendingMockTimers(): void {
+  for (const timer of pendingMockTimers) clearTimeout(timer);
+  pendingMockTimers.clear();
+}
+
+// The defect itself cannot be reproduced on demand — it needs this file to
+// finish while another is still running, so that the environment is disposed
+// with a timer in flight. What CAN be checked deterministically is its
+// precondition: nothing this file scheduled is still pending when it ends.
+// Removing any of the `clearPendingMockTimers()` calls below fails this.
+afterAll(() => {
+  expect(pendingMockTimers.size).toBe(0);
+});
+
 class MockWebSocket extends EventTarget {
   static CONNECTING = 0;
   static OPEN = 1;
@@ -26,7 +68,7 @@ class MockWebSocket extends EventTarget {
     this.protocol = protocols || '';
 
     // Simulate connection opening
-    setTimeout(() => {
+    deferMockEvent(() => {
       this.readyState = MockWebSocket.OPEN;
       this.dispatchEvent(new Event('open'));
     }, 10);
@@ -39,7 +81,7 @@ class MockWebSocket extends EventTarget {
 
   close(code?: number, reason?: string): void {
     this.readyState = MockWebSocket.CLOSING;
-    setTimeout(() => {
+    deferMockEvent(() => {
       this.readyState = MockWebSocket.CLOSED;
       this.dispatchEvent(new CloseEvent('close', { code: code || 1000, reason: reason || '' }));
     }, 10);
@@ -64,6 +106,8 @@ describe('WebSocketConnection', () => {
     if (connection) {
       await connection.close();
     }
+    // Last, so the timer `close()` just scheduled is cancelled too.
+    clearPendingMockTimers();
   });
 
   it('should create connection with correct URL', () => {
@@ -146,6 +190,8 @@ describe('WebSocketPeer', () => {
     if (peer) {
       await peer.close();
     }
+    // Last, so the timer `close()` just scheduled is cancelled too.
+    clearPendingMockTimers();
   });
 
   it('should create peer with correct ID', () => {
@@ -225,7 +271,7 @@ describe('WebSocket Reconnection', () => {
       send() {}
       close() {
         this.readyState = 3; // CLOSED
-        setTimeout(() => {
+        deferMockEvent(() => {
           this.dispatchEvent(new CloseEvent('close', { code: 1000, reason: 'timeout' }));
         }, 10);
       }
@@ -241,5 +287,8 @@ describe('WebSocket Reconnection', () => {
     (globalThis as any).WebSocket = originalWebSocket;
 
     await connection.close();
+    // This test builds its own mock rather than using MockWebSocket, and it is
+    // the one whose close-timer was seen firing after the environment was gone.
+    clearPendingMockTimers();
   }, 1000); // Set test timeout to 1 second
 });

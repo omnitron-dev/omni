@@ -574,11 +574,11 @@ describe('EventsService', () => {
       expect(handler).toHaveBeenCalled();
     });
 
-    it.skip('should handle timeout with error boundary', async () => {
-      // SKIP REASON: The test logic is correct but Jest reports unhandled promise
-      // rejections from the timeout mechanism even though errors are properly caught
-      // by the error boundary. This is a known issue with async event handlers and Jest.
-      // The functionality works correctly in production.
+    it('should handle timeout with error boundary', async () => {
+      // Re-enabled. The skip reason described a Jest behaviour — unhandled
+      // rejection reporting from the timeout mechanism — and this suite has
+      // run under vitest for some time. The claim was never re-checked against
+      // the runner actually in use.
 
       const errors: Error[] = [];
       const handler = vi.fn().mockImplementation(async () => {
@@ -601,10 +601,19 @@ describe('EventsService', () => {
       // Give time for the async error handler to be called
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // The onError callback should have been called with the timeout error
+      // The onError callback should have been called with the timeout error.
+      //
+      // Asserted on the structure rather than the sentence. This expected
+      // "Handler timeout after 100ms" — wording from a hand-built Error that
+      // was replaced by `Errors.timeout('event handler', ms)` and now reads
+      // "event handler timed out after 100ms". The behaviour never changed;
+      // the string did. Pinning prose makes a rewording look like a
+      // regression, which is how this test came to be skipped under a reason
+      // that blamed the runner.
       expect(onError).toHaveBeenCalled();
       expect(errors).toHaveLength(1);
-      expect(errors[0]?.message).toContain('Handler timeout after 100ms');
+      expect(errors[0]?.message).toMatch(/timed out after 100ms/i);
+      expect(errors[0]?.message).toMatch(/handler/i);
     });
   });
 });

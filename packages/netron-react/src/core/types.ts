@@ -256,6 +256,18 @@ export interface SubscriptionResult<TData = unknown> {
 
 /**
  * Stream options
+ *
+ * NOT IMPLEMENTED — there is no streaming hook. This type and `StreamResult`
+ * below are exported from the package root, `core/index.ts` and
+ * `hooks/index.ts`, but no `useStream` exists and nothing consumes either
+ * shape: `streamFn`, `accumulator`, `onChunk`, `onComplete` and
+ * `highWaterMark` are read by nothing.
+ *
+ * Kept rather than removed because they are part of the published surface, and
+ * marked because a consumer importing `StreamOptions` from a package that
+ * exports it three times over would reasonably conclude a streaming hook
+ * exists. The DevTools module next door is the pattern to follow — it says
+ * "placeholder for future implementation" and logs as much in development.
  */
 export interface StreamOptions<TChunk = unknown, TResult = TChunk[]> {
   /** Function returning a ReadableStream */
@@ -427,6 +439,10 @@ export interface CacheConfig {
 
 /**
  * DevTools configuration
+ *
+ * Mirrors the type in `devtools/index.ts`, which documents itself as a
+ * placeholder ("DevTools not yet implemented"). Nothing here is read; the
+ * honest note lives with the component.
  */
 export interface DevToolsConfig {
   /** Position on screen */
@@ -445,7 +461,12 @@ export interface DevToolsConfig {
 export interface SSRConfig {
   /** Enable SSR mode */
   enabled: boolean;
-  /** Dehydrate timeout */
+  /**
+   * Dehydrate timeout.
+   *
+   * NOT IMPLEMENTED — dehydration itself works (see `client.ts`), but this
+   * bound on it is read by nothing, so a dehydrate that hangs is not cut off.
+   */
   dehydrateTimeout?: number;
 }
 

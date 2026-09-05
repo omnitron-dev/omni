@@ -47,7 +47,12 @@ export interface QueryOptions {
   dedupeKey?: string;
   /** Background refetch interval in milliseconds */
   backgroundRefetch?: number;
-  /** Custom middleware function */
+  /**
+   * Custom middleware function.
+   *
+   * NOT IMPLEMENTED — read by nothing, so a supplied function never sees a
+   * request. Middleware for this client lives in the transport's own pipeline.
+   */
   customMiddleware?: (req: HttpRequestMessage) => HttpRequestMessage | Promise<HttpRequestMessage>;
   /** Request timeout in milliseconds */
   timeout?: number;

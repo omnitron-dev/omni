@@ -25,24 +25,20 @@
       "require": "./dist/docker/index.cjs"
     },
     "./runtime/vitest": {
-      "types": "./runtime/vitest.d.ts",
-      "import": "./runtime/vitest.js",
-      "require": "./runtime/vitest.js"
+      "types": "./dist/runtime/node-adapter.d.ts",
+      "import": "./dist/runtime/node-adapter.js"
     },
     "./runtime/bun": {
-      "types": "./runtime/bun.d.ts",
-      "import": "./runtime/bun.js",
-      "require": "./runtime/bun.js"
+      "types": "./dist/runtime/bun-adapter.d.ts",
+      "import": "./dist/runtime/bun-adapter.js"
     },
     "./runtime/deno": {
       "types": "./dist/runtime/deno-adapter.d.ts",
-      "import": "./dist/runtime/deno-adapter.js",
-      "require": "./dist/runtime/deno-adapter.cjs"
+      "import": "./dist/runtime/deno-adapter.js"
     },
     "./runtime/node": {
       "types": "./dist/runtime/node-adapter.d.ts",
-      "import": "./dist/runtime/node-adapter.js",
-      "require": "./dist/runtime/node-adapter.cjs"
+      "import": "./dist/runtime/node-adapter.js"
     },
     "./titan": {
       "types": "./dist/titan/index.d.ts",
@@ -67,8 +63,7 @@
   },
   "files": [
     "dist",
-    "src",
-    "runtime"
+    "src"
   ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p tsconfig.json",

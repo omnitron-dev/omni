@@ -299,6 +299,95 @@ describeOrSkip('RedisManager with Real Redis', () => {
       expect(await client.get(testKey)).toBe('newervalue');
     });
 
+    it('falls back to EVAL when the server has forgotten the script', async () => {
+      // Redis drops its script cache on SCRIPT FLUSH, on restart, and under
+      // memory pressure — so a cached SHA going stale is ordinary operation,
+      // not an error case. `runScript` catches NOSCRIPT, re-runs the body with
+      // EVAL, and re-loads it to refresh the SHA.
+      //
+      // This was covered only in redis.manager.spec.ts, which is skipped
+      // unconditionally (`const skipTests = true`) and mocks a module path that
+      // moved when redis became its own package. Here it runs against a real
+      // server, where the flush is the actual event rather than a simulated
+      // rejection.
+      const options: RedisModuleOptions = {
+        clients: [{ namespace: 'default', host: 'localhost', port: dockerFixture.port, db: 15 }],
+        scripts: [{ name: 'echo', content: 'return ARGV[1]' }],
+      };
+
+      manager = new RedisManager(options, createMockLogger());
+      await manager.init();
+
+      expect(await manager.runScript('echo', [], ['first'])).toBe('first');
+
+      // The server forgets every loaded script; the manager's cached SHA is now
+      // stale and EVALSHA will answer NOSCRIPT.
+      await manager.getClient().script('FLUSH');
+
+      expect(await manager.runScript('echo', [], ['after-flush'])).toBe('after-flush');
+
+      // And the SHA was refreshed, so the next call needs no fallback: it
+      // succeeds even though nothing re-registered the script explicitly.
+      expect(await manager.runScript('echo', [], ['third'])).toBe('third');
+    });
+
+    it('rejects a script name that was never configured', async () => {
+      const options: RedisModuleOptions = {
+        clients: [{ namespace: 'default', host: 'localhost', port: dockerFixture.port, db: 15 }],
+        scripts: [{ name: 'echo', content: 'return ARGV[1]' }],
+      };
+
+      manager = new RedisManager(options, createMockLogger());
+      await manager.init();
+
+      await expect(manager.runScript('no-such-script', [], [])).rejects.toThrow(/no-such-script/);
+    });
+  });
+
+  describe('closeClient: false', () => {
+    it('leaves the connections open on destroy', async () => {
+      // For a caller that owns the Redis connection and passes it in, closing
+      // it on the module's way out would take down a connection someone else
+      // is still using. This option was covered only in the skipped
+      // redis.manager.spec.ts, so nothing checked it against a real server.
+      const options: RedisModuleOptions = {
+        closeClient: false,
+        clients: [{ namespace: 'default', host: 'localhost', port: dockerFixture.port, db: 15 }],
+      };
+
+      manager = new RedisManager(options, createMockLogger());
+      await manager.init();
+
+      const client = manager.getClient();
+      expect(await client.ping()).toBe('PONG');
+
+      await manager.destroy();
+
+      // Still usable: `destroy()` released the manager, not the socket.
+      expect(await client.ping()).toBe('PONG');
+      await client.quit();
+      manager = undefined as never;
+    });
+
+    it('closes them by default', async () => {
+      const options: RedisModuleOptions = {
+        clients: [{ namespace: 'default', host: 'localhost', port: dockerFixture.port, db: 15 }],
+      };
+
+      manager = new RedisManager(options, createMockLogger());
+      await manager.init();
+
+      const client = manager.getClient();
+      expect(await client.ping()).toBe('PONG');
+
+      await manager.destroy();
+
+      // `quit()` leaves the client in a terminal state; a further command
+      // cannot be issued on it.
+      await expect(client.ping()).rejects.toThrow();
+      manager = undefined as never;
+    });
+
     it('should handle script errors', async () => {
       const options: RedisModuleOptions = {
         clients: [

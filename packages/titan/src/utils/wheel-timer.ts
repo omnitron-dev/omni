@@ -469,6 +469,8 @@ export class WheelTimer<K = unknown> {
 
     // Collect items to fire
     const toFire: Array<{ key: K; callback?: () => void }> = [];
+    // ...and items that landed in this slot a hair early (see below).
+    const toDefer: Array<[K, WheelEntry<K>]> = [];
 
     for (const [key, entry] of slot) {
       if (entry.rounds > 0) {
@@ -477,8 +479,40 @@ export class WheelTimer<K = unknown> {
       } else if (entry.expiresAt <= now) {
         // Entry has expired
         toFire.push({ key, callback: entry.callback });
+      } else {
+        // Not expired yet. This is not a rare rounding artefact: `schedule()`
+        // picks the slot with `ceil(delayMs / resolution)` ticks ahead of the
+        // CURRENT slot, but measures `expiresAt` from the calling instant. Let
+        // `d` be the milliseconds elapsed since the last tick; the slot is
+        // reached `ticks * resolution` after that tick, while the entry expires
+        // `d + delayMs` after it. So an entry fires on schedule only when
+        //     d <= ticks * resolution - delayMs
+        // and for every delay that is an exact multiple of the resolution that
+        // right-hand side is ZERO — the entry has to be scheduled within the
+        // same millisecond as a tick or it misses.
+        //
+        // Leaving it in place, as this branch used to, does not mean "will fire
+        // next tick": the next tick reads the NEXT slot. The entry waits for
+        // the wheel to come round again — wheelSize * resolution ms. Measured
+        // on a running wheel with resolution 10 / wheelSize 100, a timer asked
+        // for 20 ms fired 1015 ms late.
+        //
+        // Move it one slot forward instead, which is what the old comment
+        // claimed. The shortfall is bounded by `d < resolution`, so a single
+        // re-slot is always enough.
+        toDefer.push([key, entry]);
       }
-      // else: entry has not expired yet (timing edge case, will fire next tick)
+    }
+
+    // Applied after the iteration: with wheelSize 1 the next slot IS this slot,
+    // and re-inserting into the map being iterated would revisit the entry.
+    if (toDefer.length > 0) {
+      const nextSlot = (this.currentSlot + 1) % this.wheelSize;
+      for (const [key, entry] of toDefer) {
+        slot.delete(key);
+        this.wheel[nextSlot]!.set(key, entry);
+        this.keyToSlot.set(key, nextSlot);
+      }
     }
 
     // Fire callbacks outside the iteration to avoid mutation issues

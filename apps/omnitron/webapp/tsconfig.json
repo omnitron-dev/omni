@@ -8,7 +8,16 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
+    // Vite emits `dist/`; this project is the typecheck step of `pnpm build`
+    // and must not emit. It used to declare `outDir: "dist"`, which wrote a
+    // second, unbundled copy of the whole app into `dist/src/` — inside the
+    // directory nginx serves. Under TypeScript 7 the same setting became a
+    // hard error (TS5011: rootDir must be explicit), so `tsc -b` exited 2 and
+    // `&& vite build` never ran: `pnpm build` had been broken outright. It
+    // went unnoticed because the daemon builds the console by invoking
+    // `vite build` directly (webapp.service.ts), bypassing this step.
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
     "paths": {
       "src/*": ["./src/*"]
     }

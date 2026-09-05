@@ -52,6 +52,17 @@ export class OpenApiGenerator {
           paths[basePath] = {};
         }
 
+        // `method.description` and `method.deprecated` are vestigial middle terms:
+        // `MethodInfo` (netron-protocol) declares `type` and `arguments` and
+        // nothing else, and nothing anywhere populates either field — so both
+        // are permanently `undefined` and every summary falls through to the
+        // generated one. They are worth naming rather than deleting, because
+        // their presence is what makes it look as though a method can carry its
+        // own description.
+        //
+        // The path that DOES work is the service contract's `openapi` block
+        // (`summary`, `description`, `tags`, `deprecated` — see
+        // validation/contract.ts), which is `httpConfig?.openapi` here.
         const operation: Record<string, unknown> = {
           operationId: `${serviceName}_${methodName}`,
           summary: httpConfig?.openapi?.summary || method.description || `Invoke ${serviceName}.${methodName}`,

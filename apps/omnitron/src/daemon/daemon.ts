@@ -498,6 +498,16 @@ export class OmnitronDaemon {
     const logCollector = await container.resolveAsync<LogCollectorService>(LOG_COLLECTOR_TOKEN);
     const loggerModule = await container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
 
+    // Table retention. `logging.maxSize` and `maxFiles` bound the rotated
+    // files on disk and say nothing about the `logs` table, which had no
+    // bound at all — 13 GB on the development host. Off unless configured,
+    // and the number comes from the config rather than a default chosen
+    // inside the collector, because a wrong default there deletes history.
+    logCollector.setRetentionDays(
+      config.logging?.databaseRetentionDays ?? 0,
+      loggerModule.logger.child({ component: 'log-retention' })
+    );
+
     const rpcService = new DaemonRpcService(orchestrator, titanHealth, logManager, config, this);
     await this.app.netron.peer.exposeService(rpcService);
 

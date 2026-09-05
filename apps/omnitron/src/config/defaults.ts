@@ -90,5 +90,9 @@ export const DEFAULT_ECOSYSTEM: Omit<IEcosystemConfig, 'apps'> = {
     maxSize: '50mb',
     maxFiles: 10,
     compress: true,
+    // Two weeks. Long enough to investigate an incident from the weekend,
+    // short enough that the table stops being the largest thing on the disk.
+    // The development host reached 13 GB with no bound at all.
+    databaseRetentionDays: 14,
   },
 };

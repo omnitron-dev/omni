@@ -1092,39 +1092,52 @@ describe('PolicyEngine Security Tests', () => {
       service: { name: 'testService', version: '1.0.0' },
     };
 
-    it('should handle race conditions in evaluateAll', async () => {
-      let sharedCounter = 0;
+    it('evaluates policies in parallel, not one after another', async () => {
+      // The previous version of this test ran two policies that raced on a
+      // shared counter, then asserted nothing — its closing comment said the
+      // counter "may not be 2 due to race condition" and that the test
+      // "documents that policies run in parallel". A property stated in a
+      // comment is not tested, and this one is deterministically testable.
+      //
+      // Policy A cannot finish until policy B has started. Sequential
+      // evaluation in registration order therefore never terminates; parallel
+      // evaluation completes. The 1s race turns that distinction into a
+      // readable failure instead of a hang.
+      let bHasStarted!: () => void;
+      const bStarted = new Promise<void>((resolve) => {
+        bHasStarted = resolve;
+      });
+      let aCompleted = false;
 
-      const racePolicy1: PolicyDefinition = {
-        name: 'race-policy-1',
+      const policyA: PolicyDefinition = {
+        name: 'parallel-a',
         evaluate: async () => {
-          const current = sharedCounter;
-          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
-          sharedCounter = current + 1;
+          await bStarted;
+          aCompleted = true;
           return { allowed: true };
         },
       };
 
-      const racePolicy2: PolicyDefinition = {
-        name: 'race-policy-2',
+      const policyB: PolicyDefinition = {
+        name: 'parallel-b',
         evaluate: async () => {
-          const current = sharedCounter;
-          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
-          sharedCounter = current + 1;
+          bHasStarted();
           return { allowed: true };
         },
       };
 
-      policyEngine.registerPolicies([racePolicy1, racePolicy2]);
+      policyEngine.registerPolicies([policyA, policyB]);
 
-      // Run multiple times to increase chance of race condition
-      for (let i = 0; i < 5; i++) {
-        sharedCounter = 0;
-        await policyEngine.evaluateAll(['race-policy-1', 'race-policy-2'], mockContext, { skipCache: true });
-      }
+      const decision = await Promise.race([
+        policyEngine.evaluateAll(['parallel-a', 'parallel-b'], mockContext, { skipCache: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('evaluateAll did not finish — policies ran sequentially')), 1000)
+        ),
+      ]);
 
-      // Counter may not be 2 due to race condition
-      // This test documents that policies run in parallel without synchronization
+      expect(aCompleted).toBe(true);
+      expect(decision.allowed).toBe(true);
+      expect(decision.metadata?.evaluatedPolicies).toEqual(['parallel-a', 'parallel-b']);
     });
 
     it('should prevent resource exhaustion from parallel evaluation', async () => {

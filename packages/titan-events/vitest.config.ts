@@ -22,6 +22,20 @@ export default defineConfig({
   plugins: [resolveJsToTs()],
   test: {
     globals: true,
+    // Transform output persisted between runs. Measured on this package: a
+    // cold run takes 3.99s wall, a warm one 2.61s.
+    //
+    // Not applied on the strength of vitest's own hint, which reports
+    // "transforming modules took 20.97s · 77% of tracked time" — that figure is
+    // summed across parallel workers, not wall time, and reads far larger than
+    // the second and a half actually on the table.
+    //
+    // Invalidation checked rather than assumed, because this config carries a
+    // custom `resolveJsToTs` resolver and a stale module cache in a test
+    // harness is the kind of defect that invents passing tests: breaking a
+    // source file with the cache warm fails the suite, and restoring it passes
+    // again.
+    fsModuleCache: true,
     environment: 'node',
     include: ['test/**/*.spec.ts', 'test/**/*.test.ts'],
     testTimeout: 120_000,

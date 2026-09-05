@@ -1,6 +1,18 @@
 /**
- * Tests for method-level transport filtering
- * Tests that @Public({ transports: [...] }) properly restricts method availability
+ * What `@Public({ transports: [...] })` does — which is not what this file's
+ * header used to claim.
+ *
+ * It said the decorator "properly restricts method availability". It does not:
+ * the decorator writes a `method:transports` reflect key and nothing in the
+ * framework reads it, so the method stays callable over every transport. The
+ * tests below have always said so in their own names — "filtering is
+ * application-level", "should allow APPLICATION to filter" — so the header
+ * contradicted the assertions underneath it, and the header is what a reader
+ * skims.
+ *
+ * Service-level transports ARE honoured (`netron.ts` skips a service when
+ * starting a transport server the service does not list), which is what makes
+ * the method-level version look like a working feature.
  */
 
 import type { Netron } from '../../src/netron/netron.js';

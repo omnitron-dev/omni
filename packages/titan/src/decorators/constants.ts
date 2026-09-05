@@ -1,22 +1,28 @@
 /**
  * Decorator Metadata Constants
  *
- * Centralized metadata key definitions for all decorators in the Titan framework.
- * This ensures consistency across all decorator implementations and prevents typos.
+ * The keys the decorators in `core.ts` actually write, re-exported under the
+ * names this module has always used, plus the few that only exist here.
+ *
+ * It used to declare its own values, and all twenty-one names it shares with
+ * METADATA_KEYS disagreed with it — every single one. `INJECTABLE` was
+ * 'titan:di:injectable' here and 'nexus:injectable' there; METHOD_AUTH was
+ * 'titan:method:auth' against 'method:auth'. Since DECORATOR_METADATA is part
+ * of this package's public surface, any consumer reading metadata through it
+ * found nothing, for every key, with no error to show for it: two registries
+ * for one thing, both looking canonical, and the decorators writing to only
+ * one.
+ *
+ * Deriving the shared names removes the possibility rather than the instance.
+ * The remaining entries — the `titan:inject:*` family read by
+ * nexus/container/injection-plan.ts, and TypeScript's own `design:*` — have no
+ * counterpart in METADATA_KEYS and keep their literals.
  *
  * @module decorators/constants
  */
 
-/**
- * Metadata keys for decorators
- *
- * All metadata keys follow the pattern: `namespace:category:subcategory`
- * - `titan:` - Titan framework namespace (preferred for new code)
- * - `nexus:` - Legacy Nexus namespace (maintained for backward compatibility)
- * - `design:` - TypeScript design-time metadata
- * - `method:` - Method-level configuration
- * - `inject:` - Injection-specific metadata
- */
+import { METADATA_KEYS } from './core.js';
+
 export const DECORATOR_METADATA = {
   // ============================================================================
   // DI Metadata (titan:di:*)
@@ -26,67 +32,67 @@ export const DECORATOR_METADATA = {
    * Marks a class as injectable
    * @constant {string}
    */
-  INJECTABLE: 'titan:di:injectable',
+  INJECTABLE: METADATA_KEYS.INJECTABLE,
 
   /**
    * Stores constructor parameter injection tokens
    * @constant {string}
    */
-  CONSTRUCTOR_PARAMS: 'titan:di:constructor-params',
+  CONSTRUCTOR_PARAMS: METADATA_KEYS.CONSTRUCTOR_PARAMS,
 
   /**
    * Stores property injection tokens
    * @constant {string}
    */
-  PROPERTY_PARAMS: 'titan:di:property-params',
+  PROPERTY_PARAMS: METADATA_KEYS.PROPERTY_PARAMS,
 
   /**
    * Stores method parameter injection tokens
    * @constant {string}
    */
-  METHOD_PARAMS: 'titan:di:method-params',
+  METHOD_PARAMS: METADATA_KEYS.METHOD_PARAMS,
 
   /**
    * Stores the scope of an injectable (singleton, transient, scoped, request)
    * @constant {string}
    */
-  SCOPE: 'titan:di:scope',
+  SCOPE: METADATA_KEYS.SCOPE,
 
   /**
    * Stores the injection token for a class
    * @constant {string}
    */
-  TOKEN: 'titan:di:token',
+  TOKEN: METADATA_KEYS.TOKEN,
 
   /**
    * Marks a dependency as optional
    * @constant {string}
    */
-  OPTIONAL: 'titan:di:optional',
+  OPTIONAL: METADATA_KEYS.OPTIONAL,
 
   /**
    * Marks a parameter for multi-provider injection
    * @constant {string}
    */
-  INJECT_ALL: 'titan:di:inject-all',
+  INJECT_ALL: METADATA_KEYS.INJECT_ALL,
 
   /**
    * Marks a class as a module
    * @constant {string}
    */
-  MODULE: 'titan:di:module',
+  MODULE: METADATA_KEYS.MODULE,
 
   /**
    * Marks a module or provider as global
    * @constant {string}
    */
-  GLOBAL: 'titan:di:global',
+  GLOBAL: METADATA_KEYS.GLOBAL,
 
   /**
    * Stores the service name
    * @constant {string}
    */
-  SERVICE_NAME: 'titan:di:service-name',
+  SERVICE_NAME: METADATA_KEYS.SERVICE_NAME,
 
   // ============================================================================
   // Lifecycle Metadata (titan:lifecycle:*)
@@ -96,13 +102,13 @@ export const DECORATOR_METADATA = {
    * Marks a method to be called after construction
    * @constant {string}
    */
-  POST_CONSTRUCT: 'titan:lifecycle:post-construct',
+  POST_CONSTRUCT: METADATA_KEYS.POST_CONSTRUCT,
 
   /**
    * Marks a method to be called before destruction
    * @constant {string}
    */
-  PRE_DESTROY: 'titan:lifecycle:pre-destroy',
+  PRE_DESTROY: METADATA_KEYS.PRE_DESTROY,
 
   // ============================================================================
   // Netron/Service Metadata (titan:service:*)
@@ -112,13 +118,13 @@ export const DECORATOR_METADATA = {
    * Stores service annotation metadata
    * @constant {string}
    */
-  SERVICE_ANNOTATION: 'titan:service:annotation',
+  SERVICE_ANNOTATION: METADATA_KEYS.SERVICE_ANNOTATION,
 
   /**
    * Marks a method as public in the service
    * @constant {string}
    */
-  METHOD_ANNOTATION: 'titan:service:method',
+  METHOD_ANNOTATION: METADATA_KEYS.METHOD_ANNOTATION,
 
   // ============================================================================
   // Method Configuration Metadata (titan:method:*)
@@ -128,37 +134,37 @@ export const DECORATOR_METADATA = {
    * Stores method authentication configuration
    * @constant {string}
    */
-  METHOD_AUTH: 'titan:method:auth',
+  METHOD_AUTH: METADATA_KEYS.METHOD_AUTH,
 
   /**
    * Stores method rate limit configuration
    * @constant {string}
    */
-  METHOD_RATE_LIMIT: 'titan:method:rate-limit',
+  METHOD_RATE_LIMIT: METADATA_KEYS.METHOD_RATE_LIMIT,
 
   /**
    * Stores method cache configuration
    * @constant {string}
    */
-  METHOD_CACHE: 'titan:method:cache',
+  METHOD_CACHE: METADATA_KEYS.METHOD_CACHE,
 
   /**
    * Stores method prefetch configuration
    * @constant {string}
    */
-  METHOD_PREFETCH: 'titan:method:prefetch',
+  METHOD_PREFETCH: METADATA_KEYS.METHOD_PREFETCH,
 
   /**
    * Stores method audit configuration
    * @constant {string}
    */
-  METHOD_AUDIT: 'titan:method:audit',
+  METHOD_AUDIT: METADATA_KEYS.METHOD_AUDIT,
 
   /**
    * Stores general method options
    * @constant {string}
    */
-  METHOD_OPTIONS: 'titan:method:options',
+  METHOD_OPTIONS: METADATA_KEYS.METHOD_OPTIONS,
 
   // ============================================================================
   // Injection Metadata (titan:inject:*)

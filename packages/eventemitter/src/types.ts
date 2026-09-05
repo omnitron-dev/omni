@@ -1,8 +1,19 @@
+/**
+ * A listener as this emitter accepts one.
+ *
+ * `Function` stood here, and it is worse than it looks: it accepts anything
+ * callable INCLUDING class constructors, and it carries no call signature, so
+ * every listener parameter at every call site becomes an implicit `any`. Under
+ * `noImplicitAny` that is 21 errors in this package's own tests alone — and the
+ * same erasure reaches every consumer, silently, as untyped listener arguments.
+ */
+export type ListenerLike = (...args: any[]) => any;
+
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 
 // Core event types
 export type EventListener = {
-  fn: Function;
+  fn: ListenerLike;
   context: any;
   once: boolean;
   priority?: number;
@@ -295,7 +306,7 @@ export interface IEventBus {
   /** Synchronous emit. Returns `true` if any listener received the event. */
   emit(event: string | symbol, ...args: any[]): boolean;
   /** Read-only view of listeners on `event`. Implementations may return either an array or a single function. */
-  listeners(event: string | symbol): Function[];
+  listeners(event: string | symbol): ListenerLike[];
   /** Count listeners on `event`. */
   listenerCount(event: string | symbol): number;
   /** Remove every listener for `event` (or every listener everywhere when omitted). */

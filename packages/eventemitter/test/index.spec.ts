@@ -1,4 +1,4 @@
-import { EventEmitter, isEventEmitter } from '../src.js';
+import { EventEmitter, isEventEmitter } from '../src/index.js';
 
 describe('EventEmitter', () => {
   it('isEmitter() should return true', () => {

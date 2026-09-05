@@ -387,13 +387,26 @@ export function isLightColor(hex: string): boolean {
 /**
  * Get optimal contrast text color for a background.
  *
+ * Picks whichever of the two candidates actually contrasts more, rather than
+ * switching on a luminance threshold. The threshold version returned white
+ * for every colour below 0.5 luminance, which includes the mid-tone brand
+ * colours a theme is most likely to use: `#FF5630` scored 3.17 against white
+ * and 6.63 against black, and `#00A76F` 3.11 against white and 6.76 against
+ * black. Both were handed the worse of the two and both fall below WCAG AA
+ * for body text.
+ *
+ * The measurement is already in this file — `getContrastRatio` sat next to
+ * the threshold and went unused.
+ *
  * @param background - Background hex color
  * @param lightText - Light text color (default: white)
  * @param darkText - Dark text color (default: black)
- * @returns Best contrast text color
+ * @returns Whichever candidate contrasts more with `background`
  */
 export function getContrastText(background: string, lightText = '#FFFFFF', darkText = '#000000'): string {
-  return isLightColor(background) ? darkText : lightText;
+  return getContrastRatio(background, lightText) >= getContrastRatio(background, darkText)
+    ? lightText
+    : darkText;
 }
 
 // =============================================================================

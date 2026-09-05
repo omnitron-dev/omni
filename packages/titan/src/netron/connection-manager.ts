@@ -339,7 +339,14 @@ export class ConnectionManager extends EventEmitter {
       this.cleanupIdleConnections();
     }, this.config.cleanupInterval);
 
-    this.logger.info({ config: this.config }, 'Connection manager started');
+    // debug, not info: one connect/disconnect cycle emitted ~10 info lines,
+    // and on a host running a handful of services netron's own plumbing
+    // accounted for 83.9% of every line in the log table — 93,273 of
+    // "Initializing remote peer" alone in a day. None of it reports a change
+    // an operator acts on; it reports that the transport is working. info is
+    // for what changes the state of the system, and a log nobody reads is a
+    // log that costs disk to say nothing.
+    this.logger.debug({ config: this.config }, 'Connection manager started');
   }
 
   /**
@@ -354,7 +361,7 @@ export class ConnectionManager extends EventEmitter {
     this.state = ConnectionManagerState.STOPPING;
     this.emit('manager:state_change', oldState, this.state);
 
-    this.logger.info('Stopping connection manager...');
+    this.logger.debug('Stopping connection manager');
 
     // Clear timers
     this.healthCheckProbe?.stop();
@@ -385,7 +392,7 @@ export class ConnectionManager extends EventEmitter {
     this.state = ConnectionManagerState.STOPPED;
     this.emit('manager:state_change', ConnectionManagerState.STOPPING, this.state);
 
-    this.logger.info('Connection manager stopped');
+    this.logger.debug('Connection manager stopped');
   }
 
   /**

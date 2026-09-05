@@ -201,7 +201,10 @@ export class NetronClient {
     this.setupDisconnectHandler();
 
     this._state = ConnectionState.CONNECTED;
-    this.logger.info({ processId: this.processId, transportUrl }, 'Connected to process');
+    // debug, not info: this fires on every connection and every reconnect,
+    // alongside netron's own lifecycle lines. A process coming up is worth an
+    // info line — the transport attaching to it is not.
+    this.logger.debug({ processId: this.processId, transportUrl }, 'Connected to process');
   }
 
   /**

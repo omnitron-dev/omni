@@ -231,7 +231,7 @@ export class RemotePeer extends AbstractPeer {
    * @returns {Promise<void>}
    */
   async init(isConnector?: boolean, options?: INetronOptions) {
-    this.logger.info({ isConnector }, 'Initializing remote peer');
+    this.logger.debug({ isConnector }, 'Initializing remote peer');
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         try {
@@ -239,10 +239,10 @@ export class RemotePeer extends AbstractPeer {
           // so transport-side input is gated at decoder entry.
           this.handlePacket(decodePacket(data, this.netron.options?.maxPacketSize));
         } catch (error: unknown) {
-          this.logger.error({ error }, 'Packet decode error:');
+          this.logger.error({ err: error, peerId: this.id }, 'Failed to decode incoming packet');
         }
       } else {
-        this.logger.warn({ data }, 'Received non-binary message:');
+        this.logger.warn({ data, peerId: this.id }, 'Received a non-binary message');
       }
     });
 
@@ -832,7 +832,7 @@ export class RemotePeer extends AbstractPeer {
         try {
           await this.sendErrorResponse(packet, err);
         } catch (sendErr) {
-          this.logger.error({ value: sendErr }, 'Error sending rate-limit response:');
+          this.logger.error({ err: sendErr, peerId: this.id }, 'Failed to send rate-limit error response');
         }
         return;
       }
@@ -863,11 +863,11 @@ export class RemotePeer extends AbstractPeer {
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: unknown) {
-          this.logger.error({ value: err }, 'Error setting value:');
+          this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to set property on remote service');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ value: err_ }, 'Error sending error response:');
+            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
           }
         }
         break;
@@ -892,11 +892,11 @@ export class RemotePeer extends AbstractPeer {
           // a nested service can be authz-filtered before the leak.
           await this.sendResponse(packet, await stub.get(name, this));
         } catch (err: unknown) {
-          this.logger.error({ value: err }, 'Error getting value:');
+          this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to get property from remote service');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ value: err_ }, 'Error sending error response:');
+            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
           }
         }
         break;
@@ -921,11 +921,11 @@ export class RemotePeer extends AbstractPeer {
           await this.enforceMethodAccess(stub, method, args, 'call');
           await this.sendResponse(packet, await stub.call(method, args, this));
         } catch (err: unknown) {
-          this.logger.error({ value: err }, 'Error calling method:');
+          this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ value: err_ }, 'Error sending error response:');
+            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
           }
         }
         break;
@@ -940,11 +940,11 @@ export class RemotePeer extends AbstractPeer {
           }
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: unknown) {
-          this.logger.error({ value: err }, 'Error running task:');
+          this.logger.error({ err, task: name }, 'Failed to run task');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ value: err_ }, 'Error sending error response:');
+            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
           }
         }
         break;
@@ -1006,7 +1006,7 @@ export class RemotePeer extends AbstractPeer {
         break;
       }
       default: {
-        this.logger.warn({ value: pType }, 'Unknown packet type:');
+        this.logger.warn({ packetType: pType, peerId: this.id }, 'Received an unknown packet type');
       }
     }
   }
@@ -1290,7 +1290,7 @@ export class RemotePeer extends AbstractPeer {
     this.evictOldestIfNeeded(this.services, RemotePeer.MAX_SERVICE_DEFINITIONS, 'services');
     this.services.set(serviceKey, definition);
 
-    this.logger.info(
+    this.logger.debug(
       {
         serviceName: qualifiedName,
         definitionId: definition.id,

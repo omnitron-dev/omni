@@ -184,7 +184,10 @@ describe('RemotePeer Edge Cases', () => {
 
       await remotePeer.handlePacket(packet);
 
-      expect((remotePeer as any).logger.warn).toHaveBeenCalledWith({ value: 15 }, 'Unknown packet type:');
+      expect((remotePeer as any).logger.warn).toHaveBeenCalledWith(
+        { packetType: 15, peerId: 'test-peer' },
+        'Received an unknown packet type'
+      );
     });
   });
 

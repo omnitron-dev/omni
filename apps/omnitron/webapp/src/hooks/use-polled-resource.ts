@@ -38,6 +38,54 @@ function documentVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState !== 'hidden';
 }
 
+/**
+ * The schedule on its own, for callers whose state lives somewhere else.
+ *
+ * The projects page polls a Zustand action; the topology page polls into its
+ * own store. Wrapping those in `usePolledResource` would give them a second
+ * copy of state they already hold, so they take the timer and skip the rest —
+ * and still get the pause on a hidden tab, which is the part that was missing
+ * everywhere.
+ *
+ * `tick` is read through a ref, so an inline arrow does not re-arm the timer
+ * on every render.
+ */
+export function usePollingEffect(
+  tick: () => void,
+  { intervalMs, enabled = true }: { intervalMs: number; enabled?: boolean }
+): void {
+  const tickRef = useRef(tick);
+  tickRef.current = tick;
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (timer !== null) return;
+      tickRef.current();
+      timer = setInterval(() => tickRef.current(), intervalMs);
+    };
+
+    const stop = () => {
+      if (timer === null) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const onVisibility = () => (documentVisible() ? start() : stop());
+
+    if (documentVisible()) start();
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      stop();
+    };
+  }, [intervalMs, enabled]);
+}
+
 export function usePolledResource<T>(
   fetcher: () => Promise<T>,
   { intervalMs, enabled = true, describeError }: UsePolledResourceOptions
@@ -66,33 +114,7 @@ export function usePolledResource<T>(
 
   useEffect(() => () => runner.stop(), [runner]);
 
-  useEffect(() => {
-    if (!enabled) return undefined;
-
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const start = () => {
-      if (timer !== null) return;
-      void runner.tick();
-      timer = setInterval(() => void runner.tick(), intervalMs);
-    };
-
-    const stop = () => {
-      if (timer === null) return;
-      clearInterval(timer);
-      timer = null;
-    };
-
-    const onVisibility = () => (documentVisible() ? start() : stop());
-
-    if (documentVisible()) start();
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      stop();
-    };
-  }, [runner, intervalMs, enabled]);
+  usePollingEffect(() => void runner.tick(), { intervalMs, enabled });
 
   const refresh = useCallback(async () => {
     await runner.tick();

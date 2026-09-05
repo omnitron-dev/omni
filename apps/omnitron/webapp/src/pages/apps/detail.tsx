@@ -33,6 +33,7 @@ import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type { ProcessInfoDto, AppDiagnosticsDto, LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
 
@@ -813,12 +814,13 @@ function MetricsTab({ appName }: { appName: string }) {
     }
   }, [appName]);
 
+  usePollingEffect(() => void fetchMetrics(), { intervalMs: 10_000, enabled: autoRefresh });
+
   useEffect(() => {
-    fetchMetrics();
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchMetrics, 10_000);
-    return () => clearInterval(interval);
-  }, [fetchMetrics, autoRefresh]);
+    // One fetch on mount regardless of the toggle: an operator arriving with
+    // auto-refresh off still expects to see numbers.
+    void fetchMetrics();
+  }, [fetchMetrics]);
 
   const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     ...baseChartOptions,
@@ -969,12 +971,13 @@ export default function AppDetailPage() {
     }
   }, [daemonName]);
 
-  useEffect(() => {
-    fetchApp();
-    fetchDiagnostics();
-    const interval = setInterval(() => { fetchApp(); fetchDiagnostics(); }, 5000);
-    return () => clearInterval(interval);
-  }, [fetchApp, fetchDiagnostics]);
+  usePollingEffect(
+    () => {
+      void fetchApp();
+      void fetchDiagnostics();
+    },
+    { intervalMs: 5_000 }
+  );
 
   const handleAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!daemonName) return;

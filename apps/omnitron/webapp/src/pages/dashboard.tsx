@@ -31,6 +31,7 @@ import { daemon, metrics } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useRealtimeStore } from 'src/stores/realtime.store';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { useActiveProjectStacks } from 'src/stores/project.store';
 import { useStackContext } from 'src/hooks/use-stack-context';
 
@@ -312,11 +313,9 @@ export default function DashboardPage() {
   // When WS is connected, increase poll interval to 15s (WS pushes trigger refresh).
   // When WS is not connected, poll every 5s as before.
   // Any WS event triggers an immediate data refresh.
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, wsConnected ? 15_000 : 5_000);
-    return () => clearInterval(interval);
-  }, [fetchData, wsConnected]);
+  usePollingEffect(() => void fetchData(), {
+    intervalMs: wsConnected ? 15_000 : 5_000,
+  });
 
   // Re-fetch on any WS event (app started/crashed/restarted)
   useEffect(() => {

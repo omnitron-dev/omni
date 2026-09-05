@@ -28,6 +28,7 @@ import { useTopologyStore } from './topology-store';
 import { getStatusColor, miniBarSx } from './shared-styles';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
 import { daemon, logs } from 'src/netron/client';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { AppNodeData, InfraNodeData, GatewayNodeData, ServerNodeData } from './topology-store';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
 
@@ -322,11 +323,7 @@ function LogsTab({ appName }: { appName?: string }) {
     }
   }, [appName]);
 
-  useEffect(() => {
-    fetchLogs();
-    const iv = setInterval(fetchLogs, 5000);
-    return () => clearInterval(iv);
-  }, [fetchLogs]);
+  usePollingEffect(() => void fetchLogs(), { intervalMs: 5_000 });
 
   if (loading) {
     return (

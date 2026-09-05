@@ -36,6 +36,7 @@ import {
 } from '../../stores/project.store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 import { formatUptime } from '../../utils/formatters';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 // =============================================================================
 // Status colors
@@ -83,12 +84,10 @@ export default function StacksPage() {
 
   // Auto-refresh: 3s when operations are in-flight, 10s otherwise
   const hasPendingOps = Object.keys(pendingOps).length > 0;
-  useEffect(() => {
-    if (!activeProject) return;
-    const interval = hasPendingOps ? 3_000 : 10_000;
-    const timer = setInterval(() => fetchStacks(activeProject), interval);
-    return () => clearInterval(timer);
-  }, [activeProject, fetchStacks, hasPendingOps]);
+  usePollingEffect(() => void (activeProject && fetchStacks(activeProject)), {
+    intervalMs: hasPendingOps ? 3_000 : 10_000,
+    enabled: Boolean(activeProject),
+  });
 
   const handleStart = useCallback(
     async (stackName: string) => {

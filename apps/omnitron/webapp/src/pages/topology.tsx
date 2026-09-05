@@ -69,6 +69,7 @@ import { DetailPanel } from 'src/components/topology/detail-panel';
 import { AddServerDialog } from 'src/components/topology/add-server-dialog';
 import { useTopologyStore, type TopologyNodeData } from 'src/components/topology/topology-store';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { pulseKeyframes } from 'src/components/topology/shared-styles';
 
 // ---------------------------------------------------------------------------
@@ -236,12 +237,10 @@ export default function TopologyPage() {
     [onNodesChange],
   );
 
-  // Initial fetch + auto-refresh
-  useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 5000);
-    return () => clearInterval(interval);
-  }, [fetchAll]);
+  // State lives in the topology store; this takes the schedule only. At a
+  // five-second period this was the console's heaviest background loop, and
+  // it ran from a hidden tab like all the others.
+  usePollingEffect(() => void fetchAll(), { intervalMs: 5_000 });
 
   // Toggle fullscreen on the canvas container
   const toggleFullscreen = useCallback(() => {

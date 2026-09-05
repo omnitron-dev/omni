@@ -326,30 +326,61 @@ describeOrSkip('Redis Decorators with Real Redis', () => {
     });
 
     it('should use custom key function', async () => {
+      // The lock is held until this test releases it, rather than for a fixed
+      // 10ms. The old version raced its own assertion: `keys()` is a network
+      // round trip issued inside that 10ms window, so under load the method
+      // finished and the lock was gone before the reply came back — the failure
+      // was `expected [] to include 'lock:order-123'`, on a machine busy with a
+      // full monorepo run.
+      //
+      // Widening the window would only move the race. Worse, the assertion
+      // could not tell the two outcomes apart: "the lock was never created
+      // under this key" and "the lock was created and already released" both
+      // read as an empty list. So the test now waits for the key to APPEAR and
+      // then, after releasing, for it to VANISH — neither half can be satisfied
+      // by the other's failure.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
 
       class TestService {
         private redisManager = manager;
 
+        // ttl comfortably longer than the waits below, so the lock cannot
+        // expire on its own and quietly make the second assertion pass.
         @RedisLock({
           keyFn: (id: number, type: string) => `${type}-${id}`,
-          ttl: 1,
+          ttl: 30,
         })
         async process(id: number, type: string): Promise<void> {
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await held;
         }
       }
 
       const service = new TestService();
-
-      // Start process
       const promise = service.process(123, 'order');
 
-      // Check lock exists with custom key
-      await flushPromises();
-      const keys = await client.keys('lock:*');
-      expect(keys).toContain('lock:order-123');
+      // Polled rather than `waitForCondition`d so the failure names the
+      // condition: both halves would otherwise report the same
+      // "Timeout waiting for: waitForCondition" and give no clue which one
+      // broke — nor, in the first half, WHICH key the lock was taken under.
+      const pollKeys = async (want: (keys: string[]) => boolean): Promise<string[]> => {
+        const deadline = Date.now() + 5000;
+        let keys: string[] = [];
+        for (;;) {
+          keys = await client.keys('lock:*');
+          if (want(keys) || Date.now() > deadline) return keys;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      };
 
+      expect(await pollKeys((k) => k.includes('lock:order-123'))).toContain('lock:order-123');
+
+      release();
       await promise;
+
+      expect(await pollKeys((k) => !k.includes('lock:order-123'))).not.toContain('lock:order-123');
     });
 
     it('should release lock on error', async () => {

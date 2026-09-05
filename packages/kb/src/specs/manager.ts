@@ -58,8 +58,14 @@ export class SpecsManager {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      // A spec directory that does not exist contributes nothing, which is
+      // the case this was written for. Anything else means the directory IS
+      // there and unreadable, and returning silently reports it as holding no
+      // specs — indistinguishable from an empty one, so a permissions problem
+      // reads as "this project has no specs".
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
     }
 
     for (const entry of entries) {

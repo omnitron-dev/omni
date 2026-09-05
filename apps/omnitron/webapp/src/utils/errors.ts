@@ -51,11 +51,29 @@ export function sanitizeReturnTo(raw: string | null | undefined, fallback = '/')
   if (!raw) return fallback;
   try {
     const decoded = decodeURIComponent(raw);
-    // Must be a relative path (starts with /)
-    if (!decoded.startsWith('/')) return fallback;
-    // Strip any embedded protocol or host (e.g. //evil.com/...)
-    const clean = decoded.replace(/^\/\/+/, '/');
-    return clean || fallback;
+
+    // Resolve against a throwaway origin and keep the result only if it
+    // stayed on it. Pattern-matching the dangerous shapes was the previous
+    // approach and it missed one: `//evil.com` was stripped, but
+    // `/\evil.com` starts with `/`, survives the `^\/\/+` replace, and is
+    // normalised by every browser to `//evil.com` — an off-site redirect
+    // through a filter written to prevent exactly that. `/\/evil.com` and
+    // `/..//evil.com` are the same trick again.
+    //
+    // Asking the URL parser is not a stricter pattern; it is the difference
+    // between guessing how a URL will be read and reading it the same way.
+    const base = 'https://console.invalid';
+    const url = new URL(decoded, base);
+    if (url.origin !== base) return fallback;
+
+    const path = url.pathname + url.search + url.hash;
+
+    // The parse is not the last word: `/..//evil.com` resolves ON this
+    // origin, and its pathname is `//evil.com` — protocol-relative all over
+    // again the next time anything reads it. Reject anything that would be
+    // re-read as an authority.
+    if (!path.startsWith('/') || path.startsWith('//')) return fallback;
+    return path;
   } catch {
     return fallback;
   }

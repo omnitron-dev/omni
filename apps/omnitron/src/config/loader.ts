@@ -69,7 +69,7 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
 }
 
 /**
- * Load config from a specific file path (e.g., `omnitron dev -c ./omnitron.config.ts`)
+ * Load config from a specific file path (e.g., `omnitron up -c ./omnitron.config.ts`)
  */
 export async function loadEcosystemConfigFile(filePath: string): Promise<IEcosystemConfig> {
   if (!fs.existsSync(filePath)) {

@@ -1,7 +1,7 @@
 /**
  * Deciding whether the daemon is down.
  *
- * The console's banner says "Daemon offline — run `omnitron dev` to start the
+ * The console's banner says "Daemon offline — run `omnitron up` to start the
  * backend", which is an instruction, not an observation: it tells an operator
  * to start something. It was raised by a single failed probe, and one of the
  * ways a probe fails is a five-second timeout — so on a loaded machine, which
@@ -67,7 +67,7 @@ export function classifyHealthResponse(
  *
  * `degraded` therefore has no ceiling, and the count travels with it so the
  * banner can grow more insistent — "has not answered four checks" is true and
- * useful, "offline — run `omnitron dev`" is an instruction, and an
+ * useful, "offline — run `omnitron up`" is an instruction, and an
  * instruction needs evidence rather than repetition.
  *
  * @param outcome what the probe established

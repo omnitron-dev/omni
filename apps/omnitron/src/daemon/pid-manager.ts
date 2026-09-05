@@ -10,7 +10,7 @@
  * pid", not "is OUR daemon alive at this pid". After a daemon crash
  * the kernel will eventually recycle the pid for an unrelated
  * process (a Chrome tab, a Node REPL, whatever). The old pid file
- * still pointed at it, so `omnitron daemon start` falsely reported
+ * still pointed at it, so `omnitron up` falsely reported
  * "daemon already running" and refused to come up.
  *
  * Fix: write a signature alongside the pid (the daemon's argv[1] —
@@ -94,7 +94,7 @@ export class PidManager {
    * Write current process PID + signature using an atomic
    * `open(O_CREAT|O_EXCL)` — fails fast if another daemon already
    * holds the file. Pre-fix `isRunning()` then `writeFileSync` was a
-   * TOCTOU race: two `omnitron daemon start` invocations a millisecond
+   * TOCTOU race: two `omnitron up` invocations a millisecond
    * apart both passed the liveness check, the second overwrote the
    * first's marker, and then both tried to bind the Unix socket —
    * one died with EADDRINUSE, the other was left orphaned with no
@@ -116,7 +116,7 @@ export class PidManager {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'EEXIST') {
         throw new Error(
-          `PID file ${this.pidFile} already exists — another daemon is starting or crashed without cleanup. Run \`omnitron daemon stop\` or remove the file manually.`,
+          `PID file ${this.pidFile} already exists — another daemon is starting or crashed without cleanup. Run \`omnitron down\` or remove the file manually.`,
         );
       }
       throw err;

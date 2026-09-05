@@ -318,6 +318,20 @@ export class JWTService implements IJWTService, ISignedUrlService {
 
     const payload: IJWTPayload = {
       sub: josePayload.sub,
+      // `role` is required in IJWTPayload, and this supplies it silently when a
+      // verified token omits it — unlike `sub` above, which throws. Deliberate,
+      // and worth stating so it is neither tightened nor widened by guesswork:
+      //
+      //   - Tightening (throw, as for `sub`) rejects every token from an issuer
+      //     that does not set the claim. The blast radius is other people's
+      //     deployments, not this file.
+      //   - 'user' is the safe value to invent: it satisfies neither
+      //     `isServiceRole()` (which wants 'service_role') nor `isAnonymous()`
+      //     (which wants 'anon'), so it grants nothing and denies nothing that
+      //     an authenticated bearer should have.
+      //
+      // What it does cost: an issuer misconfigured to omit the claim looks
+      // exactly like one that set it to 'user'.
       role: (josePayload['role'] as string) ?? 'user',
       aud: josePayload.aud as string | undefined,
       iss: josePayload.iss,

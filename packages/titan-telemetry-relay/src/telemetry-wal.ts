@@ -41,6 +41,13 @@ export class TelemetryWal {
   totalWritten = 0;
 
   /**
+   * Why the last segment listing failed, or null if it succeeded. Surfaced
+   * through `stats()` so "no segments" can be told apart from "could not
+   * look".
+   */
+  private lastListError: string | null = null;
+
+  /**
    * T#69: serialise async writes via a promise chain. `append()` is
    * synchronous from the caller's perspective (returns void after
    * queuing the data); the actual `fs.write` happens off the event
@@ -246,7 +253,14 @@ export class TelemetryWal {
   /**
    * Get WAL stats.
    */
-  stats(): { segments: number; totalSize: number; totalWritten: number; currentSegment: number } {
+  stats(): {
+    segments: number;
+    totalSize: number;
+    totalWritten: number;
+    currentSegment: number;
+    /** Present only when the segment directory could not be read. */
+    listError?: string;
+  } {
     let totalSize = 0;
     const segments = this.listSegments();
     for (const seg of segments) {
@@ -261,6 +275,9 @@ export class TelemetryWal {
       totalSize,
       totalWritten: this.totalWritten,
       currentSegment: this.currentSegment,
+      // Only when it failed: a caller reading `segments: 0` needs to know
+      // whether that is a fact about the WAL or about the read.
+      ...(this.lastListError ? { listError: this.lastListError } : {}),
     };
   }
 
@@ -393,13 +410,33 @@ export class TelemetryWal {
     }
   }
 
+  /**
+   * Segment files on disk, or an empty list if the directory cannot be read.
+   *
+   * The empty list used to be indistinguishable from "the WAL is empty", and
+   * six call sites read it — including `readAll()`, which then finds nothing
+   * to send, and `stats()`, which reports `segments: 0`. So a directory that
+   * had become unreadable presented as a drained WAL: the relay silently
+   * stopped forwarding telemetry and the statistics agreed that there was
+   * nothing to forward.
+   *
+   * There is no ambiguity to resolve here — the constructor creates the
+   * directory with `mkdirSync(recursive)`, so by the time this runs it exists.
+   * Any failure is therefore abnormal (removed underneath us, permissions,
+   * I/O) and is recorded for `stats()` rather than swallowed. The empty return
+   * stays: callers iterate segments and must not crash on a transient read
+   * failure.
+   */
   private listSegments(): string[] {
     try {
-      return fs
+      const segments = fs
         .readdirSync(this.dir)
         .filter((f) => f.endsWith('.wal'))
         .sort();
-    } catch {
+      this.lastListError = null;
+      return segments;
+    } catch (error) {
+      this.lastListError = error instanceof Error ? error.message : String(error);
       return [];
     }
   }

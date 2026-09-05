@@ -89,6 +89,17 @@ export interface IRedisClusterOptions {
    * Use lazy connect for cluster
    */
   lazyConnect?: boolean;
+  /**
+   * Retry strategy for cluster-level reconnection: return a delay in ms, or
+   * null to stop retrying.
+   *
+   * A Cluster ignores `retryStrategy` — ioredis reads this instead — so
+   * without it a cluster client cannot be given retry behaviour at all. The
+   * manager already branches on its presence to decide whether to install its
+   * own default; that branch read a field nothing ever populated, so it was
+   * never true and every cluster silently took ioredis's default.
+   */
+  clusterRetryStrategy?: (times: number) => number | null | undefined;
 }
 
 /**

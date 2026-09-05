@@ -299,6 +299,7 @@ export function toInternalClientOptions(options: IRedisClientOptions): InternalR
         retryDelayOnTryAgain: options.cluster.retryDelayOnTryAgain,
         scaleReads: options.cluster.scaleReads,
         lazyConnect: options.cluster.lazyConnect,
+        clusterRetryStrategy: options.cluster.clusterRetryStrategy,
       },
     };
   }

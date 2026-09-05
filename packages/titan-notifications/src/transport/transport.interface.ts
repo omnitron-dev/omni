@@ -184,10 +184,23 @@ export interface TransportSubscribeOptions {
   /** Retry strategy configuration (alternative to retryDelay) */
   retryStrategy?: RetryStrategyConfig;
 
-  /** Whether to auto-acknowledge messages on successful processing */
+  /**
+   * Whether to auto-acknowledge messages on successful processing.
+   *
+   * NOT IMPLEMENTED — RotifTransport.subscribe translates this options object
+   * into rotif's own SubscribeOptions and carries over only groupName,
+   * consumerName, startFrom, maxRetries and retryDelay. This field is dropped,
+   * and rotif has no equivalent: handlers acknowledge by calling `msg.ack()`
+   * either way.
+   */
   autoAck?: boolean;
 
-  /** Prefetch count for message batching */
+  /**
+   * Prefetch count for message batching.
+   *
+   * NOT IMPLEMENTED — dropped in the same translation. Rotif reads a fixed
+   * COUNT per XREADGROUP.
+   */
   prefetchCount?: number;
 }
 

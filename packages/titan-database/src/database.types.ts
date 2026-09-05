@@ -148,6 +148,19 @@ export interface DatabaseModuleOptions {
     plugins?: Array<string | KyseraPlugin | KyseraPluginConfig>;
   };
   plugins?: PluginsConfiguration;
+  /**
+   * NOT IMPLEMENTED — nothing reads this group.
+   *
+   * Transactions are started by `runInTransaction(db, fn, options)`, whose own
+   * option type accepts `name`, `connectionName` and `retry` and nothing else.
+   * So a caller who sets `defaultIsolationLevel: 'serializable'` here gets the
+   * database's default level, and `useSavepoints` and the retry settings are
+   * equally inert. This matters more than the other dead options in this file:
+   * an isolation level that is configured and not applied is a correctness
+   * promise that silently is not kept.
+   *
+   * Kept so existing configurations still type-check.
+   */
   transactionOptions?: {
     defaultIsolationLevel?: TransactionIsolationLevel;
     defaultTimeout?: number;
@@ -158,6 +171,13 @@ export interface DatabaseModuleOptions {
     useSavepoints?: boolean;
     logging?: boolean;
   };
+  /**
+   * NOT IMPLEMENTED — nothing reads this group.
+   *
+   * Migrations run through @kysera/migrations and the kysera CLI; the module
+   * stopped applying them in DI. `createMigrationRunner()` takes its own
+   * arguments and does not consult these.
+   */
   migrations?: {
     tableName?: string;
     lockTableName?: string;
@@ -195,7 +215,9 @@ export interface DatabaseModuleOptions {
   defaultSchema?: string;
   camelCase?: boolean;
   isGlobal?: boolean;
+  /** NOT IMPLEMENTED — nothing reads this; the module never auto-migrates. */
   autoMigrate?: boolean;
+  /** NOT IMPLEMENTED — nothing reads this; see `autoMigrate`. */
   failOnMigrationError?: boolean;
   healthCheck?: boolean;
   shutdownTimeout?: number;
@@ -226,6 +248,13 @@ export interface DatabaseOptionsFactory {
 
 export type TransactionIsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable';
 
+/**
+ * NOT USED — exported, but no function in this package accepts it.
+ *
+ * The transaction entry point is `runInTransaction`, which takes
+ * `RunInTransactionOptions` (name, connectionName, retry). Nothing consumes
+ * the isolation level, timeout or savepoint flag declared here.
+ */
 export interface TransactionOptions {
   isolationLevel?: TransactionIsolationLevel;
   connection?: string;
@@ -254,6 +283,13 @@ export interface MigrationStatus {
   lastExecuted?: { name: string; executedAt: Date };
 }
 
+/**
+ * NOT USED — exported, but no function in this package accepts it.
+ *
+ * A leftover from when migrations were driven from inside the module. Reading
+ * the exports, a caller would reasonably conclude that a migration API takes
+ * `dryRun` and `lockTimeout`; there is no such API here.
+ */
 export interface MigrationOptions {
   connection?: string;
   dryRun?: boolean;

@@ -10,6 +10,7 @@
  */
 
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
+import { computeLockout } from './lockout.js';
 import { promisify } from 'node:util';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Kysely } from 'kysely';
@@ -46,12 +47,6 @@ const KEY_LENGTH = 64;
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const JWT_EXPIRY = '1h';
 
-/** Consecutive failures tolerated before the account locks. */
-const MAX_FAILED_ATTEMPTS = 5;
-/** First lockout duration; doubles with each further failure. */
-const LOCKOUT_BASE_MS = 60_000; // 1 minute
-/** Ceiling for the exponential lockout. */
-const LOCKOUT_MAX_MS = 30 * 60_000; // 30 minutes
 
 // =============================================================================
 // Auth Service
@@ -183,12 +178,7 @@ export class AuthService {
    */
   private async registerFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
     const attempts = currentAttempts + 1;
-    const overThreshold = attempts - MAX_FAILED_ATTEMPTS;
-
-    const lockedUntil =
-      overThreshold >= 0
-        ? new Date(Date.now() + Math.min(LOCKOUT_BASE_MS * 2 ** overThreshold, LOCKOUT_MAX_MS))
-        : null;
+    const lockedUntil = computeLockout(attempts);
 
     await this.db
       .updateTable('omnitron_users')

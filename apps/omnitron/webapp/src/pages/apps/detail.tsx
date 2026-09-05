@@ -428,7 +428,7 @@ function LogRow({ log, isNew }: { log: LogEntryRow; isNew?: boolean }) {
         }}
       >
         <Tooltip title={formatDateFull(log.timestamp)} placement="top-start" arrow enterDelay={400}>
-          <Typography component="span" sx={{ fontFamily: MONO, fontSize: 11, color: '#5a6270', lineHeight: '20px', whiteSpace: 'nowrap', letterSpacing: '-0.02em' }}>
+          <Typography component="span" sx={{ fontFamily: MONO, fontSize: 11, color: '#7c8493', lineHeight: '20px', whiteSpace: 'nowrap', letterSpacing: '-0.02em' }}>
             {formatTimePrecise(log.timestamp)}
           </Typography>
         </Tooltip>
@@ -825,14 +825,14 @@ function MetricsTab({ appName }: { appName: string }) {
   const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     ...baseChartOptions,
     colors: ['#6366f1'],
-    yaxis: { ...baseChartOptions.yaxis, title: { text: 'CPU %', style: { color: '#666', fontSize: '11px' } }, max: 100, min: 0 },
+    yaxis: { ...baseChartOptions.yaxis, title: { text: 'CPU %', style: { color: '#999', fontSize: '11px' } }, max: 100, min: 0 },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] } },
   }), []);
 
   const memChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     ...baseChartOptions,
     colors: ['#a78bfa'],
-    yaxis: { ...baseChartOptions.yaxis, title: { text: 'Memory (MB)', style: { color: '#666', fontSize: '11px' } }, min: 0 },
+    yaxis: { ...baseChartOptions.yaxis, title: { text: 'Memory (MB)', style: { color: '#999', fontSize: '11px' } }, min: 0 },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] } },
   }), []);
 

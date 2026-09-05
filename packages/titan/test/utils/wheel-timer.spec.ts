@@ -5,6 +5,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WheelTimer } from '../../src/utils/wheel-timer.js';
 
+import { after, eventually } from '../async-assert.js';
+
 describe('WheelTimer', () => {
   let timer: WheelTimer<number>;
 
@@ -134,16 +136,17 @@ describe('WheelTimer', () => {
       expect(timer.cancel(999)).toBe(false);
     });
 
-    it('should prevent callback from firing', () => new Promise<void>((done) => {
+    it('should prevent callback from firing', () => {
       const callback = vi.fn();
       timer.schedule(1, 50, callback);
       timer.cancel(1);
 
-      setTimeout(() => {
+      // A negative needs a fixed window, not a poll: waiting for "still not
+      // called" would succeed on the first tick and prove nothing.
+      return after(100, () => {
         expect(callback).not.toHaveBeenCalled();
-        done();
-      }, 100);
-    }));
+      });
+    });
 
     it('should stop internal timer when last item is cancelled', () => {
       const callback = vi.fn();
@@ -177,15 +180,13 @@ describe('WheelTimer', () => {
       expect(timer.has(999)).toBe(false);
     });
 
-    it('should return false after callback fires', () => new Promise<void>((done) => {
-      timer.schedule(1, 20, () => {
-        // Check after a small delay to ensure cleanup is complete
-        setTimeout(() => {
-          expect(timer.has(1)).toBe(false);
-          done();
-        }, 10);
+    it('should return false after callback fires', () => {
+      timer.schedule(1, 20, () => {});
+
+      return eventually(() => {
+        expect(timer.has(1)).toBe(false);
       });
-    }), 1000);
+    });
   });
 
   describe('size', () => {
@@ -212,18 +213,17 @@ describe('WheelTimer', () => {
       timer = new WheelTimer({ resolution: 10, wheelSize: 100 });
     });
 
-    it('should return accurate statistics', () => new Promise<void>((done) => {
+    it('should return accurate statistics', () => {
       timer.schedule(1, 20, () => {});
       timer.schedule(2, 100, () => {});
       timer.cancel(2);
 
-      setTimeout(() => {
+      return eventually(() => {
         const stats = timer.getStats();
         expect(stats.totalFired).toBe(1);
         expect(stats.totalCancelled).toBe(1);
-        done();
-      }, 100);
-    }));
+      });
+    });
   });
 
   describe('destroy()', () => {
@@ -248,16 +248,15 @@ describe('WheelTimer', () => {
       expect(timer.size).toBe(0);
     });
 
-    it('should prevent callbacks from firing after destroy', () => new Promise<void>((done) => {
+    it('should prevent callbacks from firing after destroy', () => {
       const callback = vi.fn();
       timer.schedule(1, 50, callback);
       timer.destroy();
 
-      setTimeout(() => {
+      return after(100, () => {
         expect(callback).not.toHaveBeenCalled();
-        done();
-      }, 100);
-    }));
+      });
+    });
   });
 
   describe('error handling', () => {
@@ -265,21 +264,27 @@ describe('WheelTimer', () => {
       timer = new WheelTimer({ resolution: 10, wheelSize: 100 });
     });
 
-    it('should continue processing after callback error', () => new Promise<void>((done) => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const successCallback = vi.fn(() => {
-        expect(successCallback).toHaveBeenCalled();
-        consoleError.mockRestore();
-        done();
-      });
+    it('should continue processing after callback error', async () => {
+      // The old version asserted `expect(successCallback).toHaveBeenCalled()`
+      // from inside successCallback — true by construction, and a throw there
+      // would have been swallowed by the timer's own error handling, leaving
+      // done() uncalled. Assert from outside that both ran.
+      let threw = false;
+      const successCallback = vi.fn();
 
       timer.schedule(1, 20, () => {
+        threw = true;
         throw new Error('Test error');
       });
       timer.schedule(2, 40, successCallback);
-    }), 1000);
 
-    it('should log callback errors', () => new Promise<void>((done) => {
+      await eventually(() => {
+        expect(threw).toBe(true);
+        expect(successCallback).toHaveBeenCalled();
+      });
+    });
+
+    it('should log callback errors', () => {
       // WheelTimer reports through the injected ILogger (a null logger by
       // default), not console.error. Spying on the console meant this test
       // waited for a call that could never come and sat until the 120s timeout.
@@ -297,15 +302,15 @@ describe('WheelTimer', () => {
         throw new Error('Test error');
       });
 
-      setTimeout(() => {
+      return eventually(() => {
         expect(logger.error).toHaveBeenCalledWith(
           expect.objectContaining({ err: expect.any(Error) }),
           'WheelTimer callback error'
         );
+      }).finally(() => {
         loggingTimer.stop?.();
-        done();
-      }, 100);
-    }));
+      });
+    });
   });
 
   describe('string keys', () => {

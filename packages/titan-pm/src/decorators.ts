@@ -509,11 +509,23 @@ export function SharedState(): PropertyDecorator {
  */
 export function HealthCheck(options: { interval?: number } = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = {
-      method: propertyKey,
-      ...options,
-    };
-    Reflect.defineMetadata('health-check', metadata, target);
+    // The worker runtime finds health checks by scanning each method's entry
+    // under PROCESS_METHOD_METADATA_KEY for a `healthCheck` field
+    // (`worker-runtime.ts`, `__getProcessHealth`). This decorator wrote to a
+    // different key entirely — the string 'health-check', on the prototype
+    // rather than per method — so the two never met: `healthCheckMethods` was
+    // always empty and `__getProcessHealth` always answered
+    // `{ status: 'healthy', checks: [] }`.
+    //
+    // A worker that knows it is degraded reporting healthy is the exact
+    // inversion a custom health check exists to prevent, and the pool's health
+    // monitor consumes this answer.
+    const methodMetadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
+    methodMetadata.healthCheck = { method: String(propertyKey), ...options };
+
+    // The original prototype-level key is kept: it is part of the shape any
+    // existing reader may rely on, and it costs nothing.
+    Reflect.defineMetadata('health-check', { method: propertyKey, ...options }, target);
   };
 }
 

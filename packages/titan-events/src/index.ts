@@ -68,6 +68,11 @@ export { EventsModule } from './events.module.js';
  * - EventValidationService: Event data validation with schema support
  */
 export { EventsService } from './events.service.js';
+// EventsService's constructor requires it and EVENT_METADATA_SERVICE_TOKEN is
+// already exported, so leaving the class unexported made the exported service
+// unconstructable outside this package.
+export { EventMetadataService } from './event-metadata.service.js';
+export { EventDiscoveryService } from './event-discovery.service.js';
 export { EventBusService } from './event-bus.service.js';
 export { EventHistoryService } from './event-history.service.js';
 export { EventSchedulerService } from './event-scheduler.service.js';

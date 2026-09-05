@@ -147,25 +147,31 @@ export class Indexer {
     }
 
     if (extraction) {
-      await store.upsertSymbols(extraction.symbols);
       allOverviews.push(extraction.repoMap);
       allDeps.push(...extraction.dependencies);
       await store.upsertDependencies(extraction.dependencies);
       await store.upsertManifest(source.packageName, extraction.manifest);
 
+      // Embed first, then write once — the same order the specs, gotchas and
+      // patterns blocks below already use. Symbols used to be written, then
+      // embedded, then written again, so the largest collection in the index
+      // (thousands of symbols against dozens of specs) was the one paying for
+      // two full passes of `upsertSymbols`, which issues a query per element.
+      // The failure behaviour is unchanged: an embedding error is warned about
+      // and the symbols are stored without vectors.
       if (embeddings.dimension > 0 && extraction.symbols.length > 0) {
         const texts = extraction.symbols.map(s => `${s.name} ${s.signature} ${s.jsdoc ?? ''}`);
         try {
           const vectors = await embeddings.embedCode(texts);
-          const symbolsWithEmbeddings = extraction.symbols.map((s, i) => ({
-            ...s,
-            embedding: vectors[i],
-          }));
-          await store.upsertSymbols(symbolsWithEmbeddings);
+          extraction.symbols.forEach((s, i) => {
+            s.embedding = vectors[i];
+          });
         } catch (err) {
           console.warn(`[kb:indexer] Embedding generation failed for symbols:`, err);
         }
       }
+
+      await store.upsertSymbols(extraction.symbols);
     }
 
     // 3. Load and store specs

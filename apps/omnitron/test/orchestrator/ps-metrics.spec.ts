@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parsePsLine, parsePsBatch, mergeSample } from '../../src/orchestrator/ps-metrics.js';
+import { parsePsLine, parsePsBatch } from '../../src/orchestrator/ps-metrics.js';
 
 describe('parsePsLine', () => {
   it('reads the three columns ps prints', () => {
@@ -76,21 +76,20 @@ describe('parsePsBatch', () => {
   });
 });
 
-describe('mergeSample', () => {
-  it('keeps the previous reading when the new one could not be taken', () => {
-    // The defect, stated directly: a failed `ps` must not make a busy app
-    // look idle.
-    const previous = { cpu: 42, memory: 500 * 1024 * 1024 };
-    expect(mergeSample(previous, null)).toEqual(previous);
-  });
-
-  it('takes a real zero over a stale reading', () => {
-    // An app that genuinely went idle must be able to say so.
-    const previous = { cpu: 42, memory: 500 * 1024 * 1024 };
-    expect(mergeSample(previous, { cpu: 0, memory: 1024 })).toEqual({ cpu: 0, memory: 1024 });
-  });
-
-  it('reports nothing when there is nothing to report', () => {
-    expect(mergeSample(null, null)).toBeNull();
-  });
-});
+/*
+ * A `mergeSample(previous, fresh)` helper used to sit in ps-metrics.ts, with
+ * a describe block here testing it — and no caller anywhere in src/. Both
+ * real paths (`sampleAppMetrics`, and the classic branch of the metrics
+ * timer, both in orchestrator.service.ts) implement the rule inline, and
+ * correctly.
+ *
+ * The tests passed, so the rule looked covered. They covered a function the
+ * daemon never called. A helper that reads as the canonical definition of a
+ * rule, while the two real implementations sit elsewhere, is worse than no
+ * helper: it invites the next reader to believe the rule is centralised.
+ * Removed, along with the helper.
+ *
+ * What remains here is the parsing the daemon does call — and where the
+ * original defect lived: the single-pid path returning `{cpu: 0, memory: 0}`
+ * for a failed read.
+ */

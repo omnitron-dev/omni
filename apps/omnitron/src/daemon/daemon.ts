@@ -1574,6 +1574,18 @@ export class OmnitronDaemon {
     return this.fileWatcher.getWatchedApps();
   }
 
+  /**
+   * Point the file watcher at a reloaded config, if one is running.
+   *
+   * Public because `DaemonRpcService.reloadConfig` is the other half of the
+   * same reload — the RPC and the SIGHUP handler must not diverge on what a
+   * reload updates, which is exactly how the watcher came to be left out of
+   * both.
+   */
+  applyWatchConfig(config: IEcosystemConfig): void {
+    this.fileWatcher?.applyConfig(config);
+  }
+
   disableWatch(): void {
     if (this.fileWatcher) {
       this.fileWatcher.stop();
@@ -1621,6 +1633,11 @@ export class OmnitronDaemon {
       const { ORCHESTRATOR_TOKEN } = await import('../shared/tokens.js');
       const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
       orchestrator.setConfig(newConfig);
+      // And the file watcher, which holds its own copy of the app list.
+      // Left out, a reload updated who gets restarted but not who is
+      // watched: an app added to the config was never watched, and one
+      // removed from it kept its watchers and went on triggering restarts.
+      this.applyWatchConfig(newConfig);
       // Also refresh the DaemonRpcService's snapshot if resolvable.
       // (It's exposed under DAEMON_SERVICE_ID; reloadConfig RPC path
       // mutates `this.config` directly so we mirror the same write.)

@@ -77,7 +77,7 @@ export class FileWatcher {
   constructor(
     private readonly logger: ILogger,
     private readonly orchestrator: OrchestratorService,
-    private readonly config: IEcosystemConfig,
+    private config: IEcosystemConfig,
     private readonly cwd: string,
     private readonly debounceMs: number = 300
   ) {}
@@ -131,6 +131,36 @@ export class FileWatcher {
     if (app.debounceTimer) clearTimeout(app.debounceTimer);
     this.apps.delete(name);
     this.logger.debug({ app: name }, 'Stopped watching app');
+  }
+
+  /**
+   * Bring the watch set in line with a reloaded config.
+   *
+   * `addApp` and `removeApp` existed for exactly this and had no caller
+   * outside their test, so a config reload — `omnitron reload`, or SIGHUP —
+   * updated the orchestrator and the daemon's RPC snapshot and left the
+   * watcher on the old set. An app added to the config was never watched
+   * until the next daemon restart, and an app removed from it kept its
+   * watchers: edits to a file under a deleted app went on restarting
+   * something the config no longer describes.
+   *
+   * Renaming counts as both, which is the case that makes doing this by hand
+   * at the call site error-prone.
+   */
+  applyConfig(config: IEcosystemConfig): void {
+    this.config = config;
+    if (!this.running) return;
+
+    const desired = new Map(
+      config.apps.filter((a) => a.enabled !== false).map((a) => [a.name, a] as const)
+    );
+
+    for (const name of [...this.apps.keys()]) {
+      if (!desired.has(name)) this.removeApp(name);
+    }
+    for (const [name, entry] of desired) {
+      if (!this.apps.has(name)) this.addApp(entry);
+    }
   }
 
   /** Get list of watched apps and their directories */

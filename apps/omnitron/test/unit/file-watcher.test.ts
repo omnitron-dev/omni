@@ -290,6 +290,66 @@ describe('FileWatcher', () => {
     expect(watcher.getWatchedApps()).toHaveLength(0);
   });
 
+  describe('applyConfig — a reload changes the watch set', () => {
+    /**
+     * `addApp` / `removeApp` were the mechanism for this and had no caller
+     * outside the test above, so a config reload updated the orchestrator
+     * and left the watcher on the old app list. The test that exercised
+     * them proved they worked; nothing proved they were reached.
+     */
+    const entry = (name: string) => ({ name, script: path.join(appDir, 'src', 'bootstrap.ts') });
+
+    it('watches an app that the reloaded config added', () => {
+      const w = startWatcher(50, [entry('test-app')]);
+
+      w.applyConfig(createTestConfig([entry('test-app'), entry('second-app')]));
+
+      expect(w.getWatchedApps().map((a) => a.name).sort()).toEqual(['second-app', 'test-app']);
+    });
+
+    it('stops watching an app the reloaded config removed', async () => {
+      // The consequence, not just the bookkeeping: a stale watcher went on
+      // restarting an app the config no longer describes.
+      const w = startWatcher(50, [entry('test-app')]);
+      w.applyConfig(createTestConfig([]));
+
+      expect(w.getWatchedApps()).toHaveLength(0);
+
+      restartMock().mockClear();
+      expect(() => w.emit('src/index.ts')).toThrow(/no directory is being watched/);
+      await settle();
+      expect(restartMock()).not.toHaveBeenCalled();
+    });
+
+    it('handles a rename as a removal and an addition together', () => {
+      const w = startWatcher(50, [entry('old-name')]);
+
+      w.applyConfig(createTestConfig([entry('new-name')]));
+
+      expect(w.getWatchedApps().map((a) => a.name)).toEqual(['new-name']);
+    });
+
+    it('leaves an unchanged app’s watcher in place', () => {
+      // Re-arming every watcher on every reload would drop the debounce
+      // state and re-trigger builds — the fix must be a diff, not a restart.
+      const w = startWatcher(50, [entry('test-app')]);
+      const before = w.watchedDirs.length;
+
+      w.applyConfig(createTestConfig([entry('test-app')]));
+
+      expect(w.watchedDirs.length).toBe(before);
+      expect(w.getWatchedApps().map((a) => a.name)).toEqual(['test-app']);
+    });
+
+    it('skips a disabled app', () => {
+      const w = startWatcher(50, [entry('test-app')]);
+
+      w.applyConfig(createTestConfig([{ ...entry('test-app'), enabled: false }]));
+
+      expect(w.getWatchedApps()).toHaveLength(0);
+    });
+  });
+
   it('drops every watcher on stop()', () => {
     startWatcher();
     expect(watcher.getWatchedApps()).toHaveLength(1);

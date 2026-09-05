@@ -411,6 +411,17 @@ export class AuthenticationClient {
    * Set token directly (for external token management)
    */
   setToken(token: string, context?: AuthContext): void {
+    // A falsy token is not a token. Recording `authenticated: true` alongside
+    // one produced a state that contradicts itself — the client believing it
+    // holds a session while having nothing to send, so every call went out
+    // with an empty bearer and came back 401 from the far side, where the
+    // cause is invisible. Treat it as clearing the session, which is the only
+    // coherent reading of "set my token to nothing".
+    if (!token) {
+      this.clearAuth();
+      return;
+    }
+
     this.state = {
       authenticated: true,
       context,

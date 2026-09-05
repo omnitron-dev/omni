@@ -71,6 +71,12 @@ export class BackendPool extends EventEmitter {
 
     await Promise.allSettled(connectPromises);
 
+    // `stop()` may have run while those connections were in flight — it clears
+    // this flag and stops the probe. Without this check the tail of start()
+    // would then install a fresh health-check probe on a pool that has already
+    // been shut down, and nothing would ever stop it again.
+    if (!this.isStarted) return;
+
     // Start health checks if enabled
     if (this.healthChecksEnabled) {
       this.startHealthChecks();

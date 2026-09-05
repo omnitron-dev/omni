@@ -413,3 +413,72 @@ describe('MultiBackendClient', () => {
     });
   });
 });
+
+describe('MultiBackendClient - lifecycle interleaving', () => {
+  /**
+   * `BackendPool.start()`/`stop()` set `isStarted` BEFORE their awaits.
+   * `MultiBackendClient.connect()`/`disconnect()` — the wrapper one layer up —
+   * set `isConnected` AFTER. A flag written after an await guards the second
+   * CALL but not the second CALLER: anything arriving during the await sees the
+   * pre-call value and takes the wrong branch.
+   */
+  const config: MultiBackendConfig = {
+    backends: [{ id: 'backend-1', url: 'http://backend-1.example.com', services: ['users'] }],
+    router: { defaultBackends: ['backend-1'], defaultStrategy: 'round-robin' },
+  };
+
+  it('does not discard a disconnect() that arrives while connect() is still awaiting', async () => {
+    const client = new MultiBackendClient(config);
+    const pool = (client as any).pool;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(pool, 'start').mockImplementation(async () => {
+      await gate;
+    });
+    const stopSpy = vi.spyOn(pool, 'stop').mockResolvedValue(undefined);
+
+    const connecting = client.connect();
+    // Shutdown while startup is in flight — a SIGTERM during boot, not an
+    // exotic interleaving.
+    const disconnecting = client.disconnect();
+    release();
+    await Promise.all([connecting, disconnecting]);
+
+    // Before the fix `disconnect()` read `isConnected === false`, concluded
+    // there was nothing to do and resolved — while `connect()` went on to set
+    // the flag and leave every backend socket and the health-check probe open.
+    // The caller was told the client was shut down and it was not.
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    expect(client.isClientConnected()).toBe(false);
+  });
+
+  it('does not leave a connect() that was cancelled mid-flight reporting success', async () => {
+    const client = new MultiBackendClient(config);
+    const pool = (client as any).pool;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(pool, 'start').mockImplementation(async () => {
+      await gate;
+    });
+    vi.spyOn(pool, 'stop').mockResolvedValue(undefined);
+
+    const events: string[] = [];
+    client.on('connect', () => events.push('connect'));
+    client.on('disconnect', () => events.push('disconnect'));
+
+    const connecting = client.connect();
+    const disconnecting = client.disconnect();
+    release();
+    await Promise.all([connecting, disconnecting]);
+
+    // A 'connect' emitted after the caller asked to disconnect tells every
+    // listener the opposite of the truth.
+    expect(events).not.toContain('connect');
+  });
+});

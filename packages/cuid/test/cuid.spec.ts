@@ -349,7 +349,13 @@ describe('CUID', () => {
       // slower than linearly in length; 5x is a generous ceiling that still
       // catches a genuinely super-linear regression.
       expect(long).toBeLessThan(short * 5);
-    });
+      // 200k generations plus warm-up: ~6.4s measured on the development
+      // host, against vitest's 5s default. The rewrite that made this
+      // measurement trustworthy — 20k iterations, best of 5 — also made it
+      // slower than the budget it inherited, and the timeout arrived as
+      // "Test timed out", which reads like a hang rather than a test that
+      // outgrew its allowance.
+    }, 30_000);
   });
 
   describe('Compatibility with expected format', () => {

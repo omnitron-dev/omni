@@ -2171,7 +2171,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Handle errors
+   * Handle errors that happened BEFORE a request became an RPC call — a
+   * malformed body, an unknown route, a rejected origin.
+   *
+   * The shape here is deliberately NOT the RPC envelope, and the difference
+   * matters to every client:
+   *
+   *   transport-level (this method): `{ error: true, message, code, timestamp }`
+   *   RPC-level (`createErrorResponse`): `{ id, success: false, error: { code, message, details } }`
+   *
+   * So `body.error` is a BOOLEAN here and an OBJECT there, and a client reading
+   * `body.error.code` gets `undefined` from this path. There are three
+   * different defences against that in netron-browser alone — one parses
+   * `code` when it is a string, one when it is a number, one takes it raw.
+   *
+   * `code` here is the HTTP status as a STRING, which is what a numeric
+   * comparison downstream fails to match (omnitron's console hit exactly that:
+   * one client path coerced it, another did not, and the un-coerced path
+   * silently skipped its redirect on 401). The RPC path above prefers the
+   * business code (`SESSION_EXPIRED`) and falls back to the same stringified
+   * status.
+   *
+   * Left as it is on purpose: consumers have been written against both shapes,
+   * and changing either is a wire-compatibility decision rather than a fix.
    */
   private handleError(error: any, request: Request): Response {
     // Optimization: fast-path for TitanError instances - avoid double conversion

@@ -94,11 +94,42 @@ describe('AdminDataTable — empty versus unable', () => {
     expect(screen.queryByText('No orders yet')).not.toBeInTheDocument();
   });
 
-  it('shows rows rather than either message when there is data', () => {
-    render(<AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} loadError="stale" />);
+  it('shows the rows it got AND says the rest is missing', () => {
+    // The partial failure, and the case that matters most. A list short
+    // because one of its sources failed looks exactly like a list that is
+    // short. This was originally treated as "rows are their own answer",
+    // which left the defect intact in precisely the situation where an
+    // operator is most likely to act on what they see.
+    render(
+      <AdminDataTable
+        {...paging}
+        total={1}
+        data={[{ name: 'row' }]}
+        columns={columns}
+        loadError="pending, processing"
+      />
+    );
 
     expect(screen.getByText('row')).toBeInTheDocument();
-    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
+    expect(screen.getByText('pending, processing')).toBeInTheDocument();
+  });
+
+  it('says nothing extra when the rows are all there', () => {
+    render(<AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} />);
+
+    expect(screen.getByText('row')).toBeInTheDocument();
+    expect(screen.queryByText(/could not/i)).not.toBeInTheDocument();
+  });
+
+  it('announces the partial failure to a screen reader', () => {
+    // A warning a sighted user can see and a screen-reader user cannot is
+    // the same failure one level down.
+    render(
+      <AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} loadError="one source" />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('one source');
   });
 
   it('treats an empty error string as no error', () => {

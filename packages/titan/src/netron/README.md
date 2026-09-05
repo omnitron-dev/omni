@@ -188,10 +188,10 @@ HTTP transport uses native JSON messages instead of binary packets:
 
 ```typescript
 // Request Message
+// No `version` / `timestamp` on the wire — both were documented and never
+// existed. See transport/http/README.md for the detail.
 interface HttpRequestMessage {
   id: string;              // Unique request ID for correlation
-  version: '1.0';          // Protocol version
-  timestamp: number;       // Client timestamp
   service: string;         // Service name (e.g., 'calculator@1.0.0')
   method: string;          // Method name
   input: any;              // Method arguments
@@ -212,8 +212,6 @@ interface HttpRequestMessage {
 // Response Message
 interface HttpResponseMessage {
   id: string;              // Matching request ID
-  version: '1.0';          // Protocol version
-  timestamp: number;       // Server timestamp
   success: boolean;        // Operation result
   data?: any;              // Success result
   error?: {                // Error information

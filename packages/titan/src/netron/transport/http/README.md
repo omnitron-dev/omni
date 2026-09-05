@@ -107,11 +107,15 @@ HTTP v1.0 uses native JSON messages for all communication.
 #### Request Message
 
 ```typescript
+// NOTE: `version` and `timestamp` were documented here as REQUIRED and have
+// never existed on the wire. The type in @omnitron-dev/netron-http-core is
+// the one below; a client sending those two fields has them ignored, and a
+// client expecting them back never receives them. Found by typechecking the
+// tests: they were sending `timestamp` in 21 places against a type that has
+// no such property.
 interface HttpRequestMessage {
   // Required fields
   id: string;              // Unique request ID for correlation
-  version: '1.0';          // Protocol version
-  timestamp: number;       // Client timestamp (Unix milliseconds)
   service: string;         // Service name (e.g., "Calculator@1.0.0")
   method: string;          // Method name (e.g., "add")
   input: any;              // Method input data
@@ -147,10 +151,8 @@ interface HttpRequestMessage {
 
 ```typescript
 interface HttpResponseMessage {
-  // Required fields
+  // Required fields — again, no `version` and no `timestamp`.
   id: string;              // Matching request ID
-  version: '1.0';          // Protocol version
-  timestamp: number;       // Server timestamp
   success: boolean;        // Operation status
 
   // Success response
@@ -1301,8 +1303,6 @@ const packet = {
 // v1.0 uses native JSON
 const request: HttpRequestMessage = {
   id: 'req-123',
-  version: '1.0',
-  timestamp: Date.now(),
   service: 'Calculator@1.0.0',
   method: 'add',
   input: { a: 5, b: 3 }

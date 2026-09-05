@@ -104,6 +104,13 @@ export interface CustomDecoratorConfig<TOptions = any> {
   hooks?: {
     beforeApply?: DecoratorHook<TOptions>;
     afterApply?: DecoratorHook<TOptions>;
+    /**
+     * NOT IMPLEMENTED — nothing invokes it. Its two siblings run when the
+     * decorator is applied; there is no resolution-time callback here, and the
+     * factory has no hold on the container that would let it add one. A
+     * decorator that needs to act at resolution should register a Nexus
+     * lifecycle hook instead.
+     */
     onResolve?: DecoratorHook<TOptions>;
   };
   compose?: Array<(...args: any[]) => any>;

@@ -87,6 +87,10 @@ export interface IEventsModuleOptions {
 
   /**
    * Enable verbose memory leak warnings
+   *
+   * NOT IMPLEMENTED — the module builds its EnhancedEventEmitter from
+   * wildcard, delimiter, maxListeners and concurrency, and the emitter has no
+   * equivalent option to pass it to.
    */
   verboseMemoryLeak?: boolean;
 

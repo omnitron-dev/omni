@@ -65,11 +65,28 @@ describe('nextBackendStatus', () => {
     });
   });
 
-  it('concludes offline on the second consecutive failure', () => {
+  it('never concludes offline from failures alone, however many', () => {
+    // This used to escalate on the second consecutive failure, on the
+    // reasoning that a repeated failure corroborates. It does not: repeating
+    // a non-observation leaves it a non-observation. Watched live on a host
+    // at load 147 — the health probe took 8.2 s against a five-second
+    // timeout while the daemon answered the CLI in 3 ms, and the console
+    // told its operator to start a daemon that was running.
     expect(nextBackendStatus('unreachable', 1)).toEqual({
-      status: 'offline',
+      status: 'degraded',
       consecutiveUnreachable: 2,
     });
+    expect(nextBackendStatus('unreachable', 9)).toEqual({
+      status: 'degraded',
+      consecutiveUnreachable: 10,
+    });
+  });
+
+  it('reserves offline for the one outcome that is evidence', () => {
+    // 502/503 — something answered for the daemon and said it is not there.
+    // Only that produces the banner that tells an operator to start it.
+    expect(nextBackendStatus('down', 0).status).toBe('offline');
+    expect(nextBackendStatus('down', 7)).toEqual({ status: 'offline', consecutiveUnreachable: 0 });
   });
 
   it('forgets the streak as soon as anything answers', () => {

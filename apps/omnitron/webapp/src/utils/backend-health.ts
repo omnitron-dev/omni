@@ -54,9 +54,21 @@ export function classifyHealthResponse(
 /**
  * Fold a probe outcome into the status shown to the operator.
  *
- * A single `unreachable` yields `degraded` — the view may be stale, but the
- * operator is not told to start something that is probably running. Only a
- * second consecutive one concludes `offline`.
+ * `offline` is reserved for `down` — the proxy answered for the daemon and
+ * said it is not there. Nothing else reaches it.
+ *
+ * An earlier version escalated to `offline` after two consecutive
+ * `unreachable` probes, on the reasoning that a repeated failure is
+ * corroboration. It is not: repeating a non-observation leaves it a
+ * non-observation. Watched live on a host at load 147, where the health
+ * probe took 8.2 seconds against a five-second timeout while the daemon was
+ * answering the same query in 3 ms — two failures in a row, and a console
+ * telling its operator to start a daemon that was running.
+ *
+ * `degraded` therefore has no ceiling, and the count travels with it so the
+ * banner can grow more insistent — "has not answered four checks" is true and
+ * useful, "offline — run `omnitron dev`" is an instruction, and an
+ * instruction needs evidence rather than repetition.
  *
  * @param outcome what the probe established
  * @param consecutiveUnreachable how many probes in a row had failed BEFORE
@@ -71,6 +83,5 @@ export function nextBackendStatus(
   // An explicit "not there" needs no corroboration.
   if (outcome === 'down') return { status: 'offline', consecutiveUnreachable: 0 };
 
-  const failures = consecutiveUnreachable + 1;
-  return { status: failures >= 2 ? 'offline' : 'degraded', consecutiveUnreachable: failures };
+  return { status: 'degraded', consecutiveUnreachable: consecutiveUnreachable + 1 };
 }

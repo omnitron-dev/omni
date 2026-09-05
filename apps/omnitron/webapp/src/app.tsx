@@ -16,6 +16,7 @@ import { Router } from 'src/routes';
 import { CommandPalette } from 'src/components/command-palette';
 import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { useProjectStore } from 'src/stores/project.store';
+import { reportCrash } from 'src/utils/report-crash';
 
 function AppContent() {
   const { pathname } = useLocation();
@@ -35,7 +36,7 @@ function AppContent() {
       <NavigationProgress pathname={pathname} />
       <ScrollToTop pathname={pathname} />
       <CommandPalette />
-      <ErrorBoundary>
+      <ErrorBoundary showDetails onError={reportCrash}>
         <Router />
       </ErrorBoundary>
     </>

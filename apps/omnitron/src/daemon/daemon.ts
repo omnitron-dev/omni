@@ -533,6 +533,19 @@ export class OmnitronDaemon {
       options: {
         port: wsPort,
         host: localHost,
+        // NOT APPLIED — netron's WebSocket transport does not read this
+        // option. Only `transport/http/server.ts` does; a call arriving over
+        // WS is dispatched by `remote-peer.ts` straight to `stub.call()`,
+        // with `enforceMethodAccess` before it but no AsyncLocalStorage
+        // frame around it. So `getRequestContext()` is null for WS calls and
+        // the address recorded against a session created over WS stays
+        // blank — which is the honest answer, and the same one the HTTP path
+        // gives without a declared proxy.
+        //
+        // Left in place deliberately: it is correct as an intent, it costs
+        // nothing, and it starts working the moment the WS transport honours
+        // it. `websocket-wrapper-gap.test.ts` fails when that happens, so
+        // this comment cannot outlive the gap it describes.
         invocationWrapper: authContextWrapper,
         // The only bound this transport accepts. Left unset it inherits
         // `ws`'s 100 MB default, which is a lot of memory to hand a single

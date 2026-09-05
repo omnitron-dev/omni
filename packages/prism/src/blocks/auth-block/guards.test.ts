@@ -16,11 +16,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { hasRole, hasPermission, createConditionalRender } from './guards.js';
-import type { AuthUser } from './types.js';
+import { hasRole, hasPermission, createConditionalRender, type AuthUser } from './guards.js';
 
-const user = (roles: string[] = [], permissions: string[] = []) =>
-  ({ id: 'u1', roles, permissions }) as unknown as AuthUser;
+const user = (roles: string[] = [], permissions: string[] = []): AuthUser => ({ id: 'u1', roles, permissions });
 
 describe('hasRole', () => {
   it('is true when the user holds the role', () => {

@@ -65,11 +65,11 @@ function parseStackFrame(line: string): StackFrame | null {
   // "at async functionName (file.tsx:123:45)"
   const patterns = [
     // Named function with file: at functionName (file:line:col)
+    // Also covers the bundler-rewritten form `(file?v=hash:line:col)`: the
+    // lazy `(.+?)` swallows the query string, which `cleanFilePath` strips.
     /at\s+(?:async\s+)?([^\s(]+)\s+\((.+?):(\d+):(\d+)\)/,
     // Anonymous at file: at file:line:col
     /at\s+(.+?):(\d+):(\d+)/,
-    // Webpack/Vite transformed: at Module.functionName (file?xxx:line:col)
-    /at\s+(?:async\s+)?(?:Module\.)?([^\s(]+)\s+\((.+?)\?[^:]*:(\d+):(\d+)\)/,
   ];
 
   for (const pattern of patterns) {
@@ -77,15 +77,26 @@ function parseStackFrame(line: string): StackFrame | null {
     if (match) {
       const [, funcOrFile, file, lineStr, colStr] = match;
 
-      // Check if first capture is actually a function name or file path
-      const hasFile = file !== undefined;
+      // Which shape matched is decided by the LAST capture, not the second:
+      // the anonymous pattern has three groups, so its second group holds a
+      // line number — a defined value — and testing `file !== undefined`
+      // called every anonymous frame a named one. The result was a frame
+      // whose every field was wrong: the path read as the function name, the
+      // line number as the path, the column as the line. Minified production
+      // stacks are anonymous almost throughout, so that was the normal case
+      // in the build where this component matters most.
+      const hasFile = colStr !== undefined;
       const functionName = hasFile ? funcOrFile : null;
       const filePath = hasFile ? file : funcOrFile;
       const lineNumber = parseInt(hasFile ? lineStr : (file as string), 10);
       const columnNumber = parseInt(hasFile ? colStr : lineStr, 10);
 
-      // Determine if this is app code vs library code
-      const isAppCode = filePath.includes('/src/') || (filePath.includes('src/') && !filePath.includes('node_modules'));
+      // App code vs library code. `node_modules` has to lose in BOTH
+      // branches: a dependency shipping its own sources sits at
+      // `node_modules/pkg/src/…`, which contains `/src/`, and it would
+      // otherwise be picked as the error's primary location ahead of the
+      // application frame that actually called it.
+      const isAppCode = !filePath.includes('node_modules') && filePath.includes('src/');
 
       return {
         functionName: functionName || null,
@@ -355,7 +366,9 @@ function DefaultErrorFallback({
             sx={{
               mt: 1,
               p: 2,
-              bgcolor: 'grey.100',
+              // Theme-aware: `grey.100` is a light value in both modes,
+              // which put dark text on a near-white block in dark mode.
+              bgcolor: 'action.hover',
               borderRadius: 1,
               maxWidth: 600,
               maxHeight: 300,
@@ -443,9 +456,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { resetKeys } = this.props;
     const { hasError } = this.state;
 
-    if (hasError && resetKeys && prevProps.resetKeys) {
-      // Check if any reset key has changed
-      const hasKeyChanged = resetKeys.some((key, index) => key !== prevProps.resetKeys?.[index]);
+    if (hasError && resetKeys) {
+      const previous = prevProps.resetKeys;
+      // Length first: `some` walks the CURRENT array, so a key list that
+      // shrinks — `[userId, postId]` to `[userId]` — compares only the keys
+      // that remain, finds them equal, and never resets. Growing it reset
+      // correctly, which is what made the asymmetry easy to miss.
+      const hasKeyChanged =
+        previous === undefined ||
+        previous.length !== resetKeys.length ||
+        resetKeys.some((key, index) => key !== previous[index]);
 
       if (hasKeyChanged) {
         this.resetErrorBoundary();

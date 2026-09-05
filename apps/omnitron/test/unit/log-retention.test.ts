@@ -58,7 +58,24 @@ describe('planRetention', () => {
   it('bounds a single pass', () => {
     // A first run against years of history must not monopolise the daemon;
     // the next hourly pass finishes the job.
-    expect(planRetention(14, NOW)!.maxThisPass).toBe(RETENTION_MAX_PER_PASS);
+    //
+    // Asserted as properties rather than as `toBe(RETENTION_MAX_PER_PASS)`.
+    // That comparison reads like a check and is a tautology: the plan is
+    // built from the same constant, so it passes for any value the constant
+    // could hold — including `Infinity`, which is precisely the state this
+    // bound exists to prevent. A test of a limit has to be able to fail when
+    // the limit is removed.
+    const plan = planRetention(14, NOW)!;
+
+    expect(Number.isFinite(plan.maxThisPass)).toBe(true);
+    expect(plan.maxThisPass).toBeGreaterThan(0);
+    // Large enough to make progress on a real backlog, small enough that one
+    // pass cannot be the whole table: the daemon has 22M rows here.
+    expect(plan.maxThisPass).toBeGreaterThanOrEqual(plan.batchSize);
+    expect(plan.maxThisPass).toBeLessThan(5_000_000);
+    // And it does not depend on how much history is being removed — a pass
+    // over ten years must be bounded the same as one over ten days.
+    expect(planRetention(3650, NOW)!.maxThisPass).toBe(plan.maxThisPass);
   });
 });
 

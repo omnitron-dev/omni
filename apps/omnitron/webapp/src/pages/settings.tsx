@@ -42,7 +42,7 @@ import { alpha } from '@mui/material/styles';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
-import { Tabs, TabPanel } from '@omnitron-dev/prism';
+import { FormAlert, TabPanel, Tabs } from '@omnitron-dev/prism';
 import { useAuthStore } from 'src/auth/store';
 import { auth, getSessionId, nodes as nodesRpc } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
@@ -161,7 +161,7 @@ function SecuritySection() {
       <CardHeader title="Change Password" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} subheader="Update your account credentials" subheaderTypographyProps={{ variant: 'caption' }} />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         {success && <Alert severity="success" variant="outlined" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>Password changed successfully.</Alert>}
-        {error && <Alert severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+        {error && <FormAlert sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</FormAlert>}
         <form onSubmit={handleSubmit} noValidate>
           <Stack spacing={2}>
             <TextField size="small" label="Current Password" type={showOld ? 'text' : 'password'} value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} autoComplete="current-password" fullWidth
@@ -234,7 +234,7 @@ function SessionsSection() {
         subheaderTypographyProps={{ variant: 'caption' }}
         action={sessions.filter((s) => !s.current).length > 1 ? <Button size="small" color="error" variant="text" onClick={handleRevokeAll} sx={{ fontSize: '0.7rem' }}>Revoke All Others</Button> : undefined}
       />
-      {error && <Alert severity="error" variant="outlined" sx={{ mx: 2, mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
+      {error && <FormAlert sx={{ mx: 2, mb: 1 }} onClose={() => setError(null)}>{error}</FormAlert>}
       {loading ? (
         <CardContent sx={{ ...cardContentSx, pt: 0 }}>
           <Stack spacing={1}>{[...Array(2)].map((_, i) => <Skeleton key={i} height={48} />)}</Stack>

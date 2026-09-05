@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FormAlert } from '@omnitron-dev/prism';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -64,9 +65,7 @@ export default function SignInPage() {
         </Typography>
       </Stack>
       {error && (
-        <Alert severity="error" variant="outlined" onClose={() => setError('')}>
-          {error}
-        </Alert>
+        <FormAlert onClose={() => setError('')}>{error}</FormAlert>
       )}
       <form onSubmit={handleSubmit} noValidate>
         <Stack spacing={2.5}>

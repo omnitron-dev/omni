@@ -124,6 +124,15 @@ export interface AuthErrorMiddlewareOptions {
   /**
    * Service method to call for token refresh
    * @default 'auth.refresh'
+   *
+   * NOT READ (NB-6). The AuthenticationClient's own configured refresh
+   * transport — cookie or bearer — decides how the token is refreshed, and
+   * this value is never consulted. Kept so existing configurations still
+   * type-check.
+   *
+   * The reasoning was already recorded at the destructuring site below, where
+   * a maintainer works; a caller reads THIS, and saw only a default that
+   * suggested the field did something.
    */
   refreshMethod?: string;
 

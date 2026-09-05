@@ -269,6 +269,18 @@ export interface SubscriptionResult<TData = unknown> {
  * exists. The DevTools module next door is the pattern to follow — it says
  * "placeholder for future implementation" and logs as much in development.
  */
+/**
+ * NOT IMPLEMENTED — there is no streaming hook in this package.
+ *
+ * `StreamOptions` and `StreamResult` are exported from the package root,
+ * `core/index` and `hooks/index`, and no hook accepts either: `hooks/` contains
+ * useQuery, useQueries, useInfiniteQuery, useMutation, useService and
+ * useSubscription, and nothing else. A consumer reading the exports would
+ * reasonably conclude that chunk callbacks, an accumulator and a backpressure
+ * high-water mark are available here; none of it exists.
+ *
+ * For server-push, `useSubscription` is the hook that does exist.
+ */
 export interface StreamOptions<TChunk = unknown, TResult = TChunk[]> {
   /** Function returning a ReadableStream */
   streamFn: () => Promise<ReadableStream<TChunk>>;
@@ -289,6 +301,7 @@ export interface StreamOptions<TChunk = unknown, TResult = TChunk[]> {
 /**
  * Stream result
  */
+/** NOT IMPLEMENTED — see `StreamOptions`; nothing produces one of these. */
 export interface StreamResult<TChunk = unknown, TResult = TChunk[]> {
   /** All received chunks */
   chunks: TChunk[];
@@ -428,7 +441,15 @@ export interface CacheConfig {
   cacheTime?: number;
   /** Maximum cache entries */
   maxEntries?: number;
-  /** Enable cache persistence */
+  /**
+   * Enable cache persistence
+   *
+   * NOT IMPLEMENTED — read by nothing. The cache lives for the lifetime of the
+   * page: setting a `key` and a `storage` here does not write to
+   * localStorage, sessionStorage or IndexedDB, and nothing is restored on
+   * reload. (Mutation dehydration exists for offline replay, which is a
+   * different mechanism and not driven by this field.)
+   */
   persistence?:
     | boolean
     | {

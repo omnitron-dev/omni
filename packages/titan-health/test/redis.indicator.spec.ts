@@ -21,13 +21,20 @@ const createMockRedisClient = (
     };
   } = {}
 ): IRedisClient => {
-  const { latency = 5, status = 'ready', isReady = true, shouldFail = false, error, memoryInfo } = options;
+  const { latency = 0, status = 'ready', isReady = true, shouldFail = false, error, memoryInfo } = options;
 
   const client: IRedisClient = {
     status,
     isReady,
     ping: async () => {
-      await new Promise((resolve) => setTimeout(resolve, latency));
+      // Only sleep when a test is actually about latency. The default used to
+      // be 5 ms, which every test paid whether or not it cared: `setTimeout(5)`
+      // measures 5.0–6.4 ms on an idle machine, against a default
+      // `latencyDegradedThreshold` of 10 — so more than half the margin was
+      // spent before the scheduler got involved, and under `turbo test` the
+      // rest went too. The tests that failed were the ones about MEMORY and
+      // about `status`, which never mentioned latency at all.
+      if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
       if (shouldFail) {
         throw error || new Error('Redis connection failed');
       }
@@ -75,13 +82,22 @@ describe('RedisHealthIndicator', () => {
     });
   });
 
-  describe('setClient', () => {
+  /**
+ * Threshold for tests that assert `healthy` for a reason other than latency.
+ *
+ * Scheduling delay only ever moves a measured latency UP, so the cases
+ * asserting `degraded` / `unhealthy` are robust by construction and the ones
+ * asserting `healthy` are the fragile half. Rather than trimming margins one
+ * test at a time — this file already carried one such local workaround — every
+ * "healthy for some other reason" case gets a threshold no scheduler crosses.
+ * The comparison itself is still tested, from both sides, by the latency cases
+ * below.
+ */
+const NO_LATENCY_BUDGET = { latencyDegradedThreshold: 60_000, latencyUnhealthyThreshold: 60_000 };
+
+describe('setClient', () => {
     it('should set client for lazy initialization', async () => {
-      // `latencyDegradedThreshold` defaults to 10ms, so under parallel load
-      // even a mocked ping can be reported as degraded purely because the
-      // event loop was busy — this test is about setClient, not about latency.
-      // Give it a threshold no scheduling delay will cross.
-      const ind = new RedisHealthIndicator(undefined, { latencyDegradedThreshold: 60_000 });
+      const ind = new RedisHealthIndicator(undefined, NO_LATENCY_BUDGET);
       ind.setClient(createMockRedisClient());
 
       const result = await ind.check();
@@ -115,10 +131,14 @@ describe('RedisHealthIndicator', () => {
     });
 
     it('should return healthy for fast response', async () => {
-      indicator.setClient(createMockRedisClient({ latency: 2 }));
+      // The claim is "measured latency below the threshold ⇒ healthy", and it
+      // is asserted as that relationship rather than as an absolute time, so a
+      // busy scheduler cannot turn it into a failure.
+      indicator = new RedisHealthIndicator(createMockRedisClient({ latency: 2 }), NO_LATENCY_BUDGET);
       const result = await indicator.check();
       expect(result.status).toBe('healthy');
-      expect(result.details?.latency).toBeDefined();
+      expect(result.details?.latency).toBeTypeOf('number');
+      expect(result.details?.latency as number).toBeLessThan(NO_LATENCY_BUDGET.latencyDegradedThreshold);
     });
 
     it('should return degraded for slow response', async () => {
@@ -247,7 +267,7 @@ describe('RedisHealthIndicator', () => {
         throw new Error('INFO command not supported');
       };
 
-      indicator = new RedisHealthIndicator(client, { includeMemoryInfo: true });
+      indicator = new RedisHealthIndicator(client, { includeMemoryInfo: true, ...NO_LATENCY_BUDGET });
       const result = await indicator.check();
 
       // Should still be healthy since ping succeeded
@@ -260,7 +280,7 @@ describe('RedisHealthIndicator', () => {
         createMockRedisClient({
           memoryInfo: { used: 5000, peak: 6000, maxmemory: 0 },
         }),
-        { includeMemoryInfo: true }
+        { includeMemoryInfo: true, ...NO_LATENCY_BUDGET }
       );
 
       const result = await indicator.check();
@@ -275,7 +295,7 @@ describe('RedisHealthIndicator', () => {
       const client = createMockRedisClient();
       delete client.status;
       delete client.isReady;
-      indicator.setClient(client);
+      indicator = new RedisHealthIndicator(client, NO_LATENCY_BUDGET);
 
       const result = await indicator.check();
       expect(result.status).toBe('healthy');

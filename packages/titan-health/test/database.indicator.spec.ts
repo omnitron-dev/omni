@@ -15,10 +15,14 @@ const createMockConnection = (
     pattern?: 'execute' | 'raw' | 'query';
   } = {}
 ): IDatabaseConnection => {
-  const { latency = 10, shouldFail = false, error, pattern = 'execute' } = options;
+  const { latency = 0, shouldFail = false, error, pattern = 'execute' } = options;
 
   const executeQuery = async () => {
-    await new Promise((resolve) => setTimeout(resolve, latency));
+    // Sleep only when a test is about latency. The default was 10 ms against a
+    // 100 ms threshold — enough margin that this never broke, unlike the redis
+    // spec's 5-against-10 — but the shape is the same and the wall time was
+    // spent by every case regardless.
+    if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
     if (shouldFail) {
       throw error || new Error('Database query failed');
     }

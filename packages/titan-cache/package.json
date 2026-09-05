@@ -30,6 +30,7 @@
     "@omnitron-dev/titan": "workspace:*"
   },
   "devDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
     "@types/node": "25.6.0",
     "reflect-metadata": "^0.2.2",
     "typescript": "^7.0.2",

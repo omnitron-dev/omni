@@ -56,6 +56,16 @@
         "kb/generated/**"
       ],
       "outputLogs": "new-only"
+    },
+    "@omnitron-dev/omnitron#build": {
+      "dependsOn": [
+        "^build",
+        "@omnitron/console#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "outputLogs": "new-only"
     }
   }
 }

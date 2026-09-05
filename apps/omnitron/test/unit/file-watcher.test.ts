@@ -319,13 +319,24 @@ describe('FileWatcher', () => {
     // they would all still pass while the daemon watched nothing.
     //
     // This asserts the call rather than waiting for an event on purpose. The
-    // earlier end-to-end version of this check wrote a real file and waited,
-    // which made it hostage to FSEvents: it needs hundreds of ms to arm and
-    // then delivers seconds late, so under a loaded machine (a build and a
-    // docker stack running alongside) it timed out at 30s and failed a suite
-    // that had nothing wrong with it. Whether `fs.watch` itself delivers is
+    // earlier end-to-end version wrote a real file and waited, which made it
+    // hostage to FSEvents: it needs hundreds of ms to arm and delivers
+    // seconds late, so on a loaded machine it timed out at 30s and failed a
+    // suite that had nothing wrong with it. Whether `fs.watch` delivers is
     // Node's contract to keep, not this repo's to re-verify on every run.
-    const watchSpy = vi.spyOn(fs, 'watch');
+    //
+    // That rewrite removed the wait and kept the real watcher, which left
+    // most of the cost in place: tearing down a recursive FSEvents stream on
+    // macOS is load-dependent, measured here between 0 ms idle and 19 s at
+    // load 93, and it is paid in `afterEach`. The suite went on failing on a
+    // 30 s hook timeout, now with an explanation that no longer described it.
+    //
+    // So the watcher is a stub. The seam — `fs.watch` called with this
+    // directory, `recursive: true`, and a callback — is exactly what is
+    // asserted, and it is asserted without asking the operating system for
+    // anything.
+    const fakeWatcher = { close: vi.fn(), on: vi.fn(), unref: vi.fn() } as unknown as fs.FSWatcher;
+    const watchSpy = vi.spyOn(fs, 'watch').mockReturnValue(fakeWatcher);
     try {
       const config = createTestConfig([{ name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts') }]);
       watcher = new FileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);

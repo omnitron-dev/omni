@@ -112,22 +112,30 @@ export interface IProcessOptions {
     logs?: boolean | ILoggingOptions;
   };
 
-  /** Clustering options */
+  // NONE OF THE SIX BELOW IS IMPLEMENTED. Each is read by nothing, and the
+  // interfaces they point at are annotated individually — but a caller
+  // configuring a process reads THIS list, where every entry looked as
+  // supported as `restartPolicy` or `memoryLimit` above it. Spelled out here
+  // so the absence is visible at the point of use rather than one navigation
+  // away.
+
+  /** Clustering options — NOT IMPLEMENTED; no clustering is performed. */
   cluster?: boolean | IClusterOptions;
 
-  /** Multi-tenancy support */
+  /** Multi-tenancy support — NOT IMPLEMENTED; no tenant isolation exists. */
   multiTenant?: boolean | IMultiTenantOptions;
 
-  /** Service mesh features */
+  /** Service mesh features — NOT IMPLEMENTED; no mTLS, retry or bulkhead. */
   mesh?: IServiceMeshOptions;
 
-  /** Geographic distribution */
+  /** Geographic distribution — NOT IMPLEMENTED; regions are not considered. */
   geo?: IGeoOptions;
 
-  /** Cost optimization */
+  /** Cost optimization — NOT IMPLEMENTED; no budget is tracked or enforced. */
   cost?: ICostOptions;
 
-  /** Self-healing configuration */
+  /** Self-healing configuration — NOT IMPLEMENTED; see `restartPolicy` for the
+   *  restart behaviour that does exist. */
   selfHealing?: ISelfHealingOptions;
 
   /** Debug options */
@@ -749,6 +757,8 @@ export interface ILoggingOptions {
 
 /**
  * Cluster configuration
+ *
+ * NOT IMPLEMENTED — referenced nowhere outside this file.
  */
 export interface IClusterOptions {
   nodes?: number;
@@ -840,6 +850,9 @@ export interface IGeoOptions {
 
 /**
  * Cost optimization options
+ *
+ * NOT IMPLEMENTED — referenced nowhere outside this file. No budget is tracked
+ * and no alert is raised, whatever `budget.monthly` and `budget.alert` say.
  */
 export interface ICostOptions {
   budget?: { monthly?: number; alert?: number };

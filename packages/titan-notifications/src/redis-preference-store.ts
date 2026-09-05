@@ -285,41 +285,58 @@ export class RedisPreferenceStore implements IPreferenceStore {
     const windows = ['minute', 'hour', 'day'] as const;
     const divisors = { minute: 60000, hour: 3600000, day: 86400000 };
 
-    for (const window of windows) {
+    const buckets = windows.map((window) => {
       const bucket = Math.floor(now / divisors[window]);
-      const key = category
-        ? `${this.keyPrefix}counter:${recipientId}:${category}:${window}:${bucket}`
-        : `${this.keyPrefix}counter:${recipientId}:${window}:${bucket}`;
+      return {
+        window,
+        key: category
+          ? `${this.keyPrefix}counter:${recipientId}:${category}:${window}:${bucket}`
+          : `${this.keyPrefix}counter:${recipientId}:${window}:${bucket}`,
+      };
+    });
 
-      if (this.redis) {
-        await this.redis.incr(key);
-        await this.redis.expire(key, this.counterTTL);
+    if (this.redis) {
+      // One transaction for all three windows instead of six sequential round
+      // trips on a path that runs once per notification sent.
+      //
+      // MULTI rather than a pipeline, because `INCR` and `EXPIRE` were also
+      // separate calls: a process that died between them left a counter key
+      // with no TTL, and nothing ever removes those — unbounded growth in the
+      // counter namespace, invisible until someone counts keys.
+      const tx = this.redis.multi();
+      for (const { key } of buckets) {
+        tx.incr(key);
+        tx.expire(key, this.counterTTL);
+      }
+      await tx.exec();
+      return;
+    }
+
+    for (const { window, key } of buckets) {
+      const entry = this.counterStore.get(key);
+      if (entry && entry.resetAt > now) {
+        entry.count++;
       } else {
-        const entry = this.counterStore.get(key);
-        if (entry && entry.resetAt > now) {
-          entry.count++;
-        } else {
-          // Apply FIFO eviction if at capacity (before adding new entry)
-          if (!this.counterStore.has(key) && this.counterStore.size >= RedisPreferenceStore.MAX_MEMORY_COUNTERS) {
-            // Clean up expired entries first
-            for (const [k, v] of this.counterStore.entries()) {
-              if (v.resetAt < now) {
-                this.counterStore.delete(k);
-              }
-            }
-            // If still at capacity, evict oldest (FIFO)
-            if (this.counterStore.size >= RedisPreferenceStore.MAX_MEMORY_COUNTERS) {
-              const firstKey = this.counterStore.keys().next().value;
-              if (firstKey) {
-                this.counterStore.delete(firstKey);
-              }
+        // Apply FIFO eviction if at capacity (before adding new entry)
+        if (!this.counterStore.has(key) && this.counterStore.size >= RedisPreferenceStore.MAX_MEMORY_COUNTERS) {
+          // Clean up expired entries first
+          for (const [k, v] of this.counterStore.entries()) {
+            if (v.resetAt < now) {
+              this.counterStore.delete(k);
             }
           }
-          this.counterStore.set(key, {
-            count: 1,
-            resetAt: now + divisors[window],
-          });
+          // If still at capacity, evict oldest (FIFO)
+          if (this.counterStore.size >= RedisPreferenceStore.MAX_MEMORY_COUNTERS) {
+            const firstKey = this.counterStore.keys().next().value;
+            if (firstKey) {
+              this.counterStore.delete(firstKey);
+            }
+          }
         }
+        this.counterStore.set(key, {
+          count: 1,
+          resetAt: now + divisors[window],
+        });
       }
     }
   }

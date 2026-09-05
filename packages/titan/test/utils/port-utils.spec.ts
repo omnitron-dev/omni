@@ -59,12 +59,14 @@ describe('Port Utilities', () => {
     });
 
     it('should reject when no ports available in range', async () => {
-      // This test simulates the exhaustion scenario by using an impossible range
-      // Create multiple servers to fill a small range
+      // The previous version filled the range and then gave up, on the belief
+      // that "the function tries random first, which might succeed, so we
+      // can't guarantee failure". It does not: getAvailablePort walks upward
+      // from startPort and rejects with 'No available ports' once it passes
+      // maxPort. With every port in the range bound, the outcome is exact.
       const startPort = 15100;
       const maxPort = 15102;
 
-      // Fill the entire range
       for (let port = startPort; port <= maxPort; port++) {
         const server = createServer();
         servers.push(server);
@@ -73,12 +75,7 @@ describe('Port Utilities', () => {
         });
       }
 
-      // Force sequential search by making random assignment fail
-      // We can't easily force this, so we'll test the timeout scenario instead
-
-      // Actually, let's test the basic rejection when range is exhausted
-      // The function tries random first, which might succeed, so we can't guarantee failure
-      // Skip this test as it's hard to guarantee all ports in a range are occupied
+      await expect(getAvailablePort(startPort, maxPort)).rejects.toThrow('No available ports');
     }, 10000);
 
     it('should handle server listen errors gracefully', async () => {

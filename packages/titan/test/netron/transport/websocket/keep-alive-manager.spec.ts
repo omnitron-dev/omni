@@ -301,28 +301,48 @@ describe('KeepAliveManager', () => {
     });
 
     it('should skip closed connections when pinging', async () => {
+      // The old version registered one closed socket, waited out a ping
+      // interval and asserted nothing — "should not throw" is satisfied by a
+      // manager that pings nothing at all, so it could not tell skipping from
+      // stopping. Register two: the closed one must be passed over and the
+      // open one must still be pinged on the same tick.
       const config = { interval: 100, timeout: 1000 };
       const manager = KeepAliveManager.getInstance(config);
 
-      const serverWsPromise = new Promise<WebSocket>((resolve) => {
-        wsServer.on('connection', (ws) => resolve(ws));
+      const accepted: WebSocket[] = [];
+      const twoAccepted = new Promise<void>((resolve) => {
+        wsServer.on('connection', (ws) => {
+          accepted.push(ws);
+          if (accepted.length === 2) resolve();
+        });
       });
 
-      const clientWs = new WebSocket(`ws://127.0.0.1:${testPort}`);
-      await new Promise((resolve) => clientWs.on('open', resolve));
-      const serverWs = await serverWsPromise;
+      const clientA = new WebSocket(`ws://127.0.0.1:${testPort}`);
+      const clientB = new WebSocket(`ws://127.0.0.1:${testPort}`);
+      await Promise.all([
+        new Promise((resolve) => clientA.on('open', resolve)),
+        new Promise((resolve) => clientB.on('open', resolve)),
+      ]);
+      await twoAccepted;
 
-      const connection = new WebSocketConnection(serverWs, {}, true);
-      manager.register(connection, serverWs);
+      const [closedSocket, openSocket] = accepted as [WebSocket, WebSocket];
+      const closedPing = vi.spyOn(closedSocket, 'ping');
+      const openPing = vi.spyOn(openSocket, 'ping');
 
-      // Close the socket before the ping
-      serverWs.close();
+      manager.register(new WebSocketConnection(closedSocket, {}, true), closedSocket);
+      manager.register(new WebSocketConnection(openSocket, {}, true), openSocket);
+
+      closedSocket.close();
       await delay(50);
+      expect(closedSocket.readyState).not.toBe(WebSocket.OPEN);
 
-      // Should not throw when trying to ping closed socket
-      await delay(150); // Wait for ping interval
+      await delay(200); // at least one ping interval
 
-      clientWs.close();
+      expect(openPing, 'the open connection was not pinged').toHaveBeenCalled();
+      expect(closedPing, 'a closed connection was pinged').not.toHaveBeenCalled();
+
+      clientA.close();
+      clientB.close();
     });
   });
 

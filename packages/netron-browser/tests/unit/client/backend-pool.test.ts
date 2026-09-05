@@ -532,6 +532,10 @@ describe('BackendPool', () => {
     });
 
     it('should stop health checks when requested', () => {
+      // These three asserted nothing — "should not throw" is satisfied by a
+      // stopHealthChecks() that does nothing at all, which is exactly the
+      // failure that would leave an interval running for the life of the tab.
+      // Look at the timer.
       const pool = new BackendPool({
         baseUrl,
         backends,
@@ -539,10 +543,15 @@ describe('BackendPool', () => {
         healthCheckInterval: 1000,
       });
 
-      pool.stopHealthChecks();
+      const timerOf = (p: BackendPool) => (p as unknown as { healthCheckTimer?: unknown }).healthCheckTimer;
+      expect(timerOf(pool), 'enableHealthChecks did not start a timer').toBeDefined();
 
-      // Should be safe to call multiple times
       pool.stopHealthChecks();
+      expect(timerOf(pool), 'the interval survived stopHealthChecks').toBeUndefined();
+
+      // Safe to call again.
+      pool.stopHealthChecks();
+      expect(timerOf(pool)).toBeUndefined();
     });
 
     it('should not start health checks when disabled', () => {
@@ -552,7 +561,11 @@ describe('BackendPool', () => {
         enableHealthChecks: false,
       });
 
-      // Should not throw
+      expect(
+        (pool as unknown as { healthCheckTimer?: unknown }).healthCheckTimer,
+        'a timer was started despite enableHealthChecks: false'
+      ).toBeUndefined();
+
       pool.stopHealthChecks();
     });
   });
@@ -693,10 +706,15 @@ describe('BackendPool', () => {
         enableHealthChecks: true,
       });
 
-      await pool.destroy();
+      const timerOf = () => (pool as unknown as { healthCheckTimer?: unknown }).healthCheckTimer;
+      expect(timerOf(), 'enableHealthChecks did not start a timer').toBeDefined();
 
-      // Should be safe to call after destroy
+      await pool.destroy();
+      expect(timerOf(), 'destroy() left the health-check interval running').toBeUndefined();
+
+      // Safe to call after destroy.
       pool.stopHealthChecks();
+      expect(timerOf()).toBeUndefined();
     });
   });
 

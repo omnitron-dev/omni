@@ -209,7 +209,28 @@ export class ProcessSupervisor extends EventEmitter {
    * loop that was tearing it down.
    */
   async stop(): Promise<void> {
-    if (!this.isStarted) return;
+    // A stop() issued while start() is still in flight used to read
+    // `isStarted === false` — the flag `doStart()` only assigns after its last
+    // child has spawned — conclude there was nothing to stop and return. The
+    // children already spawned kept running, the rest went on spawning, the
+    // crash handler stayed registered, and the caller was told the supervisor
+    // was down. T#59 fixed the concurrent-START half of this shape; this is the
+    // other half.
+    //
+    // Gate the crash handler first, then let the start finish so `this.children`
+    // is complete before the teardown loop reads it — stopping children while
+    // more are still being spawned is the very race T#52/T#60 closed elsewhere.
+    if (this.startPromise) {
+      this.isStopping = true;
+      await this.startPromise.catch(() => undefined);
+    }
+
+    // Nothing was ever started, and nothing was left half-started by a start()
+    // that threw.
+    if (!this.isStarted && this.children.size === 0) {
+      this.isStopping = false;
+      return;
+    }
 
     this.isStopping = true;
     this.logger.info({ supervisor: this.SupervisorClass.name }, 'Stopping supervisor');

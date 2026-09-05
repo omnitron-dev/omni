@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CardHeader from '@mui/material/CardHeader';
@@ -410,8 +411,13 @@ export default function PipelinesPage() {
                   return (
                     <TableRow key={run.id}>
                       <TableCell colSpan={5} sx={{ p: 0 }}>
-                        <Box
-                          sx={{ cursor: 'pointer', px: 2, py: 1 }}
+                        {/* A button, not a clickable Box: expanding a run was
+                            reachable by pointer only. `component="div"` keeps the
+                            layout while giving it focus, a role, and Enter/Space. */}
+                        <ButtonBase
+                          component="div"
+                          aria-expanded={expandedRun === run.id}
+                          sx={{ cursor: 'pointer', px: 2, py: 1, width: '100%', display: 'block', textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
                           onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
                         >
                           <Stack direction="row" spacing={2} sx={{
@@ -448,7 +454,7 @@ export default function PipelinesPage() {
                               {run.triggeredBy}
                             </Typography>
                           </Stack>
-                        </Box>
+                        </ButtonBase>
                         <Collapse in={expandedRun === run.id}>
                           <RunDetail run={run} />
                         </Collapse>

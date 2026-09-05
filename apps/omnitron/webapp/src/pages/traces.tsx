@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CardHeader from '@mui/material/CardHeader';
@@ -307,11 +308,14 @@ export default function TracesPage() {
                       return (
                         <TableRow key={trace.traceId}>
                           <TableCell colSpan={5} sx={{ p: 0 }}>
-                            <Box
-                              sx={{ cursor: 'pointer', px: 2, py: 1, '&:hover': { bgcolor: 'action.hover' } }}
-                              onClick={() =>
-                                setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)
-                              }
+                            {/* A button, not a clickable Box: expanding a trace was
+                                reachable by pointer only. `component="div"` keeps the
+                                layout while giving it focus, a role, and Enter/Space. */}
+                            <ButtonBase
+                              component="div"
+                              aria-expanded={expandedTrace === trace.traceId}
+                              sx={{ cursor: 'pointer', px: 2, py: 1, width: '100%', display: 'block', textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
+                              onClick={() => setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)}
                             >
                               <Stack direction="row" spacing={2} sx={{
                                 alignItems: "center"
@@ -356,7 +360,7 @@ export default function TracesPage() {
                                   {formatDate(trace.startTime)}
                                 </Typography>
                               </Stack>
-                            </Box>
+                            </ButtonBase>
                             <Collapse in={expandedTrace === trace.traceId}>
                               <Box sx={{ px: 2, pb: 1 }}>
                                 <Typography

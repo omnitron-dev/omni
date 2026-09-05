@@ -15,6 +15,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
+import Link from '@mui/material/Link';
 
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon } from 'src/assets/icons';
 
@@ -214,11 +215,21 @@ export default function AppsListPage() {
                     onClick={() => navigate(`/apps/${app.name}`)}
                   >
                     <TableCell>
-                      <Typography variant="body2" sx={{
-                        fontWeight: 600
-                      }}>
+                      {/* A real link, not just a clickable row. The row's
+                          onClick is a convenience for a pointer; it is not
+                          reachable by keyboard and announces nothing, so it
+                          was the only way into an app's detail page and a
+                          keyboard user had none. */}
+                      <Link
+                        component={RouterLink}
+                        to={`/apps/${app.name}`}
+                        variant="body2"
+                        underline="hover"
+                        sx={{ fontWeight: 600, color: 'text.primary' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {app.name}
-                      </Typography>
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <Chip

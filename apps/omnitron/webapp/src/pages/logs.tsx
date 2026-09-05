@@ -171,7 +171,7 @@ function LogRow({ log, isNew }: LogRowProps) {
             sx={{
               fontFamily: MONO,
               fontSize: 11,
-              color: '#5a6270',
+              color: '#7c8493',
               lineHeight: '20px',
               whiteSpace: 'nowrap',
               letterSpacing: '-0.02em',
@@ -796,7 +796,7 @@ export default function LogsPage() {
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 16, color: '#5a6270' }} />
+                    <SearchIcon sx={{ fontSize: 16, color: '#7c8493' }} />
                   </InputAdornment>
                 ),
               },
@@ -966,7 +966,7 @@ export default function LogsPage() {
         }}>
           <Typography
             variant="caption"
-            sx={{ fontFamily: MONO, fontSize: 11, color: '#5a6270' }}
+            sx={{ fontFamily: MONO, fontSize: 11, color: '#7c8493' }}
           >
             {loading
               ? 'Loading...'
@@ -997,7 +997,7 @@ export default function LogsPage() {
                     sx={{
                       fontFamily: MONO,
                       fontSize: 10,
-                      color: '#5a6270',
+                      color: '#7c8493',
                     }}
                   >
                     {entry.level}: {entry.count.toLocaleString()}
@@ -1069,7 +1069,7 @@ export default function LogsPage() {
           </Stack>
           <Typography
             variant="caption"
-            sx={{ fontFamily: MONO, fontSize: 10, color: '#5a6270', letterSpacing: '0.04em' }}
+            sx={{ fontFamily: MONO, fontSize: 10, color: '#7c8493', letterSpacing: '0.04em' }}
           >
             {daemonMode ? 'omnitron-daemon' : 'omnitron-logs'}
             {app ? ` — ${app}` : ''}
@@ -1122,7 +1122,7 @@ export default function LogsPage() {
                 sx={{
                   fontFamily: MONO,
                   fontSize: 12,
-                  color: '#5a6270',
+                  color: '#7c8493',
                   textAlign: 'center',
                 }}
               >

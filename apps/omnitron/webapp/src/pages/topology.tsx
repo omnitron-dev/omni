@@ -627,11 +627,11 @@ export default function TopologyPage() {
                       py: 3,
                     }}
                   >
-                    <NodesIcon sx={{ fontSize: 48, color: '#334155', mb: 1 }} />
+                    <NodesIcon sx={{ fontSize: 48, color: '#7c8493', mb: 1 }} />
                     <Typography variant="h6" sx={{ color: '#94a3b8', mb: 0.5 }}>
                       No topology data
                     </Typography>
-                    <Typography variant="body2" sx={{ color: '#475569', mb: 2 }}>
+                    <Typography variant="body2" sx={{ color: '#8b949e', mb: 2 }}>
                       Start the daemon and deploy applications to see your infrastructure topology.
                     </Typography>
                     <Button

@@ -430,8 +430,17 @@ export interface IRateLimitModuleOptions {
 
   /**
    * Named tier configurations for different user classes.
+   *
+   * Pass a FUNCTION when the limits come from something that can change
+   * while the process runs — an admin settings row, a feature flag, a config
+   * service. Module options are captured once at construction, so a plain
+   * object freezes whatever the values were at boot; the function is called
+   * on each check, so an operator who tightens a limit sees it take effect.
+   *
+   * The call is on the hot path: return an already-built object rather than
+   * doing work per request.
    */
-  tiers?: Record<string, IRateLimitTier>;
+  tiers?: Record<string, IRateLimitTier> | (() => Record<string, IRateLimitTier> | undefined);
 
   /**
    * Enable request queueing for graceful degradation.

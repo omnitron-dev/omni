@@ -108,7 +108,26 @@ export class RateLimitService implements IRateLimitService {
     if (!tierName) {
       return this.options.defaultTier;
     }
-    return this.options.tiers?.[tierName] ?? this.options.defaultTier;
+
+    // `tiers` may be a function so that limits sourced from mutable state —
+    // an admin settings row, a config service — are read per check rather
+    // than frozen into module options at boot.
+    const tiers = typeof this.options.tiers === 'function' ? this.safeTiers() : this.options.tiers;
+    return tiers?.[tierName] ?? this.options.defaultTier;
+  }
+
+  /**
+   * Call the tier resolver, treating a throw as "no tiers configured".
+   *
+   * A resolver reaching for config that is not ready yet must degrade to the
+   * default limit, not fail the request it was asked to rate-limit.
+   */
+  private safeTiers(): Record<string, IRateLimitTier> | undefined {
+    try {
+      return (this.options.tiers as () => Record<string, IRateLimitTier> | undefined)();
+    } catch {
+      return undefined;
+    }
   }
 
   /**

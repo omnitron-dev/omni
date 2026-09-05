@@ -119,6 +119,48 @@ describe('RateLimitService orchestration (RL-1)', () => {
     expect(lastAllowed).toBe(false); // 8th denied
   });
 
+  it('reads a tier resolver on every check, so a changed limit takes effect', async () => {
+    // Module options are captured once at construction. When the limits come
+    // from something that changes while the process runs — an admin settings
+    // row is the case this was added for — a plain object freezes whatever
+    // was there at boot, and an operator who tightens a limit sees nothing
+    // happen. A function is consulted per check.
+    let limit = 5;
+    ({ storage, service } = makeService({
+      defaultLimit: 100,
+      tiers: () => ({ message: { name: 'message', limit, windowMs: 60_000 } }),
+    }));
+
+    expect((await service.consume('u', { tier: 'message' })).limit).toBe(5);
+
+    limit = 1;
+    expect((await service.consume('u2', { tier: 'message' })).limit).toBe(1);
+  });
+
+  it('falls back to the default limit when the resolver throws', async () => {
+    // A resolver reaching for config that is not ready must degrade to the
+    // default, not fail the request it was asked to rate-limit.
+    ({ storage, service } = makeService({
+      defaultLimit: 42,
+      tiers: () => {
+        throw new Error('config not loaded');
+      },
+    }));
+
+    const r = await service.consume('u', { tier: 'message' });
+    expect(r.allowed).toBe(true);
+    expect(r.limit).toBe(42);
+  });
+
+  it('falls back to the default limit when the resolver knows no such tier', async () => {
+    ({ storage, service } = makeService({
+      defaultLimit: 7,
+      tiers: () => ({ other: { name: 'other', limit: 1, windowMs: 60_000 } }),
+    }));
+
+    expect((await service.consume('u', { tier: 'message' })).limit).toBe(7);
+  });
+
   it('limit precedence: explicit options.limit overrides tier and default', async () => {
     ({ storage, service } = makeService({
       defaultLimit: 100,

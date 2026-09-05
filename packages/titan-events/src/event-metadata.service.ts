@@ -6,7 +6,11 @@
 
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
-import { Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
+
+import { LOGGER_TOKEN } from './tokens.js';
+
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 /**
  * Service for managing event metadata
@@ -18,9 +22,11 @@ export class EventMetadataService {
   private eventMetadata: Map<string, any> = new Map();
   private initialized = false;
   private destroyed = false;
-  private logger: any = null;
+  private logger: ILogger | null = null;
 
-  constructor() {}
+  constructor(@Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null) {
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

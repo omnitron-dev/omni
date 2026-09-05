@@ -7,10 +7,12 @@
 import type { EventRecord, EventFilter } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
+import { Inject, Injectable, Optional } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 
-import { EVENT_EMITTER_TOKEN } from './tokens.js';
+import { EVENT_EMITTER_TOKEN, LOGGER_TOKEN } from './tokens.js';
+
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 import type { IEventReplayOptions } from './types.js';
 
@@ -26,9 +28,14 @@ export class EventHistoryService {
   private maxHistorySize = 1000;
   private initialized = false;
   private destroyed = false;
-  private logger: any = null;
+  private logger: ILogger | null = null;
 
-  constructor(@Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter) {}
+  constructor(
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
+    @Optional() @Inject(LOGGER_TOKEN) logger?: ILogger | null
+  ) {
+    this.logger = logger ?? null;
+  }
 
   /**
    * Initialize the service

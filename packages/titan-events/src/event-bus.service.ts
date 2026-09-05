@@ -119,7 +119,11 @@ export class EventBusService {
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any,
-    queueConfig?: IMessageQueueConfig
+    // Defaulted, not optional-typed: `.length` then reports 2, which is what
+    // the module injects. A bare `queueConfig?:` counts toward arity and made
+    // every boot log a DI arity-mismatch warning for a parameter no module
+    // ever supplies — it is set through configureQueue() after resolution.
+    queueConfig: IMessageQueueConfig = {}
   ) {
     this.queueConfig = { ...DEFAULT_QUEUE_CONFIG, ...queueConfig };
   }

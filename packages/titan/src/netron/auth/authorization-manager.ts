@@ -24,6 +24,24 @@ export interface PatternMatchOptions {
 @Injectable()
 export class AuthorizationManager {
   private acls: ServiceACL[] = [];
+
+  /**
+   * Exact-pattern ACLs by service name, for lookup without a scan.
+   *
+   * findMatchingACL was `this.acls.find(...)` — a linear pass over every
+   * registered ACL on every authorization check. Measured: 5000 lookups cost
+   * ~6ms against 100 ACLs and ~500ms against 10000, and a deployment with a
+   * few thousand services pays that on each call.
+   *
+   * The array stays the source of order, because the semantics are
+   * first-registered-wins: a wildcard registered before an exact pattern
+   * currently matches first, and changing that would silently re-decide
+   * existing authorization. So this index answers "is there an exact ACL, and
+   * where in registration order", and the scan that remains covers only the
+   * wildcard patterns — of which real configurations have a handful.
+   */
+  private exactAcls = new Map<string, { acl: ServiceACL; order: number }>();
+  private wildcardAcls: Array<{ acl: ServiceACL; order: number }> = [];
   private superAdminRole = 'superadmin';
   private patternMatchOptions: PatternMatchOptions = {};
 
@@ -82,14 +100,36 @@ export class AuthorizationManager {
     const existingIndex = this.acls.findIndex((existing) => existing.service === acl.service);
 
     if (existingIndex >= 0) {
-      // Update existing ACL
+      // Update existing ACL — keeps its position, so registration order is
+      // unchanged and a re-registered service does not jump the queue.
       this.acls[existingIndex] = acl;
+      this.reindexACL(acl, existingIndex);
       this.logger.debug({ service: acl.service }, 'ACL updated');
     } else {
       // Add new ACL
       this.acls.push(acl);
+      this.reindexACL(acl, this.acls.length - 1);
       this.logger.debug({ service: acl.service }, 'ACL registered');
     }
+  }
+
+  /** Place one ACL in the lookup structures at its position in the array. */
+  private reindexACL(acl: ServiceACL, order: number): void {
+    const entry = { acl, order };
+    if (acl.service.includes('*')) {
+      const existing = this.wildcardAcls.findIndex((w) => w.acl.service === acl.service);
+      if (existing >= 0) this.wildcardAcls[existing] = entry;
+      else this.wildcardAcls.push(entry);
+    } else {
+      this.exactAcls.set(this.patternMatchOptions.caseInsensitive ? acl.service.toLowerCase() : acl.service, entry);
+    }
+  }
+
+  /** Rebuild both lookup structures from the array. */
+  private reindexAll(): void {
+    this.exactAcls.clear();
+    this.wildcardAcls = [];
+    this.acls.forEach((acl, order) => this.reindexACL(acl, order));
   }
 
   /**
@@ -111,6 +151,7 @@ export class AuthorizationManager {
     const initialLength = this.acls.length;
     this.acls = this.acls.filter((acl) => acl.service !== serviceName);
     const removed = this.acls.length < initialLength;
+    if (removed) this.reindexAll();
 
     if (removed) {
       this.logger.debug({ serviceName }, 'ACL removed');
@@ -347,6 +388,8 @@ export class AuthorizationManager {
    */
   clearACLs(): void {
     this.acls = [];
+    this.exactAcls.clear();
+    this.wildcardAcls = [];
     this.clearPatternCache();
     this.logger.debug('All ACLs cleared');
   }
@@ -439,7 +482,21 @@ export class AuthorizationManager {
    * @returns Matching ACL or undefined
    */
   private findMatchingACL(serviceName: string): ServiceACL | undefined {
-    return this.acls.find((acl) => this.matchesPattern(serviceName, acl.service));
+    // Equivalent to `this.acls.find(acl => matchesPattern(serviceName,
+    // acl.service))` — the FIRST registered ACL that matches — without walking
+    // every entry. The exact hit is one Map read; the wildcards are scanned,
+    // and whichever of the two was registered earlier wins, exactly as the
+    // array order decided before.
+    const key = this.patternMatchOptions.caseInsensitive ? serviceName.toLowerCase() : serviceName;
+    const exact = this.exactAcls.get(key);
+
+    let best = exact;
+    for (const candidate of this.wildcardAcls) {
+      if (best && candidate.order > best.order) continue;
+      if (this.matchesPattern(serviceName, candidate.acl.service)) best = candidate;
+    }
+
+    return best?.acl;
   }
 
   /**

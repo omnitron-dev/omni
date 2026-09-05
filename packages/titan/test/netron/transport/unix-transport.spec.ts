@@ -167,12 +167,9 @@ describe('Unix Domain Socket Transport', () => {
       await server.close();
     });
 
-    it('should clean up socket file on close', async () => {
-      if (isWindows) {
-        // Skip for Windows - named pipes don't have files
-        return;
-      }
-
+    // `it.skipIf` rather than an early `return`: on Windows this reported
+    // PASSED, which cannot be told apart from having verified it.
+    it.skipIf(isWindows)('should clean up socket file on close', async () => {
       const server = await transport.createServer(socketPath);
       await server.listen();
 
@@ -606,12 +603,7 @@ describe('Unix Domain Socket Transport', () => {
       }
     });
 
-    it('should handle permission errors', async () => {
-      if (isWindows) {
-        // Skip on Windows - different permission model
-        return;
-      }
-
+    it.skipIf(isWindows)('should handle permission errors', async () => {
       // Try to create socket in restricted directory
       const restrictedPath = '/socket.sock';
 
@@ -624,12 +616,7 @@ describe('Unix Domain Socket Transport', () => {
       }
     });
 
-    it('should handle socket file conflicts', async () => {
-      if (isWindows) {
-        // Skip on Windows - named pipes handle this differently
-        return;
-      }
-
+    it.skipIf(isWindows)('should handle socket file conflicts', async () => {
       const server1 = await transport.createServer(socketPath);
       await server1.listen();
 
@@ -693,12 +680,7 @@ describe('Unix Domain Socket Transport', () => {
           expect(addr.path).toBe(relativePath);
         });
 
-        it('should handle abstract sockets (Linux)', () => {
-          if (process.platform !== 'linux') {
-            // Skip on non-Linux platforms
-            return;
-          }
-
+        it.skipIf(process.platform !== 'linux')('should handle abstract sockets (Linux)', () => {
           const abstractPath = '\0abstract-socket';
           const addr = transport.parseAddress(abstractPath);
           expect(addr.path).toBe(abstractPath);

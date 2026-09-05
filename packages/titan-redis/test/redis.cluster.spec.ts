@@ -339,6 +339,11 @@ describeOrSkip('Redis Cluster Support', () => {
 
     it('should handle failover scenarios', async () => {
       const retryAttempts: number[] = [];
+      const retryStrategy = (times: number): number | null => {
+        retryAttempts.push(times);
+        if (times > 3) return null;
+        return Math.min(times * 100, 2000);
+      };
       const manager = new RedisManager(
         {
           clients: [
@@ -346,13 +351,7 @@ describeOrSkip('Redis Cluster Support', () => {
               namespace: 'cluster-failover',
               cluster: {
                 nodes: sharedClusterFixture.nodes,
-                options: {
-                  clusterRetryStrategy: (times: number) => {
-                    retryAttempts.push(times);
-                    if (times > 3) return null;
-                    return Math.min(times * 100, 2000);
-                  },
-                },
+                clusterRetryStrategy: retryStrategy,
               },
               lazyConnect: true,
             },
@@ -362,13 +361,25 @@ describeOrSkip('Redis Cluster Support', () => {
       );
 
       await manager.init();
-      const client = manager.getClient('cluster-failover');
+      const cluster = manager.getClient('cluster-failover') as Cluster;
 
-      // Mock failover
-      const cluster = client as Cluster;
-      cluster.on('error', () => {});
-      cluster.on('+node', () => {});
-      cluster.on('-node', () => {});
+      // The old version subscribed three empty handlers, destroyed the
+      // manager and asserted nothing. Nothing in it triggered a failover
+      // either, so `retryAttempts` stayed empty and was never looked at — the
+      // test could only have caught a throw.
+      //
+      // A real failover needs a node killed, which this fixture does not do.
+      // What is checkable here is the step before it: that the caller's
+      // clusterRetryStrategy reaches ioredis rather than being replaced by
+      // the manager's default. createAndRegisterClient() explicitly skips its
+      // own retryStrategy when a cluster strategy is present, and that branch
+      // is what decides whether a failover is retried the way the caller
+      // asked.
+      expect(cluster.options.clusterRetryStrategy, 'the configured retry strategy did not reach ioredis').toBe(
+        retryStrategy
+      );
+      expect(retryStrategy(4), 'the strategy under test does not stop after 3 attempts').toBeNull();
+      expect(retryAttempts).toContain(4);
 
       await manager.destroy();
     });

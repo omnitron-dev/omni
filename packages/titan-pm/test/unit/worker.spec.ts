@@ -1030,108 +1030,14 @@ describe('Internal Service Methods', () => {
     });
   });
 
-  describe('__getProcessHealth', () => {
-    it('should return healthy when no checkHealth method', async () => {
-      const processInstance: any = {};
+  // __getProcessHealth is covered by test/unit/worker-health-classification.spec.ts.
+  //
+  // The cases that were here re-implemented the function inline — the real one
+  // lives in `worker-runtime.ts`, which calls `initialize()` at import and so
+  // cannot be imported by a test — and asserted against their own copy. The
+  // copy had already drifted: it lacked the `result?.status ?? 'healthy'` line
+  // that made an unreadable health answer report as healthy.
 
-      const getProcessHealth = async () => {
-        const healthMethod = processInstance.checkHealth;
-        if (typeof healthMethod === 'function') {
-          try {
-            return await healthMethod.call(processInstance);
-          } catch (error: any) {
-            return {
-              status: 'unhealthy' as const,
-              error: error.message,
-              timestamp: Date.now(),
-            };
-          }
-        }
-
-        return {
-          status: 'healthy' as const,
-          checks: [],
-          timestamp: Date.now(),
-        };
-      };
-
-      const health = await getProcessHealth();
-
-      expect(health.status).toBe('healthy');
-      expect(health.checks).toEqual([]);
-      expect(health.timestamp).toBeDefined();
-    });
-
-    it('should call checkHealth when available', async () => {
-      const processInstance: any = {
-        checkHealth: async () => ({
-          status: 'healthy' as const,
-          checks: [{ name: 'database', status: 'pass' }],
-          timestamp: Date.now(),
-        }),
-      };
-
-      const getProcessHealth = async () => {
-        const healthMethod = processInstance.checkHealth;
-        if (typeof healthMethod === 'function') {
-          try {
-            return await healthMethod.call(processInstance);
-          } catch (error: any) {
-            return {
-              status: 'unhealthy' as const,
-              error: error.message,
-              timestamp: Date.now(),
-            };
-          }
-        }
-
-        return {
-          status: 'healthy' as const,
-          checks: [],
-          timestamp: Date.now(),
-        };
-      };
-
-      const health = await getProcessHealth();
-
-      expect(health.status).toBe('healthy');
-      expect(health.checks).toContainEqual({ name: 'database', status: 'pass' });
-    });
-
-    it('should return unhealthy when checkHealth throws', async () => {
-      const processInstance: any = {
-        checkHealth: async () => {
-          throw new Error('Database connection failed');
-        },
-      };
-
-      const getProcessHealth = async () => {
-        const healthMethod = processInstance.checkHealth;
-        if (typeof healthMethod === 'function') {
-          try {
-            return await healthMethod.call(processInstance);
-          } catch (error: any) {
-            return {
-              status: 'unhealthy' as const,
-              error: error.message,
-              timestamp: Date.now(),
-            };
-          }
-        }
-
-        return {
-          status: 'healthy' as const,
-          checks: [],
-          timestamp: Date.now(),
-        };
-      };
-
-      const health = await getProcessHealth();
-
-      expect(health.status).toBe('unhealthy');
-      expect(health.error).toBe('Database connection failed');
-    });
-  });
 
   describe('__shutdown', () => {
     it('should call onShutdown if available', async () => {

@@ -15,6 +15,7 @@ import { LifecycleController } from '@omnitron-dev/titan/lifecycle';
 import type { ILogger, LogLevel } from '@omnitron-dev/titan/module/logger';
 import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
+import { classifyWorkerHealth } from './worker-health.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -257,16 +258,13 @@ async function initializeModuleWorker(ModuleClass: any, workerConfig: WorkerConf
   serviceWrapper.__getProcessHealth = async () => {
     if (typeof workerService.checkHealth === 'function') {
       try {
-        const result = await workerService.checkHealth();
-        return {
-          status: result?.status ?? 'healthy',
-          checks: result?.checks ?? [],
-          timestamp: Date.now(),
-        };
+        return classifyWorkerHealth(await workerService.checkHealth());
       } catch (err: any) {
         return { status: 'unhealthy', checks: [{ name: 'checkHealth', status: 'fail', message: err.message }], timestamp: Date.now() };
       }
     }
+    // No checkHealth at all is a different statement from an unreadable one:
+    // the service declares no health contract, so there is nothing to fail.
     return { status: 'healthy', checks: [], timestamp: Date.now() };
   };
 

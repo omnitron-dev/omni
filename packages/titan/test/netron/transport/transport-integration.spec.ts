@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { getFreePort, waitForEvent } from '../../utils/index.js';
+import { eventually } from '../../async-assert.js';
 
 // Test configuration
 const TCP_TEST_PORT = 19000;
@@ -598,24 +599,37 @@ describe('Transport Integration Tests', () => {
 
   describe('Connection Pooling', () => {
     it('should reuse connections efficiently', async () => {
+      // "Efficiently" was measured by nothing: the old version opened five
+      // connections, sent ten messages and closed, asserting neither that the
+      // sends went over the existing sockets nor that they arrived. A
+      // transport that opened a fresh connection per send passed it.
       const tcpTransport = new TcpTransport();
       const server = await tcpTransport.createServer(`tcp://127.0.0.1:${tcpPort}`);
 
-      const connections: any[] = [];
+      let accepted = 0;
+      server.on('connection', () => {
+        accepted++;
+      });
+      await server.listen();
 
-      // Create connection pool
+      const connections: any[] = [];
       for (let i = 0; i < 5; i++) {
-        const conn = await tcpTransport.connect(`tcp://127.0.0.1:${tcpPort}`);
-        connections.push(conn);
+        connections.push(await tcpTransport.connect(`tcp://127.0.0.1:${tcpPort}`));
       }
 
-      // Use connections
+      await eventually(() => {
+        expect(accepted, 'the server did not accept the five pooled connections').toBe(5);
+      });
+
       for (let round = 0; round < 10; round++) {
         const conn = connections[round % connections.length];
         await conn.send(Buffer.from(`Round ${round}`));
       }
 
-      // Clean up
+      // Ten sends over five sockets must not have opened a sixth.
+      expect(accepted, 'a send opened a new connection instead of reusing one').toBe(5);
+      expect(connections.every((c) => c.state === ConnectionState.CONNECTED)).toBe(true);
+
       for (const conn of connections) {
         await conn.close();
       }

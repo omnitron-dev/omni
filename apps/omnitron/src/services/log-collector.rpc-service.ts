@@ -43,6 +43,18 @@ export class LogsRpcService {
     return this.logCollector.getLogStats();
   }
 
+  /**
+   * In-memory ingestion counters — no database work, safe to poll.
+   *
+   * `getLogStats` above runs three `count(*)` over the whole table (22.5
+   * million rows on this host), so it is not an answer to "how fast are logs
+   * arriving". This is.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getIngestionStats(): Promise<{ ingestedTotal: number; droppedTotal: number; bufferSize: number }> {
+    return this.logCollector.getIngestionStats();
+  }
+
   // ===========================================================================
   // Real-time tailing
   // ===========================================================================

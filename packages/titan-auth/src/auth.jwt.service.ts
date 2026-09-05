@@ -65,6 +65,9 @@ const DEFAULT_OPTIONS: Required<
     | 'urlSigningKey'
     | 'verificationKeys'
     | 'requireKid'
+    // Left unset on purpose: passing nothing keeps jose's own default of 0
+    // rather than this module choosing a skew window on the caller's behalf.
+    | 'clockTolerance'
   >
 > = {
   algorithm: 'HS256',
@@ -239,14 +242,25 @@ export class JWTService implements IJWTService, ISignedUrlService {
    *   3. HS256 with a single `secret` only → use it directly.
    */
   private async verifyWithKey(token: string): Promise<JWTVerifyResult<JoseJWTPayload>> {
-    const { algorithm, issuer, audience, requireKid } = this.options;
+    const { algorithm, issuer, audience, requireKid, clockTolerance } = this.options;
 
-    const verifyOptions: { algorithms: string[]; issuer?: string; audience?: string } = {
+    const verifyOptions: {
+      algorithms: string[];
+      issuer?: string;
+      audience?: string;
+      clockTolerance?: number | string;
+    } = {
       algorithms: [algorithm],
     };
 
     if (issuer) {
       verifyOptions.issuer = issuer;
+    }
+
+    // Passed through only when set, so the default stays jose's own 0 rather
+    // than this module inventing one.
+    if (clockTolerance !== undefined) {
+      verifyOptions.clockTolerance = clockTolerance;
     }
 
     if (audience) {

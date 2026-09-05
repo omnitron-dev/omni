@@ -276,6 +276,21 @@ export interface IAuthModuleOptions {
   audience?: string;
 
   /**
+   * Permitted clock skew between the token's issuer and this verifier,
+   * in seconds (jose also accepts a string such as `'5s'`).
+   *
+   * Default 0 — jose's own default, and what this module used before the
+   * option existed. With zero tolerance a token from a server whose clock
+   * runs even slightly ahead fails its `nbf`/`iat` check, and one expiring
+   * this instant fails `exp`; in a deployment with unsynchronised clocks
+   * that surfaces as intermittent, unattributable auth failures.
+   *
+   * Keep it as small as the fleet's clock discipline allows: the window is
+   * also how long an expired token stays usable.
+   */
+  clockTolerance?: number | string;
+
+  /**
    * Service API key for service-to-service auth.
    */
   serviceKey?: string;

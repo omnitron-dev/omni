@@ -1219,13 +1219,19 @@ describe('NativeWebSocketWrapper', () => {
     it('should ping and wait for pong', async () => {
       const pingPromise = wrapper.ping();
 
-      // Simulate pong response after 10ms
+      // ping() measures with Date.now(), whose millisecond truncation can
+      // report a 10ms timer as 9 — the old assertion `rtt >= 10` against a
+      // 10ms delay was testing the timer's precision, not the wrapper, and it
+      // failed a full run at 9. Use a delay wide enough that clock slack
+      // cannot cross the boundary, and bound it above so a stuck RTT is
+      // caught too.
       setTimeout(() => {
         mockWs.emit('pong');
-      }, 10);
+      }, 50);
 
       const rtt = await pingPromise;
-      expect(rtt).toBeGreaterThanOrEqual(10);
+      expect(rtt).toBeGreaterThanOrEqual(40);
+      expect(rtt).toBeLessThan(5000);
       expect(mockWs.ping).toHaveBeenCalled();
     });
 

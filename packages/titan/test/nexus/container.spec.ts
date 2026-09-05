@@ -792,6 +792,10 @@ describe('Container - Comprehensive Tests', () => {
     });
 
     it('should handle errors in lifecycle hooks gracefully', async () => {
+      // "Gracefully" cannot mean "invisibly". The old test only checked that
+      // initialize() does not throw, which a container that swallows the
+      // error and says nothing also satisfies — and that is what shipped,
+      // because the logger those handlers report to was never set.
       @Injectable()
       class ErrorService {
         async onInit() {
@@ -799,11 +803,37 @@ describe('Container - Comprehensive Tests', () => {
         }
       }
 
-      container.register(ErrorService);
-      container.resolve(ErrorService);
+      @Injectable()
+      class HealthyService {
+        initialized = false;
+        async onInit() {
+          this.initialized = true;
+        }
+      }
 
-      // Should not throw - errors are handled gracefully
+      const logger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+        child: vi.fn(),
+      };
+      container.setLogger(logger as never);
+
+      container.register(ErrorService);
+      container.register(HealthyService);
+      container.resolve(ErrorService);
+      const healthy = container.resolve(HealthyService);
+
       await container.initialize();
+
+      expect(logger.error, 'an onInit failure was swallowed without a word').toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.objectContaining({ message: 'Init error' }) }),
+        expect.stringContaining('Failed to initialize')
+      );
+      expect(healthy.initialized, 'one failing hook stopped the others').toBe(true);
     });
   });
 

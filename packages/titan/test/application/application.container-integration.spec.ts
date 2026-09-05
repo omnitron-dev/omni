@@ -20,6 +20,31 @@ describe('Titan Application Container Integration', () => {
     }
   });
 
+  describe('Logger propagation', () => {
+    it('gives the container the application logger', async () => {
+      // The container's lifecycle handlers report @PostConstruct, onInit,
+      // onDestroy and dispose failures through `this.logger?.…`, and
+      // Container.setLogger() had no caller anywhere in the codebase. All
+      // seventeen of those sites were no-ops: a service whose onInit() threw
+      // failed in complete silence and the application started as if it had
+      // not. Nothing in the container's own tests could catch that — they
+      // construct a container directly, where a missing logger is expected.
+      app = await Application.create({ disableGracefulShutdown: true });
+      await app.start();
+
+      const container = app.container as unknown as { logger?: unknown };
+      const lifecycleService = (app.container as unknown as { lifecycleService: { logger?: unknown } })
+        .lifecycleService;
+
+      expect(app.logger, 'the application resolved no logger at all').toBeDefined();
+      expect(container.logger, 'the container never received the application logger').toBe(app.logger);
+      expect(
+        lifecycleService.logger,
+        'lifecycle error handlers still report to nothing'
+      ).toBe(app.logger);
+    });
+  });
+
   describe('Service Resolution', () => {
     it('should resolve services from container', async () => {
       const SERVICE_TOKEN = createToken<{ value: string }>('TestService');

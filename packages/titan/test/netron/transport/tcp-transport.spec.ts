@@ -10,6 +10,7 @@ import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { Packet } from '../../../src/netron/packet/index.js';
 import { Socket } from 'node:net';
 import { getFreePort, waitForEvent, delay } from '../../utils/index.js';
+import { eventually } from '../../async-assert.js';
 
 describe('TcpTransport', () => {
   let transport: TcpTransport;
@@ -694,16 +695,28 @@ describe('TcpTransport', () => {
       await serverConnPromise;
 
       const reconnectPromise = waitForEvent(client, 'reconnect');
+      const secondConnPromise = waitForEvent(server, 'connection');
 
       // Force disconnect by destroying socket
       const socket = (client as any).socket as Socket;
       socket.destroy();
 
-      // Wait for reconnection attempt
       await reconnectPromise;
 
-      // Wait a bit for reconnection to stabilize
-      await delay(500);
+      // The 'reconnect' event alone only says an attempt was made. What the
+      // test is named for is that the attempt lands: the server accepts a
+      // second connection and the client is usable again. Awaiting the event
+      // and then sleeping asserted neither — and if the event had stopped
+      // firing the test would have hung to the timeout rather than failed.
+      await secondConnPromise;
+
+      // The server accepting the socket and the client flipping out of
+      // RECONNECTING are two different moments; under a loaded parallel run
+      // they are far enough apart that reading the state at the first one
+      // sees 'reconnecting'. Wait for the state, do not sample it.
+      await eventually(() => {
+        expect(client.state).toBe(ConnectionState.CONNECTED);
+      });
 
       await client.close();
     });

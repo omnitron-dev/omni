@@ -166,6 +166,8 @@ export class DatabaseManager implements IDatabaseManager {
     return this.options.rls;
   }
   private initialized = false;
+  /** The in-flight `init()`, so a concurrent caller joins instead of building a second set of pools. */
+  private initPromise: Promise<void> | null = null;
   private readonly defaultRetryConfig: RetryConfig = {
     maxRetries: 5,
     baseDelayMs: 1000,
@@ -212,6 +214,24 @@ export class DatabaseManager implements IDatabaseManager {
       return;
     }
 
+    // ...including concurrently, which the `initialized` flag alone cannot do:
+    // it is assigned only after every connection has been built, so two calls
+    // that overlap both passed the check above and both created pools. The
+    // second `connections.set(name, info)` overwrote the first, and shutdown
+    // closes only what the map holds — the loser's database connections stayed
+    // open for the life of the process.
+    if (this.initPromise) {
+      this.logger.debug('Database manager initialization already in progress, joining');
+      return this.initPromise;
+    }
+
+    this.initPromise = this.doInit().finally(() => {
+      this.initPromise = null;
+    });
+    return this.initPromise;
+  }
+
+  private async doInit(): Promise<void> {
     this.logger.info('Initializing database manager');
 
     // Setup connections from configuration

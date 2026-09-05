@@ -118,12 +118,14 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
           const info = await adapter.inspectContainer(name);
           const labels = info?.Config?.Labels ?? {};
           if (labels['omnitron.managed'] === 'true') {
+            const failure = describeContainerFailure(info.State);
             managed.push({
               name: (info.Name ?? name).replace(/^\//, ''),
               image: info.Config?.Image ?? '',
               status: mapInspectStatus(info.State?.Status),
               containerId: info.Id?.slice(0, 12),
               health: mapInspectHealth(info.State?.Health?.Status),
+              ...(failure && { error: failure }),
             });
           }
         } catch {
@@ -153,6 +155,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
       // published ports gone — reachable by nothing. Surface it so callers can
       // recreate instead of trusting the 'running' status.
       const networkAttached = Object.keys(info.NetworkSettings?.Networks ?? {}).length > 0;
+      const failure = describeContainerFailure(info.State);
       return {
         name: (info.Name ?? name).replace(/^\//, ''),
         image: info.Config?.Image ?? '',
@@ -161,6 +164,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         health: mapInspectHealth(info.State?.Health?.Status),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         networkAttached,
+        ...(failure && { error: failure }),
       };
     });
   } catch {
@@ -498,6 +502,39 @@ export async function disposeEngine(): Promise<void> {
 // Helpers
 // =============================================================================
 
+/**
+ * Why a container is not running, in the words Docker already has.
+ *
+ * `ContainerState.error` has been part of the type all along and nothing ever
+ * filled it, while `docker inspect` carries both the exit code and a
+ * human-readable reason. So `omnitron doctor` could say "Container
+ * omnitron-nginx is created" and no more, when the answer was sitting one
+ * field away: "Bind for 0.0.0.0:9800 failed: port is already allocated".
+ *
+ * A container that is running, or that exited cleanly because it was asked
+ * to, has nothing to report — returning something there would turn a normal
+ * stop into a finding.
+ */
+function describeContainerFailure(state?: {
+  Status?: string;
+  ExitCode?: number;
+  Error?: string;
+  OOMKilled?: boolean;
+}): string | undefined {
+  if (!state) return undefined;
+  if (state.Status?.toLowerCase() === 'running') return undefined;
+
+  const parts: string[] = [];
+  if (state.Error) parts.push(state.Error);
+  if (state.OOMKilled) parts.push('killed by the OOM killer');
+  // Exit 0 is a clean stop; only a non-zero code is worth carrying.
+  if (typeof state.ExitCode === 'number' && state.ExitCode !== 0) {
+    parts.push(`exit code ${state.ExitCode}`);
+  }
+
+  return parts.length > 0 ? parts.join(' — ') : undefined;
+}
+
 function mapInspectStatus(status?: string): ContainerStatus {
   if (!status) return 'not_found';
   const lower = status.toLowerCase();
@@ -517,3 +554,12 @@ function mapInspectHealth(health?: string): 'healthy' | 'unhealthy' | 'starting'
   if (health === 'starting') return 'starting';
   return 'none';
 }
+
+/**
+ * Exported for tests only.
+ *
+ * `describeContainerFailure` is a pure function over an inspect payload, and
+ * the payloads worth testing are the ones a live Docker will not produce on
+ * demand — a refused port bind, an OOM kill.
+ */
+export const __test__ = { describeContainerFailure };

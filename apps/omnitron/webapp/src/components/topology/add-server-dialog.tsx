@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { FormAlert } from '@omnitron-dev/prism';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -131,9 +132,9 @@ export function AddServerDialog({ open, onClose }: AddServerDialogProps) {
         </Typography>
 
         {error && (
-          <Alert severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          <FormAlert sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
-          </Alert>
+          </FormAlert>
         )}
 
         <Stack spacing={2.5}>

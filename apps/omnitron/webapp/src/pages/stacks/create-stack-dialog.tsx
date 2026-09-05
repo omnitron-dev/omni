@@ -26,7 +26,7 @@ import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import Chip from '@mui/material/Chip';
 import { alpha } from '@mui/material/styles';
-import { Stepper, useStepper, type StepItem } from '@omnitron-dev/prism';
+import { FormAlert, Stepper, type StepItem, useStepper } from '@omnitron-dev/prism';
 import { daemon, nodes as nodesRpc, project as projectRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
 
@@ -283,9 +283,9 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
         </Box>
 
         {error && (
-          <Alert severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          <FormAlert sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
-          </Alert>
+          </FormAlert>
         )}
 
         {/* Step: Type */}

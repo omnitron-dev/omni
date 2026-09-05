@@ -738,13 +738,18 @@ describe('PolicyEngine Security Tests', () => {
     });
 
     it('should cleanup resources after timeout', async () => {
-      let _cleanupCalled = false;
+      let _cleanupCalled = false; // read by the assertions below
 
       const resourcePolicy: PolicyDefinition = {
         name: 'resource-policy',
         evaluate: async () => {
           try {
-            await new Promise((resolve) => setTimeout(resolve, 10000));
+            // 200ms: long enough to lose the 50ms race below, short enough
+            // that the test can then wait for the policy to finish and observe
+            // its `finally`. The original 10s made that observation impossible
+            // within any sane test timeout, which is part of why the test
+            // asserted nothing.
+            await new Promise((resolve) => setTimeout(resolve, 200));
             return { allowed: true };
           } finally {
             _cleanupCalled = true;
@@ -754,15 +759,27 @@ describe('PolicyEngine Security Tests', () => {
 
       policyEngine.registerPolicy(resourcePolicy);
 
-      await policyEngine.evaluate('resource-policy', mockContext, {
+      const decision = await policyEngine.evaluate('resource-policy', mockContext, {
         timeout: 50,
       });
 
-      // Give time for cleanup
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The timeout rejects the caller, and — measured — the policy is still
+      // running at that instant: `Promise.race` decides the outcome, it does
+      // not cancel the loser. JavaScript has no way to abort a promise, so a
+      // policy that holds a connection or a lock keeps holding it after the
+      // engine has answered.
+      expect(decision.allowed).toBe(false);
+      expect(_cleanupCalled).toBe(false);
 
-      // Note: Due to Promise.race, finally blocks may not run immediately
-      // This documents the behavior
+      // Its `finally` does run, once the work it was awaiting completes.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(_cleanupCalled).toBe(true);
+
+      // This is the behaviour, not a defect to be fixed here: a policy that
+      // must release something on timeout has to take an AbortSignal and honour
+      // it. Recorded so that a change either way is visible — the test used to
+      // assert nothing at all, under the comment "This documents the
+      // behavior", which documented nothing.
     });
 
     it('should prevent memory leak from accumulated timeout handlers', async () => {
@@ -781,28 +798,58 @@ describe('PolicyEngine Security Tests', () => {
         policyEngine.evaluate('quick-policy', mockContext, { timeout: 5000 })
       );
 
-      await Promise.all(promises);
+      const started = Date.now();
+      const decisions = await Promise.all(promises);
+      const elapsed = Date.now() - started;
 
-      // If timers aren't cleaned up, this would cause issues
-      // This test passes if it doesn't hang or error
-      expect(true).toBe(true);
+      // `expect(true).toBe(true)` used to stand here, under the note "this test
+      // passes if it doesn't hang" — which is what every test does. The
+      // property worth checking is that the 5000ms timers are cleared when the
+      // policy resolves first, rather than kept alive to fire later: measured,
+      // 100 evaluations settle in single-digit milliseconds.
+      expect(decisions).toHaveLength(100);
+      expect(decisions.every((decision) => decision.allowed)).toBe(true);
+      expect(elapsed).toBeLessThan(1000);
     });
 
-    it('should handle zero timeout gracefully', async () => {
-      const policy: PolicyDefinition = {
-        name: 'zero-timeout-test',
+    it('with timeout 0, admits what resolves without a timer and rejects the rest', async () => {
+      // This test used to call `evaluate`, discard the result into `_decision`
+      // and assert nothing, with the comment "This documents the behavior".
+      // It documented nothing: a test with no assertion records no behaviour
+      // and cannot notice a change in it.
+      //
+      // Measured, the boundary is precise and worth pinning: `timeout: 0`
+      // schedules the rejection via `setTimeout(..., 0)`, i.e. on the macrotask
+      // queue. A policy that settles synchronously or in a microtask has
+      // already produced its answer by then; anything that awaits a timer has
+      // not. `timeout` reaches the engine intact — the resolution is `??`, so
+      // zero is honoured rather than replaced by the 5000ms default.
+      policyEngine.registerPolicy({
+        name: 'zero-timeout-sync',
         evaluate: () => ({ allowed: true }),
-      };
+      } as PolicyDefinition);
+      policyEngine.registerPolicy({
+        name: 'zero-timeout-microtask',
+        evaluate: async () => ({ allowed: true }),
+      } as PolicyDefinition);
+      policyEngine.registerPolicy({
+        name: 'zero-timeout-timer',
+        evaluate: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return { allowed: true };
+        },
+      } as PolicyDefinition);
 
-      policyEngine.registerPolicy(policy);
+      const sync = await policyEngine.evaluate('zero-timeout-sync', mockContext, { timeout: 0 });
+      expect(sync.allowed).toBe(true);
 
-      // Zero timeout should still evaluate
-      const _decision = await policyEngine.evaluate('zero-timeout-test', mockContext, {
-        timeout: 0,
-      });
+      const microtask = await policyEngine.evaluate('zero-timeout-microtask', mockContext, { timeout: 0 });
+      expect(microtask.allowed).toBe(true);
 
-      // Synchronous evaluation might still complete
-      // This documents the behavior
+      // Anything that reaches the timer queue loses the race, and says so.
+      const timer = await policyEngine.evaluate('zero-timeout-timer', mockContext, { timeout: 0 });
+      expect(timer.allowed).toBe(false);
+      expect(timer.reason).toMatch(/timed out after 0ms/);
     });
 
     it('should handle negative timeout as immediate timeout', async () => {

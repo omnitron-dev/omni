@@ -113,8 +113,20 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
     });
 
     it('should handle multiple close calls', async () => {
+      // "Should not throw" was the whole test, and a close() that did nothing
+      // satisfies it. Check that the first one actually took the server down
+      // and the second left it that way — a second close that re-armed
+      // anything, or a status left at 'online', is the failure worth catching.
+      await server.listen();
+      expect(server.status).toBe('online');
+
       await server.close();
-      await server.close(); // Should not throw
+      expect(server.status, 'the server still reports itself up after close').toBe('offline');
+      expect((server as unknown as { server: unknown }).server).toBeNull();
+
+      await server.close();
+      expect(server.status).toBe('offline');
+      expect((server as unknown as { server: unknown }).server).toBeNull();
     });
 
     it('should emit close event on shutdown', async () => {

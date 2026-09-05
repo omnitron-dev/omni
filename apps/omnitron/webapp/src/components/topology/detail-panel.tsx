@@ -311,13 +311,19 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
 function LogsTab({ appName }: { appName?: string }) {
   const [logEntries, setLogEntries] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     try {
       const result = await logs.streamLogs({ app: appName, tail: 30 });
       setLogEntries(result);
-    } catch {
-      setLogEntries([]);
+      setError(null);
+    } catch (err) {
+      // Not `[]`. An empty log panel says "this app has been quiet", which
+      // is a statement an operator acts on by looking elsewhere. A failed
+      // fetch says nothing of the kind, and this polls every five seconds —
+      // so one bad call used to erase thirty lines someone was reading.
+      setError((err as Error)?.message ?? 'Could not read the log');
     } finally {
       setLoading(false);
     }
@@ -335,14 +341,20 @@ function LogsTab({ appName }: { appName?: string }) {
 
   if (logEntries.length === 0) {
     return (
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>No recent logs.</Typography>
+      <Typography variant="body2" sx={{ color: error ? 'warning.main' : 'text.secondary' }}>
+        {error ? `Could not read the log — ${error}` : 'No recent logs.'}
+      </Typography>
     );
   }
 
   return (
-    <Stack
+    <Stack spacing={0.5}>
+      {error && (
+        <Typography variant="caption" sx={{ color: 'warning.main' }}>
+          Could not refresh — {error}. Showing the last lines received.
+        </Typography>
+      )}
+      <Stack
       spacing={0}
       sx={{
         fontFamily: 'monospace',
@@ -384,6 +396,7 @@ function LogsTab({ appName }: { appName?: string }) {
           </Typography>
         </Stack>
       ))}
+      </Stack>
     </Stack>
   );
 }

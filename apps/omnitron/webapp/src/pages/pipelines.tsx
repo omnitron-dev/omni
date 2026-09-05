@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -228,12 +228,6 @@ export default function PipelinesPage() {
   const pipelineList = data?.pipelineList ?? [];
   const runs = data?.runs ?? [];
   const partialFailure = data?.partialFailure ?? null;
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10_000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const handleRun = async (id: string) => {
     try {

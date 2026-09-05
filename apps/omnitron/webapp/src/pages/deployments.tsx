@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import Card from '@mui/material/Card';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -186,12 +186,6 @@ export default function DeploymentsPage() {
   const deployments = data?.deployments ?? [];
   const availableApps = data?.availableApps ?? [];
   const partialFailure = data?.partialFailure ?? null;
-
-  useEffect(() => {
-    fetchDeployments();
-    const interval = setInterval(fetchDeployments, 15000);
-    return () => clearInterval(interval);
-  }, [fetchDeployments]);
 
   const handleDeploy = async (app: string, version: string, strategy: string) => {
     try {

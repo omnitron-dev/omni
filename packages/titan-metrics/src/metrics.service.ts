@@ -63,6 +63,8 @@ export class MetricsService implements IMetricsService {
   private readonly storage: IMetricsStorage;
   private readonly syncConfig: IMetricsSyncConfig | undefined;
   private readonly maxAgeMs: number;
+  private readonly flushIntervalMs: number;
+  private readonly cleanupIntervalMs: number;
   private readonly batchSize: number;
   /** Pre-computed staleness window for `getSnapshot()`. */
   private readonly snapshotStaleAfterMs: number;
@@ -83,6 +85,13 @@ export class MetricsService implements IMetricsService {
     this.syncConfig = options.sync;
     this.maxAgeMs = parseMaxAge(options.retention?.maxAge ?? DEFAULT_MAX_AGE);
     this.batchSize = options.storage?.batchSize ?? DEFAULT_BATCH_SIZE;
+    // Both intervals are declared options with documented defaults
+    // (`storage.flushInterval` "default: 5000", `retention.cleanupInterval`
+    // "default: 3600000 = 1h") and `start()` used the constants directly, so
+    // neither could be tuned: a caller who set them got the defaults with no
+    // sign that their value had been dropped.
+    this.flushIntervalMs = options.storage?.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
+    this.cleanupIntervalMs = options.retention?.cleanupInterval ?? DEFAULT_CLEANUP_INTERVAL;
 
     // Build collection config with defaults
     const collConfig: Required<IMetricsCollectionConfig> = {
@@ -201,14 +210,14 @@ export class MetricsService implements IMetricsService {
     this.collector?.start();
 
     // Start periodic flush
-    const flushMs = DEFAULT_FLUSH_INTERVAL;
+    const flushMs = this.flushIntervalMs;
     this.flushTimer = setInterval(() => void this.flush(), flushMs);
     if (this.flushTimer && typeof this.flushTimer === 'object' && 'unref' in this.flushTimer) {
       this.flushTimer.unref();
     }
 
     // Start periodic cleanup
-    const cleanupMs = DEFAULT_CLEANUP_INTERVAL;
+    const cleanupMs = this.cleanupIntervalMs;
     this.cleanupTimer = setInterval(() => void this.cleanup(), cleanupMs);
     if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
       this.cleanupTimer.unref();

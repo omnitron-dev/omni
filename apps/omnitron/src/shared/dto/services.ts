@@ -186,6 +186,9 @@ export interface IOmnitronLogsService {
 
   getLogStats(): Promise<LogStats>;
 
+  /** In-memory ingestion counters — no database work, safe to poll. */
+  getIngestionStats(): Promise<{ ingestedTotal: number; droppedTotal: number; bufferSize: number }>;
+
   streamLogs(data: {
     app?: string;
     level?: string | string[];

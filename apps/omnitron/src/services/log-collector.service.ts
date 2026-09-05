@@ -68,6 +68,22 @@ export class LogCollectorService extends EventEmitter {
   private disposed = false;
   /** Entries dropped to the MAX_BUFFER ceiling since the last successful flush. */
   private droppedSinceFlush = 0;
+  /**
+   * Lifetime counters, in memory.
+   *
+   * The console's "Log Ingestion" card was a hardcoded `0 lines/s`, and the
+   * only alternative source is `getLogStats`, which runs three `count(*)`
+   * over the whole table — 22.5 million rows on this host, so not something
+   * to poll. A counter costs an addition per flush and answers the question
+   * the card was asking.
+   *
+   * `droppedTotal` matters more than the rate. The buffer sheds its oldest
+   * entries at the MAX_BUFFER ceiling during a database outage, and until
+   * now that happened with no counter anyone could read — logs vanished and
+   * the only trace was an event nobody was listening to.
+   */
+  private ingestedTotal = 0;
+  private droppedTotal = 0;
 
   constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
     super();
@@ -84,6 +100,7 @@ export class LogCollectorService extends EventEmitter {
     if (overflow > 0) {
       this.buffer.splice(0, overflow);
       this.droppedSinceFlush += overflow;
+      this.droppedTotal += overflow;
     }
   }
 
@@ -238,6 +255,22 @@ export class LogCollectorService extends EventEmitter {
     };
   }
 
+  /**
+   * In-memory counters. No database work, so it is safe to poll.
+   *
+   * `ingestedTotal` counts rows actually written, not rows accepted: a caller
+   * sampling it twice gets a real write rate, and a stalled flush shows as a
+   * rate of zero with a growing `bufferSize` beside it — which is the state
+   * an operator needs to be able to tell from "nothing is being logged".
+   */
+  getIngestionStats(): { ingestedTotal: number; droppedTotal: number; bufferSize: number } {
+    return {
+      ingestedTotal: this.ingestedTotal,
+      droppedTotal: this.droppedTotal,
+      bufferSize: this.buffer.length,
+    };
+  }
+
   async getLogStats(): Promise<LogStats> {
     const [byApp, byLevel, bounds] = await Promise.all([
       this.db
@@ -350,6 +383,7 @@ export class LogCollectorService extends EventEmitter {
         this.emit('dropped', this.droppedSinceFlush);
         this.droppedSinceFlush = 0;
       }
+      this.ingestedTotal += batch.length;
       this.emit('flushed', batch.length);
     } catch (err) {
       // On failure, put the batch back at the FRONT of the buffer so order

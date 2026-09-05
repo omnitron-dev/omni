@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -15,7 +15,7 @@ import Chart from 'react-apexcharts';
 
 import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
 import { Breadcrumbs } from '@omnitron-dev/prism';
-import { daemon, metrics } from 'src/netron/client';
+import { daemon, metrics, logs as logsClient } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
@@ -25,9 +25,19 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 interface MetricsSummary {
   totalCpuPercent: number;
-  totalMemoryPercent: number;
+  /**
+   * Resident memory across managed apps, in bytes.
+   *
+   * This was `totalMemoryPercent`, computed as `memory / (1024 * 1024)` —
+   * megabytes — rendered with a `%` suffix and coloured red above 80. The
+   * card read "6162%" on this host, permanently in the error colour, for a
+   * number that was never a percentage. There is no host memory total in
+   * the API to divide by, so it is shown as what it is.
+   */
+  totalMemoryBytes: number;
   activeApps: number;
-  logIngestionRate: number; // lines/sec
+  /** Lines written per second, or null until two samples exist to compare. */
+  logIngestionRate: number | null;
 }
 
 interface TimeSeriesPoint {
@@ -98,6 +108,22 @@ const baseChartOptions: ApexCharts.ApexOptions = {
   tooltip: { theme: 'dark', x: { format: 'HH:mm:ss' } },
   legend: { labels: { colors: '#ccc' } },
 };
+
+/** "6.0 GB", "812 MB", "—" when unknown. */
+function formatBytes(bytes: number | undefined): string {
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+/** "1.2k", "340", "—" when there is nothing to compare against yet. */
+function formatRate(rate: number | null | undefined): string {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return '—';
+  if (rate >= 1000) return `${(rate / 1000).toFixed(1)}k`;
+  return rate < 10 ? rate.toFixed(1) : String(Math.round(rate));
+}
 
 // ---------------------------------------------------------------------------
 // Gauge Card
@@ -185,6 +211,14 @@ export default function MetricsPage() {
   const [memSeries, setMemSeries] = useState<any[]>([]);
   const [logSeries, setLogSeries] = useState<any[]>([]);
 
+  /**
+   * Last ingestion sample, for the rate.
+   *
+   * A ref rather than state: it feeds the next computation and nothing
+   * renders from it, so writing it must not schedule a render.
+   */
+  const lastIngestion = useRef<{ total: number; at: number } | null>(null);
+
   const fetchMetrics = useCallback(async () => {
     try {
       // Fetch metrics snapshot from titan-metrics
@@ -195,12 +229,33 @@ export default function MetricsPage() {
         // Metrics service not available
       }
 
+      // Lines actually written per second, from two samples of an in-memory
+      // counter. The card was a hardcoded 0; the only other source is
+      // `getLogStats`, which counts the whole table — 22.5 million rows here.
+      // Null until there are two samples: a rate needs an interval, and
+      // showing 0 for the first one would be a measurement nobody made.
+      let ingestionRate: number | null = null;
+      try {
+        const stats = await logsClient.getIngestionStats();
+        const now = Date.now();
+        const previous = lastIngestion.current;
+        if (previous && now > previous.at) {
+          const delta = stats.ingestedTotal - previous.total;
+          // A counter that went backwards means the daemon restarted; that is
+          // not a negative rate, it is the absence of a comparable pair.
+          ingestionRate = delta >= 0 ? (delta * 1000) / (now - previous.at) : null;
+        }
+        lastIngestion.current = { total: stats.ingestedTotal, at: now };
+      } catch {
+        // The counter is a nicety; losing it must not empty the page.
+      }
+
       if (snapshot?.totals) {
         setSummary({
           totalCpuPercent: Math.round(snapshot.totals.cpu),
-          totalMemoryPercent: Math.round(snapshot.totals.memory / (1024 * 1024)),
+          totalMemoryBytes: snapshot.totals.memory ?? 0,
           activeApps: snapshot.totals.onlineApps ?? 0,
-          logIngestionRate: 0,
+          logIngestionRate: ingestionRate,
         });
       } else {
         // Fallback to daemon status
@@ -212,9 +267,9 @@ export default function MetricsPage() {
 
         setSummary({
           totalCpuPercent: Math.round(totalCpu),
-          totalMemoryPercent: Math.round(totalMem / (1024 * 1024)),
+          totalMemoryBytes: totalMem,
           activeApps: activeCount,
-          logIngestionRate: 0,
+          logIngestionRate: ingestionRate,
         });
       }
 
@@ -403,16 +458,12 @@ export default function MetricsPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <GaugeCard
             title="Total Memory"
-            value={summary?.totalMemoryPercent ?? 0}
-            suffix="%"
+            value={formatBytes(summary?.totalMemoryBytes)}
             icon={<MetricsIcon />}
-            color={
-              (summary?.totalMemoryPercent ?? 0) > 80
-                ? 'error'
-                : (summary?.totalMemoryPercent ?? 0) > 60
-                  ? 'warning'
-                  : 'success'
-            }
+            // No threshold: without a host memory total there is nothing to
+            // be a fraction of, and a colour picked from an absolute byte
+            // count would be a judgement this page cannot make.
+            color="info"
             loading={loading}
           />
         </Grid>
@@ -428,7 +479,7 @@ export default function MetricsPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <GaugeCard
             title="Log Ingestion"
-            value={summary?.logIngestionRate ?? 0}
+            value={formatRate(summary?.logIngestionRate)}
             suffix="lines/s"
             icon={<LogsIcon />}
             color="info"

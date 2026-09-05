@@ -369,14 +369,33 @@ describe('BackendClient', () => {
     });
   });
 
-  describe('Health Check', () => {
+  /**
+ * A stand-in for `HttpTransportClient` carrying the whole surface
+ * `BackendClient` uses on it: `close()`, `initialize()`, `invoke()` and the
+ * `connection` whose `ping()` drives `healthCheck()`.
+ *
+ * The two health-check cases used to assign a mock with `connection.ping`
+ * alone. `afterEach` then called `disconnect()`, which calls
+ * `httpClient.close()`, and the teardown's `.catch(() => {})` swallowed the
+ * result — but `disconnect()` logs first, so every run printed
+ * "this.httpClient.close is not a function" with a stack pointing into
+ * `backend-client.ts:217`. It reads exactly like a product defect; it is a mock
+ * poorer than the object it replaces. (Spotted by omni-4b in a turbo log.)
+ */
+function mockHttpClient(overrides: Record<string, unknown> = {}) {
+  return {
+    close: vi.fn().mockResolvedValue(undefined),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    invoke: vi.fn().mockResolvedValue(undefined),
+    connection: { ping: vi.fn().mockResolvedValue(10) },
+    ...overrides,
+  };
+}
+
+describe('Health Check', () => {
     it('should update lastHealthCheck timestamp', async () => {
       (client as any)._state = ConnectionState.CONNECTED;
-      (client as any).httpClient = {
-        connection: {
-          ping: vi.fn().mockResolvedValue(10),
-        },
-      };
+      (client as any).httpClient = mockHttpClient();
 
       const beforeCheck = Date.now();
       await client.healthCheck();
@@ -388,11 +407,7 @@ describe('BackendClient', () => {
     it('should return true when healthy', async () => {
       (client as any)._state = ConnectionState.CONNECTED;
       (client as any)._health = 'healthy';
-      (client as any).httpClient = {
-        connection: {
-          ping: vi.fn().mockResolvedValue(10),
-        },
-      };
+      (client as any).httpClient = mockHttpClient();
 
       const result = await client.healthCheck();
       expect(result).toBe(true);

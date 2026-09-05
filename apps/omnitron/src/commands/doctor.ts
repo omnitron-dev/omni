@@ -699,6 +699,59 @@ async function checkBuildFreshness(findings: Findings, daemonStartedMs: number |
 }
 
 /**
+ * Whether the console is actually serving.
+ *
+ * Asked by fetching its root, not by reading the container's state. "A
+ * container is running and its health check passes" is not the same claim as
+ * "an operator can open the console", and the two came apart here today.
+ *
+ * The console is nginx serving a bind mount of `webapp/dist`. Deleting that
+ * directory and rebuilding it — which any `rm -rf dist && pnpm build` does —
+ * gives it a new inode, and the mount keeps pointing at the old one. Inside
+ * the container the directory then does not exist at all and nginx answers
+ * 404 to everything, while the container stays up. That ran for 1709
+ * consecutive health-check failures before anything said so.
+ *
+ * A restart does not fix it: bind mounts are resolved when a container is
+ * created, so it has to be recreated.
+ */
+export async function checkConsoleServing(findings: Findings, dc: IDaemonConfig): Promise<void> {
+  const port = dc.httpPort ?? 9800;
+
+  let status: number;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000),
+    });
+    status = res.status;
+  } catch {
+    // Nothing listening. `omnitron webapp` is opt-in and a daemon without a
+    // console is a normal configuration, so this is not a finding.
+    return;
+  }
+
+  if (status >= 200 && status < 400) return;
+
+  findings.add({
+    id: 'webapp.not-serving',
+    severity: 'error',
+    title: `The console answers ${status} on port ${port}`,
+    evidence: [
+      `GET http://127.0.0.1:${port}/ → ${status}`,
+      'something is listening, so this is not "the console is switched off"',
+      status === 404
+        ? 'a 404 on the root usually means nginx cannot see the built files: a bind mount left pointing at a directory that was deleted and rebuilt'
+        : 'nginx is up but not serving the application',
+    ],
+    remedy:
+      'Rebuild and recreate: `pnpm --filter @omnitron/console build`, then ' +
+      '`omnitron webapp stop && omnitron webapp start`. A restart is not enough — ' +
+      'a bind mount is resolved when the container is created.',
+  });
+}
+
+/**
  * What the daemon answers to a caller holding no credentials, and who can
  * reach it.
  *
@@ -954,6 +1007,7 @@ export async function doctorCommand(): Promise<void> {
       () => checkPorts(findings, apps),
       () => checkInfrastructure(findings, client),
       () => checkAnonymousSurface(findings, DEFAULT_DAEMON_CONFIG),
+      () => checkConsoleServing(findings, DEFAULT_DAEMON_CONFIG),
     ]) {
       try {
         await check();

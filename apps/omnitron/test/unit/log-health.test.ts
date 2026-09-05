@@ -138,6 +138,30 @@ describe('findDuplicatedLogs', () => {
     expect(describeFinding(found[0]!)).toContain('40');
   });
 
+  it('ignores the coincidences that remain after the defect is fixed', () => {
+    // Two apps going through a coordinated shutdown log "Application
+    // stopping" in the same millisecond. That is two apps doing the same
+    // thing, not one line stored twice.
+    //
+    // Measured on this host after the fix: 18 rows in 1260, every one a
+    // shared lifecycle phase. The first version of this check had no
+    // threshold, fired on exactly those, and would have taught its reader
+    // to ignore it.
+    expect(findDuplicatedLogs([{ app: 'daos/dev/main', otherApp: 'daos/dev/paysys', count: 18 }], 1260)).toEqual([]);
+  });
+
+  it('still reports duplication at the scale the defect produced', () => {
+    // The systematic case was around half the table.
+    const found = findDuplicatedLogs([{ app: 'daos/dev/priceverse', otherApp: 'omnitron', count: 500 }], 1000);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.share).toBeCloseTo(0.5);
+  });
+
+  it('draws the line where it says it does', () => {
+    expect(findDuplicatedLogs([{ app: 'a', otherApp: 'b', count: 99 }], 1000)).toEqual([]);
+    expect(findDuplicatedLogs([{ app: 'a', otherApp: 'b', count: 100 }], 1000)).toHaveLength(1);
+  });
+
   it('says nothing when no line is duplicated', () => {
     expect(findDuplicatedLogs([], 1000)).toEqual([]);
     expect(findDuplicatedLogs([{ app: 'a', otherApp: 'b', count: 0 }], 1000)).toEqual([]);

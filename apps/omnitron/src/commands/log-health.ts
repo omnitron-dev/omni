@@ -93,12 +93,32 @@ export function findDominantErrors(counts: MessageCount[]): LogHealthFinding[] {
 }
 
 /**
+ * The share of a window that must be duplicated before this is a finding.
+ *
+ * A pair of identical (timestamp, message) rows under two app names is not
+ * automatically a defect: several apps going through a coordinated shutdown
+ * log "Application stopping" in the same millisecond, and that is two apps
+ * doing the same thing rather than one line stored twice.
+ *
+ * Measured on this host: the systematic duplication was around half the
+ * table; the coincidences that remain after fixing it are 1.4% — eighteen
+ * rows in twelve hundred, every one of them a lifecycle phase shared
+ * between apps. Ten percent sits an order of magnitude above the noise and
+ * well below the defect.
+ *
+ * The first version of this check had no threshold at all and fired on
+ * those eighteen rows, which is how a guard becomes something people
+ * switch off.
+ */
+export const DUPLICATION_SHARE = 0.1;
+
+/**
  * Messages recorded under more than one app name at the same instant.
  *
- * Not a nicety: it doubles the log table, and this host's was 13 GB. It also
- * makes every per-app count wrong by a factor that depends on which
- * component happened to emit the line, which is the kind of error that
- * survives because each number looks plausible on its own.
+ * Not a nicety when it is systematic: it doubles the log table, and this
+ * host's was 13 GB. It also makes every per-app count wrong by a factor that
+ * depends on which component happened to emit the line, which is the kind of
+ * error that survives because each number looks plausible on its own.
  */
 export function findDuplicatedLogs(
   pairs: Array<{ app: string; otherApp: string; count: number }>,
@@ -106,6 +126,7 @@ export function findDuplicatedLogs(
 ): LogHealthFinding[] {
   const duplicated = pairs.reduce((sum, p) => sum + p.count, 0);
   if (duplicated === 0 || totalRows === 0) return [];
+  if (duplicated / totalRows < DUPLICATION_SHARE) return [];
 
   return [
     {

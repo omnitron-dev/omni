@@ -117,10 +117,22 @@ export class TraceCollectorService {
     const limit = filter.limit ?? 50;
 
     // Query distinct trace IDs matching the filter, then fetch full traces
+    // The most recent span of each trace decides where the trace sorts.
+    //
+    // This was `SELECT DISTINCT traceId … ORDER BY startTime`, which Postgres
+    // rejects outright — "for SELECT DISTINCT, ORDER BY expressions must
+    // appear in select list" — so the traces page has never listed anything.
+    // The console hid it: the page fired this and `getServiceMap` through
+    // `Promise.allSettled` and read only the fulfilled halves, so a rejection
+    // left the previous (empty) value on screen with nothing said.
+    //
+    // Selecting the max start time per trace both satisfies the rule and is
+    // the ordering that was intended: a trace is as recent as its latest span.
     let query = this.db
       .selectFrom('traces' as any)
       .select(['traceId'])
-      .distinct();
+      .select(sql`MAX("startTime")`.as('latestStart'))
+      .groupBy('traceId' as any);
 
     if (filter.service) {
       query = query.where('serviceName', '=', filter.service);
@@ -147,7 +159,7 @@ export class TraceCollectorService {
     }
 
     const traceIds = await query
-      .orderBy('startTime' as any, 'desc')
+      .orderBy('latestStart' as any, 'desc')
       .limit(limit)
       .execute();
 
@@ -162,17 +174,25 @@ export class TraceCollectorService {
 
   async getServiceMap(): Promise<ServiceMapEntry[]> {
     // Query parent-child span pairs to build service-to-service call map
+    // Column names are quoted camelCase — this table is created that way (see
+    // migration 003), and the unquoted snake_case this query used does not
+    // exist, so every call failed with `column child.trace_id does not exist`.
+    // Both halves of the traces page were broken in the same way and the page
+    // showed neither, because it read only the fulfilled halves of an
+    // `allSettled` pair.
     const rows = await sql`
       SELECT
-        parent.service_name AS source,
-        child.service_name AS target,
+        parent."serviceName" AS source,
+        child."serviceName" AS target,
         COUNT(*) AS call_count,
         AVG(child.duration) AS avg_duration,
         SUM(CASE WHEN child.status = 'error' THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) AS error_rate
       FROM traces child
-      JOIN traces parent ON child.trace_id = parent.trace_id AND child.parent_span_id = parent.span_id
-      WHERE parent.service_name != child.service_name
-      GROUP BY parent.service_name, child.service_name
+      JOIN traces parent
+        ON child."traceId" = parent."traceId"
+       AND child."parentSpanId" = parent."spanId"
+      WHERE parent."serviceName" != child."serviceName"
+      GROUP BY parent."serviceName", child."serviceName"
       ORDER BY call_count DESC
       LIMIT 100
     `.execute(this.db);

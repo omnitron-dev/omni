@@ -15,6 +15,7 @@ import {
   formatMemory,
   formatMemoryMb,
   formatTimestamp,
+  formatDuration,
   timeAgo,
 } from '../../webapp/src/utils/formatters.js';
 
@@ -65,6 +66,26 @@ describe('formatMemoryMb', () => {
     expect(formatMemoryMb(150 * 1024 * 1024)).toBe('150.0');
     expect(formatMemoryMb(0)).toBe('0.0');
     expect(formatMemoryMb(-1)).toBe('--');
+  });
+});
+
+describe('formatDuration', () => {
+  it('renders seconds, then minutes and seconds', () => {
+    expect(formatDuration(45_000)).toBe('45s');
+    expect(formatDuration(200_000)).toBe('3m 20s');
+    expect(formatDuration(120_000)).toBe('2m 0s');
+  });
+
+  it('renders an instantaneous step as no time, not as unknown', () => {
+    // A deployment that finished in under a millisecond, or a pipeline step
+    // that did nothing, took zero time — which is a measurement. The two
+    // copies of this function that this replaces both rendered it as `--`.
+    expect(formatDuration(0)).toBe('0s');
+  });
+
+  it('refuses a negative or non-finite duration', () => {
+    expect(formatDuration(-1)).toBe('--');
+    expect(formatDuration(Number.NaN)).toBe('--');
   });
 });
 

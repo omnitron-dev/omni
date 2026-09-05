@@ -61,8 +61,16 @@ describe('Defaults', () => {
     // Daemon settings moved out of the project ecosystem config into the
     // dedicated DEFAULT_DAEMON_CONFIG (the daemon manages its own paths/ports).
     expect(DEFAULT_DAEMON_CONFIG.port).toBe(9700);
-    // Daemon binds all interfaces by design (slave nodes / nginx reach it).
-    expect(DEFAULT_DAEMON_CONFIG.host).toBe('0.0.0.0');
+    // Loopback by default: a single-host install never exposes daemon
+    // control to the LAN, and multi-host operators opt in with `daemon.host`.
+    //
+    // This line used to read `toBe('0.0.0.0')` under the comment "binds all
+    // interfaces by design". The value was as written and the comment was
+    // false: both call sites rewrote `'0.0.0.0'` to `'127.0.0.1'` before
+    // binding. The assertion checked the literal, so it passed for as long
+    // as the two disagreed — see daemon-bind-address.test.ts for the
+    // behaviour this one cannot see.
+    expect(DEFAULT_DAEMON_CONFIG.host).toBe('127.0.0.1');
     expect(DEFAULT_DAEMON_CONFIG.pidFile).toContain('.omnitron');
     expect(DEFAULT_DAEMON_CONFIG.stateFile).toContain('.omnitron');
   });

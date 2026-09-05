@@ -42,7 +42,7 @@ export const DEFAULT_PORTS: Record<string, number> = {
 export const DEFAULT_DAEMON_CONFIG: IDaemonConfig = {
   socketPath: DEFAULT_SOCKET_PATH,
   port: 9700,
-  host: '0.0.0.0',
+  host: '127.0.0.1',
   httpPort: 9800,
   pidFile: path.join(OMNITRON_HOME, 'daemon.pid'),
   stateFile: path.join(OMNITRON_HOME, 'state.json'),

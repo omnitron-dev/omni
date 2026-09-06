@@ -81,7 +81,12 @@ describe('planEviction — guarantee 5, bounded buffer', () => {
 
     expect(plan.overflowRows).toBe(0);
     expect(plan.discardsUndelivered).toBe(false);
-    expect(plan.syncedOlderThanMs).toBe(SYNCED_RETENTION_MS);
+    // A property rather than `toBe(SYNCED_RETENTION_MS)`, which is built from
+    // the same constant and therefore holds for any value — a window of one
+    // millisecond included, which would discard rows the master has taken but
+    // the slave may still need to re-send.
+    expect(plan.syncedOlderThanMs).toBeGreaterThanOrEqual(60 * 60 * 1000);
+    expect(plan.syncedOlderThanMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
   });
 
   it('drops enough rows to get back under budget', () => {
@@ -129,6 +134,7 @@ describe('planEviction — guarantee 5, bounded buffer', () => {
     // The synced-row pass runs every cycle regardless of budget; it is not
     // conditional on the overflow branch.
     const plan = planEviction({ totalBytes: 1, maxBytes: 1000, totalRows: 1, syncedRows: 1 });
-    expect(plan.syncedOlderThanMs).toBe(SYNCED_RETENTION_MS);
+    expect(plan.syncedOlderThanMs).toBeGreaterThanOrEqual(60 * 60 * 1000);
+    expect(plan.syncedOlderThanMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
   });
 });

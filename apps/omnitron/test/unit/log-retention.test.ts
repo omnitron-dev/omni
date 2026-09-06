@@ -51,7 +51,16 @@ describe('planRetention', () => {
     // blocks the flush path behind it — the retention pass would surface as
     // the log pipeline stalling.
     const plan = planRetention(14, NOW)!;
-    expect(plan.batchSize).toBe(RETENTION_BATCH);
+
+    // Properties, not `toBe(RETENTION_BATCH)`. The plan is built from that
+    // constant, so the comparison passes for every value it could hold —
+    // including 1, which would issue ten thousand statements to delete what
+    // one batch should, and including the whole table, which is the single
+    // long transaction this bound exists to prevent. The test below already
+    // says this about `maxThisPass`; this line was the exception it warns
+    // against, sitting five lines above it.
+    expect(plan.batchSize).toBeGreaterThanOrEqual(1_000);
+    expect(plan.batchSize).toBeLessThanOrEqual(100_000);
     expect(plan.batchSize).toBeLessThan(plan.maxThisPass);
   });
 

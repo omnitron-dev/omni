@@ -147,7 +147,19 @@ export class SubscriptionManager {
       }
       this.pendingSubscriptions.delete(event);
     } catch (error) {
-      console.error(`Failed to subscribe to "${event}":`, error);
+      // Queue it. Without this the event is in neither `pendingSubscriptions`
+      // nor the server's subscriber list, while its handlers are registered and
+      // `useSubscription` renders as though it were live — so `getStats()`
+      // reported a healthy subscription that receives nothing.
+      //
+      // It is not lost forever: `resubscribeAll` re-subscribes anything with
+      // `serverSubscribed === false` on the next `connect`. But that only
+      // happens when the socket drops, which may be hours away, and until then
+      // the only report is a console line the host application cannot see.
+      // Pending is what this state actually is, and it is the one field a
+      // consumer can read.
+      this.pendingSubscriptions.add(event);
+      console.error(`Failed to subscribe to "${event}" — queued for the next reconnect:`, error);
     }
   }
 

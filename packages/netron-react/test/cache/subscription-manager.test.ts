@@ -221,3 +221,54 @@ describe('SubscriptionManager (NR-8)', () => {
     });
   });
 });
+
+describe('SubscriptionManager — a server subscribe that fails', () => {
+  /**
+   * `subscribeOnServer` catches its failure, writes one `console.error`, and
+   * stops. The event is not put back in `pendingSubscriptions` — it is only
+   * added there on the "not connected yet" path — and `resubscribeAll` runs
+   * ONLY on the client's `connect` event.
+   *
+   * It is not lost forever — `resubscribeAll` re-subscribes anything with
+   * `serverSubscribed === false` on the next `connect`, and the second test
+   * here pins that. But that only happens when the socket drops, which may be
+   * hours away. Until then the handlers are registered, `useSubscription`
+   * renders as though it were live, no event arrives, and the only report is a
+   * console line the host application cannot see. `pendingSubscriptions` is
+   * what this state actually is and the one field a consumer can read.
+   */
+  let ws: MockWsClient;
+  let mgr: SubscriptionManager;
+
+  beforeEach(() => {
+    ws = new MockWsClient();
+    mgr = new SubscriptionManager(ws as unknown as WebSocketClient);
+  });
+
+  it('queues the event for retry instead of dropping it', async () => {
+    ws.fire('connect');
+    ws.invoke = vi.fn().mockRejectedValue(new Error('server refused the subscription'));
+
+    mgr.subscribe('orders', vi.fn());
+    await flush();
+
+    expect(mgr.getStats().serverSubscribed).toBe(0);
+    // Without this the subscription is dead until the socket happens to drop.
+    expect(mgr.getStats().pendingSubscriptions).toBe(1);
+  });
+
+  it('retries it on the next connect, and clears it once it lands', async () => {
+    ws.fire('connect');
+    ws.invoke = vi.fn().mockRejectedValue(new Error('server refused the subscription'));
+
+    mgr.subscribe('orders', vi.fn());
+    await flush();
+
+    ws.invoke = vi.fn().mockResolvedValue(undefined);
+    ws.fire('connect');
+    await flush();
+
+    expect(mgr.getStats().serverSubscribed).toBe(1);
+    expect(mgr.getStats().pendingSubscriptions).toBe(0);
+  });
+});

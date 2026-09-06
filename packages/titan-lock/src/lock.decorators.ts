@@ -82,8 +82,21 @@ export function WithDistributedLock(lockKey: string, ttlMs: number = 60000): Met
         // Execute the original method
         return await originalMethod.apply(this, args);
       } finally {
-        // Always release the lock
-        await lockService.releaseLock(lockKey, lockId);
+        // Always release the lock — but never let the release decide what the
+        // caller sees. An awaited throw in a `finally` REPLACES the value the
+        // method was returning, and replaces the error it was throwing, so a
+        // Redis blip during cleanup used to discard completed work or bury the
+        // reason a call actually failed. The lock carries a TTL precisely so a
+        // release that does not land is survivable; the caller's outcome is not.
+        try {
+          await lockService.releaseLock(lockKey, lockId);
+        } catch (err) {
+          const logger = this.logger ?? this.loggerModule?.logger;
+          logger?.warn?.(
+            { lockKey, method: propertyKey.toString(), err },
+            '[WithDistributedLock] Failed to release lock; it will expire by its TTL'
+          );
+        }
       }
     };
 

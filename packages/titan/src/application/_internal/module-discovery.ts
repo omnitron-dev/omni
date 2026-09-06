@@ -99,12 +99,27 @@ export class ModuleDiscovery {
     for (const scanPath of paths) {
       let files: string[] = [];
       try {
-        const stat = await fs.stat(scanPath).catch(() => null);
+        // `stat` failing and `stat` succeeding on something that is neither a
+        // file nor a directory used to end at the same silent `continue`. The
+        // first is a path we could not read — a permission problem on a parent,
+        // a broken mount, a dangling symlink — and skipping it means the
+        // application boots with modules missing and nothing said anywhere.
+        // The sibling branch below logs when a path cannot be scanned; this one
+        // did not, so the quieter failure was the one that mattered more.
+        let statError: NodeJS.ErrnoException | undefined;
+        const stat = await fs.stat(scanPath).catch((err: NodeJS.ErrnoException) => {
+          statError = err;
+          return null;
+        });
         if (stat?.isFile()) {
           files = [scanPath];
         } else if (stat?.isDirectory()) {
           files = await this.findModuleFiles(scanPath, fs, pathMod);
+        } else if (statError) {
+          logger?.debug(`Scan path could not be read: ${scanPath} (${statError.code ?? statError.message})`);
+          continue;
         } else {
+          logger?.debug(`Scan path is neither a file nor a directory: ${scanPath}`);
           continue;
         }
       } catch {

@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
 import type { ExecutionContext, PolicyDefinition, PolicyDecision } from '../../../src/netron/auth/types.js';
 import type { ILogger } from '../../../src/modules/logger/logger.types.js';
+import { budget } from '../../utils/index.js';
 
 // ============================================================================
 // Mock Logger Implementation
@@ -534,7 +535,7 @@ describe('PolicyEngine Integration Tests', () => {
 
         expect(decision.allowed).toBe(true);
         // Should complete in ~100ms (parallel), not ~200ms (sequential)
-        expect(duration).toBeLessThan(180);
+        expect(duration).toBeLessThan(budget(180));
       });
     });
 
@@ -965,7 +966,7 @@ describe('PolicyEngine Integration Tests', () => {
       expect(decisions[3].allowed).toBe(true);
 
       // Should complete in ~50ms (parallel), not ~200ms (sequential)
-      expect(duration).toBeLessThan(150);
+      expect(duration).toBeLessThan(budget(150));
     });
 
     it('should maintain order in batch evaluation', async () => {

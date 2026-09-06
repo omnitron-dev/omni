@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { Packet } from '../../../src/netron/packet/packet.js';
+import { budget } from '../../utils/index.js';
 import {
   PacketType,
   TYPE_PING,
@@ -399,7 +400,7 @@ describe('Netron - Packet Handling', () => {
       const elapsed = Date.now() - startTime;
 
       // 100k iterations should complete in under 100ms
-      expect(elapsed).toBeLessThan(100);
+      expect(elapsed).toBeLessThan(budget(100));
     });
   });
 });

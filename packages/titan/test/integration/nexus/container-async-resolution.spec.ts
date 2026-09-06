@@ -10,6 +10,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Container, createToken, Scope } from '@nexus';
+import { budget } from '../../utils/index.js';
 
 // Tokens for testing
 const AsyncServiceToken = createToken<AsyncService>('AsyncService');
@@ -353,7 +354,7 @@ describe('Nexus Container - Async Resolution Race Conditions', () => {
       expect(c.name).toBe('C');
 
       // Should complete in ~30ms (parallel) not ~90ms (sequential)
-      expect(elapsed).toBeLessThan(80);
+      expect(elapsed).toBeLessThan(budget(80));
     });
 
     it('should handle partial failures in resolveParallelSettled', async () => {

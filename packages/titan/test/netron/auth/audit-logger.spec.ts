@@ -16,6 +16,7 @@ import { performance } from 'node:perf_hooks';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { budget } from '../../utils/index.js';
 
 // Mock logger
 const createMockLogger = (): ILogger => {
@@ -736,7 +737,7 @@ describe('AuditLogger', () => {
       const duration = performance.now() - startTime;
 
       expect(events).toHaveLength(100);
-      expect(duration).toBeLessThan(50); // Should be fast
+      expect(duration).toBeLessThan(budget(50)); // Should be fast
     });
   });
 

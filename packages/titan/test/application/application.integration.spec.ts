@@ -41,6 +41,7 @@ import {
   createCustomModule,
 } from '../fixtures/test-modules.js';
 import { Module, Injectable } from '../../src/decorators/index.js';
+import { budget } from '../utils/index.js';
 
 describe('Application Integration', () => {
   let app: Application;
@@ -738,7 +739,7 @@ describe('Application Integration', () => {
       const duration = Date.now() - start;
 
       expect(eventCount).toBe(10000);
-      expect(duration).toBeLessThan(100); // Should be very fast
+      expect(duration).toBeLessThan(budget(100)); // Should be very fast
     });
   });
 

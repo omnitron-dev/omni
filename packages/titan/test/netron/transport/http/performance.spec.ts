@@ -12,6 +12,7 @@ import {
 import { HttpInterface } from '../../../../src/netron/transport/http/interface.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import type { Definition } from '../../../../src/netron/definition.js';
+import { budget } from '../../../utils/index.js';
 
 interface IUserService {
   getUser(id: string): Promise<{ id: string; name: string }>;
@@ -146,7 +147,7 @@ describe('Performance Benchmarks', () => {
       });
 
       console.log(`FluentInterface configuration chains (1000 calls): ${duration.toFixed(2)}ms`);
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(budget(100));
     });
   });
 
@@ -164,7 +165,7 @@ describe('Performance Benchmarks', () => {
       });
 
       console.log(`Global configuration override (1000 calls): ${duration.toFixed(2)}ms`);
-      expect(duration).toBeLessThan(50);
+      expect(duration).toBeLessThan(budget(50));
     });
 
     it('should merge global options efficiently', () => {

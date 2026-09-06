@@ -4,6 +4,7 @@
  */
 
 import 'reflect-metadata';
+import { budget } from '../../utils/index.js';
 import {
   Container,
   createToken,
@@ -531,7 +532,7 @@ describe('Async Operations', () => {
       const duration = Date.now() - start;
 
       expect(results).toEqual([0, 1, 2, 3, 4]);
-      expect(duration).toBeLessThan(100); // Should run in parallel, not 250ms
+      expect(duration).toBeLessThan(budget(100)); // Should run in parallel, not 250ms
     });
 
     it('should handle partial failures in parallel resolution', async () => {

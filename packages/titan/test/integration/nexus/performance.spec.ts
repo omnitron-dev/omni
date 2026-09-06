@@ -13,6 +13,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Container, createToken, Scope } from '@nexus';
+import { budget } from '../../utils/index.js';
 
 // Helper for timing
 function measureTime<T>(fn: () => T): { result: T; duration: number } {
@@ -29,43 +30,6 @@ async function measureTimeAsync<T>(fn: () => Promise<T>): Promise<{ result: T; d
   return { result, duration };
 }
 
-/**
- * Budget for the timing assertions below, calibrated to THIS machine.
- *
- * The suite used to assert a flat `< 500ms` everywhere. That measures the host,
- * not the container: on a loaded machine the singleton-resolution case read
- * 524ms and failed for reasons that had nothing to do with Nexus. But dropping
- * the bounds would lose the only guard against a catastrophic regression — an
- * accidental O(n^2) registration path, a cache that stops caching.
- *
- * So the nominal budget is scaled by how slow this machine is relative to the
- * developer box the 500ms was originally chosen on. The reference workload is
- * deliberately trivial and allocation-light so it tracks raw CPU speed rather
- * than GC behaviour. Best-of-N keeps a single preemption from inflating it.
- */
-const REFERENCE_MS = 12; // observed for the loop below on the box those budgets came from
-
-function calibrate(): number {
-  const run = () => {
-    const start = performance.now();
-    let acc = 0;
-    for (let i = 0; i < 5_000_000; i++) acc += i % 7;
-    const elapsed = performance.now() - start;
-    return { elapsed, acc };
-  };
-  run(); // warm up
-  let best = Infinity;
-  for (let r = 0; r < 3; r++) best = Math.min(best, run().elapsed);
-  // Never tighten the budget on a fast machine — only loosen it on a slow one.
-  return Math.max(1, best / REFERENCE_MS);
-}
-
-const SLOWDOWN = calibrate();
-
-/** Nominal millisecond budget, scaled to this machine. */
-function budget(nominalMs: number): number {
-  return nominalMs * SLOWDOWN;
-}
 
 // Test service classes
 class SimpleService {

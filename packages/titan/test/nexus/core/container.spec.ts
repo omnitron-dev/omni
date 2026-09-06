@@ -3,6 +3,7 @@
  * Tests for the fundamental container functionality including registration, resolution, and lifecycle
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { budget } from '../../utils/index.js';
 
 import {
   Container,
@@ -492,7 +493,7 @@ describe('Core Container', () => {
       const duration = performance.now() - start;
 
       expect(result.level).toBe(depth - 1);
-      expect(duration).toBeLessThan(100); // Should resolve in less than 100ms
+      expect(duration).toBeLessThan(budget(100)); // Should resolve in less than 100ms
     });
   });
 });

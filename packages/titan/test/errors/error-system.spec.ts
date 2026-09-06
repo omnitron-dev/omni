@@ -18,6 +18,7 @@ import {
   HttpError,
 } from '../../src/errors/index.js';
 import { contract } from '../../src/validation/contract.js';
+import { budget } from '../utils/index.js';
 
 describe('Transport-Agnostic Error System', () => {
   describe('Core Error System', () => {
@@ -401,7 +402,7 @@ describe('Transport-Agnostic Error System', () => {
         duration = Math.min(duration, performance.now() - start);
       }
 
-      expect(duration).toBeLessThan(100); // Should be very fast
+      expect(duration).toBeLessThan(budget(100)); // Should be very fast
     });
 
     it('should use object pooling for temporary error objects', () => {

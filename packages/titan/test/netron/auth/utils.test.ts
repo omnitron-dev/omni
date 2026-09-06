@@ -199,22 +199,68 @@ describe('createPermissionChecker', () => {
     });
   }
 
-  it('checks an ACL in time proportional to its size', () => {
-    // requiredPermissions.every(perm => hasPermission(granted, perm)) scans the
-    // whole granted array per required permission — a million comparisons for a
-    // thousand of each, on the authorization path. Ten times the input must not
-    // cost anything like a hundred times the work.
-    const many = Array.from({ length: 1000 }, (_, i) => `perm:${i}`);
-    const time = (permissions: string[]): number => {
-      const permitted = createPermissionChecker(permissions);
-      const start = performance.now();
-      for (let i = 0; i < 50; i++) permissions.every((perm) => permitted(perm));
-      return performance.now() - start;
-    };
+  // The point of `createPermissionChecker` is that an exact grant is answered
+  // without consulting the other grants — `hasPermission` in a loop scans the
+  // whole array per required permission, a million comparisons for a thousand
+  // of each, on the authorization path.
+  //
+  // This used to be asserted with a stopwatch: build a checker over 100 grants
+  // and over 1000, and require the second to cost less than 50x the first. That
+  // could not work. The small side is hundredths of a millisecond, so one
+  // scheduler slice in the numerator sends the ratio past the threshold — it was
+  // measured at 108x during a full monorepo run and 7.6x–14.9x when idle, and
+  // raising the iteration count widens the spread rather than narrowing it,
+  // because V8 optimises a 100-element walk and a 1000-element walk differently.
+  // The ratio is not a stable quantity at any scale, so no threshold over it
+  // means anything. `Math.max(small, 0.001)` made it worse rather than safer:
+  // the author saw the denominator could collapse and clamped its SHAPE, which
+  // lets pure noise stand in for a measurement.
+  //
+  // The property underneath is not temporal at all, and is checked directly
+  // below: an exact hit must not touch the other grants.
+  it('answers an exact grant without consulting the other grants', () => {
+    let touchedAfterBuild = 0;
+    let built = false;
 
-    const small = Math.max(time(many.slice(0, 100)), 0.001);
-    const large = time(many);
+    // Poses as a wildcard grant so it lands in the list `permissionMatches`
+    // walks, and counts every look it gets once construction is over.
+    const poison = {
+      endsWith: (suffix: string) => {
+        if (built) touchedAfterBuild++;
+        return suffix === '.*';
+      },
+      slice: () => 'never.matches.',
+    } as unknown as string;
 
-    expect(large / small, `1000 permissions cost ${(large / small).toFixed(1)}x what 100 do`).toBeLessThan(50);
+    // FIRST in the array on purpose: a linear scan would have to walk past it to
+    // reach the exact grant below. Placed last, it survived a mutation that
+    // restored the scan — `some()` short-circuited on the match before ever
+    // reaching it, and the test passed while measuring nothing.
+    const permitted = createPermissionChecker([
+      poison,
+      ...Array.from({ length: 1000 }, (_, i) => `perm:${i}`),
+    ]);
+    built = true;
+
+    expect(permitted('perm:999')).toBe(true);
+    expect(touchedAfterBuild, 'an exact grant walked the wildcard list').toBe(0);
+
+    // Control: the counter can move, so the zero above is an observation and
+    // not an artefact of a poison nothing ever reaches.
+    expect(permitted('granted.to.nobody')).toBe(false);
+    expect(touchedAfterBuild, 'a miss did not consult the wildcards either').toBeGreaterThan(0);
+  });
+
+  it('answers from the grants it was given, not from later edits to the array', () => {
+    const grants = ['users.read'];
+    const permitted = createPermissionChecker(grants);
+
+    grants.push('admin');
+    grants.length = 0;
+
+    // The checker took a snapshot; a caller mutating its own array afterwards
+    // must not change an authorization decision that was already built.
+    expect(permitted('users.read')).toBe(true);
+    expect(permitted('admin')).toBe(false);
   });
 });

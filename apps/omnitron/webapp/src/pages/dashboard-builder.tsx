@@ -46,7 +46,7 @@ import {
   CloseIcon,
   RefreshIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, FormAlert } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';
@@ -273,10 +273,14 @@ function AppGridPanel({ data }: { data: DaemonData }) {
           </Stack>
         );
       })}
+      {/* `error` is what separates the two reasons `apps` is empty. Without
+          it a failed `daemon.list()` rendered "No applications configured" —
+          a statement about the daemon's configuration, made when the daemon
+          did not answer. */}
       {data.apps.length === 0 && (
         <Typography variant="caption" sx={{
           color: "text.secondary"
-        }}>No applications configured</Typography>
+        }}>{data.error ? 'Could not read the app list' : 'No applications configured'}</Typography>
       )}
     </Stack>
   );
@@ -748,6 +752,10 @@ export default function DashboardBuilderPage() {
 
   return (
     <Stack spacing={2.5}>
+      {/* One banner for the page: every panel below draws from the same
+          fetch, so a failure is a property of the page rather than of any
+          one of them. `useDaemonData` recorded this and nothing read it. */}
+      {data.error && <FormAlert>{data.error}</FormAlert>}
       {/* Header */}
       <Breadcrumbs
         links={[{ name: 'Dashboard Builder' }]}

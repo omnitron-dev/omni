@@ -123,18 +123,41 @@ describe('sign-in throttling (integration)', () => {
   it('lengthens the lockout with each further failure', async () => {
     const userId = await createUser('escalate');
 
-    for (let i = 0; i < 5; i++) {
+    /**
+     * The lockout's DURATION, measured from just before the attempt that set
+     * it.
+     *
+     * Comparing the two `lockedUntil` instants directly proves nothing: the
+     * second lock is set later in wall-clock time, so its deadline is later
+     * whatever the policy does. The previous version of this test did exactly
+     * that, and it passed with the escalation removed — `computeLockout`
+     * returning a flat `LOCKOUT_BASE_MS` left it green. A test named for
+     * escalation that cannot see escalation is worse than no test.
+     *
+     * The measurement over-states each duration by however long the sign-in
+     * round trip takes, and identically for both, while the policy doubles
+     * from sixty seconds. There is no contest.
+     */
+    const lockoutAfterFailure = async (): Promise<number> => {
+      const before = Date.now();
+      await expect(auth.signIn({ username: 'escalate', password: 'wrong' })).rejects.toThrow();
+      return new Date((await attemptsFor(userId)).lockedUntil!).getTime() - before;
+    };
+
+    for (let i = 0; i < 4; i++) {
       await expect(auth.signIn({ username: 'escalate', password: 'wrong' })).rejects.toThrow();
     }
-    const first = new Date((await attemptsFor(userId)).lockedUntil!).getTime();
+    const first = await lockoutAfterFailure();
 
     // Clear the lock (not the streak) to let one more attempt through, as the
     // passage of time would.
     await db.updateTable('omnitron_users').set({ lockedUntil: null }).where('id', '=', userId).execute();
-    await expect(auth.signIn({ username: 'escalate', password: 'wrong' })).rejects.toThrow('Invalid credentials');
-    const second = new Date((await attemptsFor(userId)).lockedUntil!).getTime();
+    const second = await lockoutAfterFailure();
 
-    expect(second - Date.now()).toBeGreaterThan(first - Date.now());
+    expect(second).toBeGreaterThan(first);
+    // Doubling, not merely "more": a policy that added a second per failure
+    // would satisfy the line above and protect nobody.
+    expect(second).toBeGreaterThanOrEqual(first * 1.5);
   });
 
   it('clears the streak on a successful sign-in', async () => {

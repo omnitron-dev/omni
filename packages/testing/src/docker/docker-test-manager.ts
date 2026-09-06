@@ -15,9 +15,58 @@
 
 import { execSync, execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
+import { hostname } from 'os';
 import * as net from 'net';
 import { EventEmitter } from 'events';
 import type { DockerContainer, DockerContainerStatus, DockerTestManagerOptions, ContainerOptions } from './types.js';
+
+/**
+ * `docker ps --format '{{.Labels}}'` renders labels as `k=v,k=v`. Values here
+ * are manager ids and hostnames, neither of which contains a comma.
+ */
+function parseDockerLabels(labels: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const pair of labels.split(',')) {
+    const eq = pair.indexOf('=');
+    if (eq > 0) out[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+  return out;
+}
+
+/** The pid the manager id starts with, or null when it is not one. */
+function pidFromManagerId(managerId: string): number | null {
+  const pid = Number.parseInt(managerId.split('-')[0] ?? '', 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * Signal 0 asks the kernel whether the process exists without delivering
+ * anything. EPERM means it exists and belongs to another user, which is still
+ * alive; only ESRCH means gone.
+ */
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * `docker ps --format '{{.CreatedAt}}'` prints `2026-09-06 01:07:22 +0300 MSK`
+ * — not ISO 8601, and the trailing abbreviation is ambiguous between zones.
+ * The numeric offset in front of it is not, so the abbreviation is dropped and
+ * the rest is rewritten into a form `Date.parse` is specified to accept.
+ * Returns null when the shape is anything else, and a null age is never old
+ * enough to reap.
+ */
+function parseDockerTimestamp(createdAt: string): number | null {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.\d+)? ([+-]\d{2})(\d{2})/.exec(createdAt.trim());
+  if (!m) return null;
+  const parsed = Date.parse(`${m[1]}T${m[2]}${m[3]}:${m[4]}`);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 /**
  * Docker Test Manager
@@ -81,6 +130,28 @@ export class DockerTestManager extends EventEmitter {
    */
   private readonly managerId = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+  /**
+   * The machine the pid in `managerId` belongs to. Tests that talk to a docker
+   * daemon on another host would otherwise read that host's pid table as their
+   * own. Containers created before this label existed carry no host, which is
+   * absence of information rather than a mismatch, so they fall through to the
+   * pid and age rules below.
+   */
+  private static readonly hostId = hostname();
+
+  /** Orphan reaping is a property of the process, not of a manager instance. */
+  private static orphanReapDone = false;
+
+  /**
+   * How old an unclaimed container must be before it is reaped.
+   *
+   * Pids are reused. A container created seconds ago belongs to a run that is
+   * starting, whatever the pid table now says about the process that created
+   * it, and this is what makes the reaper safe to run while other test
+   * processes are working.
+   */
+  private static readonly orphanGraceMs = 10 * 60 * 1000;
+
   private constructor(options: DockerTestManagerOptions = {}) {
     super();
     this.dockerPath = options.dockerPath || this.findDockerPath();
@@ -112,6 +183,10 @@ export class DockerTestManager extends EventEmitter {
       // Increase max listeners to avoid warnings when multiple test managers are instantiated
       // This is safe because signal handlers should be idempotent and cleanup is managed by the singleton pattern
       process.setMaxListeners(Math.max(20, process.getMaxListeners()));
+
+      // Runs before any container of this process exists, so a reaped port is
+      // free by the time this manager draws one.
+      this.reapOrphanedResources();
 
       process.on('exit', () => this.cleanupSync());
       process.on('SIGINT', () => {
@@ -296,6 +371,139 @@ export class DockerTestManager extends EventEmitter {
           `Visit: https://docs.docker.com/get-docker/`
       );
     }
+  }
+
+  /**
+   * Remove containers and networks left behind by test processes that no
+   * longer exist.
+   *
+   * `cleanupSync` and the signal handlers cover every ending the process gets
+   * to observe. SIGKILL is not one of them, and it is the ending vitest uses
+   * for a worker that overruns teardown — so a killed run leaves its
+   * containers running, holding their ports, their memory and their anonymous
+   * volumes, with nothing left on the machine that refers to them.
+   *
+   * A container is reaped only when BOTH hold:
+   *
+   *   - the pid recorded in `test.manager` is not alive. Pids are reused, so
+   *     this alone can name a live manager's container as an orphan;
+   *   - it is older than `orphanGraceMs`. A container seconds old belongs to a
+   *     run that is starting, whatever the pid table says.
+   *
+   * Each condition failing leaves a container behind for the next run to
+   * collect. Neither can remove a container that is in use.
+   *
+   * Errors are swallowed: this runs from a constructor, and a machine whose
+   * docker is unreachable should fail on the first container command with that
+   * command's message, not on construction.
+   *
+   * @private
+   */
+  private reapOrphanedResources(): void {
+    if (DockerTestManager.orphanReapDone) return;
+    DockerTestManager.orphanReapDone = true;
+
+    try {
+      const listed = execFileSync(
+        this.dockerPath,
+        ['ps', '-a', '--filter', 'label=test.cleanup=true', '--format', '{{.ID}}\t{{.CreatedAt}}\t{{.Labels}}'],
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+      ).trim();
+
+      const orphans: string[] = [];
+      for (const line of listed ? listed.split('\n') : []) {
+        const [id, createdAt, labels] = line.split('\t');
+        if (!id || !createdAt || !labels) continue;
+        if (!this.isOrphaned(labels, createdAt)) continue;
+        orphans.push(id);
+      }
+
+      if (orphans.length > 0) {
+        this.log(`Reaping ${orphans.length} container(s) left by processes that no longer exist`);
+        // One call, not one per container: a stalled machine can hold dozens,
+        // and every worker of a parallel run pays this before its first test.
+        try {
+          execFileSync(this.dockerPath, ['rm', '-f', '-v', ...orphans], { stdio: 'ignore' });
+        } catch (error) {
+          // A concurrent worker reaping the same container makes `docker rm`
+          // exit non-zero for that id and continue with the rest. Both wanted
+          // it gone.
+          this.logError('Some orphaned containers could not be removed', error);
+        }
+      }
+
+      this.reapOrphanedNetworks();
+    } catch (error) {
+      this.logError('Could not scan for orphaned test containers', error);
+    }
+  }
+
+  /**
+   * The same rule for networks, minus the age condition: `docker network rm`
+   * refuses a network that still has an endpoint attached, so an in-use
+   * network is protected by docker itself rather than by a grace period. A
+   * leaked one is not free — the address pool it comes from is what
+   * `createNetwork` already has to recover from when it runs out.
+   *
+   * @private
+   */
+  private reapOrphanedNetworks(): void {
+    try {
+      const listed = execFileSync(
+        this.dockerPath,
+        ['network', 'ls', '--filter', 'label=test.cleanup=true', '--format', '{{.ID}}\t{{.Labels}}'],
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+      ).trim();
+
+      const orphans: string[] = [];
+      for (const line of listed ? listed.split('\n') : []) {
+        const [id, labels] = line.split('\t');
+        if (!id || !labels) continue;
+        if (!this.isOrphaned(labels, null)) continue;
+        orphans.push(id);
+      }
+
+      if (orphans.length > 0) {
+        this.log(`Reaping ${orphans.length} network(s) left by processes that no longer exist`);
+        try {
+          execFileSync(this.dockerPath, ['network', 'rm', ...orphans], { stdio: 'ignore' });
+        } catch (error) {
+          // Refused for a network still in use, which is the answer we want.
+          this.logError('Some orphaned test networks could not be removed', error);
+        }
+      }
+    } catch (error) {
+      this.logError('Could not scan for orphaned test networks', error);
+    }
+  }
+
+  /**
+   * Whether a labelled resource belongs to a test process that is gone.
+   *
+   * @param createdAt - `{{.CreatedAt}}`, or null to skip the age condition.
+   * @private
+   */
+  private isOrphaned(labels: string, createdAt: string | null): boolean {
+    const parsed = parseDockerLabels(labels);
+
+    const owner = parsed['test.manager'];
+    // No owner recorded: created by a manager older than the label, or by
+    // something else entirely. Either way this reaper cannot say whose it is.
+    if (!owner || owner === this.managerId) return false;
+
+    const host = parsed['test.host'];
+    if (host && host !== DockerTestManager.hostId) return false;
+
+    const pid = pidFromManagerId(owner);
+    if (pid === null || isPidAlive(pid)) return false;
+
+    if (createdAt !== null) {
+      const created = parseDockerTimestamp(createdAt);
+      if (created === null) return false;
+      if (Date.now() - created < DockerTestManager.orphanGraceMs) return false;
+    }
+
+    return true;
   }
 
   /**
@@ -506,6 +714,7 @@ export class DockerTestManager extends EventEmitter {
       // Ownership, so cleanup can select this manager's containers instead of
       // every test container on the machine.
       'test.manager': this.managerId,
+      'test.host': DockerTestManager.hostId,
       ...options.labels,
     };
     for (const [key, value] of Object.entries(labels)) {
@@ -809,7 +1018,7 @@ export class DockerTestManager extends EventEmitter {
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`], {
+        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`, '--label', `test.host=${DockerTestManager.hostId}`], {
           stdio: 'pipe',
           encoding: 'utf8',
         });
@@ -837,7 +1046,7 @@ export class DockerTestManager extends EventEmitter {
             });
             this.log('Cleaned up unused networks, retrying network creation...');
             // Retry network creation after cleanup
-            execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`], {
+            execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`, '--label', `test.host=${DockerTestManager.hostId}`], {
               stdio: 'pipe',
               encoding: 'utf8',
             });

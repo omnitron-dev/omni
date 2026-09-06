@@ -516,9 +516,10 @@ const INITIAL_FORM: NodeFormData = {
   sshPrivateKey: '', sshPassphrase: '', sshPassword: '', runtime: 'node', daemonPort: 9700, tags: '',
 };
 
-function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading }: {
+function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error, onDismissError }: {
   open: boolean; onClose: () => void; onSubmit: (d: NodeFormData) => void;
   editNode: INodeWithStatus | null; sshKeys: SshKeyInfo[]; loading: boolean;
+  error: string | null; onDismissError: () => void;
 }) {
   const [form, setForm] = useState<NodeFormData>(INITIAL_FORM);
   useEffect(() => {
@@ -543,6 +544,7 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading }: {
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? `Edit "${editNode.name}"` : 'Add Node'}</DialogTitle>
       <DialogContent sx={{ pt: '8px !important' }}>
+        {error && <FormAlert onClose={onDismissError}>{error}</FormAlert>}
         <Stack spacing={2.5} sx={{
           mt: 1
         }}>
@@ -642,6 +644,7 @@ export default function NodesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editNode, setEditNode] = useState<INodeWithStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [uptimeBars, setUptimeBars] = useState<Record<string, UptimeBucket[]>>({});
   const [listError, setListError] = useState<string | null>(null);
 
@@ -722,21 +725,51 @@ export default function NodesPage() {
   }, [nodeList, snackbar]);
 
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const removingRef = useRef(false);
   const confirmRemoveNode = nodeList.find((n) => n.id === confirmRemoveId);
 
   const handleRemove = useCallback(async () => {
-    if (!confirmRemoveId) return;
-    try { await nodesRpc.removeNode({ id: confirmRemoveId }); await fetchNodes(); }
-    catch (err) { console.error('Failed to remove node:', err); }
-    finally { setConfirmRemoveId(null); }
+    // The dialog used to close in a `finally`, so it dismissed itself whether
+    // or not the node was removed, and the reason went to `console.error`.
+    // What the operator saw on a failure was a dialog that closed and a node
+    // still in the list — indistinguishable from a click that never
+    // registered, so the next thing they do is click Remove again. The dialog
+    // now closes only on success and shows the reason otherwise.
+    //
+    // `confirmRemoveId` cannot serve as the busy flag either: it is cleared
+    // after the await, so it gates the caller arriving once the request has
+    // returned, not the one arriving while it is still open.
+    if (!confirmRemoveId || removingRef.current) return;
+    removingRef.current = true;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await nodesRpc.removeNode({ id: confirmRemoveId });
+      await fetchNodes();
+      setConfirmRemoveId(null);
+    } catch (err) {
+      setRemoveError((err as Error)?.message ?? 'Failed to remove node.');
+    } finally {
+      removingRef.current = false;
+      setRemoving(false);
+    }
   }, [confirmRemoveId, fetchNodes]);
 
-  const handleOpenAdd = useCallback(() => { setEditNode(null); setDialogOpen(true); }, []);
-  const handleOpenEdit = useCallback((n: INodeWithStatus) => { setEditNode(n); setDialogOpen(true); }, []);
-  const handleCloseDialog = useCallback(() => { setDialogOpen(false); setEditNode(null); }, []);
+  const closeRemoveDialog = useCallback(() => {
+    if (removingRef.current) return;
+    setConfirmRemoveId(null);
+    setRemoveError(null);
+  }, []);
+
+  const handleOpenAdd = useCallback(() => { setEditNode(null); setSubmitError(null); setDialogOpen(true); }, []);
+  const handleOpenEdit = useCallback((n: INodeWithStatus) => { setEditNode(n); setSubmitError(null); setDialogOpen(true); }, []);
+  const handleCloseDialog = useCallback(() => { setDialogOpen(false); setEditNode(null); setSubmitError(null); }, []);
 
   const handleSubmit = useCallback(async (form: NodeFormData) => {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const payload = {
         name: form.name.trim(), host: form.host.trim(), sshPort: form.sshPort,
@@ -751,8 +784,14 @@ export default function NodesPage() {
       else await nodesRpc.addNode(payload);
       handleCloseDialog();
       await fetchNodes();
-    } catch (err) { console.error('Failed to save node:', err); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      // The reason used to go to `console.error` alone. On a failure the
+      // dialog stayed open with every field intact, the Save button
+      // re-enabled, and nothing on screen changed — so a rejected host or a
+      // duplicate name looked exactly like a click that never registered,
+      // and the operator's only move was to press Save again.
+      setSubmitError((err as Error)?.message ?? 'Failed to save node.');
+    } finally { setSubmitting(false); }
   }, [editNode, fetchNodes, handleCloseDialog]);
 
   const sorted = [...nodeList].sort((a, b) => {
@@ -809,19 +848,25 @@ export default function NodesPage() {
         </Grid>
       )}
 
-      <Dialog open={!!confirmRemoveId} onClose={() => setConfirmRemoveId(null)} maxWidth="xs" fullWidth>
+      <Dialog open={!!confirmRemoveId} onClose={closeRemoveDialog} maxWidth="xs" fullWidth>
         <DialogTitle>Remove Node</DialogTitle>
         <DialogContent>
           <Typography variant="body2">Remove <strong>{confirmRemoveNode?.name ?? confirmRemoveId}</strong>? This cannot be undone.</Typography>
+          {removeError && (
+            <FormAlert onClose={() => setRemoveError(null)}>{removeError}</FormAlert>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmRemoveId(null)} color="inherit">Cancel</Button>
-          <Button onClick={handleRemove} color="error" variant="contained">Remove</Button>
+          <Button onClick={closeRemoveDialog} color="inherit" disabled={removing}>Cancel</Button>
+          <Button onClick={handleRemove} color="error" variant="contained" disabled={removing}>
+            {removing ? 'Removing…' : 'Remove'}
+          </Button>
         </DialogActions>
       </Dialog>
 
       <NodeDialog open={dialogOpen} onClose={handleCloseDialog} onSubmit={handleSubmit}
-        editNode={editNode} sshKeys={sshKeys} loading={submitting} />
+        editNode={editNode} sshKeys={sshKeys} loading={submitting}
+        error={submitError} onDismissError={() => setSubmitError(null)} />
     </Stack>
   );
 }

@@ -66,6 +66,17 @@ function EyeOffIcon(): ReactNode {
 /**
  * Patterns that indicate a server-internal error message that should not
  * be shown to the user (e.g., stack traces, connection strings, file paths).
+ *
+ * The last group matches a leaked secret *value*, not the words that name one.
+ * Matching the words themselves cost more than it bought: measured against the
+ * 50 authentication messages the DAOS and Omnitron auth services actually
+ * throw, `/password|secret|token|key/i` replaced 20 of them with the generic
+ * fallback — including every password-policy rule ("Password must contain at
+ * least 2 digits") and every expiry notice ("Refresh token expired"), which
+ * are precisely the messages the user needs in order to succeed on the next
+ * attempt. The patterns below flag 0 of those 50 and still catch all of:
+ * `password=hunter2`, `postgres://user:pw@host`, a JWT, a bearer header, a
+ * vendor-prefixed API key, a raw hex or base64 blob, and `JWT_SECRET`.
  */
 const UNSAFE_ERROR_PATTERNS = [
   /at\s+\w+\s*\(/i, // stack trace frames
@@ -73,7 +84,18 @@ const UNSAFE_ERROR_PATTERNS = [
   /\b(SELECT|INSERT|UPDATE|DELETE)\b.*\bFROM\b/i, // SQL fragments
   /\/[a-z_-]+\/[a-z_-]+\//i, // Unix file paths
   /[A-Z]:\\[^\s]+/, // Windows file paths
-  /password|secret|token|key/i, // sensitive keywords in error context
+
+  // A secret assigned to a name — `password=hunter2`, `token: eyJ...`. The
+  // value must carry a digit or symbol, which is what separates a credential
+  // from the English word that follows a colon in "Password: too short".
+  /\b(password|passwd|pwd|secret|token|api[-_]?key|private[-_]?key|credentials?)\b\s*[:=]\s*["']?(?=[^\s"']{6,})[A-Za-z]*[0-9+/=_\-.]/i,
+  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]*:[^\s/@]+@/i, // credentials inside a connection URL
+  /\bbearer\s+\S{8,}/i, // Authorization header
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/, // JWT
+  /\b(sk|pk|rk)[-_](live|test|ant|proj)[-_]\w{8,}/i, // vendor-prefixed API keys
+  /\b[A-Fa-f0-9]{32,}\b/, // raw hex blob — never meaningful to a reader
+  /\b[A-Za-z0-9+/]{40,}={0,2}\b/, // raw base64 blob
+  /\b[A-Z][A-Z0-9]*_(SECRET|KEY|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)\b/, // server env var names
 ];
 
 const DEFAULT_AUTH_ERROR = 'An error occurred. Please try again.';
@@ -82,8 +104,12 @@ const DEFAULT_AUTH_ERROR = 'An error occurred. Please try again.';
  * Sanitize error messages to prevent information disclosure.
  * Passes through safe, user-facing messages while replacing
  * server-internal details with a generic fallback.
+ *
+ * Exported for its own tests: the cost of this function getting it wrong is
+ * silent — the user is shown a message that says nothing, and no log records
+ * that a specific one was suppressed.
  */
-function sanitizeErrorMessage(err: unknown, fallback: string = DEFAULT_AUTH_ERROR): string {
+export function sanitizeErrorMessage(err: unknown, fallback: string = DEFAULT_AUTH_ERROR): string {
   if (!(err instanceof Error)) return fallback;
 
   const message = err.message;

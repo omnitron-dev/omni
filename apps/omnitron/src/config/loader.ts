@@ -128,3 +128,40 @@ export async function loadEcosystemConfigSafe(cwd?: string): Promise<IEcosystemC
     throw err;
   }
 }
+
+/**
+ * The config the daemon boots with: an explicit path, else the working
+ * directory, else nothing.
+ *
+ * The catch here used to be blanket, so a broken `omnitron.config.ts` in the
+ * daemon's working directory produced `{ apps: [] }` — the daemon started,
+ * reported healthy, and supervised nothing. `omnitron list` showed an empty
+ * list, which is what it shows for a project with no apps, so every surface
+ * agreed that all was well.
+ *
+ * A directory with no config is the case this fallback exists for and still
+ * yields an empty ecosystem. A config that exists and does not load is a
+ * different thing, and the line is already drawn by the branch above:
+ * `loadEcosystemConfigFile` throws. Starting anyway leaves a daemon that is
+ * up and managing nothing, which no check can tell from a daemon with
+ * nothing to manage.
+ *
+ * Lives here rather than in `daemon-entry` so it can be tested: that module
+ * calls `main()` at import.
+ */
+export async function loadDaemonBootConfig(
+  configPath: string | null,
+  cwd: string
+): Promise<IEcosystemConfig> {
+  if (configPath && fs.existsSync(configPath)) {
+    return loadEcosystemConfigFile(configPath);
+  }
+  try {
+    return await loadEcosystemConfig(cwd);
+  } catch (err) {
+    if ((err as { code?: string })?.code === ECOSYSTEM_CONFIG_NOT_FOUND) {
+      return defineEcosystem({ apps: [] });
+    }
+    throw err;
+  }
+}

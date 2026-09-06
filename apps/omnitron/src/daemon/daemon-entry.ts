@@ -6,44 +6,12 @@
  * Daemon can start with default config if no projects registered.
  */
 
-import fs from 'node:fs';
-import { loadEcosystemConfig, loadEcosystemConfigFile, ECOSYSTEM_CONFIG_NOT_FOUND } from '../config/loader.js';
-import { defineEcosystem } from '../config/define-ecosystem.js';
+import { loadDaemonBootConfig } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig, ensurePersistedJwtSecret } from '../commands/up.js';
 import { getEnv } from '../shared/env-config.js';
-
-/**
- * Load config from a registry config path, falling back to CWD or defaults.
- *
- * The catch here used to be blanket, so a broken `omnitron.config.ts` in the
- * daemon's working directory produced `{ apps: [] }` — the daemon started,
- * reported healthy, and supervised nothing. `omnitron list` showed an empty
- * list, which is what it shows for a project with no apps, so every surface
- * agreed that everything was fine.
- *
- * A directory with no config is the case this fallback exists for and still
- * yields an empty ecosystem. A config that exists and does not load is a
- * different thing, and the line is already drawn in this file: the explicit
- * `configPath` branch above calls `loadEcosystemConfigFile`, which throws.
- * Starting anyway would be a daemon that is up and managing nothing, which no
- * check can tell from a daemon with nothing to manage.
- */
-async function loadConfigSafe(configPath: string | null, cwd: string) {
-  if (configPath && fs.existsSync(configPath)) {
-    return loadEcosystemConfigFile(configPath);
-  }
-  try {
-    return await loadEcosystemConfig(cwd);
-  } catch (err) {
-    if ((err as { code?: string })?.code === ECOSYSTEM_CONFIG_NOT_FOUND) {
-      return defineEcosystem({ apps: [] });
-    }
-    throw err;
-  }
-}
 
 async function main() {
   const env = getEnv();
@@ -73,7 +41,7 @@ async function main() {
   const detected = registry.autoDetect(cwd);
   const projectName = detected?.name ?? registry.list()[0]?.name;
   const configPath = projectName ? registry.getConfigPath(projectName) : null;
-  const config = await loadConfigSafe(configPath, cwd);
+  const config = await loadDaemonBootConfig(configPath, cwd);
 
   // Read saved daemon config for role/master settings.
   const savedConfig = readSavedDaemonConfig();

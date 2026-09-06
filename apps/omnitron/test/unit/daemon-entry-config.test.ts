@@ -11,8 +11,13 @@
  * config is what the fallback is for; a config that exists and does not load
  * is not that.
  *
- * Tested through `loadEcosystemConfig` plus the discriminator rather than
- * through `daemon-entry`, whose module scope starts a daemon on import.
+ * The first version of this file tested `loadEcosystemConfig` plus the
+ * discriminator, because `daemon-entry` calls `main()` at import. That
+ * verified the parts and not the function built out of them: restoring the
+ * blanket catch in `loadConfigSafe` would have left every assertion green.
+ * A mutation that puts the defect back is the only one that shows a test is
+ * about the defect rather than about something near it — so the function
+ * moved to the config module, where it can be called.
  */
 
 import fs from 'node:fs';
@@ -21,12 +26,7 @@ import path from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { loadEcosystemConfig, ECOSYSTEM_CONFIG_NOT_FOUND } from '../../src/config/loader.js';
-
-/** The predicate `loadConfigSafe` applies, in the shape it applies it. */
-function isAbsence(err: unknown): boolean {
-  return (err as { code?: string })?.code === ECOSYSTEM_CONFIG_NOT_FOUND;
-}
+import { loadDaemonBootConfig } from '../../src/config/loader.js';
 
 let tmpDir: string;
 
@@ -38,25 +38,42 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('the daemon entry point config fallback', () => {
-  it('treats an empty directory as absence', async () => {
-    const err = await loadEcosystemConfig(tmpDir).catch((e) => e);
+describe('the config the daemon boots with', () => {
+  it('is an empty ecosystem when the directory has no config', async () => {
+    const config = await loadDaemonBootConfig(null, tmpDir);
 
-    expect(isAbsence(err)).toBe(true);
+    expect(config.apps).toEqual([]);
   });
 
   it.each([
     ['a file that does not parse', 'module.exports = { apps: ['],
+    ['an apps that is not an array', "module.exports = { apps: 'all' };"],
     ['an app with no name', "module.exports = { apps: [{ script: './a.js' }] };"],
-  ])('does not treat %s as absence', async (_label, source) => {
-    // If this were absence, the daemon would boot with `{ apps: [] }` and
-    // supervise nothing — indistinguishable, from outside, from a project
-    // that has no apps.
+    ['an app with neither bootstrap nor script', "module.exports = { apps: [{ name: 'a' }] };"],
+  ])('refuses to boot on %s', async (_label, source) => {
+    // The alternative is what this replaced: a daemon that comes up, reports
+    // healthy and supervises nothing, which no check can tell from a daemon
+    // with nothing to supervise.
     fs.writeFileSync(path.join(tmpDir, 'omnitron.config.js'), source);
 
-    const err = await loadEcosystemConfig(tmpDir).catch((e) => e);
+    await expect(loadDaemonBootConfig(null, tmpDir)).rejects.toThrow();
+  });
 
-    expect(err).toBeInstanceOf(Error);
-    expect(isAbsence(err)).toBe(false);
+  it('loads a config that is there', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'omnitron.config.js'),
+      "module.exports = { apps: [{ name: 'api', script: './api.js' }] };"
+    );
+
+    const config = await loadDaemonBootConfig(null, tmpDir);
+
+    expect(config.apps.map((a) => a.name)).toEqual(['api']);
+  });
+
+  it('prefers an explicit path, and does not soften its failure either', async () => {
+    const explicit = path.join(tmpDir, 'custom.config.js');
+    fs.writeFileSync(explicit, 'module.exports = { apps: [');
+
+    await expect(loadDaemonBootConfig(explicit, tmpDir)).rejects.toThrow();
   });
 });

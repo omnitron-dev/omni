@@ -20,6 +20,8 @@ export default function SignInPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const signIn = useAuthStore((s) => s.signIn);
+  const initError = useAuthStore((s) => s.initError);
+  const clearInitError = useAuthStore((s) => s.clearInitError);
   const backendOnline = useBackendOnline();
 
   const [username, setUsername] = useState('');
@@ -64,6 +66,18 @@ export default function SignInPage() {
           Sign in to manage your infrastructure
         </Typography>
       </Stack>
+      {/* Why the operator is looking at this page at all. Session restore
+          lands here when it could not check the session — a daemon that
+          cannot reach its database, say — and that is not something signing
+          in again fixes. Without this the page was silent about it, and the
+          next thing anyone does is type their password into a form that will
+          fail for the same reason. Shown as a warning: the sign-in below may
+          still be worth trying, and the form's own errors are the red ones. */}
+      {initError && !error && (
+        <FormAlert severity="warning" onClose={clearInitError}>
+          {initError}
+        </FormAlert>
+      )}
       {error && (
         <FormAlert onClose={() => setError('')}>{error}</FormAlert>
       )}

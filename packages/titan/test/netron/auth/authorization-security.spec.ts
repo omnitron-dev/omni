@@ -1163,8 +1163,33 @@ describe('AuthorizationManager Security Tests', () => {
         expect(duration).toBeLessThan(100);
       });
 
-      it('should handle ACL with 1000+ required permissions', () => {
+      it('checks a 1000-permission ACL without a pass over the grants per permission', () => {
         const manyPermissions = Array.from({ length: 1000 }, (_, i) => `perm:${i}`);
+
+        // This was a stopwatch, and it kept failing on unchanged code. It had
+        // already been hardened once — interleaved samples, medians, a clamped
+        // denominator — and still read 107ms against a 100ms bound, then later
+        // blew a ratio bound in a full run. The reason is that the quantity is
+        // not stable: the small side is hundredths of a millisecond, so one
+        // scheduler slice decides the verdict, and raising the iteration count
+        // widens the spread rather than narrowing it. `Math.max(small, 0.001)`
+        // made that worse by letting noise stand in for a measurement.
+        //
+        // The property underneath is not temporal. `canAccessService` builds
+        // ONE permission checker per call and then asks it per required
+        // permission; the regression it guards against is going back to a pass
+        // over the granted list for each required permission. That difference
+        // is countable: a grant that records every look it gets is consulted
+        // once while the checker is built, and a thousand times if the check
+        // went quadratic again.
+        let looks = 0;
+        const poison = {
+          endsWith: (suffix: string) => {
+            looks++;
+            return suffix === '.*';
+          },
+          slice: () => 'never.matches.',
+        } as unknown as string;
 
         authzManager.registerACL({
           service: 'service',
@@ -1174,50 +1199,14 @@ describe('AuthorizationManager Security Tests', () => {
         const userContext: AuthContext = {
           userId: 'user1',
           roles: [],
-          permissions: manyPermissions,
+          // First, so a per-permission pass over the grants has to walk past it.
+          permissions: [poison, ...manyPermissions],
         };
-
-        // The point is that a 1000-permission ACL is not quadratic, which a
-        // flat millisecond bound measures only on an idle machine — this read
-        // 107ms against a limit of 100 while a Docker cluster was starting,
-        // and the code had not changed. Compare against the same check with a
-        // tenth of the permissions, taken in the same conditions: linear (or
-        // better) work stays within a small multiple, and an accidental
-        // quadratic path cannot.
-        const time = (permissions: string[]): number => {
-          authzManager.registerACL({ service: 'timed', requiredPermissions: permissions });
-          const context: AuthContext = { userId: 'user1', roles: [], permissions };
-          const start = performance.now();
-          for (let i = 0; i < 50; i++) authzManager.canAccessService('timed', context);
-          return performance.now() - start;
-        };
-
-        // Interleave the two measurements and take medians. Timing them one
-        // after the other left the ratio exposed to any load arriving in
-        // between — and it can only arrive between them, so the skew is
-        // one-directional. That is why this passed alone and failed in a full
-        // parallel run, on code that had not changed. Alternating puts both
-        // samples through the same conditions; the median discards the
-        // transient rather than letting it decide the verdict.
-        const hundred = manyPermissions.slice(0, 100);
-        const smalls: number[] = [];
-        const larges: number[] = [];
-        for (let round = 0; round < 5; round++) {
-          smalls.push(time(hundred));
-          larges.push(time(manyPermissions));
-        }
-        const median = (xs: number[]): number => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
-        const small = Math.max(median(smalls), 0.001);
-        const large = median(larges);
 
         const result = authzManager.canAccessService('service', userContext);
+
         expect(result).toBe(true);
-        // Ten times the input, at most fifty times the work. Quadratic would
-        // be a hundred.
-        expect(
-          large / small,
-          `1000 permissions cost ${(large / small).toFixed(1)}x what 100 do`
-        ).toBeLessThan(50);
+        expect(looks, `the granted list was walked ${looks} times for 1000 required permissions`).toBeLessThanOrEqual(2);
       });
     });
 

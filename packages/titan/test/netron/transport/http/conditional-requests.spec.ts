@@ -23,7 +23,14 @@ const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 describeOrSkip('HTTP 304 Not Modified', () => {
   let server: HttpServer;
   let mockPeer: any;
-  const testPort = 5500 + Math.floor(Math.random() * 500);
+  // Worker-partitioned, the way the other server-binding specs in this
+  // directory already do it. A bare `base + random(500)` can hand the same port
+  // to two vitest workers running different files at the same moment: the
+  // second server fails to bind, or a client reaches the first one and speaks
+  // to a peer in the wrong state. Seen as `Error: read ECONNRESET` in a
+  // full-package run. Two of these files drew from the SAME 500-port range.
+  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+  const testPort = 23000 + (workerId - 1) * 400 + Math.floor(Math.random() * 380);
   const baseUrl = () => `http://localhost:${testPort}`;
 
   beforeEach(async () => {

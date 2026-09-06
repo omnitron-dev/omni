@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getFreeHttpPort } from '../utils/index.js';
 import { HttpServer } from '../../src/netron/transport/http/server.js';
 import { Uid } from '../../src/netron/uid.js';
 import { MAX_UID_VALUE } from '../../src/netron/constants.js';
@@ -39,7 +40,7 @@ describe('T#50 — Netron polish security & cleanup', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = 4900 + Math.floor(Math.random() * 100);
+    port = await getFreeHttpPort();
   });
 
   afterEach(async () => {

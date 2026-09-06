@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getFreeHttpPort } from '../utils/index.js';
 import { delay } from '@omnitron-dev/common';
 
 import {
@@ -24,8 +25,7 @@ describeOrSkip('Netron Streams Integration Tests', () => {
   let testPort: number;
 
   beforeEach(async () => {
-    // Use random port to avoid conflicts during parallel test execution
-    testPort = 9000 + Math.floor(Math.random() * 1000);
+    testPort = await getFreeHttpPort();
 
     const loggerA = createMockLogger();
     netronA = await createNetronClient({ logger: loggerA });

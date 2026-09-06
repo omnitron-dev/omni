@@ -27,6 +27,26 @@ const NODE_A = '11111111-1111-4111-8111-111111111111';
 const NODE_B = '22222222-2222-4222-8222-222222222222';
 const APP = `log-filter-probe-${process.pid}`;
 
+/**
+ * Whether the omnitron Postgres answered, decided before any test is
+ * collected.
+ *
+ * This file asserts about SQL and needs the real database. The first attempt
+ * at guarding it checked a flag inside each test and returned early — which
+ * reported four PASSES on a host where the database was down, the exact
+ * shape of vacuous green this repository keeps finding. A skip has to be
+ * declared at collection time to be reported as a skip.
+ */
+const probe = await createOmnitronDb({ max: 1, connectionTimeoutMillis: 5_000 });
+const reachable = await sql`SELECT 1`
+  .execute(probe)
+  .then(() => true)
+  .catch((err) => {
+    console.warn(`[log-filters] no database: ${(err as Error).message}`);
+    return false;
+  });
+await probe.destroy().catch(() => undefined);
+
 let db: Awaited<ReturnType<typeof createOmnitronDb>>;
 let collector: LogCollectorService;
 
@@ -48,7 +68,7 @@ afterAll(async () => {
   await db.destroy();
 });
 
-describe('queryLogs', () => {
+describe.skipIf(!reachable)('queryLogs', () => {
   it('narrows to one cluster node', async () => {
     const result = await collector.queryLogs({ app: APP, nodeId: NODE_A });
 
@@ -76,7 +96,7 @@ describe('queryLogs', () => {
   });
 });
 
-describe('getRecentLogs — the live tail', () => {
+describe.skipIf(!reachable)('getRecentLogs — the live tail', () => {
   it('applies the same node filter as the paginated query', async () => {
     // A filter honoured by one path and not the other is how a viewer
     // changes its answer when you press Live.

@@ -12,12 +12,22 @@ const describeOrSkip = skipTests ? describe.skip : describe;
 
 /**
  * Wait until the expected number of messages has arrived, or give up at the
- * deadline and let the assertions report what did.
+ * deadline and let the assertions report what did. A flat `delay(1000)` would
+ * be a bet on how fast Redis answers under whatever else is running.
  *
- * A flat `delay(1000)` is a bet on how fast Redis answers under whatever else
- * is running: this file failed a full parallel run with one of two messages
- * delivered, and passed alone. The delivery guarantee is what the tests are
- * about; the second is not part of it.
+ * The comment that used to stand here explained this file's "one of two
+ * messages delivered" failures as Redis being slow under a parallel run, and
+ * this wait was widened to ten seconds on that reading. That was wrong, and the
+ * wait is what kept it wrong: the message was not late, it was gone. `ack()`
+ * ran `XDEL` on a stream shared by both consumer groups, so whichever group
+ * acknowledged first deleted the message for the other. Reproduced in two runs
+ * out of five ALONE, on an idle machine, with the stream empty and nothing
+ * pending at the moment of failure — see
+ * `ack-does-not-delete-for-other-groups.spec.ts`.
+ *
+ * Kept, because waiting for delivery is still the right shape for a test about
+ * delivery. Recorded, because a wait added to a failure nobody diagnosed hides
+ * the failure rather than fixing it.
  */
 async function until(condition: () => boolean, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

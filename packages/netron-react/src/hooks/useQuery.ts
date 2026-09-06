@@ -402,6 +402,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
     if (!enabled || !refetchInterval || refetchInterval <= 0) return undefined;
 
     const intervalId = setInterval(() => {
+      // Swallowed here only: `fetchData` records the failure as
+      // `status: 'error'` on the query state, which is where a consumer
+      // reads it. This guards the floating promise, nothing else.
       fetchData().catch(() => {});
     }, refetchInterval);
 
@@ -414,6 +417,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
 
     const handleFocus = () => {
       if (isStale) {
+        // Swallowed here only: `fetchData` records the failure as
+        // `status: 'error'` on the query state, which is where a consumer
+        // reads it. This guards the floating promise, nothing else.
         fetchData().catch(() => {});
       }
     };
@@ -430,6 +436,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
     const unsubscribe = client.on('reconnect', () => {
       // Refetch if data is stale after reconnection
       if (isStale) {
+        // Swallowed here only: `fetchData` records the failure as
+        // `status: 'error'` on the query state, which is where a consumer
+        // reads it. This guards the floating promise, nothing else.
         fetchData().catch(() => {});
       }
     });

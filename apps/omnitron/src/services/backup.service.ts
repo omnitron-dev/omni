@@ -58,6 +58,25 @@ interface ScheduleEntry {
 
 
 
+/**
+ * Non-database artefacts that only a `full` pass produces, and therefore
+ * only a `full` pass used to prune.
+ */
+const FULL_BACKUP_ARTEFACTS = ['storage-objects', 'tor-keys', 'daemon-state'] as const;
+
+/**
+ * Which databases a sweep should bound, given what is scheduled and what
+ * actually has backups.
+ *
+ * Split out because the choice is the whole point: pruning only the
+ * scheduled set means retention runs where the producer still runs and
+ * nowhere else, so anything dropped from the configuration keeps its history
+ * for ever.
+ */
+export function databasesToPrune(scheduled: string[], onDisk: string[]): string[] {
+  return [...new Set([...scheduled, ...onDisk, ...FULL_BACKUP_ARTEFACTS])];
+}
+
 // =============================================================================
 // Service
 // =============================================================================
@@ -604,8 +623,21 @@ export class BackupService {
   private async pruneOldBackups(database: string, keep = 48): Promise<void> {
     let dbs: string[];
     if (database === 'all' || database === 'full') {
-      dbs = [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))];
-      if (database === 'full') dbs.push('storage-objects', 'tor-keys', 'daemon-state');
+      // Union of what is scheduled and what is ON DISK.
+      //
+      // The schedule-derived set alone prunes only the databases the current
+      // configuration still backs up, so anything dropped from it keeps its
+      // history for ever — retention that runs where the producer still runs
+      // and nowhere else. Measured on this host: `tor-keys` held 37 files
+      // and 343 MiB, none newer than two months, because they are named only
+      // in the `full` pass and that pass no longer runs; `storage-objects`
+      // held fifteen more.
+      //
+      // Reading the backup index instead means a sweep bounds everything it
+      // finds, including the leftovers of a schedule someone removed.
+      const scheduled = [...this.buildStackDbMap().keys()].filter((k) => !k.includes('/'));
+      const onDisk = (await this.listBackups()).map((b) => b.database);
+      dbs = databasesToPrune(scheduled, onDisk);
     } else {
       dbs = [database];
     }

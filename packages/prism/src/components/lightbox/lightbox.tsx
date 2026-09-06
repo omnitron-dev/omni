@@ -203,14 +203,17 @@ export function Lightbox({
   }, []);
 
   const zoomOut = useCallback(() => {
-    setZoomLevel((prevZoom) => {
-      const newZoom = Math.max(prevZoom - ZOOM_STEP, MIN_ZOOM);
-      if (newZoom === MIN_ZOOM) {
-        setPosition({ x: 0, y: 0 });
-      }
-      return newZoom;
-    });
+    // The pan reset happens beside the state update, not inside its updater.
+    // React may run an updater more than once — under `StrictMode` it does so
+    // deliberately — and an updater that calls another setter is exactly the
+    // shape that made `useCountdown` fire its completion callback four times.
+    setZoomLevel((prevZoom) => Math.max(prevZoom - ZOOM_STEP, MIN_ZOOM));
   }, []);
+
+  // Panning only means anything while zoomed in; recentre as soon as it is not.
+  useEffect(() => {
+    if (zoomLevel === MIN_ZOOM) setPosition({ x: 0, y: 0 });
+  }, [zoomLevel]);
 
   const zoomReset = useCallback(() => {
     setZoomLevel(MIN_ZOOM);

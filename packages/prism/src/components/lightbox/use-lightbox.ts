@@ -2,7 +2,8 @@
  * useLightbox Hook
  *
  * State management hook for the Lightbox component.
- * Handles open/close, navigation, and zoom state.
+ * Handles open/close and navigation. Zoom belongs to `<Lightbox>` itself —
+ * see `UseLightboxReturn.getLightboxProps` for why it is not here.
  *
  * @module @omnitron-dev/prism/components/lightbox
  */
@@ -12,14 +13,6 @@
 import { useState, useCallback } from 'react';
 
 import type { UseLightboxReturn } from './types.js';
-
-// =============================================================================
-// CONSTANTS
-// =============================================================================
-
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 4;
-const ZOOM_STEP = 0.5;
 
 // =============================================================================
 // USE LIGHTBOX HOOK
@@ -61,13 +54,19 @@ export function useLightbox(options: UseLightboxOptions = {}): UseLightboxReturn
 
   const [open, setOpen] = useState(defaultOpen);
   const [index, setIndex] = useState(defaultIndex);
-  const [zoomLevel, setZoomLevel] = useState(MIN_ZOOM);
 
   // Navigation
   const goTo = useCallback(
     (newIndex: number) => {
+      // `totalSlides` is optional and defaults to 0, which is how the hook is
+      // constructed when a caller lets the component do its own navigation —
+      // `useLightbox()` with no arguments, as the portal does. Passing the
+      // requested index straight through in that state let `next()` walk the
+      // index upward without bound, past the end of a slide list the hook was
+      // never told about. With no slides there is no index to be at; 0 is the
+      // one that cannot be out of range.
       if (totalSlides === 0) {
-        setIndex(newIndex);
+        setIndex(0);
         return;
       }
 
@@ -76,8 +75,6 @@ export function useLightbox(options: UseLightboxOptions = {}): UseLightboxReturn
       } else {
         setIndex(Math.max(0, Math.min(newIndex, totalSlides - 1)));
       }
-      // Reset zoom when changing slides
-      setZoomLevel(MIN_ZOOM);
     },
     [totalSlides, loop]
   );
@@ -93,26 +90,11 @@ export function useLightbox(options: UseLightboxOptions = {}): UseLightboxReturn
   // Open/Close
   const onOpen = useCallback((slideIndex = 0) => {
     setIndex(slideIndex);
-    setZoomLevel(MIN_ZOOM);
     setOpen(true);
   }, []);
 
   const onClose = useCallback(() => {
     setOpen(false);
-    setZoomLevel(MIN_ZOOM);
-  }, []);
-
-  // Zoom
-  const zoomIn = useCallback(() => {
-    setZoomLevel((prevZoom) => Math.min(prevZoom + ZOOM_STEP, MAX_ZOOM));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setZoomLevel((prevZoom) => Math.max(prevZoom - ZOOM_STEP, MIN_ZOOM));
-  }, []);
-
-  const zoomReset = useCallback(() => {
-    setZoomLevel(MIN_ZOOM);
   }, []);
 
   // Index change handler for Lightbox
@@ -142,10 +124,6 @@ export function useLightbox(options: UseLightboxOptions = {}): UseLightboxReturn
     goTo,
     next,
     prev,
-    zoomLevel,
-    zoomIn,
-    zoomOut,
-    zoomReset,
     getLightboxProps,
   };
 }

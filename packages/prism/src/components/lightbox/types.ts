@@ -209,14 +209,20 @@ export interface UseLightboxReturn {
   next: () => void;
   /** Go to previous slide */
   prev: () => void;
-  /** Current zoom level */
-  zoomLevel: number;
-  /** Zoom in */
-  zoomIn: () => void;
-  /** Zoom out */
-  zoomOut: () => void;
-  /** Reset zoom */
-  zoomReset: () => void;
-  /** Props to spread on Lightbox component */
+  /**
+   * Props to spread on the Lightbox component.
+   *
+   * Note what is NOT here, and was not before: zoom. `<Lightbox>` owns its
+   * own zoom state and exposes no prop to drive it — `zoom` on that component
+   * is a boolean that shows or hides the controls. The hook used to return
+   * `zoomLevel`, `zoomIn`, `zoomOut` and `zoomReset` anyway, four exported
+   * members that moved a number nothing rendered. A consumer following this
+   * hook's own example would have called them and seen nothing happen.
+   *
+   * Adding real control means giving `LightboxProps` a controlled
+   * `zoomLevel` / `onZoomChange` pair and routing the component's seven
+   * internal `setZoomLevel` calls through it. Worth doing when something
+   * needs it; not worth pretending until then.
+   */
   getLightboxProps: () => Pick<LightboxProps, 'open' | 'onClose' | 'index' | 'onIndexChange'>;
 }

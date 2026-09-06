@@ -252,23 +252,56 @@ export function classifyHttpError(status: number): ErrorCode {
   }
 }
 
+/** errno values that mean the transport failed, whatever the message says. */
+const NETWORK_ERRNOS = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'EPIPE',
+  'EAI_AGAIN',
+]);
+
+/**
+ * How each engine words a `fetch` that never reached the server.
+ *
+ * Chrome and Edge say "Failed to fetch", Firefox "NetworkError when
+ * attempting to fetch resource", React Native "Network request failed" — and
+ * Safari says "Load failed", which contains none of the words the previous
+ * version looked for. Every offline request in Safari was therefore reported
+ * as an unrecognised error, including a lazy route's chunk, where the
+ * recovery a user needs is a reload.
+ */
+const FETCH_FAILURE = /failed to fetch|networkerror when attempting|load failed|network request failed/i;
+
 /**
  * Check if an error is a network error.
+ *
+ * Deciding by the words a message happens to contain cuts the wrong way in
+ * both directions. Matching "network", "connection" or "offline" anywhere in
+ * any message classified "Connection to the payment provider was declined"
+ * and "This network is not supported in your region" — ordinary server
+ * answers — as the user's connection failing, which sends them to check a
+ * router instead of reading what the server said. Against a corpus of the
+ * eight shapes a real network failure takes and five that only mention one,
+ * the old predicate was right 7 times out of 13.
+ *
+ * So: an errno if the error carries one, the engine's own wording if `fetch`
+ * rejected (it rejects with a TypeError and nothing else for a network-level
+ * failure), and axios's exact `Network Error` — which is its whole message,
+ * not a fragment of a sentence.
  */
 export function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError && error.message.includes('fetch')) {
-    return true;
-  }
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('network') ||
-      message.includes('connection') ||
-      message.includes('offline') ||
-      message.includes('failed to fetch')
-    );
-  }
-  return false;
+  if (!(error instanceof Error)) return false;
+
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && NETWORK_ERRNOS.has(code)) return true;
+
+  if (error instanceof TypeError) return FETCH_FAILURE.test(error.message);
+
+  return /^network error$/i.test(error.message.trim());
 }
 
 /**

@@ -216,7 +216,7 @@ importers:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
       react-router-dom:
-        specifier: ^7.18.3
+        specifier: 7.18.3
         version: 7.18.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tsx:
         specifier: ^4.23.13

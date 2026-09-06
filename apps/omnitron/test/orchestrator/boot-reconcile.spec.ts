@@ -28,11 +28,20 @@ import { describe, it, expect, vi } from 'vitest';
  *
  * The janitor stub below carries a comment saying this test "never shells out
  * to `ps`". It was wrong: the stub covers the sweep, not the discovery pass
- * ahead of it, and the two are separate calls on the same path. On an
- * unloaded machine the difference is milliseconds, which is why it went
- * unnoticed; in a full run with a hundred parallel workers each spawning
- * `ps`, this file timed out twice — once at 30s and once at 102s — while
- * passing three times out of three on its own.
+ * ahead of it, and the two are separate calls on the same path.
+ *
+ * What that cost, measured: this file timed out twice in a full run — at 30s
+ * and at 102s — while passing three times out of three on its own, and in
+ * isolation the `ps` walk is 20% of the file's runtime against 0% with it
+ * mocked. Both timeouts happened with something heavy running alongside (a
+ * `turbo build`, then a browser), and `ps` on this machine enumerates the
+ * daemon, six apps and Docker. This suite runs with `fileParallelism: false`,
+ * so it is external load rather than sibling workers — the first version of
+ * this note said "a hundred parallel workers", which is not what happens
+ * here.
+ *
+ * The mock removes the dependency rather than making it faster, which is the
+ * part that does not depend on getting the mechanism right.
  *
  * Mocked at the module boundary because the import is resolved at module
  * scope in `orchestrator.service.ts`, so nothing the test does to the

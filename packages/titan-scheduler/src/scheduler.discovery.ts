@@ -6,6 +6,7 @@
 
 import { Container } from '@omnitron-dev/titan/nexus';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
+import { Errors } from '@omnitron-dev/titan/errors';
 
 import { getScheduledJobs } from './scheduler.decorators.js';
 import { SCHEDULER_METADATA, SCHEDULER_CONFIG_TOKEN, SCHEDULER_REGISTRY_TOKEN } from './scheduler.constants.js';
@@ -89,19 +90,17 @@ export class SchedulerDiscovery {
    * Register a scheduled job
    */
   private registerJob(instance: any, methodName: string, metadata: IJobMetadata): IScheduledJob | null {
+    const className = instance.constructor.name;
+    const jobName = metadata.options?.name || `${className}.${methodName}`;
+
+    // Disabled: the developer turned this job off. Nothing to register and
+    // nothing to report.
+    if (metadata.options?.disabled) {
+      return null;
+    }
+
     try {
-      // Generate job name
-      const className = instance.constructor.name;
-      const jobName = metadata.options?.name || `${className}.${methodName}`;
-
-      // Check if disabled
-      if (metadata.options?.disabled) {
-        // Skipping disabled job
-        return null;
-      }
-
-      // Register the job
-      const job = this.registry.registerJob(
+      return this.registry.registerJob(
         jobName,
         metadata.type,
         metadata.pattern!,
@@ -109,11 +108,33 @@ export class SchedulerDiscovery {
         methodName,
         metadata.options
       );
+    } catch (error) {
+      // This used to `return null`, which the caller (`if (job) jobs.push`)
+      // could not tell apart from the disabled case above. The realistic
+      // failure is a name collision, and its consequence is a job that never
+      // runs while the application reports a successful start.
+      const existing = this.registry.getJob(jobName);
 
-      return job;
-    } catch {
-      // Failed to register job
-      return null;
+      // The same job reached twice. A class registered under two tokens
+      // resolves to two instances, both carrying the same decorator; the job
+      // is registered and will run, so there is nothing to raise. Compared by
+      // class and method rather than by instance for exactly that reason.
+      if (existing && existing.method === methodName && existing.target?.constructor === instance.constructor) {
+        return null;
+      }
+
+      if (existing) {
+        const owner = existing.target?.constructor?.name ?? 'an unknown provider';
+        throw Errors.conflict(
+          `Scheduled job name "${jobName}" is claimed by both ${owner}.${existing.method} and ` +
+            `${className}.${methodName}. Only the first is registered, so the second would never ` +
+            `run. Give one of them its own name via the decorator's { name } option.`
+        );
+      }
+
+      // Not a collision — whatever the registry refused for, that reason
+      // exists only once.
+      throw error;
     }
   }
 

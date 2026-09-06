@@ -21,6 +21,14 @@ export interface LogEntry {
 
 export interface LogQueryFilter {
   app?: string | undefined;
+  /**
+   * Restrict to one cluster node.
+   *
+   * `logs.nodeId` is populated by `SyncService.ingestLog` for everything a
+   * slave sends up; locally collected entries leave it null, so filtering by
+   * a node correctly excludes the master's own output.
+   */
+  nodeId?: string | undefined;
   level?: string | string[] | undefined;
   search?: string | undefined;
   labels?: Record<string, string> | undefined;

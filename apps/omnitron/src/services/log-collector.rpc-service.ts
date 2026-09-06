@@ -71,6 +71,10 @@ export class LogsRpcService {
     app?: string;
     level?: string | string[];
     search?: string;
+    /** One cluster node, as on `queryLogs`. */
+    nodeId?: string;
+    /** jsonb containment, as on `queryLogs`. */
+    labels?: Record<string, string>;
     tail?: number;
     since?: string;
   }): Promise<LogEntryRow[]> {

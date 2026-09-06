@@ -161,6 +161,9 @@ export function useBackendService<TService>(
   useEffect(() => {
     const backendState = connectionState.backends.get(backendName);
     if (options?.autoConnect && !backendState?.isConnected && !backendState?.isConnecting) {
+      // Swallowed here only: a failed connect lands on the backend's own
+      // `BackendConnectionState.error` and fires the context `onError`
+      // callback. This guards the floating promise, nothing else.
       connect(backendName).catch(() => {});
     }
   }, [options?.autoConnect, backendName, connectionState.backends, connect]);

@@ -52,7 +52,10 @@ export class TelemetryBuffer {
   start(): void {
     if (this.flushTimer) return;
     this.flushTimer = setInterval(() => {
-      this.flush().catch(() => {});
+      // `flush()` catches its own failures — it explains there why a lost batch
+    // is acceptable (the WAL carries durability; this buffer is batching).
+    // It cannot reject, so this guards the floating promise and nothing else.
+    this.flush().catch(() => {});
     }, this.flushIntervalMs);
     this.flushTimer.unref();
   }

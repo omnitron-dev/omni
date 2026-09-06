@@ -449,6 +449,9 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
 
       if (enabled && refetchInterval && refetchInterval > 0) {
         const intervalId = setInterval(() => {
+          // Swallowed here only: `fetchQuery` records the failure as
+          // `status: 'error'` on the query state, which is where a consumer
+          // reads it. This guards the floating promise, nothing else.
           fetchQuery(index).catch(() => {});
         }, refetchInterval);
         intervals.push(intervalId);
@@ -472,6 +475,9 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
           staleTime === 0 || (staleTime !== Infinity && timeUtils.isExpired(stateDataUpdatedAt, staleTime));
 
         if (enabled && refetchOnWindowFocus && isStale) {
+          // Swallowed here only: `fetchQuery` records the failure as
+          // `status: 'error'` on the query state, which is where a consumer
+          // reads it. This guards the floating promise, nothing else.
           fetchQuery(index).catch(() => {});
         }
       });

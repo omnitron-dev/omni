@@ -449,7 +449,7 @@ export class DockerTestManager extends EventEmitter {
 
     // Remove any existing container with the same name to avoid conflicts
     try {
-      execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+      execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
       this.log(`Removed existing container: ${name}`);
     } catch {
       // Container doesn't exist, which is fine
@@ -629,7 +629,7 @@ export class DockerTestManager extends EventEmitter {
         // reports a name conflict and the port collision it was fixing never
         // appears in the error at all.
         try {
-          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
         } catch {
           // Nothing to remove.
         }
@@ -666,7 +666,7 @@ export class DockerTestManager extends EventEmitter {
         this.logError(`Container ${name} failed to become ready, cleaning up`, error);
         try {
           execFileSync(this.dockerPath, ['stop', '-t', '5', name], { stdio: 'ignore' });
-          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
         } catch {
           // Ignore cleanup errors during rollback
         }
@@ -763,7 +763,7 @@ export class DockerTestManager extends EventEmitter {
         // Remove container
         try {
           this.log(`Removing container ${name}`, { attempt });
-          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
           this.log(`Container removed: ${name}`, { attempt });
           lastError = null; // Clear error on success
           break;
@@ -1135,7 +1135,7 @@ export class DockerTestManager extends EventEmitter {
             }
 
             this.log(`Removing container: ${trimmedId}`);
-            execFileSync(this.dockerPath, ['rm', '-f', trimmedId], { stdio: 'ignore' });
+            execFileSync(this.dockerPath, ['rm', '-f', '-v', trimmedId], { stdio: 'ignore' });
             this.log(`Container removed: ${trimmedId}`);
           } catch (error) {
             this.logError(`Failed to cleanup container ${id}`, error);
@@ -1202,7 +1202,7 @@ export class DockerTestManager extends EventEmitter {
               }
 
               this.log(`Removing container: ${trimmedId}`);
-              execFileSync(this.dockerPath, ['rm', '-f', trimmedId], { stdio: 'ignore' });
+              execFileSync(this.dockerPath, ['rm', '-f', '-v', trimmedId], { stdio: 'ignore' });
               this.log(`Container removed: ${trimmedId}`);
             } catch (error) {
               this.logError(`Failed to cleanup container ${id}`, error);

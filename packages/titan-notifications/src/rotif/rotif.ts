@@ -1058,7 +1058,14 @@ export class NotificationManager {
         timestamp,
         attempt,
         ack: async () => {
-          await this.runLuaScript('ack-message', [stream], [group, id, '1']);
+          // Delete flag OFF. `XACK` is per-group; the `XDEL` this script does
+          // when the flag is set is not — it removes the entry from the stream
+          // every group shares. With more than one consumer group on a channel,
+          // which is what consumer groups are for, the first group to
+          // acknowledge deleted the message for every group that had not read
+          // it yet. Bounding the stream is what `maxStreamLength` /
+          // `minStreamId` are for; an ack is not a retention policy.
+          await this.runLuaScript('ack-message', [stream], [group, id, '0']);
         },
       };
 
@@ -1089,7 +1096,9 @@ export class NotificationManager {
         } else {
           // No subscriptions at all, warn and ack to prevent infinite redelivery
           this.logger.warn(`No matching subscriptions for channel=${channel}, msg=${id}`);
-          await this.runLuaScript('ack-message', [stream], [group, id, '1']);
+          // Also delete-off: this manager having no subscription for the channel
+          // says nothing about the other groups reading the same stream.
+          await this.runLuaScript('ack-message', [stream], [group, id, '0']);
         }
         // Release pooled fields before returning
         if (this.enableFieldPooling && 'channel' in fields) {

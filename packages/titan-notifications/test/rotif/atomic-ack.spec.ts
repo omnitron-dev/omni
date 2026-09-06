@@ -52,11 +52,19 @@ describeOrSkip('Lua Atomic Ack Script', () => {
     expect(receivedMessageId).not.toBeNull();
     await delay(100);
 
-    // Проверим, что сообщение было подтверждено и удалено
+    // Acknowledged: nothing is pending for THIS group any more. That is what
+    // `XACK` does and what this suite's name is about.
     const pending = await redis.xpending(`rotif:stream:${channel}`, 'atomicAckGroup');
     expect(pending[0]).toBe(0);
 
+    // ...and still present in the stream. This assertion used to require the
+    // opposite, because `ack()` passed the script's delete flag and `XDEL`
+    // removed the entry outright. `XACK` is per-group and `XDEL` is not, so
+    // that made the first consumer group to acknowledge delete the message for
+    // every other group reading the same channel — see
+    // `ack-does-not-delete-for-other-groups.spec.ts`. Retention belongs to
+    // `maxStreamLength` / `minStreamId`, not to an acknowledgement.
     const messages = await redis.xrange(`rotif:stream:${channel}`, '-', '+');
-    expect(messages.length).toBe(0);
+    expect(messages.map((m) => m[0])).toEqual([receivedMessageId]);
   }, 10000);
 });

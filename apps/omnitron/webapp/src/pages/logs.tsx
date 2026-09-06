@@ -417,10 +417,13 @@ export default function LogsPage() {
       if (selectedLevels.length > 0) filter.level = selectedLevels;
       if (debouncedSearch.trim()) filter.search = debouncedSearch.trim();
 
-      // Node filter — adds nodeId to labels for cluster log filtering
-      const labels = parseLabelInput(labelInput) ?? {};
-      if (nodeFilter) labels['nodeId'] = nodeFilter;
-      if (Object.keys(labels).length > 0) filter.labels = labels;
+      // The node filter is a COLUMN, not a label. It used to be folded into
+      // `labels` — where the daemon ignored the whole field, so choosing a
+      // node narrowed nothing while its chip stayed lit.
+      if (nodeFilter) filter.nodeId = nodeFilter;
+
+      const labels = parseLabelInput(labelInput);
+      if (labels && Object.keys(labels).length > 0) filter.labels = labels;
 
       if (timeRangeKey === 'custom') {
         if (customFrom) filter.from = new Date(customFrom).toISOString();
@@ -482,12 +485,22 @@ export default function LogsPage() {
 
   // ---- Live streaming ----
   const streamFilter = useMemo(() => {
+    // Every filter the paginated view applies, minus the time range, which
+    // a live tail has no use for. It used to carry app, level and search
+    // only — so pressing Live silently widened the node and label filters
+    // while their chips stayed on screen, and the viewer answered a
+    // different question than the one it was showing.
     const f: Record<string, unknown> = { tail: 100 };
     if (app) f.app = app;
     if (selectedLevels.length > 0) f.level = selectedLevels;
     if (debouncedSearch.trim()) f.search = debouncedSearch.trim();
+    if (nodeFilter) f.nodeId = nodeFilter;
+
+    const labels = parseLabelInput(labelInput);
+    if (labels && Object.keys(labels).length > 0) f.labels = labels;
+
     return f;
-  }, [app, selectedLevels, debouncedSearch]);
+  }, [app, selectedLevels, debouncedSearch, nodeFilter, labelInput]);
 
   // Initial live fetch
   useEffect(() => {

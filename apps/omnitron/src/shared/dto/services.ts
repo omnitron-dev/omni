@@ -193,6 +193,8 @@ export interface IOmnitronLogsService {
     app?: string;
     level?: string | string[];
     search?: string;
+    nodeId?: string;
+    labels?: Record<string, string>;
     tail?: number;
     since?: string;
   }): Promise<LogEntryRow[]>;

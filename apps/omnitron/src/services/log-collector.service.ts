@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 
 import { planRetention, batchesPerPass } from './log-retention.js';
 import type { OmnitronDatabase } from '../database/schema.js';
@@ -45,6 +45,7 @@ const PINO_LEVELS: Record<number, string> = {
 function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
 }
+
 
 const FLUSH_INTERVAL_MS = 1_000;
 
@@ -304,6 +305,25 @@ export class LogCollectorService extends EventEmitter {
   // Querying
   // ===========================================================================
 
+  /**
+   * The two filters the schema was built for and no query used.
+   *
+   * `logs.nodeId` is a uuid column that `SyncService.ingestLog` fills for every
+   * entry a slave sends up, and `logs.labels` is jsonb carrying a GIN index
+   * that `001_initial_schema` created with the intended query written in its
+   * own comment: `WHERE labels @> '{"env":"prod"}'`. Neither `queryLogs` nor
+   * `getRecentLogs` referenced either one.
+   *
+   * The visible consequence was in the console: its cluster node filter put the
+   * node id inside `labels`, sent it, and the daemon dropped the whole field —
+   * so selecting a node narrowed nothing while the chip stayed lit. A filter
+   * that silently does nothing is worse than one that is missing, because the
+   * operator reads the unnarrowed result as an answer about that node.
+   *
+   * Applied in BOTH paths deliberately. A filter honoured by the paginated
+   * query and not by the live tail is how a viewer changes its answer when you
+   * press Live.
+   */
   async queryLogs(filter: LogQueryFilter): Promise<LogQueryResult> {
     const limit = Math.min(filter.limit ?? 100, 1000);
     const offset = filter.offset ?? 0;
@@ -329,6 +349,16 @@ export class LogCollectorService extends EventEmitter {
 
     if (filter.traceId) {
       query = query.where('traceId', '=', filter.traceId);
+    }
+
+    if (filter.nodeId) {
+      query = query.where('nodeId', '=', filter.nodeId);
+    }
+
+    if (filter.labels && Object.keys(filter.labels).length > 0) {
+      // jsonb containment — the operator the GIN index answers.
+      const wanted = JSON.stringify(filter.labels);
+      query = query.where(sql<boolean>`labels @> ${wanted}::jsonb`);
     }
 
     if (filter.from) {
@@ -449,6 +479,13 @@ export class LogCollectorService extends EventEmitter {
       }
     }
     if (filter.search) query = query.where('message', 'like', `%${escapeLike(filter.search)}%`);
+    if (filter.traceId) query = query.where('traceId', '=', filter.traceId);
+
+    if (filter.nodeId) query = query.where('nodeId', '=', filter.nodeId);
+    if (filter.labels && Object.keys(filter.labels).length > 0) {
+      const wanted = JSON.stringify(filter.labels);
+      query = query.where(sql<boolean>`labels @> ${wanted}::jsonb`);
+    }
 
     // Range filters — critical for efficient live polling (since parameter)
     if (filter.from) {

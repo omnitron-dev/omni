@@ -644,14 +644,26 @@ describe('Security Validation Tests', () => {
 
       const validator = engine.compile(schema);
 
-      // Force GC before measuring (if available)
-      if (global.gc) {
-        global.gc();
-      }
+      // This test used to measure `heapUsed` before and after 10 000
+      // validations and assert the growth was under 15 MB, with
+      // `if (global.gc) global.gc()` on both sides. `global.gc` is
+      // `undefined` here — measured, not assumed: vitest runs without
+      // `--expose-gc`, so neither call ever collected anything and the number
+      // was whatever V8 happened to be holding at two arbitrary instants. It
+      // could neither detect a leak nor rule one out, and its only real
+      // behaviour was to go red under a parallel run
+      // (`expected 16516936 to be less than 15728640`). Someone had already
+      // widened the bound once, "to account for V8 memory management
+      // variance" — which is the tell: a bound being tuned to stop failing is
+      // a bound that is not measuring the thing.
+      //
+      // What a leak in repeated validation would actually look like is
+      // retained state that grows per call. That is observable without a
+      // garbage collector, and deterministically: the engine's compiled-
+      // validator cache must hold exactly the one schema, no matter how many
+      // times it is used.
+      const cacheSizeBeforeUse = engine.getCacheSize();
 
-      const initialMemory = process.memoryUsage().heapUsed;
-
-      // Run 10,000 validations
       for (let i = 0; i < 10_000; i++) {
         validator.validate({
           id: i,
@@ -660,17 +672,14 @@ describe('Security Validation Tests', () => {
         });
       }
 
-      // Force GC after validations (if available)
-      if (global.gc) {
-        global.gc();
-      }
+      expect(
+        engine.getCacheSize(),
+        'repeated validation of one schema grew the validator cache'
+      ).toBe(cacheSizeBeforeUse);
 
-      const finalMemory = process.memoryUsage().heapUsed;
-      const memoryGrowth = finalMemory - initialMemory;
-
-      // Memory growth should be minimal (< 15MB for 10k validations)
-      // Adjusted threshold to account for V8 memory management variance
-      expect(memoryGrowth).toBeLessThan(15 * 1024 * 1024);
+      // And the validator stays usable — a cache that "does not grow" because
+      // it was emptied would satisfy the line above.
+      expect(validator.validate({ id: 1, name: 'still works', data: [1] })).toBeTruthy();
     });
 
     it('should cache validators without memory leaks', () => {

@@ -145,12 +145,20 @@ export interface ILockModuleAsyncOptions {
  */
 export interface IWithDistributedLockContext {
   __lockService__?: IDistributedLockService;
+  /**
+   * `warn` is optional but declared: without it the decorator had no level at
+   * which to report a lock it could not release, and a structural type narrower
+   * than its callers silently decides what a component is allowed to say. Hosts
+   * inject a full `ILogger`; this only states the two levels the decorator uses.
+   */
   logger?: {
     debug: (obj: Record<string, unknown>, msg: string) => void;
+    warn?: (obj: Record<string, unknown>, msg: string) => void;
   };
   loggerModule?: {
     logger: {
       debug: (obj: Record<string, unknown>, msg: string) => void;
+      warn?: (obj: Record<string, unknown>, msg: string) => void;
     };
   };
 }

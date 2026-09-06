@@ -653,9 +653,13 @@ describe('Lock Decorators', () => {
       }
 
       const service = new TestService();
-      // When releaseLock fails in the finally block, it will throw the release error
-      // This is expected behavior - the finally block error takes precedence
-      await expect(service.testMethod()).rejects.toThrow('Release failed');
+      // The name of this test is about the release being ATTEMPTED, and that
+      // still holds. What the assertion used to pin was a different thing: that
+      // an awaited throw inside `finally` takes precedence over the method's
+      // own error — a language mechanic, described in the comment here as
+      // "expected behavior", but not a contract anyone would choose. It meant
+      // the caller learned why the CLEANUP failed and never why their call did.
+      await expect(service.testMethod()).rejects.toThrow('Method error');
 
       expect(mockLockService.releaseLock).toHaveBeenCalled();
     });
@@ -1143,5 +1147,78 @@ describe('Lock Decorators', () => {
       expect(mockLockService.acquireLock).toHaveBeenCalledWith('lock-1', 60000);
       expect(mockLockService.acquireLock).toHaveBeenCalledWith('lock-2', 60000);
     });
+  });
+});
+
+describe('Lock Decorators - release failure', () => {
+  /**
+   * The lock is released in a `finally`, and the release is awaited. An
+   * exception from `releaseLock` therefore REPLACES whatever the decorated
+   * method was about to return — a completed piece of work is discarded and the
+   * caller is handed a Redis error instead, for a lock that will expire by its
+   * own TTL a moment later.
+   *
+   * The same applies in the other direction: a method that threw for its own
+   * reason had that reason overwritten by the release failure, which is the
+   * worse of the two, because the original error is the one worth having.
+   */
+  function serviceWith(releaseImpl: () => Promise<boolean>) {
+    const logs: Array<[unknown, string]> = [];
+    const lockService = {
+      acquireLock: vi.fn(async () => 'lock-id'),
+      releaseLock: vi.fn(releaseImpl),
+      extendLock: vi.fn(),
+      withLock: vi.fn(),
+      isLocked: vi.fn(),
+      getLockTtl: vi.fn(),
+    } as unknown as IDistributedLockService;
+
+    class TestService {
+      __lockService__ = lockService;
+      logger = {
+        debug: vi.fn(),
+        warn: (obj: unknown, msg: string) => {
+          logs.push([obj, msg]);
+        },
+      };
+
+      @WithDistributedLock('release-fails')
+      async work(): Promise<string> {
+        return 'done';
+      }
+
+      @WithDistributedLock('release-fails')
+      async failing(): Promise<string> {
+        throw new Error('the real problem');
+      }
+    }
+
+    return { service: new TestService(), logs, lockService };
+  }
+
+  it('returns the method result even when the release fails', async () => {
+    const { service, logs } = serviceWith(async () => {
+      throw new Error('redis went away');
+    });
+
+    await expect(service.work()).resolves.toBe('done');
+    expect(logs.map(([, msg]) => msg).join('\n')).toMatch(/release/i);
+  });
+
+  it('keeps the method own error when the release also fails', async () => {
+    const { service } = serviceWith(async () => {
+      throw new Error('redis went away');
+    });
+
+    // The caller must learn why THEIR call failed, not why the cleanup did.
+    await expect(service.failing()).rejects.toThrow('the real problem');
+  });
+
+  it('still releases the lock on the happy path', async () => {
+    const { service, lockService, logs } = serviceWith(async () => true);
+
+    await expect(service.work()).resolves.toBe('done');
+    expect(lockService.releaseLock).toHaveBeenCalledWith('release-fails', 'lock-id');
+    expect(logs).toHaveLength(0);
   });
 });

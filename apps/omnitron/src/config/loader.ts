@@ -8,7 +8,10 @@ import { pathToFileURL } from 'node:url';
 import type { IEcosystemConfig } from './types.js';
 import { defineEcosystem } from './define-ecosystem.js';
 
-const CONFIG_FILE_NAMES = ['omnitron.config.ts', 'omnitron.config.js', 'omnitron.config.mjs'];
+/** The names `loadEcosystemConfig` looks for, in order. Exported so a caller
+ *  can ask the same question about a directory the daemon has not been told
+ *  about yet — `omnitron doctor` checks every registered project this way. */
+export const CONFIG_FILE_NAMES = ['omnitron.config.ts', 'omnitron.config.js', 'omnitron.config.mjs'] as const;
 
 /**
  * Stamp every app entry with the project root that owns this config file.

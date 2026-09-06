@@ -1050,6 +1050,70 @@ async function diskAtHome(): Promise<{ free: number; total: number } | null> {
   }
 }
 
+/**
+ * Every registered project's config, loaded the way the daemon loads it.
+ *
+ * A config that does not load is not a config that is absent, and the daemon
+ * used to answer both with an empty app list: it started, reported healthy,
+ * and supervised nothing, while `omnitron list` showed what it shows for a
+ * project with no apps. That path now refuses to start — which is a better
+ * failure, and a later one. This finds it before the restart that would
+ * otherwise be the first news.
+ *
+ * Reads the files directly rather than asking the daemon, for the same reason
+ * `checkDatabase` does: a daemon holding a config it loaded successfully
+ * hours ago cannot tell you the file on disk has since been edited.
+ */
+export async function checkProjectConfigs(findings: Findings): Promise<void> {
+  let projects: Array<{ name: string; path: string }>;
+  try {
+    const { ProjectRegistry } = await import('../project/registry.js');
+    projects = ProjectRegistry.open().list();
+  } catch (err) {
+    findings.skip('project.config-unloadable', `the project registry could not be opened: ${describeError(err)}`);
+    return;
+  }
+
+  if (projects.length === 0) {
+    findings.skip('project.config-unloadable', 'no projects are registered');
+    return;
+  }
+
+  const { loadEcosystemConfigFile, CONFIG_FILE_NAMES } = await import('../config/loader.js');
+
+  for (const project of projects) {
+    // `getConfigPath` names `omnitron.config.ts`; a project may legitimately
+    // use another of the accepted names, so an absent file at that exact path
+    // is not a finding — the daemon falls back to its working directory.
+    const candidates = CONFIG_FILE_NAMES.map((name) => path.join(project.path, name));
+    const configPath = candidates.find((p) => fs.existsSync(p));
+    if (!configPath) {
+      findings.skip(
+        'project.config-unloadable',
+        `${project.name}: no config file at ${project.path}`
+      );
+      continue;
+    }
+
+    try {
+      await loadEcosystemConfigFile(configPath);
+    } catch (err) {
+      findings.add({
+        id: 'project.config-unloadable',
+        severity: 'error',
+        title: `Project "${project.name}" has a config the daemon cannot load`,
+        evidence: [
+          `file: ${path.relative(process.cwd(), configPath)}`,
+          describeError(err),
+        ],
+        remedy:
+          'Fix the file. The daemon refuses to start against it rather than starting with no apps, ' +
+          'so this is what a failed `omnitron up` in that directory would report.',
+      });
+    }
+  }
+}
+
 export async function checkDiskSpace(findings: Findings): Promise<void> {
   const ERROR_BYTES = 2 * 1024 ** 3;
   const WARN_BYTES = 10 * 1024 ** 3;
@@ -1660,6 +1724,21 @@ export async function doctorCommand(): Promise<void> {
         findings.skip('doctor.check-failed', `a check threw: ${describeError(err)}`);
       }
     }
+  }
+
+  // Runs whether or not the daemon answered: a config the daemon cannot load
+  // is a plausible reason it is not running, and the daemon's own refusal to
+  // start against one is only visible to whoever ran `omnitron up`.
+  try {
+    await checkProjectConfigs(findings);
+  } catch (err) {
+    findings.add({
+      id: 'doctor.check-failed',
+      severity: 'warning',
+      title: 'The project-config check could not complete',
+      evidence: [describeError(err)],
+    });
+    findings.skip('project.config-unloadable', `the check threw: ${describeError(err)}`);
   }
 
   // Runs whether or not the daemon answered: a full disk is a plausible

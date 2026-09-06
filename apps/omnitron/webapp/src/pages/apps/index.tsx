@@ -121,7 +121,16 @@ export default function AppsListPage() {
   const handleStop = async (name: string) => {
     setActionLoading(name);
     try {
-      await daemon.stopApp({ name });
+      // `stopApp` does NOT throw on failure — it answers
+      // `{ success: false, error }` on purpose, so a Netron client can render
+      // the reason. The `catch` below is therefore on the wrong path: it
+      // exists, reads as error handling, and never runs, so a stop that
+      // failed looked exactly like one that worked.
+      const result = await daemon.stopApp({ name });
+      if (!result.success) {
+        setError(`Failed to stop ${name}: ${result.error ?? 'the daemon reported failure'}`);
+        return;
+      }
       await fetchApps();
     } catch (err: any) {
       setError(`Failed to stop ${name}: ${err?.message ?? 'Unknown error'}`);

@@ -472,7 +472,16 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
 
   stopApp: async (name) => {
     try {
-      await daemon.stopApp({ name });
+      // `stopApp` does NOT throw on failure — it answers
+      // `{ success: false, error }` on purpose, so a Netron client can render
+      // the reason. The `catch` below is therefore on the wrong path: it
+      // exists, reads as error handling, and never runs, so a stop that
+      // failed looked exactly like one that worked.
+      const result = await daemon.stopApp({ name });
+      if (!result.success) {
+        set({ error: `Failed to stop ${name}: ${result.error ?? 'the daemon reported failure'}` });
+        return;
+      }
       await get().fetchAll();
     } catch (err: any) {
       set({ error: `Failed to stop ${name}: ${err?.message}` });

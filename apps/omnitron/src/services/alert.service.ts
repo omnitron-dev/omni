@@ -52,6 +52,26 @@ interface EvalContext {
   logCounts?: Record<string, number>; // level → count in window
 }
 
+/**
+ * The expression forms this evaluator understands.
+ *
+ * Exported so a rule can be checked WITHOUT evaluating it — `omnitron
+ * doctor` reports rules that will never fire, and the alerting loop only
+ * discovers them once a cycle, in a log line nobody is watching. Keeping one
+ * list means the two cannot drift into disagreeing about which rules work.
+ */
+export const ALERT_EXPRESSION_FORMS = [
+  /^app\.(\*|[\w-]+)\.status\s*(!=|==)\s*(\w+)$/,
+  /^app\.(\*|[\w-]+)\.(cpu|memory)\s*(>|<|>=|<=)\s*(\d+)$/,
+  /^infra\.(\*|[\w-]+)\.health\s*(!=|==)\s*(\w+)$/,
+] as const;
+
+/** Whether the evaluator can read this expression at all. */
+export function isAlertExpressionParseable(expression: string): boolean {
+  const trimmed = expression.trim();
+  return ALERT_EXPRESSION_FORMS.some((form) => form.test(trimmed));
+}
+
 function evaluateExpression(
   expr: string,
   ctx: EvalContext
@@ -59,7 +79,7 @@ function evaluateExpression(
   const trimmed = expr.trim();
 
   // app.<name>.status != online
-  const appStatusMatch = trimmed.match(/^app\.(\*|[\w-]+)\.status\s*(!=|==)\s*(\w+)$/);
+  const appStatusMatch = trimmed.match(ALERT_EXPRESSION_FORMS[0]);
   if (appStatusMatch) {
     const [, appName, op, expected] = appStatusMatch;
     const targets = appName === '*' ? ctx.apps : ctx.apps.filter((a) => a.name === appName);
@@ -71,7 +91,7 @@ function evaluateExpression(
   }
 
   // app.<name>.cpu > N
-  const appMetricMatch = trimmed.match(/^app\.(\*|[\w-]+)\.(cpu|memory)\s*(>|<|>=|<=)\s*(\d+)$/);
+  const appMetricMatch = trimmed.match(ALERT_EXPRESSION_FORMS[1]);
   if (appMetricMatch) {
     const [, appName, metric, op, thresholdStr] = appMetricMatch;
     const threshold = Number(thresholdStr);
@@ -93,7 +113,7 @@ function evaluateExpression(
   }
 
   // infra.<service>.health != healthy
-  const infraMatch = trimmed.match(/^infra\.(\*|[\w-]+)\.health\s*(!=|==)\s*(\w+)$/);
+  const infraMatch = trimmed.match(ALERT_EXPRESSION_FORMS[2]);
   if (infraMatch) {
     const [, svcName = '*', op = '!=', expected = 'healthy'] = infraMatch;
     const entries = svcName === '*'

@@ -251,6 +251,8 @@ async function checkDatabase(findings: Findings): Promise<void> {
     // What the log table itself says about the platform's health.
     if (present.has('logs')) await checkLogHealth(findings, db);
 
+    if (present.has('alert_rules')) await checkAlertRules(findings, db);
+
     await checkTableGrowth(findings, db, target);
   } catch (err) {
     findings.add({
@@ -403,6 +405,44 @@ async function checkTableGrowth(findings: Findings, db: unknown, target: string)
       '0 disables pruning entirely). History older than that window means the retention pass is not running — it is ' +
       'armed by the log collector at daemon start, so a daemon that failed to arm it prunes nothing and says nothing. ' +
       'Note that `logging.maxSize` and `logging.maxFiles` govern the rotated FILES and have no effect on the table.',
+  });
+}
+
+/**
+ * Alert rules the evaluator cannot read.
+ *
+ * An expression that matches none of the supported forms is answered with
+ * `firing: false` — the same answer a healthy platform gives — so the rule
+ * sits in the console enabled, green, and permanently inert. Somebody wrote
+ * it to catch a condition; the platform is not catching it, and the only
+ * other place that says so is a line in the daemon log, once a cycle,
+ * addressed to nobody.
+ *
+ * Checked against the evaluator's own list of forms rather than a copy, so
+ * the two cannot come to disagree about which rules work.
+ */
+async function checkAlertRules(findings: Findings, db: unknown): Promise<void> {
+  const { sql } = await import('kysely');
+  const { isAlertExpressionParseable } = await import('../services/alert.service.js');
+
+  const rows = await sql<{ id: string; name: string; expression: string }>`
+    SELECT id, name, expression FROM alert_rules WHERE enabled = true
+  `.execute(db as never);
+
+  const broken = rows.rows.filter((r) => !isAlertExpressionParseable(r.expression));
+  if (broken.length === 0) return;
+
+  findings.add({
+    id: 'alerts.unreadable-rule',
+    severity: 'warning',
+    title: `${broken.length} enabled alert rule(s) can never fire`,
+    evidence: broken.slice(0, 5).map((r) => `"${r.name}": ${r.expression}`),
+    remedy:
+      'The evaluator understands three forms: `app.<name|*>.status != <status>`, ' +
+      '`app.<name|*>.<cpu|memory> <op> <number>` and `infra.<name|*>.health != <status>`. ' +
+      'Anything else evaluates to "not firing", which is indistinguishable from a healthy ' +
+      'platform — so these rules show as enabled and green while catching nothing. ' +
+      'Fix or disable them: an alert nobody can rely on is worse than an absent one.',
   });
 }
 

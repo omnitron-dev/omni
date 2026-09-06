@@ -14,10 +14,10 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { sanitizeErrorMessage, LoginForm } from './auth-block.js';
+import { sanitizeErrorMessage, LoginForm, VerifyCodeForm } from './auth-block.js';
 
 const DEFAULT = 'An error occurred. Please try again.';
 
@@ -131,5 +131,74 @@ describe('LoginForm', () => {
 
     expect(await screen.findByText(DEFAULT)).toBeTruthy();
     expect(screen.queryByText(/ECONNREFUSED/)).toBeNull();
+  });
+});
+
+describe('LoginForm — double submit', () => {
+  it('sends one login when the caller does not drive `loading`', async () => {
+    // `loading` is a prop. A caller that keeps no pending state of its own
+    // left every control enabled for the whole of an in-flight submit, and
+    // this component is the one that opened the async boundary.
+    const user = userEvent.setup();
+    let release!: () => void;
+    const onSubmit = vi.fn(() => new Promise<void>((r) => { release = r; }));
+
+    render(<LoginForm onSubmit={onSubmit} />);
+    await user.type(screen.getByLabelText(/email/i), 'user@example.com');
+    await user.type(screen.getByLabelText('Password'), 'whatever');
+
+    const button = screen.getByRole('button', { name: /sign in/i });
+    await user.click(button);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+
+    // Before the fix the button stayed enabled here, and a second click sent
+    // a second login. It is re-enabled once the promise settles, which is
+    // what shows the submit is the reason and not some unrelated `disabled`.
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => { release(); });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('VerifyCodeForm — resend', () => {
+  it('sends one code for two clicks in the same task', async () => {
+    // The cooldown is set after the await, so it gates the caller that
+    // arrives once the request has returned, not the one that arrives while
+    // it is open. Both clicks below land before React commits the disabled
+    // state, which is the window a real user hits by double-clicking.
+    let release!: () => void;
+    const onResendCode = vi.fn(() => new Promise<void>((r) => { release = r; }));
+
+    render(<VerifyCodeForm onSubmit={vi.fn()} onResendCode={onResendCode} />);
+    const link = screen.getByRole('button', { name: /resend/i });
+
+    await act(async () => {
+      link.click();
+      link.click();
+    });
+
+    expect(onResendCode).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+  });
+
+  it('clears a failed resend once a retry succeeds', async () => {
+    const user = userEvent.setup();
+    const onResendCode = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Failed to resend code'))
+      .mockResolvedValueOnce(undefined);
+
+    render(<VerifyCodeForm onSubmit={vi.fn()} onResendCode={onResendCode} />);
+
+    await user.click(screen.getByRole('button', { name: /resend/i }));
+    expect(await screen.findByText('Failed to resend code')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /resend/i }));
+
+    // The failure outlived the fact: the user read "Failed to resend code"
+    // with the code already in their inbox.
+    await waitFor(() => expect(screen.queryByText('Failed to resend code')).toBeNull());
   });
 });

@@ -108,6 +108,20 @@ interface StatusData {
 
 export function StatusBar() {
   const [data, setData] = useState<StatusData | null>(null);
+  /**
+   * The last values the nodes and alerts queries actually produced.
+   *
+   * Each poll rebuilds the whole object, so a sub-query that failed used to
+   * contribute `0`. The bar renders its nodes and alerts chips only when the
+   * count is above zero, so a failing `alerts.getSummary()` made the alert
+   * chip disappear — and a chip that is not there reads as "nothing is
+   * firing", which is a claim, not a silence.
+   *
+   * Carrying the last known count forward can show an alert that has since
+   * cleared. That direction is the safe one: a stale count sends someone to
+   * the alerts page, a false zero sends them nowhere.
+   */
+  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0 });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
 
@@ -136,13 +150,22 @@ export function StatusBar() {
       const appList = st?.apps ?? [];
       const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
 
+      // A sub-query that failed contributes nothing rather than zero.
+      if (nodesList.status === 'fulfilled' && Array.isArray(nd)) {
+        lastKnown.current.nodesOnline = nd.filter((n: any) => n.status?.omnitronConnected).length;
+        lastKnown.current.nodesTotal = nd.length;
+      }
+      if (alertsResult.status === 'fulfilled') {
+        lastKnown.current.firingAlerts = al?.firing ?? 0;
+      }
+
       return {
         daemonOnline: !!st,
         appsOnline: online,
         appsTotal: Array.isArray(appList) ? appList.length : 0,
-        nodesOnline: Array.isArray(nd) ? nd.filter((n: any) => n.status?.omnitronConnected).length : 0,
-        nodesTotal: Array.isArray(nd) ? nd.length : 0,
-        firingAlerts: al?.firing ?? 0,
+        nodesOnline: lastKnown.current.nodesOnline,
+        nodesTotal: lastKnown.current.nodesTotal,
+        firingAlerts: lastKnown.current.firingAlerts,
         uptimeMs: st?.uptime ?? 0,
         version: st?.version ?? '',
         pid: st?.pid ?? 0,
@@ -156,29 +179,49 @@ export function StatusBar() {
     if (polled) setData(polled);
   }, [polled]);
 
-  // Instant re-fetch on relevant WS events
+  // Instant re-fetch on relevant WS events.
+  //
+  // `alert.` is in the list of channels that trigger this, and the body used
+  // to refresh only the daemon status — so an alert firing woke the bar and
+  // left the alert count exactly as it was, until the 30-second poll came
+  // round. The one event the chip exists for was the one it ignored.
   useEffect(() => {
     if (!lastEvent) return;
     const ch = lastEvent.channel;
-    if (ch.startsWith('app.') || ch.startsWith('alert.') || ch.startsWith('daemon.') || ch.startsWith('stack.')) {
-      (async () => {
-        try {
-          const st = await daemon.status() as any;
-          const appList = st?.apps ?? [];
-          const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
-          setData((prev) => prev ? {
-            ...prev,
-            daemonOnline: true,
-            appsOnline: online,
-            appsTotal: appList.length,
-            uptimeMs: st?.uptime ?? prev.uptimeMs,
-            version: st?.version ?? prev.version,
-            pid: st?.pid ?? prev.pid,
-            lastFetch: Date.now(),
-          } : prev);
-        } catch { /* non-critical */ }
-      })();
+    if (!(ch.startsWith('app.') || ch.startsWith('alert.') || ch.startsWith('daemon.') || ch.startsWith('stack.'))) {
+      return;
     }
+    (async () => {
+      const [status, alertsResult] = await Promise.allSettled([
+        daemon.status(),
+        ch.startsWith('alert.') ? alerts.getSummary() : Promise.resolve(null),
+      ]);
+
+      if (alertsResult.status === 'fulfilled' && alertsResult.value) {
+        lastKnown.current.firingAlerts = (alertsResult.value as any)?.firing ?? 0;
+      }
+
+      if (status.status === 'rejected') {
+        // The poll will correct the app counts on its next tick; nothing here
+        // is worth reporting on its own.
+        return;
+      }
+
+      const st = status.value as any;
+      const appList = st?.apps ?? [];
+      const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
+      setData((prev) => prev ? {
+        ...prev,
+        daemonOnline: true,
+        appsOnline: online,
+        appsTotal: appList.length,
+        firingAlerts: lastKnown.current.firingAlerts,
+        uptimeMs: st?.uptime ?? prev.uptimeMs,
+        version: st?.version ?? prev.version,
+        pid: st?.pid ?? prev.pid,
+        lastFetch: Date.now(),
+      } : prev);
+    })();
   }, [lastEvent]);
 
   if (!data) return null;

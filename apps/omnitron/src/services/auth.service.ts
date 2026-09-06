@@ -280,19 +280,40 @@ export class AuthService {
 
       if (!userId || !sessionId) return null;
 
-      // Verify session still exists and is not expired
-      const session = await this.db
-        .selectFrom('omnitron_sessions')
-        .select(['id', 'expiresAt'])
-        .where('id', '=', sessionId)
-        .where('userId', '=', userId)
-        .executeTakeFirst();
+      // The session lookup gets its own catch, because a database that cannot
+      // answer is not a revoked session.
+      //
+      // Both used to return null from the outer catch, and the daemon turns
+      // null into `Session has been revoked or expired` with a 401. So every
+      // operator, during a database outage, was told their session had been
+      // revoked — an affirmative claim about their account, made at the one
+      // moment the platform could not check, and the kind of message that
+      // sends someone looking for a security incident. Signing in again does
+      // not help either: that path needs the same database.
+      let session;
+      try {
+        session = await this.db
+          .selectFrom('omnitron_sessions')
+          .select(['id', 'expiresAt'])
+          .where('id', '=', sessionId)
+          .where('userId', '=', userId)
+          .executeTakeFirst();
+      } catch (err) {
+        throw Object.assign(new Error('Session store is unavailable'), {
+          code: 'SESSION_STORE_UNAVAILABLE',
+          statusCode: 503,
+          cause: err,
+        });
+      }
 
       if (!session) return null;
       if (new Date(session.expiresAt) < new Date()) return null;
 
       return { userId, sessionId };
-    } catch {
+    } catch (err) {
+      // A token that does not verify is the normal answer here. The lookup
+      // failure above is rethrown so it does not land in this branch.
+      if ((err as { code?: string })?.code === 'SESSION_STORE_UNAVAILABLE') throw err;
       return null;
     }
   }

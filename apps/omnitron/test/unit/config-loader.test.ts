@@ -80,6 +80,31 @@ describe('ConfigLoader', () => {
       expect(result).toBeNull();
     });
 
+    it.each([
+      ['a file that does not parse', 'module.exports = { apps: ['],
+      ['a config with no apps array', "module.exports = { apps: 'all' };"],
+      ['an app with no name', "module.exports = { apps: [{ script: './a.js' }] };"],
+      ['an app with neither bootstrap nor script', "module.exports = { apps: [{ name: 'a' }] };"],
+    ])('throws for %s rather than reporting no config', async (_label, source) => {
+      // "Safe" means the config may not be there. It does not mean the config
+      // may be broken — answering null to both makes a typo look like a
+      // directory that was never an omnitron project, which is the one
+      // conclusion that stops anybody looking for the typo.
+      fs.writeFileSync(path.join(tmpDir, 'omnitron.config.js'), source);
+
+      await expect(loadEcosystemConfigSafe(tmpDir)).rejects.toThrow();
+    });
+
+    it('answers null only for the absence it was built to report', async () => {
+      // Guards the discriminator itself: the absent case must carry the code
+      // the safe wrapper checks, or the wrapper rethrows everything and the
+      // function has no reason to exist.
+      await expect(loadEcosystemConfig(tmpDir)).rejects.toMatchObject({
+        code: 'ECOSYSTEM_CONFIG_NOT_FOUND',
+      });
+      await expect(loadEcosystemConfigSafe(tmpDir)).resolves.toBeNull();
+    });
+
     it('returns config when valid', async () => {
       fs.writeFileSync(
         path.join(tmpDir, 'omnitron.config.js'),

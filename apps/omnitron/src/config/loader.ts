@@ -62,9 +62,12 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
     }
   }
 
-  throw new Error(
-    `No omnitron config found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}\n` +
-      `Run 'omnitron init' to generate a config file.`
+  throw Object.assign(
+    new Error(
+      `No omnitron config found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}\n` +
+        `Run 'omnitron init' to generate a config file.`
+    ),
+    { code: ECOSYSTEM_CONFIG_NOT_FOUND }
   );
 }
 
@@ -94,10 +97,31 @@ export async function loadEcosystemConfigFile(filePath: string): Promise<IEcosys
   return stampProjectRoot(config, path.dirname(path.resolve(filePath)));
 }
 
+/**
+ * The config that is not there, as opposed to the one that is wrong.
+ *
+ * `loadEcosystemConfig` throws for both, and `loadEcosystemConfigSafe` used
+ * to answer null to both. So a typo in someone's `omnitron.config.ts` — a
+ * missing `name`, an app with neither `bootstrap` nor `script`, a file that
+ * does not parse — read as "this directory was never an omnitron project",
+ * which is the one conclusion that stops anybody looking for the typo.
+ */
+export const ECOSYSTEM_CONFIG_NOT_FOUND = 'ECOSYSTEM_CONFIG_NOT_FOUND';
+
+/**
+ * Load the config, answering null when there is none.
+ *
+ * "Safe" means the config may not be there. It does not mean the config may
+ * be broken: absence is one of the answers this function is built to give,
+ * and a file that exists and does not load is not an absent file. The line is
+ * drawn by the code above, not by reading the message — the loader tags the
+ * one error that means "nothing to load" and everything else is rethrown.
+ */
 export async function loadEcosystemConfigSafe(cwd?: string): Promise<IEcosystemConfig | null> {
   try {
     return await loadEcosystemConfig(cwd);
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as { code?: string })?.code === ECOSYSTEM_CONFIG_NOT_FOUND) return null;
+    throw err;
   }
 }

@@ -31,7 +31,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { Breadcrumbs, PageContent } from '@omnitron-dev/prism';
+import { Breadcrumbs, FormAlert, PageContent } from '@omnitron-dev/prism';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,
@@ -60,6 +60,8 @@ export default function StackDetailPage() {
   const startStack = useProjectStore((s) => s.startStack);
   const stopStack = useProjectStore((s) => s.stopStack);
   const deleteStack = useProjectStore((s) => s.deleteStack);
+  const error = useProjectStore((s) => s.error);
+  const clearError = useProjectStore((s) => s.clearError);
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -76,14 +78,16 @@ export default function StackDetailPage() {
     enabled: Boolean(activeProject),
   });
 
+  // See `stacks/index.tsx`: these two never reject, so a catch here is a
+  // handler that cannot run. The store's `error` is what the page shows.
   const handleStart = useCallback(async () => {
     if (!activeProject || !name) return;
-    try { await startStack(activeProject, name); } catch { /* error in store */ }
+    await startStack(activeProject, name);
   }, [activeProject, name, startStack]);
 
   const handleStop = useCallback(async () => {
     if (!activeProject || !name) return;
-    try { await stopStack(activeProject, name); } catch { /* error in store */ }
+    await stopStack(activeProject, name);
   }, [activeProject, name, stopStack]);
 
   const handleDelete = useCallback(async () => {
@@ -161,6 +165,18 @@ export default function StackDetailPage() {
           </Box>
         }
       />
+
+      {/* Start, stop and delete put their reason in the store's `error` and
+          never reject. This page did not read it, so a stack that refused to
+          start produced nothing at all here — the reason was recorded, and
+          only the stacks index would have shown it. "Handled elsewhere" is
+          only true when the elsewhere is on screen. */}
+      {error && (
+        <FormAlert sx={{ mb: 2 }} onClose={clearError}>
+          {error}
+        </FormAlert>
+      )}
+
       {/* Deployment banner for remote/cluster stacks */}
       {stack.type !== 'local' && isRunning && (
         <Card variant="outlined" sx={{ mb: 2, p: 2 }}>

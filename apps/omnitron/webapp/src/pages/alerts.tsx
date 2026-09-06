@@ -39,6 +39,7 @@ import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
+import { isAlertExpressionParseable, ALERT_EXPRESSION_HELP } from '@omnitron-dev/omnitron/alerts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,6 +112,14 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
       setError('Name and expression are required.');
       return;
     }
+    // Rejected here rather than accepted and stored. The evaluator answers
+    // an expression it cannot read with "not firing" — the same answer a
+    // healthy platform gives — so a rule outside the grammar is created
+    // successfully, shows enabled and green, and catches nothing.
+    if (!isAlertExpressionParseable(expression)) {
+      setError(`The evaluator cannot read this expression. Supported forms: ${ALERT_EXPRESSION_HELP}`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -147,8 +156,8 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
             size="small"
             multiline
             rows={3}
-            placeholder="e.g. cpu_percent > 90"
-            helperText="Metric expression that triggers this alert"
+            placeholder="e.g. app.main.cpu > 90"
+            helperText={`Supported forms: ${ALERT_EXPRESSION_HELP}`}
           />
           <TextField
             label="Type"

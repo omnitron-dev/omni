@@ -55,6 +55,9 @@ export default defineConfig({
       '@omnitron-dev/netron-browser': path.resolve(here, '../../../packages/netron-browser/dist/index.js'),
       // Omnitron DTO
       '@omnitron-dev/omnitron/dto/services': path.resolve(here, '../src/shared/dto/services.ts'),
+      // The alert grammar, shared so the form can reject an expression the
+      // evaluator cannot read — before the rule exists.
+      '@omnitron-dev/omnitron/alerts': path.resolve(here, '../src/shared/alert-expression.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),
     },

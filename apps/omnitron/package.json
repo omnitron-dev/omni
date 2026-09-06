@@ -22,6 +22,10 @@
     "./dto/events": {
       "types": "./src/shared/events.ts",
       "default": "./dist/shared/events.js"
+    },
+    "./alerts": {
+      "types": "./src/shared/alert-expression.ts",
+      "default": "./dist/shared/alert-expression.js"
     }
   },
   "scripts": {

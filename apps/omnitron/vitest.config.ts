@@ -14,6 +14,7 @@ export default defineConfig({
       // Prism from source, as `webapp/vite.config.ts` does — and with the
       // subpath first, because vite matches aliases by prefix and the bare
       // entry would otherwise swallow `/netron`.
+      '@omnitron-dev/omnitron/alerts': path.resolve(import.meta.dirname, 'src/shared/alert-expression.ts'),
       '@omnitron-dev/prism/netron': path.resolve(import.meta.dirname, '../../packages/prism/src/netron/index.ts'),
       '@omnitron-dev/prism': path.resolve(import.meta.dirname, '../../packages/prism/src/index.ts'),
     },

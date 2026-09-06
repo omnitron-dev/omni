@@ -1130,8 +1130,14 @@ describe('AuditLogger Integration Tests', () => {
       expect(events[0].args![0].userId).toBe('user1');
     });
 
-    it('should NOT redact fields that only contain "pwd" as substring', async () => {
-      // Note: The implementation only redacts exact "pwd" match, not substrings like "oldPwd"
+    it('redacts a password whatever qualifier the field name carries', async () => {
+      // This test used to assert the OPPOSITE — that `oldPwd` and `newPwd`
+      // survive into the audit log — and explained the mechanism approvingly:
+      // "the implementation only redacts exact 'pwd' match, not substrings like
+      // 'oldPwd'". The values in question are `old123` and `new456`: two
+      // passwords, written to an audit record in plaintext, pinned there by a
+      // test. A rule that matches the name's last WORD reads `oldPwd` as a
+      // password, which is what it is.
       await auditLogger.logAuth({
         timestamp: new Date(),
         service: 'authService',
@@ -1141,9 +1147,9 @@ describe('AuditLogger Integration Tests', () => {
       });
 
       const events = await auditLogger.query();
-      // These are NOT redacted because they don't match exactly "pwd"
-      expect(events[0].args![0].oldPwd).toBe('old123');
-      expect(events[0].args![0].newPwd).toBe('new456');
+      expect(events[0].args![0].oldPwd).toBe('[REDACTED]');
+      expect(events[0].args![0].newPwd).toBe('[REDACTED]');
+      // ...and the identity that makes the record useful is still there.
       expect(events[0].args![0].userId).toBe('user1');
     });
 
@@ -1170,7 +1176,11 @@ describe('AuditLogger Integration Tests', () => {
       const events = await auditLogger.query();
       expect(events[0].args![0].database.host).toBe('localhost');
       expect(events[0].args![0].database.password).toBe('[REDACTED]');
-      expect(events[0].args![0].database.credentials.secretKey).toBe('[REDACTED]');
+      // The whole `credentials` object goes, rather than being walked into and
+      // redacted field by field: a container named `credentials` holds secrets
+      // it has not been asked about yet. Previously only `secretKey` inside it
+      // was replaced, so a sibling added later would have been logged.
+      expect(events[0].args![0].database.credentials).toBe('[REDACTED]');
       expect(events[0].args![0].name).toBe('myapp');
     });
 

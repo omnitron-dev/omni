@@ -1,3 +1,30 @@
+/**
+ * ESLint does not run in this monorepo, and has not since the TypeScript 7
+ * upgrade.
+ *
+ * `typescript-eslint` 8.69 refuses to load against TS 7 outright — every
+ * package with a `lint` script fails identically with "typescript-eslint does
+ * not support TS 7.0", tracked upstream as typescript-eslint#10940. So
+ * `turbo lint` reports "5 successful, 5 total" worth of failures on a task
+ * nothing depends on: a check that shouts and changes nothing.
+ *
+ * Two things were tried and are recorded so they are not tried again:
+ *
+ *   - pnpm scoped overrides (`typescript-eslint>typescript: 6.0.3`) do not
+ *     take: the flat `typescript: 7.0.2` override wins, and the install
+ *     reports "unmet peer typescript@6.0.3: found 7.0.2" while eslint fails
+ *     exactly as before.
+ *   - forcing the TS 6 API through an alias would make it parse TS 7 source.
+ *     A linter reading the code with an older parser reports syntax it does
+ *     not know as errors, which is noise shaped like findings — worse than
+ *     silence, because someone has to disprove each one.
+ *
+ * Waiting on upstream is the honest state. Note also that only 5 of the 28
+ * packages declare a `lint` script at all; turning it on for the other 23
+ * would produce a first-run finding count nobody has measured, which is a
+ * decision to put to a human with that number in hand, not a default.
+ */
+
 const globals = require('globals');
 const eslintJs = require('@eslint/js');
 const eslintTs = require('typescript-eslint');

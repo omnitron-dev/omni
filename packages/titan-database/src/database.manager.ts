@@ -1003,17 +1003,38 @@ export class DatabaseManager implements IDatabaseManager {
       );
     }
 
-    return {
+    // Dialect-specific keys go only to the dialect they belong to, which is how
+    // `IParsedConnectionConfig` already labels them ("Additional PostgreSQL
+    // specific" / "Additional MySQL specific") and not how they were passed:
+    // every key went to every driver.
+    //
+    // mysql2 answers `searchPath` with "Ignoring invalid configuration option
+    // passed to Connection: searchPath. This is currently a warning, but in
+    // future versions of MySQL2, an error will be thrown" — five times per test
+    // run in this repo. `charset`/`timezone` went the other way, into pg, which
+    // drops unknown keys without saying anything.
+    //
+    // Note `searchPath` does nothing on the PostgreSQL side either: the schema
+    // is set at pool creation from `options.defaultSchema`, as
+    // `-c search_path=…`, because a session-scoped `SET search_path` reaches
+    // only one pooled client. It is carried here for callers that pass it, not
+    // because this is what applies it.
+    const base = {
       database: connConfig.database || (config.dialect === 'sqlite' ? ':memory:' : 'postgres'),
       host: connConfig.host,
       port: connConfig.port,
       user: connConfig.user,
       password: connConfig.password,
       ssl: connConfig.ssl,
-      searchPath: connConfig.searchPath,
-      charset: connConfig.charset,
-      timezone: connConfig.timezone,
     };
+
+    if (config.dialect === 'mysql') {
+      return { ...base, charset: connConfig.charset, timezone: connConfig.timezone };
+    }
+    if (config.dialect === 'postgres') {
+      return { ...base, searchPath: connConfig.searchPath };
+    }
+    return base;
   }
 
   /**

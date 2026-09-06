@@ -51,7 +51,38 @@ export function isRedisInMockMode(): boolean {
  * Resolution order: globalSetup info file → globalThis.globalRedis →
  * TEST_REDIS_HOST/TEST_REDIS_PORT (defaulting to the compose stack on 16379).
  */
-export function getTestRedisConfig(db = 15) {
+/**
+ * Logical databases this package may use, and how many.
+ *
+ * The suite is not database-agnostic: `cleanupRedis` deletes every key under
+ * `titan:discovery:*`, which is every node any spec file registered. Three
+ * files asked for db 15 and vitest runs them in different workers at the same
+ * time, so one file's cleanup deleted another file's node between its
+ * `register` and its read — `isRegistered()` true, `hgetall` `{}`:
+ *
+ *     FAIL discovery.comprehensive.spec.ts > should register node on start
+ *     expected undefined to be '192.168.1.144:3000'
+ *
+ * Databases 0-4 belong to another workspace on this machine; 5-15 are this
+ * one's, so the bands start at 5.
+ */
+const TEST_DB_BASE = 5;
+const TEST_DB_COUNT = 11;
+
+/**
+ * The logical database belonging to THIS vitest worker.
+ *
+ * The requested number is deliberately ignored. Honouring it would let two
+ * files pick the same database again, which is the whole defect — and every
+ * call site passed a literal chosen for no reason beyond "some database".
+ */
+export function toTestDb(_requestedDb?: number): number {
+  const worker = Number(process.env['VITEST_POOL_ID'] ?? process.env['VITEST_WORKER_ID'] ?? 1);
+  return TEST_DB_BASE + ((Math.max(1, worker) - 1) % TEST_DB_COUNT);
+}
+
+export function getTestRedisConfig(requestedDb = 15) {
+  const db = toTestDb(requestedDb);
   const info = readRedisInfoFile();
   if (info?.port) {
     return { url: `redis://localhost:${info.port}/${db}`, host: 'localhost', port: info.port, db };

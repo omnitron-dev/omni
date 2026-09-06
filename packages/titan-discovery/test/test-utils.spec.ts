@@ -1,4 +1,4 @@
-import { getTestRedisConfig } from './test-utils.js';
+import { getTestRedisConfig, toTestDb } from './test-utils.js';
 
 /**
  * Regression guard for the endpoint the whole suite connects to.
@@ -29,8 +29,13 @@ describe('getTestRedisConfig', () => {
   });
 
   it('builds a url that agrees with host, port and db', () => {
+    // The db is no longer the caller's to choose — concurrent spec files
+    // picking their own is what let one file's `cleanupRedis` delete another
+    // file's nodes (see redis-db-isolation.spec.ts). What this line was
+    // actually guarding is that the url and the fields describe ONE endpoint,
+    // and that still holds against whatever the partition returns.
     const config = getTestRedisConfig(7);
-    expect(config.db).toBe(7);
-    expect(config.url).toBe(`redis://${config.host}:${config.port}/7`);
+    expect(config.db).toBe(toTestDb());
+    expect(config.url).toBe(`redis://${config.host}:${config.port}/${config.db}`);
   });
 });

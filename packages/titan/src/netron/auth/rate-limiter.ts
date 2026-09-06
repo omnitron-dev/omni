@@ -365,7 +365,13 @@ export class RateLimiter {
         await this.enqueue(key, tierConfig);
         state.queued++;
 
-        throw new RateLimitError('Request queued due to rate limit', undefined, { retryAfter });
+        // `queued: true` in the details, not only in the sentence. Both this
+        // branch and the denial below throw the SAME class, so the only thing
+        // telling them apart used to be the English wording — and the one
+        // consumer, `rateLimitPolicy`, matched it with
+        // `message.includes('queued')`. Rewording this string would have
+        // silently reclassified every queued request as a plain denial.
+        throw new RateLimitError('Request queued due to rate limit', { queued: true }, { retryAfter });
       }
 
       state.denied++;

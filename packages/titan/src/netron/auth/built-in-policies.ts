@@ -4,6 +4,7 @@
  */
 
 import ipaddr from 'ipaddr.js';
+import { RateLimitError } from '../../errors/index.js';
 import type { PolicyDefinition } from './types.js';
 import { RateLimiter, type RateLimitConfig } from './rate-limiter.js';
 import { safeCompare, hasPermission as matchPermission } from './utils.js';
@@ -766,8 +767,16 @@ export const BuiltInPolicies = {
             },
           };
         } catch (error) {
-          // Handle queue scenario
-          if (error instanceof Error && error.message.includes('queued')) {
+          // Handle queue scenario — keyed on the structured flag the limiter
+          // sets, not on the words it happens to use. The limiter throws the
+          // same `RateLimitError` for a queued request and for a plain denial,
+          // so this used to be `message.includes('queued')`: a producer and a
+          // consumer coupled by an English sentence, where rewording one
+          // silently changes what the other decides.
+          if (
+            error instanceof RateLimitError &&
+            (error.details as { queued?: unknown } | undefined)?.queued === true
+          ) {
             return {
               allowed: false,
               reason: 'Request queued due to rate limit',

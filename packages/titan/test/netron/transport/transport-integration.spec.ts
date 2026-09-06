@@ -229,8 +229,15 @@ describe('Transport Integration Tests', () => {
       }
       const endTime = Date.now();
 
-      // Wait for all messages
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait for the messages, not for a duration. A flat 500ms is a bet on how
+      // fast the loopback and the event loop are under whatever else is
+      // running: this read 484 of 1000 in a full-package run, which looks
+      // exactly like dropped data and was not — the rest simply had not been
+      // dispatched yet.
+      const deadline = Date.now() + 10_000;
+      while (messages.length < messageCount && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
 
       expect(messages.length).toBe(messageCount);
       console.log(`TCP throughput: ${messageCount} messages in ${endTime - startTime}ms`);

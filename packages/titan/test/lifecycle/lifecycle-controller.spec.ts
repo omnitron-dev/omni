@@ -125,33 +125,36 @@ describe('LifecycleController', () => {
     });
 
     it('within a phase, parallel tasks run concurrently', async () => {
-      controller = makeController({ defaultTaskTimeoutMs: 500 });
-      const start = Date.now();
-      controller.register({
-        name: 'a',
-        priority: ShutdownPriority.Normal,
-        handler: async () => {
-          await delay(100);
-        },
-      });
-      controller.register({
-        name: 'b',
-        priority: ShutdownPriority.Normal,
-        handler: async () => {
-          await delay(100);
-        },
-      });
-      controller.register({
-        name: 'c',
-        priority: ShutdownPriority.Normal,
-        handler: async () => {
-          await delay(100);
-        },
-      });
+      // Counted, not timed. This used to run three 100ms tasks and require the
+      // total under 250ms — an upper bound on a wall clock, which is the half
+      // that scheduling pressure can only push the wrong way: it read 303ms in
+      // a full-package run with nothing changed.
+      //
+      // "Concurrently" means the three were in flight at the same moment, and
+      // that is directly observable: a task increments on entry and decrements
+      // on exit, and the peak says how many overlapped. Sequential execution
+      // gives a peak of 1 whatever the machine is doing.
+      controller = makeController({ defaultTaskTimeoutMs: 5_000 });
+      let inFlight = 0;
+      let peak = 0;
+
+      for (const name of ['a', 'b', 'c']) {
+        controller.register({
+          name,
+          priority: ShutdownPriority.Normal,
+          handler: async () => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            await delay(50);
+            inFlight -= 1;
+          },
+        });
+      }
+
       await controller.shutdown(ShutdownReason.Manual);
-      const took = Date.now() - start;
-      // Three 100ms tasks in parallel ≈ 100-150ms (NOT 300ms+).
-      expect(took).toBeLessThan(250);
+
+      expect(peak, 'the tasks did not overlap — they ran one after another').toBe(3);
+      expect(inFlight, 'a task never finished').toBe(0);
     });
 
     it('parallel:false tasks run sequentially after the parallel batch', async () => {

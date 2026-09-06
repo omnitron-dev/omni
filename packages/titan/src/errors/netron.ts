@@ -410,7 +410,9 @@ export class SerializationError extends NetronError {
   }
 }
 
-/**
- * Contract error (re-export for convenience)
- */
-export { ContractError } from './contract.js';
+// `ContractError` used to be re-exported here "for convenience". It lives in
+// `./contract.js`, which imports `Errors` from `./factories.js`, which imports
+// the classes above — so that one line closed a three-module import cycle for
+// a convenience the barrel (`./index.js`) already provides. See
+// `test/errors/acyclic.spec.ts` for why a cycle among these files is worse
+// than a cycle elsewhere.

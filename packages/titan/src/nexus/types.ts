@@ -13,7 +13,11 @@
  * @since 0.1.0
  */
 
-import { ContextProvider } from './context.js';
+// Type-only: `ContextProvider` appears once, as the return type of
+// `getContext()`. Imported as a value it emitted a runtime edge back to
+// `./context.js`, which imports `Scope` from here — a cycle held open by an
+// import that is erased at compile time.
+import type { ContextProvider } from './context.js';
 
 // Forward declarations for circular dependency resolution
 export interface Middleware<T = unknown> {

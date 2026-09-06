@@ -289,6 +289,26 @@ export default function DashboardPage() {
       if (appList.status === 'fulfilled') setAllApps(appList.value);
       if (snapshot.status === 'fulfilled') setMetricsSnapshot(snapshot.value);
 
+      // `allSettled` never rejects, so the `catch` below cannot see a failed
+      // half — and clearing the error unconditionally turned a partial
+      // failure into a positive claim of health: the dashboard kept showing
+      // the last apps it had, with nothing to say they were stale. This
+      // panel is where an operator looks first, so "the numbers are old" has
+      // to be visible on it rather than inferred from them not moving.
+      const failed = [
+        appList.status === 'rejected' ? 'the app list' : null,
+        snapshot.status === 'rejected' ? 'metrics' : null,
+      ].filter(Boolean);
+
+      if (failed.length > 0) {
+        const reason =
+          (appList.status === 'rejected' ? (appList.reason as Error)?.message : null) ??
+          (snapshot.status === 'rejected' ? (snapshot.reason as Error)?.message : null) ??
+          'the daemon did not answer';
+        setError(`Could not refresh ${failed.join(' and ')} — ${reason}. Figures below are the last received.`);
+        return;
+      }
+
       setError(null);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to connect to daemon');

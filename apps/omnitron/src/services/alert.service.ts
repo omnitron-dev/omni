@@ -17,6 +17,9 @@ import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
+import { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable } from '../shared/alert-expression.js';
+
+export { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable };
 import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, INFRA_STATE_ACCESSOR_TOKEN } from '../shared/tokens.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 
@@ -50,26 +53,6 @@ interface EvalContext {
   apps: Array<{ name: string; status: string; cpu: number; memory: number }>;
   infra: Record<string, { status: string; health: string }>;
   logCounts?: Record<string, number>; // level → count in window
-}
-
-/**
- * The expression forms this evaluator understands.
- *
- * Exported so a rule can be checked WITHOUT evaluating it — `omnitron
- * doctor` reports rules that will never fire, and the alerting loop only
- * discovers them once a cycle, in a log line nobody is watching. Keeping one
- * list means the two cannot drift into disagreeing about which rules work.
- */
-export const ALERT_EXPRESSION_FORMS = [
-  /^app\.(\*|[\w-]+)\.status\s*(!=|==)\s*(\w+)$/,
-  /^app\.(\*|[\w-]+)\.(cpu|memory)\s*(>|<|>=|<=)\s*(\d+)$/,
-  /^infra\.(\*|[\w-]+)\.health\s*(!=|==)\s*(\w+)$/,
-] as const;
-
-/** Whether the evaluator can read this expression at all. */
-export function isAlertExpressionParseable(expression: string): boolean {
-  const trimmed = expression.trim();
-  return ALERT_EXPRESSION_FORMS.some((form) => form.test(trimmed));
 }
 
 function evaluateExpression(

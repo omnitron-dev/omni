@@ -147,12 +147,24 @@ describe('Complex PM Scenarios', () => {
 
       const results = await operations;
 
-      // All operations should complete with sequential counters
-      expect(results).toEqual([1, 2, 3, 4, 5]);
+      // Asserted as a SET, not a sequence. The order in which five concurrent
+      // callers enter a spin-wait critical section is not ordered by anything —
+      // whichever waiter's 5 ms timer fires first goes next — so requiring
+      // `[1, 2, 3, 4, 5]` in issue order made the test green exactly when the
+      // scheduler happened to preserve it, and it was seen returning
+      // `[1, 2, 3, 5, 4]` under load. A test whose name is "concurrent" cannot
+      // assert an order that concurrency does not provide.
+      //
+      // What the lock DOES guarantee is mutual exclusion, and that is what these
+      // assertions state: five distinct counter values with no duplicate and no
+      // gap. A lost update — two operations reading the counter before either
+      // wrote — would show up here as a repeat or a missing number, which is the
+      // failure this test exists to catch.
+      expect([...results].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
 
       const state = await service.getState();
       expect(state.counter).toBe(5);
-      expect(state.operations).toEqual(['op1', 'op2', 'op3', 'op4', 'op5']);
+      expect([...state.operations].sort()).toEqual(['op1', 'op2', 'op3', 'op4', 'op5']);
     });
   });
 

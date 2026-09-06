@@ -23,6 +23,12 @@ const VALID: ReadonlySet<string> = new Set(['healthy', 'degraded', 'unhealthy'])
  * A status outside the contract is rejected rather than passed through:
  * `IHealthStatus.status` is a union of three values, and forwarding a fourth
  * would place something in it that its own type says cannot be there.
+ *
+ * The timestamp is stamped HERE and any value the worker reported is dropped,
+ * for the same reason the status is validated: nothing in the payload is
+ * trusted. It therefore reads "when this answer was classified", not "when the
+ * worker measured" — which is the quantity a caller deciding whether a process
+ * is responding can act on, and the one a stalled worker cannot forge.
  */
 export function classifyWorkerHealth(result: unknown): IHealthStatus {
   const timestamp = Date.now();

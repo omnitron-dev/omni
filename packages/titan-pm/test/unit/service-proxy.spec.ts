@@ -370,18 +370,26 @@ describe('ServiceProxyHandler', () => {
 
   describe('__getHealth', () => {
     it('should get health status from remote process', async () => {
-      const expectedHealth: IHealthStatus = {
+      const reported: IHealthStatus = {
         status: 'healthy',
         checks: [{ name: 'db', status: 'pass' }],
-        timestamp: Date.now(),
+        timestamp: Date.now() - 5_000,
       };
 
-      mockNetronClient.mockCall = vi.fn().mockResolvedValue(expectedHealth);
+      mockNetronClient.mockCall = vi.fn().mockResolvedValue(reported);
 
       const proxy = handler.createProxy();
+      const before = Date.now();
       const health = await proxy.__getHealth();
 
-      expect(health).toEqual(expectedHealth);
+      // Status and checks come from the worker; the timestamp does not.
+      // `classifyWorkerHealth` stamps its own, so comparing the whole object
+      // against one built in the test passed only while both fell in the same
+      // millisecond — it was seen failing on exactly that field under load.
+      expect(health.status).toBe('healthy');
+      expect(health.checks).toEqual([{ name: 'db', status: 'pass' }]);
+      expect(health.timestamp).toBeGreaterThanOrEqual(before);
+      expect(health.timestamp).not.toBe(reported.timestamp);
       expect(mockNetronClient.mockCall).toHaveBeenCalledWith('__getProcessHealth', []);
     });
 

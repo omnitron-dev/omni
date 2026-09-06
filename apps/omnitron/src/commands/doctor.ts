@@ -107,17 +107,55 @@ export interface Finding {
 }
 
 /** Collected during a run; rendered together at the end. */
+/** An area the run could not look at, and why. */
+export interface Skip {
+  /**
+   * The id the skipped check reports under, so a reader can match a gap in
+   * this list against a finding elsewhere in the report.
+   *
+   * Either an exact finding id, or `prefix.*` when the check has several. The
+   * first version of this list invented ids that no check uses — `db.bloat`
+   * for `db.bloated`, and `logs.health` for a check that reports three ids
+   * and none by that name — so the two lists did not line up at all, which is
+   * the one thing the field exists to do. `doctor-coverage.test.ts` now reads
+   * both lists out of this file and fails when a skip names an id nothing
+   * reports.
+   */
+  id: string;
+  /** Why it could not look, in the operator's terms. */
+  reason: string;
+}
+
 export class Findings {
   private readonly items: Finding[] = [];
+  private readonly skips: Skip[] = [];
 
   add(finding: Finding): void {
     this.items.push(finding);
+  }
+
+  /**
+   * Record that an area was NOT examined.
+   *
+   * "No problems found" and "nothing was looked at" are the same output
+   * otherwise, and they lead an operator in opposite directions: the first
+   * says look elsewhere, the second says look again. A dead database takes
+   * four checks down with it, a daemon that is not answering takes seven, and
+   * before this the report for all of that was a green box with one error in
+   * it — the reader had no way to know that eleven areas had gone unread.
+   */
+  skip(id: string, reason: string): void {
+    this.skips.push({ id, reason });
   }
 
   all(): Finding[] {
     // Errors first, then warnings, then info — an operator reads top-down.
     const rank: Record<FindingSeverity, number> = { error: 0, warning: 1, info: 2 };
     return [...this.items].sort((a, b) => rank[a.severity] - rank[b.severity]);
+  }
+
+  skipped(): Skip[] {
+    return [...this.skips];
   }
 
   get worst(): FindingSeverity | null {
@@ -165,6 +203,21 @@ export const REQUIRED_TABLES = [
 ] as const satisfies readonly string[];
 
 /**
+ * What a dead or empty database takes down with it.
+ *
+ * Named once, because three exits report it — connection refused, no tables,
+ * and a query that threw — and three copies of a list drift apart exactly
+ * when one of them matters.
+ */
+const DB_DEPENDENT_CHECKS: ReadonlyArray<readonly [id: string, what: string]> = [
+  ['db.pending-migrations', 'whether every migration has been applied'],
+  ['db.missing-tables', 'whether the schema still holds every table the daemon queries'],
+  ['logs.*', 'log volume, retention and ingestion'],
+  ['alerts.unreadable-rule', 'whether every alert rule can still be parsed'],
+  ['db.bloated', 'table size against live rows'],
+];
+
+/**
  * The internal database: reachable, migrated, and actually holding the tables
  * the daemon queries.
  *
@@ -189,8 +242,16 @@ async function checkDatabase(findings: Findings): Promise<void> {
       evidence: [`target: ${target}`, `error: ${describeError(err)}`],
       remedy: 'Start the omnitron-pg container (`omnitron up`), or point OMNITRON_DATABASE_URL at a reachable server.',
     });
+    for (const [id, what] of DB_DEPENDENT_CHECKS) findings.skip(id, `not checked: ${what} — the database is unreachable`);
     return;
   }
+
+  // What actually got looked at, so a throw below can report the gap it left
+  // instead of guessing. The first live run of this reported all five checks
+  // as "may not have been checked ... failed partway through" when the very
+  // first query had been refused and none of them had run — an honest report
+  // about itself is the one thing a diagnostic cannot get wrong.
+  const done = new Set<string>();
 
   try {
     const { sql } = await import('kysely');
@@ -212,6 +273,9 @@ async function checkDatabase(findings: Findings): Promise<void> {
         remedy:
           'Run `omnitron infra migrate`. If it fails, the error it prints is the real problem — the daemon only logs migration failures as warnings at boot.',
       });
+      for (const [id, what] of DB_DEPENDENT_CHECKS.filter(([i]) => i !== 'db.pending-migrations')) {
+        findings.skip(id, `not checked: ${what} — the database has no tables`);
+      }
       return;
     }
 
@@ -222,6 +286,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
       applied = new Set(rows.rows.map((r) => r.name));
     }
 
+    done.add('db.pending-migrations');
     const pending = OMNITRON_MIGRATIONS.filter((m) => !applied.has(m.name)).map((m) => m.name);
     if (pending.length > 0) {
       findings.add({
@@ -236,6 +301,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
     // Checked by name rather than inferred from bookkeeping: a database can
     // carry migration rows and still be missing tables if someone dropped
     // them — which is the outage this whole command was written for.
+    done.add('db.missing-tables');
     const missing = REQUIRED_TABLES.filter((t) => !present.has(t));
     if (missing.length > 0) {
       findings.add({
@@ -250,10 +316,15 @@ async function checkDatabase(findings: Findings): Promise<void> {
 
     // What the log table itself says about the platform's health.
     if (present.has('logs')) await checkLogHealth(findings, db);
+    else findings.skip('logs.*', 'the `logs` table does not exist');
+    done.add('logs.*');
 
     if (present.has('alert_rules')) await checkAlertRules(findings, db);
+    else findings.skip('alerts.unreadable-rule', 'the `alert_rules` table does not exist');
+    done.add('alerts.unreadable-rule');
 
     await checkTableGrowth(findings, db, target);
+    done.add('db.bloated');
   } catch (err) {
     // Which of the two findings this is depends on what the error SAYS, not
     // on which call threw. `createOmnitronDb` builds a lazy pool, so it does
@@ -281,6 +352,10 @@ async function checkDatabase(findings: Findings): Promise<void> {
         evidence: [`target: ${target}`, `error: ${describeError(err)}`],
         remedy: 'Check the database logs — the connection opened, so this is a permissions or schema problem.',
       });
+    }
+    const why = isConnectionFailure(err) ? 'the database stopped answering' : 'a database query failed';
+    for (const [id, what] of DB_DEPENDENT_CHECKS.filter(([id]) => !done.has(id))) {
+      findings.skip(id, `not checked: ${what} — ${why}`);
     }
   } finally {
     await db.destroy().catch(() => undefined);
@@ -1138,7 +1213,13 @@ export async function checkConsoleServing(findings: Findings, dc: IDaemonConfig)
     status = res.status;
   } catch {
     // Nothing listening. `omnitron webapp` is opt-in and a daemon without a
-    // console is a normal configuration, so this is not a finding.
+    // console is a normal configuration, so this is not a finding — but it is
+    // not a clean bill of health for the console either, and the two used to
+    // print identically.
+    findings.skip(
+      'webapp.not-serving',
+      `nothing is listening on port ${port} — \`omnitron webapp\` is opt-in, so this may be intended`
+    );
     return;
   }
 
@@ -1446,18 +1527,34 @@ function severityMark(severity: FindingSeverity): string {
 
 function render(findings: Findings): void {
   const items = findings.all();
-
-  if (items.length === 0) {
-    box(prism.green('[+] No problems found.'), 'Diagnostics');
-    return;
-  }
+  const skips = findings.skipped();
 
   const lines: string[] = [];
-  for (const [index, finding] of items.entries()) {
-    if (index > 0) lines.push('');
-    lines.push(`${severityMark(finding.severity)} ${prism.bold(finding.title)}`);
-    for (const line of finding.evidence) lines.push(prism.dim(`      ${line}`));
-    if (finding.remedy) lines.push(`      ${prism.cyan('→')} ${finding.remedy}`);
+
+  if (items.length === 0) {
+    // Never a bare "No problems found" while something went unread: the two
+    // sentences below are the difference between "look elsewhere" and
+    // "look again".
+    lines.push(
+      skips.length === 0
+        ? prism.green('[+] No problems found.')
+        : prism.yellow(`[+] No problems found in what could be checked.`)
+    );
+  } else {
+    for (const [index, finding] of items.entries()) {
+      if (index > 0) lines.push('');
+      lines.push(`${severityMark(finding.severity)} ${prism.bold(finding.title)}`);
+      for (const line of finding.evidence) lines.push(prism.dim(`      ${line}`));
+      if (finding.remedy) lines.push(`      ${prism.cyan('→')} ${finding.remedy}`);
+    }
+  }
+
+  if (skips.length > 0) {
+    if (items.length > 0) lines.push('');
+    lines.push(prism.yellow(`[?] ${skips.length} area(s) not examined:`));
+    for (const skip of skips) {
+      lines.push(prism.dim(`      ${skip.id} — ${skip.reason}`));
+    }
   }
 
   box(lines.join('\n'), 'Diagnostics');
@@ -1488,6 +1585,21 @@ export async function doctorCommand(): Promise<void> {
       evidence: ['no response on the control socket'],
       remedy: 'Start it with `omnitron up`.',
     });
+    // Seven checks ask the daemon and only the daemon. Without this the
+    // report for a stopped daemon was a single error, and nothing said that
+    // the app, port, infrastructure and console findings below it were
+    // absent rather than clean.
+    for (const [id, what] of [
+      ['daemon.*', 'the daemon\'s own restart history and metric sampling'],
+      ['app.*', 'every app\'s status, restarts and memory'],
+      ['app.subprocess-crashed', 'each app\'s child processes'],
+      ['app.port-unreachable', 'the ports apps claim against the ports they answer on'],
+      ['infra.*', 'infrastructure containers and their published ports'],
+      ['auth.anonymous-surface', 'which RPC methods are reachable without a token'],
+      ['webapp.not-serving', 'whether the console is being served'],
+    ] as const) {
+      findings.skip(id, `not checked: ${what} — the daemon is not answering`);
+    }
   } else {
     // One `list` serves several checks, and how long it takes is itself a
     // reading: the call walks every supervisor, so a supervisor that has
@@ -1545,6 +1657,7 @@ export async function doctorCommand(): Promise<void> {
           title: 'A diagnostic check could not complete',
           evidence: [describeError(err)],
         });
+        findings.skip('doctor.check-failed', `a check threw: ${describeError(err)}`);
       }
     }
   }
@@ -1560,6 +1673,7 @@ export async function doctorCommand(): Promise<void> {
       title: 'The disk-space check could not complete',
       evidence: [describeError(err)],
     });
+    findings.skip('disk.*', `the check threw: ${describeError(err)}`);
   }
 
   // Runs whether or not the daemon answered: a stale build is worth knowing
@@ -1573,6 +1687,7 @@ export async function doctorCommand(): Promise<void> {
       title: 'The build-freshness check could not complete',
       evidence: [describeError(err)],
     });
+    findings.skip('build.*', `the check threw: ${describeError(err)}`);
   }
 
   // The database is checked directly rather than through the daemon: when the
@@ -1587,17 +1702,26 @@ export async function doctorCommand(): Promise<void> {
       title: 'The database check could not complete',
       evidence: [describeError(err)],
     });
+    findings.skip('db.*', `the check threw: ${describeError(err)}`);
   }
 
   await client.disconnect().catch(() => undefined);
 
   const items = findings.all();
 
+  const skipped = findings.skipped();
+
   if (isJsonMode()) {
     emitJson({
       ok: items.length === 0,
+      // `ok` alone cannot carry this: a run where the database was unreachable
+      // reports `ok: false` with one finding, and a CI gate reading only `ok`
+      // learns nothing about the four checks that never ran. `complete` says
+      // whether the verdict covers everything it claims to.
+      complete: skipped.length === 0,
       worst: findings.worst,
       findings: items,
+      skipped,
     });
   } else {
     render(findings);

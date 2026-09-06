@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, FormProvider, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -217,6 +217,14 @@ export function LoginForm({
     },
   });
 
+  // `loading` is a prop, so a caller that does not track its own pending state
+  // leaves every control enabled for the whole of an in-flight submit — two
+  // clicks on "Sign In" send two logins, and this component is the one that
+  // opened the async boundary. react-hook-form already knows its handler is
+  // running; `busy` is the disjunction, so a caller that drives `loading`
+  // keeps control and one that does not still gets a form that locks itself.
+  const busy = loading || methods.formState.isSubmitting;
+
   const handleSubmit = methods.handleSubmit(async (data: LoginFormData) => {
     setError(null);
     try {
@@ -245,7 +253,7 @@ export function LoginForm({
           label={labels.email ?? 'Email'}
           type="email"
           autoComplete="email"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.textField}
         />
 
@@ -254,7 +262,7 @@ export function LoginForm({
           label={labels.password ?? 'Password'}
           type={showPassword ? 'text' : 'password'}
           autoComplete="current-password"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           slotProps={{
             input: {
               endAdornment: (
@@ -279,7 +287,7 @@ export function LoginForm({
               <Field.Checkbox
                 name="rememberMe"
                 label={labels.rememberMe ?? 'Remember me'}
-                disabled={disabled || loading}
+                disabled={disabled || busy}
               />
             )}
             {showForgotPassword && (
@@ -301,10 +309,10 @@ export function LoginForm({
           variant="contained"
           size="large"
           fullWidth
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.submitButton}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Sign In')}
+          {busy ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Sign In')}
         </Button>
 
         {showSocialLogin && socialProviders.length > 0 && (
@@ -321,7 +329,7 @@ export function LoginForm({
                 <IconButton
                   key={provider.id}
                   onClick={provider.onClick}
-                  disabled={disabled || loading}
+                  disabled={disabled || busy}
                   sx={{
                     border: 1,
                     borderColor: 'divider',
@@ -392,6 +400,8 @@ export function RegisterForm({
     },
   });
 
+  const busy = loading || methods.formState.isSubmitting;
+
   const handleSubmit = methods.handleSubmit(async (data: RegisterFormData) => {
     setError(null);
     try {
@@ -421,14 +431,14 @@ export function RegisterForm({
               name="firstName"
               label={labels.firstName ?? 'First Name'}
               autoComplete="given-name"
-              disabled={disabled || loading}
+              disabled={disabled || busy}
               {...slotProps?.textField}
             />
             <Field.Text
               name="lastName"
               label={labels.lastName ?? 'Last Name'}
               autoComplete="family-name"
-              disabled={disabled || loading}
+              disabled={disabled || busy}
               {...slotProps?.textField}
             />
           </Box>
@@ -439,7 +449,7 @@ export function RegisterForm({
           label={labels.email ?? 'Email'}
           type="email"
           autoComplete="email"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.textField}
         />
 
@@ -448,7 +458,7 @@ export function RegisterForm({
           label={labels.password ?? 'Password'}
           type={showPassword ? 'text' : 'password'}
           autoComplete="new-password"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           helperText={`At least ${minPasswordLength} characters`}
           slotProps={{
             input: {
@@ -473,7 +483,7 @@ export function RegisterForm({
           label={labels.confirmPassword ?? 'Confirm Password'}
           type={showConfirmPassword ? 'text' : 'password'}
           autoComplete="new-password"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           slotProps={{
             input: {
               endAdornment: (
@@ -495,7 +505,7 @@ export function RegisterForm({
         {requireTerms && (
           <Field.Checkbox
             name="acceptTerms"
-            disabled={disabled || loading}
+            disabled={disabled || busy}
             label={
               <Typography variant="body2" component="span">
                 {labels.acceptTerms ?? 'I agree to the '}
@@ -516,10 +526,10 @@ export function RegisterForm({
           variant="contained"
           size="large"
           fullWidth
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.submitButton}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Create Account')}
+          {busy ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Create Account')}
         </Button>
       </Box>
     </FormProvider>
@@ -562,6 +572,8 @@ export function ForgotPasswordForm({
       email: '',
     },
   });
+
+  const busy = loading || methods.formState.isSubmitting;
 
   const handleSubmit = methods.handleSubmit(async (data: ForgotPasswordFormData) => {
     setError(null);
@@ -626,7 +638,7 @@ export function ForgotPasswordForm({
           label={labels.email ?? 'Email'}
           type="email"
           autoComplete="email"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.textField}
         />
 
@@ -635,10 +647,10 @@ export function ForgotPasswordForm({
           variant="contained"
           size="large"
           fullWidth
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.submitButton}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Send Reset Link')}
+          {busy ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Send Reset Link')}
         </Button>
 
         {onBackToLogin && (
@@ -691,6 +703,8 @@ export function ResetPasswordForm({
     },
   });
 
+  const busy = loading || methods.formState.isSubmitting;
+
   const handleSubmit = methods.handleSubmit(async (data: ResetPasswordFormData) => {
     setError(null);
     try {
@@ -730,7 +744,7 @@ export function ResetPasswordForm({
           label={labels.password ?? 'New Password'}
           type={showPassword ? 'text' : 'password'}
           autoComplete="new-password"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           helperText={`At least ${minPasswordLength} characters`}
           slotProps={{
             input: {
@@ -755,7 +769,7 @@ export function ResetPasswordForm({
           label={labels.confirmPassword ?? 'Confirm Password'}
           type={showConfirmPassword ? 'text' : 'password'}
           autoComplete="new-password"
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           slotProps={{
             input: {
               endAdornment: (
@@ -779,10 +793,10 @@ export function ResetPasswordForm({
           variant="contained"
           size="large"
           fullWidth
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.submitButton}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Reset Password')}
+          {busy ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Reset Password')}
         </Button>
       </Box>
     </FormProvider>
@@ -823,6 +837,8 @@ export function VerifyCodeForm({
 }: VerifyCodeFormProps): ReactNode {
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
+  const resendingRef = useRef(false);
 
   const methods = useForm<VerifyCodeFormData>({
     resolver: zodResolver(schema ?? (createVerifyCodeSchema(codeLength) as any)) as Resolver<VerifyCodeFormData>,
@@ -830,6 +846,8 @@ export function VerifyCodeForm({
       code: '',
     },
   });
+
+  const busy = loading || methods.formState.isSubmitting;
 
   // Cooldown timer
   useEffect(() => {
@@ -841,12 +859,28 @@ export function VerifyCodeForm({
   }, [cooldown]);
 
   const handleResendCode = useCallback(async () => {
-    if (cooldown > 0 || !onResendCode) return;
+    // `cooldown` is set after the await, so it gates the caller that arrives
+    // once the first request has returned — not the one that arrives while it
+    // is still open. Two clicks a moment apart therefore both got through and
+    // sent two codes, which on a rate-limited endpoint locks the user out of
+    // the flow they are trying to finish. The ref is what closes that window:
+    // `resending` state is committed a render too late to guard anything, and
+    // exists only to disable the link.
+    if (cooldown > 0 || resendingRef.current || !onResendCode) return;
+    resendingRef.current = true;
+    setResending(true);
+    // A resend that fails and is then retried successfully used to leave the
+    // failure on screen: the user reads "Failed to resend code" with the code
+    // already in their inbox.
+    setError(null);
     try {
       await onResendCode();
       setCooldown(resendCooldown);
     } catch (err) {
       setError(sanitizeErrorMessage(err, 'Failed to resend code'));
+    } finally {
+      resendingRef.current = false;
+      setResending(false);
     }
   }, [cooldown, onResendCode, resendCooldown]);
 
@@ -887,17 +921,17 @@ export function VerifyCodeForm({
           </Alert>
         )}
 
-        <Field.Code name="code" length={codeLength} autoFocus disabled={disabled || loading} />
+        <Field.Code name="code" length={codeLength} autoFocus disabled={disabled || busy} />
 
         <Button
           type="submit"
           variant="contained"
           size="large"
           fullWidth
-          disabled={disabled || loading}
+          disabled={disabled || busy}
           {...slotProps?.submitButton}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Verify')}
+          {busy ? <CircularProgress size={24} color="inherit" /> : (labels.submit ?? 'Verify')}
         </Button>
 
         {onResendCode && (
@@ -909,7 +943,13 @@ export function VerifyCodeForm({
                 {labels.resendIn ?? 'Resend code in'} {cooldown}s
               </Typography>
             ) : (
-              <Link component="button" type="button" variant="body2" onClick={handleResendCode} disabled={loading}>
+              <Link
+                component="button"
+                type="button"
+                variant="body2"
+                onClick={handleResendCode}
+                disabled={disabled || busy || resending}
+              >
                 {labels.resendCode ?? "Didn't receive the code? Resend"}
               </Link>
             )}

@@ -3,8 +3,18 @@
 /**
  * useCarousel Hook
  *
- * State management hook for the Carousel component.
- * Handles navigation, autoplay, and responsive behavior.
+ * Carousel state — index, bounds, autoplay — for a slider you render
+ * yourself.
+ *
+ * It does NOT drive `<Carousel>`, and the two are not connected in any way.
+ * That component keeps its own copy of this state and exposes no controlled
+ * props: `initialSlide` seeds it and `onSlideChange` observes it, so nothing
+ * a caller does with this hook can move it. The two implementations are
+ * parallel, not paired.
+ *
+ * Said this plainly because the header used to read "state management hook
+ * for the Carousel component" and the example below wired the two together,
+ * neither of which was true.
  *
  * @module @omnitron-dev/prism/components/carousel
  */
@@ -46,22 +56,29 @@ export interface UseCarouselOptions {
 /**
  * Hook for managing carousel state.
  *
+ * The previous example here did not compile and could not have worked:
+ * it rendered `<CarouselSlide>`, which this package exports as a TYPE and
+ * not as a component, and passed `ref={carousel.carouselRef}` to
+ * `<Carousel>`, which is a plain function component that never reads a ref.
+ * Between those two and the pairing that does not exist, three claims in
+ * eight lines.
+ *
  * @example
  * ```tsx
- * const carousel = useCarousel({
- *   totalSlides: items.length,
- *   slidesToShow: 3,
- *   autoplay: true,
- * });
+ * // Your own markup — that is the point of the hook.
+ * const carousel = useCarousel({ totalSlides: items.length, autoplay: true });
  *
  * return (
- *   <Carousel ref={carousel.carouselRef}>
- *     {items.map((item, i) => (
- *       <CarouselSlide key={i}>{item}</CarouselSlide>
- *     ))}
- *   </Carousel>
+ *   <div onMouseEnter={carousel.pause} onMouseLeave={carousel.play}>
+ *     {items.slice(carousel.currentIndex, carousel.currentIndex + 3).map(render)}
+ *     <button onClick={carousel.prev} disabled={!carousel.canPrev}>Back</button>
+ *     <button onClick={carousel.next} disabled={!carousel.canNext}>Next</button>
+ *   </div>
  * );
  * ```
+ *
+ * For a ready-made slider use `<Carousel>` and leave this hook alone; it
+ * cannot control that component.
  */
 export function useCarousel(options: UseCarouselOptions): UseCarouselReturn {
   const {
@@ -79,6 +96,26 @@ export function useCarousel(options: UseCarouselOptions): UseCarouselReturn {
   const [isPlaying, setIsPlaying] = useState(autoplay);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const autoplayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /**
+   * The current index, readable from inside the autoplay timer.
+   *
+   * The timer used to close over `currentIndex` and list it as an effect
+   * dependency, so it advanced one slide per RE-ARM rather than per tick.
+   * That is invisible while every tick is followed by a render — which is
+   * the normal case — and wrong the moment two callbacks land before one:
+   * a throttled background tab, a long task, a test advancing a fake clock.
+   * Measured: ten 100ms ticks over three slides moved the carousel once.
+   *
+   * Reading the ref also takes `currentIndex` out of the effect's
+   * dependencies, so the interval is no longer torn down and rebuilt on
+   * every slide — which had been measuring each gap from the render rather
+   * than from the previous tick.
+   *
+   * Written in `goTo` rather than during render, because a render is exactly
+   * what a burst does not give you.
+   */
+  const currentIndexRef = useRef(currentIndex);
 
   // Calculate max index
   const maxIndex = Math.max(0, totalSlides - slidesToShow);
@@ -102,6 +139,13 @@ export function useCarousel(options: UseCarouselOptions): UseCarouselReturn {
         newIndex = Math.max(0, Math.min(index, maxIndex));
       }
 
+      // Only when it moved. `onSlideChange` fired on every call, including
+      // the ones clamping back to where the carousel already was — so a
+      // strip parked at its last slide with autoplay on reported a slide
+      // change every interval, forever, with the same index.
+      if (newIndex === currentIndexRef.current) return;
+
+      currentIndexRef.current = newIndex;
       setCurrentIndex(newIndex);
       onSlideChange?.(newIndex);
     },
@@ -137,7 +181,7 @@ export function useCarousel(options: UseCarouselOptions): UseCarouselReturn {
   useEffect(() => {
     if (isPlaying && totalSlides > slidesToShow) {
       autoplayRef.current = setInterval(() => {
-        goTo(currentIndex + slidesToScroll);
+        goTo(currentIndexRef.current + slidesToScroll);
       }, autoplayInterval);
 
       return () => {
@@ -148,7 +192,7 @@ export function useCarousel(options: UseCarouselOptions): UseCarouselReturn {
       };
     }
     return undefined;
-  }, [isPlaying, currentIndex, slidesToScroll, autoplayInterval, totalSlides, slidesToShow, goTo]);
+  }, [isPlaying, slidesToScroll, autoplayInterval, totalSlides, slidesToShow, goTo]);
 
   // Cleanup on unmount
   useEffect(

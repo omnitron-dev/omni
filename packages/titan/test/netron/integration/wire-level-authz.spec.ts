@@ -26,6 +26,7 @@ import { createMockLogger } from '../test-utils.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../../src/netron/auth/types.js';
+import { getFreePort } from '../../utils/index.js';
 
 @Service('vault@1.0.0')
 class VaultService {
@@ -56,8 +57,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   let port: number;
 
   beforeEach(async () => {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    port = 9400 + (workerId - 1) * 200 + Math.floor(Math.random() * 180);
+    port = await getFreePort();
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 'wire-authz-server' });

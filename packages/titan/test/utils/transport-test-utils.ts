@@ -74,6 +74,14 @@ async function isBindable(port: number, host: string): Promise<boolean> {
 /**
  * Find an available port for testing.
  *
+ * PREFER `port: 0` where the server API supports it — a server that binds 0 and
+ * reports back the port the kernel gave it has no allocation gap at all,
+ * because nothing ever hands a number around while unbound. That is strictly
+ * better than any allocator, this one included: it cannot collide with another
+ * worker, with the kernel's ephemeral range, or with an unrelated process.
+ * This helper exists for the callers that must know the number BEFORE the
+ * thing that binds it exists.
+ *
  * @param host - the address the caller will bind. Must match, or the answer is
  *   about a different socket.
  * @returns Promise resolving to an available port number
@@ -90,6 +98,34 @@ export async function getFreePort(host = '127.0.0.1'): Promise<number> {
     `No free port in this worker's band ${band.start}-${band.end - 1} on ${host}. ` +
       `Either a previous run left servers behind, or the band is too small for this suite.`
   );
+}
+
+/**
+ * The next port in this worker's band, without asking the operating system.
+ *
+ * Sixteen spec files partitioned ports by `process.env['JEST_WORKER_ID']` — a
+ * variable this runner does not set. `parseInt(undefined || '1', 10)` is 1, so
+ * every worker computed the SAME offset and all eight drew from one 180-450
+ * port window. One of them carried the comment "CRITICAL FIX: Use
+ * JEST_WORKER_ID for worker-safe port allocation"; another had already been
+ * given its own base after two files were caught sharing a range, which fixed
+ * the visible half of the problem while the partitioning underneath stayed
+ * inert. Measured across those files: 105 ranges, 22 pairs that intersect, and
+ * one running into the kernel's ephemeral range.
+ *
+ * Use `getFreePort` where the caller can await — it also checks the port is
+ * bindable. This exists for the callers that cannot: a module-scope constant,
+ * or a synchronous helper whose callers are not async. It cannot probe,
+ * because Node has no synchronous bind; what it does give is a number no other
+ * worker can be handed and no earlier call in this process has used.
+ *
+ * @param count - reserve this many CONSECUTIVE ports, returning the first.
+ */
+export function nextTestPort(count = 1): number {
+  const band = portBandForWorker();
+  const start = band.start + (portCursor % PORT_BAND_SIZE);
+  portCursor += count;
+  return start;
 }
 
 /**

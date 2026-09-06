@@ -26,6 +26,7 @@ import { AuthenticationManager } from '../../src/netron/auth/authentication-mana
 import { createMockLogger } from './test-utils.js';
 import type { RemotePeer } from '../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../src/netron/auth/types.js';
+import { getFreePort } from '../utils/index.js';
 
 @Service('secrets@1.0.0')
 class SecretsService {
@@ -54,8 +55,7 @@ describe('Netron — nested-service leak (T#49)', () => {
   let port: number;
 
   beforeEach(async () => {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    port = 13000 + (workerId - 1) * 200 + Math.floor(Math.random() * 180);
+    port = await getFreePort();
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 't49-server' });

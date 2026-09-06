@@ -52,6 +52,7 @@ import { AuthorizationManager } from '../../../../src/netron/auth/authorization-
 import { METADATA_KEYS } from '../../../../src/decorators/core.js';
 import { createMockLogger } from '../../test-utils.js';
 import type { HttpRequestMessage } from '../../../../src/netron/transport/http/types.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
   let server: HttpServer;
@@ -92,9 +93,7 @@ describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
     configureAuthOnNetron?: boolean;
     optionsAuthorizationManager?: boolean;
   } = {}) {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    const basePort = 18000 + (workerId - 1) * 500;
-    testPort = basePort + Math.floor(Math.random() * 450);
+    testPort = nextTestPort();
     baseUrl = `http://localhost:${testPort}`;
 
     const constructorOptions: any = { port: testPort, host: 'localhost' };

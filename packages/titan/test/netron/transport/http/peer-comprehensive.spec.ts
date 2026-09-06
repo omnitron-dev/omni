@@ -22,6 +22,7 @@ import { HttpConnection } from '../../../../src/netron/transport/http/connection
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 import { HttpCacheManager, RetryManager } from '../../../../src/netron/transport/http/fluent-interface/index.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 describe('HttpRemotePeer - Comprehensive Coverage', () => {
   let server: HttpServer;
@@ -33,8 +34,7 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
   // second server fails to bind, or a client reaches the first one and speaks
   // to a peer in the wrong state. Seen as `Error: read ECONNRESET` in a
   // full-package run. Two of these files drew from the SAME 500-port range.
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const testPort = 24000 + (workerId - 1) * 400 + Math.floor(Math.random() * 380);
+  const testPort = nextTestPort();
   const baseUrl = `http://localhost:${testPort}`;
 
   // Mock Netron instance

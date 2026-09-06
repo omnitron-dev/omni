@@ -14,15 +14,9 @@ import { Contract } from '../../src/decorators/validation.js';
 import { contract } from '../../src/validation/index.js';
 import { createMockLogger } from '../netron/test-utils.js';
 import type { HttpRemotePeer } from '../../src/netron/transport/http/peer.js';
+import { nextTestPort } from '../utils/index.js';
 
-// Test port management - worker-safe to avoid conflicts in parallel test execution
-// CRITICAL FIX: Use JEST_WORKER_ID to ensure each worker gets unique port range
-const getWorkerSafePort = () => {
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const basePort = 9000 + (workerId - 1) * 1000; // Each worker gets 1000 ports
-  const offset = Math.floor(Math.random() * 900); // Random offset within range
-  return basePort + offset;
-};
+const getWorkerSafePort = () => nextTestPort();
 
 describe('Netron-Validation Integration (Real HTTP)', () => {
   let serverNetron: Netron;

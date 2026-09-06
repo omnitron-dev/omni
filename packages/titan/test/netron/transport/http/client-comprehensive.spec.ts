@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
@@ -34,8 +35,7 @@ describeOrSkip('HttpTransportClient - Comprehensive Coverage', () => {
   // second server fails to bind, or a client reaches the first one and speaks
   // to a peer in the wrong state. Seen as `Error: read ECONNRESET` in a
   // full-package run. Two of these files drew from the SAME 500-port range.
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const testPort = 22000 + (workerId - 1) * 400 + Math.floor(Math.random() * 380);
+  const testPort = nextTestPort();
   const baseUrl = `http://localhost:${testPort}`;
 
   // Mock Netron instance

@@ -21,6 +21,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 describe('HttpServer headersTimeout — slowloris guard (T#46)', () => {
   const servers: HttpServer[] = [];
@@ -31,8 +32,7 @@ describe('HttpServer headersTimeout — slowloris guard (T#46)', () => {
   });
 
   function basePort() {
-    const w = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    return 21000 + (w - 1) * 300 + Math.floor(Math.random() * 280);
+    return nextTestPort();
   }
 
   it('keeps the configured headersTimeout when requestTimeout is disabled (0)', async () => {

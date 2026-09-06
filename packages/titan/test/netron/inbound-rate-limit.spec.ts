@@ -26,6 +26,7 @@ import { Service, Public } from '../../src/decorators/core.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
 import { createMockLogger } from './test-utils.js';
 import type { RemotePeer } from '../../src/netron/remote-peer.js';
+import { getFreePort } from '../utils/index.js';
 
 @Service('echo@1.0.0')
 class EchoService {
@@ -41,8 +42,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
   let port: number;
 
   async function startPair(opts: { limit: number; window?: number }) {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    port = 9600 + (workerId - 1) * 300 + Math.floor(Math.random() * 250);
+    port = await getFreePort();
 
     server = new Netron(createMockLogger(), {
       id: 'rate-limit-server',

@@ -23,6 +23,7 @@ import { Definition } from '../../../../src/netron/definition.js';
 import { contract } from '../../../../src/validation/contract.js';
 import { z } from 'zod';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
 
@@ -41,8 +42,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
   // second server fails to bind, or a client reaches the first one and speaks
   // to a peer in the wrong state. Seen as `Error: read ECONNRESET` in a
   // full-package run. Two of these files drew from the SAME 500-port range.
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const testPort = 25000 + (workerId - 1) * 400 + Math.floor(Math.random() * 380);
+  const testPort = nextTestPort();
 
   beforeEach(async () => {
     server = new HttpServer({

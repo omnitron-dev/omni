@@ -25,6 +25,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
 import { WebSocketServer } from 'ws';
 import { createServer, type Server } from 'node:http';
+import { getFreePort } from '../utils/index.js';
 
 describe('WebSocket reconnect — handler leak (T#45)', () => {
   let server: Server;
@@ -32,8 +33,7 @@ describe('WebSocket reconnect — handler leak (T#45)', () => {
   let port: number;
 
   beforeEach(async () => {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    port = 11000 + (workerId - 1) * 200 + Math.floor(Math.random() * 180);
+    port = await getFreePort();
     server = createServer();
     wss = new WebSocketServer({ server });
     await new Promise<void>((r) => server.listen(port, r));

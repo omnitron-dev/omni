@@ -1,7 +1,7 @@
 /**
  * Snackbar Component Exports
  *
- * @module @omnitron-dev/prism/components/snackbar
+ * @module components/snackbar
  */
 
 export {

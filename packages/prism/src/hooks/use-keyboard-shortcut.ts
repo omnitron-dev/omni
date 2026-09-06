@@ -5,7 +5,7 @@
  *
  * Handle keyboard shortcuts with modifier key support.
  *
- * @module @omnitron-dev/prism/hooks/use-keyboard-shortcut
+ * @module hooks/use-keyboard-shortcut
  */
 
 import { useCallback, useEffect, useRef } from 'react';

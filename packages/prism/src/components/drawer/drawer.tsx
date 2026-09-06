@@ -5,7 +5,7 @@
  *
  * Enhanced drawer/side panel with custom styling.
  *
- * @module @omnitron-dev/prism/components/drawer
+ * @module components/drawer
  */
 
 import type { ReactNode } from 'react';

@@ -4,7 +4,7 @@
  * Centralized color channel helpers and density utilities.
  * Used across all component override modules.
  *
- * @module @omnitron-dev/prism/theme/components/theme-utils
+ * @module theme/components/theme-utils
  */
 
 import type { Theme } from '@mui/material/styles';

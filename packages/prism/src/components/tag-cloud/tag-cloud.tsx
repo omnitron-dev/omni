@@ -20,7 +20,7 @@
  *  - Optional `trending` flag highlights a tag visually AND
  *    semantically (aria-label suffix).
  *
- * @module @omnitron-dev/prism/components/tag-cloud
+ * @module components/tag-cloud
  */
 
 import type { ReactNode } from 'react';

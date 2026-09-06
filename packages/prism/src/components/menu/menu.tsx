@@ -5,7 +5,7 @@
  *
  * Dropdown menu with various item types.
  *
- * @module @omnitron-dev/prism/components/menu
+ * @module components/menu
  */
 
 import type { ReactNode, MouseEvent } from 'react';

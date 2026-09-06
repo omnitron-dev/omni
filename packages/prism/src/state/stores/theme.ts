@@ -15,7 +15,7 @@
  * const { mode, setMode } = useSettingsStore();
  * ```
  *
- * @module @omnitron-dev/prism/state/stores
+ * @module state/stores
  */
 
 import { createPersistedStore, createSelectors } from '../create-store.js';

@@ -4,7 +4,7 @@
  * A warm, fiery theme with deep oranges and reds.
  * Optimized for dark mode with glowing ember accents.
  *
- * @module @omnitron-dev/prism/theme/presets/ember
+ * @module theme/presets/ember
  */
 
 import type { ThemePresetDefinition, ColorScale } from '../../types/theme.js';

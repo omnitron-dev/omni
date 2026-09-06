@@ -1,7 +1,7 @@
 /**
  * Card Component Exports
  *
- * @module @omnitron-dev/prism/components/card
+ * @module components/card
  */
 
 export {

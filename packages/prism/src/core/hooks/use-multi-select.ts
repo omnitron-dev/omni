@@ -5,7 +5,7 @@
  *
  * Multi-selection state management with keyboard support.
  *
- * @module @omnitron-dev/prism/core/hooks/use-multi-select
+ * @module core/hooks/use-multi-select
  */
 
 import { useCallback, useMemo, useState } from 'react';

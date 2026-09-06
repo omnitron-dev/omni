@@ -5,7 +5,7 @@
  *
  * React Hook Form integrated star rating.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import { useId, type ReactNode } from 'react';

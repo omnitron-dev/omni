@@ -3,7 +3,7 @@
  *
  * Core types for the Prism design system.
  *
- * @module @omnitron-dev/prism/types
+ * @module types
  */
 
 // Re-export all types

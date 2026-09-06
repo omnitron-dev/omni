@@ -19,7 +19,7 @@
  * neutral background so the map UI is visible during local dev
  * before tile infra is set up.
  *
- * @module @omnitron-dev/prism/components/map
+ * @module components/map
  */
 
 import 'maplibre-gl/dist/maplibre-gl.css';

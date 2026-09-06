@@ -1,7 +1,7 @@
 /**
  * Autocomplete Component Overrides
  *
- * @module @omnitron-dev/prism/theme/components/Autocomplete
+ * @module theme/components/Autocomplete
  */
 
 import type { Theme, Components } from '@mui/material/styles';

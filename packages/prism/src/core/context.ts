@@ -3,7 +3,7 @@
  *
  * Global context for Prism configuration and state.
  *
- * @module @omnitron-dev/prism/core/context
+ * @module core/context
  */
 
 import { createContext, useContext } from 'react';

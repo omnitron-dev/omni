@@ -1,7 +1,7 @@
 /**
  * Navigation Section Exports
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 // Types

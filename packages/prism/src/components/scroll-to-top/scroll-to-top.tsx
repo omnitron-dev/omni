@@ -6,7 +6,7 @@
  * Scrolls the window to the top on pathname change.
  * Framework-agnostic: accepts `pathname` as a prop.
  *
- * @module @omnitron-dev/prism/components/scroll-to-top
+ * @module components/scroll-to-top
  */
 
 import { useEffect } from 'react';

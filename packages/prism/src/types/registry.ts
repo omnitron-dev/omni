@@ -1,7 +1,7 @@
 /**
  * Registry Type Definitions
  *
- * @module @omnitron-dev/prism/types/registry
+ * @module types/registry
  */
 
 import type { BlockDefinition } from './blocks.js';

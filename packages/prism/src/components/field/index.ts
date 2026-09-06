@@ -28,7 +28,7 @@
  * }
  * ```
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 // Base fields

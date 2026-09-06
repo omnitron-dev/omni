@@ -5,7 +5,7 @@
  *
  * Detects clicks outside of a specified element.
  *
- * @module @omnitron-dev/prism/core/hooks
+ * @module core/hooks
  */
 
 import { useEffect, useRef } from 'react';

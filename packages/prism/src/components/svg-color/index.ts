@@ -1,7 +1,7 @@
 /**
  * SvgColor Component Exports
  *
- * @module @omnitron-dev/prism/components/svg-color
+ * @module components/svg-color
  */
 
 export { SvgColor, createIconComponent, type SvgColorProps, type IconProps } from './svg-color.js';

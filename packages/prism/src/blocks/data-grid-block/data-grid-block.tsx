@@ -4,7 +4,7 @@
  * Advanced data table block with toolbar, pagination, sorting, filtering,
  * row actions, and server-side data support.
  *
- * @module @omnitron-dev/prism/blocks/data-grid-block
+ * @module blocks/data-grid-block
  */
 
 'use client';

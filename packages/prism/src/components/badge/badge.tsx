@@ -5,7 +5,7 @@
  *
  * Notification badge and status indicator components.
  *
- * @module @omnitron-dev/prism/components/badge
+ * @module components/badge
  */
 
 import type { ReactNode, Ref } from 'react';

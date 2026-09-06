@@ -7,7 +7,7 @@
  * a configuration array, supporting search, select, multi-select, date ranges,
  * boolean toggles, and number ranges.
  *
- * @module @omnitron-dev/prism/components/admin-filters
+ * @module components/admin-filters
  */
 
 import type { ReactNode, ChangeEvent } from 'react';

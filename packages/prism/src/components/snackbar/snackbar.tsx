@@ -5,7 +5,7 @@
  *
  * Enhanced snackbar with context-based API for easy notifications.
  *
- * @module @omnitron-dev/prism/components/snackbar
+ * @module components/snackbar
  */
 
 import type { ReactNode } from 'react';

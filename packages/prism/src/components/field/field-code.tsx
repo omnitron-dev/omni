@@ -6,7 +6,7 @@
  * React Hook Form integrated OTP (One-Time Password) input.
  * Provides a professional code/PIN entry experience.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import type { ReactNode, ChangeEvent, KeyboardEvent, ClipboardEvent } from 'react';

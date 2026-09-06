@@ -5,7 +5,7 @@
  *
  * Re-export and extension of MUI's useMediaQuery.
  *
- * @module @omnitron-dev/prism/core/hooks/use-media-query
+ * @module core/hooks/use-media-query
  */
 
 import { useMediaQuery as useMuiMediaQuery } from '@mui/material';

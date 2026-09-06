@@ -4,7 +4,7 @@
  * Root container for all layout variants.
  * Provides the structural foundation for header, sidebar, main, and footer.
  *
- * @module @omnitron-dev/prism/layouts/core/layout-section
+ * @module layouts/core/layout-section
  */
 
 import type { ReactNode } from 'react';

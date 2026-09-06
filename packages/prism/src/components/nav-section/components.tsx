@@ -5,7 +5,7 @@
  *
  * Foundational components for building navigation sections.
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 import type { Ref } from 'react';

@@ -5,7 +5,7 @@
  * Handles open/close and navigation. Zoom belongs to `<Lightbox>` itself —
  * see `UseLightboxReturn.getLightboxProps` for why it is not here.
  *
- * @module @omnitron-dev/prism/components/lightbox
+ * @module components/lightbox
  */
 
 'use client';

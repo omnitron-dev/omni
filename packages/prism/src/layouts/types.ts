@@ -3,7 +3,7 @@
  *
  * Combines the best patterns from minimal and aurora layout systems.
  *
- * @module @omnitron-dev/prism/layouts/types
+ * @module layouts/types
  */
 
 import type { ReactNode } from 'react';

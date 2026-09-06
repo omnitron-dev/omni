@@ -6,7 +6,7 @@
  * grid's rhythm (day buttons borderRadius, today indicator, etc.)
  * so it makes sense to co-locate.
  *
- * @module @omnitron-dev/prism/theme/components/DatePicker
+ * @module theme/components/DatePicker
  */
 
 import type { Theme, Components } from '@mui/material/styles';

@@ -5,7 +5,7 @@
  *
  * A hook for managing boolean state with convenient toggle methods.
  *
- * @module @omnitron-dev/prism/core/hooks/use-boolean
+ * @module core/hooks/use-boolean
  */
 
 import { useState, useCallback, useMemo } from 'react';

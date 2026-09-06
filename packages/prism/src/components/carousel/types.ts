@@ -4,7 +4,7 @@
  * Type definitions for the Carousel component - a responsive slider
  * with autoplay, navigation, and various layout options.
  *
- * @module @omnitron-dev/prism/components/carousel
+ * @module components/carousel
  */
 
 import type { Theme, SxProps } from '@mui/material/styles';

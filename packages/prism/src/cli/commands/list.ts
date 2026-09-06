@@ -3,7 +3,7 @@
  *
  * List available components and blocks from the registry.
  *
- * @module @omnitron-dev/prism/cli/commands/list
+ * @module cli/commands/list
  */
 
 import { Command } from 'commander';

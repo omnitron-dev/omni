@@ -3,7 +3,7 @@
  *
  * Simple, minimal layout for authentication-related pages.
  *
- * @module @omnitron-dev/prism/layouts/auth/simple
+ * @module layouts/auth/simple
  */
 
 import type { ReactNode } from 'react';

@@ -1,7 +1,7 @@
 /**
  * Skeleton Component Exports
  *
- * @module @omnitron-dev/prism/components/skeleton
+ * @module components/skeleton
  */
 
 export {

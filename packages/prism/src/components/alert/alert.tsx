@@ -5,7 +5,7 @@
  *
  * Enhanced alert with custom styling and variants.
  *
- * @module @omnitron-dev/prism/components/alert
+ * @module components/alert
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';

@@ -3,7 +3,7 @@
  *
  * An earthy, organic theme with warm greens and natural tones.
  *
- * @module @omnitron-dev/prism/theme/presets/nature
+ * @module theme/presets/nature
  */
 
 import type { ThemePresetDefinition } from '../../types/theme.js';

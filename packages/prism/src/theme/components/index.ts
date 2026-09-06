@@ -11,7 +11,7 @@
  * - Custom checkbox/radio/switch icons
  * - Full CSS variable integration
  *
- * @module @omnitron-dev/prism/theme/components
+ * @module theme/components
  */
 
 import type { Components, Theme } from '@mui/material/styles';

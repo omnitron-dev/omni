@@ -6,7 +6,7 @@
  * Lightweight content loading indicator with centered LinearProgress.
  * Use for lazy-loaded route content within layouts.
  *
- * @module @omnitron-dev/prism/components/loading-screen
+ * @module components/loading-screen
  */
 
 import type { ReactNode } from 'react';

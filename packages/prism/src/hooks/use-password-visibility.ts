@@ -6,7 +6,7 @@
  * Manages password field visibility toggle state.
  * Commonly used in login, register, and password reset forms.
  *
- * @module @omnitron-dev/prism/hooks/use-password-visibility
+ * @module hooks/use-password-visibility
  */
 
 import { useCallback, useState, useMemo } from 'react';

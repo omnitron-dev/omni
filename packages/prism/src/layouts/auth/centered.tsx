@@ -3,7 +3,7 @@
  *
  * Centered authentication layout with card-style content.
  *
- * @module @omnitron-dev/prism/layouts/auth/centered
+ * @module layouts/auth/centered
  */
 
 import type { ReactNode } from 'react';

@@ -5,7 +5,7 @@
  * Ensures only one operation runs at a time, with subsequent calls
  * waiting for and sharing the result of the in-flight operation.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 // =============================================================================

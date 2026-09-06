@@ -5,7 +5,7 @@
  *
  * React Hook Form integrated multi-select with chips.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import type { ReactNode, SyntheticEvent } from 'react';

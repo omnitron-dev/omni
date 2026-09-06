@@ -3,7 +3,7 @@
  *
  * Core building blocks for Prism layouts.
  *
- * @module @omnitron-dev/prism/layouts/core
+ * @module layouts/core
  */
 
 // Context

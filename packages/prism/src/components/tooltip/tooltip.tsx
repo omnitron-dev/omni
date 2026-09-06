@@ -5,7 +5,7 @@
  *
  * Enhanced tooltip with custom styling and arrow support.
  *
- * @module @omnitron-dev/prism/components/tooltip
+ * @module components/tooltip
  */
 
 import type { ReactNode, ReactElement } from 'react';

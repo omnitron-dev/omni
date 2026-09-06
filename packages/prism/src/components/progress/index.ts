@@ -1,7 +1,7 @@
 /**
  * Progress Component Exports
  *
- * @module @omnitron-dev/prism/components/progress
+ * @module components/progress
  */
 
 export {

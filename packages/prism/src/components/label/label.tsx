@@ -5,7 +5,7 @@
  *
  * A versatile label/badge component for status indicators, categories, and tags.
  *
- * @module @omnitron-dev/prism/components/label
+ * @module components/label
  */
 
 import type { ReactNode, Ref } from 'react';

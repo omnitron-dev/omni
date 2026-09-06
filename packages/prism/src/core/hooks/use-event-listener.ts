@@ -5,7 +5,7 @@
  *
  * Attaches event listeners with automatic cleanup.
  *
- * @module @omnitron-dev/prism/core/hooks
+ * @module core/hooks
  */
 
 import { useEffect, useRef } from 'react';

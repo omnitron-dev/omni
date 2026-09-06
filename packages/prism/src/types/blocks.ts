@@ -1,7 +1,7 @@
 /**
  * Block Type Definitions
  *
- * @module @omnitron-dev/prism/types/blocks
+ * @module types/blocks
  */
 
 import type { ReactNode } from 'react';

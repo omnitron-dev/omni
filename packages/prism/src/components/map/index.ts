@@ -1,7 +1,7 @@
 /**
  * Map Component Exports
  *
- * @module @omnitron-dev/prism/components/map
+ * @module components/map
  */
 
 export { Map } from './Map.js';

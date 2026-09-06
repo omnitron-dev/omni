@@ -3,7 +3,7 @@
  *
  * Type definitions for mega menu components.
  *
- * @module @omnitron-dev/prism/components/mega-menu
+ * @module components/mega-menu
  */
 
 import type { ButtonBaseProps } from '@mui/material/ButtonBase';

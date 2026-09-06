@@ -1,7 +1,7 @@
 /**
  * Carousel Component Exports
  *
- * @module @omnitron-dev/prism/components/carousel
+ * @module components/carousel
  */
 
 export { Carousel } from './carousel.js';

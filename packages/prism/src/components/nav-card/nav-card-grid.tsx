@@ -37,7 +37,7 @@
  * </NavCardGrid>
  * ```
  *
- * @module @omnitron-dev/prism/components/nav-card
+ * @module components/nav-card
  */
 
 import type { ReactNode } from 'react';

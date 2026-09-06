@@ -1,7 +1,7 @@
 /**
  * Mega Menu Exports
  *
- * @module @omnitron-dev/prism/components/mega-menu
+ * @module components/mega-menu
  */
 
 // Types

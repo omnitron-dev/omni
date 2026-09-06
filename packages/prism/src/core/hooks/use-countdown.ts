@@ -5,7 +5,7 @@
  *
  * Countdown timer with start, pause, and reset controls.
  *
- * @module @omnitron-dev/prism/core/hooks/use-countdown
+ * @module core/hooks/use-countdown
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

@@ -8,7 +8,7 @@
  * pass `children` for a fully custom marker DOM. Optional
  * `popup` opens a Popup on click.
  *
- * @module @omnitron-dev/prism/components/map
+ * @module components/map
  */
 
 import { useState } from 'react';

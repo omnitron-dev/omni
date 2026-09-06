@@ -5,7 +5,7 @@
  *
  * Individual navigation item with icon, text, and optional children indicator.
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 import { useMemo } from 'react';

@@ -6,7 +6,7 @@
  * React Hook Form integrated international phone number input.
  * Provides country selection with flag display and validation.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import type { ReactNode, ChangeEvent } from 'react';

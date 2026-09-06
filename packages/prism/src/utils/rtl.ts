@@ -3,7 +3,7 @@
  *
  * Helpers for RTL layout support and CSS transformation control.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 /**

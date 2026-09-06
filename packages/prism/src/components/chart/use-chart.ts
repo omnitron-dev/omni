@@ -4,7 +4,7 @@
  * Creates theme-aware ApexCharts options with sensible defaults.
  * Merges custom options with base theme-integrated options.
  *
- * @module @omnitron-dev/prism/components/chart
+ * @module components/chart
  */
 
 import type { Theme } from '@mui/material/styles';

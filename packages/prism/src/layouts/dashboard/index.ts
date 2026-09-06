@@ -1,7 +1,7 @@
 /**
  * Dashboard Layout Exports
  *
- * @module @omnitron-dev/prism/layouts/dashboard
+ * @module layouts/dashboard
  */
 
 export { DashboardLayout, DashboardContent } from './layout.js';

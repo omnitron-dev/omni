@@ -1,7 +1,7 @@
 /**
  * Stepper Component Exports
  *
- * @module @omnitron-dev/prism/components/stepper
+ * @module components/stepper
  */
 
 export {

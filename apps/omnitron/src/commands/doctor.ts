@@ -132,6 +132,39 @@ export class Findings {
 // ---------------------------------------------------------------------------
 
 /**
+ * Every table the daemon's Postgres schema declares.
+ *
+ * This used to name five of the fifteen. A check that covers a third of the
+ * schema can miss the exact failure it was built for: `omnitron_users` was
+ * not on the list, so a database that had lost the table nobody can sign in
+ * without would have been reported healthy.
+ *
+ * Kept as a literal rather than derived, because the point is to notice a
+ * table that is GONE — deriving it from the live database would make the
+ * comparison vacuous. `doctor-required-tables.test.ts` keeps it honest from
+ * the other side, reading `OmnitronDatabase` out of `schema.ts` and failing
+ * when the two disagree, so adding a table to the schema and forgetting this
+ * list is a red test rather than a silent gap.
+ */
+export const REQUIRED_TABLES = [
+  'nodes',
+  'omnitron_users',
+  'omnitron_sessions',
+  'logs',
+  'metrics_raw',
+  'alert_rules',
+  'alert_events',
+  'deployments',
+  'omnitron_audit_log',
+  'pipelines',
+  'pipeline_runs',
+  'traces',
+  'sync_buffer',
+  'sync_ingested',
+  'node_health_checks',
+] as const satisfies readonly string[];
+
+/**
  * The internal database: reachable, migrated, and actually holding the tables
  * the daemon queries.
  *
@@ -200,11 +233,10 @@ async function checkDatabase(findings: Findings): Promise<void> {
       });
     }
 
-    // The tables whose absence produced the log storm. Checked by name rather
-    // than inferred from bookkeeping: a database can carry migration rows and
-    // still be missing tables if someone dropped them.
-    const required = ['alert_rules', 'omnitron_sessions', 'logs', 'metrics_raw', 'nodes'];
-    const missing = required.filter((t) => !present.has(t));
+    // Checked by name rather than inferred from bookkeeping: a database can
+    // carry migration rows and still be missing tables if someone dropped
+    // them — which is the outage this whole command was written for.
+    const missing = REQUIRED_TABLES.filter((t) => !present.has(t));
     if (missing.length > 0) {
       findings.add({
         id: 'db.missing-tables',

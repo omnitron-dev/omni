@@ -898,11 +898,19 @@ export async function checkDiskSpace(findings: Findings): Promise<void> {
     `${gib(free)} available of ${gib(total)} on the filesystem holding ${OMNITRON_HOME}`,
   ];
 
-  // Only measured when space is already low: it is the part of the disk this
-  // tool is responsible for, and naming it turns "the disk is full" into
-  // something the operator can act on without hunting.
-  const logBytes = directorySize(path.join(OMNITRON_HOME, 'logs'));
-  if (logBytes > 0) evidence.push(`omnitron's own logs account for ${gib(logBytes)}`);
+  // Measured, not assumed. An earlier version of this check named the log
+  // directory — the plausible culprit for a tool that writes logs. On this
+  // host the logs are 163 MiB of a 7.4 GiB footprint, while `projects`
+  // holds 4.4 GiB of build artefacts and `backups` 2.8 GiB, so the evidence
+  // would have sent an operator to clean the one directory that was already
+  // rotating properly.
+  const parts = biggestSubdirectories(OMNITRON_HOME, 3);
+  if (parts.length > 0) {
+    evidence.push(
+      `omnitron's own ${gib(parts.reduce((n, d) => n + d.bytes, 0))} sits mostly in ` +
+        parts.map((d) => `${d.name} ${gib(d.bytes)}`).join(', ')
+    );
+  }
 
   findings.add({
     id: free < ERROR_BYTES ? 'disk.exhausted' : 'disk.low',
@@ -918,9 +926,43 @@ export async function checkDiskSpace(findings: Findings): Promise<void> {
   });
 }
 
+/**
+ * The largest immediate subdirectories of `dir`, biggest first.
+ *
+ * The point is to name what is actually holding the space rather than the
+ * component the reader would have guessed.
+ */
+export function biggestSubdirectories(dir: string, limit: number): Array<{ name: string; bytes: number }> {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter((e) => e.isDirectory())
+    .map((e) => ({ name: e.name, bytes: directorySize(path.join(dir, e.name)) }))
+    .filter((d) => d.bytes > 0)
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, limit);
+}
+
 /** Recursive byte total, bounded so a pathological tree cannot stall a check. */
 export function directorySize(dir: string, budget = { entries: 20_000 }): number {
   let total = 0;
+
+  // A path that is a file is worth its own size. Returning 0 instead would
+  // make the `isDirectory()` filter in `biggestSubdirectories` unobservable —
+  // a guard nothing could ever catch failing, which is the kind that quietly
+  // stops being needed.
+  try {
+    const st = fs.statSync(dir);
+    if (!st.isDirectory()) return st.size;
+  } catch {
+    return 0;
+  }
+
   let stack: string[] = [dir];
   while (stack.length > 0 && budget.entries > 0) {
     const current = stack.pop()!;
@@ -980,7 +1022,10 @@ export async function checkConsoleServing(findings: Findings, dc: IDaemonConfig)
     return;
   }
 
-  if (status >= 200 && status < 400) return;
+  if (status >= 200 && status < 400) {
+    await checkConsoleProxy(findings, port);
+    return;
+  }
 
   findings.add({
     id: 'webapp.not-serving',
@@ -997,6 +1042,58 @@ export async function checkConsoleServing(findings: Findings, dc: IDaemonConfig)
       'Rebuild and recreate: `pnpm --filter @omnitron/console build`, then ' +
       '`omnitron webapp stop && omnitron webapp start`. A restart is not enough — ' +
       'a bind mount is resolved when the container is created.',
+  });
+}
+
+/**
+ * Whether the console can reach the daemon THROUGH its own proxy.
+ *
+ * Serving the application and being able to use it are different claims, and
+ * this platform has had them come apart: nginx handed out the bundle while
+ * `/ws` was misconfigured, so the console loaded, could not open its event
+ * stream, and reported the daemon offline. The operator saw a working page
+ * telling them their platform was down.
+ *
+ * The proxy config is GENERATED when the container is created, so it drifts
+ * exactly when the daemon's ports change and nobody recreated the container —
+ * which is also when a restart will not help.
+ *
+ * `/api/health` is chosen because it is the one proxied path that answers
+ * without credentials; a 502 or a timeout there means nginx cannot reach the
+ * daemon it was pointed at, and the console's every RPC takes the same route.
+ */
+async function checkConsoleProxy(findings: Findings, port: number): Promise<void> {
+  let status: number | null = null;
+  let failure = '';
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    status = res.status;
+  } catch (err) {
+    failure = describeError(err);
+  }
+
+  if (status !== null && status >= 200 && status < 400) return;
+
+  findings.add({
+    id: 'webapp.proxy-unreachable',
+    severity: 'error',
+    title: 'The console is served, but it cannot reach the daemon through it',
+    evidence: [
+      `GET http://127.0.0.1:${port}/ → served`,
+      status === null
+        ? `GET http://127.0.0.1:${port}/api/health → ${failure}`
+        : `GET http://127.0.0.1:${port}/api/health → ${status}`,
+      'the console reaches the daemon over this same proxy, so every RPC it makes takes this route',
+    ],
+    remedy:
+      'nginx is up and serving the bundle, so this is its upstream, not the container: the proxy config ' +
+      'names the daemon ports and is written when the container is CREATED. Recreate it — ' +
+      '`omnitron webapp stop && omnitron webapp start` — rather than restarting. If the daemon itself is ' +
+      'the problem, `omnitron doctor` reports it separately as `daemon.down`; a healthy daemon plus this ' +
+      'finding means the two disagree about which port to use.',
   });
 }
 

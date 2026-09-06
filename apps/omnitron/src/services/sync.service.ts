@@ -181,8 +181,13 @@ export class SyncService {
     }, this.config.interval);
     this.syncTimer.unref();
 
-    // Initial sync attempt
-    this.syncCycle().catch(() => {});
+    // Initial sync attempt — reported like every other one. The recurring
+    // call four lines above logs its failure; this one swallowed it, and it
+    // is the more informative of the two: it is the first evidence that a
+    // slave can reach its master at all.
+    this.syncCycle().catch((err) => {
+      this.logger.error({ error: (err as Error).message }, 'Initial sync cycle failed');
+    });
   }
 
   /**

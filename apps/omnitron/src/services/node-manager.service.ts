@@ -177,8 +177,14 @@ export class NodeManagerService extends EventEmitter {
     this.save();
     this.emit('node:added', node);
     this.logger.info({ nodeId: id, name: node.name, host: node.host }, 'Node added');
-    // Check connectivity in background — secrets are already persisted
-    void this.checkNodeStatus(id).catch(() => {});
+    // Check connectivity in background — secrets are already persisted.
+    // `checkNodeStatus` records an unreachable host in the status it returns
+    // rather than throwing, so anything arriving here is a fault in the probe
+    // itself, and swallowing it leaves the node "unchecked" for ever with
+    // nothing to explain why.
+    void this.checkNodeStatus(id).catch((err) => {
+      this.logger.warn({ nodeId: id, err }, 'Connectivity check failed to run');
+    });
     return node;
   }
 
@@ -224,7 +230,9 @@ export class NodeManagerService extends EventEmitter {
     this.emit('node:updated', updated);
     // Re-check connectivity after update
     if (!updated.isLocal) {
-      void this.checkNodeStatus(id).catch(() => {});
+      void this.checkNodeStatus(id).catch((err) => {
+        this.logger.warn({ nodeId: id, err }, 'Connectivity check failed to run');
+      });
     }
     return updated;
   }

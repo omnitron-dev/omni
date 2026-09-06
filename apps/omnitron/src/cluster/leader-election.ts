@@ -95,7 +95,20 @@ export class LeaderElection extends EventEmitter {
   constructor(
     private readonly nodeId: string,
     private readonly fleetService: FleetService,
-    private readonly logger: { info: (...args: any[]) => void; warn: (...args: any[]) => void; debug: (...args: any[]) => void },
+    /**
+     * The daemon passes a full `ILogger`; this shape used to name only
+     * `info`, `warn` and `debug`. The omission was not a decision — it left
+     * the component that decides cluster leadership unable to report an
+     * error at the level an error deserves, so anything genuinely wrong here
+     * had to be filed as a warning or dropped. `error` is what the caller
+     * has always provided.
+     */
+    private readonly logger: {
+      info: (...args: any[]) => void;
+      warn: (...args: any[]) => void;
+      error: (...args: any[]) => void;
+      debug: (...args: any[]) => void;
+    },
     config?: Partial<ElectionConfig>
   ) {
     super();
@@ -442,9 +455,17 @@ export class LeaderElection extends EventEmitter {
 
     this.emit('leader:elected', this.nodeId, this.term);
 
-    // Update fleet registry with leader role
-    this.updateFleetRole('leader').catch(() => {
-      // Non-critical — fleet registry may be temporarily unavailable
+    // Update fleet registry with leader role. Reported but not fatal: this
+    // node IS the leader whatever the registry says, and the heartbeats it
+    // is about to send are what the cluster actually follows. The registry
+    // is how an operator sees the topology, so a stale one is a reporting
+    // fault rather than a correctness one — the opposite of the step-down
+    // case, where the registry outlives the fact.
+    this.updateFleetRole('leader').catch((err) => {
+      this.logger.warn(
+        { nodeId: this.nodeId, term: this.term, err },
+        'Became leader but could not record it in the fleet registry'
+      );
     });
 
     // Start sending heartbeats
@@ -491,8 +512,17 @@ export class LeaderElection extends EventEmitter {
     this.setState('follower');
     this.leaderId = null;
 
-    // Update fleet registry
-    await this.updateFleetRole('follower').catch(() => {});
+    // Update fleet registry. A failure here leaves the registry saying this
+    // node is still the leader while it has stepped down — the disagreement
+    // that every other node reads as "there is a leader" and acts on. It
+    // cannot be retried here (the step-down has already happened and must
+    // not be undone), but it must not be silent.
+    await this.updateFleetRole('follower').catch((err) => {
+      this.logger.error(
+        { nodeId: this.nodeId, term: this.term, err },
+        'Stepped down but could not update the fleet registry — it still lists this node as leader'
+      );
+    });
 
     // Start election timer so a new leader can be elected
     this.resetElectionTimer();
@@ -585,7 +615,13 @@ export class LeaderElection extends EventEmitter {
         );
         continue;
       }
-      // Fire-and-forget — don't block on individual peer responses
+      // Fire-and-forget, and silent on purpose — unlike the swallows above
+      // it, this one is right. A peer that does not answer a heartbeat is
+      // the ordinary case (it is down, restarting, or partitioned), the
+      // consequence is already handled by that peer's own election timer,
+      // and logging at heartbeat frequency would bury everything else in
+      // the file. Absence of an answer is data the cluster acts on, not an
+      // error to report.
       this.callPeerRpc(peer.address, rpcPort, 'leaderHeartbeat', heartbeatData).catch(() => {});
     }
   }
@@ -633,11 +669,16 @@ export class LeaderElection extends EventEmitter {
     this.emit('state:changed', newState, previousState);
   }
 
+  /**
+   * Write this node's role to the fleet registry.
+   *
+   * Throws. It used to swallow — which meant the `.catch()` at both call
+   * sites could never fire, including one added specifically to report the
+   * failure. Two layers each deciding the error is "best-effort" is one
+   * layer too many: the caller knows what the failure means and this does
+   * not.
+   */
   private async updateFleetRole(role: 'leader' | 'follower'): Promise<void> {
-    try {
-      await this.fleetService.setRole(this.nodeId, role);
-    } catch {
-      // Best-effort — fleet registry may not be available
-    }
+    await this.fleetService.setRole(this.nodeId, role);
   }
 }

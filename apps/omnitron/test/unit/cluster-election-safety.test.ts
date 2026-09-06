@@ -130,3 +130,51 @@ describe('who may be heard', () => {
     await e.stop();
   });
 });
+
+describe('stepping down', () => {
+  it('reports a fleet registry that still names it leader', async () => {
+    // The step-down has already happened and cannot be undone, so this
+    // cannot be retried — which is exactly why it must not be silent. Every
+    // other node reads the registry as "there is a leader" and acts on it.
+    const logger = {
+      info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(),
+      child: () => logger,
+    };
+
+    const fleet = {
+      listNodes: async () => [],
+      setRole: async () => {
+        throw new Error('registry unreachable');
+      },
+    };
+
+    const el = new LeaderElection('n1', fleet as never, logger as never);
+    // `stepDown()` returns immediately unless this node IS the leader —
+    // without this the test called it on a follower and asserted about a
+    // method that had returned on its first line.
+    (el as unknown as { state: string }).state = 'leader';
+
+    await el.stepDown();
+    el.stop();
+
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(String(logger.error.mock.calls[0]![1])).toMatch(/still lists this node as leader/i);
+  });
+
+  it('says nothing when the registry accepted the change', async () => {
+    const logger = {
+      info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(),
+      child: () => logger,
+    };
+
+    const fleet = { listNodes: async () => [], setRole: async () => undefined };
+
+    const el = new LeaderElection('n1', fleet as never, logger as never);
+    (el as unknown as { state: string }).state = 'leader';
+
+    await el.stepDown();
+    el.stop();
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+});

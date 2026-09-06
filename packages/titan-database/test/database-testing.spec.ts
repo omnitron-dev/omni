@@ -565,12 +565,20 @@ describeOrSkip('DatabaseTestingModule', () => {
           "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `.execute(db);
-    }, 60000);
+    }, 90_000);
+    // 90 s against the Postgres factory's own 45 s — the same relationship, and
+    // it was already the reason this one did not fail.
 
     afterAll(async () => {
-      await pgTestService.afterAll();
-      await pgApp.stop();
-      await pgContainer.cleanup();
+    // Optional-chained on purpose. When the container hook times out — a
+    // 60-second budget against `docker run` on a busy host — none of these
+    // exist, and an unguarded teardown then throws
+    // "Cannot read properties of undefined", turning one failure into two and
+    // putting its own error where the real cause used to be. It also leaves the
+    // container behind, because `cleanup()` is never reached.
+      await pgTestService?.afterAll();
+      await pgApp?.stop();
+      await pgContainer?.cleanup();
     });
 
     beforeEach(async () => {
@@ -724,12 +732,24 @@ describeOrSkip('DatabaseTestingModule', () => {
           FOREIGN KEY (user_id) REFERENCES users(id)
         )
       `.execute(db);
-    }, 60000);
+    }, 120_000);
+    // 120 s, because the factory this hook calls is allowed 90 s on its own:
+    // `createMySQLContainer` passes `waitFor.timeout: 90000` with the comment
+    // "MySQL 8.0 can take longer to initialize". A 60 s hook could therefore
+    // expire while the call inside it was still waiting legitimately — the two
+    // budgets contradicted each other, and the smaller one was on the outside.
+    // Observed as `Hook timed out in 60000ms` on an otherwise healthy host.
 
     afterAll(async () => {
-      await mysqlTestService.afterAll();
-      await mysqlApp.stop();
-      await mysqlContainer.cleanup();
+    // Optional-chained on purpose. When the container hook times out — a
+    // 60-second budget against `docker run` on a busy host — none of these
+    // exist, and an unguarded teardown then throws
+    // "Cannot read properties of undefined", turning one failure into two and
+    // putting its own error where the real cause used to be. It also leaves the
+    // container behind, because `cleanup()` is never reached.
+      await mysqlTestService?.afterAll();
+      await mysqlApp?.stop();
+      await mysqlContainer?.cleanup();
     });
 
     beforeEach(async () => {

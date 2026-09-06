@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { databasesToPrune } from '../../src/services/backup.service.js';
 import {
   parseSchedule,
   nextCronDelay,
@@ -152,5 +153,41 @@ describe('describeSchedule', () => {
     expect(describeSchedule(parseSchedule('hourly'))).toBe('every 1h');
     expect(describeSchedule(parseSchedule('90000'))).toBe('every 90000ms');
     expect(describeSchedule(parseSchedule('300000'))).toBe('every 5m');
+  });
+});
+
+describe('databasesToPrune', () => {
+  /**
+   * Retention that runs only where the producer still runs.
+   *
+   * The sweep used to derive its set from the SCHEDULE, so a database
+   * removed from the configuration kept every backup it had ever produced.
+   * Measured on the development host: `tor-keys` held 37 files and 343 MiB,
+   * none newer than two months, because that name appears only in the `full`
+   * pass and the `full` pass no longer runs. `storage-objects` held fifteen
+   * more.
+   */
+  it('bounds what is on disk as well as what is scheduled', () => {
+    const dbs = databasesToPrune(['main', 'geo'], ['main', 'retired-service']);
+
+    expect(dbs).toContain('retired-service');
+    expect(dbs).toContain('main');
+    expect(dbs).toContain('geo');
+  });
+
+  it('always includes the artefacts only a full pass produces', () => {
+    // These are named nowhere else — not in the stack map, and not on disk
+    // once their own backups have been pruned away. Dropping them from the
+    // list is how they stopped being pruned in the first place.
+    const dbs = databasesToPrune([], []);
+
+    expect(dbs).toEqual(expect.arrayContaining(['storage-objects', 'tor-keys', 'daemon-state']));
+  });
+
+  it('names each database once', () => {
+    const dbs = databasesToPrune(['main', 'main'], ['main', 'tor-keys']);
+
+    expect(dbs.filter((d) => d === 'main')).toHaveLength(1);
+    expect(dbs.filter((d) => d === 'tor-keys')).toHaveLength(1);
   });
 });

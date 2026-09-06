@@ -6,7 +6,7 @@
  * Authentication and authorization guards for route protection.
  * Works with any router (React Router, Next.js, TanStack Router).
  *
- * @module @omnitron-dev/prism/blocks/auth-block
+ * @module blocks/auth-block
  */
 
 import { type ReactNode, useEffect, useState } from 'react';

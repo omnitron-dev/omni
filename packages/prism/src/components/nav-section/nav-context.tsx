@@ -5,7 +5,7 @@
  *
  * Context for managing navigation state (pathname, router).
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 import { createContext, useContext, useMemo } from 'react';

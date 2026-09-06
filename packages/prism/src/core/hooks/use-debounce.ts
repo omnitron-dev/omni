@@ -5,7 +5,7 @@
  *
  * A hook for debouncing values.
  *
- * @module @omnitron-dev/prism/core/hooks/use-debounce
+ * @module core/hooks/use-debounce
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';

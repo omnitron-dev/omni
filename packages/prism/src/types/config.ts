@@ -1,7 +1,7 @@
 /**
  * Configuration Type Definitions
  *
- * @module @omnitron-dev/prism/types/config
+ * @module types/config
  */
 
 import type { ThemeConfig, ThemePreset } from './theme.js';

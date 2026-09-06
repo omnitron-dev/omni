@@ -1,7 +1,7 @@
 /**
  * Chart Component CSS Classes
  *
- * @module @omnitron-dev/prism/components/chart
+ * @module components/chart
  */
 
 import { createClasses } from '../../utils/create-classes.js';

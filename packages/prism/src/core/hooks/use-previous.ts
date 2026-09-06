@@ -5,7 +5,7 @@
  *
  * Tracks the previous value of a state or prop.
  *
- * @module @omnitron-dev/prism/core/hooks
+ * @module core/hooks
  */
 
 import { useRef, useEffect } from 'react';

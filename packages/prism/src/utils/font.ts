@@ -3,7 +3,7 @@
  *
  * Font family and unit conversion helpers.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 /**

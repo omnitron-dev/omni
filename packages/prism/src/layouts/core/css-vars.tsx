@@ -3,7 +3,7 @@
  *
  * Global CSS variables for layout dimensions and styling.
  *
- * @module @omnitron-dev/prism/layouts/core/css-vars
+ * @module layouts/core/css-vars
  */
 
 import type { ReactNode } from 'react';

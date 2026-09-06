@@ -5,7 +5,7 @@
  *
  * Custom scrollbar wrapper with themed styling.
  *
- * @module @omnitron-dev/prism/components/scrollbar
+ * @module components/scrollbar
  */
 
 import type { ReactNode, Ref } from 'react';

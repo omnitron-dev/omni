@@ -1,7 +1,7 @@
 /**
  * Menu Component Exports
  *
- * @module @omnitron-dev/prism/components/menu
+ * @module components/menu
  */
 
 export {

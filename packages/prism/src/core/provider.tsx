@@ -4,7 +4,7 @@
  * Root provider for the Prism design system.
  * Uses useSettingsStore (Zustand) as the single source of truth for settings.
  *
- * @module @omnitron-dev/prism/core/provider
+ * @module core/provider
  */
 
 import type { ReactNode } from 'react';

@@ -1,7 +1,7 @@
 /**
  * Chart Subcomponents
  *
- * @module @omnitron-dev/prism/components/chart
+ * @module components/chart
  */
 
 export { ChartLoading } from './chart-loading.js';

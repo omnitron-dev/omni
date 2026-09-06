@@ -6,7 +6,7 @@
  * Manages tab state for tab components with proper memoization.
  * Compatible with MUI Tabs and custom tab implementations.
  *
- * @module @omnitron-dev/prism/core/hooks
+ * @module core/hooks
  */
 
 import { useState, useCallback, useMemo } from 'react';

@@ -1,7 +1,7 @@
 /**
  * CommandPalette Component Exports
  *
- * @module @omnitron-dev/prism/components/command-palette
+ * @module components/command-palette
  */
 
 export {

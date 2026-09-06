@@ -3,7 +3,7 @@
  *
  * Rich, elegant color scales with gold/amber tones.
  *
- * @module @omnitron-dev/prism/theme/colors/luxury
+ * @module theme/colors/luxury
  */
 
 import type { ColorScale } from '../../types/theme.js';

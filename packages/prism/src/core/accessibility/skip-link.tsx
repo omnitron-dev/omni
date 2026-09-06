@@ -3,7 +3,7 @@
  *
  * Provides keyboard users a way to skip navigation and jump to main content.
  *
- * @module @omnitron-dev/prism/core/accessibility/skip-link
+ * @module core/accessibility/skip-link
  */
 
 import type { ReactNode } from 'react';

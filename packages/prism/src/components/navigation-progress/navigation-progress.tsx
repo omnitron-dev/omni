@@ -8,7 +8,7 @@
  *
  * Framework-agnostic: accepts `pathname` as a prop (pass from your router).
  *
- * @module @omnitron-dev/prism/components/navigation-progress
+ * @module components/navigation-progress
  */
 
 import NProgress from 'nprogress';

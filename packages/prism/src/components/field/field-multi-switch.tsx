@@ -6,7 +6,7 @@
  * React Hook Form integrated multiple switch group.
  * Manages array values for multi-toggle scenarios.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import { useId, type ReactNode } from 'react';

@@ -3,7 +3,7 @@
  *
  * Export all color scales for use in palette generation.
  *
- * @module @omnitron-dev/prism/theme/colors
+ * @module theme/colors
  */
 
 export * from './base.js';

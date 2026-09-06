@@ -5,7 +5,7 @@
  *
  * Compact icon-only navigation for collapsed sidebars.
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';

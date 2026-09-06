@@ -5,7 +5,7 @@
  *
  * Colorable SVG icon component using CSS mask.
  *
- * @module @omnitron-dev/prism/components/svg-color
+ * @module components/svg-color
  */
 
 import type { ReactNode, Ref } from 'react';

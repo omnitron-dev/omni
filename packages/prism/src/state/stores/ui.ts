@@ -3,7 +3,7 @@
  *
  * Manages transient UI state (not persisted).
  *
- * @module @omnitron-dev/prism/state/stores
+ * @module state/stores
  */
 
 import { createUIStore, createSelectors } from '../create-store.js';

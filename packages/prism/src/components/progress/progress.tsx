@@ -5,7 +5,7 @@
  *
  * Linear and circular progress indicators.
  *
- * @module @omnitron-dev/prism/components/progress
+ * @module components/progress
  */
 
 import type { ReactNode, ComponentProps } from 'react';

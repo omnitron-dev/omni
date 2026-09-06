@@ -3,7 +3,7 @@
  *
  * Type definitions for the HTTP client module.
  *
- * @module @omnitron-dev/prism/http/types
+ * @module http/types
  */
 
 /**

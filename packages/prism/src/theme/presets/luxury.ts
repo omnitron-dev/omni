@@ -3,7 +3,7 @@
  *
  * A rich, elegant theme with deep colors and premium feel.
  *
- * @module @omnitron-dev/prism/theme/presets/luxury
+ * @module theme/presets/luxury
  */
 
 import type { ThemePresetDefinition, PresetPalette } from '../../types/theme.js';

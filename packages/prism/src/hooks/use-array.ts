@@ -5,7 +5,7 @@
  *
  * A hook for managing array state with convenient CRUD operations.
  *
- * @module @omnitron-dev/prism/hooks/use-array
+ * @module hooks/use-array
  */
 
 import { useState, useCallback, useMemo } from 'react';

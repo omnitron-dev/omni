@@ -5,7 +5,7 @@
  *
  * Lazy-loaded ApexCharts wrapper with theme integration and SSR support.
  *
- * @module @omnitron-dev/prism/components/chart
+ * @module components/chart
  */
 
 import type { ChartProps } from './types.js';

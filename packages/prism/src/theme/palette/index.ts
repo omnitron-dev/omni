@@ -1,7 +1,7 @@
 /**
  * Palette System
  *
- * @module @omnitron-dev/prism/theme/palette
+ * @module theme/palette
  */
 
 export * from './builder.js';

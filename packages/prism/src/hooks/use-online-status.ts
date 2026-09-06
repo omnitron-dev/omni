@@ -5,7 +5,7 @@
  *
  * Tracks browser online/offline status with event listeners.
  *
- * @module @omnitron-dev/prism/hooks/use-online-status
+ * @module hooks/use-online-status
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';

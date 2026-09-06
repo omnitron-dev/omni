@@ -4,7 +4,7 @@
  * Three-phase number input handling for controlled inputs.
  * Allows users to type freely while maintaining valid numeric state.
  *
- * @module @omnitron-dev/prism/utils/transform-number
+ * @module utils/transform-number
  */
 
 /**

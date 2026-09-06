@@ -1,7 +1,7 @@
 /**
  * Tabs Component Exports
  *
- * @module @omnitron-dev/prism/components/tabs
+ * @module components/tabs
  */
 
 export {

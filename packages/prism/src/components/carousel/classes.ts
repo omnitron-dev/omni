@@ -1,7 +1,7 @@
 /**
  * Carousel CSS Classes
  *
- * @module @omnitron-dev/prism/components/carousel
+ * @module components/carousel
  */
 
 import { createClasses } from '../../utils/create-classes.js';

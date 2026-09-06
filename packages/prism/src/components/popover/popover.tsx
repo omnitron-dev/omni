@@ -5,7 +5,7 @@
  *
  * Enhanced popover component with arrow support and useful hook.
  *
- * @module @omnitron-dev/prism/components/popover
+ * @module components/popover
  */
 
 import type { ReactNode, MouseEvent, Dispatch, SetStateAction } from 'react';

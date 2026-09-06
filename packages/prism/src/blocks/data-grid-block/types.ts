@@ -3,7 +3,7 @@
  *
  * Type definitions for the advanced data grid block component.
  *
- * @module @omnitron-dev/prism/blocks/data-grid-block/types
+ * @module blocks/data-grid-block/types
  */
 
 import type { ReactNode, MouseEvent } from 'react';

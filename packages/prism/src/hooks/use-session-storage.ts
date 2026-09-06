@@ -5,7 +5,7 @@
  *
  * A hook for persisting state in sessionStorage with automatic serialization.
  *
- * @module @omnitron-dev/prism/hooks/use-session-storage
+ * @module hooks/use-session-storage
  */
 
 import { useState, useCallback, useEffect } from 'react';

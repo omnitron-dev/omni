@@ -6,7 +6,7 @@
  * React Hook Form integrated file upload components using react-dropzone.
  * Includes Upload, UploadBox, and UploadAvatar variants.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import type { ReactNode } from 'react';

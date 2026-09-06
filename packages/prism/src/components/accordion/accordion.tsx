@@ -5,7 +5,7 @@
  *
  * Expandable content panels.
  *
- * @module @omnitron-dev/prism/components/accordion
+ * @module components/accordion
  */
 
 import type { ReactNode, ComponentProps } from 'react';

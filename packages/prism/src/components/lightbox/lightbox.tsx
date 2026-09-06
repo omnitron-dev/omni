@@ -6,7 +6,7 @@
  * Premium modal image/video viewer with smooth crossfade transitions,
  * glassmorphism UI, zoom, pan, touch gestures, and keyboard navigation.
  *
- * @module @omnitron-dev/prism/components/lightbox
+ * @module components/lightbox
  */
 
 import type { LightboxProps, LightboxSlide } from './types.js';

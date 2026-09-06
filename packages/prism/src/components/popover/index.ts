@@ -1,7 +1,7 @@
 /**
  * Popover Component Exports
  *
- * @module @omnitron-dev/prism/components/popover
+ * @module components/popover
  */
 
 export {

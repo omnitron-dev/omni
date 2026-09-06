@@ -1,7 +1,7 @@
 /**
  * Prism Stores
  *
- * @module @omnitron-dev/prism/state/stores
+ * @module state/stores
  */
 
 export { useThemeStore, themeStore, type ThemeState } from './theme.js';

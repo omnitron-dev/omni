@@ -16,7 +16,7 @@
  *   </PageContent.CardGrid>
  * </PageContent>
  *
- * @module @omnitron-dev/prism/components/page-content
+ * @module components/page-content
  */
 
 import type { ReactNode, Ref } from 'react';

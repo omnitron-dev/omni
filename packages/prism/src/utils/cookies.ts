@@ -3,7 +3,7 @@
  *
  * Type-safe cookie management with JSON serialization.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 /**

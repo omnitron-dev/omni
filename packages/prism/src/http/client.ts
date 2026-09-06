@@ -3,7 +3,7 @@
  *
  * Framework-agnostic HTTP client built on the Fetch API.
  *
- * @module @omnitron-dev/prism/http/client
+ * @module http/client
  */
 
 import type {

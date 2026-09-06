@@ -5,7 +5,7 @@
  *
  * A hook for infinite scrolling with paginated data loading.
  *
- * @module @omnitron-dev/prism/hooks/use-infinite-scroll
+ * @module hooks/use-infinite-scroll
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';

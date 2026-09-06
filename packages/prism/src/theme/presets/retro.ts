@@ -4,7 +4,7 @@
  * A nostalgic theme with vintage computer aesthetics.
  * Features amber/gold primary with classic terminal vibes.
  *
- * @module @omnitron-dev/prism/theme/presets/retro
+ * @module theme/presets/retro
  */
 
 import type { ThemePresetDefinition, ColorScale } from '../../types/theme.js';

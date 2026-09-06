@@ -11,7 +11,7 @@
  * Equal-height rows are guaranteed by `height: 100%` — pair the card
  * with a `<Grid container>` whose items share the same column span.
  *
- * @module @omnitron-dev/prism/components/nav-card
+ * @module components/nav-card
  */
 
 import type { ElementType, ReactNode } from 'react';

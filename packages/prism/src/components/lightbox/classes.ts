@@ -1,7 +1,7 @@
 /**
  * Lightbox CSS Classes
  *
- * @module @omnitron-dev/prism/components/lightbox
+ * @module components/lightbox
  */
 
 import { createClasses } from '../../utils/create-classes.js';

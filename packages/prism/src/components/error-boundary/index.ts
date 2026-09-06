@@ -1,7 +1,7 @@
 /**
  * Error Boundary Component
  *
- * @module @omnitron-dev/prism/components/error-boundary
+ * @module components/error-boundary
  */
 
 export {

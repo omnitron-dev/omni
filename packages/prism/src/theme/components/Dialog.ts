@@ -6,7 +6,7 @@
  * combinations) so co-locating the four keeps the spacing scale
  * obvious at a glance.
  *
- * @module @omnitron-dev/prism/theme/components/Dialog
+ * @module theme/components/Dialog
  */
 
 import type { Theme, Components } from '@mui/material/styles';

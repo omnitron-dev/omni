@@ -3,7 +3,7 @@
  *
  * Show differences between local and registry versions.
  *
- * @module @omnitron-dev/prism/cli/commands/diff
+ * @module cli/commands/diff
  */
 
 import { Command } from 'commander';

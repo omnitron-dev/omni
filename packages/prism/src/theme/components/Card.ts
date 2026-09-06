@@ -7,7 +7,7 @@
  * keeps the rhythm explicit and lets a theme tweak land in one
  * place.
  *
- * @module @omnitron-dev/prism/theme/components/Card
+ * @module theme/components/Card
  */
 
 import type { Theme, Components } from '@mui/material/styles';

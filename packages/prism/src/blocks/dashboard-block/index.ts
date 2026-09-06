@@ -3,7 +3,7 @@
  *
  * Reusable dashboard widget/card block with header, content, and footer slots.
  *
- * @module @omnitron-dev/prism/blocks/dashboard-block
+ * @module blocks/dashboard-block
  */
 
 export {

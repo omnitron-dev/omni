@@ -4,7 +4,7 @@
  * Reusable dashboard widget/card block with header, content, and footer slots.
  * Supports loading, error states, and collapsible behavior.
  *
- * @module @omnitron-dev/prism/blocks/dashboard-block
+ * @module blocks/dashboard-block
  */
 
 'use client';

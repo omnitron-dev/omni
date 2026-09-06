@@ -6,7 +6,7 @@
  * DataGrid in MUI X (slots exposed via internal class names), not
  * an anti-pattern.
  *
- * @module @omnitron-dev/prism/theme/components/DataGrid
+ * @module theme/components/DataGrid
  */
 
 import type { Theme, Components } from '@mui/material/styles';

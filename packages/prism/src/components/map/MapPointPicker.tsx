@@ -14,7 +14,7 @@
  * dependency on any specific RPC client. Apps wire
  * `Geocoding.reverse` to `value` changes via TanStack Query.
  *
- * @module @omnitron-dev/prism/components/map
+ * @module components/map
  */
 
 import { useCallback } from 'react';

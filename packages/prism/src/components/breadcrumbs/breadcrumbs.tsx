@@ -6,7 +6,7 @@
  * Full-featured navigation breadcrumbs with heading, back link, action slot,
  * and more links section. Adapted from minimal-vite-ts patterns.
  *
- * @module @omnitron-dev/prism/components/breadcrumbs
+ * @module components/breadcrumbs
  */
 
 import type { ReactNode, ElementType } from 'react';

@@ -10,7 +10,7 @@
  * - Template variable substitution
  * - Lockfile tracking for updates
  *
- * @module @omnitron-dev/prism/registry/installer
+ * @module registry/installer
  */
 
 import { promises as fs } from 'node:fs';

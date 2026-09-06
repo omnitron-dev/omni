@@ -3,7 +3,7 @@
  *
  * Typography configuration for Prism themes.
  *
- * @module @omnitron-dev/prism/theme/typography
+ * @module theme/typography
  */
 
 import type { ThemeOptions } from '@mui/material/styles';

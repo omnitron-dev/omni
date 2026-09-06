@@ -4,7 +4,7 @@
  * Combines clsx for conditional classes with optional Tailwind merge.
  * Inspired by shadcn/ui's cn() utility and minimal-shared's mergeClasses.
  *
- * @module @omnitron-dev/prism/utils/cn
+ * @module utils/cn
  */
 
 import { clsx, type ClassValue } from 'clsx';

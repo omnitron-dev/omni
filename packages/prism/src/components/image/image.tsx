@@ -5,7 +5,7 @@
  *
  * Enhanced image component with lazy loading, aspect ratio, and fallback support.
  *
- * @module @omnitron-dev/prism/components/image
+ * @module components/image
  */
 
 import type { ReactNode, ImgHTMLAttributes, Ref } from 'react';

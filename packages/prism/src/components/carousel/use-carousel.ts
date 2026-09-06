@@ -16,7 +16,7 @@
  * for the Carousel component" and the example below wired the two together,
  * neither of which was true.
  *
- * @module @omnitron-dev/prism/components/carousel
+ * @module components/carousel
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';

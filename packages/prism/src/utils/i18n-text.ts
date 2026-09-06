@@ -14,7 +14,7 @@
  *  - O(1) in the happy path (direct map access) with a deterministic
  *    fallback walk.
  *
- * @module @omnitron-dev/prism/utils/i18n-text
+ * @module utils/i18n-text
  */
 
 /** A bag of language-keyed strings. Keys are RFC 5646 language codes

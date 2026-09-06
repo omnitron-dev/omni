@@ -14,7 +14,7 @@
  * it gives you click + popup affordances per marker. This layer
  * is for the "show me the whole network" view.
  *
- * @module @omnitron-dev/prism/components/map
+ * @module components/map
  */
 
 import { useMemo } from 'react';

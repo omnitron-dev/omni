@@ -3,7 +3,7 @@
  *
  * Add components or blocks to your project.
  *
- * @module @omnitron-dev/prism/cli/commands/add
+ * @module cli/commands/add
  */
 
 import { Command } from 'commander';
@@ -350,7 +350,7 @@ function generateBarrelExport(definition: ComponentDefinition, pascalName: strin
  *
  * ${definition.description || ''}
  *
- * @module @omnitron-dev/prism/components/${definition.name}
+ * @module components/${definition.name}
  */
 
 ${exports.join('\n')}
@@ -366,7 +366,7 @@ function generateTypeDefinitions(name: string, pascalName: string, definition: C
   return `/**
  * ${pascalName} Type Definitions
  *
- * @module @omnitron-dev/prism/components/${name}
+ * @module components/${name}
  */
 
 import type { ${muiComponent}Props as Mui${muiComponent}Props } from '@mui/material/${muiComponent}';
@@ -404,7 +404,7 @@ function generateHook(hookName: string, pascalName: string, definition: Componen
  *
  * Custom hook for ${definition.displayName || pascalName} component logic.
  *
- * @module @omnitron-dev/prism/components/${definition.name}
+ * @module components/${definition.name}
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -488,7 +488,7 @@ function generateBlockHook(hookName: string, pascalName: string, definition: Com
  *
  * State management hook for ${definition.displayName || pascalName} block.
  *
- * @module @omnitron-dev/prism/blocks/${definition.name}
+ * @module blocks/${definition.name}
  */
 
 import { useState, useCallback, useMemo, useContext, createContext } from 'react';
@@ -673,7 +673,7 @@ function generateSchema(name: string, pascalName: string, definition: ComponentD
  *
  * Zod validation schemas for ${definition.displayName || pascalName} forms.
  *
- * @module @omnitron-dev/prism/blocks/${definition.name}
+ * @module blocks/${definition.name}
  */
 
 import { z } from 'zod';
@@ -786,7 +786,7 @@ function generateComponent(
  *
  * ${definition.description || ''}
  *
- * @module @omnitron-dev/prism/components/${definition.name}
+ * @module components/${definition.name}
  * @see https://mui.com/material-ui/react-${name}/
  */
 
@@ -846,7 +846,7 @@ function generateBlockComponent(
  *
  * ${definition.description || ''}
  *
- * @module @omnitron-dev/prism/blocks/${definition.name}
+ * @module blocks/${definition.name}
  */
 
 import type { ReactNode } from 'react';

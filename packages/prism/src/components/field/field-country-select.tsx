@@ -6,7 +6,7 @@
  * React Hook Form integrated country selector with flag icons.
  * Provides searchable country selection with ISO code support.
  *
- * @module @omnitron-dev/prism/components/field
+ * @module components/field
  */
 
 import type { ReactNode, SyntheticEvent } from 'react';

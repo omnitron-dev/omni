@@ -4,7 +4,7 @@
  * Common utility functions for formatting, string manipulation,
  * class name handling, refs, URLs, and number input handling.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 // =============================================================================

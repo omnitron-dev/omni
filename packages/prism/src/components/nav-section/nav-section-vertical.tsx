@@ -5,7 +5,7 @@
  *
  * Collapsible navigation groups for sidebar layouts.
  *
- * @module @omnitron-dev/prism/components/nav-section
+ * @module components/nav-section
  */
 
 import { useTheme } from '@mui/material/styles';

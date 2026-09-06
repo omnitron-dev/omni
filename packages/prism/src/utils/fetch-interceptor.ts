@@ -6,7 +6,7 @@
  *
  * Designed for production applications that need centralized HTTP handling.
  *
- * @module @omnitron-dev/prism/utils
+ * @module utils
  */
 
 import { createAsyncLock, type AsyncLock } from './async-lock.js';

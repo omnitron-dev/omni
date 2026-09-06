@@ -5,7 +5,7 @@
  *
  * Enhanced table component with sorting, selection, and pagination.
  *
- * @module @omnitron-dev/prism/components/table
+ * @module components/table
  */
 
 import type { ReactNode, ChangeEvent, Ref } from 'react';

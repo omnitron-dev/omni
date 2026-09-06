@@ -1,7 +1,7 @@
 /**
  * Theme Presets Index
  *
- * @module @omnitron-dev/prism/theme/presets
+ * @module theme/presets
  */
 
 import type { ThemePreset, ThemePresetDefinition } from '../../types/theme.js';

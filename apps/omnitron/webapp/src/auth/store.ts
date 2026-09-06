@@ -31,11 +31,22 @@ interface AuthState {
   sessionId: string | null;
   initialized: boolean;
   loading: boolean;
+  /**
+   * Why session restore ended without a user, when the reason was not "you
+   * are signed out".
+   *
+   * Measured live with the daemon's database refused: the console spent 28
+   * seconds on a bare progress bar — three RPCs at nine seconds each — and
+   * then showed a sign-in page that said nothing. Every one of those calls
+   * failed with ECONNREFUSED, which no amount of re-authenticating fixes.
+   */
+  initError: string | null;
 
   initialize: () => Promise<void>;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   setUser: (user: ConsoleUser | null) => void;
+  clearInitError: () => void;
 }
 
 /**
@@ -88,6 +99,35 @@ let initializing: Promise<void> | null = null;
 /**
  * The body of `initialize()`, so the store method can stay a thin guard.
  */
+/**
+ * Could a token refresh fix this?
+ *
+ * The ladder below — refresh, validate, refresh again — exists for an expired
+ * token. When the daemon answers 500 because it cannot reach its own
+ * database, every rung fails identically and the console spends three RPC
+ * timeouts on it. Worse, the ladder ends in `clearSession()`, so a session
+ * that is probably still valid is thrown away and the operator is sent to
+ * re-authenticate against the database that is down.
+ *
+ * The transport marks these: netron-browser copies the daemon's error code
+ * onto the thrown error. An error without a code is treated as an auth
+ * failure, which is what the ladder always assumed.
+ */
+function isAuthFailure(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === undefined || code === null) return true;
+  return code === 401 || code === 'UNAUTHORIZED' || code === 'SESSION_REVOKED';
+}
+
+/** What to show an operator when the daemon itself could not answer. */
+function describeInitFailure(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === 'ECONNREFUSED' || code === 'SESSION_STORE_UNAVAILABLE') {
+    return 'The daemon could not reach its database, so your session could not be checked. This is not a sign-in problem — run `omnitron doctor` for the reason.';
+  }
+  return 'The daemon could not check your session. Signing in again will not help until it can — run `omnitron doctor` for the reason.';
+}
+
 async function runInitialize(set: (partial: Partial<AuthState>) => void): Promise<void> {
   const sessionId = getSessionId();
   if (!sessionId) {
@@ -128,7 +168,13 @@ async function runInitialize(set: (partial: Partial<AuthState>) => void): Promis
       sessionManager.start(expiresAt, handleSessionEvent);
       return;
     }
-  } catch {
+  } catch (err) {
+    if (!isAuthFailure(err)) {
+      // Not something re-authenticating can fix. The session is left in place
+      // — it is very likely still valid, and the daemon simply cannot say so.
+      set({ initialized: true, initError: describeInitFailure(err) });
+      return;
+    }
     // Session invalid or daemon unreachable — try refresh
     try {
       const refreshed = await sessionManager.refresh();
@@ -172,7 +218,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   sessionId: null,
   initialized: false,
+  initError: null,
   loading: false,
+
+  clearInitError: () => set({ initError: null }),
 
   initialize: async () => {
     if (get().initialized) return;

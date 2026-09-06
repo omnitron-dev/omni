@@ -21,6 +21,28 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+
+/**
+ * `ensureBootReconciled` calls `discoverManagedProcesses()` before it reaches
+ * the janitor, and that function walks `ps` synchronously.
+ *
+ * The janitor stub below carries a comment saying this test "never shells out
+ * to `ps`". It was wrong: the stub covers the sweep, not the discovery pass
+ * ahead of it, and the two are separate calls on the same path. On an
+ * unloaded machine the difference is milliseconds, which is why it went
+ * unnoticed; in a full run with a hundred parallel workers each spawning
+ * `ps`, this file timed out twice — once at 30s and once at 102s — while
+ * passing three times out of three on its own.
+ *
+ * Mocked at the module boundary because the import is resolved at module
+ * scope in `orchestrator.service.ts`, so nothing the test does to the
+ * instance can reach it.
+ */
+vi.mock('@omnitron-dev/titan-pm', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  discoverManagedProcesses: () => [],
+}));
+
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import type { ProcessManager } from '../../src/orchestrator/process-manager.js';
 import type { StateStore } from '../../src/daemon/state-store.js';
@@ -41,8 +63,9 @@ function makeService() {
   const pm = {} as ProcessManager;
   const svc = new OrchestratorService(noopLogger, pm, stateStore, process.cwd());
 
-  // Inject a janitor stub so the test never shells out to `ps` and
-  // never starts a real periodic timer.
+  // Inject a janitor stub so the sweep never shells out and never starts a
+  // real periodic timer. The discovery pass that runs before it is mocked at
+  // the module boundary above — see the note there.
   const coldStart = vi.fn().mockResolvedValue(0);
   const start = vi.fn();
   const stop = vi.fn();

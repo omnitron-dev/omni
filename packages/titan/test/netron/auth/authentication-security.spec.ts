@@ -418,40 +418,81 @@ describe('AuthenticationManager Security Tests', () => {
     });
 
     describe('Token Timing Attack Resistance', () => {
-      it('should use constant-time hashing for token cache lookup', async () => {
+      /**
+       * This used to be a stopwatch, and it asserted the OPPOSITE of its name.
+       *
+       *     expect(avgHit).toBeLessThan(avgMiss);
+       *
+       * A name promising constant-time hashing, under an assertion REQUIRING a
+       * measurable timing difference between a cache hit and a cache miss — so
+       * an implementation that removed the difference would have failed it. Its
+       * own comment admitted as much ("Cache hits should be faster (this is
+       * expected)… validates the mechanism exists, not perfect constant-time").
+       * It also compared two averages of 0.02–0.05 ms, which is why it failed
+       * under a loaded full-package run. Reported by omni-4b.
+       *
+       * The hit/miss difference is real, unavoidable and uninteresting: a miss
+       * calls the `validateToken` provider and a hit does not. There is nothing
+       * to assert about it.
+       *
+       * What the name is actually about IS checkable, and without a clock. The
+       * cache is a map keyed by the full SHA-256 of the token, so a lookup
+       * cannot depend on how close a presented token is to a cached one: no
+       * prefix comparison, and a key whose width does not vary with the input.
+       */
+      it('keys the cache by a full digest, so lookup cannot depend on token similarity', async () => {
+        const provider = vi.fn().mockResolvedValue({ userId: 'test', roles: [], permissions: [] });
         authManager.configure({
           authenticate: vi.fn(),
-          validateToken: vi.fn().mockResolvedValue({ userId: 'test', roles: [], permissions: [] }),
+          validateToken: provider,
           tokenCache: { enabled: true, ttl: 60000 },
         });
 
-        // Populate cache with a token
-        const cachedToken = 'cached-token-abc123';
-        await authManager.validateToken(cachedToken);
+        const cached = 'cached-token-abc123';
+        await authManager.validateToken(cached);
+        provider.mockClear();
 
-        // Measure timing for cache hit
-        const cacheHitTimes: number[] = [];
-        for (let i = 0; i < 100; i++) {
-          const start = performance.now();
-          await authManager.validateToken(cachedToken);
-          cacheHitTimes.push(performance.now() - start);
+        // Neighbours of the cached token — differing in the FIRST character, in
+        // the LAST character, and a strict prefix of it. A lookup that compared
+        // anything less than the whole token would treat these differently from
+        // each other; each must be an ordinary miss.
+        const neighbours = [
+          `X${cached.slice(1)}`,
+          `${cached.slice(0, -1)}X`,
+          cached.slice(0, -4),
+          `${cached}extra`,
+        ];
+        for (const t of neighbours) {
+          await authManager.validateToken(t);
         }
+        expect(provider).toHaveBeenCalledTimes(neighbours.length);
 
-        // Measure timing for cache miss
-        const cacheMissTimes: number[] = [];
-        for (let i = 0; i < 100; i++) {
-          const start = performance.now();
-          await authManager.validateToken(`different-token-${i}`);
-          cacheMissTimes.push(performance.now() - start);
+        // ...and the cached token itself is still answered without the provider.
+        provider.mockClear();
+        await authManager.validateToken(cached);
+        expect(provider).not.toHaveBeenCalled();
+      });
+
+      it('produces a cache key of one fixed width for any token length', async () => {
+        const provider = vi.fn().mockResolvedValue({ userId: 'test', roles: [], permissions: [] });
+        authManager.configure({
+          authenticate: vi.fn(),
+          validateToken: provider,
+          tokenCache: { enabled: true, ttl: 60000 },
+        });
+
+        await authManager.validateToken('a');
+        await authManager.validateToken('b'.repeat(4096));
+
+        const keys: string[] = [];
+        (authManager as any).tokenCache.forEach((_v: unknown, k: string) => keys.push(k));
+
+        // SHA-256 hex. A key that carried any of the token would vary in width
+        // with it, and would carry the secret into whatever reads the cache.
+        expect(keys).toHaveLength(2);
+        for (const k of keys) {
+          expect(k).toMatch(/^[0-9a-f]{64}$/);
         }
-
-        const avgHit = cacheHitTimes.reduce((a, b) => a + b, 0) / cacheHitTimes.length;
-        const avgMiss = cacheMissTimes.reduce((a, b) => a + b, 0) / cacheMissTimes.length;
-
-        // Cache hits should be faster (this is expected)
-        // But the hash computation should be constant-time
-        // Note: This test validates the mechanism exists, not perfect constant-time
-        expect(avgHit).toBeLessThan(avgMiss);
       });
 
       it('should hash tokens before caching (not store raw tokens)', async () => {

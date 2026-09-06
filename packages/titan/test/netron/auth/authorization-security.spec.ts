@@ -7,6 +7,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
+import { budget } from '../../utils/index.js';
 
 // Mock logger
 const createMockLogger = () => ({
@@ -123,7 +124,7 @@ describe('AuthorizationManager Security Tests', () => {
         const duration = Date.now() - startTime;
 
         // Should complete quickly (< 100ms), not hang
-        expect(duration).toBeLessThan(100);
+        expect(duration).toBeLessThan(budget(100));
         expect(result).toBe(true); // No match, so allowed (no ACL)
       });
 
@@ -166,7 +167,7 @@ describe('AuthorizationManager Security Tests', () => {
         const result = authzManager.canAccessService('a1b2c3d4e5f6g7h8i9j', adminContext);
         const duration = Date.now() - startTime;
 
-        expect(duration).toBeLessThan(100);
+        expect(duration).toBeLessThan(budget(100));
         expect(result).toBe(true);
       });
 
@@ -1160,7 +1161,7 @@ describe('AuthorizationManager Security Tests', () => {
         const duration = Date.now() - startTime;
 
         expect(result).toBe(true);
-        expect(duration).toBeLessThan(100);
+        expect(duration).toBeLessThan(budget(100));
       });
 
       it('checks a 1000-permission ACL without a pass over the grants per permission', () => {

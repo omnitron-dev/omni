@@ -14,4 +14,5 @@
  */
 
 export * from './transport-test-utils.js';
+export * from './timing-test-utils.js';
 export * from './error-test-utils.js';

@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { ValidationEngine } from '../../src/validation/validation-engine.js';
+import { budget } from '../utils/index.js';
 
 describe('Coercion Modes Tests', () => {
   let engine: ValidationEngine;
@@ -697,7 +698,7 @@ describe('Coercion Modes Tests', () => {
       const duration = Date.now() - startTime;
 
       // Should complete quickly (< 100ms for 1000 items)
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(budget(100));
 
       // Verify coercion worked
       expect(result.items).toHaveLength(1000);

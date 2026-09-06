@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BuiltInPolicies } from '../../../src/netron/auth/built-in-policies.js';
 import type { ExecutionContext, AuthContext, PolicyDefinition } from '../../../src/netron/auth/types.js';
 import type { ILogger } from '../../../src/types/logger.js';
+import { budget } from '../../utils/index.js';
 
 /**
  * Mock logger implementing ILogger interface
@@ -1198,7 +1199,7 @@ describe('BuiltInPolicies Integration Tests', () => {
         const elapsed = Date.now() - start;
 
         expect(decision.allowed).toBe(true);
-        expect(elapsed).toBeLessThan(100); // Should be fast
+        expect(elapsed).toBeLessThan(budget(100)); // Should be fast
       });
 
       it('should handle many permissions efficiently', async () => {
@@ -1211,7 +1212,7 @@ describe('BuiltInPolicies Integration Tests', () => {
         const elapsed = Date.now() - start;
 
         expect(decision.allowed).toBe(true);
-        expect(elapsed).toBeLessThan(100);
+        expect(elapsed).toBeLessThan(budget(100));
       });
     });
 

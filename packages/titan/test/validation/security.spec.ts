@@ -10,6 +10,9 @@
 
 import { z } from 'zod';
 import { ValidationEngine, ValidationError } from '../../src/validation/validation-engine.js';
+import { budget } from '../utils/index.js';
+
+
 
 describe('Security Validation Tests', () => {
   let engine: ValidationEngine;
@@ -182,7 +185,7 @@ describe('Security Validation Tests', () => {
         const duration = Date.now() - startTime;
 
         // Should fail quickly (< 100ms even for 1MB string)
-        expect(duration).toBeLessThan(100);
+        expect(duration).toBeLessThan(budget(100));
 
         expect(error).toBeInstanceOf(ValidationError);
         const json = error.toJSON();
@@ -276,18 +279,39 @@ describe('Security Validation Tests', () => {
       const duration = Date.now() - startTime;
 
       // Should validate quickly even with deep nesting
-      expect(duration).toBeLessThan(50);
+      expect(duration).toBeLessThan(budget(50));
       expect(result).toEqual(deepObject);
     });
 
-    it('should handle large arrays efficiently', () => {
+    it('rejects an oversized array, having validated every element of it', () => {
+      // This test used to assert `duration < 100ms` under the comment "Should
+      // fail quickly without processing all items". The bound passed, and the
+      // property it described is false: `.max(1000)` bounds what the array is
+      // ALLOWED to contain, not what gets parsed. Counted here rather than
+      // timed — 10 000 of 10 000 elements are validated before the length
+      // issue is reported, so a wall-clock bound was only ever measuring how
+      // fast the machine could do all the work the bound was claiming to skip.
+      //
+      // Recorded as a finding rather than fixed here: making the engine reject
+      // on length before parsing elements changes which issues a caller gets
+      // back (a length issue alone, instead of a length issue plus every
+      // element's), and that is a contract decision, not a test change. What
+      // matters for a DoS-prevention suite is that the cost of a rejected
+      // input currently scales with the input, and that this is now stated
+      // where it can be read.
+      let elementsValidated = 0;
       const schema = z.object({
         items: z
           .array(
-            z.object({
-              id: z.number(),
-              name: z.string(),
-            })
+            z
+              .object({
+                id: z.number(),
+                name: z.string(),
+              })
+              .refine(() => {
+                elementsValidated++;
+                return true;
+              })
           )
           .max(1000),
       });
@@ -300,19 +324,17 @@ describe('Security Validation Tests', () => {
         name: `Item ${i}`,
       }));
 
-      const startTime = Date.now();
-
       try {
         validator.validate({ items: largeArray });
         fail('Should have thrown');
       } catch (error: any) {
-        const duration = Date.now() - startTime;
-
-        // Should fail quickly without processing all items
-        expect(duration).toBeLessThan(100);
-
         expect(error).toBeInstanceOf(ValidationError);
       }
+
+      expect(
+        elementsValidated,
+        'a `.max()` bound does not stop the elements from being parsed'
+      ).toBe(largeArray.length);
     });
 
     it('should prevent ReDoS with complex regex patterns', () => {
@@ -339,7 +361,7 @@ describe('Security Validation Tests', () => {
         const duration = Date.now() - startTime;
 
         // Should fail quickly (< 100ms)
-        expect(duration).toBeLessThan(100);
+        expect(duration).toBeLessThan(budget(100));
 
         // Should throw an error (could be ValidationError or other)
         expect(error).toBeDefined();
@@ -415,7 +437,7 @@ describe('Security Validation Tests', () => {
       const duration = Date.now() - startTime;
 
       // Should handle large field efficiently
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(budget(100));
       expect(result.largeField.length).toBe(500_000);
     });
 
@@ -446,7 +468,7 @@ describe('Security Validation Tests', () => {
       const result = validator.validate(data);
       const duration = Date.now() - startTime;
 
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(budget(100));
       expect(result).toBeDefined();
     });
   });
@@ -570,7 +592,7 @@ describe('Security Validation Tests', () => {
       const duration = Date.now() - startTime;
 
       // Should handle without stack overflow and complete quickly
-      expect(duration).toBeLessThan(50);
+      expect(duration).toBeLessThan(budget(50));
       expect(result.data).toBeDefined();
     });
 

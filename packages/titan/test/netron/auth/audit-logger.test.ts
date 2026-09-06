@@ -24,6 +24,7 @@ import type { ILogger, LogLevel } from '../../../src/types/logger.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { budget } from '../../utils/index.js';
 
 /**
  * Shared call tracking for mock logger and all its children
@@ -1352,7 +1353,7 @@ describe('AuditLogger Integration Tests', () => {
       const elapsed = Date.now() - start;
 
       // Should return quickly in async mode (not wait for slow save)
-      expect(elapsed).toBeLessThan(50);
+      expect(elapsed).toBeLessThan(budget(50));
 
       // Wait for save to complete
       await new Promise((resolve) => setTimeout(resolve, 150));

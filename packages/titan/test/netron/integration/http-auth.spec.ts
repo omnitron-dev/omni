@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
 import type { AuthContext, AuthCredentials } from '../../../src/netron/auth/types.js';
+import { budget } from '../../utils/index.js';
 
 describe('HTTP Transport Authentication Integration', () => {
   let mockLogger: any;
@@ -412,7 +413,7 @@ describe('HTTP Transport Authentication Integration', () => {
       const duration = Date.now() - start;
 
       // Should complete 1000 checks in less than 100ms
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(budget(100));
     });
   });
 });

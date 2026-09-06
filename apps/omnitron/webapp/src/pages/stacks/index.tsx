@@ -89,14 +89,15 @@ export default function StacksPage() {
     enabled: Boolean(activeProject),
   });
 
+  // No try/catch here: `startStack` and `stopStack` catch everything, put the
+  // reason in `error`, and never reject — `fetchStacks` in their `finally`
+  // catches too. The handler that used to sit here could not run, and read to
+  // anyone opening this file as though failures were dealt with locally. The
+  // banner at the top of this page is where they actually appear.
   const handleStart = useCallback(
     async (stackName: string) => {
       if (!activeProject) return;
-      try {
-        await startStack(activeProject, stackName);
-      } catch {
-        // Error is in store
-      }
+      await startStack(activeProject, stackName);
     },
     [activeProject, startStack]
   );
@@ -104,11 +105,7 @@ export default function StacksPage() {
   const handleStop = useCallback(
     async (stackName: string) => {
       if (!activeProject) return;
-      try {
-        await stopStack(activeProject, stackName);
-      } catch {
-        // Error is in store
-      }
+      await stopStack(activeProject, stackName);
     },
     [activeProject, stopStack]
   );

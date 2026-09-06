@@ -255,13 +255,33 @@ async function checkDatabase(findings: Findings): Promise<void> {
 
     await checkTableGrowth(findings, db, target);
   } catch (err) {
-    findings.add({
-      id: 'db.query-failed',
-      severity: 'error',
-      title: 'The Omnitron database is reachable but not queryable',
-      evidence: [`target: ${target}`, `error: ${describeError(err)}`],
-      remedy: 'Check the database logs — the connection opened, so this is a permissions or schema problem.',
-    });
+    // Which of the two findings this is depends on what the error SAYS, not
+    // on which call threw. `createOmnitronDb` builds a lazy pool, so it does
+    // not connect and does not throw — a database that is simply gone sails
+    // past the `db.unreachable` branch above and fails on the first query.
+    // Reported as "reachable but not queryable", the finding then sent an
+    // operator to read the logs of a container that was not running. Seen
+    // live, with `ECONNREFUSED` sitting in its own evidence.
+    if (isConnectionFailure(err)) {
+      findings.add({
+        id: 'db.unreachable',
+        severity: 'error',
+        title: 'Cannot connect to the Omnitron database',
+        evidence: [`target: ${target}`, `error: ${describeError(err)}`],
+        remedy:
+          'Start the omnitron-pg container (`omnitron up`), or point OMNITRON_DATABASE_URL at a reachable server. ' +
+          'If the container exists but will not start, this command reports its reason as `infra.not-running` — ' +
+          'a full disk inside the container runtime is the usual one, and it does not look like a disk problem from here.',
+      });
+    } else {
+      findings.add({
+        id: 'db.query-failed',
+        severity: 'error',
+        title: 'The Omnitron database is reachable but not queryable',
+        evidence: [`target: ${target}`, `error: ${describeError(err)}`],
+        remedy: 'Check the database logs — the connection opened, so this is a permissions or schema problem.',
+      });
+    }
   } finally {
     await db.destroy().catch(() => undefined);
   }
@@ -1018,6 +1038,34 @@ export function biggestSubdirectories(dir: string, limit: number): Array<{ name:
     .filter((d) => d.bytes > 0)
     .sort((a, b) => b.bytes - a.bytes)
     .slice(0, limit);
+}
+
+/**
+ * Is this a failure to REACH the server, rather than one it answered with?
+ *
+ * The distinction decides which of two findings an operator is handed, and
+ * they point in opposite directions: one says start the database, the other
+ * says read its logs. Node reports a refused connection as an
+ * `AggregateError` over the resolved addresses — one entry for IPv6, one for
+ * IPv4 — with its own `message` empty, so the codes have to be read out of
+ * `errors[]` as well as off the top.
+ */
+export function isConnectionFailure(err: unknown): boolean {
+  const CODES = [
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ECONNRESET',
+    'EPIPE',
+  ];
+
+  const e = err as { code?: string; errors?: Array<{ code?: string }>; message?: string };
+  if (e?.code && CODES.includes(e.code)) return true;
+  if (Array.isArray(e?.errors) && e.errors.some((x) => x?.code && CODES.includes(x.code))) return true;
+  // Some drivers surface the code only in the text.
+  return typeof e?.message === 'string' && CODES.some((c) => e.message!.includes(c));
 }
 
 /** Recursive byte total, bounded so a pathological tree cannot stall a check. */

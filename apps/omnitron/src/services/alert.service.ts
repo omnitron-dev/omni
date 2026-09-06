@@ -16,6 +16,7 @@ import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, INFRA_STATE_ACCESSOR_TOKEN } from '../shared/tokens.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 
@@ -51,7 +52,10 @@ interface EvalContext {
   logCounts?: Record<string, number>; // level → count in window
 }
 
-function evaluateExpression(expr: string, ctx: EvalContext): { firing: boolean; value: string } {
+function evaluateExpression(
+  expr: string,
+  ctx: EvalContext
+): { firing: boolean; value: string; unparseable?: boolean } {
   const trimmed = expr.trim();
 
   // app.<name>.status != online
@@ -102,8 +106,13 @@ function evaluateExpression(expr: string, ctx: EvalContext): { firing: boolean; 
     };
   }
 
-  // Fallback: always false for unparseable expressions
-  return { firing: false, value: 'unparseable expression' };
+  // Nothing matched. `firing: false` is what every caller acts on, and it is
+  // the same answer a healthy platform gives — so a rule the evaluator
+  // cannot read used to sit in the UI enabled, green, and permanently
+  // silent. The rule is returned as unparseable and the caller decides;
+  // `firing` stays false because firing on a syntax error would page
+  // somebody about the wrong thing.
+  return { firing: false, value: 'unparseable expression', unparseable: true };
 }
 
 // =============================================================================
@@ -121,12 +130,17 @@ export class AlertService {
   // metadata. Pre-fix the lambda was the third ctor arg with no
   // type tag — silent swap risk with the orchestrator (also a ref-
   // typed dep) was real.
+  private readonly logger: ILogger;
+
   constructor(
+    @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
     @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
     @Inject(ORCHESTRATOR_TOKEN) private readonly orchestrator: OrchestratorService,
     @Inject(INFRA_STATE_ACCESSOR_TOKEN)
     private readonly infraState: () => Record<string, { status: string; health: string }>,
-  ) {}
+  ) {
+    this.logger = loggerModule.logger;
+  }
 
   /**
    * Start the alert evaluation loop.
@@ -135,7 +149,14 @@ export class AlertService {
   start(intervalMs = 15_000): void {
     if (this.evaluationTimer) return;
     this.evaluationTimer = setInterval(() => {
-      this.evaluate().catch(() => {});
+      // Not `.catch(() => {})`. This is the loop whose entire job is to
+      // notice that something is wrong, and its own failure was the one
+      // failure it could not report: an unreachable database stopped every
+      // alert on the platform and said nothing, indistinguishably from a
+      // platform with nothing to alert about.
+      this.evaluate().catch((err) => {
+        this.logger.error({ err }, 'Alert evaluation failed — no rules were checked this cycle');
+      });
     }, intervalMs);
     this.evaluationTimer.unref();
   }
@@ -169,7 +190,17 @@ export class AlertService {
     };
 
     for (const rule of rules) {
-      const { firing, value } = evaluateExpression(rule.expression, ctx);
+      const { firing, value, unparseable } = evaluateExpression(rule.expression, ctx);
+
+      if (unparseable) {
+        // Said once per cycle per rule rather than swallowed. An operator
+        // wrote this rule to catch something; the platform is not catching
+        // it, and no other surface would ever say so.
+        this.logger.warn(
+          { ruleId: rule.id, ruleName: rule.name, expression: rule.expression },
+          'Alert rule expression cannot be evaluated — this rule will never fire'
+        );
+      }
 
       // Get current firing alert for this rule (if any)
       const currentAlert = await this.db

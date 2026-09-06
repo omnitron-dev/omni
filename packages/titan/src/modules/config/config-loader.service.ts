@@ -53,6 +53,17 @@ function isRetryableConfigFetchError(err: unknown): boolean {
 }
 
 /**
+ * Whether a load failure means "this source could not be understood" as
+ * opposed to "this source is not there".
+ *
+ * `error instanceof Error` cannot make the distinction — every failure is one
+ * — so the sites that know the difference mark it, and this reads the mark.
+ */
+function isMalformedSource(error: unknown): boolean {
+  return (error as { details?: { malformed?: boolean } } | null)?.details?.malformed === true;
+}
+
+/**
  * A label that identifies WHICH source failed. `name` when the caller gave
  * one, else the path/URL, else the bare type.
  */
@@ -100,17 +111,24 @@ export class ConfigLoaderService implements IConfigLoader {
             error: error instanceof Error ? error.message : String(error),
           });
         }
-        // Skip optional sources that fail.
+        // `optional` forgives ABSENCE, not corruption.
         //
-        // NOTE: this swallows more than absence. `loadFile` already returns
-        // `{}` for a missing optional file, so by the time an optional file
-        // source reaches here the file EXISTS and something else went wrong:
-        // unparseable content, an unsupported `format`, an unreadable file.
-        // All three are silently ignored — a typo in an optional config file
-        // changes application behaviour with no signal anywhere. Whether
-        // `optional` should cover only absence (and rethrow corruption) is a
-        // contract question: the flag carries no documentation, and the two
-        // swallow sites in this file already read it differently.
+        // `loadFile` already answers absence: a missing file on an optional
+        // source returns `{}` and never reaches here. So an optional FILE
+        // source arriving in this catch means the file EXISTS and could not be
+        // understood — unparseable content, or a `format` this loader cannot
+        // read. Skipping that in silence let a typo in an optional YAML file
+        // change application behaviour with no signal anywhere: the process
+        // booted on defaults and reported a successful start, while the
+        // operator who had just edited the file had no way to learn it was not
+        // being read.
+        //
+        // Absence is one of the answers this system is designed to accept.
+        // Corruption is a failure to obtain an answer at all, and the two must
+        // not share a code path.
+        if (isMalformedSource(error)) {
+          throw error;
+        }
       }
     }
 
@@ -154,36 +172,57 @@ export class ConfigLoaderService implements IConfigLoader {
       throw Errors.notFound('Config file', filePath);
     }
 
-    // Read file content
-    const content = await fs.readFile(filePath, source.encoding || 'utf-8');
+    // Past the existence check, `optional` has nothing left to forgive: the
+    // file IS there. Every failure from here on is marked `malformed` so the
+    // loader rethrows it rather than booting on defaults — see
+    // isMalformedSource.
+    let content: string;
+    try {
+      content = (await fs.readFile(filePath, source.encoding || 'utf-8')) as string;
+    } catch (error) {
+      throw Errors.badRequest(
+        `Config file ${filePath} exists but could not be read: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        { filePath, malformed: true }
+      );
+    }
 
     // Detect format if not specified
     const format = source.format || this.detectFormat(filePath);
 
-    // Parse based on format
     let data: Record<string, any>;
-    switch (format) {
-      case 'json':
-        data = JSON.parse(content);
-        break;
+    try {
+      switch (format) {
+        case 'json':
+          data = JSON.parse(content);
+          break;
 
-      case 'yaml':
-        data = parseYaml(content) || {};
-        break;
+        case 'yaml':
+          data = parseYaml(content) || {};
+          break;
 
-      case 'env':
-        data = this.parseEnvFile(content);
-        break;
+        case 'env':
+          data = this.parseEnvFile(content);
+          break;
 
-      case 'properties':
-        data = this.parsePropertiesFile(content);
-        break;
+        case 'properties':
+          data = this.parsePropertiesFile(content);
+          break;
 
-      default:
-        throw Errors.badRequest(`Unsupported config file format: ${format}`, {
-          format,
-          filePath,
-        });
+        default:
+          throw Errors.badRequest(`Unsupported config file format: ${format}`, {
+            format,
+            filePath,
+            malformed: true,
+          });
+      }
+    } catch (error) {
+      if (isMalformedSource(error)) throw error;
+      throw Errors.badRequest(
+        `Config file ${filePath} could not be parsed as ${format}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        { filePath, format, malformed: true }
+      );
     }
 
     // Apply transformation if specified

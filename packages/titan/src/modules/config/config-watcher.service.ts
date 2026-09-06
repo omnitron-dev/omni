@@ -46,7 +46,18 @@ export class ConfigWatcherService implements IConfigWatcher {
         this.watchers.push(watcher);
         this.watchedFiles.add(filePath);
       } catch (error) {
-        // Ignore errors for optional sources
+        // `optional` reads differently here than in the loader, on purpose.
+        //
+        // For the LOADER it means the source may be ABSENT — a file that
+        // exists and cannot be understood is an error even when optional,
+        // because the alternative is booting on defaults in silence.
+        //
+        // Here the file has already been loaded correctly and only the CHANGE
+        // NOTIFICATION could not be established (an inotify/FSEvents limit,
+        // typically). The cost is that edits to this file stop applying until
+        // a restart — a lost convenience, not a wrong value — and making it
+        // fatal would let a system-wide watch-descriptor limit take down a
+        // process whose configuration is entirely correct.
         if (!source.optional) {
           throw error;
         }

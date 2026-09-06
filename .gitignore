@@ -46,6 +46,14 @@ pnpm-debug.log*
 # KB generated artifacts
 kb/generated/
 
+# Playwright output. `test-results/.last-run.json` was committed carrying
+# `{"status": "passed"}` — a file asserting a result, tracked in git, for a
+# suite that cannot run here at all (the browsers are not installed). An
+# artifact that states an outcome is worse than no artifact: it answers the
+# question without having done the work.
+test-results/
+playwright-report/
+
 # Misc
 *.tgz
 *.map.gz

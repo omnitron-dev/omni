@@ -36,6 +36,7 @@ import { createMockLogger } from '../test-utils.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../../src/netron/auth/types.js';
+import { getFreePort } from '../../utils/index.js';
 
 @Service('configsvc@1.0.0')
 class ConfigService {
@@ -71,8 +72,7 @@ class ConfigService {
 const netrons: Netron[] = [];
 
 async function bootServer(authDefaultDeny: boolean): Promise<{ server: Netron; port: number }> {
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const port = 9400 + (workerId - 1) * 200 + Math.floor(Math.random() * 180);
+  const port = await getFreePort();
   const logger = createMockLogger();
   const server = new Netron(logger, { id: `sec2-server-${authDefaultDeny}-${port}`, authDefaultDeny });
 

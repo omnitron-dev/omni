@@ -13,6 +13,7 @@ import { createMockLogger } from '../test-utils.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthContext, AuthCredentials } from '../../../src/netron/auth/types.js';
+import { getFreePort } from '../../utils/index.js';
 
 // Test service with various auth requirements
 @Service('userService@1.0.0')
@@ -99,11 +100,7 @@ describe('Full Auth Flow Integration', () => {
   let serverPort: number;
 
   beforeEach(async () => {
-    // CRITICAL FIX: Use JEST_WORKER_ID for worker-safe port allocation
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    const basePort = 9000 + (workerId - 1) * 1000; // Each worker gets 1000 ports
-    const offset = Math.floor(Math.random() * 900); // Random offset within range
-    serverPort = basePort + offset;
+    serverPort = await getFreePort();
 
     // Setup server Netron with full auth
     const serverLogger = createMockLogger();

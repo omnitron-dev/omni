@@ -40,6 +40,7 @@ import { MiddlewareStage } from '../../../../src/netron/transport/http/middlewar
 import { TitanError } from '../../../../src/errors/core.js';
 import { ErrorCode } from '../../../../src/errors/codes.js';
 import type { HttpRequestMessage } from '../../../../src/netron/transport/http/types.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 describe('HTTP fast-path — T#35 authz bypass', () => {
   let server: HttpServer;
@@ -50,9 +51,7 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
   function setupServer(opts: { withNetronAuth?: boolean; withPreInvokeMiddleware?: boolean } = {}) {
     // Worker-safe port allocation to avoid collisions with other HTTP
     // server tests running in parallel.
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    const basePort = 17000 + (workerId - 1) * 500;
-    testPort = basePort + Math.floor(Math.random() * 450);
+    testPort = nextTestPort();
     baseUrl = `http://localhost:${testPort}`;
     server = new HttpServer({ port: testPort, host: 'localhost' });
 

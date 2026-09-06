@@ -16,17 +16,18 @@ import 'reflect-metadata';
 import { Netron } from '../../src/netron/netron.js';
 import { METADATA_KEYS } from '../../src/decorators/core.js';
 import { createMockLogger } from './test-utils.js';
+import { nextTestPort } from '../utils/index.js';
 
 const SERVICE_ANNOTATION = METADATA_KEYS.SERVICE_ANNOTATION;
 
-function getPort(): number {
-  return 30000 + Math.floor(Math.random() * 20000);
-}
+
 
 describe('PM query_interface integration', () => {
   let server: Netron;
   let client: Netron;
-  const basePort = getPort();
+  // Four consecutive ports, reserved together: the tests below use
+  // basePort..basePort+3.
+  const basePort = nextTestPort(4);
   const logger = createMockLogger();
 
   afterEach(async () => {

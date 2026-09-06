@@ -11,13 +11,11 @@ import { createMockLogger } from '../../test-utils.js';
 import type { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
 import { ErrorCode } from '../../../../src/errors/codes.js';
 import { TitanError } from '../../../../src/errors/core.js';
+import { nextTestPort } from '../../../utils/index.js';
 
 // Test port management - worker-safe
 const getWorkerSafePort = () => {
-  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-  const basePort = 9000 + (workerId - 1) * 1000;
-  const offset = Math.floor(Math.random() * 900);
-  return basePort + offset;
+  return nextTestPort();
 };
 
 describe('HttpRemotePeer - Unsupported Methods', () => {

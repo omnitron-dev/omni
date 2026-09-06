@@ -21,6 +21,7 @@ import { Service, Public } from '../../src/decorators/core.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
 import { createMockLogger } from './test-utils.js';
 import type { RemotePeer } from '../../src/netron/remote-peer.js';
+import { getFreePort } from '../utils/index.js';
 
 @Service('workspace@1.0.0')
 class WorkspaceService {
@@ -51,8 +52,7 @@ describe('Netron — SEC-5 per-peer unref refcounting of dynamic stubs', () => {
   let port: number;
 
   beforeEach(async () => {
-    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
-    port = 14200 + (workerId - 1) * 200 + Math.floor(Math.random() * 180);
+    port = await getFreePort();
 
     server = new Netron(createMockLogger(), { id: 'sec5-server' });
     server.registerTransport('ws', () => new WebSocketTransport());

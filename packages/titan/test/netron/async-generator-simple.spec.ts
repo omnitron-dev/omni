@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { getFreeHttpPort } from '../utils/index.js';
 
 import { Service, Public } from '../../src/netron/index.js';
 import { createNetronServer, createNetronClient } from './test-utils.js';
@@ -20,7 +21,7 @@ describe('AsyncGenerator Basic Test', () => {
   let serverPort: number;
 
   beforeEach(async () => {
-    serverPort = 9000 + Math.floor(Math.random() * 1000);
+    serverPort = await getFreeHttpPort();
 
     // Create server
     server = await createNetronServer({ port: serverPort });

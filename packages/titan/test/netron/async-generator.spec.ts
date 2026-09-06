@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { getFreeHttpPort } from '../utils/index.js';
 
 import { delay } from '@omnitron-dev/common';
 
@@ -54,8 +55,7 @@ describe('AsyncGenerator Support', () => {
   let serverPort: number;
 
   beforeEach(async () => {
-    // Get a random port for the server
-    serverPort = 8000 + Math.floor(Math.random() * 1000);
+    serverPort = await getFreeHttpPort();
 
     // Create server
     server = await createNetronServer({ port: serverPort });

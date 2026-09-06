@@ -145,6 +145,34 @@ describe('skip ids', () => {
     expect(skipped.size).toBeGreaterThan(8);
   });
 
+  /**
+   * A skip reason may not hedge.
+   *
+   * The first live run of this feature reported all five database checks as
+   * "may not have been checked — a query failed partway through" when the
+   * connection is lazy, the very first query had been refused, and none of
+   * them had run. The wording was written out of caution and read as
+   * observation.
+   *
+   * A diagnostic has incomplete information about the system — that is its
+   * working condition, and hedging there is honest. It has complete
+   * information about its own execution, so hedging about that is not
+   * caution: it is invention. The `done` set exists to make the definite
+   * statement possible; this keeps the wording from drifting back.
+   */
+  it('states what happened rather than what might have', () => {
+    const hedges = /\b(may|might|possibly|perhaps|probably|maybe)\b/i;
+    const reasons = [
+      ...source.matchAll(/findings\.skip\([^,]+,\s*[`'"]([^`'"]+)[`'"]/g),
+      ...source.matchAll(/skip\(id,\s*`([^`]+)`/g),
+      ...source.matchAll(/\[\s*'[a-z][a-z0-9.*-]*',\s*'([^']+)'\s*\]/g),
+    ].map((m) => m[1]!);
+
+    // Guard the guard: nothing extracted would make this pass on an empty set.
+    expect(reasons.length).toBeGreaterThan(5);
+    expect(reasons.filter((r) => hedges.test(r))).toEqual([]);
+  });
+
   it.each([...skipped])('%s is an id some check reports under', (id) => {
     if (id.endsWith('.*')) {
       expect(prefixes).toContain(id.slice(0, -2));

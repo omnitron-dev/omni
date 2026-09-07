@@ -219,8 +219,16 @@ export class OmnitronDaemon {
     // process level and the listener runs first.
     process.on('SIGHUP', () => {
       this.reloadConfigOnHup().catch((err) => {
+        // The message already carries which steps applied — printing only
+        // `.message` was fine for the load failure and misleading for the
+        // apply failure, which is the one that leaves work half-done.
         // eslint-disable-next-line no-console
         console.warn(`[omnitron] SIGHUP config reload failed: ${(err as Error).message}`);
+        const cause = (err as Error).cause;
+        if (cause) {
+          // eslint-disable-next-line no-console
+          console.warn(`[omnitron]   caused by: ${(cause as Error).stack ?? String(cause)}`);
+        }
       });
     });
 
@@ -1631,32 +1639,60 @@ export class OmnitronDaemon {
    */
   private async reloadConfigOnHup(): Promise<void> {
     if (!this.app) return;
-    try {
-      const { loadEcosystemConfig } = await import('../config/loader.js');
-      const newConfig = await loadEcosystemConfig();
-      const { ORCHESTRATOR_TOKEN } = await import('../shared/tokens.js');
-      const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
-      orchestrator.setConfig(newConfig);
-      // And the file watcher, which holds its own copy of the app list.
-      // Left out, a reload updated who gets restarted but not who is
-      // watched: an app added to the config was never watched, and one
-      // removed from it kept its watchers and went on triggering restarts.
-      this.applyWatchConfig(newConfig);
-      // Also refresh the DaemonRpcService's snapshot if resolvable.
-      // (It's exposed under DAEMON_SERVICE_ID; reloadConfig RPC path
-      // mutates `this.config` directly so we mirror the same write.)
-      const { DAEMON_SERVICE_ID } = await import('../config/defaults.js');
-      const daemonRpc = await this.app.container
-        .resolveAsync<DaemonRpcService>(DAEMON_SERVICE_ID)
-        .catch(() => null);
-      if (daemonRpc) {
-        (daemonRpc as unknown as { config: typeof newConfig }).config = newConfig;
-      }
-      // eslint-disable-next-line no-console
-      console.info('[omnitron] SIGHUP — config reloaded');
-    } catch (err) {
-      throw err;
-    }
+    // Loading first, on its own: a malformed file must be rejected before
+    // anything is touched, and that failure genuinely means "the daemon is as
+    // it was".
+    const { loadEcosystemConfig } = await import('../config/loader.js');
+    const newConfig = await loadEcosystemConfig();
+
+    // Applying is the other half, and it has no such guarantee — each
+    // destination takes the config in turn, so a failure in the middle leaves
+    // the daemon split. `applyReloadedConfig` names what applied and what did
+    // not, because "reload failed" reads as "nothing changed" and that is the
+    // wrong reading exactly when it matters.
+    //
+    // The handler used to end in `catch (err) { throw err; }`, which did
+    // nothing whatever. Removing it is trivial; what it was standing in front
+    // of is not.
+    const { applyReloadedConfig } = await import('./config-reload.js');
+    await applyReloadedConfig(newConfig, [
+      {
+        name: 'orchestrator',
+        apply: async (cfg) => {
+          const { ORCHESTRATOR_TOKEN } = await import('../shared/tokens.js');
+          const orchestrator = await this.app!.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+          orchestrator.setConfig(cfg);
+        },
+      },
+      {
+        name: 'file watcher',
+        // The watcher holds its own copy of the app list. Left out, a reload
+        // updated who gets restarted but not who is watched: an app added to
+        // the config was never watched, and one removed from it kept its
+        // watchers and went on triggering restarts.
+        apply: (cfg) => {
+          this.applyWatchConfig(cfg);
+        },
+      },
+      {
+        name: 'RPC snapshot',
+        // Exposed under DAEMON_SERVICE_ID; the reloadConfig RPC path mutates
+        // `this.config` directly, so we mirror the same write. Unresolvable is
+        // not a failure here — the service may not be exposed yet.
+        apply: async (cfg) => {
+          const { DAEMON_SERVICE_ID } = await import('../config/defaults.js');
+          const daemonRpc = await this.app!.container
+            .resolveAsync<DaemonRpcService>(DAEMON_SERVICE_ID)
+            .catch(() => null);
+          if (daemonRpc) {
+            (daemonRpc as unknown as { config: typeof cfg }).config = cfg;
+          }
+        },
+      },
+    ]);
+
+    // eslint-disable-next-line no-console
+    console.info('[omnitron] SIGHUP — config reloaded');
   }
 
   /**

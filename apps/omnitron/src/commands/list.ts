@@ -62,8 +62,20 @@ export async function listCommand(): Promise<void> {
       // Sub-processes indented
       if (app.processes && app.processes.length > 0) {
         for (const proc of app.processes) {
+          // A pool row prints ONE pid for several processes. Without the
+          // count the row reads as a single worker, and the `-` under RST
+          // (nothing counts a pool's restarts) has nothing to explain it.
+          // Drift from the declaration is coloured rather than hidden —
+          // `doctor` reports it as a finding, but the table is where an
+          // operator looks first.
+          const scale =
+            proc.declaredInstances > 1
+              ? proc.instances === proc.declaredInstances
+                ? prism.dim(` \u00d7${proc.instances}`)
+                : prism.yellow(` \u00d7${proc.instances}/${proc.declaredInstances}`)
+              : '';
           data.push({
-            name: `    ${prism.dim('└')} ${proc.name} ${prism.dim(`(${proc.type})`)}`,
+            name: `    ${prism.dim('└')} ${proc.name} ${prism.dim(`(${proc.type})`)}${scale}`,
             status: formatStatus(proc.status),
             pid: proc.pid ? String(proc.pid) : '-',
             port: '',

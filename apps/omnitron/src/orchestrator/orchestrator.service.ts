@@ -653,6 +653,12 @@ export class OrchestratorService extends EventEmitter {
 
     const mode = entry.bootstrap ? 'bootstrap' : 'classic';
     const handle = new AppHandle(entry, mode);
+    // The restart budget belongs to the APP, not to this handle instance.
+    // Every start replaces the handle, so a counter that starts at zero here
+    // can never reach `maxRestarts` — which made the budget, the escalation
+    // and the cool-down unreachable even once the restart itself worked. The
+    // window is enforced by the policy, not by forgetting.
+    if (existing) handle.restarts = existing.restarts;
     this.handles.set(entry.name, handle);
 
     // Arm metrics sampling here — the one place an app enters the registry.
@@ -681,8 +687,25 @@ export class OrchestratorService extends EventEmitter {
       this.persistState();
       return handle;
     } catch (err) {
+      // `errored` rather than `crashed` is the right REPORT — the app never
+      // ran. It was also, until now, the end of the story: `'errored'` is read
+      // by no code in this repository outside formatters, `status` and a
+      // metrics label, so a start that failed was never attempted again. One
+      // try, then errored until a human noticed.
+      //
+      // That asymmetry is backwards. A failure to start is MORE likely to be
+      // transient than a crash after a successful boot — a dependency still
+      // coming up, a disk still cold, a machine briefly loaded. Six bootstrap
+      // apps here timed out at `config:loading` under a load average of 149
+      // and stayed down after the load passed, because nothing asked again.
+      //
+      // The counter is bumped by hand because `markErrored()` deliberately
+      // does not (an app that never ran has not "restarted"), and without it
+      // the budget below can never trip and the retry would be unbounded.
       handle.markErrored();
+      handle.restarts++;
       this.persistState();
+      this.scheduleRecovery(entry, handle, cfg);
       throw err;
     }
   }
@@ -1323,7 +1346,7 @@ export class OrchestratorService extends EventEmitter {
       } else {
         this.logger.error({ app: entry.name, code, signal }, 'App exited unexpectedly');
         handle.markCrashed();
-        this.handleClassicCrash(entry, handle, config);
+        this.scheduleRecovery(entry, handle, config);
       }
       this.persistState();
     });
@@ -2123,7 +2146,7 @@ export class OrchestratorService extends EventEmitter {
     });
   }
 
-  private async handleClassicCrash(
+  private async scheduleRecovery(
     entry: IEcosystemAppEntry,
     handle: AppHandle,
     config: IEcosystemConfig
@@ -2156,7 +2179,11 @@ export class OrchestratorService extends EventEmitter {
             handle.restarts = 0; // fresh attempt window
             handle.status = 'stopped';
             try {
-              await this.startApp(entry, config);
+              // `startAppInternal`, not `startApp`. We are INSIDE the lifecycle
+              // queue slot for this app; `startApp` enqueues on the same key and
+              // cannot run until this task returns, so calling it here waits on
+              // itself forever. See the note on the other call below.
+              await this.startAppInternal(entry, config);
             } catch (err) {
               this.logger.error({ app: entry.name, err: (err as Error).message }, 'Cool-down recovery failed');
             }
@@ -2202,7 +2229,22 @@ export class OrchestratorService extends EventEmitter {
           }
           try {
             handle.status = 'stopped';
-            await this.startApp(entry, config);
+            // `startAppInternal`, not `startApp`.
+            //
+            // This task holds the lifecycle-queue slot for `entry.name`.
+            // `startApp` enqueues 'start' on that same key, and the queue
+            // cannot run it until this task returns — so the await never
+            // settles and the restart silently never happens. Measured:
+            // `startApp:enter` with no matching exit, and the app left in
+            // whatever state the crash put it in.
+            //
+            // This is why the whole policy below — bounded attempts,
+            // exponential backoff, the ten-minute cool-down described in its
+            // own comment as "bounded self-healing" — had never restarted
+            // anything. The queue was introduced (P0-I) to stop a restart
+            // timer racing a stop; it also made the restart unreachable, and
+            // nothing failed loudly enough to say so.
+            await this.startAppInternal(entry, config);
             resolve();
           } catch (err) {
             this.logger.error({ app: entry.name, error: (err as Error).message }, 'Restart failed');

@@ -115,8 +115,14 @@ export class PidManager {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'EEXIST') {
+        // `cause` keeps `errno`, `syscall` and the resolved `path` — the
+        // fields that tell a race from a permissions problem, and that say
+        // which path was actually attempted when it differs from the
+        // configured one. The sentence above is for the operator; this is for
+        // whoever has to work out why the sentence is wrong.
         throw new Error(
           `PID file ${this.pidFile} already exists — another daemon is starting or crashed without cleanup. Run \`omnitron down\` or remove the file manually.`,
+          { cause: err },
         );
       }
       throw err;

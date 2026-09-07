@@ -1043,10 +1043,32 @@ export class ProcessSpawner implements IProcessSpawner {
         const diag = buildDiagnostics();
         // Inline a compact stderr tail in the message so single-line log
         // viewers still get a clue, but the FULL output rides in details.
+        //
+        // Appended AFTER the factory has built its sentence, not passed in as
+        // part of the operation name. `Errors.timeout` renders
+        // `${operation} timed out after ${ms}ms` — the suffix goes last — so a
+        // multi-line tail inside `operation` put "timed out after 60000ms" at
+        // the end of whatever line the child happened to print last:
+        //
+        //     Worker startup (pid: 18809)
+        //     --- last child stderr ---
+        //     [omnitron:boot] config:loading …/bootstrap.js timed out after 60000ms
+        //
+        // which asserts that loading that file took a minute. What actually
+        // happened is that the worker never finished starting, and the last
+        // thing it managed to say was that it was loading a config. The first
+        // reading sends an operator to investigate one file; only the second
+        // sends them to ask why the process did not start.
         const stderrTail = diag.stderr
           ? '\n--- last child stderr ---\n' + diag.stderr.split('\n').slice(-15).join('\n')
           : '';
-        const err = Errors.timeout(`Worker startup${pidHint}${stderrTail}`, timeout);
+        const err = Errors.timeout(`Worker startup${pidHint}`, timeout);
+        if (stderrTail) {
+          // The factory sets `message` on construction; extending it here keeps
+          // `details.operation` clean, so anything grouping errors by operation
+          // still sees one operation rather than one per distinct child output.
+          (err as { message: string }).message += stderrTail;
+        }
         // Attach full stderr/stdout for structured logging / diagnostics.
         (err as any).details = { ...((err as any).details ?? {}), ...diag };
         reject(err);

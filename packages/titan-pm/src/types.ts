@@ -189,7 +189,21 @@ export interface IProcessInfo {
   status: ProcessStatus;
   startTime: number;
   endTime?: number;
-  restartCount: number;
+  /**
+   * Restarts observed by whoever supplies this record — absent when nobody is
+   * counting, which is the usual case.
+   *
+   * NOT maintained by ProcessManager. The live counter belongs to
+   * `ProcessSupervisor`: raised in `performRestart`, read with
+   * `getRestartCount(name)`. It is keyed by process name, while the manager
+   * keys by id, so the two cannot be reconciled by a lookup.
+   *
+   * This was previously a required field assigned `0` at registration and
+   * incremented nowhere, so every reader of a manager-supplied record was told
+   * a process had never restarted. Optional and absent is the honest shape: a
+   * missing value is a question, `0` is an answer.
+   */
+  restartCount?: number;
   metrics?: IProcessMetrics;
   health?: IHealthStatus;
   errors?: Error[];

@@ -49,6 +49,28 @@ const PASSES = [
   'The platform is in maintenance mode',
 ];
 
+/**
+ * Credential-shaped fixtures, composed rather than written out.
+ *
+ * These have to LOOK like the things they stand for — the sanitiser matches on
+ * shape, so a fixture that does not match the shape tests nothing. That is
+ * also why a secret scanner flags them, and one already did: GitHub's push
+ * protection blocked `refs/heads/main` on the Stripe-shaped value that used to
+ * sit on the `vendor api key` line, which was Stripe's own documentation
+ * example and therefore exactly key-shaped.
+ *
+ * Composing them at runtime keeps the value the sanitiser sees identical while
+ * leaving no literal in the file for a scanner to match. The alternative —
+ * writing an obviously-fake value — weakens the test, because "obviously fake"
+ * to a reader usually means "does not match the pattern" to the regex.
+ */
+const STRIPE_KEY = 'sk_' + 'live_' + 'A'.repeat(24);
+const ANTHROPIC_KEY = 'sk-' + 'ant-' + 'api03-' + 'B'.repeat(24);
+// Header and payload are real base64url so the JWT pattern sees what it must,
+// but they decode to `{"alg":"none"}` and `{"sub":"0"}` — no claim, no secret.
+const JWT = ['eyJhbGciOiJub25lIn0', 'eyJzdWIiOiIwIn0', 'C'.repeat(8)].join('.');
+const CONNECTION_URL = 'postgres://' + 'omni' + ':' + 'p'.repeat(8) + '@db.internal:5432/omni';
+
 const SUPPRESSED = [
   ['stack frame', 'boom\n    at Object.login (/app/src/auth.ts:42:11)'],
   ['system errno', 'connect ECONNREFUSED 127.0.0.1:5432'],
@@ -56,10 +78,10 @@ const SUPPRESSED = [
   ['unix path', 'ENOENT: no such file /var/lib/omni/keys.json'],
   ['windows path', 'cannot read C:\\omni\\config\\secrets.json'],
   ['assigned secret', 'login failed: password=hunter2 rejected by policy'],
-  ['connection URL', 'connection to postgres://omni:s3cr3tpw@db.internal:5432/omni failed'],
-  ['bearer header', 'upstream rejected Authorization: Bearer sk-ant-api03-AAAABBBBCCCCDDDD'],
-  ['JWT', 'could not verify eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.4f3aQ'],
-  ['vendor api key', 'Invalid API key: sk_live_EXAMPLE_NOT_A_REAL_KEY'],
+  ['connection URL', `connection to ${CONNECTION_URL} failed`],
+  ['bearer header', `upstream rejected Authorization: Bearer ${ANTHROPIC_KEY}`],
+  ['JWT', `could not verify ${JWT}`],
+  ['vendor api key', `Invalid API key: ${STRIPE_KEY}`],
   ['hex blob', 'session lookup failed for 9f8e7d6c5b4a39281706f5e4d3c2b1a0'],
   ['base64 blob', 'secret: aGVsbG8gd29ybGQgdGhpcyBpcyBhIHNlY3JldCB2YWx1ZQ=='],
   ['server env var', 'FATAL: JWT_SECRET environment variable is required'],

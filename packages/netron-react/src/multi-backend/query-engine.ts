@@ -106,8 +106,8 @@ export class MultiBackendQueryEngine<T extends BackendSchema = BackendSchema> {
    * useful for optimistic-update flows where the caller wants a
    * snapshot before applying an in-flight mutation.
    */
-  getQueryData<T>(queryKey: import('../core/types.js').QueryKey): T | undefined {
-    return this.queryCache.get<T>(queryKey);
+  getQueryData<TData>(queryKey: import('../core/types.js').QueryKey): TData | undefined {
+    return this.queryCache.get<TData>(queryKey);
   }
 
   /**
@@ -119,13 +119,13 @@ export class MultiBackendQueryEngine<T extends BackendSchema = BackendSchema> {
    * Accepts either a direct value or an updater `(prev) => next`
    * to match TanStack's ergonomics for in-place patches.
    */
-  setQueryData<T>(
+  setQueryData<TData>(
     queryKey: import('../core/types.js').QueryKey,
-    updater: T | ((prev: T | undefined) => T),
+    updater: TData | ((prev: TData | undefined) => TData),
   ): void {
-    const prev = this.queryCache.get<T>(queryKey);
+    const prev = this.queryCache.get<TData>(queryKey);
     const data = typeof updater === 'function'
-      ? (updater as (prev: T | undefined) => T)(prev)
+      ? (updater as (prev: TData | undefined) => TData)(prev)
       : updater;
     this.queryCache.set(queryKey, data);
   }

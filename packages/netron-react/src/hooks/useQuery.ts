@@ -351,6 +351,19 @@ export function useQuery<TData = unknown, TError = NetronError>(
       setStatus('success');
       dataKeyRef.current = queryKeyHash;
     }
+    // `isStale`, `data`, `client`, `queryKey`, `fetchData` and `projectData`
+    // are read here and deliberately NOT dependencies — this effect fetches
+    // once per key, and re-running it on any of them turns it into a refetch
+    // loop driven by the staleness timer. Refetching when data goes stale is
+    // the job of the focus, reconnect and interval effects below, each of
+    // which DOES list `isStale`.
+    //
+    // eslint's exhaustive-deps rightly flags this; do not silence it by adding
+    // the deps. Doing so breaks cache invalidation and stale-while-revalidate
+    // — measured: four integration tests go red, in cache-invalidation and
+    // cache-lifecycle. Lint had not run in this repository since the
+    // TypeScript 7 upgrade, so this warning is newly visible and reads like an
+    // easy fix.
   }, [queryKeyHash, enabled, isHydrating]);
 
   // Cache subscription. Observers see every cache mutation

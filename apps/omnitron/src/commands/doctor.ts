@@ -1551,15 +1551,59 @@ async function checkInfrastructure(findings: Findings, client: ReturnType<typeof
           ? `Container "${c.name}" was created but never started`
           : `Container "${c.name}" is ${c.status}`,
         evidence: [`image: ${c.image}`, ...(c.error ? [`reason: ${c.error}`] : [])],
-        remedy: neverStarted
-          ? `Remove it and let the daemon recreate it: \`docker rm -f ${c.name}\`, then \`omnitron up\`. ` +
-            `A container in this state keeps its name, so the next attempt fails the same way until it is gone.`
-          : 'Run `omnitron up` to reconcile infrastructure.',
+        remedy: containerRemedy(c.name, c.error, neverStarted),
       });
     }
   } catch {
     // Infrastructure is optional; its absence is not a fault.
   }
+}
+
+/**
+ * What to tell an operator about a container that is not running.
+ *
+ * `omnitron up` is the right answer for a container that simply stopped. It is
+ * the wrong one when Docker already said why it could not start, and the
+ * reason is a condition `up` runs straight back into.
+ *
+ * Seen on this machine: `omnitron-pg` exited with `mkdir
+ * /var/lib/docker/overlay2/...: no space left on device`, and the finding
+ * printed the reason in its evidence and then advised `omnitron up` — which
+ * fails identically, immediately, with the same message. Advice that cannot
+ * work is worse than none: it costs a run to disprove, and it reads as though
+ * the problem has been diagnosed.
+ */
+export function containerRemedy(name: string, error: string | undefined, neverStarted: boolean): string {
+  if (neverStarted) {
+    return (
+      `Remove it and let the daemon recreate it: \`docker rm -f ${name}\`, then \`omnitron up\`. ` +
+      `A container in this state keeps its name, so the next attempt fails the same way until it is gone.`
+    );
+  }
+
+  const reason = error ?? '';
+  if (/no space left on device|disk quota exceeded/i.test(reason)) {
+    return (
+      'The container runtime is out of disk — `omnitron up` will fail with this same message. ' +
+      'Free space inside the runtime first: `docker system df` shows what is reclaimable, and note ' +
+      'that a large total is not the same as a large reclaimable. Check the host too (`df -h`), ' +
+      'since the runtime image lives on it.'
+    );
+  }
+  if (/port is already allocated|address already in use/i.test(reason)) {
+    return (
+      `Something else holds the port. Find it (\`lsof -nP -iTCP -sTCP:LISTEN\`), free it, ` +
+      `then \`omnitron up\`. Restarting the container will not move the conflict.`
+    );
+  }
+  if (/endpoint with name .* already exists|network .* not found/i.test(reason)) {
+    return (
+      `A stale network endpoint holds the name. Recreate rather than restart: ` +
+      `\`docker rm -f ${name}\`, then \`omnitron up\`.`
+    );
+  }
+
+  return 'Run `omnitron up` to reconcile infrastructure.';
 }
 
 // ---------------------------------------------------------------------------

@@ -422,8 +422,27 @@ export class ProjectService extends EventEmitter {
     const stateKey = `${projectName}/${stackName}`;
     const existing = this.stackStates.get(stateKey);
     if (existing?.status === 'running') {
-      this.logger.warn({ project: projectName, stack: stackName }, 'Stack already running');
-      return this.toStackInfo(projectName, stackName, stackConfig);
+      // `running` is a claim about the past, and nothing revises it when the
+      // apps underneath fall over — so this short-circuit used to hand the
+      // operator a stack it had not touched. `toStackInfo` reads live
+      // orchestrator statuses, which means the very response we returned
+      // already said how many apps were up; nothing compared the two halves.
+      // Observed on the dev stand with all six apps dead: `stack start`
+      // printed "Stack daos/dev started — 0/6 apps online", exited 0, and
+      // started nothing. Ask what is actually online before believing it.
+      const current = this.toStackInfo(projectName, stackName, stackConfig);
+      const down = current.apps.filter((a) => a.status !== 'online');
+      if (down.length === 0) {
+        this.logger.warn({ project: projectName, stack: stackName }, 'Stack already running');
+        return current;
+      }
+      this.logger.warn(
+        { project: projectName, stack: stackName, down: down.map((a) => a.name) },
+        'Stack is marked running but some of its apps are not — starting them',
+      );
+      // Fall through. Starting is idempotent for the apps still up:
+      // `startAppInternal` returns the existing handle for an online app.
+      this.stackStates.delete(stateKey);
     }
     // Reset stale "starting" state (daemon may have restarted mid-launch)
     if (existing?.status === 'starting') {

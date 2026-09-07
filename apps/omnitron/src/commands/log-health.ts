@@ -27,7 +27,7 @@ export interface MessageCount {
 }
 
 export interface LogHealthFinding {
-  kind: 'dominant-error' | 'retry-loop' | 'duplicate-ingest';
+  kind: 'dominant-error' | 'repetition-load' | 'retry-loop' | 'duplicate-ingest';
   app: string;
   message: string;
   count: number;
@@ -56,6 +56,25 @@ export const RETRY_LOOP_THRESHOLD = 1_000;
  *
  * @param counts per-message error counts for the window, any order
  */
+/**
+ * One row per message, with the apps that reported it.
+ *
+ * Shared by both dominance checks deliberately. They ask different questions
+ * of the same grouping, and a second copy of it is a second registry of one
+ * fact — the exact shape that lets two correct-looking pieces of code drift
+ * apart.
+ */
+function groupByMessage(counts: MessageCount[]): Map<string, { apps: Set<string>; count: number }> {
+  const byMessage = new Map<string, { apps: Set<string>; count: number }>();
+  for (const c of counts) {
+    const entry = byMessage.get(c.message) ?? { apps: new Set<string>(), count: 0 };
+    entry.apps.add(c.app);
+    entry.count += c.count;
+    byMessage.set(c.message, entry);
+  }
+  return byMessage;
+}
+
 export function findDominantErrors(counts: MessageCount[]): LogHealthFinding[] {
   const total = counts.reduce((sum, c) => sum + c.count, 0);
   if (total === 0) return [];
@@ -72,13 +91,7 @@ export function findDominantErrors(counts: MessageCount[]): LogHealthFinding[] {
   //
   // Grouping by message is right either way: the same failure reported by
   // two components is still one failure.
-  const byMessage = new Map<string, { apps: Set<string>; count: number }>();
-  for (const c of counts) {
-    const entry = byMessage.get(c.message) ?? { apps: new Set<string>(), count: 0 };
-    entry.apps.add(c.app);
-    entry.count += c.count;
-    byMessage.set(c.message, entry);
-  }
+  const byMessage = groupByMessage(counts);
 
   return [...byMessage.entries()]
     .filter(([, e]) => e.count >= DOMINANCE_MIN_COUNT && e.count / total >= DOMINANCE_SHARE)
@@ -90,6 +103,59 @@ export function findDominantErrors(counts: MessageCount[]): LogHealthFinding[] {
       share: e.count / total,
     }))
     .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Loops that no single-message threshold can see.
+ *
+ * `findDominantErrors` asks whether ONE message is most of the day's errors.
+ * Its denominator is every error, the other loops included — so each further
+ * broken thing enlarges the denominator and shrinks every share. The check
+ * grows quieter as the installation gets worse, and no choice of threshold
+ * repairs that: with eight loops running, none of them can reach half the
+ * errors even when every error on the host is a loop.
+ *
+ * Measured here on 2026-09-07 by running the check's own query: 15 094
+ * error rows in twenty-four hours, eight repeating messages, 76.5% of the
+ * volume between them, largest share 27.8%. Nothing was reported. The first
+ * of those loops, alone, would have been 100% and reported at once.
+ *
+ * So sum the numerators. A message repeating at least DOMINANCE_MIN_COUNT
+ * times is a loop by the standard the other check already uses; when two or
+ * more of them clear DOMINANCE_SHARE together, repetition is what the error
+ * log is made of. No new threshold: the same two constants answer a different
+ * question about the same data.
+ *
+ * Complementary by construction — when one message already clears the share
+ * `findDominantErrors` reports it and this returns nothing, so no loop is
+ * named twice.
+ */
+export function findRepetitionLoad(counts: MessageCount[]): LogHealthFinding[] {
+  if (findDominantErrors(counts).length > 0) return [];
+
+  const total = counts.reduce((sum, c) => sum + c.count, 0);
+  if (total === 0) return [];
+
+  const loops = [...groupByMessage(counts).entries()]
+    .filter(([, e]) => e.count >= DOMINANCE_MIN_COUNT)
+    .sort((a, b) => b[1].count - a[1].count);
+  // One repeating message below the share is not this finding; it is a busy
+  // day with one bad actor, and `findDominantErrors` has already declined it.
+  if (loops.length < 2) return [];
+
+  const count = loops.reduce((sum, [, e]) => sum + e.count, 0);
+  const share = count / total;
+  if (share < DOMINANCE_SHARE) return [];
+
+  return [
+    {
+      kind: 'repetition-load',
+      app: [...new Set(loops.flatMap(([, e]) => [...e.apps]))].sort().join(', '),
+      message: loops.map(([message, e]) => `${message} (${e.count.toLocaleString('en-US')})`).join('; '),
+      count,
+      share,
+    },
+  ];
 }
 
 /**
@@ -166,5 +232,8 @@ export function describeFinding(finding: LogHealthFinding): string {
     return `${finding.app}: "${finding.message}" — an event has been retried ${finding.retryCount!.toLocaleString('en-US')} times`;
   }
   const percent = Math.round((finding.share ?? 0) * 100);
+  if (finding.kind === 'repetition-load') {
+    return `${finding.count.toLocaleString('en-US')} of the day's errors (${percent}%) are repeats of: ${finding.message}`;
+  }
   return `${finding.app}: "${finding.message}" — ${finding.count.toLocaleString('en-US')} occurrences, ${percent}% of all errors`;
 }

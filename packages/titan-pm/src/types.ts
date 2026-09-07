@@ -1060,7 +1060,25 @@ export interface ISpawnOptions {
   };
   transport?: 'tcp' | 'unix' | 'ws';
   host?: string;
-  isolation?: 'none' | 'vm' | 'container';
+  /**
+   * Spawn strategy — the same vocabulary as `IProcessManagerConfig.isolation`,
+   * which this overrides for one process. Omit to use the manager's setting.
+   *
+   * This field used to be typed 'none' | 'vm' | 'container' — the SANDBOX
+   * vocabulary — while the spawner compared it against 'worker' and used it to
+   * gate the Netron management client. The two meanings met on the string
+   * 'none', so asking for no sandbox silently selected the in-process strategy.
+   * Sandboxing now travels in `sandbox` below. A 'vm' or 'container' value
+   * arriving here from an untyped caller is still honoured as a sandbox
+   * request, so the old runtime behaviour is unchanged.
+   */
+  isolation?: 'none' | 'worker' | 'child';
+  /**
+   * Requested sandbox. Neither 'vm' nor 'container' is implemented; both spawn
+   * an ordinary child process and warn at spawn time. 'none' is the default
+   * posture and deliberately says nothing about the spawn strategy.
+   */
+  sandbox?: 'none' | 'vm' | 'container';
   /** Additional Node.js CLI flags passed to forked child process (e.g. ['--import', 'tsx/esm']) */
   execArgv?: string[];
 

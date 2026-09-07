@@ -209,7 +209,12 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         startupTimeout: mergedOptions.startupTimeout,
         transport: this.mapTransport(mergedOptions.netron?.transport),
         host: mergedOptions.netron?.host,
-        isolation: mergedOptions.security?.isolation,
+        // The sandbox request, NOT the spawn strategy. These are two different
+        // vocabularies that both spell one of their values 'none'; forwarding
+        // the sandbox into the strategy slot meant `security.isolation: 'none'`
+        // silently selected the in-process strategy, which skips the Netron
+        // management client. The strategy comes from the manager config.
+        sandbox: mergedOptions.security?.isolation,
         execArgv: mergedOptions.execArgv,
       });
 

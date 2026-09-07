@@ -95,7 +95,27 @@ export async function launchClassic(
   return child;
 }
 
-function waitForReady(child: ChildProcess, handle: AppHandle, logger: ILogger): Promise<void> {
+/**
+ * Say WHY a starting child is gone.
+ *
+ * Node's `'exit'` carries `(code, signal)` and exactly one of them is set. A
+ * signalled exit reports `code === null`, so a handler that reads only `code`
+ * turns every kill into "code null" — which reads as though the process chose
+ * to exit and returned nothing, and sends the reader to the app's startup path
+ * instead of to the machine.
+ *
+ * The signal is the diagnosis. SIGKILL is the OOM killer, a jetsam eviction
+ * under memory pressure, or someone's `kill -9` — nothing in the process chose
+ * it and no amount of reading the app will explain it. SIGTERM is a deliberate
+ * stop. SIGSEGV is a crash in native code. `doctor` already tells an operator
+ * that "SIGKILL usually means the OOM killer or a hard timeout"; it could not
+ * say so from this message, because this message did not carry it.
+ */
+function describeExit(code: number | null, signal: NodeJS.Signals | null): string {
+  return signal ? `: killed by ${signal}` : `with code ${code}`;
+}
+
+export function waitForReady(child: ChildProcess, handle: AppHandle, logger: ILogger): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let settled = false;
 
@@ -119,12 +139,12 @@ function waitForReady(child: ChildProcess, handle: AppHandle, logger: ILogger): 
       }
     };
 
-    const onExit = (code: number | null) => {
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       handle.markErrored();
-      reject(new Error(`App '${handle.name}' exited during startup with code ${code}`));
+      reject(new Error(`App '${handle.name}' exited during startup ${describeExit(code, signal)}`));
     };
 
     const onError = (err: Error) => {

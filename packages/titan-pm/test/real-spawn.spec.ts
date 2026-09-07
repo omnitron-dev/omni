@@ -93,11 +93,15 @@ describeOrSkip('a genuinely spawned worker', () => {
   afterAll(() => rmSync(TMP, { recursive: true, force: true }));
 
   function manager(): ProcessManager {
-    // `isolation` belongs to the manager config: ProcessManager forwards only
-    // `security.isolation` per spawn, and that field is typed
-    // 'none' | 'vm' | 'container', so the 'child' strategy is reachable only
-    // from here. The default is 'worker' — worker threads, which share the
-    // parent's PID.
+    // `isolation` here is the spawn strategy, and the manager config is where
+    // it belongs: a per-spawn override exists (`ISpawnOptions.isolation`) but
+    // nothing in `IProcessOptions` sets it. The default is 'worker' — worker
+    // threads, which share the parent's PID.
+    //
+    // This comment used to say the strategy was reachable only from here
+    // BECAUSE ProcessManager forwarded `security.isolation` into the strategy
+    // slot. That was an accurate account of a defect, which is why it read as
+    // design for as long as it did.
     pm = new ProcessManager(logger as never, {
       testing: { useMockSpawner: false },
       isolation: 'child',
@@ -207,6 +211,50 @@ class Worker {
     expect(await proc.ok()).toBe(true);
 
     const infos = pm.listProcesses().filter((info) => info.name === 'threaded');
+    expect(infos).toHaveLength(1);
+    expect(infos[0]!.pid).toBeUndefined();
+  }, 60_000);
+
+  it('does not let a sandbox setting choose the spawn strategy', async () => {
+    // Two vocabularies share the name `isolation`, and one variable in the
+    // spawner holds both. `IProcessOptions.security.isolation` is
+    // 'none' | 'vm' | 'container' — a sandbox setting. `IProcessManagerConfig.
+    // isolation` is 'none' | 'worker' | 'child' — a spawn strategy. The manager
+    // forwards the first into the slot the spawner reads as the second
+    // (`options.isolation || this.config.isolation || 'worker'`), so ANY
+    // per-process security value short-circuits the `||` and the configured
+    // strategy is never consulted.
+    //
+    // 'none' is where the two collide on one string: it means "no sandbox" to
+    // the caller and "in-process, for testing" to the spawner — and the
+    // spawner's reading also gates the Netron management client
+    // (`if (isolation !== 'none')`). So declaring a process unsandboxed, the
+    // ordinary production posture, both downgraded it to a child process and
+    // took away its service proxy. The failure surfaces later and elsewhere, as
+    // 'NetronClient not available for service proxy'.
+    const file = writeWorker('unsandboxed', `
+class Worker {
+  static __public = ['ok'];
+  async ok() { return true; }
+}`);
+
+    pm = new ProcessManager(logger as never, {
+      testing: { useMockSpawner: false },
+      isolation: 'worker',
+    } as never);
+
+    const proc = await pm.spawn(file, {
+      name: 'unsandboxed',
+      security: { isolation: 'none' },
+    } as never);
+
+    // The proxy must exist: asking for no sandbox says nothing about how the
+    // process is reached.
+    expect(await proc.ok()).toBe(true);
+
+    // And the configured strategy must survive: a worker thread has no pid of
+    // its own, a child process does.
+    const infos = pm.listProcesses().filter((info) => info.name === 'unsandboxed');
     expect(infos).toHaveLength(1);
     expect(infos[0]!.pid).toBeUndefined();
   }, 60_000);

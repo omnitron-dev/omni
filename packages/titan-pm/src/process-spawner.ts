@@ -657,17 +657,45 @@ export class ProcessSpawner implements IProcessSpawner {
       dependencies: options.dependencies,
     };
 
-    // Determine spawn strategy based on isolation config
+    // Spawn strategy and sandbox are two different questions, and they used to
+    // share one variable. `IProcessOptions.security.isolation` ('none' | 'vm' |
+    // 'container') was forwarded into the slot read here as the strategy
+    // ('none' | 'worker' | 'child'), so any per-process sandbox value
+    // short-circuited the `||` and the manager's configured strategy was never
+    // consulted — and 'none', which both vocabularies spell the same way,
+    // additionally disabled the Netron client below.
+    //
+    // A 'vm'/'container' value arriving in `isolation` from an untyped caller is
+    // read as a sandbox request, which is what it always meant here. The type
+    // above no longer admits those two, and TypeScript is right that this
+    // comparison is impossible — but `ISpawnOptions` is public API of a
+    // published package, so a JavaScript caller (or one holding an older
+    // `.d.ts`) can still pass them. Dropping the branch would make their
+    // sandbox request vanish silently, which is the failure this whole change
+    // exists to remove; the widening is confined to reading it.
+    const declaredIsolation = options.isolation as string | undefined;
+    const legacySandbox =
+      declaredIsolation === 'vm' || declaredIsolation === 'container' ? declaredIsolation : undefined;
+    const strategy =
+      (options.isolation === 'none' || options.isolation === 'worker' || options.isolation === 'child'
+        ? options.isolation
+        : undefined) ??
+      this.config.isolation ??
+      'worker';
+    const sandbox = options.sandbox ?? legacySandbox;
+    // Neither sandbox is implemented; both fall through to a child process.
+    const sandboxUnimplemented = sandbox === 'vm' || sandbox === 'container';
+
     // Force child process when execArgv is set — worker threads don't support execArgv
-    const isolation = options.isolation || this.config.isolation || 'worker';
-    const useWorkerThreads = isolation === 'worker' && (!options.execArgv || options.execArgv.length === 0);
+    const useWorkerThreads =
+      strategy === 'worker' && !sandboxUnimplemented && (!options.execArgv || options.execArgv.length === 0);
 
     let worker: Worker | ChildProcess | undefined;
     let netronClient: NetronClient | null = null;
 
     try {
       // Spawn based on configuration
-      if (isolation === 'vm' || isolation === 'container') {
+      if (sandboxUnimplemented) {
         // Neither is implemented. Both fall through to an ordinary child
         // process, which shares the parent's filesystem and network — so a
         // caller who asked for 'container' believing the process is confined
@@ -675,8 +703,8 @@ export class ProcessSpawner implements IProcessSpawner {
         // left alone (changing it would break callers who set these values);
         // the silence is not.
         this.logger.warn(
-          { processId, isolation, actual: 'child' },
-          `Process isolation '${isolation}' is not implemented — spawning an ordinary child process. ` +
+          { processId, isolation: sandbox, actual: 'child' },
+          `Process isolation '${sandbox}' is not implemented — spawning an ordinary child process. ` +
             'It has the same filesystem and network access as its parent; do not rely on it as a security boundary.'
         );
         worker = await this.spawnChildProcess(context, options.execArgv);
@@ -699,7 +727,7 @@ export class ProcessSpawner implements IProcessSpawner {
 
       // waitForReady() confirmed the child sent 'ready' — process is running.
       // Pass RUNNING as initial status since the message was already consumed.
-      if (isolation !== 'none') {
+      if (strategy !== 'none') {
         netronClient = new NetronClient(processId, this.logger);
         await netronClient.start();
         await netronClient.connect(transport.url!);

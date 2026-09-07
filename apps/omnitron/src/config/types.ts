@@ -860,8 +860,18 @@ export interface SubProcessInfoDto {
   status: AppStatus;
   cpu: number;
   memory: number;
+  /** Uptime of the process whose pid this row prints — not the app's. */
   uptime: number;
-  restarts: number;
+  /**
+   * Restarts of this child, or `null` when nothing counts them.
+   *
+   * The supervisor maintains a count per child name. A pool is not a
+   * supervisor child, so for a pool row the honest answer is "unknown" —
+   * reporting `0` would leave "never restarted" indistinguishable from "not
+   * tracked", which is the shape of defect this field used to have for every
+   * child: it was the literal `0`.
+   */
+  restarts: number | null;
   /**
    * Live worker count. 1 for a supervisor-managed child; the pool's actual
    * size for an entry declaring `instances > 1`.

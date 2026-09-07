@@ -71,7 +71,10 @@ export function formatMemoryColored(bytes: number): string {
 }
 
 /** Format restart count — highlight if restarts > 0 */
-export function formatRestarts(count: number): string {
+export function formatRestarts(count: number | null): string {
+  // `null` is "nothing counts this", which is not the same claim as zero and
+  // must not render as one.
+  if (count == null) return '-';
   if (count === 0) return '0';
   if (count >= 5) return prism.red(String(count));
   return prism.yellow(String(count));

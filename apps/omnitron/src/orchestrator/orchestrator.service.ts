@@ -2247,23 +2247,41 @@ export class OrchestratorService extends EventEmitter {
    * -0` said were gone).
    */
   private resolveTopologyPids(handle: AppHandle, topo: IProcessEntry): number[] {
+    return this.resolveTopologyMembers(handle, topo).members.map((m) => m.pid);
+  }
+
+  /**
+   * The live processes behind one topology entry, keyed by the PM process id
+   * as well as the OS pid.
+   *
+   * The pid alone answers "is it alive"; the process id is what any question
+   * ABOUT that process has to be asked with — `pm.getProcess(id)` carries the
+   * spawn time, and the supervisor's restart counter is keyed by child name.
+   * `resolveTopologyPids` used to discard both on the way out, which is why
+   * the `omnitron list` DTO had nothing to report but the parent's numbers.
+   */
+  private resolveTopologyMembers(
+    handle: AppHandle,
+    topo: IProcessEntry
+  ): { members: Array<{ processId: string; pid: number }>; childName: string | null } {
     const isPoolEntry = (topo.instances ?? 1) > 1;
 
     if (isPoolEntry) {
       const pool = handle.topologyPools.get(topo.name);
-      if (!pool || pool.size === 0) return [];
-      return pool
+      if (!pool || pool.size === 0) return { members: [], childName: null };
+      const members = pool
         .getWorkerIds()
-        .map((id) => this.pm.getWorkerHandle(id)?.pid)
-        .filter((pid): pid is number => typeof pid === 'number');
+        .map((processId) => ({ processId, pid: this.pm.getWorkerHandle(processId)?.pid }))
+        .filter((m): m is { processId: string; pid: number } => typeof m.pid === 'number');
+      return { members, childName: null };
     }
 
     const childNames = handle.supervisor?.getChildNames() ?? [];
     const childName = childNames.find((cn) => cn.includes(topo.name)) ?? topo.name;
     const processId = handle.supervisor?.getChildProcessId(childName);
-    if (!processId) return [];
+    if (!processId) return { members: [], childName };
     const pid = this.pm.getWorkerHandle(processId)?.pid;
-    return typeof pid === 'number' ? [pid] : [];
+    return { members: typeof pid === 'number' ? [{ processId, pid }] : [], childName };
   }
 
   /**
@@ -2511,15 +2529,35 @@ export class OrchestratorService extends EventEmitter {
         // Without it the pool branch reported `online` from the pool's own
         // bookkeeping, never checking whether the pid it printed alongside
         // still existed.
-        const pids = this.resolveTopologyPids(handle, topo);
-        const alive = pids.filter((pid) => isAlive(pid));
+        const { members, childName } = this.resolveTopologyMembers(handle, topo);
+        const alive = members.filter((m) => isAlive(m.pid));
         const declaredInstances = topo.instances ?? 1;
         const liveInstances = isPoolEntry
           ? (handle.topologyPools.get(topo.name)?.size ?? 0)
           : alive.length;
-        const childPid = alive[0] ?? pids[0] ?? null;
+        const chosen = alive[0] ?? members[0];
+        const childPid = chosen?.pid ?? null;
         const childStatus: AppStatus =
-          alive.length > 0 ? 'online' : pids.length > 0 ? 'crashed' : 'stopped';
+          alive.length > 0 ? 'online' : members.length > 0 ? 'crashed' : 'stopped';
+
+        // The row prints one pid, so the row's clock is that pid's clock.
+        // `startTime` is written when the process id is registered and a
+        // restart registers a new one, so it moves when the process does.
+        // (`IProcessInfo.restartCount` does NOT: it is assigned 0 there and
+        // incremented nowhere. The supervisor keeps the real count, by child
+        // name — reading the field instead would have replaced a wrong
+        // constant with a wrong lookup.)
+        const chosenInfo = chosen ? this.pm.getProcess(chosen.processId) : undefined;
+        const childUptime =
+          typeof chosenInfo?.startTime === 'number' && chosenInfo.startTime > 0
+            ? Math.max(0, Date.now() - chosenInfo.startTime)
+            : 0;
+
+        // A pool is not a supervisor child and nothing counts its restarts.
+        // `null` says so; `0` would be absence written as a value from the
+        // domain, leaving "never restarted" and "not tracked" identical.
+        const childRestarts =
+          isPoolEntry || !childName ? null : (handle.supervisor?.getRestartCount(childName) ?? null);
 
         // Derive process type from declarations for backward-compatible DTO
         const derivedType: 'server' | 'worker' | 'scheduler' | 'custom' =
@@ -2534,8 +2572,8 @@ export class OrchestratorService extends EventEmitter {
           status: childStatus,
           cpu: sample?.cpu ?? 0,
           memory: sample?.memory ?? 0,
-          uptime: handle.uptime,
-          restarts: 0,
+          uptime: childUptime,
+          restarts: childRestarts,
           instances: liveInstances,
           declaredInstances,
         });

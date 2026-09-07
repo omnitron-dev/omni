@@ -171,6 +171,13 @@ export class OrchestratorService extends EventEmitter {
    * explicit stop ALWAYS preempts a pending crash-restart timer.
    */
   private readonly lifecycleQueue = new ProcessLifecycleQueue();
+
+  /**
+   * Pending post-escalation cool-down timers, keyed by app name.
+   * Held here rather than inside a lifecycle-queue slot so that a
+   * crashed app still answers operator commands while it waits.
+   */
+  private readonly coolDownTimers = new Map<string, NodeJS.Timeout>();
   private config: IEcosystemConfig | null = null;
   private readonly cwd: string;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -712,6 +719,9 @@ export class OrchestratorService extends EventEmitter {
 
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
     const canonical = this.resolveAppName(name) ?? name;
+    // Outside the queue on purpose: the operator's intent lands the
+    // moment the command arrives, not whenever the queue drains.
+    this.clearCoolDown(canonical);
     return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
       const handle = this.handles.get(canonical);
       if (!handle || handle.status === 'stopped') return;
@@ -2146,6 +2156,19 @@ export class OrchestratorService extends EventEmitter {
     });
   }
 
+  /**
+   * Cancel a pending crash cool-down for `name`, if one is armed.
+   * An explicit stop means "this app is going down now, stay down",
+   * which the cool-down must not undo ten minutes later.
+   */
+  private clearCoolDown(name: string): void {
+    const timer = this.coolDownTimers.get(name);
+    if (timer) {
+      clearTimeout(timer);
+      this.coolDownTimers.delete(name);
+    }
+  }
+
   private async scheduleRecovery(
     entry: IEcosystemAppEntry,
     handle: AppHandle,
@@ -2164,42 +2187,43 @@ export class OrchestratorService extends EventEmitter {
       // We reset the counter + schedule one fresh attempt 10 minutes
       // out. If THAT attempt also crashes through maxRestarts we
       // land back here and pause another 10 minutes — bounded
-      // self-healing without thrashing. Cool-down is keyed to the
-      // app name; explicit operator stop preempts it via the
-      // lifecycle queue.
+      // self-healing without thrashing.
+      //
+      // The wait happens OUTSIDE the lifecycle queue, and that is the
+      // whole point. It used to be a queued `crash-restart` whose
+      // `run()` slept for the entire cool-down — but `enqueue` will
+      // not preempt a RUNNING head, and with an empty queue the
+      // sleeper always became the head immediately. So the `onPreempt`
+      // hook meant to cancel it could never fire, and an operator's
+      // `stop` or `restart` simply queued behind ten minutes of sleep:
+      // the CLI's RPC timed out after 60s while the op stayed queued,
+      // to fire whenever the cool-down finally elapsed. An app that
+      // exhausted its restart budget was unreachable by every command
+      // the CLI offers — `restart` hung, `stop` hung, `stack start`
+      // skipped it — and the only recovery was restarting the daemon.
       const COOL_DOWN_MS = 10 * 60_000;
-      this.lifecycleQueue.enqueue(
-        entry.name,
-        'crash-restart',
-        () => new Promise<void>((resolve) => {
-          let timer: ReturnType<typeof setTimeout> | null = setTimeout(async () => {
-            timer = null;
-            if (handle.status === 'stopping' || handle.status === 'stopped') return resolve();
-            this.logger.info({ app: entry.name }, 'Cool-down elapsed — attempting fresh recovery');
-            handle.restarts = 0; // fresh attempt window
-            handle.status = 'stopped';
-            try {
-              // `startAppInternal`, not `startApp`. We are INSIDE the lifecycle
-              // queue slot for this app; `startApp` enqueues on the same key and
-              // cannot run until this task returns, so calling it here waits on
-              // itself forever. See the note on the other call below.
-              await this.startAppInternal(entry, config);
-            } catch (err) {
-              this.logger.error({ app: entry.name, err: (err as Error).message }, 'Cool-down recovery failed');
-            }
-            resolve();
-          }, COOL_DOWN_MS);
-          // Tag for the preempt-hook path below.
-          (handle as unknown as { _coolDownTimer: typeof timer })._coolDownTimer = timer;
-        }),
-        () => {
-          const t = (handle as unknown as { _coolDownTimer?: ReturnType<typeof setTimeout> })._coolDownTimer;
-          if (t) clearTimeout(t);
-        },
-      ).catch((err) => {
-        if (err instanceof LifecyclePreempted) return;
-        this.logger.warn({ app: entry.name, err: (err as Error).message }, 'Cool-down task rejected');
-      });
+      this.clearCoolDown(entry.name);
+      const timer = setTimeout(() => {
+        this.coolDownTimers.delete(entry.name);
+        // Re-read the handle: every start replaces it (see
+        // `startAppInternal`), so the one captured above is stale the
+        // moment anything restarts this app. Only a still-crashed app
+        // wants this attempt — an operator who started it meanwhile
+        // has already settled the question.
+        const current = this.handles.get(entry.name);
+        if (!current || current.status !== 'crashed') return;
+        this.logger.info({ app: entry.name }, 'Cool-down elapsed — attempting fresh recovery');
+        current.restarts = 0; // fresh attempt window
+        current.status = 'stopped';
+        void this.lifecycleQueue
+          .enqueue(entry.name, 'crash-restart', () => this.startAppInternal(entry, config))
+          .catch((err) => {
+            if (err instanceof LifecyclePreempted) return;
+            this.logger.error({ app: entry.name, err: (err as Error).message }, 'Cool-down recovery failed');
+          });
+      }, COOL_DOWN_MS);
+      timer.unref?.();
+      this.coolDownTimers.set(entry.name, timer);
       return;
     }
 

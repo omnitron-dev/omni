@@ -57,6 +57,26 @@ export class DaemonRpcService implements IDaemonService {
     const entry = this.findConfiguredApp(data.name);
     if (!entry) throw Errors.notFound('App', data.name);
 
+    // Accepting the canonical name is only half of it. `namespaceEntry` builds
+    // the handle key from THIS daemon's config, and a daemon supervising
+    // registered projects has no `project` of its own — so the promotion is a
+    // no-op and the app would register under the bare name, beside the
+    // canonical entry the stack owns, in classic mode.
+    //
+    // Observed on the stand: `omnitron start daos/dev/storage` reported
+    // success and left `storage` (classic, errored) in the state store next to
+    // the stack's six. Refusing and naming the command that does work is the
+    // honest answer; succeeding wrongly is worse than the "not found" this
+    // path used to give, because nothing tells the operator it went sideways.
+    if (data.name.includes('/') && !this.config.project) {
+      const [project, stack] = data.name.split('/');
+      throw Errors.badRequest(
+        `'${data.name}' belongs to a registered project, which this daemon starts through its stack. ` +
+          `Use \`omnitron stack start ${project} ${stack}\`, or start the app by its bare name ` +
+          `('${entry.name}') if you mean the daemon's own config.`
+      );
+    }
+
     // Inject project + default-stack context so `ensureNamespacedEntry`
     // promotes a bare-name `entry.name` to the canonical
     // `${project}/${stack}/${name}` form. Without this, every CLI

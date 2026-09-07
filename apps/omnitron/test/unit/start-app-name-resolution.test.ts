@@ -81,6 +81,26 @@ describe('startApp — the name an operator can see', () => {
     expect(ctx.started).toHaveLength(0);
   });
 
+  it('refuses a project name the daemon cannot register, rather than registering it wrong', async () => {
+    // The half the first fix left undone, observed live on the stand.
+    // Accepting `daos/dev/storage` is only half the job: `namespaceEntry`
+    // promotes the handle key from the daemon's OWN config, and a daemon
+    // supervising registered PROJECTS has no `project` of its own — so the
+    // promotion is a no-op and the app registers under the bare `storage`,
+    // beside the canonical entry the stack owns.
+    //
+    // That is worse than the original refusal. Before, the command failed and
+    // nothing happened; after, it reports success and the state store gains a
+    // duplicate in classic mode. Refusing with the command that does work is
+    // the honest answer — `stack start` owns project apps.
+    const config = ecosystem();
+    delete (config as { project?: string }).project;
+    const ctx = serviceWith(config);
+
+    await expect(ctx.svc.startApp({ name: 'daos/dev/paysys' })).rejects.toThrow(/stack start/i);
+    expect(ctx.started).toHaveLength(0);
+  });
+
   it('does not match a different app that shares a suffix', async () => {
     // `paysys` must not be reachable as `.../notpaysys` — a suffix match on
     // the raw string rather than on the path segment would do exactly that.

@@ -197,40 +197,62 @@ test.describe('Snackbar Severity Styles', () => {
     await page.goto('/test/snackbar');
   });
 
-  test('success snackbar should have green styling', async ({ page }) => {
-    await page.getByTestId('btn-success').click();
+  /**
+   * Severity has to reach MUI's Alert, or every snackbar looks alike.
+   *
+   * These four asserted `MuiAlert-filledSuccess` and friends — a compound
+   * class MUI stopped emitting. Under @mui/material 9 the element carries
+   * `MuiAlert-filled` and `MuiAlert-colorSuccess` separately, so all four
+   * failed against a component that was doing exactly the right thing. That
+   * is the cost of asserting on a proxy: the name is the library's to change,
+   * and when it changes the test accuses the wrong party.
+   *
+   * The class assertions are kept, corrected, because they name the intent
+   * readably. The property that actually matters is at the bottom: four
+   * severities must paint four different colours. It holds across a rename
+   * and across a repalette, and it goes red on the one failure these exist
+   * for — `severity` not arriving.
+   */
+  const SEVERITIES = [
+    { id: 'btn-success', severity: 'Success', hue: 'green' },
+    { id: 'btn-error', severity: 'Error', hue: 'red' },
+    { id: 'btn-warning', severity: 'Warning', hue: 'orange/yellow' },
+    { id: 'btn-info', severity: 'Info', hue: 'blue' },
+  ] as const;
 
-    const alert = page.getByRole('alert');
-    await expect(alert).toBeVisible();
+  for (const { id, severity, hue } of SEVERITIES) {
+    test(`${severity.toLowerCase()} snackbar should have ${hue} styling`, async ({ page }) => {
+      await page.getByTestId(id).click();
 
-    // Check for success class
-    await expect(alert).toHaveClass(/MuiAlert-filledSuccess/);
-  });
+      const alert = page.getByRole('alert');
+      await expect(alert).toBeVisible();
 
-  test('error snackbar should have red styling', async ({ page }) => {
-    await page.getByTestId('btn-error').click();
+      await expect(alert).toHaveClass(new RegExp(`MuiAlert-color${severity}\\b`));
+      await expect(alert).toHaveClass(/MuiAlert-filled\b/);
+    });
+  }
 
-    const alert = page.getByRole('alert');
-    await expect(alert).toBeVisible();
+  test('the four severities are painted four different colours', async ({ page }) => {
+    // The assertion the class names stand in for. A component that dropped
+    // `severity` on the floor would still carry `MuiAlert-filled` and would
+    // still pass every test above if their class patterns ever went stale
+    // again; it cannot pass this one.
+    const painted = new Map<string, string>();
 
-    await expect(alert).toHaveClass(/MuiAlert-filledError/);
-  });
+    for (const { id, severity } of SEVERITIES) {
+      await page.getByTestId(id).click();
+      const alert = page.getByRole('alert');
+      await expect(alert).toBeVisible();
+      const colour = await alert.evaluate((el) => getComputedStyle(el).backgroundColor);
+      painted.set(severity, colour);
+      // Let the snackbar close before the next one, so the colour read
+      // belongs to the severity just clicked rather than to whichever alert
+      // happened to still be on screen.
+      await expect(alert).toBeHidden({ timeout: 15_000 });
+    }
 
-  test('warning snackbar should have orange/yellow styling', async ({ page }) => {
-    await page.getByTestId('btn-warning').click();
-
-    const alert = page.getByRole('alert');
-    await expect(alert).toBeVisible();
-
-    await expect(alert).toHaveClass(/MuiAlert-filledWarning/);
-  });
-
-  test('info snackbar should have blue styling', async ({ page }) => {
-    await page.getByTestId('btn-info').click();
-
-    const alert = page.getByRole('alert');
-    await expect(alert).toBeVisible();
-
-    await expect(alert).toHaveClass(/MuiAlert-filledInfo/);
+    expect(new Set(painted.values()).size, `each severity needs its own colour, got ${JSON.stringify([...painted])}`).toBe(
+      SEVERITIES.length
+    );
   });
 });

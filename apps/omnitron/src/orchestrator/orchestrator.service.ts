@@ -1011,12 +1011,16 @@ export class OrchestratorService extends EventEmitter {
 
         this.logger.info({ app: name, child: childName }, 'Child reloaded successfully');
       } catch (err) {
+        // `error: err`, not `error: err.message`: the logger aliases `error`
+        // onto pino's error serializer, so the object arrives with its stack
+        // and a string arrives as a string with nothing behind it.
         this.logger.error(
-          { app: name, child: childName, error: (err as Error).message },
+          { app: name, child: childName, error: err },
           'Failed to reload child — aborting zero-downtime reload'
         );
         throw new Error(
-          `Zero-downtime reload failed for '${name}' at child '${childName}': ${(err as Error).message}`
+          `Zero-downtime reload failed for '${name}' at child '${childName}': ${(err as Error).message}`,
+          { cause: err }
         );
       }
     }
@@ -1521,13 +1525,17 @@ export class OrchestratorService extends EventEmitter {
         // fail with a cryptic "Cannot find module" downstream. Surface
         // the build error directly so the operator sees the actual
         // problem on `omnitron start/restart`.
+        // esbuild's error carries an `errors[]` with file, line and column.
+        // `.message` is the summary; the locations are what an operator needs
+        // to fix the build, and they exist only on the original.
         this.logger.error(
-          { app: entry.name, error: (err as Error).message },
+          { app: entry.name, error: err },
           'esbuild build failed — app cannot start without bundled output'
         );
         throw new Error(
           `Cannot launch '${entry.name}' in dev mode: esbuild build failed (${(err as Error).message}). ` +
           `Fix the build error and retry, or run with bundled output present in apps/${entry.name}/.omnitron-build/.`,
+          { cause: err },
         );
       }
     }

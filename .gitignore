@@ -46,11 +46,21 @@ pnpm-debug.log*
 # KB generated artifacts
 kb/generated/
 
-# Playwright output. `test-results/.last-run.json` was committed carrying
-# `{"status": "passed"}` — a file asserting a result, tracked in git, for a
-# suite that cannot run here at all (the browsers are not installed). An
-# artifact that states an outcome is worse than no artifact: it answers the
-# question without having done the work.
+# Playwright output. Both rules below were already here and both were untrue
+# about a path each: `git` does not un-track what is already indexed, so
+# `packages/prism/playwright-report/index.html` (524 KB) and
+# `packages/prism/test-results/.last-run.json` stayed in the tree from the
+# commit that added these very lines.
+#
+# What they carried is the point. The `.last-run.json` said
+# `{"status": "passed"}` for a suite that cannot run in this checkout at all —
+# the browsers are not installed, and every spec fails with
+# `browserType.launch: Executable doesn't exist`. The report is the viewer
+# without its `data/` directory, so it opens showing no tests rather than an
+# error: "nothing ran" and "nothing was recorded" render identically.
+#
+# An artifact that states an outcome is worse than no artifact. It answers the
+# question without having done the work, and it answers it in the affirmative.
 test-results/
 playwright-report/
 

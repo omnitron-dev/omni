@@ -1081,14 +1081,29 @@ export class ProcessSpawner implements IProcessSpawner {
         }
       };
 
-      const exitHandler = (code: number | null) => {
+      // Node's 'exit' reports (code, signal) and fills exactly one of them. A
+      // process killed by a signal always arrives here with `code === null`,
+      // so reading only the first argument turned every kill into "exited
+      // during startup with code null" — a message that describes the shape of
+      // the event and withholds the one fact that explains it.
+      //
+      // The distinction is the diagnosis, not a detail. A signal means the
+      // process did not choose to exit and left no message of its own: SIGKILL
+      // is the OOM killer, jetsam eviction under memory pressure, or somebody's
+      // `kill -9`; SIGTERM is a deliberate stop; SIGSEGV is a crash in native
+      // code. None of those are findable by reading the application, which is
+      // exactly where "code null" sends the reader.
+      const exitHandler = (code: number | null, signal: NodeJS.Signals | null) => {
         cleanup();
         const diag = buildDiagnostics();
         const stderrTail = diag.stderr
           ? '\n--- last child stderr ---\n' + diag.stderr.split('\n').slice(-20).join('\n')
           : '';
-        const err = new Error(`Worker exited during startup with code ${code}${stderrTail}`);
-        (err as any).details = diag;
+        const how = signal
+          ? `after being killed by ${signal} — it did not choose to exit, so its own logs will not explain this`
+          : `with code ${code}`;
+        const err = new Error(`Worker exited during startup ${how}${stderrTail}`);
+        (err as any).details = { ...diag, exitCode: code, exitSignal: signal };
         reject(err);
       };
 

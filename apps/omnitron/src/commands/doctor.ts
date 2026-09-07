@@ -47,6 +47,7 @@ import type { ProcessInfoDto } from '../config/types.js';
 import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
 import {
   findDominantErrors,
+  findRepetitionLoad,
   findRetryLoops,
   findDuplicatedLogs,
   describeFinding,
@@ -624,6 +625,22 @@ async function checkLogHealth(findings: Findings, db: unknown): Promise<void> {
         'the table pays for both copies, and every per-app count is wrong by whichever component emitted the line',
       ],
       remedy: 'Nothing to do at runtime — the duplicate path is in the process spawner, not in configuration.',
+    });
+  }
+
+  for (const finding of findRepetitionLoad(counts)) {
+    findings.add({
+      id: 'logs.repetition',
+      severity: 'warning',
+      title: `Repetition is ${Math.round((finding.share ?? 0) * 100)}% of the last day's errors, spread over ${finding.message.split('; ').length} messages`,
+      evidence: [
+        describeFinding(finding),
+        'no single one of these is large enough to be reported on its own — each further loop enlarges the denominator the share is measured against',
+      ],
+      remedy:
+        'Each line is a loop that cannot make progress. Take them one at a time: ' +
+        '`omnitron logs <app> --level error` shows the failing operation, and the ' +
+        'apps named above are where the work is not getting done.',
     });
   }
 

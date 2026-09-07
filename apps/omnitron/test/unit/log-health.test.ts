@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   findDominantErrors,
+  findRepetitionLoad,
   findRetryLoops,
   findDuplicatedLogs,
   describeFinding,
@@ -23,6 +24,38 @@ import {
   DOMINANCE_MIN_COUNT,
   RETRY_LOOP_THRESHOLD,
 } from '../../src/commands/log-health.js';
+
+/**
+ * The real error volume of this host, 2026-09-07, from the check's own query:
+ * 15 094 error/fatal rows in 24 hours. Eight messages repeat; together they
+ * are 76.5% of the day. The largest is 27.8%.
+ *
+ * `findDominantErrors` reports none of it, and cannot: its criterion is a
+ * share of the total, and every additional broken loop enlarges the
+ * denominator. The first of these loops, alone, would have been 100% and
+ * reported at once. Eight of them are silent.
+ */
+const LIVE_ERROR_DAY = [
+  { app: 'daos/dev/paysys', message: 'webhook-delivery-worker: tick failed', count: 4203 },
+  { app: 'daos/dev/priceverse', message: 'Aggregation error', count: 2544 },
+  { app: 'daos/dev/messaging', message: 'All 3 heartbeat attempts failed', count: 1691 },
+  { app: 'daos/dev/messaging', message: 'Scheduled messages processing failed', count: 848 },
+  { app: 'daos/dev/paysys', message: 'Confirmation check failed in poll cycle', count: 566 },
+  { app: 'daos/dev/paysys', message: 'Withdrawal reorg sweep failed in poll cycle', count: 566 },
+  { app: 'daos/dev/paysys', message: 'BTC scan failed in poll cycle', count: 566 },
+  { app: 'daos/dev/paysys', message: 'XMR credited-reorg sweep failed in poll cycle', count: 566 },
+  // The remaining 3 544 are NOT one message. Modelling them as a single row
+  // was this fixture's own first defect: at 3 544 it cleared
+  // DOMINANCE_MIN_COUNT and was itself counted as a loop, which made the
+  // assertion pass on 15 094 — the whole day — and would have hidden a real
+  // failure to distinguish repetition from variety.
+  ...Array.from({ length: 44 }, (_, i) => ({
+    app: 'daos/dev/main',
+    message: `one-off failure ${i}`,
+    count: 80,
+  })),
+  { app: 'daos/dev/main', message: 'one-off failure 44', count: 24 },
+];
 
 describe('findDominantErrors', () => {
   it('finds a message that is most of the error volume', () => {
@@ -169,5 +202,55 @@ describe('findDuplicatedLogs', () => {
 
   it('does not divide by a zero total', () => {
     expect(findDuplicatedLogs([{ app: 'a', otherApp: 'b', count: 5 }], 0)).toEqual([]);
+  });
+});
+
+
+describe('findRepetitionLoad', () => {
+  it('reports the loops that no single-message threshold can see', () => {
+    // The condition this exists for, with the numbers it was found on.
+    expect(findDominantErrors(LIVE_ERROR_DAY)).toHaveLength(0);
+
+    const [found] = findRepetitionLoad(LIVE_ERROR_DAY);
+    expect(found).toBeDefined();
+    expect(found!.count).toBe(11_550);
+    expect(found!.share).toBeGreaterThan(0.76);
+    // Naming them is the point: an operator who is told "repetition is 76% of
+    // your errors" and not which messages has been given a statistic, not a
+    // lead.
+    expect(found!.message).toContain('webhook-delivery-worker: tick failed');
+    expect(found!.message).toContain('Aggregation error');
+  });
+
+  it('stays silent when one message already dominates', () => {
+    // Complementary, not overlapping: that case is `findDominantErrors`, and
+    // reporting the same loop under two headings is how a check becomes
+    // something people stop reading.
+    const oneLoop = [
+      { app: 'storage', message: 'Failed to process outbox event', count: 9000 },
+      { app: 'storage', message: 'Also broken', count: 900 },
+    ];
+    expect(findDominantErrors(oneLoop)).toHaveLength(1);
+    expect(findRepetitionLoad(oneLoop)).toHaveLength(0);
+  });
+
+  it('does not fire on ordinary assorted noise', () => {
+    // Twenty different failures, none repeating enough to be a loop. This is
+    // a busy day, not a stuck system, and the difference has to survive.
+    const noise = Array.from({ length: 20 }, (_, i) => ({
+      app: 'main',
+      message: `distinct failure ${i}`,
+      count: 40,
+    }));
+    expect(findRepetitionLoad(noise)).toHaveLength(0);
+  });
+
+  it('does not fire when repetition is a minority of the errors', () => {
+    const mostlyVaried = [
+      { app: 'main', message: 'a loop', count: 200 },
+      { app: 'main', message: 'another loop', count: 200 },
+      { app: 'main', message: 'assorted', count: 2000 },
+    ];
+    expect(findRepetitionLoad(mostlyVaried)).toHaveLength(0);
   });
 });

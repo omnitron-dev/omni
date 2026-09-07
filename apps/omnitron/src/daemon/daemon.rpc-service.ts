@@ -26,6 +26,7 @@ import type {
   ChildDiagnosticsDto,
   LogPathsDto,
 } from '../config/types.js';
+import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { IHealthService } from '@omnitron-dev/titan-health';
 import type { LogManager } from '../monitoring/log-manager.js';
@@ -53,7 +54,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startApp(data: { name: string }): Promise<ProcessInfoDto> {
-    const entry = this.config.apps.find((a) => a.name === data.name);
+    const entry = this.findConfiguredApp(data.name);
     if (!entry) throw Errors.notFound('App', data.name);
 
     // Inject project + default-stack context so `ensureNamespacedEntry`
@@ -66,6 +67,40 @@ export class DaemonRpcService implements IDaemonService {
     const enriched = this.namespaceEntry(entry);
     await this.orchestrator.startApp(enriched);
     return this.orchestrator.getApp(data.name)!;
+  }
+
+  /**
+   * Find the config entry an operator means.
+   *
+   * The ecosystem config holds BARE names; `omnitron list` prints canonical
+   * handle keys (`daos/dev/paysys`), because that is what a project-scoped app
+   * is registered under. Comparing the request to the config by string
+   * equality therefore rejected the only name an operator can see, with "App
+   * with id daos/dev/paysys not found" printed directly under a row saying it
+   * exists. Every other entry point — `getApp`, `stopApp`, `restartApp`,
+   * `reloadApp` — already resolves through `orchestrator.resolveAppName`; this
+   * one compared strings.
+   *
+   * Matched by path SEGMENT, never by string suffix: `daos/dev/notpaysys` must
+   * not reach `paysys`. Ambiguity is an error rather than a guess, for the
+   * reason `resolveAppName` gives — operating on the wrong app is worse than
+   * refusing.
+   */
+  private findConfiguredApp(requested: string): import('../config/types.js').IEcosystemAppEntry | undefined {
+    const exact = this.config.apps.find((a) => a.name === requested);
+    if (exact) return exact;
+
+    const wanted = effectiveAppName(requested);
+    const matches = this.config.apps.filter((a) => effectiveAppName(a.name) === wanted);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      throw Errors.badRequest(
+        `App name '${requested}' is ambiguous — the config declares ${matches
+          .map((a) => a.name)
+          .join(', ')}. Use the name exactly as declared.`
+      );
+    }
+    return undefined;
   }
 
   /**

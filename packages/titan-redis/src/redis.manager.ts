@@ -86,7 +86,42 @@ export class RedisManager {
     }
 
     if (!options.retryStrategy && !options.cluster?.options?.clusterRetryStrategy) {
-      options.retryStrategy = createRetryStrategy();
+      // Retry for as long as the process lives, with the delay capped.
+      //
+      // The default used to be `createRetryStrategy()`, which is `retries: 10`
+      // — and ioredis treats a non-number from a retry strategy as "never
+      // reconnect": its event handler calls close(), the status becomes 'end',
+      // and every later command rejects with "Connection is closed." forever.
+      // The ten delays add up to about 43 seconds, so any Redis outage longer
+      // than that permanently killed every client this manager owns, in a
+      // process that then kept running. Nothing recreated them.
+      //
+      // A long-lived server has no better answer to "Redis is away" than to
+      // keep asking. Giving up is a decision only a short-lived caller can
+      // make, and one is still free to pass an explicit strategy.
+      options.retryStrategy = createRetryStrategy({ retries: Infinity });
+    }
+
+    // Whatever strategy is in effect — ours or the caller's — a decision to
+    // stop reconnecting must not be silent. This is the last moment anything
+    // knows the client is about to become permanently unusable; afterwards
+    // there is only "Connection is closed." from whatever command runs next,
+    // which names neither Redis nor the policy that gave up.
+    const configured = options.retryStrategy;
+    if (typeof configured === 'function') {
+      options.retryStrategy = (times: number) => {
+        const delay = configured(times);
+        if (typeof delay !== 'number') {
+          this.logger.error(
+            { namespace, attempts: times },
+            `Redis client "${namespace}" has stopped reconnecting after ${times} attempts. ` +
+              'It will not recover on its own: every command from now on fails with ' +
+              '"Connection is closed." Configure a retryStrategy that keeps returning a delay ' +
+              'if this client is meant to outlive a Redis restart.'
+          );
+        }
+        return delay;
+      };
     }
 
     const client = createRedisClient(options);

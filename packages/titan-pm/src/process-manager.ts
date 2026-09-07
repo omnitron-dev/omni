@@ -188,7 +188,9 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       name: mergedOptions.name || processName,
       status: ProcessStatus.PENDING,
       startTime: Date.now(),
-      restartCount: 0,
+      // No restartCount: this component never increments one, so writing 0
+      // here published "has never restarted" about every process it knows.
+      // `ProcessSupervisor.getRestartCount(name)` is the counter that moves.
     };
 
     this.processes.set(processId, processInfo);

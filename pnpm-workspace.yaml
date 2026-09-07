@@ -2,6 +2,7 @@ packages:
   - apps/*
   - apps/omnitron/webapp
   - packages/*
+  - tools/*
 
 onlyBuiltDependencies:
   - better-sqlite3

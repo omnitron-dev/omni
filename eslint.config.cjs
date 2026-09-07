@@ -1,36 +1,65 @@
 /**
- * ESLint does not run in this monorepo, and has not since the TypeScript 7
- * upgrade.
+ * ESLint runs against TypeScript 6, deliberately, while the monorepo builds on
+ * TypeScript 7.
  *
- * `typescript-eslint` 8.69 refuses to load against TS 7 outright — every
- * package with a `lint` script fails identically with "typescript-eslint does
- * not support TS 7.0", tracked upstream as typescript-eslint#10940. So
- * `turbo lint` reports "5 successful, 5 total" worth of failures on a task
- * nothing depends on: a check that shouts and changes nothing.
+ * `typescript-eslint` reads `ts.versionMajorMinor` at import time and throws on
+ * anything >= 7 (`typescript-eslint does not support TS 7.0`, upstream
+ * typescript-eslint#10940). Between the TS 7 upgrade and this note, lint did
+ * not run anywhere in the repository.
  *
- * Two things were tried and are recorded so they are not tried again:
+ * The fix is the one TypeScript 7's own upgrade note recommends: give
+ * typescript-eslint the TS 6 API side by side. `tools/lint` is a workspace
+ * package whose only job is to declare `typescript@6.0.3`, and the require
+ * below reaches into it, so the copy of typescript-eslint that loads here is
+ * the one pnpm bound to 6.0.3. Every other package still resolves 7.0.2.
  *
- *   - pnpm scoped overrides (`typescript-eslint>typescript: 6.0.3`) do not
- *     take: the flat `typescript: 7.0.2` override wins, and the install
- *     reports "unmet peer typescript@6.0.3: found 7.0.2" while eslint fails
- *     exactly as before.
- *   - forcing the TS 6 API through an alias would make it parse TS 7 source.
- *     A linter reading the code with an older parser reports syntax it does
- *     not know as errors, which is noise shaped like findings — worse than
- *     silence, because someone has to disprove each one.
+ * Why not a pnpm override — measured three ways, so nobody repeats it:
+ * `typescript` is a PEER dependency of typescript-eslint, and pnpm resolves
+ * peers from the importer. A scoped override (`typescript-eslint>typescript`)
+ * does not take, with or without a flat one; an alias
+ * (`npm:typescript@6.0.3`) does not either, because an override matches on the
+ * dependency NAME. Only an importer that declares TS 6 itself works, which is
+ * what `tools/lint` is.
  *
- * Waiting on upstream is the honest state. Note also that only 5 of the 28
- * packages declare a `lint` script at all; turning it on for the other 23
- * would produce a first-run finding count nobody has measured, which is a
- * decision to put to a human with that number in hand, not a default.
+ * A previous version of this comment recorded a second objection as settled
+ * fact: that a TS 6 parser reading TS 7 source would report unknown syntax as
+ * errors, "noise shaped like findings". That is false here and was never
+ * measured. TypeScript 7.0 is a reimplementation of the same language, not an
+ * extension of its grammar: the 6.0.3 parser reads 781 files across titan,
+ * testing, netron-browser and prism with ZERO syntax errors. The objection was
+ * plausible, unverifiable by reading, and closed the question for a day —
+ * which is the more expensive kind of wrong answer, because a bad finding gets
+ * re-checked and a bad reason for not trying does not.
+ *
+ * Delete `tools/lint` and restore the plain require when upstream ships TS 7
+ * support.
+ *
+ * Note that only 5 of the 28 packages declare a `lint` script. Turning it on
+ * for the rest is a decision for a human holding the finding count, which is
+ * now measurable.
  */
 
 const globals = require('globals');
 const eslintJs = require('@eslint/js');
-const eslintTs = require('typescript-eslint');
+// Resolved from tools/lint, not from the root: that copy is the one pnpm bound
+// to TypeScript 6. See the note at the top of this file.
+//
+// createRequire rather than a path require — typescript-eslint publishes
+// `exports` and no `main`, and a require BY PATH does not consult `exports`,
+// so the direct form fails to resolve. Resolving the bare specifier from
+// tools/lint's context is also the honest expression of what is meant:
+// "whatever typescript-eslint that package sees".
+const { createRequire } = require('node:module');
+const lintRequire = createRequire(require.resolve('./tools/lint/package.json'));
+const eslintTs = lintRequire('typescript-eslint');
 const importPlugin = require('eslint-plugin-import');
 const perfectionistPlugin = require('eslint-plugin-perfectionist');
-const unusedImportsPlugin = require('eslint-plugin-unused-imports');
+// Also from tools/lint: this plugin requires @typescript-eslint/eslint-plugin
+// at load time (an optional peer), and resolving it from the root pulls in a
+// TypeScript-7-bound copy, which prints the unsupported-version error to
+// stderr on every run. Lint still worked — the message was pure noise, which
+// is the worst kind, since it says the tool is not running while it is.
+const unusedImportsPlugin = lintRequire('eslint-plugin-unused-imports');
 const reactHooksPlugin = require('eslint-plugin-react-hooks');
 
 // ----------------------------------------------------------------------

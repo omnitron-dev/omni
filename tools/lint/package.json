@@ -1,0 +1,12 @@
+{
+  "name": "@omnitron-dev/lint-runner",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Holds the TypeScript 6 that typescript-eslint needs, so the rest of the monorepo can stay on TypeScript 7.",
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0",
+    "@typescript-eslint/eslint-plugin": "8.69.0",
+    "eslint-plugin-unused-imports": "4.4.1"
+  }
+}

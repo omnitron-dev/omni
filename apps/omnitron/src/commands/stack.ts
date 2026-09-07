@@ -239,7 +239,23 @@ export async function stackStartCommand(projectName: string, stackName: string):
       infrastructure: stack.infrastructure,
     })) return;
 
-    emitSuccess(`Stack ${projectName}/${stackName} started — ${online}/${stack.apps.length} apps online`);
+    if (online < stack.apps.length) {
+      // Reporting a partial start as success is how a dead stack passes for a
+      // live one in a script. The count was always printed; it was printed
+      // under a success glyph and a zero exit code, so nothing downstream
+      // could tell 6/6 from 0/6.
+      const down = stack.apps
+        .filter((a) => a.status !== 'online')
+        .map((a) => `${a.name} (${a.status})`);
+      emitError(
+        `Stack ${projectName}/${stackName}: only ${online}/${stack.apps.length} apps came online. ` +
+          `Not online: ${down.join(', ')}. Check \`omnitron logs <app>\` or \`omnitron doctor\`.`,
+        { project: projectName, stack: stackName, online, total: stack.apps.length }
+      );
+      process.exitCode = 1;
+    } else {
+      emitSuccess(`Stack ${projectName}/${stackName} started — ${online}/${stack.apps.length} apps online`);
+    }
 
     if (stack.infrastructure.ready) {
       const svcNames = Object.keys(stack.infrastructure.services);

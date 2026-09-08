@@ -416,12 +416,41 @@ export const AuthErrors = {
  * HTTP status is returned to clients (401/403/404/409/429/etc.) instead of
  * collapsing everything into a generic 500 INTERNAL_ERROR.
  */
+/**
+ * Recognise a Zod validation failure without an `instanceof` check.
+ *
+ * `instanceof` is unreliable here: the application's zod and the one titan
+ * depends on can be different copies, and the check would then quietly fail on
+ * exactly the errors it exists to catch. Zod's own error carries a stable
+ * `name` and an `issues` array, which is what is matched instead. Duck-typing
+ * is also what the branch below already does for `.status` / `.statusCode`.
+ */
+function isValidationError(error: Error): error is Error & { issues: unknown[] } {
+  return error.name === 'ZodError' && Array.isArray((error as { issues?: unknown }).issues);
+}
+
 export function toTitanError(error: unknown): TitanError {
   if (error instanceof TitanError) {
     return error;
   }
 
   if (error instanceof Error) {
+    // A payload the caller got wrong is a 400, not a 500. Without this the
+    // fallback below made every schema failure an internal error: the client
+    // cannot tell "I sent the wrong thing" from "the server broke", monitoring
+    // counts user typos as incidents, and any retry policy keyed on 5xx
+    // re-sends a request that can never succeed. Observed on daos's
+    // `Content.createPost`, where an invalid `type` came back as code 500 with
+    // the Zod issue list as its message.
+    if (isValidationError(error)) {
+      return new TitanError({
+        code: ErrorCode.BAD_REQUEST,
+        message: 'Request validation failed',
+        cause: error,
+        details: { errorCode: 'VALIDATION', issues: error.issues },
+      });
+    }
+
     // Check both .status (Express-style) and .statusCode (AppError-style) for HTTP semantics.
     const status = ((error as any).status ?? (error as any).statusCode) as number | undefined;
     const httpCode =

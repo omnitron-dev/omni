@@ -19,7 +19,7 @@
  * correct type-aware semantics) and the storage buffer.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { MetricsService } from '../src/metrics.service.js';
 import { MemoryMetricsStorage, DAEMON_APP_LABEL } from '../src/index.js';
 

@@ -8,7 +8,7 @@
  * passing a real `child_process.fork()` child of a synthetic worker script.
  * This isolates the diagnostic logic from the rest of the spawn pipeline.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';

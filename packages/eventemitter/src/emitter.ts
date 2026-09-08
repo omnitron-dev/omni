@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
+ 
 import { pLimit, type Limit } from '@omnitron-dev/common';
 import type { ListenerLike } from './types.js';
 

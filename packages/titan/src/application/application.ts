@@ -1188,7 +1188,7 @@ export class Application implements IApplication {
    * helper, surfaced because some test fixtures historically reached
    * into it via `as any`.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   private isDynamicModule(obj: unknown): obj is IDynamicModule {
     return isDynamicModuleInternal(obj);
   }

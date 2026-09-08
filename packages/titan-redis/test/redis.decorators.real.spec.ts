@@ -10,7 +10,7 @@ import {
 } from '../src/redis.decorators.js';
 import { RedisManager } from '../src/redis.manager.js';
 import { createRedisTestFixture, cleanupRedisTestFixture, type RedisTestFixture } from '@omnitron-dev/testing/titan';
-import { EventListenerTracker, withTimeout, flushPromises, waitForCondition } from '@omnitron-dev/testing/async';
+import { EventListenerTracker, withTimeout, waitForCondition } from '@omnitron-dev/testing/async';
 import { isRedisInMockMode } from './utils/redis-test-utils.js';
 
 // Skip all tests in this file if running in mock mode - requires real Redis

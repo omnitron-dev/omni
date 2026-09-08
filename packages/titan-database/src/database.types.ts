@@ -473,7 +473,7 @@ interface _GuardSchema {
   users: { id: number };
 }
 declare const _guardManager: IDatabaseManager;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 type _GetConnectionCarriesTheSchema = _ExpectTrue<
   Awaited<ReturnType<typeof _guardManager.getConnection<_GuardSchema>>> extends Kysely<_GuardSchema>
     ? true

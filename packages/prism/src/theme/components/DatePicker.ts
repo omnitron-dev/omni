@@ -9,7 +9,7 @@
  * @module theme/components/DatePicker
  */
 
-import type { Theme, Components } from '@mui/material/styles';
+import type { Theme } from '@mui/material/styles';
 import type { ComponentsConfig } from '../../types/theme.js';
 import { paletteVar } from './theme-utils.js';
 

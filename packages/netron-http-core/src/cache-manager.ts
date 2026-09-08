@@ -105,7 +105,7 @@ export class HttpCacheManager extends EventEmitter {
     if (this.options.logger) {
       this.options.logger.debug(message);
     } else if (this.options.debug) {
-      // eslint-disable-next-line no-console
+       
       console.log(message);
     }
   }

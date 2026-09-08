@@ -13,7 +13,7 @@
  * @since 0.1.0
  */
 
-import { Token, Container, Provider, type IModule, type DynamicModule } from './nexus/index.js';
+import { Token, Container, type IModule, type DynamicModule } from './nexus/index.js';
 
 /**
  * Application lifecycle state enumeration.

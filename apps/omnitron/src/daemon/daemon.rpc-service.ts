@@ -205,7 +205,7 @@ export class DaemonRpcService implements IDaemonService {
             ),
           ]);
         } catch (err) {
-          // eslint-disable-next-line no-console
+           
           console.warn(
             `[daemon.restartAll] ${entry.name} failed: ${(err as Error).message} — continuing`,
           );

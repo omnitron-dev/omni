@@ -12,7 +12,7 @@
  *   Collision protection for remote services
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Netron } from '../../../src/netron/netron.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import { Service1 } from '../fixtures/service1.js';

@@ -3,7 +3,7 @@
  * Tests for optional decorator-based dependency injection
  * Note: These tests require reflect-metadata to be installed
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import 'reflect-metadata'; // Required for decorator support
 import { Container, createToken } from '../../src/nexus/index.js';
@@ -11,16 +11,10 @@ import {
   Injectable,
   Inject,
   Optional,
-  Module,
   Service,
   Singleton,
   Transient,
   Scoped,
-  Value,
-  InjectAll,
-  PostConstruct,
-  PreDestroy,
-  Lazy,
 } from '../../src/decorators/index.js';
 
 describe('Decorator Support', () => {

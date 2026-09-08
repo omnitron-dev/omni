@@ -105,17 +105,30 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
       const entries = await client.getLogs(query);
       const filtered = entries.filter(filter);
 
+      if (filtered.length === 0) {
+        // The daemon's buffer is a live cache, not the record. It lives on the
+        // `AppHandle`, and every start constructs a new one — so the logs of a
+        // run that just crashed are precisely the ones the daemon no longer
+        // has. Reporting "No logs available" at that moment is the worst
+        // possible answer: it is wrong, and it is wrong exactly when someone
+        // is looking for a cause. Observed on `daos/dev/main` after five
+        // failed starts — the reason sat in the file on disk the whole time
+        // and had to be dug out of the raw daemon log by hand.
+        //
+        // The file is written by LogManager for every managed app, so falling
+        // through to it costs nothing when the buffer is merely empty.
+        await client.disconnect();
+        readLogsFromFile(appName, lines, filter);
+        return;
+      }
+
       if (emitJson({ app: appName, count: filtered.length, entries: filtered })) {
         await client.disconnect();
         return;
       }
 
-      if (filtered.length === 0) {
-        log.info('No logs available');
-      } else {
-        for (const entry of filtered) {
-          printLogEntry(entry);
-        }
+      for (const entry of filtered) {
+        printLogEntry(entry);
       }
     }
   } catch (err) {
@@ -203,11 +216,6 @@ function resolveCandidateLogPaths(appName: string): string[] {
  * Uses reverse reading for large files to avoid loading everything into memory.
  */
 function readLogsFromFile(appName?: string, lines = 50, filter: (e: LogEntryDto) => boolean = () => true): void {
-  if (!fs.existsSync(LOG_DIR)) {
-    log.info(`No log directory found at ${LOG_DIR}`);
-    return;
-  }
-
   const logFiles: Array<{ app: string; filePath: string }> = [];
 
   if (appName) {
@@ -226,6 +234,18 @@ function readLogsFromFile(appName?: string, lines = 50, filter: (e: LogEntryDto)
     // (both the new directory layout and the legacy flat one).
     // Project-mode apps live under ~/.omnitron/projects/ and are
     // not listed in the no-appName case to keep output bounded.
+    //
+    // The LOG_DIR check belongs HERE and not above it. A project-mode app's
+    // log lives under `~/.omnitron/projects/<project>/<stack>/logs/<app>/`,
+    // nowhere near LOG_DIR — but the guard used to run before the candidate
+    // paths were resolved, so `omnitron logs daos/dev/main` answered "No log
+    // directory found at ~/.omnitron/logs" while the file it wanted sat on
+    // disk. On a long-lived host LOG_DIR happens to exist and hides this; a
+    // fresh install or a projects-only deployment does not.
+    if (!fs.existsSync(LOG_DIR)) {
+      log.info(`No log directory found at ${LOG_DIR}`);
+      return;
+    }
     const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
     for (const ent of entries) {
       if (ent.isFile() && ent.name.endsWith('.log')) {

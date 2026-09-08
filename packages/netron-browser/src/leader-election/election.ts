@@ -118,7 +118,7 @@ export function createLeaderElection(options: LeaderElectionOptions): LeaderElec
       // follower; consumers can still broadcast — they just lose
       // the failover guarantee. Surface via console for debug;
       // we don't have a logger dependency in this package.
-      // eslint-disable-next-line no-console
+       
       console.warn('[leader-election] lock acquisition failed; staying follower');
     });
 

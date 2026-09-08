@@ -360,7 +360,7 @@ type _Assignable<A, B> = A extends B ? true : false;
 /** Is some member of union `U` shaped like `Shape`? */
 type _Has<U, Shape> = [Extract<U, Shape>] extends [never] ? false : true;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 type _LoadModuleAcceptsTheseShapes =
   // A bare class, a tokenless provider, a [token, provider] tuple.
   | _Expect<_Assignable<typeof Date, ProviderInput<Date>>>

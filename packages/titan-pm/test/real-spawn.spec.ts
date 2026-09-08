@@ -21,7 +21,6 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

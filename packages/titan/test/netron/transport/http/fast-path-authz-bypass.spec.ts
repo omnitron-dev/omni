@@ -30,7 +30,7 @@
  * reached.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';

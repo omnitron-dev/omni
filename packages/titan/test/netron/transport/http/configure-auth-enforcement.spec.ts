@@ -42,7 +42,7 @@
  *    to enforce — the middleware is a no-op for those).
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
@@ -133,9 +133,7 @@ describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
     const stub: any = {
       definition: def,
       instance: serviceInstance,
-      call: vi.fn(async (method: string) => {
-        return (serviceInstance as any)[method]();
-      }),
+      call: vi.fn(async (method: string) => (serviceInstance as any)[method]()),
     };
 
     mockPeer = {

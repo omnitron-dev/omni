@@ -18,7 +18,6 @@ import {
   OnEvent,
   OnceEvent,
   OnAnyEvent,
-  EmitEvent,
   EventEmitter,
   ScheduleEvent,
   BatchEvents,

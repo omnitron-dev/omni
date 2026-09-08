@@ -10,7 +10,7 @@ import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
 import { createMockLogger } from './test-utils.js';
-import { Packet, createPacket } from '../../src/netron/packet/index.js';
+import { createPacket } from '../../src/netron/packet/index.js';
 
 function createMockSocket() {
   return {

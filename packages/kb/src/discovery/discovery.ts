@@ -1,5 +1,5 @@
 import { readFile, access } from 'node:fs/promises';
-import { resolve, dirname, basename, join } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { glob } from 'node:fs/promises';
 import type { IKbConfig, IKbSource, KbSourceType } from '../core/types.js';
 

@@ -281,7 +281,7 @@ export function AdminDataTable<T>({
       // to records the operator never picked. Surface it in development
       // rather than let a delete find out at runtime.
       if (selectable && process.env['NODE_ENV'] !== 'production') {
-        // eslint-disable-next-line no-console
+         
         console.error(
           '[AdminDataTable] `selectable` is on but rows have no stable key: ' +
             'pass `rowKey`, or give each row an `id`. Index-based keys make the ' +

@@ -56,7 +56,7 @@ export class EventsHealthIndicator {
       let totalEmits = 0;
       let totalErrors = 0;
       let maxListeners = 0;
-      let slowEvents: string[] = [];
+      const slowEvents: string[] = [];
 
       if (statsMap instanceof Map) {
         for (const [event, stats] of statsMap) {

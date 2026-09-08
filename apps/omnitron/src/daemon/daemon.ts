@@ -222,11 +222,11 @@ export class OmnitronDaemon {
         // The message already carries which steps applied — printing only
         // `.message` was fine for the load failure and misleading for the
         // apply failure, which is the one that leaves work half-done.
-        // eslint-disable-next-line no-console
+         
         console.warn(`[omnitron] SIGHUP config reload failed: ${(err as Error).message}`);
         const cause = (err as Error).cause;
         if (cause) {
-          // eslint-disable-next-line no-console
+           
           console.warn(`[omnitron]   caused by: ${(cause as Error).stack ?? String(cause)}`);
         }
       });
@@ -1691,7 +1691,7 @@ export class OmnitronDaemon {
       },
     ]);
 
-    // eslint-disable-next-line no-console
+     
     console.info('[omnitron] SIGHUP — config reloaded');
   }
 

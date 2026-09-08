@@ -194,7 +194,7 @@ async function createDirectService(): Promise<import('../services/secrets.servic
     warn: () => undefined,
     error: () => undefined,
     fatal: () => undefined,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
   } as any;
   noopLogger.child = () => noopLogger;
   const store = new DaemonStateStore(noopLogger);

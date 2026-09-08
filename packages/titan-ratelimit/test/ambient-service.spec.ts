@@ -15,7 +15,7 @@
  * injected field still wins.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import { RateLimit, getAmbientRateLimitService, setAmbientRateLimitService } from '../src/ratelimit.decorators.js';
 import { RateLimitService } from '../src/ratelimit.service.js';

@@ -1239,7 +1239,7 @@ export function directorySize(dir: string, budget = { entries: 20_000 }): number
     return 0;
   }
 
-  let stack: string[] = [dir];
+  const stack: string[] = [dir];
   while (stack.length > 0 && budget.entries > 0) {
     const current = stack.pop()!;
     let entries: fs.Dirent[];

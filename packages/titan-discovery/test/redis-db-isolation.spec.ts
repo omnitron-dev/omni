@@ -20,7 +20,7 @@
  * let two files pick the same database, and every call site passed a literal
  * chosen for no reason beyond "some database".
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { toTestDb, getTestRedisConfig } from './test-utils.js';
 

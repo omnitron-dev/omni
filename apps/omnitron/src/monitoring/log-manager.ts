@@ -205,7 +205,7 @@ export class LogManager {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       stream = createWriteStream(filePath, { flags: 'a', encoding: 'utf-8' });
       stream.on('error', (err) => {
-        // eslint-disable-next-line no-console
+         
         console.warn(`[LogManager] write stream error on ${filePath}: ${err.message}`);
         this.writeStreams.delete(filePath);
       });

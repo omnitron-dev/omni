@@ -20,7 +20,7 @@
  * decoder, peer hand-off, handlePacket().
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Netron } from '../../src/netron/netron.js';
 import { Service, Public } from '../../src/decorators/core.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';

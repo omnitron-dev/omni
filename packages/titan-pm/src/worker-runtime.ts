@@ -243,9 +243,7 @@ async function initializeModuleWorker(ModuleClass: any, workerConfig: WorkerConf
   };
 
   // PM internal: drain rich MetricSample[] (push-via-pull pattern)
-  serviceWrapper.__drainMetrics = async (): Promise<MetricSample[]> => {
-    return childCollector.drain();
-  };
+  serviceWrapper.__drainMetrics = async (): Promise<MetricSample[]> => childCollector.drain();
 
   // PM internal: runtime metrics toggle
   serviceWrapper.__setMetricsEnabled = async (data: { enabled: boolean }) => {
@@ -540,9 +538,7 @@ async function initialize() {
     };
 
     // PM internal: drain rich MetricSample[] (push-via-pull pattern)
-    serviceWrapper.__drainMetrics = async (): Promise<MetricSample[]> => {
-      return legacyChildCollector.drain();
-    };
+    serviceWrapper.__drainMetrics = async (): Promise<MetricSample[]> => legacyChildCollector.drain();
 
     // PM internal: runtime metrics toggle
     serviceWrapper.__setMetricsEnabled = async (data: { enabled: boolean }) => {

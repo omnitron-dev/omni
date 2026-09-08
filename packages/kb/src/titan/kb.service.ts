@@ -7,10 +7,8 @@ import type {
   IQueryResult,
   IQueryOptions,
   ISymbolDoc,
-  ISpecDoc,
   IGotchaDoc,
   IPatternDoc,
-  IDependency,
   IKbStats,
   SymbolKind,
 } from '../core/types.js';

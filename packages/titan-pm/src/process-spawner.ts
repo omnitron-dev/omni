@@ -993,8 +993,8 @@ export class ProcessSpawner implements IProcessSpawner {
       const STDERR_CAP_BYTES = 64 * 1024;
       const stderrBuf: string[] = [];
       const stdoutBuf: string[] = [];
-      let stderrBytes = 0;
-      let stdoutBytes = 0;
+      const stderrBytes = 0;
+      const stdoutBytes = 0;
 
       const appendBounded = (
         target: string[],

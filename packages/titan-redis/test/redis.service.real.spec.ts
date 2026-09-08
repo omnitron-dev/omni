@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RedisService } from '../src/redis.service.js';
 import { RedisManager } from '../src/redis.manager.js';
 import { isRedisInMockMode, createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';

@@ -781,7 +781,7 @@ export class DatabaseTestingModule {
     const module = DatabaseTestingModule.forTest(isolatedOptions);
 
     // Store service reference for cleanup
-    // eslint-disable-next-line no-unassigned-vars -- assigned via setter by consumers
+     
     let serviceInstance: DatabaseTestingService | undefined;
 
     // Return module with enhanced cleanup that properly disposes the service

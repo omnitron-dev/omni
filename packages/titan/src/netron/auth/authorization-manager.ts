@@ -7,7 +7,7 @@
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthContext, ServiceACL, AccessValidationResult } from './types.js';
-import { createPermissionChecker, hasPermission, validateAccessRequirements } from './utils.js';
+import { createPermissionChecker, validateAccessRequirements } from './utils.js';
 
 /**
  * Options for pattern matching

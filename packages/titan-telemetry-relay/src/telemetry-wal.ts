@@ -19,7 +19,6 @@
  */
 
 import fs from 'node:fs';
-import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { TelemetryEntry, TelemetryWalConfig } from './types.js';
@@ -104,7 +103,7 @@ export class TelemetryWal {
             // Best-effort: log to stderr so we don't lose the
             // signal entirely. Continuing the chain keeps later
             // appends from blocking on a single failure.
-            // eslint-disable-next-line no-console
+             
             console.error('[TelemetryWal] write failed:', err.message);
           }
           resolve();

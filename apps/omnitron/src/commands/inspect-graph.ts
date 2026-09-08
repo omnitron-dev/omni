@@ -76,7 +76,7 @@ export async function inspectGraphCommand(
       headerParts.push(`focus=${options.focus} (${options.direction ?? 'both'})`);
     }
     log.info(headerParts.join(prism.dim(' · ')));
-    // eslint-disable-next-line no-console
+     
     console.log(rendered);
   } catch (err) {
     emitError((err as Error).message, { app: appName });

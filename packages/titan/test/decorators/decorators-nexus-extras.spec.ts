@@ -14,7 +14,7 @@
  * behaviour so the implementation can be refactored without regressing.
  */
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { Container, createToken } from '../../src/nexus/index.js';
 import {

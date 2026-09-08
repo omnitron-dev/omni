@@ -124,7 +124,7 @@ export async function createOmnitronPool(
 
   pool.on('error', (err) => {
     if (onPoolError) onPoolError(err as Error);
-    // eslint-disable-next-line no-console
+     
     else console.error('[omnitron-pg pool error]', (err as { code?: string }).code, err.message);
   });
 

@@ -14,9 +14,7 @@ import { TitanError } from '../../../../src/errors/core.js';
 import { nextTestPort } from '../../../utils/index.js';
 
 // Test port management - worker-safe
-const getWorkerSafePort = () => {
-  return nextTestPort();
-};
+const getWorkerSafePort = () => nextTestPort();
 
 describe('HttpRemotePeer - Unsupported Methods', () => {
   let serverNetron: Netron;

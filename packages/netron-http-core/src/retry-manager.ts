@@ -467,7 +467,7 @@ export class RetryManager extends EventEmitter {
    */
   private fallbackLog(message: string, data?: object): void {
     if (this.options.debug) {
-      // eslint-disable-next-line no-console
+       
       console.log(message, data ?? '');
     }
   }

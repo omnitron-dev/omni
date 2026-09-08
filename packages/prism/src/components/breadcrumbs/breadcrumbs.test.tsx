@@ -70,7 +70,7 @@ describe('Breadcrumbs', () => {
     render(
       <Breadcrumbs
         moreLinks={[
-          // eslint-disable-next-line no-script-url
+           
           'javascript:alert(1)',
           'data:text/html,<script>alert(1)</script>',
           'vbscript:msgbox(1)',

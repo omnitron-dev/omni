@@ -76,7 +76,7 @@ export class ProjectRegistry {
       error: () => undefined,
       fatal: () => undefined,
       child: () => noopLogger,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
     } as any;
     const store = new DaemonStateStore(noopLogger);
     return new ProjectRegistry(store);

@@ -61,7 +61,6 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import {
   DATABASE_DEFAULT_CONNECTION,
   DEFAULT_POOL_CONFIG,
-  DEFAULT_TIMEOUTS,
 } from './database.constants.js';
 
 // Inlined constants (removed from database.constants.ts during cleanup)

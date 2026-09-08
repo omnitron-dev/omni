@@ -25,8 +25,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { SignJWT } from 'jose';
 import { JWTService, InvalidTokenError } from './auth.jwt.service.js';
-import { AUTH_OPTIONS_TOKEN } from './auth.tokens.js';
-import { LOGGER_TOKEN } from '@omnitron-dev/titan/module/logger';
 import type { IAuthModuleOptions } from './auth.types.js';
 
 const SECRET_V1 = 'secret-version-one-min-32-chars-long!';

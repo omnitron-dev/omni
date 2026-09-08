@@ -2,7 +2,7 @@
  * Tests for TitanError serialization in Netron packet serializer
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 import { serializer, setSerializerErrorOptions } from '../../src/netron/packet/serializer.js';
 import { TitanError } from '../../src/errors/core.js';

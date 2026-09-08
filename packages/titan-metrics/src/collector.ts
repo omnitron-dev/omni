@@ -208,7 +208,7 @@ export class MetricsCollector {
       // collector loop running (a single tick failure is
       // recoverable) while making the symptom visible to anyone
       // tailing the daemon.
-      // eslint-disable-next-line no-console
+       
       console.error('[MetricsCollector] orchestrator.getMetrics() failed:',
         error instanceof Error ? error.message : String(error));
     }
@@ -229,7 +229,7 @@ export class MetricsCollector {
       }
     } catch (error) {
       // T#70: stderr report (same rationale as `collectChildMetrics`).
-      // eslint-disable-next-line no-console
+       
       console.error('[MetricsCollector] orchestrator.drainChildSamples() failed:',
         error instanceof Error ? error.message : String(error));
     }

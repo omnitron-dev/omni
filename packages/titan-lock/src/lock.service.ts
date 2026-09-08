@@ -471,7 +471,7 @@ type _Expect<T extends true> = T;
 type _HasUndefined<T> = undefined extends T ? true : false;
 declare const _guardLocks: DistributedLockService;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 type _WithLockWithoutSkipIsNotOptional = _Expect<
   _HasUndefined<Awaited<ReturnType<typeof _guardLocks.withLock<number>>>> extends false ? true : false
 >;

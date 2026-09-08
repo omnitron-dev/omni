@@ -12,7 +12,6 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { KnowledgeBase } from '../core/knowledge-base.js';
 import { SurrealKbStore } from '../surreal/client.js';
-import type { IQueryOptions } from '../core/types.js';
 
 const args = process.argv.slice(2);
 const rootIdx = args.indexOf('--root');

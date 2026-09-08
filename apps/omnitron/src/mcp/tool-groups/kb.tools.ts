@@ -21,12 +21,10 @@ export function createKbTools(kbService: any): IMcpToolDef[] {
         },
         required: ['question'],
       },
-      handler: async (params: any) => {
-        return kbService.query(params.question, {
+      handler: async (params: any) => kbService.query(params.question, {
           maxResults: params.maxResults,
           scope: params.scope,
-        });
-      },
+        }),
     },
     {
       name: 'kb.get_api',

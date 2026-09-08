@@ -20,7 +20,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Writable } from 'node:stream';
 import { LoggerService } from '../../../src/modules/logger/logger.service.js';
 import type { ILoggerModuleOptions } from '../../../src/modules/logger/logger.types.js';

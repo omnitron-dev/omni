@@ -155,9 +155,7 @@ export class ServiceRouter {
     const proto: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
 
     for (const method of methodNames) {
-      proto[method] = async (...args: unknown[]) => {
-        return pool.execute(method, ...args);
-      };
+      proto[method] = async (...args: unknown[]) => pool.execute(method, ...args);
     }
 
     // Create a named class so stack traces and Netron introspection show the service name

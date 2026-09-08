@@ -4,12 +4,11 @@
  * Tests for module registration, dependencies, health checks,
  * and module-specific functionality.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
 import { SimpleModule, DatabaseModule, CacheModule, DependentModule } from '../fixtures/test-modules.js';
-import { Module, Injectable, Inject } from '../../src/decorators/index.js';
 import { IModule, IHealthStatus } from '../../src/types.js';
 
 describe('Application Module Management', () => {

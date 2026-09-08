@@ -47,7 +47,6 @@ import {
   ContainerMetadata,
   RegistrationOptions,
   FactoryProvider,
-  ResolutionContextInternal,
   hasStreamOptions,
   MiddlewareContext,
 } from './types.js';
@@ -67,7 +66,6 @@ import {
   buildInjectionPlan,
   getPath,
   type Dependency,
-  type InjectionPlan,
 } from './container/index.js';
 
 import type { ILogger } from '../types/logger.js';
@@ -556,7 +554,7 @@ export class Container implements IContainer {
     if (dependencies.length >= required) return;
     const tokenName = getTokenName(registration.token);
     const depNames = this.describeDependencies(registration.dependencies);
-    // eslint-disable-next-line no-console
+     
     console.warn(
       `[Nexus] DI arity mismatch for ${tokenName} → ${ctor.name}: ` +
         `constructor declares ${required} parameters but inject array supplied ${dependencies.length}. ` +

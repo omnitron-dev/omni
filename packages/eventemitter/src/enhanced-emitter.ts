@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
+ 
 
 import { EventEmitter } from './emitter.js';
 import type { ListenerLike } from './types.js';

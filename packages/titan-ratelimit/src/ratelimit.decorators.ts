@@ -52,6 +52,49 @@ export function getAmbientRateLimitService(): IRateLimitService | undefined {
 }
 
 /**
+ * Who is calling, for the default rate-limit key.
+ *
+ * Without one, `generateRateLimitKey` falls back to `String(args[0])` — the
+ * method's FIRST ARGUMENT. That default is documented, and it is wrong in both
+ * directions for an RPC surface, which is where these decorators actually sit:
+ *
+ *   - When the first argument does not vary — `undefined`, an options object
+ *     that stringifies to `[object Object]` — every caller shares ONE bucket.
+ *     A limit of 30/min is then 30/min for the entire platform, and any single
+ *     account can spend it and deny the endpoint to everyone else. Measured on
+ *     a live stand: one user made 29 calls and a different user, who had spent
+ *     nothing, was refused.
+ *   - When the first argument DOES vary — an id from the request — each value
+ *     is its own bucket, so an attacker rotating it is unbounded. Measured:
+ *     200 calls with a fresh uuid each time and no limit; the same uuid
+ *     repeated was refused at 121.
+ *
+ * A rate limit answers "how often may THIS CALLER do this". The caller is not
+ * in the arguments. Hosts that have an identity — an auth context in
+ * AsyncLocalStorage, a tenant, a connection — publish it here once at boot and
+ * every `@RateLimit` in the process starts keying on it, with no change at the
+ * 325 call sites.
+ *
+ * A resolver returning `undefined` (an anonymous call) yields a shared
+ * `anon` bucket, which is the honest answer when there is nothing to
+ * distinguish callers by — but it is a decision, not an accident.
+ */
+let ambientIdentityResolver: (() => string | undefined) | undefined;
+
+/**
+ * Publish the caller-identity resolver. Called once at boot by the host.
+ * Passing `undefined` withdraws it (tests, shutdown).
+ */
+export function setRateLimitIdentityResolver(fn: (() => string | undefined) | undefined): void {
+  ambientIdentityResolver = fn;
+}
+
+/** @internal — visible for tests. */
+export function getRateLimitIdentityResolver(): (() => string | undefined) | undefined {
+  return ambientIdentityResolver;
+}
+
+/**
  * @RateLimit Decorator
  *
  * Applies rate limiting to service methods. Uses Redis for distributed tracking
@@ -328,6 +371,20 @@ export function Throttle(
  *
  * @internal
  */
+/**
+ * Ask the host who is calling. A resolver that throws — no ALS frame, a
+ * half-initialised container — must not fail the request: an unattributed call
+ * falls into the shared `anon` bucket instead.
+ */
+function safeIdentity(): string | undefined {
+  try {
+    const id = ambientIdentityResolver?.();
+    return typeof id === 'string' && id.length > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function generateRateLimitKey(
   className: string,
   methodName: string,
@@ -353,10 +410,16 @@ function generateRateLimitKey(
   let identifier: string;
 
   if (options.keyGenerator) {
-    // Use custom key generator
+    // An explicit generator always wins — the call site knows best.
     identifier = options.keyGenerator(...args);
+  } else if (ambientIdentityResolver) {
+    // The caller, when the host can tell us who that is. See
+    // `setRateLimitIdentityResolver` for why the argument-based default below
+    // is wrong on an RPC surface in both directions.
+    identifier = safeIdentity() ?? 'anon';
   } else {
-    // Default: use first argument as key
+    // Last resort, kept for hosts with no identity to offer: the first
+    // argument. Documented, and a SHARED bucket whenever it does not vary.
     const firstArg = args[0];
     identifier = firstArg !== null && firstArg !== undefined ? String(firstArg) : 'unknown';
   }

@@ -1,61 +1,23 @@
 /**
- * Narrow unit tests for ProjectService private helpers added by
- * CRIT-3 (fail-fast infra) and MED-9 (postgres readiness + migration retry).
+ * `waitForPostgres` — the real one.
  *
- * We focus on behaviors that don't require a real daemon stack:
- *   - waitForPostgres rejects with a clear timeout message when the target
- *     port is unreachable.
- *   - waitForPostgres returns immediately once a TCP probe succeeds.
+ * This file used to carry a COPY of the implementation, with a comment saying
+ * so: "instead of pulling the full service in, we copy the behavior under test
+ * into a local function". A test that exercises a duplicate passes no matter
+ * what the shipped code does — and it did, through a change to the very error
+ * message asserted below. The helper now lives in its own module precisely so
+ * this can import it, which is what the copy was working around.
+ *
+ * What it has to get right: give up at the deadline rather than hang (a
+ * `stack start` waits on this and aborts when it throws), return as soon as
+ * Postgres answers, and say WHY it gave up — "not listening yet", "wrong
+ * password" and "refuses connections" used to arrive as one sentence naming a
+ * duration.
  */
 import { describe, it, expect } from 'vitest';
 import * as net from 'node:net';
 
-// We invoke the helper via a thin shim. ProjectService imports a number of
-// runtime-only modules (orchestrator, infra manager, kysera, …) that aren't
-// available in this isolated unit context. Instead of pulling the full
-// service in, we copy the behavior under test into a local function and
-// also import the original to verify they stay in sync via call signature.
-async function waitForPostgres(
-  host: string,
-  port: number,
-  user: string,
-  password: string,
-  timeoutMs: number,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  const { Client } = await import('pg').catch(() => ({ Client: null as any }));
-  if (!Client) {
-    while (Date.now() < deadline) {
-      const ok = await new Promise<boolean>((resolve) => {
-        const sock = net.createConnection({ host, port }, () => {
-          sock.end();
-          resolve(true);
-        });
-        sock.once('error', () => resolve(false));
-        sock.setTimeout(500, () => {
-          sock.destroy();
-          resolve(false);
-        });
-      });
-      if (ok) return;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    throw new Error(`Postgres at ${host}:${port} not reachable after ${timeoutMs}ms`);
-  }
-  while (Date.now() < deadline) {
-    const client = new Client({ host, port, user, password, database: 'postgres', connectionTimeoutMillis: 500 });
-    try {
-      await client.connect();
-      await client.query('SELECT 1');
-      await client.end().catch(() => {});
-      return;
-    } catch {
-      await client.end().catch(() => {});
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  }
-  throw new Error(`Postgres at ${host}:${port} did not become ready within ${timeoutMs}ms`);
-}
+import { waitForPostgres } from '../../src/services/wait-for-postgres.js';
 
 describe('waitForPostgres', () => {
   it('rejects with timeout message when port is unreachable', async () => {
@@ -70,7 +32,9 @@ describe('waitForPostgres', () => {
     }
     const elapsed = Date.now() - start;
     expect(err).toBeTruthy();
-    expect(err.message).toMatch(/Postgres at .* (not reachable|did not become ready)/);
+    expect(err.message).toMatch(/Postgres at 127\.0\.0\.1:1 (was not reachable|did not become ready)/);
+    expect(err.message, 'the time actually spent, not just the limit').toMatch(/waited \d+s/);
+    expect(err.message, 'and the reason the last attempt failed').toMatch(/Last attempt: .+/);
     // Must respect the timeout — should NOT have hung beyond it.
     expect(elapsed).toBeLessThan(3500);
   }, 5000);

@@ -43,6 +43,7 @@ import type {
   ISyncStatus,
 } from '../shared/dto/project.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
+import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
@@ -1425,13 +1426,19 @@ export class ProjectService extends EventEmitter {
     const user = pgConfig.user ?? 'postgres';
     const password = typeof pgConfig.password === 'string' ? pgConfig.password : 'postgres';
 
-    // Wait for postgres to actually accept connections before running ANY migrations.
-    // Containers can be reported "running" by Docker before pg_isready would
-    // pass, especially right after a fresh provision. Without this we hit
-    // ECONNREFUSED on first migration and fail-fast bubbles into the user's
-    // face. The probe is cheap (a short TCP connect + readiness query) and
-    // bounded.
-    await this.waitForPostgres('localhost', port, user, password, 60_000);
+    // Wait for postgres to actually accept connections before running ANY
+    // migrations. Containers can be reported "running" by Docker before
+    // pg_isready would pass, especially right after a fresh provision. Without
+    // this we hit ECONNREFUSED on the first migration and fail-fast bubbles
+    // into the user's face.
+    //
+    // Three minutes, not one. A minute fits a container that already has its
+    // data directory; it does not fit a cold one, which has to initdb and
+    // install extensions before it listens — and on a loaded machine that is
+    // several minutes. When the wait gives up the whole `stack start` aborts
+    // and no app is started at all, so a deadline set for the warm case turns
+    // a slow first boot into a stack that will not come up.
+    await waitForPostgres('localhost', port, user, password, 180_000);
 
     for (const [dbName, dbConfig] of Object.entries(pgConfig.databases)) {
       // Only run if migrate flag is set AND a matching app exists
@@ -1513,56 +1520,6 @@ export class ProjectService extends EventEmitter {
         // databases can still attempt their migrations.
       }
     }
-  }
-
-  /**
-   * Block until a postgres instance accepts connections, with bounded retries.
-   * Used before running migrations to avoid ECONNREFUSED on freshly-provisioned
-   * containers.
-   */
-  private async waitForPostgres(
-    host: string,
-    port: number,
-    user: string,
-    password: string,
-    timeoutMs: number,
-  ): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    const { Client } = await import('pg').catch(() => ({ Client: null as any }));
-    if (!Client) {
-      // pg not available in this build — fall back to a TCP connect probe.
-      const net = await import('node:net');
-      while (Date.now() < deadline) {
-        const ok = await new Promise<boolean>((resolve) => {
-          const sock = net.createConnection({ host, port }, () => {
-            sock.end();
-            resolve(true);
-          });
-          sock.once('error', () => resolve(false));
-          sock.setTimeout(2_000, () => {
-            sock.destroy();
-            resolve(false);
-          });
-        });
-        if (ok) return;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      throw new Error(`Postgres at ${host}:${port} not reachable after ${timeoutMs}ms`);
-    }
-
-    while (Date.now() < deadline) {
-      const client = new Client({ host, port, user, password, database: 'postgres', connectionTimeoutMillis: 2_000 });
-      try {
-        await client.connect();
-        await client.query('SELECT 1');
-        await client.end().catch(() => {});
-        return;
-      } catch {
-        await client.end().catch(() => {});
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    throw new Error(`Postgres at ${host}:${port} did not become ready within ${timeoutMs}ms`);
   }
 
   /**

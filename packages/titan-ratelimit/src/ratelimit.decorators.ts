@@ -39,6 +39,14 @@ const RATE_LIMIT_METADATA_KEY = Symbol.for('titan:ratelimit:metadata');
  * explicitly injected `__rateLimitService__` continues to win, which keeps
  * per-class overrides and test doubles working.
  */
+/**
+ * The same reflect key `@omnitron-dev/titan`'s declarative `RateLimit` uses
+ * (`decorators/core.ts` METADATA_KEYS.METHOD_RATE_LIMIT). Duplicated as a
+ * literal rather than imported so this package keeps no dependency on titan's
+ * decorator internals; a test pins that the two stay equal.
+ */
+const METHOD_RATE_LIMIT_METADATA_KEY = 'method:rateLimit';
+
 let ambientRateLimitService: IRateLimitService | undefined;
 
 /** @internal — called by TitanRateLimitModule at init. */
@@ -224,6 +232,17 @@ export function RateLimit(options: IRateLimitDecoratorOptions = {}): MethodDecor
         `@RateLimit: windowMs must be a positive integer, got ${options.windowMs} on ${className}.${methodName}`
       );
     }
+
+    // Record the declared limit on the prototype as well as enforcing it.
+    //
+    // This decorator ENFORCES by wrapping the descriptor, and wrote nothing —
+    // so `readMethodMetadata()` reported no rate limit for a method that
+    // plainly had one. Anything introspecting the surface (an OpenAPI dump, a
+    // dashboard, a default-limit middleware asking "did this method declare
+    // its own bound?") could not see it, and the metadata key existed the
+    // whole time. Same key the titan-side declarative `@RateLimit` writes, so
+    // the two agree.
+    Reflect.defineMetadata(METHOD_RATE_LIMIT_METADATA_KEY, options, target, propertyKey);
 
     // Replace method with rate-limited version
     descriptor.value = async function (this: IRateLimitContext, ...args: unknown[]) {

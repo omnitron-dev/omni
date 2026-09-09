@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RateLimitService, RateLimitExceededError } from '../src/ratelimit.service.js';
+import { ErrorCode } from '@omnitron-dev/titan/errors';
 import { MemoryRateLimitStorage } from '../src/ratelimit.storage.js';
 import type { IRateLimitModuleOptions } from '../src/ratelimit.types.js';
 
@@ -97,7 +98,56 @@ describe('RateLimitService orchestration (RL-1)', () => {
     );
     expect(err).toBeInstanceOf(RateLimitExceededError);
     expect(err!.result.allowed).toBe(false);
-    expect(err!.message).toContain('user:3');
+  });
+
+  it('answers 429, not 500', async () => {
+    // It used to extend plain `Error`, which carries no status, so the
+    // RPC seam reported every exhausted limit as an INTERNAL server
+    // error — including sign-in's anti-brute-force limit. A client
+    // cannot back off from a 500; it retries.
+    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    await service.enforce('user:429');
+
+    const err = await service.enforce('user:429').then(
+      () => null,
+      (e) => e as RateLimitExceededError,
+    );
+
+    expect(err!.httpStatus).toBe(429);
+    expect(err!.code).toBe(ErrorCode.TOO_MANY_REQUESTS);
+  });
+
+  it('carries retryAfter where a caller can read it', async () => {
+    // In `details`, not only in prose — a client honouring a backoff
+    // should not have to parse the sentence.
+    ({ storage, service } = makeService({ defaultLimit: 1, defaultWindowMs: 60_000 }));
+    await service.enforce('user:retry');
+
+    const err = await service.enforce('user:retry').then(
+      () => null,
+      (e) => e as RateLimitExceededError,
+    );
+
+    expect(err!.details['retryAfter']).toBeGreaterThan(0);
+    expect(err!.message).toMatch(/Retry after \d+s/);
+  });
+
+  it('does not put the key in the message', async () => {
+    // It used to read `Rate limit exceeded for key:
+    // AuthRpcService:signin:pgpuser`, which hands an unauthenticated
+    // caller the internal key format and echoes back the identifier
+    // they probed with. The key stays available to the server.
+    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    await service.enforce('AuthRpcService:signin:someone');
+
+    const err = await service.enforce('AuthRpcService:signin:someone').then(
+      () => null,
+      (e) => e as RateLimitExceededError,
+    );
+
+    expect(err!.message).not.toContain('someone');
+    expect(err!.message).not.toContain('AuthRpcService');
+    expect(err!.key, 'still available for the server log').toBe('AuthRpcService:signin:someone');
   });
 
   it('applies a named tier: limit + burst is the effective ceiling', async () => {

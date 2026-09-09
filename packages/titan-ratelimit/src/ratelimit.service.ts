@@ -7,6 +7,7 @@
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
 import type {
   IRateLimitService,
   IRateLimitStorage,
@@ -39,12 +40,45 @@ const DEFAULT_OPTIONS: Required<Omit<IRateLimitModuleOptions, 'storageType' | 'i
 /**
  * Rate limit exceeded error
  */
-export class RateLimitExceededError extends Error {
+/**
+ * Thrown when a caller has spent its allowance.
+ *
+ * A `TitanError` with `TOO_MANY_REQUESTS`, not a bare `Error`. It used to
+ * be the latter, which carries no status, so the RPC seam reported every
+ * exhausted rate limit as a **500 INTERNAL** — including sign-in's
+ * anti-brute-force limit. A client cannot tell "slow down" from "the
+ * server broke", so it retries immediately instead of backing off, and a
+ * brute-force attempt shows up in monitoring as a spike of server faults
+ * rather than of refusals: exactly backwards for detection.
+ *
+ * `retryAfter` travels in `details` so a caller can honour it without
+ * parsing prose.
+ *
+ * The message deliberately does not name the key. It used to read
+ * `Rate limit exceeded for key: AuthRpcService:signin:pgpuser`, which
+ * hands an unauthenticated caller the internal key format and echoes back
+ * the identifier they probed with. The key stays available to the server
+ * on `.result` for logging.
+ */
+export class RateLimitExceededError extends TitanError {
   constructor(
-    message: string,
-    public readonly result: IRateLimitResult
+    public readonly result: IRateLimitResult,
+    /** Key that was exhausted. Server-side only — never in the message. */
+    public readonly key?: string
   ) {
-    super(message);
+    const seconds = result.retryAfter ?? 0;
+    super({
+      code: ErrorCode.TOO_MANY_REQUESTS,
+      message:
+        seconds > 0
+          ? `Rate limit exceeded. Retry after ${seconds}s.`
+          : 'Rate limit exceeded. Retry shortly.',
+      details: {
+        retryAfter: seconds,
+        ...(result.limit !== undefined && { limit: result.limit }),
+        ...(result.remaining !== undefined && { remaining: result.remaining }),
+      },
+    });
     this.name = 'RateLimitExceededError';
   }
 }
@@ -247,10 +281,7 @@ export class RateLimitService implements IRateLimitService {
     const result = await this.consume(key, options);
 
     if (!result.allowed) {
-      throw new RateLimitExceededError(
-        `Rate limit exceeded for key: ${key}. Retry after ${result.retryAfter}s`,
-        result
-      );
+      throw new RateLimitExceededError(result, key);
     }
   }
 

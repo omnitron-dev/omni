@@ -482,6 +482,48 @@ export function toTitanError(error: unknown): TitanError {
     // handlers that catch a 23505 to translate it lose nothing. What changes is
     // only what crosses the wire.
     if (isDatabaseError(error)) {
+      // SQLSTATE says whose fault it was, and the class prefix is enough.
+      //
+      // Class 22 — data exception. `22P02 invalid_text_representation` is
+      // what a non-UUID in a uuid column raises, and 22003/22007/22001 are
+      // the numeric, datetime and length equivalents. The VALUE was wrong,
+      // so this is the caller's error, not a fault.
+      //
+      // Class 23 — integrity constraint violation. The request is
+      // well-formed and conflicts with what is already stored: a duplicate
+      // key, a missing referent, a failed check. That is a conflict, and
+      // handlers that catch a raw 23505 to translate it still can, because
+      // `cause` carries the original.
+      //
+      // Everything else — connection failures, syntax errors, internal
+      // driver faults — stays a 500, because it is one.
+      //
+      // Measured before this existed: 94 of 618 read-shaped @Public methods
+      // across the six daos backends answered 5xx to a malformed argument,
+      // nearly all of them a uuid parse reaching Postgres. A 500 tells the
+      // client the server broke, keeps a retry policy re-sending a request
+      // that can never succeed, and buries real incidents in a monitoring
+      // signal made mostly of typos.
+      //
+      // The message stays masked either way — see the note above; only the
+      // STATUS changes.
+      const sqlstate = String((error as { code?: unknown }).code ?? '');
+      if (sqlstate.startsWith('22')) {
+        return new TitanError({
+          code: ErrorCode.BAD_REQUEST,
+          message: 'A value in the request could not be interpreted',
+          cause: error,
+          details: { errorCode: 'DATABASE_INPUT' },
+        });
+      }
+      if (sqlstate.startsWith('23')) {
+        return new TitanError({
+          code: ErrorCode.CONFLICT,
+          message: 'The request conflicts with existing data',
+          cause: error,
+          details: { errorCode: 'DATABASE_CONSTRAINT' },
+        });
+      }
       return new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'A database error occurred',

@@ -17,6 +17,11 @@
  *
  * The full error still travels as `cause`, so logs and the handlers that catch a
  * 23505 to translate it lose nothing. Only the wire changes.
+ *
+ * This file is about the MESSAGE. What STATUS each SQLSTATE class earns is
+ * `sqlstate-classes.spec.ts` — class 22 is the caller's bad value (400),
+ * class 23 is a conflict with stored data (409), the rest is a fault (500).
+ * The two must agree that neither status ever comes with the driver's text.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,9 +39,10 @@ describe('database errors do not reach the client', () => {
       pgError('22P02', 'invalid input syntax for type uuid: "{\\"userId\\":\\"019f25eb-d254\\"}"'),
     );
 
-    expect(err.message).toBe('A database error occurred');
+    // Masked, and a 400 — the value was the caller's, not a fault.
+    expect(err.message).toBe('A value in the request could not be interpreted');
     expect(err.message).not.toMatch(/uuid|userId|019f25eb/);
-    expect(err.code).toBe(ErrorCode.INTERNAL_ERROR);
+    expect(err.code).toBe(ErrorCode.BAD_REQUEST);
   });
 
   it('does not name the constraint that was violated', () => {
@@ -54,7 +60,8 @@ describe('database errors do not reach the client', () => {
   it('does not forward the SQLSTATE as the error code', () => {
     const err = toTitanError(pgError('23503', 'insert or update violates foreign key constraint'));
 
-    expect((err.details as Record<string, unknown>)['errorCode']).toBe('DATABASE_ERROR');
+    // A coarse bucket, never the SQLSTATE itself.
+    expect((err.details as Record<string, unknown>)['errorCode']).toBe('DATABASE_CONSTRAINT');
     expect(JSON.stringify(err.details)).not.toContain('23503');
   });
 

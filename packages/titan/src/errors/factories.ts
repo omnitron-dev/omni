@@ -429,6 +429,24 @@ function isValidationError(error: Error): error is Error & { issues: unknown[] }
   return error.name === 'ZodError' && Array.isArray((error as { issues?: unknown }).issues);
 }
 
+/**
+ * A Postgres (or compatible driver) error, as opposed to a business error that
+ * happens to carry a `code`.
+ *
+ * SQLSTATE is five characters of `[0-9A-Z]`, which alone would also match a
+ * short business code, so a driver-specific field has to be present too: `pg`
+ * sets `severity` on every error it raises and `routine` on most. Requiring one
+ * of them keeps a hand-written `code: 'ADMIN'` out of this branch.
+ */
+function isDatabaseError(error: unknown): boolean {
+  const e = error as { code?: unknown; severity?: unknown; routine?: unknown };
+  return (
+    typeof e.code === 'string' &&
+    /^[0-9A-Z]{5}$/.test(e.code) &&
+    (typeof e.severity === 'string' || typeof e.routine === 'string')
+  );
+}
+
 export function toTitanError(error: unknown): TitanError {
   if (error instanceof TitanError) {
     return error;
@@ -448,6 +466,27 @@ export function toTitanError(error: unknown): TitanError {
         message: 'Request validation failed',
         cause: error,
         details: { errorCode: 'VALIDATION', issues: error.issues },
+      });
+    }
+
+    // A driver error is not a business error, and its message is not ours to
+    // forward. `pg` puts the offending VALUE in the text — "invalid input
+    // syntax for type uuid: {\"userId\":\"019f25eb-…\"}" — and a constraint
+    // violation names the index: "duplicate key value violates unique
+    // constraint \"content_reports_one_per_reporter_idx\"". Passed through, that
+    // hands any caller the column types, the constraint names and the values
+    // that tripped them, which is a free map of the schema for whoever is
+    // probing it.
+    //
+    // The full error still travels as `cause`, so server-side logs and the
+    // handlers that catch a 23505 to translate it lose nothing. What changes is
+    // only what crosses the wire.
+    if (isDatabaseError(error)) {
+      return new TitanError({
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'A database error occurred',
+        cause: error,
+        details: { errorCode: 'DATABASE_ERROR' },
       });
     }
 

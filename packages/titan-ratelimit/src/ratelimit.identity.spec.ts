@@ -148,3 +148,29 @@ describe('with an identity resolver', () => {
     expect(recorded.keys[0]).toBe('Rooms:getMyRoomsBundle:anon');
   });
 });
+
+describe('the declared limit is also recorded', () => {
+  it('writes the same reflect key titan\'s declarative decorator uses', () => {
+    // The enforcing decorator wrapped the descriptor and wrote nothing, so
+    // `readMethodMetadata()` reported no rate limit for a method that plainly
+    // had one — invisible to an OpenAPI dump, a dashboard, or a middleware
+    // asking "did this method declare its own bound?".
+    const declared = Reflect.getMetadata('method:rateLimit', Rooms.prototype, 'getMyRoomsBundle');
+
+    expect(declared).toEqual({ limit: 30, windowMs: 60_000 });
+  });
+
+  it('records nothing for a method that declares nothing', () => {
+    class Plain {
+      async open(): Promise<void> {}
+    }
+    expect(Reflect.getMetadata('method:rateLimit', Plain.prototype, 'open')).toBeUndefined();
+  });
+
+  it('keys on the literal titan uses, so the two cannot drift apart', async () => {
+    // If titan renames METADATA_KEYS.METHOD_RATE_LIMIT, this fails here rather
+    // than silently making every declared limit invisible again.
+    const { METADATA_KEYS } = await import('@omnitron-dev/titan/decorators');
+    expect(METADATA_KEYS.METHOD_RATE_LIMIT).toBe('method:rateLimit');
+  });
+});

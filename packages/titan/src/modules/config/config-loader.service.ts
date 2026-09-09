@@ -167,6 +167,24 @@ export class ConfigLoaderService implements IConfigLoader {
     // Check if file exists
     if (!existsSync(filePath)) {
       if (source.optional) {
+        // `optional` means "boot without it", not "say nothing". A relative
+        // path is resolved against `process.cwd()`, which is whatever spawned
+        // the process — so a config that exists on disk can silently fail to
+        // load, and an absent file is then indistinguishable from an empty
+        // one. Every consumer with a hardcoded fallback keeps working and the
+        // one without it goes quiet, which is how six backends in one project
+        // ran without their config files for long enough that nobody knew.
+        //
+        // The resolved path is the useful part of the message: it is what
+        // shows the caller that `apps/x/config/default.json` became
+        // `<someone else's directory>/apps/x/config/default.json`.
+        //
+        // `console` rather than a logger: this runs while configuration is
+        // being assembled, which is before the app has one.
+        console.warn(
+          `[titan:config] optional config file not found, continuing without it: ` +
+            `"${source.path}" resolved to "${filePath}" (cwd: ${process.cwd()})`,
+        );
         return {};
       }
       throw Errors.notFound('Config file', filePath);

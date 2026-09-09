@@ -1462,6 +1462,102 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Handle batch request
    */
+  /**
+   * Run ONE batched sub-request the way `/netron/invoke` runs a single
+   * call: the same middleware context, the same PRE_PROCESS/PRE_INVOKE
+   * stages, the same token-issuance frame and `invocationWrapper`.
+   *
+   * `/netron/batch` used to call `method.handler(...)` directly. No
+   * pipeline meant no `NetronAuthMiddleware`, so a decorator-gated
+   * method — which is every admin endpoint on this platform — executed
+   * for anyone who could reach the port. Verified against a live
+   * deployment before this change: an unauthenticated POST to
+   * `/api/main/netron/batch`, through the public gateway, returned a
+   * marketplace backend's full admin shop listing, while the identical
+   * call to `/netron/invoke` answered 401. Both the parallel and the
+   * sequential branch had it.
+   *
+   * The single-invoke path had already been fixed once for this class of
+   * bug (T#35, a fast-path predicate that skipped the pipeline); the
+   * batch path was never brought along.
+   */
+  private async invokeBatched(
+    req: HttpRequestMessage,
+    request: Request,
+    fallbackContext: HttpRequestContext | undefined,
+  ): Promise<unknown> {
+    const service = this.services.get(req.service);
+    const method = service?.methods.get(req.method);
+    if (!service || !method) {
+      throw NetronErrors.methodNotFound(req.service, req.method);
+    }
+
+    const requestContext = req.context || fallbackContext || {};
+    const metadata = new Map<string, unknown>();
+    for (const key in requestContext) {
+      if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
+        metadata.set(key, requestContext[key as keyof HttpRequestContext]);
+      }
+    }
+    metadata.set('requestId', req.id);
+    metadata.set('serviceName', req.service);
+    metadata.set('methodName', req.method);
+    request.headers.forEach((value, key) => {
+      metadata.set(key.toLowerCase(), value);
+    });
+
+    const context: NetronMiddlewareContext & { output?: unknown; request?: Request } = {
+      peer: this.netronPeer!,
+      serviceName: req.service,
+      methodName: req.method,
+      input: req.input,
+      metadata,
+      timing: { start: performance.now(), middlewareTimes: new Map() },
+      request,
+    };
+
+    // The auth middleware reads `@Public` metadata off the live instance;
+    // without it every protected method degrades to anonymous.
+    if (service.instance) {
+      context.metadata.set('serviceInstance', service.instance);
+    }
+
+    await this.globalPipeline.execute(context, MiddlewareStage.PRE_PROCESS);
+    await this.globalPipeline.execute(context, MiddlewareStage.PRE_INVOKE);
+
+    const validatedInput = this.validateMethodInput(req.input, method.contract);
+    context.input = validatedInput;
+
+    const handlerContext: MethodHandlerContext = {
+      context: req.context,
+      hints: req.hints,
+      request,
+      middleware: context,
+    };
+
+    const requestHeaders: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      requestHeaders[key.toLowerCase()] = value;
+    });
+    const rawCallHandler = () => method.handler(validatedInput, handlerContext);
+    const callHandler = () =>
+      runWithTokenIssuanceContext(context.metadata, rawCallHandler, { requestHeaders }) as Promise<unknown>;
+
+    let result = this.options.invocationWrapper
+      ? await this.options.invocationWrapper(context.metadata, callHandler)
+      : await callHandler();
+
+    if (isAsyncGenerator(result)) {
+      result = await this.collectAsyncGeneratorValues(result);
+    }
+
+    context.output = result;
+    context.result = result;
+    await this.globalPipeline.execute(context, MiddlewareStage.POST_INVOKE);
+
+    return context.output;
+  }
+
   private async handleBatchRequest(request: Request): Promise<Response> {
     let batchRequest: HttpBatchRequest;
 
@@ -1514,27 +1610,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Process in parallel
       const promises = batchRequest.requests.map(async (req) => {
         try {
-          const service = this.services.get(req.service);
-          const method = service?.methods.get(req.method);
-
-          if (!service || !method) {
-            throw NetronErrors.methodNotFound(req.service, req.method);
-          }
-
-          // Create handler context using consolidated helper
-          const handlerContext = this.createMethodHandlerContext(
-            { ...req, context: req.context || batchRequest.context },
-            request,
-            { batchRequest: true }
-          );
-
-          let result = await method.handler(req.input, handlerContext);
-
-          // CRITICAL FIX: Check if result is an async generator
-          // HTTP transport doesn't support true streaming, so collect all values into an array
-          if (isAsyncGenerator(result)) {
-            result = await this.collectAsyncGeneratorValues(result);
-          }
+          // Same execution path as a single invoke — see `invokeBatched`.
+          const result = await this.invokeBatched(req, request, batchRequest.context);
 
           batchHints.successCount++;
           return {
@@ -1578,27 +1655,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Process sequentially
       for (const req of batchRequest.requests) {
         try {
-          const service = this.services.get(req.service);
-          const method = service?.methods.get(req.method);
-
-          if (!service || !method) {
-            throw NetronErrors.methodNotFound(req.service, req.method);
-          }
-
-          // Create handler context using consolidated helper
-          const handlerContext = this.createMethodHandlerContext(
-            { ...req, context: req.context || batchRequest.context },
-            request,
-            { batchRequest: true }
-          );
-
-          let result = await method.handler(req.input, handlerContext);
-
-          // CRITICAL FIX: Check if result is an async generator
-          // HTTP transport doesn't support true streaming, so collect all values into an array
-          if (isAsyncGenerator(result)) {
-            result = await this.collectAsyncGeneratorValues(result);
-          }
+          // Same execution path as a single invoke — see `invokeBatched`.
+          const result = await this.invokeBatched(req, request, batchRequest.context);
 
           batchHints.successCount++;
           batchResponse.responses.push({

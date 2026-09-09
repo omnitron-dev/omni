@@ -499,30 +499,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         instance: stub.instance,
       };
 
-      // Register methods - get from the actual instance since decorators might not populate methods in metadata
-      const instance = stub.instance;
-      let methodNames: string[] = [];
-
-      // Safely get prototype methods
-      try {
-        const proto = Object.getPrototypeOf(instance);
-        if (proto && proto !== Object.prototype) {
-          methodNames = Object.getOwnPropertyNames(proto).filter(
-            (name) => name !== 'constructor' && typeof (instance as any)[name] === 'function' && !name.startsWith('_') // Skip private methods
-          );
-        }
-      } catch (_error) {
-        // If we can't get the prototype (e.g., for proxies), fallback to instance methods
-        if (instance && typeof instance === 'object') {
-          methodNames = Object.getOwnPropertyNames(instance).filter(
-            (name) => typeof (instance as any)[name] === 'function' && !name.startsWith('_')
-          );
-        }
-      }
-
-      // Also check for methods explicitly listed in metadata
-      const metaMethods = Object.keys(stub.definition.meta.methods || {});
-      const allMethodNames = new Set([...methodNames, ...metaMethods]);
+      // Only what the service declares — see `publishedMethodNames`.
+      const allMethodNames = this.publishedMethodNames(stub.definition.meta as never);
 
       // Register all methods found
       for (const methodName of allMethodNames) {
@@ -581,6 +559,50 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
+   * The methods a service actually publishes.
+   *
+   * Two things count as an explicit declaration and nothing else does:
+   * a `@Public` annotation (which is what `meta.methods` is built from —
+   * decorators/core.ts skips every other member) and an entry in a
+   * `@Contract`, which names the method along with its input/output
+   * schemas.
+   *
+   * Everything outside that set is an implementation detail. This path
+   * used to union the declared surface with every prototype method whose
+   * name did not start with `_`, under a comment reading "Skip private
+   * methods" — but TypeScript's `private` leaves no runtime marker, so
+   * every private helper on an @Service class was registered and
+   * callable over HTTP. Verified against a live deployment: an
+   * unauthenticated request reached a payments backend's
+   * `recordAdminEvent` and `resyncRegistry`, and a marketplace backend's
+   * `requireProductPermission` ran a database query for an anonymous
+   * caller. Helpers like those carry no auth checks precisely because
+   * their callers do the checking.
+   *
+   * `RemotePeer.enforceMethodAccess` (NET-14) has rejected undeclared
+   * methods on WS/TCP/Unix since it was written. The HTTP transport —
+   * the one that sits behind a public gateway — was left on the old
+   * rule.
+   */
+  private publishedMethodNames(
+    meta: { methods?: Record<string, unknown>; contract?: unknown },
+    contract?: unknown,
+  ): Set<string> {
+    const names = new Set(Object.keys(meta.methods ?? {}));
+    const contractObj = (contract ?? meta.contract) as
+      | { definition?: Record<string, unknown>; [key: string]: unknown }
+      | undefined;
+    if (contractObj && typeof contractObj === 'object') {
+      const declared =
+        contractObj.definition && typeof contractObj.definition === 'object'
+          ? Object.keys(contractObj.definition)
+          : Object.keys(contractObj);
+      for (const name of declared) names.add(name);
+    }
+    return names;
+  }
+
+  /**
    * Register a single service dynamically
    * Called by LocalPeer when a service is exposed
    */
@@ -613,19 +635,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       instance: stub.instance,
     };
 
-    // Register methods - get from the actual instance since decorators might not populate methods in metadata
-    const instance = stub.instance;
-    const proto = Object.getPrototypeOf(instance);
-    const methodNames = Object.getOwnPropertyNames(proto).filter((name) => {
-      if (name === 'constructor' || name.startsWith('_')) return false;
-      // Use descriptor to avoid triggering getters (which may have side effects like lazy DI resolution)
-      const desc = Object.getOwnPropertyDescriptor(proto, name);
-      return desc && typeof desc.value === 'function';
-    });
-
-    // Also check for methods explicitly listed in metadata
-    const metaMethods = Object.keys(definition.meta.methods || {});
-    const allMethodNames = new Set([...methodNames, ...metaMethods]);
+    // Only what the service declares — see `publishedMethodNames`.
+    const allMethodNames = this.publishedMethodNames(definition.meta as never, contract);
 
     for (const methodName of allMethodNames) {
       let methodContract: MethodContract | undefined;

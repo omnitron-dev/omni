@@ -22,6 +22,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { ConfigLoaderService } from '../../../src/modules/config/config-loader.service.js';
 import type { IFileConfigSource } from '../../../src/modules/config/types.js';
 
@@ -149,5 +150,71 @@ describe('optional config sources', () => {
     ];
 
     await expect(loader.load(sources)).resolves.toEqual({ ok: true });
+  });
+});
+
+/**
+ * An optional file that is MISSING must not be silent.
+ *
+ * `path.resolve` in the loader resolves a relative path against
+ * `process.cwd()`, which is whatever spawned the process — so a config that
+ * exists on disk can silently fail to load, and an absent file is then
+ * indistinguishable from an empty one. Every consumer with a hardcoded fallback
+ * keeps working; the one without goes quiet.
+ *
+ * That happened: six backends in one project ran without their config files
+ * because the supervisor spawns workers with its own working directory, and the
+ * only client with no fallback returned null for every price quote — which took
+ * fiat-priced payments down and read as a missing setting.
+ *
+ * `optional` means "boot without it", not "say nothing".
+ */
+describe('a missing optional config file says so', () => {
+  it('warns, naming the resolved path and the cwd that produced it', async () => {
+    const loader = new ConfigLoaderService();
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+
+    let result: Record<string, unknown>;
+    try {
+      result = await loader.load({
+        type: 'file',
+        path: 'no/such/config/default.json',
+        optional: true,
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(result, 'still boots').toEqual({});
+    expect(warnings).toHaveLength(1);
+    // The resolved path is the useful part: it shows that
+    // `apps/x/config/default.json` became `<someone else's dir>/apps/x/...`.
+    expect(warnings[0]).toContain('no/such/config/default.json');
+    expect(warnings[0], 'the absolute path it actually looked at').toContain(process.cwd());
+    expect(warnings[0]).toMatch(/not found/i);
+  });
+
+  it('stays silent when the optional file is there', async () => {
+    const loader = new ConfigLoaderService();
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'titan-config-'));
+    const file = path.join(dir, 'present.json');
+    await fs.promises.writeFile(file, JSON.stringify({ services: { priceverse: { url: 'http://x' } } }));
+
+    let result: Record<string, unknown>;
+    try {
+      result = await loader.load({ type: 'file', path: file, optional: true });
+    } finally {
+      console.warn = originalWarn;
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    }
+
+    expect(result).toEqual({ services: { priceverse: { url: 'http://x' } } });
+    expect(warnings, 'a warning for a file that loaded would be noise').toHaveLength(0);
   });
 });

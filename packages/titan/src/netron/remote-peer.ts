@@ -39,7 +39,7 @@ import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
-import { enforceMethodAuthorization, readMethodMetadata } from './auth/method-authorization.js';
+import { enforceMethodAuthorization, readMethodMetadata, isPublishedMember } from './auth/method-authorization.js';
 
 /**
  * Security constants for input validation in packet handlers.
@@ -1429,16 +1429,42 @@ export class RemotePeer extends AbstractPeer {
     // through the prototype chain. Runs regardless of whether auth is configured:
     // a non-`@Public` method is simply not part of the service's API.
     //
-    // Scoped to CALLs: property GET/SET are intentionally NOT whitelisted here
-    // because `meta.properties` is empty for services whose constructor needs
-    // arguments (extracted via `new target()` at decoration time), so a property
-    // whitelist would wrongly reject legitimate DI-service properties (NET-14b).
     if (kind === 'call' && !Object.hasOwn(meta.methods ?? {}, methodName)) {
       this.logger.warn(
         { serviceName, methodName, userId: this.getAuthContext()?.userId },
         'NET-14: call to a method outside the @Public surface rejected',
       );
       throw Errors.notFound(`Method '${serviceName}.${methodName}'`);
+    }
+
+    // (0b) The same whitelist for property GET/SET, which the CALL whitelist
+    // deliberately did not cover — `meta.properties` is assembled by calling
+    // `new target()` at decoration time, which throws for every DI service, so
+    // a whitelist built from it would have rejected every property including
+    // the annotated ones (NET-14b).
+    //
+    // Leaving them open was not a smaller hole than the CALL one, it was a
+    // larger one. `ServiceStub.get` is `this.instance[prop]` and
+    // `ServiceStub.set` is `Reflect.set(this.instance, prop, …)` — an arbitrary
+    // read and an arbitrary write against the live service object. Neither
+    // carries decorator auth (a private field has no `@Public`), so step (2)
+    // below returns without enforcing anything, and step (1) is default-allow
+    // when no ACL is registered. `resolveDefId` accepts a SERVICE NAME, so a
+    // peer needs no discovery either: authenticate, then read
+    // `Auth@1.0.0.<field>`. What comes back is the raw value — `processResult`
+    // only wraps `@Service` instances, so a secret, a config object or a
+    // repository handle serialises straight onto the wire.
+    //
+    // Decided from the prototype annotation instead, which `@Public` writes for
+    // properties and methods alike and which needs no instance. Publishing a
+    // property has always meant annotating it — that is what the decorator's
+    // own `@Public({ readonly: true })` example documents.
+    if ((kind === 'get' || kind === 'set') && !isPublishedMember(stub?.instance as object | undefined, methodName)) {
+      this.logger.warn(
+        { serviceName, property: methodName, kind, userId: this.getAuthContext()?.userId },
+        'NET-14b: property access outside the @Public surface rejected',
+      );
+      throw Errors.notFound(`Property '${serviceName}.${methodName}'`);
     }
 
     // Auth-less deployment (neither manager wired) → no further enforcement.

@@ -24,6 +24,23 @@
  *
  * This suite uses a service whose constructor takes an argument, so
  * `meta.properties` really is empty — the exact condition NET-14b cited.
+ *
+ * Measured on a running daos stand (messaging, Netron WS on 3006), where the
+ * two halves are NOT equally exposed and the difference is worth knowing:
+ *
+ *   - READ is bounded by the serializer, not by any check. `get('container')`
+ *     and `get('visibility')` came back "Not supported: object" — msgpack has
+ *     no codec for an arbitrary class instance. What does cross is what msgpack
+ *     can encode: `get('_svc')` returned its value, and in this suite
+ *     `get('config')` returns the whole POJO. So a plain secret or a config
+ *     object leaks; a service handle does not.
+ *   - WRITE has no such accident protecting it. `set('visibility', null)` was
+ *     ACCEPTED against the live process, nulling the tier-visibility service
+ *     that room listings filter through. Any authenticated account could do it,
+ *     addressing the service by the name `query_interface` hands out.
+ *
+ * A serializer that happens to refuse a shape is not an access control, and it
+ * protected only one direction.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

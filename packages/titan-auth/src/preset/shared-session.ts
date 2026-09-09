@@ -364,9 +364,29 @@ export function createSharedSessionAuthManager(
           : payload['role']
             ? [payload['role'] as string]
             : [];
-      const isServiceTier =
+      const claimsServiceTier =
         rolesForSidCheck.includes('service_role') || payload['role'] === 'service_role';
-      if (!sessionId && !isServiceTier) {
+      // A token that carries a `sid` belongs to a human session, whatever it
+      // claims — so it is NEVER a service principal.
+      //
+      // Before this line, service tier followed from the `service_role` claim
+      // alone, and the claim follows from whatever the minting side put in
+      // `roles[]`. On daos that is `expandRoles(users."platformRole")`, and
+      // `platformRole` is a varchar with an explicit `case 'service_role'`.
+      // So one row update turned a human account into a service principal on
+      // every backend: `requireAdmin()` passes on `isServiceRole` alone,
+      // tier-visibility skips its filter for service context, and messaging's
+      // admin surface is `@Public()` + `requireAdmin()` with nothing else in
+      // between. The account did not even need `admin` in its roles.
+      //
+      // The two tiers are structurally exclusive and always were: every S2S
+      // client mints through `signServiceToken`, which sets a service subject
+      // and no `sid`, while every user token is refused below unless it has
+      // one. Saying so here means no downstream mint path — a DB column, a
+      // fixture, a future issuer — can promote a session into a service
+      // principal by naming a role.
+      const isServiceTier = claimsServiceTier && !sessionId;
+      if (!sessionId && !claimsServiceTier) {
         throw new InvalidTokenClaimError(
           'Token missing required `sid` claim (user-tier tokens MUST carry a session id for revocation)',
         );
@@ -500,8 +520,10 @@ export function createSharedSessionAuthManager(
         metadata: {
           sessionId,
           tenantId: payload['tenant_id'] || 'default',
-          isServiceRole:
-            roles.includes('service_role') || payload['role'] === 'service_role',
+          // Same variable the sid check used, so the two can no longer
+          // disagree: previously this re-derived the answer from the
+          // EXPANDED role set while the check above used the raw claim.
+          isServiceRole: isServiceTier,
         },
         claims: payload as unknown as Record<string, unknown>,
       } as unknown as AuthContext;

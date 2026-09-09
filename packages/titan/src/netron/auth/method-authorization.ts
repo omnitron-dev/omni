@@ -57,6 +57,32 @@ export function readMethodMetadata(
   return { auth, rateLimit, cache, prefetch, audit };
 }
 
+/**
+ * Whether a member name is part of the service's PUBLISHED surface, decided
+ * from the prototype alone.
+ *
+ * `@Public` records `public` / METHOD_ANNOTATION against the prototype for
+ * methods AND properties alike, so this answer needs no instance. That matters:
+ * `ServiceMetadata.properties` is assembled by calling `new target()` at
+ * decoration time, which throws for every DI service whose constructor takes
+ * arguments — so on a dependency-injected application that map is empty and a
+ * whitelist built from it would reject every property, including the annotated
+ * ones. Reading the annotation directly is the same question without the
+ * instantiation.
+ */
+export function isPublishedMember(
+  serviceInstance: object | null | undefined,
+  name: string,
+): boolean {
+  if (!serviceInstance || !name) return false;
+  const prototype = Object.getPrototypeOf(serviceInstance);
+  if (!prototype) return false;
+  return (
+    Reflect.getMetadata('public', prototype, name) === true ||
+    Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, prototype, name) === true
+  );
+}
+
 export interface EnforceMethodAuthorizationInput {
   /** Service instance whose prototype carries the decorator metadata. */
   serviceInstance: object | null | undefined;

@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Netron } from '../../../../src/netron/netron.js';
 import { HttpTransport } from '../../../../src/netron/transport/http/http-transport.js';
-import { Service } from '../../../../src/decorators/core.js';
+import { Service, Public } from '../../../../src/decorators/core.js';
 import { createMockLogger } from '../../test-utils.js';
 import type { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
 import { ErrorCode } from '../../../../src/errors/codes.js';
@@ -25,6 +25,10 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
 
   @Service('test@1.0.0')
   class TestService {
+    // `@Public` is what puts a method on the wire. The HTTP transport
+    // used to expose every prototype method as well, which is what this
+    // fixture relied on; it now matches the peer transport's NET-14 rule.
+    @Public()
     hello(): string {
       return 'world';
     }

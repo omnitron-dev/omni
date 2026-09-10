@@ -8,6 +8,7 @@ import * as cron from 'node-cron';
 import { CronExpressionParser } from 'cron-parser';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { LOGGER_TOKEN, type ILogger } from '@omnitron-dev/titan/module/logger';
 
 import {
   ERROR_MESSAGES,
@@ -62,7 +63,8 @@ export class SchedulerService implements ILifecycle {
     @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery,
     // SC-1: optional per-fire-window distributed lock. REQUIRED when
     // config.distributed.enabled is true (enforced in onStart).
-    @Optional() @Inject(SCHEDULER_LOCK_TOKEN) private readonly lockProvider?: ISchedulerLockProvider
+    @Optional() @Inject(SCHEDULER_LOCK_TOKEN) private readonly lockProvider?: ISchedulerLockProvider,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: ILogger
   ) {}
 
   /**
@@ -130,6 +132,18 @@ export class SchedulerService implements ILifecycle {
         this.scheduleJob(job);
       }
     }
+
+    // Say what was actually scheduled. Until this line existed, the only way
+    // to learn whether a @Cron method had been picked up was to wait for the
+    // hour it was supposed to fire and see whether anything happened — which
+    // is how a daily sweep stayed unrun for four months. The names are at
+    // debug because a large application schedules dozens of them.
+    const scheduled = jobs.filter((job) => !job.options.disabled);
+    this.logger?.info(
+      { event: 'scheduler.started', jobs: scheduled.length, disabled: jobs.length - scheduled.length },
+      `Scheduler started with ${scheduled.length} job(s)`
+    );
+    this.logger?.debug({ event: 'scheduler.jobs', jobs: scheduled.map((job) => job.name) }, 'Scheduled jobs');
 
     // Emit started event through registry event emitter
     if (this.registry) {

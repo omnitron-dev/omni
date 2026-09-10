@@ -6,6 +6,7 @@
 
 import net from 'node:net';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { TcpConnection, TcpServer, TcpTransport, TcpOptions } from './tcp-transport.js';
 import { TransportCapabilities, ITransportConnection, ITransportServer } from './types.js';
@@ -229,14 +230,28 @@ export class UnixSocketTransport extends TcpTransport {
     // Start listening
     await new Promise<void>((resolve, reject) => {
       server.listen(absolutePath, () => {
-        // Set socket permissions if specified
-        if (options.mode !== undefined) {
-          fs.chmod(absolutePath, options.mode).catch((error) => {
-            this.logger?.error(
-              { err: error, path: absolutePath, mode: options.mode },
-              'Failed to set socket permissions'
-            );
-          });
+        // Owner-only unless the caller asks for something wider.
+        //
+        // A Unix-domain socket IS the trust boundary — a peer that can connect
+        // to this one speaks the full Netron protocol to whatever is exposed on
+        // it, with no further check. Node binds with the process umask, which on
+        // a normal account produces `srwxr-xr-x`: any local user can connect.
+        // titan-pm puts its per-worker sockets under `os.tmpdir()`, so on a
+        // stock deployment every worker's management surface — health, the
+        // dependency graph, `shutdown()` — was reachable by any account on the
+        // box. The daemon's own socket passed a mode and was fine; nothing else
+        // did.
+        //
+        // Applied synchronously so the window between bind and chmod is as
+        // short as it can be made from userland. Callers that need a shared
+        // socket (a group-readable admin channel, say) pass `mode` explicitly;
+        // the directory the socket lives in should be locked down too, which is
+        // what actually closes the window.
+        const mode = options.mode ?? 0o600;
+        try {
+          fsSync.chmodSync(absolutePath, mode);
+        } catch (error) {
+          this.logger?.error({ err: error, path: absolutePath, mode }, 'Failed to set socket permissions');
         }
         resolve();
       });

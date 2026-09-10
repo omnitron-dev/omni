@@ -951,7 +951,23 @@ export class ProcessSpawner implements IProcessSpawner {
 
       case 'unix':
       default: {
-        await fs.mkdir(this.tempDir, { recursive: true });
+        // 0700 on the directory, not just on the sockets inside it.
+        //
+        // A per-worker socket is that worker's full management surface —
+        // health, the dependency graph, `callExposedService`, `shutdown()` —
+        // with no authentication of any kind, because the socket itself is
+        // meant to be the boundary. The default `tempDir` is under
+        // `os.tmpdir()`, which is world-traversable, so the directory mode is
+        // the only thing standing between a local account and every worker on
+        // the box. It also closes the window between `listen()` and the chmod
+        // the transport applies, which nothing in userland can make atomic.
+        await fs.mkdir(this.tempDir, { recursive: true, mode: 0o700 });
+        // `mkdir` only applies its mode when it CREATES the directory, and a
+        // directory left behind by an older build has the old permissions.
+        await fs.chmod(this.tempDir, 0o700).catch(() => {
+          // A directory owned by someone else is not ours to fix; the socket's
+          // own 0600 still applies.
+        });
         const socketPath = path.join(this.tempDir, `${processId}.sock`);
         return {
           type: 'unix',

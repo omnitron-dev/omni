@@ -64,6 +64,18 @@ import { parsePsLine, parsePsBatch } from './ps-metrics.js';
 import { launchClassic } from './classic-launcher.js';
 import { resolveStartupOrder, resolveShutdownOrder } from './dependency-resolver.js';
 import { buildRestartPolicy } from '../supervisor/restart-policy.js';
+
+/**
+ * How long to wait for a pool worker to finish exposing its `@Service`
+ * classes before giving up on `topology.expose`. A worker reports ready
+ * before its Application starts, and exposure happens during start, so the
+ * gap is a real one — measured at ~7s for a worker that opens database
+ * connections first. The consumer that needs the service starts right after
+ * this returns, so the wait is paid once at boot and buys a feature that
+ * otherwise stays off until the next restart.
+ */
+const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
+const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
 import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
 import { BuildService, type BuildResult } from './build-service.js';
@@ -1762,26 +1774,57 @@ export class OrchestratorService extends EventEmitter {
       // Requires explicit `topology: { expose: true }` — opt-in for security.
       if (procEntry.topology?.expose === true) {
         try {
+          // A pool worker reports ready before its Application has started, and
+          // `@Service` classes are exposed to Netron during start — so asking
+          // once, or once more 500ms later, asks a worker that is still booting.
+          // What it answers then is an empty list, or a service whose method
+          // list has not been filled in yet, and both used to end the same way:
+          // nothing registered on the daemon, the consumer process starting
+          // seconds later, querying, and being told the service does not exist.
+          // The consumer resolves its topology proxy exactly once, so that
+          // answer disabled the feature for the life of the process — in the
+          // case that surfaced this, every OHLCV candle aggregation.
+          //
+          // Poll instead, and treat "a service with no methods" as not ready
+          // rather than as a service, because an empty method list produces a
+          // proxy that can do nothing.
+          const usable = (list: Array<{ methods: string[] }> | undefined) =>
+            Array.isArray(list) && list.length > 0 && list.some((svc) => svc.methods?.length > 0);
+
           let services = await pool.execute('getExposedServices') as
             Array<{ name: string; version?: string; methods: string[] }>;
 
-          // Defensive: if services list is empty, the worker's Application may still
-          // be registering services. Retry once after a short delay.
-          if (!services || services.length === 0) {
-            await new Promise((r) => setTimeout(r, 500));
+          const deadline = Date.now() + TOPOLOGY_EXPOSE_TIMEOUT_MS;
+          while (!usable(services) && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, TOPOLOGY_EXPOSE_POLL_MS));
             services = await pool.execute('getExposedServices') as
               Array<{ name: string; version?: string; methods: string[] }>;
           }
 
-          if (!services || services.length === 0) {
+          if (!usable(services)) {
             this.logger.warn(
-              { app: entry.name, process: procEntry.name },
-              'No @Service found on pool worker — topology.expose has no effect'
+              {
+                app: entry.name,
+                process: procEntry.name,
+                waitedMs: TOPOLOGY_EXPOSE_TIMEOUT_MS,
+                reported: services?.map((svc) => `${svc.name}(${svc.methods?.length ?? 0})`) ?? [],
+              },
+              'No usable @Service found on pool worker — topology.expose has no effect, and any ' +
+                'process declaring topology.access on it will start without a proxy'
             );
           }
 
-          for (const svc of services) {
-            if (svc.methods.length === 0) continue;
+          for (const svc of services ?? []) {
+            if (svc.methods.length === 0) {
+              // Silently skipped before. A consumer then failed to find a
+              // service its own declaration named, with nothing anywhere
+              // connecting the two facts.
+              this.logger.warn(
+                { app: entry.name, process: procEntry.name, service: svc.name },
+                'Pool service exposes no methods — not registered on the daemon'
+              );
+              continue;
+            }
             await serviceRouter.exposePoolService(
               procEntry.name,
               svc.name,

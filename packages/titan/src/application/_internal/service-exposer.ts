@@ -60,10 +60,20 @@ export class ServiceExposer {
     logger?.debug('Auto-exposing services decorated with @Service to Netron');
 
     const services: ServiceInfo[] = [];
+    // One class registered under two tokens — its own class token and a
+    // symbolic one, which is ordinary — appears twice in this walk. Both
+    // iterations resolve the SAME instance, so the second `exposeService`
+    // call was rejected with "Service instance already exposed" and reported
+    // as a warning on every boot of every application that does it. Nothing
+    // was lost (the first exposure stands), and nothing was gained by saying
+    // so twelve times.
+    const seenClasses = new Set<Constructor<unknown>>();
     for (const [, reg] of this.container.iterateRegistrationsFlat()) {
       try {
         const serviceClass = extractServiceClass(reg.provider);
         if (!serviceClass) continue;
+        if (seenClasses.has(serviceClass)) continue;
+        seenClasses.add(serviceClass);
 
         const metadata = Reflect.getMetadata('netron:service', serviceClass) as ServiceMetadata | undefined;
         if (!metadata) {

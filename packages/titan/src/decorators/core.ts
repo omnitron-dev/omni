@@ -666,9 +666,30 @@ export function Global() {
  * @param {string[]} [options.transports] - Optional array of transport names this method is available on.
  *                                          If not specified, method is available on all transports.
  * @param {object} [options.auth] - Authentication and authorization configuration
- * @param {string[]} [options.auth.roles] - Required roles (RBAC)
- * @param {string[]} [options.auth.permissions] - Required permissions (RBAC)
- * @param {string[]} [options.auth.scopes] - Required OAuth2 scopes
+ *
+ * **How the requirements combine.** `roles`, `permissions` and `scopes` are
+ * ANDed with one another, and each has its own quantifier — see
+ * `validateAccessRequirements` in `netron/auth/utils.ts`, which is the single
+ * implementation both the wire and HTTP paths use:
+ *
+ * - `roles` — ANY of: the caller needs at least one. Matched by flat
+ *   membership, with **no hierarchy of its own**: `roles: ['admin']` does not
+ *   admit a caller presenting only `['superadmin']`. An application that has
+ *   a role hierarchy must expand it on the way in, when it builds the
+ *   `AuthContext` — Netron will not do it.
+ * - `permissions` — ALL of, wildcard-aware.
+ * - `scopes` — ALL of.
+ *
+ * The AND between roles and permissions is the one that surprises. Naming
+ * both means a caller must satisfy BOTH, so a role list narrower than the set
+ * of roles your application grants that permission to silently revokes the
+ * grant: the permission still shows as held and the call still fails. And a
+ * machine caller that carries roles but no `permissions` claim can never pass
+ * a `permissions` requirement, however privileged its role.
+ *
+ * @param {string[]} [options.auth.roles] - Required roles (RBAC). ANY-of, flat.
+ * @param {string[]} [options.auth.permissions] - Required permissions (RBAC). ALL-of, wildcard-aware, ANDed with `roles`.
+ * @param {string[]} [options.auth.scopes] - Required OAuth2 scopes. ALL-of.
  * @param {string[] | object} [options.auth.policies] - Policy names or expressions to evaluate
  * @param {boolean} [options.auth.allowAnonymous] - Allow anonymous access
  * @param {boolean} [options.auth.inherit] - Inherit class-level policies

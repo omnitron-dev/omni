@@ -6,7 +6,7 @@
  * infrastructure service only 001–002, and the `migrate` CLI 001–003.
  * Whichever path ran first decided how much of the schema existed.
  *
- * Adding a migration now means adding it here, once. `migrations.test.ts`
+ * Adding a migration now means adding it here, once. `omnitron-migrations.test.ts`
  * fails if a `NNN_*.ts` file in this directory is missing from the list,
  * so the registry cannot silently fall behind again.
  */

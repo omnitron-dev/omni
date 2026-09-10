@@ -72,10 +72,36 @@ interface IWorkerContext {
  * the lifecycle observability the supervisor's `process:crash`
  * pathway was already wired to consume.
  */
+/**
+ * How much of a child's pre-capture output to hold. Generous enough for a
+ * full application boot at debug level, small enough that a runaway child
+ * whose logs nobody is consuming cannot grow the parent's heap.
+ */
+const EARLY_LOG_MAX_BYTES = 1024 * 1024;
+
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {
   private _status: ProcessStatus;
   private messageHandlers = new Map<string, (data: any) => void>();
   private logHandlers = new Set<(line: string, stream: 'stdout' | 'stderr') => void>();
+  /**
+   * Lines the child printed before anyone was listening.
+   *
+   * A consumer that routes logs itself (`forwardChildLogs: false`) registers
+   * its handler when it learns the child exists — and it learns that from
+   * `child:started`, which the supervisor emits only after `spawn()` has
+   * RESOLVED. Everything the child printed while starting up therefore reached
+   * an empty handler set and was dropped: the whole application boot, and, when
+   * the boot is what failed, the only evidence of why. A crashed child's start
+   * also never reaches `child:started` at all, so nothing was ever captured.
+   *
+   * These are held until the first handler arrives, replayed to it, and then
+   * dropped — from that point on somebody is listening live. Bounded, oldest
+   * first: a child that floods before anyone listens keeps the tail, which is
+   * the part next to the failure.
+   */
+  private earlyLogs: Array<{ line: string; stream: 'stdout' | 'stderr' }> | null = [];
+  private earlyLogBytes = 0;
+  private earlyLogsDropped = 0;
   /**
    * Single-shot guard so paired exit signals from worker_threads
    * (`error` immediately followed by `exit`) don't emit twice
@@ -419,11 +445,40 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
   }
 
   onLog(handler: (line: string, stream: 'stdout' | 'stderr') => void): void {
+    const first = this.logHandlers.size === 0;
     this.logHandlers.add(handler);
+    if (!first) return;
+
+    const buffered = this.earlyLogs;
+    // Stop buffering before replaying: a handler that logs synchronously must
+    // not have its own output fed back into the buffer.
+    this.earlyLogs = null;
+    if (!buffered) return;
+
+    if (this.earlyLogsDropped > 0) {
+      handler(
+        `[titan-pm] ${this.earlyLogsDropped} earlier line(s) from this process were dropped: ` +
+          'it printed more than the pre-capture buffer holds',
+        'stderr'
+      );
+    }
+    for (const entry of buffered) {
+      handler(entry.line, entry.stream);
+    }
   }
 
   /** @internal */
   emitLog(line: string, stream: 'stdout' | 'stderr'): void {
+    if (this.logHandlers.size === 0 && this.earlyLogs) {
+      this.earlyLogs.push({ line, stream });
+      this.earlyLogBytes += line.length;
+      while (this.earlyLogBytes > EARLY_LOG_MAX_BYTES && this.earlyLogs.length > 1) {
+        const dropped = this.earlyLogs.shift()!;
+        this.earlyLogBytes -= dropped.line.length;
+        this.earlyLogsDropped++;
+      }
+      return;
+    }
     for (const handler of this.logHandlers) {
       handler(line, stream);
     }

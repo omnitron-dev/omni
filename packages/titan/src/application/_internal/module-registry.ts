@@ -299,6 +299,17 @@ export class ModuleRegistry {
     }
     this.modules.set(token, instance);
 
+    // Mark the class BEFORE recursing into its imports. A module cycle
+    // (A imports forwardRef(B), B imports A) re-enters `register(A)` from
+    // inside A's own import walk; with the mark applied at the end of this
+    // method the re-entry saw an unprocessed class and recursed forever.
+    // The instance is already in `this.modules` above, so the cyclic caller
+    // gets the same instance back. Its providers may not be registered yet at
+    // that instant, which is harmless: the container registers providers by
+    // token and resolves lazily, so nothing reads them until both modules
+    // have finished loading.
+    if (resolved.classRef) this.processedClasses.add(resolved.classRef);
+
     // 6. Wire providers + imports if a dynamic module is attached.
     if (resolved.dynamicModule) {
       await this.processDynamic(resolved.dynamicModule, instance);
@@ -312,7 +323,6 @@ export class ModuleRegistry {
 
     this.deps.emit(ApplicationEvent.ModuleRegistered, { module: instance.name });
 
-    if (resolved.classRef) this.processedClasses.add(resolved.classRef);
     return instance;
   }
 
@@ -568,6 +578,18 @@ export class ModuleRegistry {
       } else {
         const factory = input as () => IModule | Promise<IModule> | IDynamicModule | Promise<IDynamicModule>;
         const result = await factory();
+        // `forwardRef(() => SomeModule)` is nothing but the thunk, and it is
+        // the only way to write a module cycle in TypeScript — the class the
+        // other module names does not exist yet when its decorator runs. The
+        // thunk lands here, and its result is a module CLASS. Without this
+        // branch the class object itself was stored as the module instance:
+        // its name looked right, its providers were never registered, and the
+        // first resolution of anything it provides failed with "Token is not
+        // registered" pointing at a module that appears to be loaded.
+        const asClass = result as unknown as { prototype?: { constructor?: unknown } };
+        if (typeof result === 'function' && asClass.prototype?.constructor === result) {
+          return this.resolveInput(result as unknown as ModuleInput);
+        }
         if (isDynamicModule(result)) {
           dynamicModule = result;
           const ModuleClass = dynamicModule.module;

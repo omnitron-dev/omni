@@ -119,6 +119,25 @@ export class ResolutionService {
       let canAccessFromImport = false;
       if (resolvingModule && moduleImports.has(resolvingModule)) {
         canAccessFromImport = moduleImports.get(resolvingModule)!.has(tokenModule) && isExported;
+
+        // Re-exports. `loadModuleInternal` forwards a token listed in a
+        // module's `exports` but owned by one of its imports into that
+        // module's own provider map — that is what makes
+        // `exports: [TokenFromAnImportedModule]` mean anything. The flat
+        // token→module index still names the ORIGINAL owner (a token has
+        // exactly one), so the direct check above cannot see the
+        // forwarding and every re-export chain answered "not accessible".
+        // Consult the per-module provider maps, which is where the
+        // forwarding was recorded. Only on the miss path.
+        if (!canAccessFromImport) {
+          for (const importedModuleName of moduleImports.get(resolvingModule)!) {
+            const forwarded = moduleProviders.get(importedModuleName)?.get(tokenKey);
+            if (forwarded && (forwarded.exported || forwarded.global)) {
+              canAccessFromImport = true;
+              break;
+            }
+          }
+        }
       }
 
       // If no resolving module (resolving from main container), allow if exported or global

@@ -1643,6 +1643,37 @@ export class Container implements IContainer {
   }
 
   /**
+   * Record an import relationship between two already-registered modules.
+   *
+   * `loadModuleInternal` builds this index itself while it walks
+   * `module.imports`, but that walk also LOADS each import. A caller that
+   * has already loaded the imported modules through its own pipeline —
+   * the application's `ModuleRegistry`, which recurses through `register()`
+   * so that `forRoot()` results, factory modules and dedup all work —
+   * cannot hand `imports` to `loadModule` without loading everything a
+   * second time. It calls this instead, so the relationship is recorded
+   * exactly once.
+   *
+   * Without it the index stays empty for every module an application
+   * registers, and the two rules that read it silently stop working:
+   * `checkModuleAccess` denies a module access to a token its own import
+   * exports, and re-exports (`exports: [TokenFromAnImportedModule]`) are
+   * never forwarded.
+   */
+  recordModuleImports(moduleName: string, importedNames: readonly string[]): this {
+    if (importedNames.length === 0) return this;
+    let set = this.moduleImports.get(moduleName);
+    if (!set) {
+      set = new Set();
+      this.moduleImports.set(moduleName, set);
+    }
+    for (const name of importedNames) {
+      if (name && name !== moduleName) set.add(name);
+    }
+    return this;
+  }
+
+  /**
    * Internal module loading with circular dependency detection
    */
   private loadModuleInternal(module: IModule, loadingStack: Set<string>, hasForwardRefs = false): this {

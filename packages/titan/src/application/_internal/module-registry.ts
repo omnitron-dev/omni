@@ -608,9 +608,17 @@ export class ModuleRegistry {
    * factories of its own.
    */
   private async processDynamic(dynamicModule: IDynamicModule, instance: IModule): Promise<void> {
+    // Imports recurse through `register()` — the container never sees them,
+    // so it cannot build its own import index the way `loadModule` does.
+    // Collect the names as we go and hand the relationship over explicitly
+    // below, BEFORE `loadModuleAsync`, because the container reads the index
+    // while it loads this module (re-export forwarding) and afterwards on
+    // every resolution (module-access checks).
+    const importedNames: string[] = [];
     if (dynamicModule.imports) {
       for (const imported of dynamicModule.imports) {
-        await this.register(imported);
+        const importedModule = await this.register(imported);
+        if (importedModule?.name) importedNames.push(importedModule.name);
       }
     }
 
@@ -640,6 +648,7 @@ export class ModuleRegistry {
       exports: (dynamicModule.exports || []) as InjectionToken<unknown>[],
       global: dynamicModule.global || false,
     };
+    this.deps.container.recordModuleImports(instance.name, importedNames);
     await this.deps.container.loadModuleAsync(containerModule);
 
     if (dynamicModule.global && dynamicModule.exports) {

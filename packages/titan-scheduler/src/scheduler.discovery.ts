@@ -7,6 +7,7 @@
 import { Container } from '@omnitron-dev/titan/nexus';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { LOGGER_TOKEN, type ILogger } from '@omnitron-dev/titan/module/logger';
 
 import { getScheduledJobs } from './scheduler.decorators.js';
 import { SCHEDULER_METADATA, SCHEDULER_CONFIG_TOKEN, SCHEDULER_REGISTRY_TOKEN } from './scheduler.constants.js';
@@ -29,7 +30,8 @@ export class SchedulerDiscovery {
     // crashing the whole module init chain.
     @Optional() @Inject(Container) private readonly container: Container | null,
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: ILogger
   ) {}
 
   /**
@@ -153,19 +155,31 @@ export class SchedulerDiscovery {
     for (const provider of providers) {
       let instance: any;
 
-      // Resolve provider instance
-      if (typeof provider === 'function') {
+      // Resolve provider instance. A failure here is reported for the same
+      // reason as in `resolveSchedulableProviders`: an unresolvable provider
+      // means its scheduled methods never run, and saying nothing about it
+      // makes that indistinguishable from a provider that has no jobs.
+      const target = typeof provider === 'function' ? provider : provider.useClass;
+      if (target) {
         try {
-          instance = container.resolve(provider);
-        } catch {
-          // Failed to resolve provider
-          continue;
-        }
-      } else if (provider.useClass) {
-        try {
-          instance = container.resolve(provider.useClass);
-        } catch {
-          // Failed to resolve provider
+          instance = container.resolve(target);
+        } catch (error) {
+          // Only providers that actually carry a schedule are worth a line —
+          // this loop walks every provider in the module, and a module is
+          // free to hold providers that neither resolve here nor schedule
+          // anything.
+          const jobCount = getScheduledJobs(target).length;
+          if (jobCount > 0) {
+            this.logger?.error(
+              {
+                err: error instanceof Error ? error : new Error(String(error)),
+                event: 'scheduler.provider.unresolved',
+                provider: target.name ?? 'Unknown',
+                jobs: jobCount,
+              },
+              `Scheduled provider "${target.name ?? 'Unknown'}" could not be resolved — its ${jobCount} job(s) will not run`
+            );
+          }
           continue;
         }
       }
@@ -307,7 +321,7 @@ export class SchedulerDiscovery {
     }
 
     // Second pass: resolve each schedulable provider
-    for (const { token } of schedulableTokens) {
+    for (const { token, className, jobCount } of schedulableTokens) {
       try {
         const hasToken = containerInternal.has?.(token);
         if (!hasToken) continue;
@@ -318,8 +332,23 @@ export class SchedulerDiscovery {
             providers.push(instance);
           }
         }
-      } catch {
-        // Skip providers that fail to resolve (missing dependencies, etc.)
+      } catch (error) {
+        // A provider that carries @Cron/@Interval/@Timeout and cannot be
+        // resolved is a job that will never run. Skipping it silently — which
+        // is what this did for as long as it existed — makes the application
+        // report a clean start while a sweep quietly stops happening; one such
+        // job went unrun for four months before anyone noticed. The scheduler
+        // still starts (one broken provider must not take the rest down), but
+        // it says so.
+        this.logger?.error(
+          {
+            err: error instanceof Error ? error : new Error(String(error)),
+            event: 'scheduler.provider.unresolved',
+            provider: className,
+            jobs: jobCount,
+          },
+          `Scheduled provider "${className}" could not be resolved — its ${jobCount} job(s) will not run`
+        );
       }
     }
 

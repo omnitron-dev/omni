@@ -838,20 +838,60 @@ export class OrchestratorService extends EventEmitter {
   private async restartAppCoalesced(name: string, fromExternal: boolean): Promise<AppHandle> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
-    // P1-F — fall through to startApp when there's no live handle but
-    // the ecosystem config declares the app. Operators expect
-    // `omnitron restart foo` to work even when `foo` was never started
-    // (or was stopped, or crashed and was reaped). Previously this
-    // threw "Unknown app", forcing the operator to first run start
-    // explicitly.
     if (!handle) {
+      // A PROJECT-QUALIFIED name with no live handle is not this daemon's to
+      // start, and matching it against the daemon's own config starts the
+      // WRONG APP.
+      //
+      // The names collide in practice. omnitron's own `omnitron.config.ts`
+      // declares `main`, `payments`, `messaging`, `storage`, `pricing` — the
+      // same five a downstream stack uses. On 2026-09-10, after payments died,
+      // `omnitron restart acme/dev/payments` matched omnitron's sample entry by
+      // its last path segment and launched `apps/payments/src/main.ts` relative
+      // to the DAEMON's cwd. It died with ERR_MODULE_NOT_FOUND on a path that
+      // exists in neither repository, and the backend stayed down while the
+      // command reported that it had restarted it.
+      //
+      // Starting the wrong app is worse than refusing: the operator is told
+      // their service is coming back, and the log that says otherwise is the
+      // one they are not reading yet. `startApp` on the daemon already refuses
+      // this exact shape and names the command that works; this is the same
+      // refusal on the same reasoning, at the point where "no live handle" is
+      // already known.
+      const qualified = name.includes('/');
+      const ownProject = (this.config as { project?: string } | undefined)?.project;
+      if (qualified && !ownProject) {
+        const [project, stack] = name.split('/');
+        throw new Error(
+          `'${name}' belongs to a registered project, which this daemon restarts through its ` +
+            `stack. Use \`omnitron stack start ${project} ${stack}\`, or restart the app by its ` +
+            `bare name if you mean the daemon's own config.`,
+        );
+      }
+
+      // P1-F — fall through to startApp when there's no live handle but
+      // the ecosystem config declares the app. Operators expect
+      // `omnitron restart foo` to work even when `foo` was never started
+      // (or was stopped, or crashed and was reaped). Previously this
+      // threw "Unknown app", forcing the operator to first run start
+      // explicitly.
       const effective = effectiveAppName(name);
       const entry = this.config?.apps.find(
         (a) => a.name === name || a.name === effective || effectiveAppName(a.name) === effective,
       );
       if (entry) {
         this.logger.info({ app: name }, 'restartApp: no live handle — falling through to startApp');
-        return this.startApp(entry);
+        // Restart under the name the OPERATOR asked for. The match above
+        // accepts a bare entry for a qualified request, and handing it to
+        // `startApp` unchanged re-registers the app bare —
+        // `ensureNamespacedEntry` leaves an entry with no OMNITRON_PROJECT /
+        // OMNITRON_STACK env alone by design. The app then silently leaves its
+        // stack, because `ProjectService.toStackInfo` filters handles on the
+        // `${project}/${stack}/` prefix.
+        const requested = name.includes('/') && !entry.name.includes('/')
+          ? { ...entry, name }
+          : entry;
+        return this.startApp(requested);
       }
       throw new Error(`Unknown app: ${name}`);
     }

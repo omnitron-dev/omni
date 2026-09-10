@@ -123,7 +123,7 @@ describe('ServiceRouter', () => {
       // Call the proxied method
       const result = await stub.process('arg1', 42);
 
-      expect(pool.execute).toHaveBeenCalledWith('process', 'arg1', 42);
+      expect(pool.execute).toHaveBeenCalledWith('callExposedService', 'Worker', 'process', ['arg1', 42]);
       expect(result).toBe('pool-result');
     });
 
@@ -145,8 +145,8 @@ describe('ServiceRouter', () => {
       const r1 = await stub.process('data');
       const r2 = await stub.transform('input');
 
-      expect(pool.execute).toHaveBeenNthCalledWith(1, 'process', 'data');
-      expect(pool.execute).toHaveBeenNthCalledWith(2, 'transform', 'input');
+      expect(pool.execute).toHaveBeenNthCalledWith(1, 'callExposedService', 'Worker', 'process', ['data']);
+      expect(pool.execute).toHaveBeenNthCalledWith(2, 'callExposedService', 'Worker', 'transform', ['input']);
       expect(r1).toBe('process-result');
       expect(r2).toBe('transform-result');
     });
@@ -348,15 +348,74 @@ describe('ServiceRouter', () => {
       expect(meta).toBeDefined();
       expect(meta.name).toBe('MetaSvc');
       expect(meta.version).toBe('3.0.0');
-      expect(meta.methods.size).toBe(3);
-      expect(meta.methods.has('alpha')).toBe(true);
-      expect(meta.methods.has('beta')).toBe(true);
-      expect(meta.methods.has('gamma')).toBe(true);
-
-      // Each method marked public
-      for (const [, methodMeta] of meta.methods) {
-        expect(methodMeta.public).toBe(true);
+      // Plain-object index, keyed by member name — the shape Titan's own
+      // @Service builds and the one `Interface` reads. This used to assert a
+      // Map, which is what the router built and what made every call through
+      // it fail with "Unknown member".
+      expect(Object.keys(meta.methods).sort()).toEqual(['alpha', 'beta', 'gamma']);
+      for (const methodMeta of Object.values<any>(meta.methods)) {
+        expect(methodMeta.arguments, 'Netron reads an argument list off each member').toEqual([]);
       }
     });
+  });
+});
+
+/**
+ * The metadata a router proxy carries has to be the shape Netron reads.
+ *
+ * `Interface` resolves every remote call through `$def.meta.methods[prop]` —
+ * a plain-object index, built that way by Titan's own `@Service` decorator.
+ * These were `Map`s, which index to `undefined` for every name. The effect was
+ * a service that registered cleanly, a `queryInterface` that succeeded, a
+ * proxy that looked healthy, and a first call that answered "Unknown member:
+ * 'x' is not defined in the service interface". The daemon's own log said it
+ * had exposed five methods, because it counted the names it was handed rather
+ * than the definition it produced.
+ *
+ * Live consequence: pricing's OHLCV aggregation reached this point and
+ * failed on every tick, and every other pool service exposed through this
+ * router was unreachable the same way.
+ */
+describe('ServiceRouter proxy metadata', () => {
+  it('indexes methods by name the way Netron reads them', async () => {
+    const netron = createMockNetron();
+    const router = new ServiceRouter(netron as any, createMockLogger());
+    const pool = createMockPool();
+
+    await router.exposePoolService('ohlcv-aggregator', 'OhlcvAggregatorWorker', '1.0.0', pool as any, [
+      'aggregate5Min',
+      'aggregate1Hour',
+    ]);
+
+    const instance: any = netron.services.get('OhlcvAggregatorWorker@1.0.0');
+    const meta = Reflect.getMetadata('netron:service', instance.constructor);
+
+    expect(meta.methods['aggregate5Min'], 'the member Netron looks up is missing').toBeDefined();
+    expect(meta.methods['aggregate1Hour']).toBeDefined();
+    expect(meta.properties, 'properties is indexed the same way').toEqual({});
+  });
+
+  it('still routes a call through the pool', async () => {
+    const netron = createMockNetron();
+    const router = new ServiceRouter(netron as any, createMockLogger());
+    const pool = createMockPool();
+
+    await router.exposePoolService('ohlcv-aggregator', 'OhlcvAggregatorWorker', '1.0.0', pool as any, [
+      'aggregate5Min',
+    ]);
+
+    const instance: any = netron.services.get('OhlcvAggregatorWorker@1.0.0');
+    await instance.aggregate5Min('arg');
+
+    // Through the bootstrap process's forwarding hop, not straight at the
+    // pool: the pool's own PM service is `BootstrapApp`, which has no
+    // `aggregate5Min` and answers "Unknown member" naming a service the caller
+    // never asked for.
+    expect(pool.execute).toHaveBeenCalledWith(
+      'callExposedService',
+      'OhlcvAggregatorWorker',
+      'aggregate5Min',
+      ['arg']
+    );
   });
 });

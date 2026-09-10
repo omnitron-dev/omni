@@ -17,6 +17,7 @@ import 'reflect-metadata';
 import path from 'node:path';
 import { Application } from '@omnitron-dev/titan';
 import { createToken } from '@omnitron-dev/titan/nexus';
+import { Errors } from '@omnitron-dev/titan/errors';
 import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
@@ -389,6 +390,41 @@ class BootstrapProcess {
   getExposedServices(): Array<{ name: string; version?: string; methods: string[] }> {
     if (!this.app?.netron) return [];
     return this.app.netron.getServiceMetadata();
+  }
+
+  /**
+   * Invoke a method on one of the Application's own Netron services.
+   *
+   * The pool's PM service is THIS class — `BootstrapApp` — so `pool.execute(m)`
+   * can only reach the methods listed on it. `topology.expose` builds a daemon
+   * proxy out of the method names an app service reports through
+   * `getExposedServices()` above and used to route them straight into
+   * `pool.execute(name)`, which meant every such call asked `BootstrapApp` for
+   * a method it has never had. The daemon exposed the service, the consumer's
+   * `queryInterface` succeeded, and the first call came back "Unknown member" —
+   * from inside the pool, about a different service than the one the caller
+   * named. Nothing in the chain connects the two names, which is why the whole
+   * feature could be wired end to end and still never work.
+   *
+   * This is the hop that was missing: name the service, and the call lands on
+   * the Application's own stub for it.
+   */
+  async callExposedService(serviceName: string, method: string, args: unknown[] = []): Promise<unknown> {
+    if (!this.app?.netron) {
+      throw Errors.internal(`Cannot call ${serviceName}.${method}: the application has no Netron`);
+    }
+    const iface = (await this.app.netron.peer.queryInterface(serviceName)) as Record<
+      string,
+      (...callArgs: unknown[]) => Promise<unknown>
+    >;
+    const fn = iface[method];
+    if (typeof fn !== 'function') {
+      throw Errors.badRequest(
+        `Service '${serviceName}' has no method '${method}'. Methods reachable over the topology ` +
+          'proxy are those marked @Public — an undecorated method is absent from the service metadata.'
+      );
+    }
+    return fn.call(iface, ...args);
   }
 
   /**

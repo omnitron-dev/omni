@@ -154,31 +154,47 @@ export class ServiceRouter {
     // Create a plain object with methods that delegate to pool.execute()
     const proto: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
 
+    // Route through the bootstrap process's `callExposedService` hop rather
+    // than calling `pool.execute(method)` directly. The pool's own PM service
+    // is `BootstrapApp`, so a direct call asks that class for a method it has
+    // never had, and the caller gets "Unknown member" naming a service it did
+    // not call.
     for (const method of methodNames) {
-      proto[method] = async (...args: unknown[]) => pool.execute(method, ...args);
+      proto[method] = async (...args: unknown[]) =>
+        pool.execute('callExposedService', serviceName, method, args);
     }
 
     // Create a named class so stack traces and Netron introspection show the service name
     const DynamicRouterService = { [serviceName]: class {} }[serviceName]!;
     Object.assign(DynamicRouterService.prototype, proto);
 
-    // Attach @Service metadata so Netron treats this as a real service
+    // Attach @Service metadata so Netron treats this as a real service.
+    //
+    // `methods` and `properties` are PLAIN OBJECTS keyed by member name,
+    // matching what Titan's own @Service decorator builds — `Interface`
+    // resolves every call through `$def.meta.methods[prop]`, an object index.
+    // These were `Map`s, which index to `undefined` for every name: the
+    // service registered, `queryInterface` succeeded, the proxy looked
+    // healthy, and the first call answered "Unknown member: 'x' is not
+    // defined in the service interface". Every pool service exposed through
+    // this router was unreachable that way, and the daemon's own log said it
+    // had exposed N methods, because it counted the names it was given rather
+    // than the definition it produced.
+    //
+    // Each entry carries `{ type, arguments }` for the same reason. Parameter
+    // types are not recoverable from a discovered method name, so the argument
+    // list is empty — Netron does not validate arity on the caller side.
     const metadata = {
       name: serviceName,
       version: serviceVersion,
       description: `ServiceRouter proxy for pool '${serviceName}'`,
-      methods: new Map<string, any>(),
-      properties: new Map<string, any>(),
+      methods: {} as Record<string, { type: string; arguments: unknown[] }>,
+      properties: {} as Record<string, unknown>,
       events: [],
     };
 
-    // Register each method as public
     for (const method of methodNames) {
-      metadata.methods.set(method, {
-        name: method,
-        type: 'method',
-        public: true,
-      });
+      metadata.methods[method] = { type: 'Promise', arguments: [] };
     }
 
     Reflect.defineMetadata(SERVICE_ANNOTATION, metadata, DynamicRouterService);

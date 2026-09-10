@@ -590,6 +590,21 @@ export class ModuleRegistry {
         if (typeof result === 'function' && asClass.prototype?.constructor === result) {
           return this.resolveInput(result as unknown as ModuleInput);
         }
+        // A thunk that produced nothing is almost always `forwardRef` pointing
+        // into a circular ESM import: the binding it names has not been
+        // initialised yet at the moment the thunk runs. Saying "failed to
+        // create module instance" leaves the reader with a boot that dies and
+        // no idea which of forty modules did it.
+        if (result === undefined || result === null) {
+          throw Errors.badRequest(
+            'A module factory returned ' +
+              String(result) +
+              '. If this is forwardRef(() => SomeModule), the binding it names was not initialised ' +
+              'when the thunk ran — the usual cause is a circular ESM import where the naming module ' +
+              'finished evaluating first. Import the module from a file that does not participate in ' +
+              'the cycle, or break the cycle.'
+          );
+        }
         if (isDynamicModule(result)) {
           dynamicModule = result;
           const ModuleClass = dynamicModule.module;
@@ -617,7 +632,11 @@ export class ModuleRegistry {
     }
 
     if (!instance) {
-      throw Errors.internal('Failed to create module instance from provided input');
+      throw Errors.internal(
+        'Failed to create a module instance from ' + describeModuleInput(input) + '. ' +
+          'A module input must be a @Module class, a dynamic module ({ module, providers, ... }), ' +
+          'a module instance, or a factory returning one of those.'
+      );
     }
     return { instance, dynamicModule, classRef, source: input };
   }
@@ -638,7 +657,24 @@ export class ModuleRegistry {
     // every resolution (module-access checks).
     const importedNames: string[] = [];
     if (dynamicModule.imports) {
-      for (const imported of dynamicModule.imports) {
+      const imports = dynamicModule.imports;
+      for (let i = 0; i < imports.length; i++) {
+        const imported = imports[i];
+        // An `undefined` entry is not a typo — it is a circular ESM import.
+        // `@Module({ imports: [Other] })` evaluates its argument when the class
+        // is DEFINED, so if `Other` imports back into this file the binding is
+        // still uninitialised and the array captures `undefined`. Reported from
+        // here because this is the only place that knows whose import list it
+        // is; one level down all that is visible is a value of `undefined`.
+        if (imported === undefined || imported === null) {
+          throw Errors.badRequest(
+            `Module "${instance.name}" has ${String(imported)} at imports[${i}]. ` +
+              'That is what a circular ESM import looks like: the module named there imports back ' +
+              'into this file, so its binding was still uninitialised when this @Module decorator ran. ' +
+              'Name it with forwardRef(() => TheModule) — and note that every edge of the cycle needs ' +
+              'the same treatment, not just the one you added last.'
+          );
+        }
         const importedModule = await this.register(imported);
         if (importedModule?.name) importedNames.push(importedModule.name);
       }
@@ -717,6 +753,29 @@ export class ModuleRegistry {
 type SyncProvider =
   | Constructor<unknown>
   | (Provider<unknown> & { provide: InjectionToken<unknown> });
+
+/**
+ * Best-effort description of a module input for an error message. The inputs
+ * that fail are the ones nobody can name from a stack trace: an undefined
+ * binding out of a circular import, an object that is nearly a dynamic module,
+ * a factory that returned the wrong thing.
+ */
+function describeModuleInput(input: unknown): string {
+  if (input === undefined) return 'undefined';
+  if (input === null) return 'null';
+  if (typeof input === 'function') {
+    const named = input as { name?: string };
+    return named.name ? `the function/class "${named.name}"` : 'an anonymous function';
+  }
+  if (typeof input === 'object') {
+    const obj = input as { name?: unknown; module?: unknown; constructor?: { name?: string } };
+    if (typeof obj.name === 'string' && obj.name) return `an object named "${obj.name}"`;
+    if ('module' in obj) return `a dynamic module whose "module" is ${typeof obj.module}`;
+    const ctor = obj.constructor?.name;
+    return ctor ? `an instance of ${ctor}` : 'a plain object';
+  }
+  return `a value of type ${typeof input}`;
+}
 
 /**
  * Type-guard for the `IDynamicModule` shape: `{ module: function, ... }`.

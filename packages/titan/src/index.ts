@@ -59,6 +59,15 @@ export {
   PreDestroy,
 } from './decorators/index.js';
 
+/**
+ * Names a module that does not exist yet at decorator-evaluation time — the
+ * only way to write a cycle between two modules that need each other.
+ *
+ * @stable
+ * @since 0.2.0
+ */
+export { forwardRef } from './nexus/index.js';
+
 // ============================================================================
 // Lifecycle Interfaces
 // ============================================================================

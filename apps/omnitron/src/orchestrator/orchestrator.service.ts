@@ -2042,6 +2042,14 @@ export class OrchestratorService extends EventEmitter {
     // already stuffs the captured stderr into `error.details.stderr`
     // so we surface it on `lastExit.stderrTail`.
     supervisor.on('child:start-failed', (childName: string, error: Error) => {
+      // A child that never reported ready never reaches `child:started`, so
+      // nothing has drained what it printed on the way to failing. titan-pm
+      // holds those lines until the first handler asks for them; asking here
+      // is what puts a failed boot into the app's log file instead of nowhere.
+      // `error.details.stderr` below is a truncated tail of stderr only — this
+      // is the full picture, stdout included.
+      this.attachLogCapture(entry.name, childName, handle);
+
       const details = (error as { details?: { stderr?: string } }).details;
       const stderrTail = typeof details?.stderr === 'string'
         ? details.stderr.split('\n').filter((l: string) => l.length > 0).slice(-80)

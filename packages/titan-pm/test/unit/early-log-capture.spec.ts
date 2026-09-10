@@ -61,6 +61,27 @@ const collect = (handle: WorkerHandle) => {
 };
 
 describe('WorkerHandle pre-capture buffering', () => {
+  it('takes over what the child printed before the handle existed', () => {
+    // The readline interfaces live in this constructor, and the constructor
+    // does not run until the child reports ready — so nothing in the handle can
+    // have seen a single line of the boot. `waitForReady` was already reading
+    // those streams to explain failures; on success it hands them over.
+    const handle = build();
+    handle.seedStartupOutput({
+      stdout: 'Application starting\nLogger module initialized\n',
+      stderr: '[omnitron:boot] config:loading bootstrap.js\n',
+    });
+
+    const seen = collect(handle);
+
+    expect(seen.map((e) => e.line)).toEqual([
+      'Application starting',
+      'Logger module initialized',
+      '[omnitron:boot] config:loading bootstrap.js',
+    ]);
+    expect(seen[2]?.stream).toBe('stderr');
+  });
+
   it('replays what the child printed before the first handler arrived', () => {
     const handle = build();
 

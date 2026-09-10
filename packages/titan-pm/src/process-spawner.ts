@@ -79,6 +79,12 @@ interface IWorkerContext {
  */
 const EARLY_LOG_MAX_BYTES = 1024 * 1024;
 
+/** What a child printed between spawn and reporting ready. */
+export interface IStartupOutput {
+  stdout: string;
+  stderr: string;
+}
+
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {
   private _status: ProcessStatus;
   private messageHandlers = new Map<string, (data: any) => void>();
@@ -444,6 +450,33 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
     this.messageHandlers.set(id, handler);
   }
 
+  /**
+   * Take over what the child printed before this handle existed.
+   *
+   * `setupLogCapture` cannot see any of it: the readline interfaces are
+   * attached here, in the constructor, and the constructor does not run until
+   * the child has reported ready. `waitForReady` is already reading those
+   * streams by then — for the failure path — so on success it hands the bytes
+   * over instead of dropping them, and they join the same pre-capture buffer
+   * as anything printed between now and the first log handler.
+   *
+   * @internal
+   */
+  seedStartupOutput(output?: IStartupOutput): void {
+    // No `earlyLogs` guard: when the handle forwards logs itself the buffer is
+    // already retired and `emitLog` delivers straight to that forwarder, which
+    // is exactly where these lines belong.
+    if (!output) return;
+    for (const [text, stream] of [
+      [output.stdout, 'stdout'],
+      [output.stderr, 'stderr'],
+    ] as Array<[string, 'stdout' | 'stderr']>) {
+      for (const line of text.split('\n')) {
+        if (line.trim()) this.emitLog(line, stream);
+      }
+    }
+  }
+
   onLog(handler: (line: string, stream: 'stdout' | 'stderr') => void): void {
     const first = this.logHandlers.size === 0;
     this.logHandlers.add(handler);
@@ -797,7 +830,7 @@ export class ProcessSpawner implements IProcessSpawner {
         const proxyHandler = new ServiceProxyHandler(processId, netronClient, qualifiedServiceName, this.logger);
         const proxy = proxyHandler.createProxy();
 
-        return new WorkerHandle(
+        const handle = new WorkerHandle(
           processId,
           worker,
           netronClient,
@@ -811,9 +844,11 @@ export class ProcessSpawner implements IProcessSpawner {
           transport,
           this.config.forwardChildLogs ?? true
         );
+        handle.seedStartupOutput(readyInfo.startupOutput);
+        return handle;
       } else {
         // Direct communication without Netron
-        return new WorkerHandle(
+        const handle = new WorkerHandle(
           processId,
           worker,
           null,
@@ -827,6 +862,8 @@ export class ProcessSpawner implements IProcessSpawner {
           transport,
           this.config.forwardChildLogs ?? true
         );
+        handle.seedStartupOutput(readyInfo.startupOutput);
+        return handle;
       }
     } catch (error) {
       // Cleanup on error — kill the child process to prevent zombies
@@ -1039,7 +1076,7 @@ export class ProcessSpawner implements IProcessSpawner {
     worker: Worker | ChildProcess,
     isWorkerThread: boolean,
     timeout: number = 5000
-  ): Promise<{ serviceName?: string; serviceVersion?: string }> {
+  ): Promise<{ serviceName?: string; serviceVersion?: string; startupOutput?: IStartupOutput }> {
     return new Promise((resolve, reject) => {
       // Capture full stderr/stdout for diagnostics — bounded by total bytes
       // (not lines) so a single long traceback survives intact.
@@ -1143,9 +1180,16 @@ export class ProcessSpawner implements IProcessSpawner {
         if (data && typeof data === 'object' && 'type' in data) {
           if (data.type === 'ready') {
             cleanup();
+            // Hand over what the child printed while starting. Those bytes
+            // were already being captured here for the FAILURE path and
+            // thrown away on success — and success is where they matter
+            // most, because the WorkerHandle that routes logs does not exist
+            // until this promise resolves, so nothing else in the process
+            // ever saw them.
             resolve({
               serviceName: data.serviceName,
               serviceVersion: data.serviceVersion,
+              startupOutput: { stdout: stdoutBuf.join(''), stderr: stderrBuf.join('') },
             });
           } else if (data.type === 'error') {
             cleanup();

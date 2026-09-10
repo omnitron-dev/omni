@@ -26,6 +26,14 @@ import { ApplicationState } from '../../src/types.js';
 import { Module } from '../../src/decorators/index.js';
 import { createToken, Scope, forwardRef, type Container } from '../../src/nexus/index.js';
 
+/**
+ * A module cycle is legal. A PROVIDER cycle inside one is not, and the
+ * difference matters: modules that import each other are a wiring choice,
+ * while two providers that each need the other finished before they can be
+ * constructed cannot both be satisfied. The container has to say so instead
+ * of waiting on itself.
+ */
+
 const EARLY = createToken<{ describe(): string }>('CycleEarly');
 const LATE = createToken<{ describe(): string }>('CycleLate');
 
@@ -51,6 +59,23 @@ class EarlyModule {}
   exports: [LATE],
 })
 class LateModule {}
+
+const RING_A = createToken<{ v(): string }>('CycleRingA');
+const RING_B = createToken<{ v(): string }>('CycleRingB');
+
+@Module({
+  imports: [forwardRef(() => RingBModule)] as never,
+  providers: [[RING_A, { useFactory: (b: { v(): string }) => ({ v: () => `a${b.v()}` }), inject: [RING_B] }]],
+  exports: [RING_A],
+})
+class RingAModule {}
+
+@Module({
+  imports: [RingAModule],
+  providers: [[RING_B, { useFactory: (a: { v(): string }) => ({ v: () => `b${a.v()}` }), inject: [RING_A] }]],
+  exports: [RING_B],
+})
+class RingBModule {}
 
 describe('Application module cycles', () => {
   let app: Application;
@@ -87,4 +112,16 @@ describe('Application module cycles', () => {
     expect(names.filter((n) => n === 'EarlyModule')).toHaveLength(1);
     expect(names.filter((n) => n === 'LateModule')).toHaveLength(1);
   });
+
+  it('refuses a provider cycle inside a module cycle instead of waiting on itself', async () => {
+    let message = 'no error — the container resolved a provider that needs itself';
+    try {
+      const created = await Application.create({ imports: [RingAModule], disableGracefulShutdown: true });
+      await created.stop({ force: true });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toMatch(/[Cc]ircular/);
+  }, 20000);
 });

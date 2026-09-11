@@ -147,8 +147,26 @@ export class RedisManager {
       // When lazyConnect is true, we should NOT connect immediately
       const isLazyConnect = (client as Redis).options?.lazyConnect ?? (client as Cluster).options?.lazyConnect ?? true;
       if (!isLazyConnect) {
-        // Wait for connection to be ready - increase timeout for tests
-        const timeout = this.options.healthCheck?.timeout || (process.env['NODE_ENV'] === 'test' ? 10000 : 5000);
+        // How long a client gets to become ready at startup.
+        //
+        // This used to read `healthCheck.timeout` and nothing else, so the
+        // deadline that decides whether an APPLICATION BOOTS was keyed on a
+        // liveness-probe setting — tighten the probe and you shorten boot,
+        // with nothing saying so. Meanwhile `connectTimeout`, the option whose
+        // name says exactly this, reached ioredis and had no say in the wait,
+        // so an operator who raised it to survive a slow start still got the
+        // 5s default.
+        //
+        // Order: the option that says what it does, then the old coupling for
+        // anyone who tuned it deliberately, then a default with room for a
+        // cold start. 5s is not that — every restart of this platform's
+        // six-backend stack cost at least one failed start where Redis was up
+        // but not yet answering, and the supervisor's retry hid it until boot
+        // logs became readable.
+        const timeout =
+          options.connectTimeout ??
+          this.options.healthCheck?.timeout ??
+          (process.env['NODE_ENV'] === 'test' ? 10000 : 15000);
 
         // If already ready, skip connection wait
         if (isClientReady(client)) {
@@ -156,7 +174,20 @@ export class RedisManager {
         } else {
           // Check if already connected/connecting
           if (!isClientConnecting(client)) {
-            await client.connect();
+            // Bounded by the same budget as the wait below. `connect()` is
+            // NOT bounded on its own: against a server that accepts the TCP
+            // connection and never completes the Redis handshake — a
+            // container that is up but not yet serving, a port forwarded to
+            // nothing, a TLS mismatch — ioredis keeps retrying and this
+            // promise never settles. The timeout beneath it then never gets a
+            // chance to run, so a startup that looked bounded hung forever
+            // with no error anywhere. An application that hangs during boot is
+            // the hardest failure this platform has to diagnose; it must at
+            // least fail.
+            await Promise.race([
+              client.connect().catch(() => undefined),
+              new Promise((resolve) => setTimeout(resolve, timeout)),
+            ]);
           }
 
           const connected = await waitForConnection(client, timeout);
@@ -180,6 +211,17 @@ export class RedisManager {
         this.options.onClientCreated(client);
       }
     } catch (error) {
+      // A client whose startup connect failed must not be left retrying.
+      // `createClient` registers it before connecting and then rethrows, so
+      // without this the caller sees a failure while an ioredis instance goes
+      // on reconnecting for the life of the process — against a host that is
+      // usually the reason startup failed in the first place. `disconnect`
+      // rather than `quit`: there is no server to say goodbye to.
+      try {
+        client.disconnect();
+      } catch {
+        // Already down.
+      }
       this.logger.error({ error }, `Failed to connect Redis client "${namespace}"`);
       throw error;
     }
@@ -355,7 +397,10 @@ export class RedisManager {
 
   /**
    * Default ceiling for a health probe when `healthCheck.timeout` is not set.
-   * Matches the connect-wait default in `connectClient`.
+   *
+   * Deliberately NOT the same number as the connect wait in `connectClient`:
+   * a probe against a live server answers in milliseconds, while a first
+   * connect may be waiting for a container to finish starting.
    */
   private get healthProbeTimeout(): number {
     return this.options.healthCheck?.timeout ?? (process.env['NODE_ENV'] === 'test' ? 10000 : 5000);

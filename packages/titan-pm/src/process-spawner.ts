@@ -14,6 +14,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
+import net from 'node:net';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type {
@@ -77,6 +78,32 @@ interface IWorkerContext {
  * full application boot at debug level, small enough that a runaway child
  * whose logs nobody is consuming cannot grow the parent's heap.
  */
+/**
+ * Does connecting to this socket path get REFUSED?
+ *
+ * True means the path exists as a file with nothing bound to it — a leftover.
+ * Every other outcome (connected, timed out, permission denied, gone) returns
+ * false, because the only safe default when liveness cannot be established is
+ * to leave the file alone.
+ */
+async function isSocketRefused(socketPath: string, timeoutMs = 250): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (refused: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(refused);
+    };
+
+    const socket = net.connect({ path: socketPath });
+    const timer = setTimeout(() => done(false), timeoutMs);
+    socket.once('connect', () => done(false));
+    socket.once('error', (error: NodeJS.ErrnoException) => done(error.code === 'ECONNREFUSED'));
+  });
+}
+
 const EARLY_LOG_MAX_BYTES = 1024 * 1024;
 
 /** What a child printed between spawn and reporting ready. */
@@ -657,6 +684,12 @@ export class ProcessSpawner implements IProcessSpawner {
   private readonly forkWorkerPath: string;
   private readonly tempDir: string;
 
+  /** Socket paths this spawner created, so cleanup removes only its own. */
+  private readonly ownSockets = new Set<string>();
+
+  /** One stale-socket sweep per spawner, started on the first unix spawn. */
+  private staleSweep: Promise<void> | null = null;
+
   constructor(
     private readonly logger: ILogger,
     private readonly config: IProcessManagerConfig = {}
@@ -909,23 +942,63 @@ export class ProcessSpawner implements IProcessSpawner {
    * Cleanup spawner resources
    */
   async cleanup(): Promise<void> {
-    // Clean up stale Unix socket files
-    try {
-      const entries = await fs.readdir(this.tempDir);
-      for (const entry of entries) {
-        if (entry.endsWith('.sock')) {
-          try { await fs.unlink(path.join(this.tempDir, entry)); } catch { /* already gone */ }
-        }
+    // Only the sockets THIS spawner created.
+    //
+    // This used to unlink every `*.sock` in the shared temp directory, which
+    // is a directory another spawner — a second daemon, a test run beside a
+    // running one — is also using. Shutting one down deleted the other's live
+    // socket files out from under it, and a Unix socket whose file is gone
+    // accepts no new connections.
+    for (const socketPath of this.ownSockets) {
+      try {
+        await fs.unlink(socketPath);
+      } catch {
+        /* already gone */
       }
-    } catch {
-      // Directory doesn't exist — nothing to clean
     }
+    this.ownSockets.clear();
 
     // Cleanup temp directory if empty
     try {
       await fs.rmdir(this.tempDir);
     } catch {
       // Directory not empty or doesn't exist
+    }
+  }
+
+  /**
+   * Remove socket files nobody is listening on.
+   *
+   * `cleanup()` runs on a graceful shutdown and not otherwise, so every crash,
+   * SIGKILL and power loss left its sockets behind — 133 of them accumulated
+   * on one development machine over two months. They are harmless individually
+   * and they are still garbage: they make the directory unreadable to a human
+   * looking for a live process, and on a long-running host they only grow.
+   *
+   * A file is removed only when a connection to it is REFUSED, which is what
+   * an unbound socket path answers. Anything else — a successful connect, a
+   * timeout, a permission error — is treated as "in use" and left alone: this
+   * runs while other processes are live, and deleting a socket someone is
+   * listening on is far worse than leaving a dead file on disk.
+   */
+  private async sweepStaleSockets(): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.tempDir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.sock')) continue;
+      const socketPath = path.join(this.tempDir, entry);
+      if (this.ownSockets.has(socketPath)) continue;
+      if (!(await isSocketRefused(socketPath))) continue;
+      try {
+        await fs.unlink(socketPath);
+      } catch {
+        /* raced with someone else's cleanup */
+      }
     }
   }
 
@@ -969,6 +1042,10 @@ export class ProcessSpawner implements IProcessSpawner {
           // own 0600 still applies.
         });
         const socketPath = path.join(this.tempDir, `${processId}.sock`);
+        this.ownSockets.add(socketPath);
+        // Once per spawner, and not awaited: a spawn must not wait on other
+        // people's dead files.
+        this.staleSweep ??= this.sweepStaleSockets().catch(() => undefined);
         return {
           type: 'unix',
           path: socketPath,

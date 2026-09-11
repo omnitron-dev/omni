@@ -25,10 +25,9 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
 
-import { Skeleton, StatCard } from '@omnitron-dev/prism';
+import { StatCard } from '@omnitron-dev/prism';
 import { daemon, metrics } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
-import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { useActiveProjectStacks } from 'src/stores/project.store';

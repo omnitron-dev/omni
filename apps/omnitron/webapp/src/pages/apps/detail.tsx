@@ -23,7 +23,7 @@ import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } 
 import { Breadcrumbs, Skeleton, Table, type TableColumn } from '@omnitron-dev/prism';
 
 import { daemon, logs, metrics } from 'src/netron/client';
-import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
+import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
@@ -558,7 +558,7 @@ function LogsTab({ appName }: { appName: string }) {
   // Streaming interval
   useEffect(() => {
     if (streamRef.current) { clearInterval(streamRef.current); streamRef.current = null; }
-    if (paused) return;
+    if (paused) return undefined;
 
     streamRef.current = setInterval(async () => {
       try {

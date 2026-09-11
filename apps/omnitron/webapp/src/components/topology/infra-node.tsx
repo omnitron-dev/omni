@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import { BackupIcon } from 'src/assets/icons';
-import { glassCardSx, getStatusColor, miniBarSx } from './shared-styles';
+import { glassCardSx, getStatusColor } from './shared-styles';
 import type { InfraNodeData } from './topology-store';
 
 // ---------------------------------------------------------------------------

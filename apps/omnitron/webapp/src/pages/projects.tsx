@@ -34,7 +34,6 @@ import { alpha } from '@mui/material/styles';
 
 import { Breadcrumbs, EmptyContent, Label, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { useProjectStore } from 'src/stores/project.store';
-import { project as projectRpc } from 'src/netron/client';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
@@ -43,7 +42,6 @@ import {
   RefreshIcon,
   SettingsIcon,
   DeleteIcon,
-  FolderIcon,
   ProjectIcon,
 } from 'src/assets/icons';
 

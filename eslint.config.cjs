@@ -210,11 +210,20 @@ module.exports = [
   },
   // Base configuration
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/webapp/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     languageOptions: {
       parser: eslintTs.parser,
       parserOptions: {
-        project: ['./packages/*/tsconfig.json', './apps/*/tsconfig*.json'],
+        // `apps/*/webapp/tsconfig.json` is listed separately: the console
+        // lives one level deeper than every other app, which is also why the
+        // `files` globs above say `webapp` — they said `web`, a directory
+        // that does not exist in this repo, so 63 source files had never been
+        // linted at all.
+        project: [
+          './packages/*/tsconfig.json',
+          './apps/*/tsconfig*.json',
+          './apps/*/webapp/tsconfig.json',
+        ],
         tsconfigRootDir: __dirname,
       },
       globals: { ...globals.browser, ...globals.node },
@@ -222,17 +231,17 @@ module.exports = [
   },
   // Recommended JavaScript rules
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/webapp/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...eslintJs.configs.recommended,
   },
   // Recommended TypeScript rules
   ...eslintTs.configs.recommended.map(config => ({
     ...config,
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}']
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/webapp/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}']
   })),
   // Our custom configuration (should be last to override previous rules)
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/webapp/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...customConfig,
   },
   // Special configuration for packages/titan with @nexus alias

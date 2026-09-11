@@ -224,7 +224,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearInitError: () => set({ initError: null }),
 
   initialize: async () => {
-    if (get().initialized) return;
+    if (get().initialized) return undefined;
     if (initializing) return initializing;
 
     initializing = runInitialize(set).finally(() => {

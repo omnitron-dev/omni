@@ -533,7 +533,7 @@ export default function LogsPage() {
       streamRef.current = null;
     }
 
-    if (!streaming || paused) return;
+    if (!streaming || paused) return undefined;
 
     streamRef.current = setInterval(async () => {
       try {

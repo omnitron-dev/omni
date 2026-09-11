@@ -143,8 +143,13 @@ function GaugeCard({ title, value, suffix, icon, color, loading }: GaugeCardProp
 // Metrics Page
 // ---------------------------------------------------------------------------
 
-const DATA_POINTS = 30; // 5 minutes at 10s intervals
-const INTERVAL_MS = 10_000;
+const METRICS_POLL_MS = 10_000;
+
+// `DATA_POINTS = 30` and `INTERVAL_MS = 10_000` stood here. The first was the
+// bucket count of a time series this page stopped drawing when it turned out
+// the data had no time dimension (see the note by `getLogStats` below); the
+// second was never wired to the poll, which passes `intervalMs: 10_000`
+// literally. Both were read by nothing.
 
 export default function MetricsPage() {
   const { displayName, namespacePrefix } = useStackContext();
@@ -300,7 +305,7 @@ export default function MetricsPage() {
   // only. `autoRefresh` is the toggle the user controls; note that turning it
   // off used to skip the interval but still fetch once per render of this
   // effect, which is not what "off" means.
-  usePollingEffect(() => void fetchMetrics(), { intervalMs: 10_000, enabled: autoRefresh });
+  usePollingEffect(() => void fetchMetrics(), { intervalMs: METRICS_POLL_MS, enabled: autoRefresh });
 
   useEffect(() => {
     // One fetch on mount regardless of the toggle: an operator arriving with

@@ -68,15 +68,15 @@ export function StackSelector() {
     [selectStack]
   );
 
-  const sortedStacks = useMemo(() => {
+  const sortedStacks = useMemo(() => 
     // Sort: running first, then by name
-    return [...stacks].sort((a, b) => {
+     [...stacks].sort((a, b) => {
       const aRunning = a.status === 'running' ? 0 : 1;
       const bRunning = b.status === 'running' ? 0 : 1;
       if (aRunning !== bRunning) return aRunning - bRunning;
       return a.name.localeCompare(b.name);
-    });
-  }, [stacks]);
+    })
+  , [stacks]);
 
   if (!activeProject) return null;
 

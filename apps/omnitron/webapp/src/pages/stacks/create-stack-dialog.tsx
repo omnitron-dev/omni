@@ -134,9 +134,12 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
     if (stepper.activeStep === appsStepIndex) {
       setAppsLoading(true);
       // Fetch configured apps from project (not runtime — apps may not be running)
-      const activeProject = useProjectStore.getState().activeProject;
-      if (activeProject) {
-        projectRpc.scanRequirements({ project: activeProject })
+      // Read fresh from the store rather than the closed-over value: this
+      // runs on a step change, and the component-level binding is a snapshot
+      // from the render that armed the effect.
+      const currentProject = useProjectStore.getState().activeProject;
+      if (currentProject) {
+        projectRpc.scanRequirements({ project: currentProject })
           .then((reqs: any) => {
             const appNames = Object.keys(reqs?.apps ?? {});
             const list = appNames.map((name: string) => ({ name }));

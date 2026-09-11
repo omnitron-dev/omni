@@ -360,9 +360,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  getStackPendingOp: (projectName: string, stackName: string) => {
-    return get().pendingOps[`${projectName}/${stackName}`] ?? null;
-  },
+  getStackPendingOp: (projectName: string, stackName: string) => get().pendingOps[`${projectName}/${stackName}`] ?? null,
 
   clearError: () => set({ error: null }),
   };

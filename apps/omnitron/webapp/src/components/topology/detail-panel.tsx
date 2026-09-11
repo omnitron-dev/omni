@@ -14,14 +14,12 @@ import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
-import { alpha } from '@mui/material/styles';
 
 import {
   CloseIcon,
   PlayIcon,
   StopIcon,
   RestartIcon,
-  LogsIcon,
 } from 'src/assets/icons';
 import { useTopologyStore } from './topology-store';
 import { getStatusColor, miniBarSx } from './shared-styles';
@@ -473,7 +471,7 @@ function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; 
     if (memory !== undefined) {
       setMemHistory((prev) => [...prev.filter((s) => s.ts > cutoff), { ts: now, value: memory }]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [cpu, memory]);
 
   return (

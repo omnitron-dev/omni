@@ -32,7 +32,6 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
-import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
@@ -43,7 +42,6 @@ import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
 
 import {
-  PlusIcon,
   RefreshIcon,
   NodesIcon,
   ServerIcon,
@@ -287,6 +285,9 @@ export default function TopologyPage() {
         case 'Escape':
           if (detailPanel.open) closeDetail();
           break;
+        default:
+          // Every other key belongs to the page, not to this handler.
+          break;
       }
     };
     window.addEventListener('keydown', handler);
@@ -356,6 +357,12 @@ export default function TopologyPage() {
           case 'logs':
             openDetail(contextMenu.nodeId, nodeType as any, data);
             // Switch to logs tab after panel opens
+            break;
+          default:
+            // An action the menu offers and this handler does not implement
+            // would otherwise close the menu and do nothing at all, which
+            // reads as a click that missed.
+            openDetail(contextMenu.nodeId, nodeType as any, data);
             break;
         }
       } else {

@@ -33,7 +33,6 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import Switch from '@mui/material/Switch';
 import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
 import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -48,7 +47,6 @@ import {
 import { Breadcrumbs, FormAlert, Skeleton } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
-import { STATUS_COLORS } from 'src/utils/constants';
 
 import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
 import { readStoredJson, writeStoredJson } from '../utils/storage';
@@ -299,15 +297,13 @@ function TimeSeriesChartPanel({
 
   const appNames = useMemo(() => data.apps.map((a) => a.name), [data.apps]);
 
-  const series = useMemo(() => {
-    return appNames.map((name) => ({
+  const series = useMemo(() => appNames.map((name) => ({
       name,
       data: history.map((pt) => ({
         x: pt.time,
         y: Math.round((pt.values[name] ?? 0) * 10) / 10,
       })),
-    }));
-  }, [appNames, history]);
+    })), [appNames, history]);
 
   const options = useMemo<ApexOptions>(() => ({
     chart: { background: 'transparent', toolbar: { show: false }, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 1000 } } },
@@ -351,7 +347,7 @@ function StatPanel({ data, config }: { data: DaemonData; config: Record<string, 
   if (data.loading) return <Skeleton width={80} height={50} />;
 
   let value: string | number = '--';
-  let label = '';
+  let label: string;
   let color = theme.palette.primary.main;
 
   const onlineApps = data.apps.filter((a) => a.status === 'online').length;
@@ -392,6 +388,15 @@ function StatPanel({ data, config }: { data: DaemonData; config: Record<string, 
       value = data.apps.reduce((s, a) => s + a.restarts, 0);
       label = 'Restarts';
       color = Number(value) > 0 ? theme.palette.warning.main : theme.palette.text.disabled;
+      break;
+    default:
+      // `metric` comes from a saved dashboard, so it can name something this
+      // build no longer knows — a widget saved before a rename, or one from a
+      // newer console. Falling through left `--` under a blank label, which
+      // reads as "no data" rather than "this card is asking for something
+      // that does not exist".
+      label = `Unknown metric: ${metric}`;
+      color = theme.palette.text.disabled;
       break;
   }
 
@@ -704,7 +709,7 @@ export default function DashboardBuilderPage() {
 
   // Auto-refresh
   useEffect(() => {
-    if (!autoRefresh || !currentDashboard) return;
+    if (!autoRefresh || !currentDashboard) return undefined;
     const interval = setInterval(() => setRefreshKey((k) => k + 1), currentDashboard.refreshInterval);
     return () => clearInterval(interval);
   }, [autoRefresh, currentDashboard]);

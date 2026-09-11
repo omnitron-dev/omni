@@ -185,10 +185,12 @@ function hexToHsl(hex: string): [number, number, number] {
   const d = max - min;
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
 
-  let h = 0;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
-  else if (max === g) h = ((b - r) / d + 2);
-  else h = ((r - g) / d + 4);
+  // No initialiser: every branch below assigns, so `let h = 0` was a value
+  // that could never be read.
+  let h: number;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
   h *= 60;
 
   return [h, s * 100, l * 100];
@@ -229,7 +231,7 @@ function UptimeStrip<T extends Record<string, any>>({
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const calc = () => {
       const w = el.clientWidth;
       // segments: n * segWidth + (n-1) * gap <= w  →  n <= (w + gap) / (segWidth + gap)

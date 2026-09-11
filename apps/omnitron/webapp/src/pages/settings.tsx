@@ -31,13 +31,12 @@ import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
 import Divider from '@mui/material/Divider';
 import Box from '@mui/material/Box';
-import { alpha } from '@mui/material/styles';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
 import { FormAlert, TabPanel, Table, Tabs, type TableColumn } from '@omnitron-dev/prism';
 import { useAuthStore } from 'src/auth/store';
-import { auth, getSessionId, nodes as nodesRpc } from 'src/netron/client';
+import { auth, getSessionId } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
 
 import type { OmnitronActiveSession } from '@omnitron-dev/omnitron/dto/services';
@@ -47,9 +46,6 @@ import { readStored, writeStored } from '../utils/storage';
 // Shared
 // =============================================================================
 
-const LS_THEME_MODE = 'omnitron_theme_mode';
-const LS_SIDEBAR_COLLAPSED = 'omnitron_sidebar_collapsed';
-const LS_COMPACT_DENSITY = 'omnitron_compact_density';
 const LS_DESKTOP_NOTIFICATIONS = 'omnitron_desktop_notifications';
 const LS_SOUND_ALERTS = 'omnitron_sound_alerts';
 const LS_ALERT_SEVERITY = 'omnitron_alert_severity';
@@ -326,58 +322,15 @@ function SessionsSection() {
     </Card>
   );
 }
-
-// =============================================================================
-// Appearance Tab
-// =============================================================================
-
-function AppearanceSection() {
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (readStored(LS_THEME_MODE) as 'light' | 'dark' | 'system') || 'dark');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalBool(LS_SIDEBAR_COLLAPSED, false));
-  const [compactDensity, setCompactDensity] = useState(() => readLocalBool(LS_COMPACT_DENSITY, false));
-
-  return (
-    <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
-      <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 700 } }} title="Appearance" subheader="Customize the console interface" />
-      <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-        <Stack spacing={3}>
-          <Box>
-            <Typography
-              variant="body2"
-              sx={{
-                fontWeight: 600,
-                mb: 1
-              }}>Theme Mode</Typography>
-            <ToggleButtonGroup value={themeMode} exclusive onChange={(_, v) => { if (v) { setThemeMode(v); writeStored(LS_THEME_MODE, v); } }} size="small" fullWidth>
-              <ToggleButton value="light" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Light</ToggleButton>
-              <ToggleButton value="dark" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>Dark</ToggleButton>
-              <ToggleButton value="system" sx={{ textTransform: 'none', fontSize: '0.8rem' }}>System</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-          <Divider />
-          <FormControlLabel
-            control={<Switch size="small" checked={sidebarCollapsed} onChange={(_, c) => { setSidebarCollapsed(c); writeLocalBool(LS_SIDEBAR_COLLAPSED, c); }} />}
-            label={<Box><Typography variant="body2" sx={{
-              fontWeight: 600
-            }}>Sidebar collapsed by default</Typography><Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>Start with the navigation sidebar minimized</Typography></Box>}
-            sx={{ alignItems: 'flex-start', ml: 0 }}
-          />
-          <FormControlLabel
-            control={<Switch size="small" checked={compactDensity} onChange={(_, c) => { setCompactDensity(c); writeLocalBool(LS_COMPACT_DENSITY, c); }} />}
-            label={<Box><Typography variant="body2" sx={{
-              fontWeight: 600
-            }}>Compact density</Typography><Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>Reduce spacing and padding throughout the UI</Typography></Box>}
-            sx={{ alignItems: 'flex-start', ml: 0 }}
-          />
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
+// The Appearance section that stood here was never rendered — no tab
+// referenced it — and its three switches wrote `omnitron_theme_mode`,
+// `omnitron_sidebar_collapsed` and `omnitron_compact_density`, which nothing
+// in this app has ever read. Wiring it up would have handed the operator
+// three controls that do nothing, which is worse than an absent tab.
+//
+// The console's real theme and sidebar state lives in prism's
+// `useSettingsStore` / `useLayoutConfig` (see `layouts/console-layout.tsx`),
+// and the header's mode button already drives it.
 
 // =============================================================================
 // Notifications Tab

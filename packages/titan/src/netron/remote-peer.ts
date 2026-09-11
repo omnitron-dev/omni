@@ -18,6 +18,7 @@ import { AbstractPeer, type DefinitionCacheOptions } from './abstract-peer.js';
 import { StreamReference, NetronReadableStream, NetronWritableStream } from './streams/index.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import { NetronErrors, Errors } from '../errors/index.js';
+import { TransportError } from '../errors/netron.js';
 import { REQUEST_TIMEOUT } from './constants.js';
 import {
   Packet,
@@ -122,6 +123,33 @@ const isValidPropertyName = (name: unknown): name is string =>
  * @class RemotePeer
  * @extends AbstractPeer
  */
+/**
+ * Did this fail because the peer went away?
+ *
+ * A client that disconnects mid-call is an ordinary event, not a server
+ * fault — and on a network where circuits drop by design it is a CONSTANT
+ * event. Logging it at error produced two stack traces per dropped
+ * connection ("Failed to run task", then "Failed to send error response to
+ * peer" when the reply had nowhere to go), which is how a log stops being
+ * worth reading.
+ *
+ * Covers Netron's own transport errors and the socket-level codes a write to
+ * a dead peer produces.
+ */
+const PEER_GONE_CODES = new Set([
+  'EPIPE',
+  'ECONNRESET',
+  'ERR_STREAM_WRITE_AFTER_END',
+  'ERR_STREAM_DESTROYED',
+  'ERR_SOCKET_CLOSED',
+]);
+
+function isPeerGone(err: unknown): boolean {
+  if (err instanceof TransportError) return true;
+  const code = (err as { code?: unknown })?.code;
+  return typeof code === 'string' && PEER_GONE_CODES.has(code);
+}
+
 export class RemotePeer extends AbstractPeer {
   /** Event emitter for handling internal events */
   private events = new EventEmitter();
@@ -941,7 +969,15 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
+            // The reply had nowhere to go. When the peer is gone that is the
+            // same event as the failure above, reported twice; anything else
+            // means a caller is now waiting for a response it will never get,
+            // which is worth a line.
+            if (isPeerGone(err_)) {
+              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+            } else {
+              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            }
           }
         }
         break;
@@ -970,7 +1006,15 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
+            // The reply had nowhere to go. When the peer is gone that is the
+            // same event as the failure above, reported twice; anything else
+            // means a caller is now waiting for a response it will never get,
+            // which is worth a line.
+            if (isPeerGone(err_)) {
+              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+            } else {
+              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            }
           }
         }
         break;
@@ -1006,7 +1050,15 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
+            // The reply had nowhere to go. When the peer is gone that is the
+            // same event as the failure above, reported twice; anything else
+            // means a caller is now waiting for a response it will never get,
+            // which is worth a line.
+            if (isPeerGone(err_)) {
+              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+            } else {
+              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            }
           }
         }
         break;
@@ -1021,11 +1073,23 @@ export class RemotePeer extends AbstractPeer {
           }
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: unknown) {
-          this.logger.error({ err, task: name }, 'Failed to run task');
+          if (isPeerGone(err)) {
+            this.logger.debug({ err, task: name }, 'Peer disconnected while its task was running');
+          } else {
+            this.logger.error({ err, task: name }, 'Failed to run task');
+          }
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {
-            this.logger.error({ err: err_ }, 'Failed to send error response to peer');
+            // The reply had nowhere to go. When the peer is gone that is the
+            // same event as the failure above, reported twice; anything else
+            // means a caller is now waiting for a response it will never get,
+            // which is worth a line.
+            if (isPeerGone(err_)) {
+              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+            } else {
+              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            }
           }
         }
         break;

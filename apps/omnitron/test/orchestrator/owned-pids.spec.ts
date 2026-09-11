@@ -29,6 +29,32 @@ function pids(map: Record<string, number>) {
 }
 
 describe('collectOwnedPids', () => {
+  it('collects a child that is still starting', () => {
+    // The defect that took the stand down on 2026-09-11. BOTH channels below
+    // answer only once a child has finished starting: `getChildNames()` is
+    // written when `manager.spawn()` resolves, and `resolvePid` reads the
+    // WorkerHandle registry, written at the same instant. So for the whole of
+    // a startup the child was not ours, and the janitor's only protection was
+    // a 60-second age threshold.
+    //
+    // Under a load average of 88, main's http child needed 86-103 seconds
+    // just to import its module graph. The janitor killed it on every
+    // attempt, the supervisor restarted it, and the loop fed itself.
+    const owned = collectOwnedPids([handle({})], pids({}), [4242]);
+
+    expect([...owned]).toEqual([4242]);
+  });
+
+  it('still collects the starting child alongside the started ones', () => {
+    const owned = collectOwnedPids(
+      [handle({ http: 'w-http' }, { transform: ['w-t1'] })],
+      pids({ 'w-http': 101, 'w-t1': 201 }),
+      [4242]
+    );
+
+    expect([...owned].sort((a, b) => a - b)).toEqual([101, 201, 4242]);
+  });
+
   it('collects supervisor children', () => {
     const owned = collectOwnedPids([handle({ http: 'w-http' })], pids({ 'w-http': 101 }));
     expect([...owned]).toEqual([101]);

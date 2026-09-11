@@ -565,7 +565,11 @@ export class OrchestratorService extends EventEmitter {
    * catch it being incomplete — and it was, by a whole class of process.
    */
   private collectOwnedPids(): Set<number> {
-    return collectOwnedPids(this.handles.values(), (workerId) => this.pm.getWorkerHandle(workerId)?.pid);
+    return collectOwnedPids(
+      this.handles.values(),
+      (workerId) => this.pm.getWorkerHandle(workerId)?.pid,
+      this.pm.getForkedPids?.() ?? [],
+    );
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {

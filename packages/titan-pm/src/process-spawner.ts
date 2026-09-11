@@ -693,6 +693,25 @@ export class ProcessSpawner implements IProcessSpawner {
 
   /** Socket paths this spawner created, so cleanup removes only its own. */
   private readonly ownSockets = new Set<string>();
+  /**
+   * Every OS process this spawner has forked and not yet seen exit.
+   *
+   * Recorded at `fork()`, which is where the pid first exists — not when the
+   * WorkerHandle is built, which is after the child has finished starting.
+   * Anything that asks "is this process ours?" during a startup gets the
+   * wrong answer from every other registry in this package, because every
+   * other registry is written after ready.
+   *
+   * omnitron's orphan janitor is the caller that made this necessary: it
+   * sweeps `ps` for fork-workers, kills any whose pid the orchestrator does
+   * not claim, and could not claim a child that was still starting. Its only
+   * protection was a 60-second age threshold, described in its own docstring
+   * as a "safe envelope for slow init paths" — and on 2026-09-11, under a
+   * load average of 88, main's http child needed 86-103 seconds just to
+   * import its module graph. The janitor killed it on every attempt, the
+   * supervisor restarted it, and the loop fed itself.
+   */
+  private readonly forkedPids = new Set<number>();
 
   /** One stale-socket sweep per spawner, started on the first unix spawn. */
   private staleSweep: Promise<void> | null = null;
@@ -1185,7 +1204,24 @@ export class ProcessSpawner implements IProcessSpawner {
       ...(context.options?.cwd ? { cwd: context.options.cwd } : {}),
     });
 
+    // Claim it now. `fork()` has already assigned the pid, and from this
+    // instant the process exists and is ours — including for the whole of
+    // the startup that has not begun yet.
+    if (typeof child.pid === 'number') {
+      const pid = child.pid;
+      this.forkedPids.add(pid);
+      child.once('exit', () => this.forkedPids.delete(pid));
+    }
+
     return child;
+  }
+
+  /**
+   * Every process this spawner forked and has not seen exit, starting ones
+   * included. See `forkedPids`.
+   */
+  getForkedPids(): ReadonlySet<number> {
+    return this.forkedPids;
   }
 
   /**

@@ -16,6 +16,20 @@
  * on a thirty-second cycle for as long as the daemon ran, and silently
  * replaced by a pool that then grew by one worker per sweep.
  *
+ * The second omission was worse, because it hits every app on every boot:
+ * BOTH channels answer only for a child that has finished starting.
+ * `supervisor.getChildNames()` is written when `manager.spawn()` resolves,
+ * and `resolvePid` reads the WorkerHandle registry, written at the same
+ * moment. So for the whole of a startup a child is not ours, and the
+ * janitor's only protection was a 60-second age threshold its own docstring
+ * calls a "safe envelope for slow init paths".
+ *
+ * On 2026-09-11, under a load average of 88, main's http child needed 86-103
+ * seconds just to import its module graph. The janitor killed it on every
+ * attempt, the supervisor restarted it, and the loop fed itself for seven
+ * minutes until the load came down. `forkedPids` closes it: titan-pm records
+ * each pid at `fork()`, which is where it first exists.
+ *
  * Being generous here is the safe direction: a pid wrongly included survives
  * one more sweep, while a pid wrongly omitted is a live worker killed.
  */
@@ -44,12 +58,19 @@ export interface OwnedPidHandle {
  * @param resolvePid maps a process-manager worker id to its OS pid; returns
  *   undefined when the worker has no pid of its own (a worker thread shares
  *   the daemon's), which must NOT be substituted for a real one
+ * @param forkedPids every pid the process manager has forked and not seen
+ *   exit — the only source that answers during a child's startup
  */
 export function collectOwnedPids(
   handles: Iterable<OwnedPidHandle>,
-  resolvePid: (workerId: string) => number | undefined
+  resolvePid: (workerId: string) => number | undefined,
+  forkedPids: Iterable<number> = []
 ): Set<number> {
   const owned = new Set<number>();
+
+  // Everything the process manager forked, whether or not it has finished
+  // starting. The two loops below can only see children that have.
+  for (const pid of forkedPids) owned.add(pid);
 
   for (const handle of handles) {
     for (const childName of handle.supervisor?.getChildNames() ?? []) {

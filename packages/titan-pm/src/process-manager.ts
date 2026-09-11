@@ -604,6 +604,22 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   }
 
   /**
+   * Every OS process the manager has forked and not seen exit — including
+   * ones still starting, which no other registry here reports.
+   *
+   * `this.workers` and `this.registry` are both written after a child
+   * reports ready, so anything asking "is this pid ours?" during a startup
+   * is told no. That gap is what let omnitron's orphan janitor kill a slow
+   * boot. Empty for a spawner that does not track pids (the mock).
+   */
+  getForkedPids(): ReadonlySet<number> {
+    const spawner = this.spawner as IProcessSpawner & {
+      getForkedPids?: () => ReadonlySet<number>;
+    };
+    return spawner.getForkedPids?.() ?? new Set<number>();
+  }
+
+  /**
    * Kill a process
    */
   async kill(processId: string, signal: string = 'SIGTERM'): Promise<boolean> {

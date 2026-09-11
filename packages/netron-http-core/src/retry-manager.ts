@@ -186,7 +186,7 @@ export class RetryManager extends EventEmitter {
       try {
         if (this.options.debug || this.options.logger) {
           const data = { attempt: attempt + 1, maxAttempts: retryOptions.attempts + 1 };
-          this.options.logger ? this.options.logger.debug(data, 'Retry attempt') : this.fallbackLog('Retry attempt', data);
+          this.debugLog('Retry attempt', data);
         }
 
         // Execute with timeout if specified
@@ -214,7 +214,7 @@ export class RetryManager extends EventEmitter {
         if (!shouldRetry) {
           if (this.options.debug || this.options.logger) {
             const data = { err: error };
-            this.options.logger ? this.options.logger.debug(data, 'Error not retryable') : this.fallbackLog('Error not retryable', { error: error.message });
+            this.debugLog('Error not retryable', data, { error: error.message });
           }
           this.stats.failedRetries++;
           this.updateCircuitBreakerOnFailure();
@@ -237,7 +237,7 @@ export class RetryManager extends EventEmitter {
           this.stats.retryDelays.push(actualDelay);
           if (this.options.debug || this.options.logger) {
             const data = { attempt: attempt + 1, delayMs: actualDelay, error: error.message };
-            this.options.logger ? this.options.logger.debug({ ...data, err: error }, 'Attempt failed, retrying') : this.fallbackLog('Attempt failed, retrying', data);
+            this.debugLog('Attempt failed, retrying', { ...data, err: error }, data);
           }
 
           // Call retry callback
@@ -269,7 +269,7 @@ export class RetryManager extends EventEmitter {
           this.updateCircuitBreakerOnFailure();
           if (this.options.debug || this.options.logger) {
             const data = { attempts: retryOptions.attempts + 1 };
-            this.options.logger ? this.options.logger.debug(data, 'Max retry attempts exceeded') : this.fallbackLog('Max retry attempts exceeded', data);
+            this.debugLog('Max retry attempts exceeded', data);
           }
 
           this.emit('retry-exhausted', {
@@ -465,6 +465,26 @@ export class RetryManager extends EventEmitter {
   /**
    * Environment-neutral debug fallback used when no logger is injected.
    */
+  /**
+   * One debug line, through whichever sink exists.
+   *
+   * Eight call sites wrote this as `logger ? logger.debug(obj, msg) :
+   * fallbackLog(msg, obj)` — a ternary used as a statement, with the two
+   * arguments in opposite orders on each side, and in two places a DIFFERENT
+   * payload for the two sinks. Saying it once removes the chance of the two
+   * branches drifting apart, which two of them already had.
+   *
+   * `fallbackPayload` exists only for the sites that deliberately gave the
+   * console a smaller object than the structured logger.
+   */
+  private debugLog(message: string, data?: object, fallbackPayload?: object): void {
+    if (this.options.logger) {
+      this.options.logger.debug(data ?? {}, message);
+      return;
+    }
+    this.fallbackLog(message, fallbackPayload ?? data);
+  }
+
   private fallbackLog(message: string, data?: object): void {
     if (this.options.debug) {
        
@@ -493,7 +513,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.successes = 0;
       this.emit('circuit-breaker-half-open');
       if (this.options.debug || this.options.logger) {
-        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to HALF-OPEN') : this.fallbackLog('CircuitBreaker transitioned to HALF-OPEN');
+        this.debugLog('CircuitBreaker transitioned to HALF-OPEN');
       }
     }
 
@@ -519,7 +539,7 @@ export class RetryManager extends EventEmitter {
         this.circuitBreaker.successes = 0;
         this.emit('circuit-breaker-closed');
         if (this.options.debug || this.options.logger) {
-          this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to CLOSED') : this.fallbackLog('CircuitBreaker transitioned to CLOSED');
+          this.debugLog('CircuitBreaker transitioned to CLOSED');
         }
       }
     }
@@ -541,7 +561,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
       this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
       if (this.options.debug || this.options.logger) {
-        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned back to OPEN from HALF-OPEN') : this.fallbackLog('CircuitBreaker transitioned back to OPEN from HALF-OPEN');
+        this.debugLog('CircuitBreaker transitioned back to OPEN from HALF-OPEN');
       }
       return; // Early return to avoid duplicate processing
     }
@@ -555,7 +575,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
       this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
       if (this.options.debug || this.options.logger) {
-        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to OPEN') : this.fallbackLog('CircuitBreaker transitioned to OPEN');
+        this.debugLog('CircuitBreaker transitioned to OPEN');
       }
     }
   }

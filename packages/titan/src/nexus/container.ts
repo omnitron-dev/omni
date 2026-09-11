@@ -689,7 +689,7 @@ export class Container implements IContainer {
         return raw === undefined ? dep.defaultValue : raw;
       }
       case 'conditional': {
-        let pass = false;
+        let pass: boolean;
         try {
           pass = !!dep.condition();
         } catch {
@@ -697,6 +697,16 @@ export class Container implements IContainer {
         }
         if (pass) return this.resolve(dep.token);
         return typeof dep.fallback === 'function' ? (dep.fallback as () => unknown)() : dep.fallback;
+      }
+      default: {
+        // The switch used to fall off the end, so a decorator kind this
+        // container does not know injected `undefined` — silently, and the
+        // failure surfaced somewhere else entirely as a missing property.
+        // `never` makes adding a kind without a branch a compile error.
+        const unknownDep: never = dep;
+        throw Errors.badRequest(
+          `Unknown dependency kind: ${String((unknownDep as { kind?: unknown }).kind)}`
+        );
       }
     }
   }
@@ -2014,7 +2024,11 @@ export class Container implements IContainer {
    * Dispose container
    */
   async dispose(): Promise<void> {
-    if (this.disposed) return;
+    // `return undefined`, not a bare `return`: the two paths below hand back
+    // the in-flight disposal so a second caller can await it, and a function
+    // that returns a value on one path and nothing on another leaves the
+    // reader to guess which was meant.
+    if (this.disposed) return undefined;
 
     // A dispose() already under way: join it rather than run the teardown a
     // second time. `this.disposed` is only assigned at the END of the teardown

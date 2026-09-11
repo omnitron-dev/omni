@@ -1317,6 +1317,13 @@ export class ProcessPool<T> {
       case 'recovery':
         this.logger.info(payload, 'Worker health check recovered');
         break;
+      default: {
+        // A level the mapping above does not cover would otherwise be
+        // silence — the one outcome indistinguishable from `suppress`.
+        const unexpected: never = decision.level;
+        this.logger.warn({ ...payload, level: unexpected }, 'Unhandled failure-tracker level');
+        break;
+      }
     }
   }
 

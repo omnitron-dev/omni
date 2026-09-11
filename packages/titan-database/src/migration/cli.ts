@@ -154,6 +154,15 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
         );
         break;
       }
+          default: {
+        // `cmd` is parsed from argv, so an unhandled kind used to exit 0
+        // having done nothing — the shape of "the migration ran" from the
+        // caller's side.
+        // `ParsedArgs` is one interface with a union-typed `kind`, not a
+        // discriminated union, so the assert goes on the field.
+        const unknownKind: never = cmd.kind;
+        throw new Error(`Unknown migration command: ${String(unknownKind)}`);
+      }
     }
   } catch (err) {
     if (err instanceof MigrationLockError || err instanceof MigrationChecksumError) {

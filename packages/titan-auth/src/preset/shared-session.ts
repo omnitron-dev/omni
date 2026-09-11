@@ -391,8 +391,8 @@ export function createSharedSessionAuthManager(
           'Token missing required `sid` claim (user-tier tokens MUST carry a session id for revocation)',
         );
       }
-      let activeSession: ParsedSessionValue | null = null;
       if (sessionId) {
+        let activeSession: ParsedSessionValue | null;
         const redisKey = `${sessionKeyPrefix}${sessionId}`;
         const rawFastPath = await sessionRedis.get(redisKey);
         activeSession = rawFastPath ? parseSessionValue(rawFastPath) : null;

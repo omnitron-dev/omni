@@ -408,7 +408,9 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
             resolve();
             return;
           }
-          let stillAlive = false;
+          // No initialiser: both arms below assign, so `= false` was a value
+          // that could never be read.
+          let stillAlive: boolean;
           try {
             process.kill(child.pid, 0);
             stillAlive = true;

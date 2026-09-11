@@ -1780,6 +1780,12 @@ export class OrchestratorService extends EventEmitter {
       // which returns null for pool workers (they aren't supervisor
       // children) and the entry is mis-reported as `status: 'stopped'`.
       handle.topologyPools.set(procEntry.name, pool as unknown as IProcessPool<unknown>);
+      this.attachPoolLogCapture(
+        entry.name,
+        procEntry.name,
+        handle,
+        pool as unknown as { getWorkerIds(): string[]; getWorkerHandle(id: string): unknown }
+      );
 
       // Auto-discover @Service metadata from pool workers and expose via ServiceRouter.
       // No manual `exports` needed — @Service decorator IS the source of truth.
@@ -2163,7 +2169,48 @@ export class OrchestratorService extends EventEmitter {
     const workerHandle = this.pm.getWorkerHandle(processId);
     if (!workerHandle?.onLog) return;
 
-    workerHandle.onLog((line: string, stream: 'stdout' | 'stderr') => {
+    workerHandle.onLog(this.childLogForwarder(appName, handle));
+  }
+
+  /**
+   * Attach log capture to the workers of a topology POOL.
+   *
+   * `attachLogCapture` above is driven by `child:started`, which only
+   * supervisor children emit — a pool worker is not one, so nothing ever
+   * subscribed to its output. Everything those workers print went nowhere:
+   * the OHLCV aggregator and the image transformer have been mute since they
+   * were written, and since titan-pm started holding pre-capture output it was
+   * also a megabyte per worker retained for a reader that never arrived.
+   *
+   * Attached once, at pool creation. A worker replaced later by autoscaling or
+   * a health restart is not covered; these pools are fixed-size, and the
+   * alternative is an event this package does not expose yet.
+   */
+  private attachPoolLogCapture(
+    appName: string,
+    processName: string,
+    handle: AppHandle,
+    pool: { getWorkerIds(): string[]; getWorkerHandle(id: string): unknown }
+  ): void {
+    const forward = this.childLogForwarder(appName, handle);
+    let attached = 0;
+    for (const workerId of pool.getWorkerIds()) {
+      const workerHandle = pool.getWorkerHandle(workerId) as {
+        onLog?: (h: (line: string, stream: 'stdout' | 'stderr') => void) => void;
+      } | null;
+      if (!workerHandle?.onLog) continue;
+      workerHandle.onLog(forward);
+      attached++;
+    }
+    this.logger.debug({ app: appName, process: processName, workers: attached }, 'Pool log capture attached');
+  }
+
+  /** The one place a child's line becomes an app's line. */
+  private childLogForwarder(
+    appName: string,
+    handle: AppHandle
+  ): (line: string, stream: 'stdout' | 'stderr') => void {
+    return (line: string, stream: 'stdout' | 'stderr') => {
       // In-memory ring buffer (for live CLI tailing)
       handle.appendLog(line);
 
@@ -2182,7 +2229,7 @@ export class OrchestratorService extends EventEmitter {
           // Log handler failure must not break the app
         }
       }
-    });
+    };
   }
 
   /**

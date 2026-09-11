@@ -694,13 +694,13 @@ export class ProcessSpawner implements IProcessSpawner {
   /** Socket paths this spawner created, so cleanup removes only its own. */
   private readonly ownSockets = new Set<string>();
   /**
-   * Every OS process this spawner has forked and not yet seen exit.
+   * Pids of spawns that are IN FLIGHT — forked, not yet settled.
    *
-   * Recorded at `fork()`, which is where the pid first exists — not when the
-   * WorkerHandle is built, which is after the child has finished starting.
-   * Anything that asks "is this process ours?" during a startup gets the
-   * wrong answer from every other registry in this package, because every
-   * other registry is written after ready.
+   * Recorded at `fork()`, where the pid first exists, and dropped the moment
+   * `spawn()` returns or throws. Anything that asks "is this process ours?"
+   * during a startup gets the wrong answer from every other registry in this
+   * package, because every other registry is written after the child reports
+   * ready.
    *
    * omnitron's orphan janitor is the caller that made this necessary: it
    * sweeps `ps` for fork-workers, kills any whose pid the orchestrator does
@@ -710,6 +710,15 @@ export class ProcessSpawner implements IProcessSpawner {
    * load average of 88, main's http child needed 86-103 seconds just to
    * import its module graph. The janitor killed it on every attempt, the
    * supervisor restarted it, and the loop fed itself.
+   *
+   * IN FLIGHT is the whole of the contract, and the first version of this got
+   * it wrong: holding the pid until the process EXITED also covered every
+   * child a failed spawn abandoned without killing, which is precisely what
+   * the janitor exists to reap. Twenty-six of them accumulated during that
+   * crash loop, one still holding port 3001 and answering RPC for an
+   * orchestrator that had forgotten it. After the spawn settles, a live child
+   * is either in the WorkerHandle registry — the janitor's other channel — or
+   * it is a leak.
    */
   private readonly forkedPids = new Set<number>();
 
@@ -961,6 +970,12 @@ export class ProcessSpawner implements IProcessSpawner {
       }
 
       throw error;
+    } finally {
+      // The spawn has settled. From here the WorkerHandle registry is the
+      // authority on whether this child is ours; keeping the in-flight claim
+      // any longer would shield an abandoned child from the orphan janitor,
+      // which is the one thing the janitor exists to catch.
+      this.releaseForkClaim((worker as ChildProcess | undefined)?.pid);
     }
   }
 
@@ -1205,8 +1220,8 @@ export class ProcessSpawner implements IProcessSpawner {
     });
 
     // Claim it now. `fork()` has already assigned the pid, and from this
-    // instant the process exists and is ours — including for the whole of
-    // the startup that has not begun yet.
+    // instant the process exists and is ours — for the whole of the startup
+    // that has not begun yet. `spawn()` releases the claim when it settles.
     if (typeof child.pid === 'number') {
       const pid = child.pid;
       this.forkedPids.add(pid);
@@ -1217,11 +1232,19 @@ export class ProcessSpawner implements IProcessSpawner {
   }
 
   /**
-   * Every process this spawner forked and has not seen exit, starting ones
-   * included. See `forkedPids`.
+   * Pids of the spawns currently in flight. See `forkedPids`.
    */
   getForkedPids(): ReadonlySet<number> {
     return this.forkedPids;
+  }
+
+  /**
+   * Release the in-flight claim on a pid. Called when `spawn()` settles: from
+   * then on the WorkerHandle registry is the authority, and a child in
+   * neither place is a leak the janitor should reap.
+   */
+  private releaseForkClaim(pid: number | undefined): void {
+    if (typeof pid === 'number') this.forkedPids.delete(pid);
   }
 
   /**

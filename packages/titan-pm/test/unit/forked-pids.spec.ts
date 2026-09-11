@@ -62,4 +62,29 @@ describe('pids of forked children', () => {
 
     expect(spawner.getForkedPids().has(pid)).toBe(false);
   });
+
+  it('releases the claim when the spawn settles, even if the child lives on', async () => {
+    // The claim covers the STARTUP, not the process. Holding it until exit
+    // also shielded every child an abandoned spawn left running — which is
+    // exactly what the orphan janitor exists to reap. Twenty-six of those
+    // accumulated during one crash loop, one of them still holding port 3001
+    // and answering RPC for an orchestrator that had forgotten it.
+    const spawner = new ProcessSpawner(noopLogger, {});
+    let forkedPid = 0;
+    const orig = (spawner as any).spawnChildProcess.bind(spawner);
+    (spawner as any).spawnChildProcess = async (...args: unknown[]) => {
+      const child = await orig(...args);
+      forkedPid = child.pid;
+      return child;
+    };
+
+    // The spawn fails (no such file), leaving the fork claim to be released
+    // by `spawn()`'s finally rather than by an exit.
+    await expect(
+      spawner.spawn('/nonexistent/worker.js', { processId: 'p3' } as never)
+    ).rejects.toThrow();
+
+    expect(spawner.getForkedPids().size, 'no claim survives a settled spawn').toBe(0);
+    expect(forkedPid === 0 || !spawner.getForkedPids().has(forkedPid)).toBe(true);
+  });
 });

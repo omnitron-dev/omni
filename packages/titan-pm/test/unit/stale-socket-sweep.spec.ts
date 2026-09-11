@@ -14,7 +14,7 @@
  * accepts no new connections.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, utimesSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,6 +80,13 @@ describe('stale socket sweep', () => {
     await new Promise((resolve) => child.once('exit', resolve));
     expect(existsSync(dead), 'the killed listener took its socket file with it').toBe(true);
 
+    // The sweep only considers files older than STALE_SOCKET_MIN_AGE_MS, so a
+    // socket created by this test is deliberately out of scope — that age gate
+    // is what keeps it from deleting a socket that has been bound and is not
+    // yet accepting. Backdate it to stand in for a previous run's leftover.
+    const longAgo = new Date(Date.now() - 60 * 60 * 1000);
+    utimesSync(dead, longAgo, longAgo);
+
     await (spawnerOn(dir) as unknown as { sweepStaleSockets(): Promise<void> }).sweepStaleSockets();
 
     expect(existsSync(dead), 'a leftover from a dead process was kept').toBe(false);
@@ -108,5 +115,41 @@ describe('stale socket sweep', () => {
 
     expect(existsSync(mine), 'its own socket was left behind').toBe(false);
     expect(existsSync(theirs), "another spawner's socket was deleted").toBe(true);
+  });
+});
+
+describe('stale socket sweep — the age gate', () => {
+  const tempDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-age-'));
+    dirs.push(dir);
+    return dir;
+  };
+
+  it('leaves a fresh socket alone even when connecting to it is refused', async () => {
+    // Between `bind` and `listen` a socket file exists and refuses
+    // connections. A sweep that runs while other workers are starting would
+    // delete one seconds away from serving, and the parent then cannot reach
+    // its own child: `connect ENOENT …/titan-pm/<id>.sock`. That is what the
+    // first version of this sweep did, and it took a whole stand down.
+    const dir = tempDir();
+    const fresh = join(dir, 'starting.sock');
+
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        "require('net').createServer().listen(process.argv[1], () => console.log('up')); setInterval(() => {}, 1e6);",
+        fresh,
+      ],
+      { stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    await new Promise<void>((resolve) => child.stdout!.once('data', () => resolve()));
+    child.kill('SIGKILL');
+    await new Promise((resolve) => child.once('exit', resolve));
+
+    // Refused, and seconds old — exactly the shape of a worker mid-startup.
+    await (spawnerOn(dir) as unknown as { sweepStaleSockets(): Promise<void> }).sweepStaleSockets();
+
+    expect(existsSync(fresh), 'a socket young enough to be starting up was deleted').toBe(true);
   });
 });

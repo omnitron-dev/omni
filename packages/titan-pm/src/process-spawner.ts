@@ -104,6 +104,13 @@ async function isSocketRefused(socketPath: string, timeoutMs = 250): Promise<boo
   });
 }
 
+/**
+ * How old a socket file must be before the sweep will consider deleting it.
+ * Long enough that nothing starting up is in scope; short enough that a
+ * restart still clears the previous run's leftovers.
+ */
+const STALE_SOCKET_MIN_AGE_MS = 10 * 60 * 1000;
+
 const EARLY_LOG_MAX_BYTES = 1024 * 1024;
 
 /** What a child printed between spawn and reporting ready. */
@@ -989,10 +996,31 @@ export class ProcessSpawner implements IProcessSpawner {
       return;
     }
 
+    const cutoff = Date.now() - STALE_SOCKET_MIN_AGE_MS;
     for (const entry of entries) {
       if (!entry.endsWith('.sock')) continue;
       const socketPath = path.join(this.tempDir, entry);
       if (this.ownSockets.has(socketPath)) continue;
+
+      // Age first, liveness second.
+      //
+      // "Connect was refused" is true of a leftover AND of a socket that has
+      // been bound and is not yet accepting — the file exists between `bind`
+      // and `listen`. A sweep that runs while other workers are starting can
+      // therefore delete a socket that is seconds away from serving, and the
+      // parent then fails to reach its own child with ENOENT. That happened on
+      // the first run of this sweep, and it took the whole stand down.
+      //
+      // A live worker's socket file is seconds old; a leftover is from a
+      // previous process and cannot be. Requiring both age and refusal closes
+      // the race without weakening the check.
+      try {
+        const stat = await fs.stat(socketPath);
+        if (stat.mtimeMs > cutoff) continue;
+      } catch {
+        continue;
+      }
+
       if (!(await isSocketRefused(socketPath))) continue;
       try {
         await fs.unlink(socketPath);

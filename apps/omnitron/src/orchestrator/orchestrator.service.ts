@@ -2235,7 +2235,13 @@ export class OrchestratorService extends EventEmitter {
       const entry = line.trimStart().startsWith('{')
         ? line
         : JSON.stringify({
-            level: stream === 'stderr' ? 50 : 30,
+            // stderr is not error. A boot script's own progress markers go
+            // there, and a failing start emits a run of them — classifying
+            // every one at 50 filled the log with errors that are nothing of
+            // the sort, next to the single line that IS the failure. The
+            // failure is reported at 50 by `persistChildFailure`; this is the
+            // context around it, and `stream` keeps it greppable.
+            level: stream === 'stderr' ? 40 : 30,
             time,
             processName: qualifyChildName(appName, childName),
             stream,

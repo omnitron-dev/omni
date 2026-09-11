@@ -44,7 +44,10 @@ describe('output of a child that failed to start', () => {
     expect(lines[0]?.app).toBe('acme/dev/main');
     const first = JSON.parse(lines[0]!.line);
     expect(first.msg).toBe('Cannot find module ./missing.js');
-    expect(first.level, 'stderr from a dead child is an error, not chatter').toBe(50);
+    // Not 50: a boot script writes its own progress to stderr, and a failing
+    // start emits a run of those. The failure itself is reported at 50 on its
+    // own line; this is the context around it.
+    expect(first.level).toBe(40);
     expect(first.processName).toBe('acme/dev/main/http');
   });
 

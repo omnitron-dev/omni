@@ -1,6 +1,17 @@
 import SvgIcon from '@mui/material/SvgIcon';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
 
+/**
+ * The console's icon set: hugeicons core-duotone-rounded, drawn as a filled
+ * body behind stroke outlines — the same convention the portal uses, and the
+ * reason neither app pulls `@mui/icons-material`.
+ *
+ * The duotone fill is `opacity="0.4"`. It was 0.2 for the first 28 icons
+ * here and 0.4 for the 15 added later, so a sidebar showed two weights of the
+ * same thing side by side: Dashboard and Logs faint, Logout and Delete solid.
+ * One value, and it is the design system's.
+ */
+
 // ---------------------------------------------------------------------------
 // 1. DashboardIcon — grid/chart layout (4 rounded squares)
 // ---------------------------------------------------------------------------
@@ -9,12 +20,12 @@ export const DashboardIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2 6C2 4.46 2 3.69 2.35 3.12C2.54 2.81 2.81 2.54 3.12 2.35C3.69 2 4.46 2 6 2C7.54 2 8.31 2 8.88 2.35C9.19 2.54 9.46 2.81 9.65 3.12C10 3.69 10 4.46 10 6C10 7.54 10 8.31 9.65 8.88C9.46 9.19 9.19 9.46 8.88 9.65C8.31 10 7.54 10 6 10C4.46 10 3.69 10 3.12 9.65C2.81 9.46 2.54 9.19 2.35 8.88C2 8.31 2 7.54 2 6Z"
     />
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M14 18C14 16.46 14 15.69 14.35 15.12C14.54 14.81 14.81 14.54 15.12 14.35C15.69 14 16.46 14 18 14C19.54 14 20.31 14 20.88 14.35C21.19 14.54 21.46 14.81 21.65 15.12C22 15.69 22 16.46 22 18C22 19.54 22 20.31 21.65 20.88C21.46 21.19 21.19 21.46 20.88 21.65C20.31 22 19.54 22 18 22C16.46 22 15.69 22 15.12 21.65C14.81 21.46 14.54 21.19 14.35 20.88C14 20.31 14 19.54 14 18Z"
     />
     <path
@@ -52,7 +63,7 @@ export const AppsIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2 6C2 3.79 3.79 2 6 2H18C20.21 2 22 3.79 22 6V14C22 16.21 20.21 18 18 18H6C3.79 18 2 16.21 2 14V6Z"
     />
     <path
@@ -96,7 +107,7 @@ export const LogsIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M4 4C4 2.9 4.9 2 6 2H18C19.1 2 20 2.9 20 4V20C20 21.1 19.1 22 18 22H6C4.9 22 4 21.1 4 20V4Z"
     />
     <path
@@ -125,7 +136,7 @@ export const MetricsIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M3.89 3.89C2.5 5.28 2.5 7.52 2.5 12C2.5 16.48 2.5 18.72 3.89 20.11C5.28 21.5 7.52 21.5 12 21.5C16.48 21.5 18.72 21.5 20.11 20.11C21.5 18.72 21.5 16.48 21.5 12C21.5 7.52 21.5 5.28 20.11 3.89C18.72 2.5 16.48 2.5 12 2.5C7.52 2.5 5.28 2.5 3.89 3.89Z"
     />
     <path
@@ -154,7 +165,7 @@ export const AlertIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2.53 14.77C2.32 16.16 3.27 17.13 4.43 17.61C8.89 19.46 15.11 19.46 19.57 17.61C20.73 17.13 21.68 16.16 21.47 14.77C21.34 13.91 20.69 13.2 20.21 12.5C19.59 11.58 19.53 10.57 19.52 9.5C19.52 5.36 16.16 2 12 2C7.84 2 4.48 5.36 4.48 9.5C4.47 10.57 4.41 11.58 3.79 12.5C3.31 13.2 2.66 13.91 2.53 14.77Z"
     />
     <path
@@ -191,12 +202,12 @@ export const NodesIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2 5C2 3.9 2.9 3 4 3H20C21.1 3 22 3.9 22 5V7C22 8.1 21.1 9 20 9H4C2.9 9 2 8.1 2 7V5Z"
     />
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2 17C2 15.9 2.9 15 4 15H20C21.1 15 22 15.9 22 17V19C22 20.1 21.1 21 20 21H4C2.9 21 2 20.1 2 19V17Z"
     />
     <path
@@ -240,7 +251,7 @@ export const ContainersIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 2L3 7V17L12 22L21 17V7L12 2Z"
     />
     <path
@@ -270,7 +281,7 @@ export const DeployIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12.393 2.91C12.2892 2.75236 12.1444 2.6246 11.974 2.54019C11.8037 2.45577 11.6138 2.41776 11.4234 2.43C8.61 2.63 5.79 5.95 5 8.55C4.73 9.41 5.06 10.27 5.8 10.87L7.5 12.22C7.56 12.27 7.59 12.35 7.58 12.44L7.22 15.61C7.13 16.42 7.72 17.14 8.54 17.24C8.6 17.25 8.67 17.25 8.73 17.25L12 17V2.96C12.14 2.94 12.27 2.93 12.393 2.91Z"
     />
     <path
@@ -307,7 +318,7 @@ export const SettingsIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M15.5 12C15.5 13.93 13.93 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12Z"
     />
     <path
@@ -348,7 +359,7 @@ export const SearchIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M20 11C20 6.03 15.97 2 11 2C6.03 2 2 6.03 2 11C2 15.97 6.03 20 11 20C15.97 20 20 15.97 20 11Z"
     />
     <path
@@ -377,7 +388,7 @@ export const RefreshIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C16.97 21 21 16.97 21 12C21 7.03 16.97 3 12 3Z"
     />
     <path
@@ -407,7 +418,7 @@ export const PlayIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M18.89 11.15L7.38 4.17C6.55 3.66 5.5 4.26 5.5 5.22V18.78C5.5 19.74 6.55 20.34 7.38 19.83L18.89 12.85C19.67 12.37 19.67 11.63 18.89 11.15Z"
     />
     <path
@@ -429,7 +440,7 @@ export const StopIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M6 4C4.9 4 4 4.9 4 6V18C4 19.1 4.9 20 6 20H18C19.1 20 20 19.1 20 18V6C20 4.9 19.1 4 18 4H6Z"
     />
     <path
@@ -451,7 +462,7 @@ export const RestartIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20C7.58 20 4 16.42 4 12C4 9.79 4.9 7.79 6.34 6.34"
     />
     <path
@@ -481,7 +492,7 @@ export const CloseIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22Z"
     />
     <path
@@ -509,7 +520,7 @@ export const CheckIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22Z"
     />
     <path
@@ -537,7 +548,7 @@ export const PlusIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22Z"
     />
     <path
@@ -581,7 +592,7 @@ export const TerminalIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M3 6C3 4.34 4.34 3 6 3H18C19.66 3 21 4.34 21 6V18C21 19.66 19.66 21 18 21H6C4.34 21 3 19.66 3 18V6Z"
     />
     <path
@@ -618,7 +629,7 @@ export const PipelineIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M4 6C4 4.9 4.9 4 6 4H10C11.1 4 12 4.9 12 6V10C12 11.1 11.1 12 10 12H6C4.9 12 4 11.1 4 10V6Z"
     />
     <path
@@ -655,7 +666,7 @@ export const TraceIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M3 12C3 7.03 7.03 3 12 3C16.97 3 21 7.03 21 12C21 16.97 16.97 21 12 21C7.03 21 3 16.97 3 12Z"
     />
     <path
@@ -677,7 +688,7 @@ export const BackupIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 3C7.58 3 4 4.79 4 7V17C4 19.21 7.58 21 12 21C16.42 21 20 19.21 20 17V7C20 4.79 16.42 3 12 3Z"
     />
     <path
@@ -706,7 +717,7 @@ export const DashboardBuilderIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M3 5C3 3.9 3.9 3 5 3H19C20.1 3 21 3.9 21 5V19C21 20.1 20.1 21 19 21H5C3.9 21 3 20.1 3 19V5Z"
     />
     <path
@@ -742,7 +753,7 @@ export const KubernetesIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 2L3 7V17L12 22L21 17V7L12 2Z"
     />
     <path
@@ -772,7 +783,7 @@ export const ServerIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M4 5C4 3.34 5.34 2 7 2H17C18.66 2 20 3.34 20 5V19C20 20.66 18.66 22 17 22H7C5.34 22 4 20.66 4 19V5Z"
     />
     <path
@@ -815,7 +826,7 @@ export const StacksIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M5 8C5 6.9 5.9 6 7 6H17C18.1 6 19 6.9 19 8V16C19 17.1 18.1 18 17 18H7C5.9 18 5 17.1 5 16V8Z"
     />
     <path
@@ -867,7 +878,7 @@ export const ProjectIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M2 7C2 5.34 3.34 4 5 4H9L11 6H19C20.66 6 22 7.34 22 9V17C22 18.66 20.66 20 19 20H5C3.34 20 2 18.66 2 17V7Z"
     />
     <path
@@ -897,7 +908,7 @@ export const SyncIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 21C7.03 21 3 16.97 3 12C3 7.03 7.03 3 12 3C16.97 3 21 7.03 21 12C21 16.97 16.97 21 12 21Z"
     />
     <path
@@ -1269,7 +1280,7 @@ export const UserIcon = (props?: SvgIconProps) => (
   <SvgIcon {...props}>
     <path
       fill="currentColor"
-      opacity="0.2"
+      opacity="0.4"
       d="M12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22Z"
     />
     <path

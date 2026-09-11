@@ -99,6 +99,15 @@ export interface AdminDataTableProps<T> {
   rowKey?: (row: T) => string;
   /** Row click handler */
   onRowClick?: (row: T) => void;
+  /**
+   * Per-row styling, for state a single column cannot carry.
+   *
+   * A disabled rule, a superseded release, a row the reader should still be
+   * able to read but not act on: the signal belongs to the whole row, and
+   * painting it cell by cell makes one row look like six unrelated ones.
+   * Returned styles are merged over the row's own (cursor, hover, selected).
+   */
+  rowSx?: (row: T, index: number) => SxProps<Theme>;
   /** Page size options for the selector */
   pageSizeOptions?: number[];
   /** Sticky header */
@@ -257,6 +266,7 @@ export function AdminDataTable<T>({
   loadError = null,
   rowKey,
   onRowClick,
+  rowSx,
   pageSizeOptions = [10, 25, 50, 100],
   stickyHeader = false,
   dense = false,
@@ -520,7 +530,10 @@ export function AdminDataTable<T>({
                       hover
                       selected={isSelected}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
-                      sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                      sx={{
+                        cursor: onRowClick ? 'pointer' : 'default',
+                        ...rowSx?.(row, index),
+                      }}
                     >
                       {selectable && (
                         <TableCell

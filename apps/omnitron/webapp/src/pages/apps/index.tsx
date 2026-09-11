@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import Card from '@mui/material/Card';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import { Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';

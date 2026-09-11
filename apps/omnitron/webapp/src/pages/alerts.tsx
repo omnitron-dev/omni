@@ -10,14 +10,7 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Switch from '@mui/material/Switch';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Badge from '@mui/material/Badge';
 import Dialog from '@mui/material/Dialog';
@@ -31,13 +24,12 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
-import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
+import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 import { isAlertExpressionParseable, ALERT_EXPRESSION_HELP } from '@omnitron-dev/omnitron/alerts';
 
@@ -283,6 +275,8 @@ export default function AlertsPage() {
   // removes by accident is the one that would have told them about the next
   // incident, and nothing here says which rule is about to go.
   const [confirmDeleteRule, setConfirmDeleteRule] = useState<string | null>(null);
+  const [rulePage, setRulePage] = useState(0);
+  const [rulePageSize, setRulePageSize] = useState(25);
 
   const rules = data?.rules ?? [];
   const activeAlerts = data?.activeAlerts ?? [];
@@ -325,6 +319,85 @@ export default function AlertsPage() {
       setActionError(err?.message ?? 'Failed to acknowledge alert');
     }
   };
+
+  const ruleRows = rules.slice(rulePage * rulePageSize, rulePage * rulePageSize + rulePageSize);
+
+  const ruleColumns: ColumnDef<AlertRule>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (rule) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {rule.name}
+        </Typography>
+      ),
+    },
+    {
+      key: 'expression',
+      header: 'Expression',
+      render: (rule) => (
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {rule.expression}
+        </Typography>
+      ),
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (rule) => (
+        <Chip
+          label={rule.type}
+          size="small"
+          variant="outlined"
+          sx={{ textTransform: 'capitalize', fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'severity',
+      header: 'Severity',
+      render: (rule) => (
+        <Chip
+          label={rule.severity}
+          size="small"
+          color={SEVERITY_COLORS[rule.severity] ?? 'default'}
+          variant="filled"
+          sx={{ textTransform: 'capitalize', fontWeight: 600, fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'enabled',
+      header: 'Enabled',
+      align: 'center',
+      render: (rule) => (
+        <Switch
+          size="small"
+          checked={rule.enabled}
+          onChange={(_, checked) => handleToggleRule(rule.id, checked)}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (rule) => (
+        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+          <Tooltip title="Edit rule">
+            <IconButton size="small">
+              <EditIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete rule">
+            <IconButton size="small" color="error" onClick={() => setConfirmDeleteRule(rule.id)}>
+              <DeleteIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -483,110 +556,25 @@ export default function AlertsPage() {
           title="Alert Rules"
           titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
         />
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Expression</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Severity</TableCell>
-                <TableCell align="center">Enabled</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
-                      <TableCell key={j}>
-                        <Skeleton width={80} height={20} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : rules.length === 0 ? (
-                <TableEmptyRow
-                      colSpan={6}
-                      message="No alert rules configured. Create a rule to get started."
-                      error={error ?? partialFailure}
-                    />
-              ) : (
-                rules.map((rule) => (
-                  <TableRow
-                    key={rule.id}
-                    hover
-                    sx={{
-                      '&:last-child td': { borderBottom: 0 },
-                      opacity: rule.enabled ? 1 : 0.5,
-                    }}
-                  >
-                    <TableCell>
-                      <Typography variant="body2" sx={{
-                        fontWeight: 600
-                      }}>
-                        {rule.name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="caption"
-                        sx={{ fontFamily: 'monospace', fontSize: 12 }}
-                      >
-                        {rule.expression}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={rule.type}
-                        size="small"
-                        variant="outlined"
-                        sx={{ textTransform: 'capitalize', fontSize: 11 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={rule.severity}
-                        size="small"
-                        color={SEVERITY_COLORS[rule.severity] ?? 'default'}
-                        variant="filled"
-                        sx={{ textTransform: 'capitalize', fontWeight: 600, fontSize: 11 }}
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <Switch
-                        size="small"
-                        checked={rule.enabled}
-                        onChange={(_, checked) => handleToggleRule(rule.id, checked)}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{
-                        justifyContent: "flex-end"
-                      }}>
-                        <Tooltip title="Edit rule">
-                          <IconButton size="small">
-                            <EditIcon sx={{ fontSize: 18 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete rule">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setConfirmDeleteRule(rule.id)}
-                          >
-                            <DeleteIcon sx={{ fontSize: 18 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <AdminDataTable<AlertRule>
+          columns={ruleColumns}
+          data={ruleRows}
+          total={rules.length}
+          loading={loading}
+          loadError={error ?? partialFailure ?? null}
+          emptyMessage="No alert rules configured. Create a rule to get started."
+          rowKey={(rule) => rule.id}
+          // A disabled rule is still worth reading, just not acting on.
+          rowSx={(rule) => ({ opacity: rule.enabled ? 1 : 0.5 })}
+          page={rulePage}
+          pageSize={rulePageSize}
+          onPageChange={setRulePage}
+          onPageSizeChange={(size) => {
+            setRulePageSize(size);
+            setRulePage(0);
+          }}
+          dense
+        />
       </Card>
       <ConfirmDialog
         open={confirmDeleteRule !== null}

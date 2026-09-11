@@ -8,14 +8,7 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -31,11 +24,10 @@ import {
   CloseIcon,
   LogsIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
+import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { TableEmptyRow } from 'src/components/table-empty-row';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -212,6 +204,8 @@ export default function ContainersPage() {
   // Postgres, Redis and MinIO: the container goes, and with it anything not on
   // a named volume.
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
 
   const containers = (allContainers ?? []).filter((c: Container) => {
     if (!activeProject) return true;
@@ -269,6 +263,97 @@ export default function ContainersPage() {
       setActionError(err?.message ?? 'Failed to fetch container logs');
     }
   };
+
+  const pageRows = containers.slice(page * pageSize, page * pageSize + pageSize);
+
+  const columns: ColumnDef<Container>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (container) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {container.name}
+        </Typography>
+      ),
+    },
+    {
+      key: 'image',
+      header: 'Image',
+      render: (container) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
+          {container.image}
+        </Typography>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (container) => (
+        <Chip
+          label={container.status}
+          size="small"
+          color={STATUS_COLORS[container.status] ?? 'default'}
+          variant="filled"
+          sx={{ textTransform: 'capitalize', fontWeight: 600 }}
+        />
+      ),
+    },
+    {
+      key: 'health',
+      header: 'Health',
+      render: (container) => (
+        <Chip
+          label={container.health ?? 'none'}
+          size="small"
+          color={HEALTH_COLORS[container.health ?? 'none'] ?? 'default'}
+          variant="outlined"
+          sx={{ textTransform: 'capitalize' }}
+        />
+      ),
+    },
+    {
+      key: 'ports',
+      header: 'Ports',
+      render: (container) => (
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {formatPorts(container.ports)}
+        </Typography>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (container) => (
+        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+          <Tooltip title="Remove">
+            <IconButton size="small" color="error" onClick={() => setConfirmRemove(container.name)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Logs">
+            <IconButton size="small" onClick={() => handleViewLogs(container)}>
+              <LogsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {container.status !== 'running' && (
+            <Tooltip title="Start">
+              <IconButton size="small" color="success" onClick={() => handleStart(container.name)}>
+                <PlayIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {container.status === 'running' && (
+            <Tooltip title="Stop">
+              <IconButton size="small" color="warning" onClick={() => handleStop(container.name)}>
+                <StopIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -339,137 +424,24 @@ export default function ContainersPage() {
           />
         </Grid>
       </Grid>
-      {/* Containers Table */}
-      <Card variant="outlined">
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Image</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Health</TableCell>
-                <TableCell>Ports</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
-                      <TableCell key={j}>
-                        <Skeleton width={80} height={20} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : containers.length === 0 ? (
-                <TableEmptyRow
-                      colSpan={6}
-                      message="No containers found. Infrastructure containers will appear here when Docker is running."
-                      error={error}
-                    />
-              ) : (
-                containers.map((container) => (
-                  <TableRow
-                    key={container.name}
-                    hover
-                    sx={{ '&:last-child td': { borderBottom: 0 } }}
-                  >
-                    <TableCell>
-                      <Typography variant="body2" sx={{
-                        fontWeight: 600
-                      }}>
-                        {container.name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontFamily: 'monospace', fontSize: 13 }}
-                      >
-                        {container.image}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={container.status}
-                        size="small"
-                        color={STATUS_COLORS[container.status] ?? 'default'}
-                        variant="filled"
-                        sx={{ textTransform: 'capitalize', fontWeight: 600 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={container.health ?? 'none'}
-                        size="small"
-                        color={HEALTH_COLORS[container.health ?? 'none'] ?? 'default'}
-                        variant="outlined"
-                        sx={{ textTransform: 'capitalize' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="caption"
-                        sx={{ fontFamily: 'monospace', fontSize: 12 }}
-                      >
-                        {formatPorts(container.ports)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{
-                        justifyContent: "flex-end"
-                      }}>
-                        <Tooltip title="Remove">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setConfirmRemove(container.name)}
-                          >
-                            <CloseIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Logs">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewLogs(container)}
-                          >
-                            <LogsIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        {container.status !== 'running' && (
-                          <Tooltip title="Start">
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => handleStart(container.name)}
-                            >
-                              <PlayIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {container.status === 'running' && (
-                          <Tooltip title="Stop">
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => handleStop(container.name)}
-                            >
-                              <StopIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
+      {/* Containers Table — prism owns the chrome, this page owns the columns. */}
+      <AdminDataTable<Container>
+        columns={columns}
+        data={pageRows}
+        total={containers.length}
+        loading={loading}
+        loadError={error ?? null}
+        emptyMessage="No containers found. Infrastructure containers will appear here when Docker is running."
+        rowKey={(container) => container.name}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(0);
+        }}
+        dense
+      />
       {/* Log Modal */}
       <LogModal
         open={logModalOpen}

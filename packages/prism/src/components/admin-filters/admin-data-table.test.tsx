@@ -299,3 +299,46 @@ describe('AdminDataTable', () => {
     expect(screen.queryByText('Nothing here yet')).not.toBeInTheDocument();
   });
 });
+
+describe('rowSx', () => {
+  it('paints state that belongs to the whole row', () => {
+    // omnitron's alerts page dims a disabled rule. Without this the choice is
+    // between losing the signal and applying it cell by cell, which makes one
+    // row look like six unrelated ones.
+    const rows = [
+      { id: '1', name: 'cpu-high', enabled: true },
+      { id: '2', name: 'disk-low', enabled: false },
+    ];
+    const { container } = render(
+      <AdminDataTable
+        columns={[{ key: 'name', header: 'Name', render: (r: (typeof rows)[number]) => r.name }]}
+        data={rows}
+        total={rows.length}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        rowSx={(r) => ({ opacity: r.enabled ? 1 : 0.5 })}
+      />,
+    );
+    const bodyRows = container.querySelectorAll('tbody tr');
+    expect(bodyRows).toHaveLength(2);
+    expect(getComputedStyle(bodyRows[0]!).opacity).toBe('1');
+    expect(getComputedStyle(bodyRows[1]!).opacity).toBe('0.5');
+  });
+
+  it('is optional — rows render unstyled without it', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={[{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }]}
+        data={[{ id: '1', name: 'only' }]}
+        total={1}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+      />,
+    );
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+  });
+});

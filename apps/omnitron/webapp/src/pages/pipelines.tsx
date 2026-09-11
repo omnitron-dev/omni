@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -26,7 +25,7 @@ import Collapse from '@mui/material/Collapse';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
-import { Breadcrumbs, ConfirmDialog } from '@omnitron-dev/prism';
+import { AdminDataTable, Breadcrumbs, ConfirmDialog, type ColumnDef } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -229,6 +228,8 @@ export default function PipelinesPage() {
   // Deleting a pipeline used to happen on one click, next to the button that
   // runs it — and its run history goes with it.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [defPage, setDefPage] = useState(0);
+  const [defPageSize, setDefPageSize] = useState(25);
 
   const pipelineList = data?.pipelineList ?? [];
   const runs = data?.runs ?? [];
@@ -256,6 +257,58 @@ export default function PipelinesPage() {
   };
 
   const pendingDelete = pipelineList.find((p) => p.id === confirmDelete);
+
+  const definitionRows = pipelineList.slice(
+    defPage * defPageSize,
+    defPage * defPageSize + defPageSize,
+  );
+
+  const definitionColumns: ColumnDef<Pipeline>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (p) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {p.name}
+        </Typography>
+      ),
+    },
+    {
+      key: 'description',
+      header: 'Description',
+      render: (p) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {p.description ?? '--'}
+        </Typography>
+      ),
+    },
+    { key: 'steps', header: 'Steps', render: (p) => p.steps.length },
+    { key: 'triggers', header: 'Triggers', render: (p) => p.triggers.length },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      render: (p) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDate(p.createdAt)}
+        </Typography>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (p) => (
+        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+          <IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
+            <CloseIcon />
+          </IconButton>
+          <IconButton size="small" onClick={() => handleRun(p.id)} title="Run">
+            <PlayIcon />
+          </IconButton>
+        </Stack>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -303,75 +356,28 @@ export default function PipelinesPage() {
           titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
           avatar={<PipelineIcon />}
         />
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Steps</TableCell>
-                <TableCell>Triggers</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(2)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
-                      <TableCell key={j}><Skeleton width={80} height={20} /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : pipelineList.length === 0 ? (
-                <TableEmptyRow
-                      colSpan={6}
-                      message="No pipelines defined"
-                      error={error ?? partialFailure}
-                    />
-              ) : (
-                pipelineList.map((p) => (
-                  <TableRow key={p.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{
-                        fontWeight: 600
-                      }}>{p.name}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="caption" sx={{
-                        color: "text.secondary"
-                      }}>
-                        {p.description ?? '--'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{p.steps.length}</TableCell>
-                    <TableCell>{p.triggers.length}</TableCell>
-                    <TableCell>
-                      <Typography variant="caption" sx={{
-                        color: "text.secondary"
-                      }}>
-                        {formatDate(p.createdAt)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{
-                        justifyContent: "flex-end"
-                      }}>
-                        <IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
-                          <CloseIcon />
-                        </IconButton>
-                        <IconButton size="small" onClick={() => handleRun(p.id)} title="Run">
-                          <PlayIcon />
-                        </IconButton>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        {/*
+          prism's AdminDataTable. The run-history table below still builds its
+          own rows: it expands a row in place to show the steps, which this
+          component has no shape for.
+        */}
+        <AdminDataTable<Pipeline>
+          columns={definitionColumns}
+          data={definitionRows}
+          total={pipelineList.length}
+          loading={loading}
+          loadError={error ?? partialFailure ?? null}
+          emptyMessage="No pipelines defined"
+          rowKey={(p) => p.id}
+          page={defPage}
+          pageSize={defPageSize}
+          onPageChange={setDefPage}
+          onPageSizeChange={(size) => {
+            setDefPageSize(size);
+            setDefPage(0);
+          }}
+          dense
+        />
       </Card>
       {/* Run History */}
       <Card variant="outlined">

@@ -19,13 +19,12 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-import Alert from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
 
-import { StatCard } from '@omnitron-dev/prism';
+import { Alert, StatCard } from '@omnitron-dev/prism';
 import { daemon, metrics } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
 import { useRealtimeStore } from 'src/stores/realtime.store';

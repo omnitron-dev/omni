@@ -15,7 +15,6 @@ import CardActions from '@mui/material/CardActions';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
-import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
@@ -24,7 +23,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
-import { Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
+import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon } from '../../assets/icons';
 import CreateStackDialog from './create-stack-dialog';
@@ -162,7 +161,7 @@ export default function StacksPage() {
       />
 
       {error && (
-        <Alert severity="error" onClose={clearError}>
+        <Alert closable severity="error" onClose={clearError}>
           {error}
         </Alert>
       )}

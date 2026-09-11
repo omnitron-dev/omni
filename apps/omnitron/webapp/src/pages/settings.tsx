@@ -19,7 +19,6 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Chip from '@mui/material/Chip';
-import Alert from '@mui/material/Alert';
 import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
 import Switch from '@mui/material/Switch';
@@ -34,7 +33,7 @@ import Box from '@mui/material/Box';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
-import { FormAlert, TabPanel, Table, Tabs, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, FormAlert, TabPanel, Table, Tabs, type TableColumn } from '@omnitron-dev/prism';
 import { useAuthStore } from 'src/auth/store';
 import { auth, getSessionId } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
@@ -155,7 +154,7 @@ function SecuritySection() {
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
       <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 }, subheader: { variant: 'caption' } }} title="Change Password" subheader="Update your account credentials" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-        {success && <Alert severity="success" variant="outlined" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>Password changed successfully.</Alert>}
+        {success && <Alert closable severity="success" variant="outlined" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>Password changed successfully.</Alert>}
         {error && <FormAlert sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</FormAlert>}
         <form onSubmit={handleSubmit} noValidate>
           <Stack spacing={2}>

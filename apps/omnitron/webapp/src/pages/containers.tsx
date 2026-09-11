@@ -8,7 +8,6 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Alert from '@mui/material/Alert';
 import Tooltip from '@mui/material/Tooltip';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -24,7 +23,7 @@ import {
   CloseIcon,
   LogsIcon,
 } from 'src/assets/icons';
-import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -381,7 +380,7 @@ export default function ContainersPage() {
         }
       />
       {(error || actionError) && (
-        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+        <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError ?? error}
         </Alert>
       )}

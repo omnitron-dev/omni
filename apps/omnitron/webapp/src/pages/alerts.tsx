@@ -10,7 +10,6 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Switch from '@mui/material/Switch';
-import Alert from '@mui/material/Alert';
 import Tooltip from '@mui/material/Tooltip';
 import Badge from '@mui/material/Badge';
 import Dialog from '@mui/material/Dialog';
@@ -24,7 +23,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
-import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -428,7 +427,7 @@ export default function AlertsPage() {
         }
       />
       {(error || actionError || partialFailure) && (
-        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+        <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
         </Alert>
       )}

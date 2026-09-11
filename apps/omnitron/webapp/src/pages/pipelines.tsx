@@ -8,7 +8,6 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -17,7 +16,7 @@ import TextField from '@mui/material/TextField';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
-import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -405,7 +404,7 @@ export default function PipelinesPage() {
         }
       />
       {(error || actionError || partialFailure) && (
-        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+        <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
         </Alert>
       )}

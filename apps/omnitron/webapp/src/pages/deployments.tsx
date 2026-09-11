@@ -4,7 +4,6 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -13,7 +12,7 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
-import { AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 import { deploy } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { useAuthStore } from 'src/auth/store';
@@ -304,7 +303,7 @@ export default function DeploymentsPage() {
         }
       />
       {actionError && (
-        <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
+        <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError}
         </Alert>
       )}

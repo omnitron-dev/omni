@@ -9,7 +9,6 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Alert from '@mui/material/Alert';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -20,7 +19,7 @@ import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs, Skeleton, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, Breadcrumbs, Skeleton, Table, type TableColumn } from '@omnitron-dev/prism';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
@@ -876,7 +875,7 @@ function MetricsTab({ appName }: { appName: string }) {
 
   return (
     <Stack spacing={2.5}>
-      {error && <Alert severity="warning" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
+      {error && <Alert closable severity="warning" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
       {/* Gauge cards */}
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
         <MetricsGaugeCard title="CPU" value={loading ? '—' : `${cpu}%`} color={cpu > 80 ? 'error' : cpu > 60 ? 'warning' : 'success'} loading={loading} />
@@ -1083,7 +1082,7 @@ export default function AppDetailPage() {
         }
       />
       {error && (
-        <Alert severity="error" variant="outlined" onClose={() => setError(null)}>
+        <Alert closable severity="error" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}

@@ -17,7 +17,6 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
 import Dialog from '@mui/material/Dialog';
@@ -25,7 +24,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { Breadcrumbs, FormAlert, PageContent, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, Breadcrumbs, FormAlert, PageContent, Table, type TableColumn } from '@omnitron-dev/prism';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,

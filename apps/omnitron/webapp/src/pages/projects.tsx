@@ -23,7 +23,6 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
-import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -32,7 +31,7 @@ import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
 import { alpha } from '@mui/material/styles';
 
-import { Breadcrumbs, EmptyContent, Label, Skeleton, useSnackbar } from '@omnitron-dev/prism';
+import { Alert, Breadcrumbs, EmptyContent, Label, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { useProjectStore } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
@@ -466,7 +465,7 @@ export default function ProjectsPage() {
       />
 
       {error && (
-        <Alert severity="error" onClose={clearError}>{error}</Alert>
+        <Alert closable severity="error" onClose={clearError}>{error}</Alert>
       )}
 
       {loading && projects.length === 0 ? (

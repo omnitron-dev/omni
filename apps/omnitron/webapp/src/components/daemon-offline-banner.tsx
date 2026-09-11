@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
 import { useBackendStatusStore, useBackendStatus } from 'src/stores/backend-status.store';
+import { Alert } from '@omnitron-dev/prism';
 
 export function DaemonOfflineBanner() {
   const status = useBackendStatus();

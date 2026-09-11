@@ -33,7 +33,6 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import Chip from '@mui/material/Chip';
-import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import Tooltip from '@mui/material/Tooltip';
 import Menu from '@mui/material/Menu';
@@ -68,7 +67,7 @@ import { useTopologyStore, type TopologyNodeData } from 'src/components/topology
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { pulseKeyframes } from 'src/components/topology/shared-styles';
-import { Skeleton } from '@omnitron-dev/prism';
+import { Alert, Skeleton } from '@omnitron-dev/prism';
 
 // ---------------------------------------------------------------------------
 // Node type registry

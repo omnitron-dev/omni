@@ -8,14 +8,13 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
-import Alert from '@mui/material/Alert';
 import TableContainer from '@mui/material/TableContainer';
 import TextField from '@mui/material/TextField';
 import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
-import { AdminDataTable, Breadcrumbs, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';

@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
-import { Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon } from 'src/assets/icons';
@@ -265,7 +264,7 @@ export default function AppsListPage() {
         }
       />
       {error && (
-        <Alert severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert closable severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}

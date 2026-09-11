@@ -23,7 +23,6 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -33,7 +32,7 @@ import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
 import { alpha } from '@mui/material/styles';
 
-import { Breadcrumbs, EmptyContent, Label, useSnackbar } from '@omnitron-dev/prism';
+import { Breadcrumbs, EmptyContent, Label, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { useProjectStore } from 'src/stores/project.store';
 import { project as projectRpc } from 'src/netron/client';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';

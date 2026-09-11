@@ -19,7 +19,6 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Collapse from '@mui/material/Collapse';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Fab from '@mui/material/Fab';
 import Badge from '@mui/material/Badge';
@@ -27,7 +26,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { alpha, keyframes } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, Skeleton } from '@omnitron-dev/prism';
 import { logs, daemon, fleet } from 'src/netron/client';
 import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';

@@ -6,7 +6,6 @@ import CardContent from '@mui/material/CardContent';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import Switch from '@mui/material/Switch';
@@ -14,7 +13,7 @@ import { alpha } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 
 import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, Skeleton } from '@omnitron-dev/prism';
 import { daemon, metrics, logs as logsClient } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';

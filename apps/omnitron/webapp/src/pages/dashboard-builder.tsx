@@ -33,7 +33,6 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import Switch from '@mui/material/Switch';
 import Chip from '@mui/material/Chip';
-import Skeleton from '@mui/material/Skeleton';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -46,7 +45,7 @@ import {
   CloseIcon,
   RefreshIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs, FormAlert } from '@omnitron-dev/prism';
+import { Breadcrumbs, FormAlert, Skeleton } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';

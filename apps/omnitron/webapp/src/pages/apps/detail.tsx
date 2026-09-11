@@ -9,7 +9,6 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
@@ -21,7 +20,7 @@ import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Breadcrumbs, Skeleton, Table, type TableColumn } from '@omnitron-dev/prism';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';

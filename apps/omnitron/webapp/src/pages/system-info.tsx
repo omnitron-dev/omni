@@ -21,7 +21,6 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Grid';
 import Chip from '@mui/material/Chip';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -31,6 +30,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { systemInfo } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { formatMemory } from 'src/utils/formatters';
+import { Skeleton } from '@omnitron-dev/prism';
 
 // =============================================================================
 // Shared

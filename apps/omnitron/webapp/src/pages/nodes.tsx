@@ -16,7 +16,6 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
-import Skeleton from '@mui/material/Skeleton';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -29,7 +28,7 @@ import InputLabel from '@mui/material/InputLabel';
 import Divider from '@mui/material/Divider';
 import { keyframes, useTheme, type Theme } from '@mui/material/styles';
 
-import { Breadcrumbs, useSnackbar, FormAlert, EmptyContent } from '@omnitron-dev/prism';
+import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import {

@@ -14,7 +14,6 @@ import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
-import Skeleton from '@mui/material/Skeleton';
 import { alpha } from '@mui/material/styles';
 
 import {
@@ -31,6 +30,7 @@ import { daemon, logs } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { AppNodeData, InfraNodeData, GatewayNodeData, ServerNodeData } from './topology-store';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
+import { Skeleton } from '@omnitron-dev/prism';
 
 // ---------------------------------------------------------------------------
 // Constants

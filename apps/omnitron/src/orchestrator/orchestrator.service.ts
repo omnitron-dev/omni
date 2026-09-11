@@ -2109,6 +2109,37 @@ export class OrchestratorService extends EventEmitter {
         : [];
       for (const line of stderrTail) handle.appendStderr(line);
 
+      // A child that never came up because WE stopped the app is not a
+      // failure, and reporting it as one is worse than saying nothing: the
+      // message titan-pm builds for an aborted start says the process "did not
+      // choose to exit, so its own logs will not explain this" — true, and it
+      // sends the reader hunting a fault in an application that was doing
+      // nothing wrong. Every `stack stop` issued while anything was still
+      // booting wrote one of these per child, at error level, into the app's
+      // own log.
+      //
+      // `'stopping'` only — NOT `'stopped'`, which is also an AppHandle's
+      // initial value, so accepting it would swallow the first genuine failure
+      // of any app whose handle had not yet been marked starting.
+      const expected =
+        handle.status === 'stopping' ||
+        (error as { stoppedDuringStartup?: boolean }).stoppedDuringStartup === true;
+
+      if (expected) {
+        handle.recordExit({
+          code: null,
+          signal: null,
+          expected: true,
+          message: error.message,
+        });
+        this.logger.info(
+          { app: entry.name, child: childName, err: error.message },
+          'Process stopped before it finished starting',
+        );
+        this.persistState();
+        return;
+      }
+
       // Put what the child printed into the app's LOG FILE, not only into the
       // in-memory ring `omnitron inspect` reads.
       //

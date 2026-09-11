@@ -52,6 +52,26 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   private readonly workers = new Map<string, IWorkerHandle>();
   private readonly serviceProxies = new Map<string, ServiceProxy<unknown>>();
   private readonly pools = new Map<string, ProcessPool<unknown>>();
+  /**
+   * Spawns that have not yet produced a WorkerHandle, by processId.
+   *
+   * `kill()` terminates `this.workers.get(processId)` — and that entry does
+   * not exist until `spawner.spawn()` resolves, which is after the child has
+   * reported ready. So killing a process that was still starting terminated
+   * nothing, deleted the bookkeeping, and returned `true`: the caller was told
+   * the process was gone while the real OS child went on booting, bound its
+   * port, opened its database connections, and then registered ITSELF as
+   * RUNNING from the tail of `spawn()` that was still running. `shutdown()`
+   * kills every entry in `this.processes`, PENDING ones included, so a stack
+   * stopped while anything was still coming up left that child alive behind an
+   * "everything stopped" report.
+   *
+   * A spawn in flight owns its handle, so `kill()` records the intent in
+   * `killRequested` and waits here; `spawn()` honours it the moment it has
+   * something to terminate.
+   */
+  private readonly inFlightSpawns = new Map<string, Promise<void>>();
+  private readonly killRequested = new Set<string>();
   private isShuttingDown = false;
 
   private readonly registry: ProcessRegistry;
@@ -201,7 +221,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       this.emit('process:spawn', processInfo);
 
       // Spawn the process with unified interface
-      const handle = await this.spawner.spawn(processPathOrClass, {
+      const spawnTask = this.spawnAndHonourKill(processId, processInfo, processPathOrClass, {
         processId,
         name: mergedOptions.name,
         version: mergedOptions.version,
@@ -219,6 +239,22 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         sandbox: mergedOptions.security?.isolation,
         execArgv: mergedOptions.execArgv,
       });
+      // Settles only after the handle is in hand AND any kill that arrived
+      // meanwhile has been honoured, so a `kill()` awaiting this promise
+      // returns to a child that is really dead.
+      this.inFlightSpawns.set(
+        processId,
+        spawnTask.then(
+          () => undefined,
+          () => undefined
+        )
+      );
+      let handle: IWorkerHandle;
+      try {
+        handle = await spawnTask;
+      } finally {
+        this.inFlightSpawns.delete(processId);
+      }
 
       // Store references
       this.workers.set(processId, handle);
@@ -297,6 +333,14 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
       return proxy;
     } catch (error) {
+      // A spawn we aborted ourselves is not a crash. Emitting one here fed the
+      // supervisor's restart loop the very child we had just been told to
+      // stop, and marked a deliberately-stopped process FAILED.
+      if ((error as { stoppedDuringStartup?: boolean }).stoppedDuringStartup) {
+        processInfo.status = ProcessStatus.STOPPED;
+        processInfo.endTime = Date.now();
+        throw error;
+      }
       processInfo.status = ProcessStatus.FAILED;
       processInfo.errors = [error as Error];
       this.emit('process:crash', processInfo, error);
@@ -524,6 +568,42 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   }
 
   /**
+   * Spawn a child and terminate it immediately if a kill arrived while it was
+   * still starting.
+   *
+   * The window is real and not small: `spawner.spawn()` waits for the child to
+   * boot its whole Application — tens of seconds for a backend — and for all
+   * of it there is no handle for `kill()` to act on. Honouring the request
+   * here, where the handle first exists, is the only place that can close it.
+   */
+  private async spawnAndHonourKill<T>(
+    processId: string,
+    processInfo: IProcessInfo,
+    processPathOrClass: string | (new (...args: any[]) => T),
+    spawnOptions: Parameters<IProcessSpawner['spawn']>[1]
+  ): Promise<IWorkerHandle> {
+    const handle = await this.spawner.spawn(processPathOrClass, spawnOptions);
+
+    if (!this.killRequested.delete(processId)) return handle;
+
+    try {
+      await handle.terminate();
+    } catch (error) {
+      this.logger.warn(
+        { error, processId, name: processInfo.name },
+        'Failed to terminate a child that was stopped while starting'
+      );
+    }
+    const aborted = new Error(
+      `Process '${processInfo.name}' was stopped while it was still starting`
+    );
+    // Not a crash, and not the child's doing — whoever reports this must not
+    // send a reader looking for a fault in the application.
+    (aborted as any).stoppedDuringStartup = true;
+    throw aborted;
+  }
+
+  /**
    * Kill a process
    */
   async kill(processId: string, signal: string = 'SIGTERM'): Promise<boolean> {
@@ -534,6 +614,19 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
     processInfo.status = ProcessStatus.STOPPING;
     this.emit('process:stop', processInfo);
+
+    // A child that has not finished starting has no handle to terminate. Tell
+    // the spawn to drop it as soon as it has one, and wait for that to happen
+    // — returning before it does is what let a "stopped" process come online.
+    const inFlight = this.inFlightSpawns.get(processId);
+    if (inFlight) {
+      this.killRequested.add(processId);
+      try {
+        await inFlight;
+      } finally {
+        this.killRequested.delete(processId);
+      }
+    }
 
     try {
       // Cleanup proxy

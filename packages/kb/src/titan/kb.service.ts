@@ -1,5 +1,8 @@
 import { KnowledgeBase } from '../core/knowledge-base.js';
 import { NullEmbeddingProvider } from '../embeddings/providers/null.provider.js';
+import { VoyageEmbeddingProvider } from '../embeddings/providers/voyage.provider.js';
+import { OpenAIEmbeddingProvider } from '../embeddings/providers/openai.provider.js';
+import { OllamaEmbeddingProvider } from '../embeddings/providers/ollama.provider.js';
 import type {
   IKbModuleConfig,
   IKbStore,
@@ -111,31 +114,34 @@ export class KnowledgeBaseService {
       return new NullEmbeddingProvider();
     }
 
-    // Lazy-load providers to avoid bundling unused deps
+    // These were `require(...)` calls, under a comment about lazy-loading to
+    // avoid bundling unused deps. This package is `"type": "module"`, so
+    // `require` is not defined in it: every one of the three branches threw
+    // `ReferenceError: require is not defined` the moment its provider was
+    // configured. Semantic search was therefore unreachable in both
+    // directions — configure a provider and the service crashes in its own
+    // constructor, configure none and you get `NullEmbeddingProvider`.
+    //
+    // Static imports, because the thing the comment was avoiding does not
+    // exist here: all three provider modules import a single TYPE and call
+    // global `fetch`. There is no SDK to keep out of the bundle.
     switch (embConfig.provider) {
-      case 'voyage': {
-        // Will be loaded dynamically at runtime
-        const { VoyageEmbeddingProvider } = require('../embeddings/providers/voyage.provider.js');
+      case 'voyage':
         return new VoyageEmbeddingProvider({
           apiKey: embConfig.apiKey ?? process.env['VOYAGE_API_KEY'] ?? '',
           codeModel: embConfig.codeModel,
           textModel: embConfig.textModel,
         });
-      }
-      case 'openai': {
-        const { OpenAIEmbeddingProvider } = require('../embeddings/providers/openai.provider.js');
+      case 'openai':
         return new OpenAIEmbeddingProvider({
           apiKey: embConfig.apiKey ?? process.env['OPENAI_API_KEY'] ?? '',
           model: embConfig.codeModel,
         });
-      }
-      case 'ollama': {
-        const { OllamaEmbeddingProvider } = require('../embeddings/providers/ollama.provider.js');
+      case 'ollama':
         return new OllamaEmbeddingProvider({
           model: embConfig.codeModel,
           url: embConfig.url,
         });
-      }
       default:
         return new NullEmbeddingProvider();
     }

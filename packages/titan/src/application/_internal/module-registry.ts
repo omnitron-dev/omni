@@ -245,6 +245,26 @@ export class ModuleRegistry {
     // 2. Reduce the input to a `{instance, dynamicModule}` pair.
     const resolved = await this.resolveInput(moduleInput);
 
+    // 2b. Dedup again, now that the class is known.
+    //
+    // Step 1 asks `extractClassRef`, which for a plain function hands back the
+    // function itself — and a `forwardRef` thunk IS a plain function, so the
+    // check above compares the thunk against a set that holds classes and
+    // always misses. That is survivable while one edge of a cycle names its
+    // module directly: the plain-class edge dedups and the walk terminates.
+    // When EVERY edge is a thunk — which is what a cycle whose modules live in
+    // a circular ESM import requires — nothing ever dedups, `register` calls
+    // itself through the ring forever, and the process dies on a heap limit
+    // with no stack to read. Observed exactly that way on a six-backend
+    // application, twice.
+    if (resolved.classRef && this.processedClasses.has(resolved.classRef)) {
+      for (const module of this.modules.values()) {
+        if (module.constructor === resolved.classRef || module.name === resolved.classRef.name) {
+          return module;
+        }
+      }
+    }
+
     // 3. Capture decorator metadata BEFORE we possibly spread-clone the
     //    instance below. `Reflect.getMetadata` on a spread-clone returns
     //    undefined (the spread loses the original class on the prototype

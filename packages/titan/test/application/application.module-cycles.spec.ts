@@ -77,6 +77,44 @@ class RingAModule {}
 })
 class RingBModule {}
 
+const RING_X = createToken<{ v(): string }>('CycleRingX');
+const RING_Y = createToken<{ v(): string }>('CycleRingY');
+const RING_Z = createToken<{ v(): string }>('CycleRingZ');
+
+/**
+ * A ring where EVERY edge is a forwardRef.
+ *
+ * That is not a contrived shape: modules whose files import each other cannot
+ * name one another directly at decorator-evaluation time, so a cycle living in
+ * a circular ESM import has a thunk on every edge. `extractClassRef` hands
+ * back a plain function as if it were the class, so a thunk never matches the
+ * processed-class set — and with no plain-class edge to dedup on, `register`
+ * walks the ring forever. The process dies on a heap limit with no stack to
+ * read, which is what it did on a real application.
+ */
+@Module({
+  imports: [forwardRef(() => RingYModule)] as never,
+  providers: [
+    [RING_X, { useFactory: (y: { v(): string }) => ({ v: () => `x${y.v()}` }), inject: [RING_Y], scope: Scope.Transient }],
+  ],
+  exports: [RING_X],
+})
+class RingXModule {}
+
+@Module({
+  imports: [forwardRef(() => RingZModule)] as never,
+  providers: [[RING_Y, { useFactory: () => ({ v: () => 'y' }), scope: Scope.Transient }]],
+  exports: [RING_Y],
+})
+class RingYModule {}
+
+@Module({
+  imports: [forwardRef(() => RingXModule)] as never,
+  providers: [[RING_Z, { useFactory: () => ({ v: () => 'z' }), scope: Scope.Transient }]],
+  exports: [RING_Z],
+})
+class RingZModule {}
+
 describe('Application module cycles', () => {
   let app: Application;
 
@@ -123,5 +161,15 @@ describe('Application module cycles', () => {
     }
 
     expect(message).toMatch(/[Cc]ircular/);
+  }, 20000);
+
+  it('terminates when every edge of the ring is a forwardRef', async () => {
+    app = await Application.create({ imports: [RingXModule], disableGracefulShutdown: true });
+
+    const names = app.getModules().map((m) => m.name);
+    expect(names.filter((n) => n === 'RingXModule'), 'the ring was walked more than once').toHaveLength(1);
+    expect(names).toContain('RingYModule');
+    expect(names).toContain('RingZModule');
+    expect((app.container as Container).resolve(RING_X).v()).toBe('xy');
   }, 20000);
 });

@@ -9,6 +9,7 @@
  * @module components/admin-filters
  */
 
+import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import { useCallback, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
@@ -113,6 +114,17 @@ export interface AdminDataTableProps<T> {
    * Returned styles are merged over the row's own (cursor, hover, selected).
    */
   rowSx?: (row: T, index: number) => SxProps<Theme>;
+  /**
+   * Detail rendered in a full-width row directly under `row`, when it returns
+   * something. Return `null`/`undefined` for a row that is not expanded.
+   *
+   * Expansion state belongs to the caller — which row is open is usually tied
+   * to a URL, a keyboard handler, or a single-open-at-a-time rule this
+   * component has no opinion about. Without this, a table that expands a row
+   * had to be built by hand, and omnitron's console has two that still are:
+   * pipeline run history and the trace list.
+   */
+  renderExpanded?: (row: T, index: number) => ReactNode;
   /** Page size options for the selector */
   pageSizeOptions?: number[];
   /** Sticky header */
@@ -273,6 +285,7 @@ export function AdminDataTable<T>({
   rowKey,
   onRowClick,
   rowSx,
+  renderExpanded,
   pageSizeOptions = [10, 25, 50, 100],
   stickyHeader = false,
   dense = false,
@@ -538,7 +551,7 @@ export function AdminDataTable<T>({
               : data.map((row, index) => {
                   const key = getRowKey(row, index);
                   const isSelected = selectable && selection.has(key);
-                  return (
+                  const body = (
                     <StyledTableRow
                       key={key}
                       hover
@@ -572,6 +585,27 @@ export function AdminDataTable<T>({
                         </TableCell>
                       ))}
                     </StyledTableRow>
+                  );
+                  const detail = renderExpanded?.(row, index);
+                  if (detail == null) return body;
+                  return (
+                    <Fragment key={`${key}-group`}>
+                      {body}
+                      {/*
+                        `hover` and the row styling are deliberately absent:
+                        this is a continuation of the row above, not a row of
+                        its own, and giving it its own hover state makes the
+                        pair read as two records.
+                      */}
+                      <TableRow>
+                        <TableCell
+                          colSpan={columns.length + (selectable ? 1 : 0)}
+                          sx={{ py: 0, borderBottom: 0 }}
+                        >
+                          {detail}
+                        </TableCell>
+                      </TableRow>
+                    </Fragment>
                   );
                 })}
           </TableBody>

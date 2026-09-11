@@ -9,18 +9,11 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
-import Collapse from '@mui/material/Collapse';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
@@ -28,7 +21,6 @@ import { AdminDataTable, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } 
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
@@ -229,6 +221,8 @@ export default function PipelinesPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [defPage, setDefPage] = useState(0);
   const [defPageSize, setDefPageSize] = useState(25);
+  const [runPage, setRunPage] = useState(0);
+  const [runPageSize, setRunPageSize] = useState(25);
 
   const pipelineList = data?.pipelineList ?? [];
   const runs = data?.runs ?? [];
@@ -256,6 +250,73 @@ export default function PipelinesPage() {
   };
 
   const pendingDelete = pipelineList.find((p) => p.id === confirmDelete);
+
+  const runRows = runs.slice(runPage * runPageSize, runPage * runPageSize + runPageSize);
+
+  const runColumns: ColumnDef<PipelineRun>[] = [
+    {
+      key: 'pipeline',
+      header: 'Pipeline',
+      // The toggle lives in a cell, not on the row: `onRowClick` is reachable
+      // by pointer only. This table used to be ONE `colSpan={5}` cell holding
+      // a ButtonBase whose Stack imitated the five columns the header
+      // declared — so the headers never lined up with anything. Real cells
+      // now, and the control that opens the run keeps its focus, its role and
+      // its Enter/Space.
+      render: (run) => {
+        const pipeline = pipelineList.find((p) => p.id === run.pipelineId);
+        return (
+          <ButtonBase
+            aria-expanded={expandedRun === run.id}
+            onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
+            sx={{ fontWeight: 600, fontSize: '0.8125rem', textAlign: 'left' }}
+          >
+            {pipeline?.name ?? run.pipelineId.slice(0, 8)}
+          </ButtonBase>
+        );
+      },
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (run) => (
+        <Chip
+          label={run.status}
+          size="small"
+          color={STATUS_COLORS[run.status] ?? 'default'}
+          variant="filled"
+          sx={{ fontWeight: 600 }}
+        />
+      ),
+    },
+    {
+      key: 'startedAt',
+      header: 'Started',
+      render: (run) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDate(run.startedAt)}
+        </Typography>
+      ),
+    },
+    {
+      key: 'completedAt',
+      header: 'Completed',
+      render: (run) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {run.completedAt ? formatDate(run.completedAt) : '--'}
+        </Typography>
+      ),
+    },
+    {
+      key: 'triggeredBy',
+      header: 'Triggered By',
+      render: (run) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {run.triggeredBy}
+        </Typography>
+      ),
+    },
+  ];
 
   const definitionRows = pipelineList.slice(
     defPage * defPageSize,
@@ -382,93 +443,26 @@ export default function PipelinesPage() {
         <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Run History"
         />
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Pipeline</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Started</TableCell>
-                <TableCell>Completed</TableCell>
-                <TableCell>Triggered By</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(5)].map((__, j) => (
-                      <TableCell key={j}><Skeleton width={80} height={20} /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : runs.length === 0 ? (
-                <TableEmptyRow
-                      colSpan={5}
-                      message="No pipeline runs yet"
-                      error={error ?? partialFailure}
-                    />
-              ) : (
-                runs.map((run) => {
-                  const pipeline = pipelineList.find((p) => p.id === run.pipelineId);
-                  return (
-                    <TableRow key={run.id}>
-                      <TableCell colSpan={5} sx={{ p: 0 }}>
-                        {/* A button, not a clickable Box: expanding a run was
-                            reachable by pointer only. `component="div"` keeps the
-                            layout while giving it focus, a role, and Enter/Space. */}
-                        <ButtonBase
-                          component="div"
-                          aria-expanded={expandedRun === run.id}
-                          sx={{ cursor: 'pointer', px: 2, py: 1, width: '100%', display: 'block', textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
-                          onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
-                        >
-                          <Stack direction="row" spacing={2} sx={{
-                            alignItems: "center"
-                          }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: 600,
-                                minWidth: 120
-                              }}>
-                              {pipeline?.name ?? run.pipelineId.slice(0, 8)}
-                            </Typography>
-                            <Chip
-                              label={run.status}
-                              size="small"
-                              color={STATUS_COLORS[run.status] ?? 'default'}
-                              variant="filled"
-                              sx={{ fontWeight: 600 }}
-                            />
-                            <Typography variant="caption" sx={{
-                              color: "text.secondary"
-                            }}>
-                              {formatDate(run.startedAt)}
-                            </Typography>
-                            <Typography variant="caption" sx={{
-                              color: "text.secondary"
-                            }}>
-                              {run.completedAt ? formatDate(run.completedAt) : '--'}
-                            </Typography>
-                            <Typography variant="caption" sx={{
-                              color: "text.secondary"
-                            }}>
-                              {run.triggeredBy}
-                            </Typography>
-                          </Stack>
-                        </ButtonBase>
-                        <Collapse in={expandedRun === run.id}>
-                          <RunDetail run={run} />
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <AdminDataTable<PipelineRun>
+          columns={runColumns}
+          data={runRows}
+          total={runs.length}
+          loading={loading}
+          loadError={error ?? partialFailure ?? null}
+          emptyMessage="No pipeline runs yet"
+          rowKey={(run) => run.id}
+          renderExpanded={(run) =>
+            expandedRun === run.id ? <RunDetail run={run} /> : null
+          }
+          page={runPage}
+          pageSize={runPageSize}
+          onPageChange={setRunPage}
+          onPageSizeChange={(size) => {
+            setRunPageSize(size);
+            setRunPage(0);
+          }}
+          dense
+        />
       </Card>
       {/* Create Pipeline Dialog */}
       <CreatePipelineDialog

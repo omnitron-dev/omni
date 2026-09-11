@@ -404,3 +404,81 @@ describe('loading placeholders', () => {
     expect(skeletons(container)).toBe(3 * cols.length);
   });
 });
+
+describe('renderExpanded', () => {
+  const cols = [{ key: 'name', header: 'Name', render: (r: { id: string; name: string }) => r.name }];
+  const rows = [
+    { id: '1', name: 'nightly' },
+    { id: '2', name: 'release' },
+  ];
+
+  it('puts the detail in a full-width row under the row it belongs to', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={rows}
+        total={rows.length}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        renderExpanded={(r) => (r.id === '1' ? <div data-testid="detail">steps</div> : null)}
+      />,
+    );
+    expect(screen.getByTestId('detail')).toBeTruthy();
+    const bodyRows = container.querySelectorAll('tbody tr');
+    // two data rows plus one detail row, and the detail follows ITS row
+    expect(bodyRows).toHaveLength(3);
+    expect(bodyRows[1]!.querySelector('[data-testid="detail"]')).toBeTruthy();
+    expect(bodyRows[1]!.querySelector('td')!.getAttribute('colspan')).toBe('1');
+  });
+
+  it('spans the checkbox column too when selectable', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={[rows[0]!]}
+        total={1}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        selectable
+        renderExpanded={() => <span>detail</span>}
+      />,
+    );
+    const detailCell = container.querySelectorAll('tbody tr')[1]!.querySelector('td')!;
+    expect(detailCell.getAttribute('colspan')).toBe('2');
+  });
+
+  it('adds nothing when no row is expanded', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={rows}
+        total={rows.length}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        renderExpanded={() => null}
+      />,
+    );
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+
+  it('is optional', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={rows}
+        total={rows.length}
+        page={0}
+        pageSize={10}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+      />,
+    );
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+});

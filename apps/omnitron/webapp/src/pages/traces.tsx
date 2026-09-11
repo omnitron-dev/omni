@@ -9,14 +9,8 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
-import Collapse from '@mui/material/Collapse';
 import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
@@ -26,7 +20,6 @@ import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { TableEmptyRow } from 'src/components/table-empty-row';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,6 +170,8 @@ export default function TracesPage() {
   const [minDuration, setMinDuration] = useState('');
   const [mapPage, setMapPage] = useState(0);
   const [mapPageSize, setMapPageSize] = useState(25);
+  const [tracePage, setTracePage] = useState(0);
+  const [tracePageSize, setTracePageSize] = useState(25);
 
   // Shared polling loop — see `use-polled-resource`.
   //
@@ -218,6 +213,83 @@ export default function TracesPage() {
   const traceList = data?.traceList ?? [];
   const serviceMap = data?.serviceMap ?? [];
   const partialFailure = data?.partialFailure ?? null;
+
+  const traceRows = traceList.slice(
+    tracePage * tracePageSize,
+    tracePage * tracePageSize + tracePageSize,
+  );
+
+  const traceColumns: ColumnDef<Trace>[] = [
+    {
+      key: 'service',
+      header: 'Service',
+      // The toggle is in a cell, not on the row: `onRowClick` is reachable by
+      // pointer only. This table used to be ONE `colSpan={5}` cell holding a
+      // ButtonBase whose Stack imitated the five columns the header declared,
+      // so the headers lined up with nothing. Real cells now, and the control
+      // that opens the trace keeps its focus, role and Enter/Space.
+      render: (trace) => (
+        <ButtonBase
+          aria-expanded={expandedTrace === trace.traceId}
+          onClick={() =>
+            setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)
+          }
+          sx={{ fontWeight: 600, fontSize: '0.8125rem', textAlign: 'left' }}
+        >
+          {trace.serviceName}
+        </ButtonBase>
+      ),
+    },
+    {
+      key: 'operation',
+      header: 'Operation',
+      render: (trace) => <Typography variant="body2">{trace.operationName}</Typography>,
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      render: (trace) => (
+        <Chip
+          label={formatDuration(trace.duration)}
+          size="small"
+          color={trace.duration > 1000 ? 'warning' : 'default'}
+          variant="outlined"
+        />
+      ),
+    },
+    {
+      key: 'spans',
+      header: 'Spans',
+      render: (trace) => {
+        const hasErrors = trace.spans.some((sp) => sp.status === 'error');
+        return (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {trace.spans.length} spans
+            </Typography>
+            {hasErrors && (
+              <Chip
+                label="errors"
+                size="small"
+                color="error"
+                variant="filled"
+                sx={{ fontSize: 10, height: 18 }}
+              />
+            )}
+          </Stack>
+        );
+      },
+    },
+    {
+      key: 'started',
+      header: 'Started',
+      render: (trace) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDate(trace.startTime)}
+        </Typography>
+      ),
+    },
+  ];
 
   const serviceMapRows = serviceMap.slice(
     mapPage * mapPageSize,
@@ -332,112 +404,36 @@ export default function TracesPage() {
               avatar={<TraceIcon />}
             />
             <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Service</TableCell>
-                    <TableCell>Operation</TableCell>
-                    <TableCell>Duration</TableCell>
-                    <TableCell>Spans</TableCell>
-                    <TableCell>Started</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {loading ? (
-                    [...Array(5)].map((_, i) => (
-                      <TableRow key={i}>
-                        {[...Array(5)].map((__, j) => (
-                          <TableCell key={j}><Skeleton width={80} height={20} /></TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : traceList.length === 0 ? (
-                    <TableEmptyRow
-                      colSpan={5}
-                      message="No traces collected yet"
-                      error={error ?? partialFailure}
-                    />
-                  ) : (
-                    traceList.map((trace) => {
-                      const hasErrors = trace.spans.some((s) => s.status === 'error');
-  return (
-                        <TableRow key={trace.traceId}>
-                          <TableCell colSpan={5} sx={{ p: 0 }}>
-                            {/* A button, not a clickable Box: expanding a trace was
-                                reachable by pointer only. `component="div"` keeps the
-                                layout while giving it focus, a role, and Enter/Space. */}
-                            <ButtonBase
-                              component="div"
-                              aria-expanded={expandedTrace === trace.traceId}
-                              sx={{ cursor: 'pointer', px: 2, py: 1, width: '100%', display: 'block', textAlign: 'left', '&:hover': { bgcolor: 'action.hover' } }}
-                              onClick={() => setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)}
-                            >
-                              <Stack direction="row" spacing={2} sx={{
-                                alignItems: "center"
-                              }}>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    fontWeight: 600,
-                                    minWidth: 100
-                                  }}>
-                                  {trace.serviceName}
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color: "text.secondary",
-                                    minWidth: 140
-                                  }}>
-                                  {trace.operationName}
-                                </Typography>
-                                <Chip
-                                  label={formatDuration(trace.duration)}
-                                  size="small"
-                                  color={trace.duration > 1000 ? 'warning' : 'default'}
-                                  variant="outlined"
-                                  sx={{ fontFamily: 'monospace', fontSize: 11 }}
-                                />
-                                <Typography variant="caption" sx={{
-                                  color: "text.secondary"
-                                }}>
-                                  {trace.spans.length} spans
-                                </Typography>
-                                {hasErrors && (
-                                  <Chip label="errors" size="small" color="error" variant="filled" sx={{ fontSize: 10, height: 18 }} />
-                                )}
-                                <Typography
-                                  variant="caption"
-                                  sx={{
-                                    color: "text.secondary",
-                                    ml: 'auto !important'
-                                  }}>
-                                  {formatDate(trace.startTime)}
-                                </Typography>
-                              </Stack>
-                            </ButtonBase>
-                            <Collapse in={expandedTrace === trace.traceId}>
-                              <Box sx={{ px: 2, pb: 1 }}>
-                                <Typography
-                                  variant="caption"
-                                  sx={{
-                                    color: "text.secondary",
-                                    fontFamily: 'monospace',
-                                    mb: 1,
-                                    display: 'block'
-                                  }}>
-                                  Trace ID: {trace.traceId}
-                                </Typography>
-                                <SpanWaterfall spans={trace.spans} />
-                              </Box>
-                            </Collapse>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+              <AdminDataTable<Trace>
+                columns={traceColumns}
+                data={traceRows}
+                total={traceList.length}
+                loading={loading}
+                loadError={error ?? partialFailure ?? null}
+                emptyMessage="No traces collected yet"
+                rowKey={(trace) => trace.traceId}
+                renderExpanded={(trace) =>
+                  expandedTrace === trace.traceId ? (
+                    <Box sx={{ px: 2, pb: 1 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ color: 'text.secondary', fontFamily: 'monospace', mb: 1, display: 'block' }}
+                      >
+                        Trace ID: {trace.traceId}
+                      </Typography>
+                      <SpanWaterfall spans={trace.spans} />
+                    </Box>
+                  ) : null
+                }
+                page={tracePage}
+                pageSize={tracePageSize}
+                onPageChange={setTracePage}
+                onPageSizeChange={(size) => {
+                  setTracePageSize(size);
+                  setTracePage(0);
+                }}
+                dense
+              />
             </TableContainer>
           </Card>
         </Grid>

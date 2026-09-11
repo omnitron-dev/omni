@@ -16,6 +16,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { requirePayload, requireString } from './anonymous-input.js';
 import { getCurrentAuth, requireAuth, getRequestContext } from './auth-context.js';
 import type {
   AuthService,
@@ -42,6 +43,10 @@ export class AuthRpcService {
     // used to be a client-supplied field written to omnitron_sessions
     // verbatim, so a client could stamp any address onto its own session and
     // the operator's session list would repeat it as fact.
+    const payload = requirePayload(data, 'signIn');
+    requireString(payload, 'username', 'signIn');
+    requireString(payload, 'password', 'signIn');
+
     const ipAddress = getRequestContext()?.ipAddress;
     return this.authService.signIn(data, ipAddress ? { ipAddress } : {});
   }
@@ -52,7 +57,8 @@ export class AuthRpcService {
     userId?: string;
     sessionId?: string;
   }> {
-    const result = await this.authService.validateToken(data.token);
+    const token = requireString(requirePayload(data, 'validateToken'), 'token', 'validateToken');
+    const result = await this.authService.validateToken(token);
     if (!result) return { valid: false };
     return { valid: true, userId: result.userId, sessionId: result.sessionId };
   }
@@ -63,9 +69,10 @@ export class AuthRpcService {
     user?: OmnitronAuthUser | undefined;
     session?: { expiresAt: string } | undefined;
   }> {
-    const user = await this.authService.validateSession(data.sessionId);
+    const sessionId = requireString(requirePayload(data, 'validateSession'), 'sessionId', 'validateSession');
+    const user = await this.authService.validateSession(sessionId);
     if (!user) return { valid: false };
-    const session = await this.authService.getSessionInfo(data.sessionId);
+    const session = await this.authService.getSessionInfo(sessionId);
     return { valid: true, user, session: session ? { expiresAt: session.expiresAt.toISOString() } : undefined };
   }
 
@@ -74,22 +81,25 @@ export class AuthRpcService {
     success: boolean;
     result?: OmnitronSignInResult;
   }> {
-    const result = await this.authService.refreshSession(data.sessionId);
+    const sessionId = requireString(requirePayload(data, 'refreshSession'), 'sessionId', 'refreshSession');
+    const result = await this.authService.refreshSession(sessionId);
     if (!result) return { success: false };
     return { success: true, result };
   }
 
   @Public({ auth: { allowAnonymous: true } })
   async signOut(data: { sessionId: string }): Promise<{ success: boolean }> {
+    const sessionId = requireString(requirePayload(data, 'signOut'), 'sessionId', 'signOut');
+
     // If authenticated, verify session ownership
     const auth = getCurrentAuth();
     if (auth) {
-      const sessionOwner = await this.authService.validateSession(data.sessionId);
+      const sessionOwner = await this.authService.validateSession(sessionId);
       if (sessionOwner && sessionOwner.id !== auth.userId) {
         throw Errors.forbidden('Cannot revoke another user\'s session');
       }
     }
-    await this.authService.signOut(data.sessionId);
+    await this.authService.signOut(sessionId);
     return { success: true };
   }
 

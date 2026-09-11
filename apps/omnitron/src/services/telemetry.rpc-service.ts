@@ -6,6 +6,7 @@
  * 2. Webapp → Leader telemetry stats (relay health)
  */
 
+import { requireArray, requirePayload, requireString } from './anonymous-input.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES } from '../shared/roles.js';
 import type { TelemetryRelayService, TelemetryEntry } from '@omnitron-dev/titan-telemetry-relay';
@@ -20,7 +21,10 @@ export class TelemetryRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async pushBatch(data: { nodeId: string; entries: TelemetryEntry[] }): Promise<{ ackd: number }> {
-    const ackd = await this.relay.receive(data.nodeId, data.entries);
+    const payload = requirePayload(data, 'pushBatch');
+    const nodeId = requireString(payload, 'nodeId', 'pushBatch');
+    const entries = requireArray(payload, 'entries', 'pushBatch') as TelemetryEntry[];
+    const ackd = await this.relay.receive(nodeId, entries);
     return { ackd };
   }
 

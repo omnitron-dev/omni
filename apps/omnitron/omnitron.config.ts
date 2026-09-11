@@ -1,32 +1,26 @@
 import { defineEcosystem } from '@omnitron-dev/omnitron';
 
+/**
+ * The config a daemon started from this directory boots with.
+ *
+ * It declares no apps on purpose. This package is the control plane: the
+ * processes it runs belong to registered projects and arrive through
+ * `omnitron stack start <project> <stack>`, each stamped with its own project
+ * root.
+ *
+ * What was here before was a copy of the `omnitron init` scaffold — five apps
+ * named `main`, `storage`, `pricing`, `payments` and `messaging`, pointing at
+ * `./apps/<name>/src/main.ts` relative to THIS directory, where none of them
+ * exist. The daemon registered all five at every boot, wrote an error apiece
+ * about a watch directory it could not resolve, and put five bare names into
+ * the same namespace as the downstream stack's five identically-named apps. That
+ * collision is what made `omnitron restart acme/dev/payments` launch omnitron's
+ * sample entry instead (see test/unit/restart-keeps-the-project-prefix.test.ts
+ * — the resolver refuses to cross projects now, and this removes the thing it
+ * was refusing).
+ */
 export default defineEcosystem({
-  apps: [
-    {
-      name: 'main',
-      script: './apps/main/src/main.ts',
-      critical: true,
-    },
-    {
-      name: 'storage',
-      script: './apps/storage/src/main.ts',
-      dependsOn: ['main'],
-    },
-    {
-      name: 'pricing',
-      script: './apps/pricing/src/main.ts',
-    },
-    {
-      name: 'payments',
-      script: './apps/payments/src/main.ts',
-      dependsOn: ['main'],
-    },
-    {
-      name: 'messaging',
-      script: './apps/messaging/src/main.ts',
-      dependsOn: ['main'],
-    },
-  ],
+  apps: [],
 
   supervision: {
     strategy: 'one_for_one',

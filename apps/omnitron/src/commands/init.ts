@@ -6,33 +6,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { log, confirm } from '@xec-sh/kit';
 
+/**
+ * The scaffold a new project starts from.
+ *
+ * It used to be one particular private stack, copied whole: five apps named
+ * `main`, `storage`, `pricing`, `payments` and `messaging`, each pointing at
+ * `./apps/<name>/src/main.ts` — paths that exist in exactly one repository on
+ * earth. Anybody else running `omnitron init` got a config whose every entry
+ * was wrong, and `omnitron up` answered with five failures before they had
+ * written a line. The same file, dropped into this package's own directory,
+ * is why a daemon started here registers five apps that can never run.
+ *
+ * One entry, obviously an example, is a better starting point than five that
+ * look authoritative and are not.
+ */
 const CONFIG_TEMPLATE = `import { defineEcosystem } from '@omnitron-dev/omnitron';
 
 export default defineEcosystem({
   apps: [
     {
-      name: 'main',
-      script: './apps/main/src/main.ts',
-      critical: true,
-    },
-    {
-      name: 'storage',
-      script: './apps/storage/src/main.ts',
-      dependsOn: ['main'],
-    },
-    {
-      name: 'pricing',
-      script: './apps/pricing/src/main.ts',
-    },
-    {
-      name: 'payments',
-      script: './apps/payments/src/main.ts',
-      dependsOn: ['main'],
-    },
-    {
-      name: 'messaging',
-      script: './apps/messaging/src/main.ts',
-      dependsOn: ['main'],
+      // Replace with your own — one entry per process omnitron should run.
+      name: 'api',
+      script: './src/main.ts',
+      // bootstrap: './src/bootstrap.ts',  // for a Titan app with child processes
+      // critical: true,                   // the stack stops if this one cannot start
+      // dependsOn: ['other-app'],
+      // watch: './src',                   // restart on change, in development
     },
   ],
 
@@ -46,20 +45,6 @@ export default defineEcosystem({
   monitoring: {
     healthCheck: { interval: 15_000, timeout: 5_000 },
     metrics: { interval: 5_000, retention: 3600 },
-  },
-
-  logging: {
-    directory: '~/.omnitron/logs/',
-    maxSize: '50mb',
-    maxFiles: 10,
-    compress: true,
-  },
-
-  daemon: {
-    port: 9700,
-    host: '127.0.0.1',
-    pidFile: '~/.omnitron/daemon.pid',
-    stateFile: '~/.omnitron/state.json',
   },
 
   env: 'development',

@@ -427,17 +427,42 @@ export class Application implements IApplication {
         this._logger?.debug({ module: module.name }, 'Module started');
       }
 
-      // Start Netron if available. Failure is non-fatal.
+      // Start Netron. A transport that cannot bind is FATAL.
+      //
+      // This used to catch and log a warning, with the comment "Failure is
+      // non-fatal". For an application whose reason to exist is serving RPC,
+      // it is the opposite: `netron.start()` rejects when a transport server
+      // fails to bind, and everything downstream then agreed the app was
+      // fine. Measured on the dev stand 2026-09-11 — a restart raced the old
+      // process's shutdown, the new one hit EADDRINUSE on port 3005, and:
+      //
+      //   07:39:03.299  error  Failed to start http server
+      //   07:39:03.300  warn   Failed to start Netron service
+      //   07:39:03.348  info   Application started successfully
+      //
+      // titan-pm's `waitForReady` resolved, the supervisor registered a
+      // healthy child, and `omnitron list` showed messaging ONLINE on port
+      // 3005 with nothing listening on it. The whole stack read 6/6 green
+      // while one backend served nothing. A failure that leaves every monitor
+      // agreeing is worse than a crash.
+      //
+      // A client-only Netron does not reach this: with no server configs
+      // `start()` awaits an empty `Promise.all` and resolves.
       if (this._container.has(NETRON_TOKEN)) {
-        try {
-          const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
-          if (netron) {
+        const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
+        if (netron) {
+          try {
             await netron.start();
-            this._logger?.info({ module: 'Netron' }, 'Netron service started');
-            this._events.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
+          } catch (error) {
+            await this.rollbackStartedModules(startedForRollback);
+            throw new Error(
+              `Netron service failed to start: ${(error as Error).message}. ` +
+                'The application cannot serve RPC, so it is not started.',
+              { cause: error },
+            );
           }
-        } catch (error) {
-          this._logger?.warn({ error }, 'Failed to start Netron service');
+          this._logger?.info({ module: 'Netron' }, 'Netron service started');
+          this._events.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
         }
       }
 

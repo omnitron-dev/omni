@@ -101,6 +101,10 @@ export class StackInfrastructureManager {
 
     // 4. Normalize infrastructure config through preset system
     let normalizedServices: Record<string, import('./types.js').IServiceRequirement> | undefined;
+    // Declared here rather than hoisted out of the try/catch with `var`:
+    // both arms below assign it and the code after the block uses it, which
+    // is exactly what a `let` in the enclosing scope says.
+    let infraService: InfrastructureService;
     try {
       const { normalizeInfraConfig } = await import('./config-normalizer.js');
       const { createDefaultRegistry } = await import('./presets/index.js');
@@ -118,7 +122,7 @@ export class StackInfrastructureManager {
       );
 
       // 4a. Create InfrastructureService with normalized services + preset registry
-      var infraService = new InfrastructureService(
+      infraService = new InfrastructureService(
         this.logger.child({ stack: key }),
         stackInfraConfig,
         servicesForResolver,
@@ -126,7 +130,7 @@ export class StackInfrastructureManager {
       );
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — using legacy resolvers');
-      var infraService = new InfrastructureService(
+      infraService = new InfrastructureService(
         this.logger.child({ stack: key }),
         stackInfraConfig
       );

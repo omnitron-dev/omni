@@ -74,6 +74,18 @@ import { buildRestartPolicy } from '../supervisor/restart-policy.js';
  * this returns, so the wait is paid once at boot and buys a feature that
  * otherwise stays off until the next restart.
  */
+/**
+ * `childName` is sometimes bare ('http') and sometimes already carries the app
+ * ('acme/dev/pricing/http'), depending on which supervisor path raised the
+ * event. Prefixing unconditionally produced
+ * `acme/dev/pricing/acme/dev/pricing/http` in the log file.
+ */
+function qualifyChildName(appName: string, childName: string): string {
+  return childName.startsWith(`${appName}/`) || childName === appName
+    ? childName
+    : `${appName}/${childName}`;
+}
+
 const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
 const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
@@ -2085,19 +2097,31 @@ export class OrchestratorService extends EventEmitter {
     // already stuffs the captured stderr into `error.details.stderr`
     // so we surface it on `lastExit.stderrTail`.
     supervisor.on('child:start-failed', (childName: string, error: Error) => {
-      // A child that never reported ready never reaches `child:started`, so
-      // nothing has drained what it printed on the way to failing. titan-pm
-      // holds those lines until the first handler asks for them; asking here
-      // is what puts a failed boot into the app's log file instead of nowhere.
-      // `error.details.stderr` below is a truncated tail of stderr only — this
-      // is the full picture, stdout included.
-      this.attachLogCapture(entry.name, childName, handle);
-
-      const details = (error as { details?: { stderr?: string } }).details;
+      const details = (error as { details?: { stderr?: string; stdout?: string } }).details;
       const stderrTail = typeof details?.stderr === 'string'
         ? details.stderr.split('\n').filter((l: string) => l.length > 0).slice(-80)
         : [];
       for (const line of stderrTail) handle.appendStderr(line);
+
+      // Put what the child printed into the app's LOG FILE, not only into the
+      // in-memory ring `omnitron inspect` reads.
+      //
+      // A child that dies during startup never produces a WorkerHandle at all
+      // — titan-pm registers one only after `waitForReady` resolves — so there
+      // is no `onLog` to subscribe to here and nothing to replay. What does
+      // exist is the output `waitForReady` captured while waiting, which it
+      // attaches to the error. Feeding that to the log handlers is the only
+      // way a failed boot reaches disk, and a failed boot is the case where
+      // reading it matters most: an application that dies before its logger
+      // exists has said everything it is ever going to say on these streams.
+      // The failure itself first. A child can fail without printing a word —
+      // it reports the error over the IPC channel and exits, which is what a
+      // module that throws on import does — so the streams below are often
+      // empty and the only account of what happened is on the error.
+      this.persistChildFailure(entry.name, childName, error);
+      this.persistChildOutput(entry.name, childName, details?.stdout, 'stdout');
+      this.persistChildOutput(entry.name, childName, details?.stderr, 'stderr');
+
       handle.recordExit({
         code: null,
         signal: null,
@@ -2159,6 +2183,72 @@ export class OrchestratorService extends EventEmitter {
         }
       }
     });
+  }
+
+  /**
+   * Write the failure a child reported before it could start to the app's log
+   * handlers, as one structured line.
+   *
+   * `error.childStack` is the stack from inside the child when it managed to
+   * send one — for a module that throws on import that is the entire
+   * diagnosis, and it exists nowhere else once the process is gone.
+   */
+  private persistChildFailure(appName: string, childName: string, error: Error): void {
+    const childStack = (error as { childStack?: string }).childStack;
+    const entry = JSON.stringify({
+      level: 50,
+      time: new Date().toISOString(),
+      processName: qualifyChildName(appName, childName),
+      event: 'process.start_failed',
+      err: { message: error.message, ...(childStack ? { stack: childStack } : {}) },
+      msg: `Process failed to start: ${error.message}`,
+    });
+    for (const handler of this.appLogHandlers) {
+      try {
+        handler(appName, entry);
+      } catch {
+        // A log handler must not break failure reporting.
+      }
+    }
+  }
+
+  /**
+   * Write a dead child's captured output to the app's log handlers.
+   *
+   * Emitted as pino-shaped JSON so it lands in the same file, at the same
+   * level, as everything else that app ever logged — a reader tailing
+   * `app.log` after a failed start finds the reason there rather than having
+   * to know that this particular failure hides in a different place.
+   */
+  private persistChildOutput(
+    appName: string,
+    childName: string,
+    output: string | undefined,
+    stream: 'stdout' | 'stderr'
+  ): void {
+    if (!output) return;
+    const time = new Date().toISOString();
+    for (const line of output.split('\n')) {
+      if (!line.trim()) continue;
+      // Already-structured lines pass through untouched; the child may well
+      // have got far enough to produce them.
+      const entry = line.trimStart().startsWith('{')
+        ? line
+        : JSON.stringify({
+            level: stream === 'stderr' ? 50 : 30,
+            time,
+            processName: qualifyChildName(appName, childName),
+            stream,
+            msg: line,
+          });
+      for (const handler of this.appLogHandlers) {
+        try {
+          handler(appName, entry);
+        } catch {
+          // A log handler must not break failure reporting.
+        }
+      }
+    }
   }
 
   /**

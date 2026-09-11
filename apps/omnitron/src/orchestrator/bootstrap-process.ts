@@ -105,6 +105,80 @@ function reportStage(stage: string, detail?: string): void {
   process.stderr.write(`[omnitron:boot] ${stage}${suffix}\n`);
 }
 
+/**
+ * A topology proxy that survives losing its connection.
+ *
+ * The interface `queryInterface` returns is bound to one socket. When that
+ * socket goes — a daemon restart, a transport hiccup, anything — every later
+ * call rejects with "Socket closed during RPC", forever, because nothing
+ * reconnects and the consumer is holding the same dead object. Consumers
+ * resolve this token once at construction, so the feature stays broken until
+ * the process is restarted.
+ *
+ * Observed exactly that way: pricing's OHLCV aggregation failed on every
+ * five-minute tick with that message while the service on the daemon was
+ * healthy and answering a freshly connected client immediately, and the app
+ * process held zero open connections to the daemon socket.
+ *
+ * So: on a call that fails because the connection is gone, reconnect, ask for
+ * the interface again, and retry once. One reconnect at a time, and a failure
+ * to reconnect surfaces the ORIGINAL error rather than a second one about the
+ * reconnect — the caller asked about their call.
+ *
+ * @internal exported for tests
+ */
+export function createReconnectingTopologyProxy(
+  netron: { connect(url: string): Promise<{ queryInterface(name: string): Promise<unknown> }> },
+  serviceName: string,
+  daemonSocketUrl: string,
+  initial: unknown
+): unknown {
+  let current = initial as Record<string, unknown>;
+  let reconnecting: Promise<void> | null = null;
+
+  const looksDisconnected = (error: unknown): boolean => {
+    const message = String((error as { message?: unknown })?.message ?? '');
+    return /socket closed|connection closed|transport lost|not connected|socket is not open/i.test(message);
+  };
+
+  const reconnect = async (): Promise<void> => {
+    reconnecting ??= (async () => {
+      try {
+        const peer = await netron.connect(daemonSocketUrl);
+        current = (await peer.queryInterface(serviceName)) as Record<string, unknown>;
+      } finally {
+        reconnecting = null;
+      }
+    })();
+    return reconnecting;
+  };
+
+  const invoke = (prop: string, args: unknown[]): Promise<unknown> =>
+    (current[prop] as (...a: unknown[]) => Promise<unknown>)(...args);
+
+  return new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        if (typeof prop === 'symbol' || prop === 'then') return undefined;
+        return async (...args: unknown[]) => {
+          try {
+            return await invoke(prop as string, args);
+          } catch (error) {
+            if (!looksDisconnected(error)) throw error;
+            try {
+              await reconnect();
+            } catch {
+              throw error;
+            }
+            return await invoke(prop as string, args);
+          }
+        };
+      },
+    }
+  );
+}
+
 @Process({ name: 'BootstrapApp', allMethodsPublic: true })
 class BootstrapProcess {
   private definition: IAppDefinition | null = null;
@@ -485,7 +559,14 @@ class BootstrapProcess {
         // Register under topology:{ServiceName} — consumers inject via
         // createToken('topology:OhlcvAggregatorWorker')
         const token = createToken(`${TOPOLOGY_TOKEN_PREFIX}${serviceName}`);
-        this.app.container.register(token, { useValue: proxy } as any);
+        this.app.container.register(token, {
+          useValue: createReconnectingTopologyProxy(
+            this.app.netron as never,
+            serviceName,
+            daemonSocketUrl,
+            proxy
+          ),
+        } as any);
       } catch (err) {
         const entry = JSON.stringify({
           level: 40,

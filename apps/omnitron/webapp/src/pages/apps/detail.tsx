@@ -13,12 +13,6 @@ import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import LinearProgress from '@mui/material/LinearProgress';
 import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -27,7 +21,7 @@ import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
@@ -35,7 +29,12 @@ import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
-import type { ProcessInfoDto, AppDiagnosticsDto, LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
+import type {
+  ProcessInfoDto,
+  SubProcessInfoDto,
+  AppDiagnosticsDto,
+  LogEntryRow,
+} from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // Tab Panel
@@ -122,6 +121,115 @@ function OverviewTab({
     ? Math.round((diagnostics.memory.heapUsed / diagnostics.memory.heapTotal) * 100)
     : 0;
   const hasHeapData = diagnostics != null && diagnostics.memory.heapTotal > 0;
+
+  const processColumns: TableColumn<SubProcessInfoDto>[] = [
+    {
+      id: 'name',
+      label: 'Process',
+      render: (proc) => (
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <CircleIcon
+            sx={{
+              fontSize: 8,
+              color:
+                proc.status === 'online'
+                  ? theme.palette.success.main
+                  : proc.status === 'stopped'
+                    ? theme.palette.text.disabled
+                    : theme.palette.error.main,
+            }}
+          />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {proc.name}
+          </Typography>
+        </Stack>
+      ),
+    },
+    {
+      id: 'type',
+      label: 'Type',
+      render: (proc) => (
+        <Chip label={proc.type} size="small" variant="outlined" sx={{ fontSize: 11, height: 22 }} />
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (proc) => (
+        <Chip
+          label={proc.status}
+          size="small"
+          color={STATUS_COLORS[proc.status] || 'default'}
+          variant="outlined"
+          sx={{ fontSize: 11, height: 22 }}
+        />
+      ),
+    },
+    {
+      id: 'pid',
+      label: 'PID',
+      align: 'right',
+      render: (proc) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {proc.pid ?? '—'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'uptime',
+      label: 'Uptime',
+      render: (proc) => (
+        <Typography variant="body2" sx={{ fontSize: 12 }}>
+          {formatUptime(proc.uptime)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'cpu',
+      label: 'CPU',
+      align: 'right',
+      render: (proc) => (
+        <Typography variant="body2" sx={{ fontSize: 12 }}>
+          {proc.cpu > 0 ? `${proc.cpu.toFixed(1)}%` : '—'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'memory',
+      label: 'Memory',
+      align: 'right',
+      render: (proc) => (
+        <Typography variant="body2" sx={{ fontSize: 12 }}>
+          {formatMemory(proc.memory)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'restarts',
+      label: 'Restarts',
+      align: 'right',
+      // `restarts` is `number | null`: null means nothing counts them, which
+      // is the case for a pool row — a pool is not a supervisor child.
+      // Rendering the raw value printed an empty cell there, and comparing it
+      // to 0 is what broke this build for four days. An em dash says "not
+      // tracked", the same as the pid column above; a real zero still reads
+      // as zero.
+      render: (proc) => (
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: 12,
+            color:
+              proc.restarts !== null && proc.restarts > 0
+                ? theme.palette.warning.main
+                : undefined,
+          }}
+        >
+          {proc.restarts ?? '—'}
+        </Typography>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -228,100 +336,13 @@ function OverviewTab({
               }}>
               Process Topology
             </Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Process</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">PID</TableCell>
-                    <TableCell>Uptime</TableCell>
-                    <TableCell align="right">CPU</TableCell>
-                    <TableCell align="right">Memory</TableCell>
-                    <TableCell align="right">Restarts</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {app.processes.map((proc) => (
-                    <TableRow key={proc.name}>
-                      <TableCell>
-                        <Stack direction="row" spacing={1} sx={{
-                          alignItems: "center"
-                        }}>
-                          <CircleIcon sx={{
-                            fontSize: 8,
-                            color: proc.status === 'online'
-                              ? theme.palette.success.main
-                              : proc.status === 'stopped'
-                                ? theme.palette.text.disabled
-                                : theme.palette.error.main,
-                          }} />
-                          <Typography variant="body2" sx={{
-                            fontWeight: 600
-                          }}>{proc.name}</Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={proc.type} size="small" variant="outlined" sx={{ fontSize: 11, height: 22 }} />
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={proc.status}
-                          size="small"
-                          color={STATUS_COLORS[proc.status] || 'default'}
-                          variant="outlined"
-                          sx={{ fontSize: 11, height: 22 }}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
-                          {proc.pid ?? '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontSize: 12 }}>
-                          {formatUptime(proc.uptime)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontSize: 12 }}>
-                          {proc.cpu > 0 ? `${proc.cpu.toFixed(1)}%` : '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontSize: 12 }}>
-                          {formatMemory(proc.memory)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        {/*
-                          `restarts` is `number | null`: null means nothing
-                          counts them, which is the case for a pool row — a
-                          pool is not a supervisor child. Rendering the raw
-                          value printed an empty cell there, and comparing it
-                          to 0 is what broke this build for four days. An
-                          em dash says "not tracked", the same as the pid
-                          column above; a real zero still reads as zero.
-                        */}
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontSize: 12,
-                            color:
-                              proc.restarts !== null && proc.restarts > 0
-                                ? theme.palette.warning.main
-                                : undefined,
-                          }}
-                        >
-                          {proc.restarts ?? '—'}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <Table<SubProcessInfoDto>
+              columns={processColumns}
+              data={app.processes}
+              rowKey={(proc) => proc.name}
+              dense
+              containerSx={{ border: 'none', borderRadius: 0 }}
+            />
           </CardContent>
         </Card>
       )}
@@ -866,11 +887,9 @@ function MetricsTab({ appName }: { appName: string }) {
       </Stack>
       {/* CPU Chart */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle2', fontWeight: 600 } }}
           title="CPU Usage"
-          titleTypographyProps={{ variant: 'subtitle2', fontWeight: 600 }}
           subheader="Last 5 minutes"
-          subheaderTypographyProps={{ variant: 'caption' }}
           action={
             <Stack direction="row" spacing={0.5} sx={{
               alignItems: "center"
@@ -912,11 +931,9 @@ function MetricsTab({ appName }: { appName: string }) {
       </Card>
       {/* Memory Chart */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle2', fontWeight: 600 } }}
           title="Memory Usage"
-          titleTypographyProps={{ variant: 'subtitle2', fontWeight: 600 }}
           subheader="Last 5 minutes (MB)"
-          subheaderTypographyProps={{ variant: 'caption' }}
           sx={{ pb: 0 }}
         />
         <CardContent sx={{ pt: 0.5, pb: 1, '&:last-child': { pb: 1 } }}>

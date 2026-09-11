@@ -18,11 +18,6 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -31,7 +26,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { Breadcrumbs, FormAlert, PageContent } from '@omnitron-dev/prism';
+import { Breadcrumbs, FormAlert, PageContent, Table, type TableColumn } from '@omnitron-dev/prism';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,
@@ -40,7 +35,7 @@ import {
 } from '../../stores/project.store';
 import { formatUptime } from '../../utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import type { IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
+import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
 
 const STATUS_COLORS: Record<string, string> = {
   running: '#22c55e',
@@ -100,7 +95,7 @@ export default function StackDetailPage() {
   }, [activeProject, name, deleteStack, navigate]);
 
   if (!stack) {
-    return (
+  return (
       <PageContent>
         <Alert severity="warning">
           Stack "{name}" not found.{' '}
@@ -111,6 +106,108 @@ export default function StackDetailPage() {
       </PageContent>
     );
   }
+
+  const appColumns: TableColumn<IStackAppStatus>[] = [
+    { id: 'name', label: 'App', render: (app) => <Box sx={{ fontWeight: 600 }}>{app.name}</Box> },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (app) => (
+        <Chip
+          label={app.status}
+          size="small"
+          color={
+            app.status === 'online'
+              ? 'success'
+              : app.status === 'crashed' || app.status === 'errored'
+                ? 'error'
+                : 'default'
+          }
+          sx={{ height: 18, fontSize: '0.6rem' }}
+        />
+      ),
+    },
+    {
+      id: 'pid',
+      label: 'PID',
+      render: (app) => (
+        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.pid ?? '—'}</Box>
+      ),
+    },
+    { id: 'instances', label: 'Instances', render: (app) => app.instances },
+    {
+      id: 'uptime',
+      label: 'Uptime',
+      render: (app) => (
+        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+          {app.uptime > 0 ? formatUptime(app.uptime) : '—'}
+        </Box>
+      ),
+    },
+  ];
+
+  const nodeColumns: TableColumn<IStackNodeStatus>[] = [
+    {
+      id: 'host',
+      label: 'Host',
+      render: (node) => (
+        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+          {node.host}:{node.port}
+          {node.label && (
+            <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+              ({node.label})
+            </Typography>
+          )}
+        </Box>
+      ),
+    },
+    {
+      id: 'role',
+      label: 'Role',
+      render: (node) => <Chip label={node.role} size="small" sx={{ height: 18, fontSize: '0.6rem' }} />,
+    },
+    {
+      id: 'daemonRole',
+      label: 'Daemon',
+      render: (node) => (
+        <Chip
+          label={node.daemonRole}
+          size="small"
+          color={node.daemonRole === 'master' ? 'primary' : 'default'}
+          sx={{ height: 18, fontSize: '0.6rem' }}
+        />
+      ),
+    },
+    {
+      id: 'connected',
+      label: 'Status',
+      render: (node) => (
+        <>
+          <Box
+            component="span"
+            sx={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: node.connected ? '#22c55e' : '#ef4444',
+              mr: 0.5,
+            }}
+          />
+          {node.connected ? 'Connected' : 'Disconnected'}
+        </>
+      ),
+    },
+    {
+      id: 'lastSeen',
+      label: 'Last Seen',
+      render: (node) => (
+        <Box sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+          {node.lastSeen ? new Date(node.lastSeen).toLocaleTimeString() : '—'}
+        </Box>
+      ),
+    },
+  ];
 
   const isRunning = stack.status === 'running';
   const isStopped = stack.status === 'stopped';
@@ -214,45 +311,18 @@ export default function StackDetailPage() {
           <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem', mb: 1, display: 'block' }}>
             Applications ({stack.apps.length})
           </Typography>
-          {stack.apps.length > 0 ? (
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>App</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>PID</TableCell>
-                  <TableCell>Instances</TableCell>
-                  <TableCell>Uptime</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {stack.apps.map((app) => (
-                  <TableRow key={app.handleKey}>
-                    <TableCell sx={{ fontWeight: 600 }}>{app.name}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={app.status}
-                        size="small"
-                        color={app.status === 'online' ? 'success' : app.status === 'crashed' || app.status === 'errored' ? 'error' : 'default'}
-                        sx={{ height: 18, fontSize: '0.6rem' }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                      {app.pid ?? '—'}
-                    </TableCell>
-                    <TableCell>{app.instances}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                      {app.uptime > 0 ? formatUptime(app.uptime) : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-              No apps configured
-            </Typography>
-          )}
+          <Table<IStackAppStatus>
+            columns={appColumns}
+            data={stack.apps}
+            rowKey={(app) => app.handleKey}
+            dense
+            containerSx={{ border: 'none', borderRadius: 0 }}
+            emptyContent={
+              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                No apps configured
+              </Typography>
+            }
+          />
         </CardContent>
       </Card>
       {/* Overview */}
@@ -301,59 +371,13 @@ export default function StackDetailPage() {
             <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem', mb: 1, display: 'block' }}>
               Nodes ({stack.nodes.length})
             </Typography>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Host</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Daemon</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Last Seen</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {stack.nodes.map((node) => (
-                  <TableRow key={node.host}>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                      {node.host}:{node.port}
-                      {node.label && (
-                        <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-                          ({node.label})
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={node.role} size="small" sx={{ height: 18, fontSize: '0.6rem' }} />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={node.daemonRole}
-                        size="small"
-                        color={node.daemonRole === 'master' ? 'primary' : 'default'}
-                        sx={{ height: 18, fontSize: '0.6rem' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Box
-                        component="span"
-                        sx={{
-                          display: 'inline-block',
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: node.connected ? '#22c55e' : '#ef4444',
-                          mr: 0.5,
-                        }}
-                      />
-                      {node.connected ? 'Connected' : 'Disconnected'}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                      {node.lastSeen ? new Date(node.lastSeen).toLocaleTimeString() : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <Table<IStackNodeStatus>
+              columns={nodeColumns}
+              data={stack.nodes}
+              rowKey={(node) => node.host}
+              dense
+              containerSx={{ border: 'none', borderRadius: 0 }}
+            />
           </CardContent>
         </Card>
       )}

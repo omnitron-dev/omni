@@ -17,13 +17,12 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
-import MenuItem from '@mui/material/MenuItem';
 import Collapse from '@mui/material/Collapse';
 import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -177,6 +176,8 @@ export default function TracesPage() {
   const [serviceFilter, setServiceFilter] = useState('');
   const [operationFilter, setOperationFilter] = useState('');
   const [minDuration, setMinDuration] = useState('');
+  const [mapPage, setMapPage] = useState(0);
+  const [mapPageSize, setMapPageSize] = useState(25);
 
   // Shared polling loop — see `use-polled-resource`.
   //
@@ -218,6 +219,62 @@ export default function TracesPage() {
   const traceList = data?.traceList ?? [];
   const serviceMap = data?.serviceMap ?? [];
   const partialFailure = data?.partialFailure ?? null;
+
+  const serviceMapRows = serviceMap.slice(
+    mapPage * mapPageSize,
+    mapPage * mapPageSize + mapPageSize,
+  );
+
+  const serviceMapColumns: ColumnDef<ServiceMapEntry>[] = [
+    {
+      key: 'source',
+      header: 'Source',
+      render: (entry) => (
+        <Typography variant="caption" sx={{ fontWeight: 500 }}>
+          {entry.source}
+        </Typography>
+      ),
+    },
+    {
+      key: 'target',
+      header: 'Target',
+      render: (entry) => <Typography variant="caption">{entry.target}</Typography>,
+    },
+    {
+      key: 'callCount',
+      header: 'Calls',
+      align: 'right',
+      render: (entry) => (
+        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+          {entry.callCount}
+        </Typography>
+      ),
+    },
+    {
+      key: 'avgDuration',
+      header: 'Avg',
+      align: 'right',
+      render: (entry) => (
+        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+          {formatDuration(entry.avgDuration)}
+        </Typography>
+      ),
+    },
+    {
+      key: 'errorRate',
+      header: 'Err%',
+      align: 'right',
+      render: (entry) => (
+        <Typography
+          variant="caption"
+          sx={{ fontFamily: 'monospace' }}
+          color={entry.errorRate > 0.05 ? 'error.main' : 'text.secondary'}
+        >
+          {(entry.errorRate * 100).toFixed(1)}%
+        </Typography>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -271,9 +328,8 @@ export default function TracesPage() {
         {/* Trace List */}
         <Grid size={{ xs: 12, lg: 8 }}>
           <Card variant="outlined">
-            <CardHeader
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
               title="Recent Traces"
-              titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
               avatar={<TraceIcon />}
             />
             <TableContainer>
@@ -305,7 +361,7 @@ export default function TracesPage() {
                   ) : (
                     traceList.map((trace) => {
                       const hasErrors = trace.spans.some((s) => s.status === 'error');
-                      return (
+  return (
                         <TableRow key={trace.traceId}>
                           <TableCell colSpan={5} sx={{ p: 0 }}>
                             {/* A button, not a clickable Box: expanding a trace was
@@ -390,74 +446,32 @@ export default function TracesPage() {
         {/* Service Map */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Card variant="outlined">
-            <CardHeader
+            <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
               title="Service Map"
-              titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
               subheader="Service-to-service call counts"
-              subheaderTypographyProps={{ variant: 'caption' }}
             />
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Source</TableCell>
-                    <TableCell>Target</TableCell>
-                    <TableCell align="right">Calls</TableCell>
-                    <TableCell align="right">Avg</TableCell>
-                    <TableCell align="right">Err%</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {loading ? (
-                    [...Array(3)].map((_, i) => (
-                      <TableRow key={i}>
-                        {[...Array(5)].map((__, j) => (
-                          <TableCell key={j}><Skeleton width={50} height={20} /></TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : serviceMap.length === 0 ? (
-                    <TableEmptyRow
-                      colSpan={5}
-                      message="No service map data"
-                      error={error ?? partialFailure}
-                    />
-                  ) : (
-                    serviceMap.map((entry, i) => (
-                      <TableRow key={i} hover>
-                        <TableCell>
-                          <Typography variant="caption" sx={{
-                            fontWeight: 500
-                          }}>{entry.source}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption">{entry.target}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                            {entry.callCount}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                            {formatDuration(entry.avgDuration)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography
-                            variant="caption"
-                            sx={{ fontFamily: 'monospace' }}
-                            color={entry.errorRate > 0.05 ? 'error.main' : 'text.secondary'}
-                          >
-                            {(entry.errorRate * 100).toFixed(1)}%
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            {/*
+              The trace list above still builds its own rows — each is a single
+              full-width cell holding a button that expands the spans, which is
+              not a shape AdminDataTable has. This one is an ordinary table.
+            */}
+            <AdminDataTable<ServiceMapEntry>
+              columns={serviceMapColumns}
+              data={serviceMapRows}
+              total={serviceMap.length}
+              loading={loading}
+              loadError={error ?? partialFailure ?? null}
+              emptyMessage="No service map data"
+              rowKey={(entry) => `${entry.source}->${entry.target}`}
+              page={mapPage}
+              pageSize={mapPageSize}
+              onPageChange={setMapPage}
+              onPageSizeChange={(size) => {
+                setMapPageSize(size);
+                setMapPage(0);
+              }}
+              dense
+            />
           </Card>
         </Grid>
       </Grid>

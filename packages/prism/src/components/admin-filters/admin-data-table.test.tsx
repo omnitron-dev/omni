@@ -330,7 +330,9 @@ describe('rowSx', () => {
   it('is optional — rows render unstyled without it', () => {
     const { container } = render(
       <AdminDataTable
-        columns={[{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }]}
+        columns={[
+          { key: 'name', header: 'Name', render: (r: { id: string; name: string }) => r.name },
+        ]}
         data={[{ id: '1', name: 'only' }]}
         total={1}
         page={0}
@@ -340,5 +342,65 @@ describe('rowSx', () => {
       />,
     );
     expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+  });
+});
+
+describe('loading placeholders', () => {
+  const cols = [
+    { key: 'name', header: 'Name', render: (r: { id: string; name: string }) => r.name },
+    { key: 'status', header: 'Status', render: (r: { id: string; name: string }) => r.name },
+  ];
+
+  const skeletons = (c: HTMLElement) => c.querySelectorAll('.MuiSkeleton-root').length;
+
+  it('does not draw one placeholder per page slot', () => {
+    // pageSize is a ceiling on what the table MAY hold, not a prediction of
+    // what is coming. omnitron's /deployments has no deployments and drew 25.
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={[]}
+        total={0}
+        page={0}
+        pageSize={25}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        loading
+      />,
+    );
+    expect(skeletons(container)).toBe(5 * cols.length);
+  });
+
+  it('never overshoots a deliberately small page', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={[]}
+        total={0}
+        page={0}
+        pageSize={2}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        loading
+      />,
+    );
+    expect(skeletons(container)).toBe(2 * cols.length);
+  });
+
+  it('honours an explicit count', () => {
+    const { container } = render(
+      <AdminDataTable
+        columns={cols}
+        data={[]}
+        total={0}
+        page={0}
+        pageSize={25}
+        onPageChange={() => {}}
+        rowKey={(r) => r.id}
+        loading
+        loadingRows={3}
+      />,
+    );
+    expect(skeletons(container)).toBe(3 * cols.length);
   });
 });

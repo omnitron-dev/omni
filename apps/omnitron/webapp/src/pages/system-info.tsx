@@ -143,9 +143,8 @@ export default function SystemInfoPage() {
         {/* Daemon */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }}
               title="Daemon"
-              titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }}
               action={<Chip label={d?.daemon?.role ?? 'master'} size="small" color="primary" variant="outlined" sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }} />}
             />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
@@ -178,9 +177,8 @@ export default function SystemInfoPage() {
         {/* CPU */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }}
               title="CPU"
-              titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }}
               action={
                 d?.cpu?.currentLoad != null ? (
                   <Chip
@@ -243,7 +241,7 @@ export default function SystemInfoPage() {
         {/* Memory */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader title="Memory" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Memory" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               {d?.memory && (
                 <>
@@ -270,7 +268,7 @@ export default function SystemInfoPage() {
         {/* Disks */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader title="Disks" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Disks" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               {d?.disks?.length > 0 ? (
                 d.disks.map((disk: any, i: number) => (
@@ -295,7 +293,7 @@ export default function SystemInfoPage() {
         {/* Network */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader title="Network" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Network" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               {d?.network?.interfaces?.length > 0 ? (
                 <Stack spacing={1}>
@@ -353,7 +351,7 @@ export default function SystemInfoPage() {
         {d?.docker && (
           <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined" sx={cardSx}>
-              <CardHeader title="Docker" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+              <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Docker" />
               <CardContent sx={{ ...cardContentSx, pt: 0 }}>
                 <Stack spacing={0.5}>
                   <InfoRow label="Running" value={d.docker.running} />
@@ -368,7 +366,7 @@ export default function SystemInfoPage() {
         {/* OS */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader title="Operating System" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Operating System" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               <Stack spacing={0.5}>
                 <InfoRow label="Platform" value={d?.os?.platform ?? '--'} />
@@ -386,7 +384,7 @@ export default function SystemInfoPage() {
         {/* Build */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={cardSx}>
-            <CardHeader title="Build" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} />
+            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Build" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
               <Stack spacing={0.5}>
                 <InfoRow label="Console" value="Vite + React 19" mono />

@@ -435,11 +435,9 @@ export default function MetricsPage() {
       </Grid>
       {/* CPU Chart */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="CPU Usage"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
           subheader="Per-application CPU usage (last 5 minutes)"
-          subheaderTypographyProps={{ variant: 'caption' }}
         />
         <CardContent sx={{ pt: 0 }}>
           {loading ? (
@@ -451,11 +449,9 @@ export default function MetricsPage() {
       </Card>
       {/* Memory Chart */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Memory Usage"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
           subheader="Per-application memory consumption (MB)"
-          subheaderTypographyProps={{ variant: 'caption' }}
         />
         <CardContent sx={{ pt: 0 }}>
           {loading ? (
@@ -467,11 +463,9 @@ export default function MetricsPage() {
       </Card>
       {/* Log Volume Chart */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Log Lines by Level"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
           subheader="Cumulative totals in the log store — not a rate over time"
-          subheaderTypographyProps={{ variant: 'caption' }}
         />
         <CardContent sx={{ pt: 0 }}>
           {loading ? (

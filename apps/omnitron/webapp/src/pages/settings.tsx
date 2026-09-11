@@ -19,14 +19,7 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Chip from '@mui/material/Chip';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
 import Switch from '@mui/material/Switch';
@@ -42,7 +35,7 @@ import { alpha } from '@mui/material/styles';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
-import { FormAlert, TabPanel, Tabs } from '@omnitron-dev/prism';
+import { FormAlert, TabPanel, Table, Tabs, type TableColumn } from '@omnitron-dev/prism';
 import { useAuthStore } from 'src/auth/store';
 import { auth, getSessionId, nodes as nodesRpc } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
@@ -86,6 +79,11 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
         color: "text.secondary"
       }}>{label}</Typography>
       <Typography
+        // `value` is a ReactNode, and one caller passes a Chip — a <div>.
+        // Typography renders a <p> by default, and a <div> inside a <p> is
+        // invalid HTML that React reports as a nesting error. The element is
+        // a row label's value, not a paragraph.
+        component="div"
         variant="body2"
         sx={{
           fontWeight: 600,
@@ -108,7 +106,7 @@ function GeneralSection() {
 
   return (
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
-      <CardHeader title="Profile" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} subheader="Account information" subheaderTypographyProps={{ variant: 'caption' }} />
+      <CardHeader title="Profile" subheader="Account information" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         <Stack spacing={0.5}>
           <InfoRow label="Username" value={user.username} mono />
@@ -159,7 +157,7 @@ function SecuritySection() {
 
   return (
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
-      <CardHeader title="Change Password" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} subheader="Update your account credentials" subheaderTypographyProps={{ variant: 'caption' }} />
+      <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 }, subheader: { variant: 'caption' } }} title="Change Password" subheader="Update your account credentials" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         {success && <Alert severity="success" variant="outlined" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>Password changed successfully.</Alert>}
         {error && <FormAlert sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</FormAlert>}
@@ -226,69 +224,105 @@ function SessionsSection() {
     await fetchSessions();
   };
 
+  const sessionColumns: TableColumn<OmnitronActiveSession>[] = [
+    {
+      id: 'id',
+      label: 'Session',
+      render: (session) => (
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+            {session.id.slice(0, 8)}...
+          </Typography>
+          {session.current && (
+            <Chip
+              label="current"
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ height: 20, fontSize: 10 }}
+            />
+          )}
+        </Stack>
+      ),
+    },
+    {
+      id: 'ipAddress',
+      label: 'IP Address',
+      render: (session) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {session.ipAddress ?? '--'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'createdAt',
+      label: 'Created',
+      render: (session) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {timeAgo(session.createdAt)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'expiresAt',
+      label: 'Expires',
+      render: (session) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDateShort(session.expiresAt)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      align: 'center',
+      render: (session) =>
+        session.current ? null : (
+          <IconButton
+            size="small"
+            color="error"
+            disabled={revoking === session.id}
+            onClick={() => handleRevoke(session.id)}
+            title="Revoke session"
+          >
+            {revoking === session.id ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : (
+              <DeleteIcon sx={{ fontSize: 18 }} />
+            )}
+          </IconButton>
+        ),
+    },
+  ];
+
   return (
     <Card variant="outlined" sx={cardSx}>
-      <CardHeader
+      <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 700 } }}
         title="Active Sessions"
-        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }}
         subheader={loading ? 'Loading...' : `${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`}
-        subheaderTypographyProps={{ variant: 'caption' }}
         action={sessions.filter((s) => !s.current).length > 1 ? <Button size="small" color="error" variant="text" onClick={handleRevokeAll} sx={{ fontSize: '0.7rem' }}>Revoke All Others</Button> : undefined}
       />
       {error && <FormAlert sx={{ mx: 2, mb: 1 }} onClose={() => setError(null)}>{error}</FormAlert>}
-      {loading ? (
-        <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-          <Stack spacing={1}>{[...Array(2)].map((_, i) => <Skeleton key={i} height={48} />)}</Stack>
-        </CardContent>
-      ) : sessions.length === 0 ? (
-        <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>No active sessions found.</Typography>
-        </CardContent>
-      ) : (
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Session</TableCell>
-                <TableCell>IP Address</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell>Expires</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sessions.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell>
-                    <Stack direction="row" spacing={1} sx={{
-                      alignItems: "center"
-                    }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{session.id.slice(0, 8)}...</Typography>
-                      {session.current && <Chip label="current" size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: 10 }} />}
-                    </Stack>
-                  </TableCell>
-                  <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{session.ipAddress ?? '--'}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" sx={{
-                    color: "text.secondary"
-                  }}>{timeAgo(session.createdAt)}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" sx={{
-                    color: "text.secondary"
-                  }}>{formatDateShort(session.expiresAt)}</Typography></TableCell>
-                  <TableCell align="center">
-                    {!session.current && (
-                      <IconButton size="small" color="error" disabled={revoking === session.id} onClick={() => handleRevoke(session.id)} title="Revoke session">
-                        {revoking === session.id ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon sx={{ fontSize: 18 }} />}
-                      </IconButton>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+      {/*
+        One table, not three branches around one. prism's Table draws the
+        placeholder rows while loading and owns the empty state, so the card
+        no longer swaps between a Skeleton stack, a paragraph, and a table —
+        three layouts the reader saw flash past in sequence.
+      */}
+      <Table<OmnitronActiveSession>
+        columns={sessionColumns}
+        data={sessions}
+        rowKey={(session) => session.id}
+        loading={loading}
+        loadingRows={2}
+        dense
+        containerSx={{ border: 'none', borderRadius: 0 }}
+        emptyContent={
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            No active sessions found.
+          </Typography>
+        }
+      />
     </Card>
   );
 }
@@ -304,7 +338,7 @@ function AppearanceSection() {
 
   return (
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
-      <CardHeader title="Appearance" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} subheader="Customize the console interface" subheaderTypographyProps={{ variant: 'caption' }} />
+      <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 700 } }} title="Appearance" subheader="Customize the console interface" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         <Stack spacing={3}>
           <Box>
@@ -367,7 +401,7 @@ function NotificationsSection() {
 
   return (
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
-      <CardHeader title="Notifications" titleTypographyProps={{ variant: 'subtitle1', fontWeight: 700 }} subheader="Configure alert delivery preferences" subheaderTypographyProps={{ variant: 'caption' }} />
+      <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 700 } }} title="Notifications" subheader="Configure alert delivery preferences" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
         <Stack spacing={3}>
           <FormControlLabel

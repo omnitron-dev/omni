@@ -351,9 +351,8 @@ export default function PipelinesPage() {
       )}
       {/* Pipeline Definitions */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Pipeline Definitions"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
           avatar={<PipelineIcon />}
         />
         {/*
@@ -381,9 +380,8 @@ export default function PipelinesPage() {
       </Card>
       {/* Run History */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Run History"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
         />
         <TableContainer>
           <Table size="small">

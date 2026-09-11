@@ -465,11 +465,9 @@ export default function AlertsPage() {
       {/* Active Alerts */}
       {activeAlerts.filter((a) => !a.resolvedAt).length > 0 && (
         <Card variant="outlined">
-          <CardHeader
+          <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
             title="Active Alerts"
-            titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
             subheader={`${firingCount} alert${firingCount !== 1 ? 's' : ''} currently firing`}
-            subheaderTypographyProps={{ variant: 'caption' }}
           />
           <CardContent sx={{ pt: 0 }}>
             <Stack spacing={1}>
@@ -552,9 +550,8 @@ export default function AlertsPage() {
       )}
       {/* Alert Rules Table */}
       <Card variant="outlined">
-        <CardHeader
+        <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
           title="Alert Rules"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
         />
         <AdminDataTable<AlertRule>
           columns={ruleColumns}

@@ -56,6 +56,11 @@ export interface AdminDataTableProps<T> {
   total: number;
   /** Loading state */
   loading?: boolean;
+  /**
+   * Placeholder rows drawn while `loading`, capped by `pageSize`.
+   * Defaults to 5 — see the note where they are built.
+   */
+  loadingRows?: number;
   /** Current page (0-indexed) */
   page: number;
   /** Rows per page */
@@ -255,6 +260,7 @@ export function AdminDataTable<T>({
   data,
   total,
   loading = false,
+  loadingRows = 5,
   page,
   pageSize,
   onPageChange,
@@ -360,10 +366,18 @@ export function AdminDataTable<T>({
     [onPageSizeChange, onPageChange]
   );
 
-  // Skeleton rows for loading state
+  // Skeleton rows for loading state.
+  //
+  // Not `pageSize` of them. A page size of 25 or 100 is a ceiling on what the
+  // table MAY hold, not a prediction of what is coming, so a table that
+  // resolves to three rows — or to none — first drew a hundred grey bars and
+  // then threw them away. Measured on omnitron's /deployments, which has no
+  // deployments and flashed 25. Enough rows to read as a table, capped by the
+  // page size so a deliberately small page does not overshoot.
+  const skeletonRowCount = Math.max(1, Math.min(pageSize, loadingRows));
   const skeletonRows = useMemo(
     () =>
-      Array.from({ length: pageSize }, (_, i) => (
+      Array.from({ length: skeletonRowCount }, (_, i) => (
         <TableRow key={`skeleton-${i}`}>
           {selectable && (
             <TableCell padding="checkbox">
@@ -384,7 +398,7 @@ export function AdminDataTable<T>({
           ))}
         </TableRow>
       )),
-    [pageSize, columns, selectable]
+    [skeletonRowCount, columns, selectable]
   );
 
   const showBulkBar = selectable && selection.size > 0 && !!bulkActions;

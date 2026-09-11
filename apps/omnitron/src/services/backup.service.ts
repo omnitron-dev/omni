@@ -65,6 +65,20 @@ interface ScheduleEntry {
 const FULL_BACKUP_ARTEFACTS = ['storage-objects', 'tor-keys', 'daemon-state'] as const;
 
 /**
+ * Tor state that is re-fetched from the network, excluded from the key backup.
+ *
+ * These are the directory cache and its scratch files. They are identical
+ * across every Tor client, replaced on a schedule, and useless in a restore —
+ * a restored Tor re-downloads them before it does anything else.
+ */
+const TOR_REGENERABLE_STATE = [
+  './cached-*',
+  './diff-cache',
+  './unverified-*',
+  './lock',
+] as const;
+
+/**
  * Which databases a sweep should bound, given what is scheduled and what
  * actually has backups.
  *
@@ -345,7 +359,23 @@ export class BackupService {
     return this.indexBackupFile('storage-objects', filepath, 'storage-objects');
   }
 
-  /** Snapshot the Tor hidden-service keys (the .onion identity). */
+  /**
+   * Snapshot the Tor hidden-service keys (the .onion identity).
+   *
+   * `-C /var/lib/tor .` took the whole data directory, and what dominates that
+   * directory is Tor's DIRECTORY CACHE, not key material. Measured on this
+   * host: a 29 MiB archive of which `cached-microdescs` was 42.5 MiB
+   * uncompressed, `cached-microdescs.new` 16 MiB and
+   * `cached-microdesc-consensus` 3.5 MiB — against `hs_ed25519_secret_key`
+   * files of 96 bytes each. Forty such archives held 400 MiB, essentially all
+   * of it a public consensus any Tor client re-downloads in minutes, on a
+   * machine whose disk has filled before and taken the database and the onion
+   * with it.
+   *
+   * The exclusions are Tor's own regenerable state, by name. Everything else
+   * is kept, so a hidden-service directory added later is still captured
+   * without anyone remembering to update a list.
+   */
   async createTorKeysBackup(): Promise<BackupInfo> {
     const running = this.getRunningInfra();
     const container = running?.infra.getResolvedContainerName('tor');
@@ -353,7 +383,11 @@ export class BackupService {
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `tor-keys_${ts}_${randomUUID().slice(0, 8)}.tar.gz`);
     this.logger.info({ container }, 'Backing up tor hidden-service keys');
-    await this.execToFile(`docker exec ${container} tar czf - -C /var/lib/tor . > "${filepath}"`, filepath);
+    const excludes = TOR_REGENERABLE_STATE.map((g) => `--exclude='${g}'`).join(' ');
+    await this.execToFile(
+      `docker exec ${container} tar czf - ${excludes} -C /var/lib/tor . > "${filepath}"`,
+      filepath,
+    );
     return this.indexBackupFile('tor-keys', filepath, 'tor-keys');
   }
 

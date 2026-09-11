@@ -108,9 +108,54 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   protected readonly updatedAtColumn: string = 'updatedAt';
 
   constructor(
-    protected readonly db: Kysely<DB>,
+    protected db: Kysely<DB>,
     public readonly tableName: Table
-  ) {}
+  ) {
+    // T#84 follow-up — the shape check below told us WHAT the executor was;
+    // this is the answer to it.
+    //
+    // `db` is sometimes an unsettled Promise. Titan's `Container.loadModule`
+    // replaces every module provider's `useFactory` with a plain arrow that
+    // calls the original inside `runInModuleScope`, and registration decides
+    // async-ness from `useFactory.constructor.name === 'AsyncFunction'` — of
+    // the wrapper, which is always `Function`. So an `async useFactory` like
+    // `DATABASE_CONNECTION` is classified as synchronous, the guard that
+    // exists to stop a sync caller receiving an unsettled Promise never
+    // fires, and a repository built on the sync path keeps that Promise for
+    // the life of the process. Every query through it then threw here.
+    //
+    // Measured downstream 2026-09-11: `OrgAuditLogRepository` was one of them,
+    // so `Delivery.createPickupPoint` wrote its row and answered 500 on the
+    // audit write that followed, and redeeming a pickup code marked the
+    // parcel delivered and then answered 500. Fixing the classification in
+    // Titan is correct and is NOT this change: it makes those sync
+    // resolutions throw, and main's `DeliveryModule` eager-init does exactly
+    // one of them, so the app stops booting. That is a framework change with
+    // its own verification.
+    //
+    // This is the repository layer's half, and it is sound on its own terms:
+    // a connection handed to us as a promise is still the connection once it
+    // settles, so adopt it then. The window is one microtask after the
+    // connection resolves — long before any request — and a `db` that never
+    // settles still reaches the diagnostic in `executor`.
+    //
+    // `DeliveryConfigRepository` in the downstream project carries a hand-rolled version of
+    // this (`resolveExecutor()`, awaiting `this.db` on every call) written
+    // when someone hit the same wall and patched one repository. It is
+    // redundant now, and harmless.
+    const maybeThenable = db as unknown as { then?: unknown };
+    if (db != null && typeof maybeThenable.then === 'function') {
+      void (db as unknown as Promise<Kysely<DB>>).then(
+        (settled) => {
+          this.db = settled;
+        },
+        () => {
+          // Leave `db` as-is: the `executor` getter reports the shape it
+          // actually has, which is more useful than a second error here.
+        }
+      );
+    }
+  }
 
   protected get executor(): Executor<DB> {
     const e = getExecutor(this.db);

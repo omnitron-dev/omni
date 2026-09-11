@@ -295,8 +295,26 @@ function OverviewTab({
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontSize: 12, color: proc.restarts > 0 ? theme.palette.warning.main : undefined }}>
-                          {proc.restarts}
+                        {/*
+                          `restarts` is `number | null`: null means nothing
+                          counts them, which is the case for a pool row — a
+                          pool is not a supervisor child. Rendering the raw
+                          value printed an empty cell there, and comparing it
+                          to 0 is what broke this build for four days. An
+                          em dash says "not tracked", the same as the pid
+                          column above; a real zero still reads as zero.
+                        */}
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: 12,
+                            color:
+                              proc.restarts !== null && proc.restarts > 0
+                                ? theme.palette.warning.main
+                                : undefined,
+                          }}
+                        >
+                          {proc.restarts ?? '—'}
                         </Typography>
                       </TableCell>
                     </TableRow>

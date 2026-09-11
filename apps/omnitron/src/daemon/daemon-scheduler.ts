@@ -36,6 +36,13 @@ export function registerDaemonJobs(
 ): void {
   const { logger, orchestrator, authService, metricsService, alertService, fleetService, logManager } = deps;
   const jobs: string[] = [];
+  // Three of the five jobs below register only when an optional service is
+  // present — all of them "master only, requires PG". The log line at the end
+  // used to name what DID register, which tells a reader five without telling
+  // them whether five is all of them. A job that never registers is a sweep
+  // that never runs, and this platform has already paid for one of those going
+  // unnoticed for four months.
+  const skipped: Array<{ job: string; because: string }> = [];
 
   // Session cleanup — every 5 minutes (master only — requires PG)
   if (authService) {
@@ -48,6 +55,8 @@ export function registerDaemonJobs(
       }
     });
     jobs.push('session-cleanup');
+  } else {
+    skipped.push({ job: 'session-cleanup', because: 'no auth service (master only — requires PG)' });
   }
 
   // Metrics collection — poll app state and record via titan-metrics
@@ -91,6 +100,8 @@ export function registerDaemonJobs(
       }
     });
     jobs.push('alert-evaluation');
+  } else {
+    skipped.push({ job: 'alert-evaluation', because: 'no alert service (master only — requires PG)' });
   }
 
   // Fleet heartbeat sweep (master only — requires PG)
@@ -103,6 +114,8 @@ export function registerDaemonJobs(
       }
     });
     jobs.push('fleet-heartbeat');
+  } else {
+    skipped.push({ job: 'fleet-heartbeat', because: 'no fleet service (master only — requires PG)' });
   }
 
   // Log rotation check — every 60s
@@ -116,4 +129,7 @@ export function registerDaemonJobs(
   jobs.push('log-rotation');
 
   logger.info({ jobs }, 'Daemon scheduler jobs registered');
+  if (skipped.length > 0) {
+    logger.info({ skipped }, `${skipped.length} daemon job(s) not registered — their service is absent`);
+  }
 }

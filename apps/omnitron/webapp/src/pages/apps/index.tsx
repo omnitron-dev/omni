@@ -3,17 +3,10 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Card from '@mui/material/Card';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
-import { Breadcrumbs } from '@omnitron-dev/prism';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import { Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 
@@ -151,6 +144,116 @@ export default function AppsListPage() {
     }
   };
 
+  // Columns are data, so they live outside the JSX. `render` gets the whole
+  // row, which is what every cell here needs.
+  const columns: TableColumn<ProcessInfoDto>[] = [
+    {
+      id: 'name',
+      label: 'Name',
+      render: (app) => (
+        // A real link, not just a clickable row. The row's onClick is a
+        // convenience for a pointer; it is not reachable by keyboard and
+        // announces nothing, so it was the only way into an app's detail page
+        // and a keyboard user had none.
+        <Link
+          component={RouterLink}
+          to={`/apps/${app.name}`}
+          variant="body2"
+          underline="hover"
+          sx={{ fontWeight: 600, color: 'text.primary' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {app.name}
+        </Link>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (app) => (
+        <Chip
+          label={app.status}
+          size="small"
+          color={STATUS_COLORS[app.status] || 'default'}
+          variant="outlined"
+        />
+      ),
+    },
+    { id: 'instances', label: 'Instances', align: 'right' },
+    {
+      id: 'pid',
+      label: 'PID',
+      align: 'right',
+      render: (app) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+          {app.pid ?? '--'}
+        </Typography>
+      ),
+    },
+    { id: 'uptime', label: 'Uptime', render: (app) => formatUptime(app.uptime) },
+    {
+      id: 'cpu',
+      label: 'CPU %',
+      align: 'right',
+      render: (app) => (app.cpu > 0 ? app.cpu.toFixed(1) : '--'),
+    },
+    {
+      id: 'memory',
+      label: 'Memory MB',
+      align: 'right',
+      render: (app) => formatMemoryMb(app.memory),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      align: 'center',
+      render: (app) => (
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{ justifyContent: 'center' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
+            <Tooltip title="Start">
+              <IconButton
+                size="small"
+                color="success"
+                disabled={actionLoading === app.name}
+                onClick={() => handleStart(app.name)}
+              >
+                <PlayIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <>
+              <Tooltip title="Restart">
+                <IconButton
+                  size="small"
+                  color="warning"
+                  disabled={actionLoading === app.name}
+                  onClick={() => handleRestart(app.name)}
+                >
+                  <RestartIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Stop">
+                <IconButton
+                  size="small"
+                  color="error"
+                  disabled={actionLoading === app.name}
+                  onClick={() => handleStop(app.name)}
+                >
+                  <StopIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
+        </Stack>
+      ),
+    },
+  ];
+
   return (
     <Stack spacing={3}>
       <Breadcrumbs
@@ -167,146 +270,29 @@ export default function AppsListPage() {
           {error}
         </Alert>
       )}
-      <Card variant="outlined">
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Instances</TableCell>
-                <TableCell align="right">PID</TableCell>
-                <TableCell>Uptime</TableCell>
-                <TableCell align="right">CPU %</TableCell>
-                <TableCell align="right">Memory MB</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(8)].map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton width={j === 0 ? 120 : 60} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : apps.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8}>
-                    <Stack
-                      spacing={1}
-                      sx={{
-                        alignItems: "center",
-                        py: 4
-                      }}>
-                      <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                      }}>
-                        No applications deployed yet.
-                      </Typography>
-                      <Typography variant="caption" sx={{
-                        color: "text.disabled"
-                      }}>
-                        Use <code>omnitron deploy</code> to get started.
-                      </Typography>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                apps.map((app) => (
-                  <TableRow
-                    key={app.name}
-                    hover
-                    sx={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/apps/${app.name}`)}
-                  >
-                    <TableCell>
-                      {/* A real link, not just a clickable row. The row's
-                          onClick is a convenience for a pointer; it is not
-                          reachable by keyboard and announces nothing, so it
-                          was the only way into an app's detail page and a
-                          keyboard user had none. */}
-                      <Link
-                        component={RouterLink}
-                        to={`/apps/${app.name}`}
-                        variant="body2"
-                        underline="hover"
-                        sx={{ fontWeight: 600, color: 'text.primary' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {app.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={app.status}
-                        size="small"
-                        color={STATUS_COLORS[app.status] || 'default'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell align="right">{app.instances}</TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {app.pid ?? '--'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{formatUptime(app.uptime)}</TableCell>
-                    <TableCell align="right">
-                      {app.cpu > 0 ? app.cpu.toFixed(1) : '--'}
-                    </TableCell>
-                    <TableCell align="right">{formatMemoryMb(app.memory)}</TableCell>
-                    <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                      <Stack direction="row" spacing={0.5} sx={{
-                        justifyContent: "center"
-                      }}>
-                        {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
-                          <Tooltip title="Start">
-                            <IconButton
-                              size="small"
-                              color="success"
-                              disabled={actionLoading === app.name}
-                              onClick={() => handleStart(app.name)}
-                            >
-                              <PlayIcon sx={{ fontSize: 18 }} />
-                            </IconButton>
-                          </Tooltip>
-                        ) : (
-                          <>
-                            <Tooltip title="Restart">
-                              <IconButton
-                                size="small"
-                                color="warning"
-                                disabled={actionLoading === app.name}
-                                onClick={() => handleRestart(app.name)}
-                              >
-                                <RestartIcon sx={{ fontSize: 18 }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Stop">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                disabled={actionLoading === app.name}
-                                onClick={() => handleStop(app.name)}
-                              >
-                                <StopIcon sx={{ fontSize: 18 }} />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
+      {/*
+        prism's Table, not a hand-built one: the header, the hover/selected
+        row styling, the empty state and the loading placeholders are the
+        design system's, so this page describes its COLUMNS and nothing else.
+      */}
+      <Table<ProcessInfoDto>
+        columns={columns}
+        data={apps}
+        rowKey={(app) => app.name}
+        loading={loading}
+        loadingRows={3}
+        onRowClick={(app) => navigate(`/apps/${app.name}`)}
+        emptyContent={
+          <Stack spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              No applications deployed yet.
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+              Use <code>omnitron deploy</code> to get started.
+            </Typography>
+          </Stack>
+        }
+      />
       <Typography
         variant="caption"
         sx={{

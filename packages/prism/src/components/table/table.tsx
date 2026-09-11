@@ -18,6 +18,7 @@ import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
 import TablePagination from '@mui/material/TablePagination';
 import Checkbox from '@mui/material/Checkbox';
+import Skeleton from '@mui/material/Skeleton';
 import Paper from '@mui/material/Paper';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -87,8 +88,13 @@ export interface TableProps<T> extends Omit<MuiTableProps, 'children'> {
   rowsPerPageOptions?: number[];
   /** Empty state content */
   emptyContent?: ReactNode;
-  /** Loading state */
+  /**
+   * Loading state. Renders placeholder rows in the body and suppresses the
+   * empty state, so the header and column widths stay put while data arrives.
+   */
   loading?: boolean;
+  /** Placeholder rows drawn while `loading`. */
+  loadingRows?: number;
   /** Dense padding */
   dense?: boolean;
   /** Sticky header */
@@ -180,6 +186,7 @@ export function Table<T>({
     rowsPerPageOptions = [5, 10, 25, 50],
     emptyContent,
     loading = false,
+    loadingRows = 5,
     dense = false,
     stickyHeader = false,
     maxHeight,
@@ -320,7 +327,29 @@ export function Table<T>({
         </StyledTableHead>
 
         <TableBody>
-          {displayData.map((row, index) => {
+          {/*
+            `loading` used to do one thing — suppress the empty state — which
+            left every consumer to hand-roll its own skeleton rows, or to show
+            a bare header and call it a loading state. Draw them here, inside
+            the real table, so the columns do not jump when the data lands.
+          */}
+          {loading &&
+            Array.from({ length: Math.max(1, loadingRows) }, (_, rowIndex) => (
+              <TableRow key={`loading-${rowIndex}`}>
+                {selectable && (
+                  <TableCell padding="checkbox">
+                    <Skeleton variant="rectangular" width={18} height={18} />
+                  </TableCell>
+                )}
+                {columns.map((column) => (
+                  <TableCell key={String(column.id)} align={column.align || 'left'}>
+                    <Skeleton variant="text" width={column.width ?? '80%'} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          {!loading &&
+            displayData.map((row, index) => {
             const key = getRowKey(row, index);
             const isSelected = selected.includes(key);
 
@@ -355,8 +384,8 @@ export function Table<T>({
                   );
                 })}
               </StyledTableRow>
-            );
-          })}
+              );
+            })}
         </TableBody>
       </MuiTable>
 

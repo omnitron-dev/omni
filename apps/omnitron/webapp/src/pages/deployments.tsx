@@ -1,18 +1,10 @@
 import { useState } from 'react';
-import Card from '@mui/material/Card';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -21,12 +13,11 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism';
+import { AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 import { deploy } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { TableEmptyRow } from 'src/components/table-empty-row';
 import { settledPair } from 'src/utils/settled-pair';
 
 // ---------------------------------------------------------------------------
@@ -183,6 +174,8 @@ export default function DeploymentsPage() {
 
   // A failed button press is a different thing from a stale poll.
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
 
   const deployments = data?.deployments ?? [];
   const availableApps = data?.availableApps ?? [];
@@ -198,6 +191,96 @@ export default function DeploymentsPage() {
       setActionError(err?.message ?? 'Failed to start deployment');
     }
   };
+
+  const pageRows = deployments.slice(page * pageSize, page * pageSize + pageSize);
+
+  const columns: ColumnDef<Deployment>[] = [
+    {
+      key: 'app',
+      header: 'App',
+      render: (dep) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {dep.app}
+        </Typography>
+      ),
+    },
+    {
+      key: 'version',
+      header: 'Version',
+      render: (dep) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
+          {dep.version}
+        </Typography>
+      ),
+    },
+    {
+      key: 'previousVersion',
+      header: 'Previous',
+      render: (dep) => (
+        <Typography
+          variant="caption"
+          sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: 12 }}
+        >
+          {dep.previousVersion || '--'}
+        </Typography>
+      ),
+    },
+    {
+      key: 'strategy',
+      header: 'Strategy',
+      render: (dep) => (
+        <Chip
+          label={dep.strategy}
+          size="small"
+          variant="outlined"
+          sx={{ textTransform: 'capitalize', fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (dep) => (
+        <Chip
+          label={STATUS_LABELS[dep.status] ?? dep.status}
+          size="small"
+          color={STATUS_COLORS[dep.status] ?? 'default'}
+          variant="filled"
+          sx={{ fontWeight: 600 }}
+        />
+      ),
+    },
+    {
+      key: 'startedAt',
+      header: 'Started',
+      render: (dep) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDate(dep.startedAt)}
+        </Typography>
+      ),
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      render: (dep) => {
+        const ms = deploymentDuration(dep);
+        return (
+          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            {ms === null ? '--' : formatDuration(ms)}
+          </Typography>
+        );
+      },
+    },
+    {
+      key: 'deployedBy',
+      header: 'Deployed By',
+      render: (dep) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {dep.deployedBy ?? '--'}
+        </Typography>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -220,123 +303,36 @@ export default function DeploymentsPage() {
           </Stack>
         }
       />
-      {(error || actionError || partialFailure) && (
+      {actionError && (
         <Alert severity="warning" variant="outlined" onClose={() => setActionError(null)}>
-          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
+          {actionError}
         </Alert>
       )}
-      {/* Deployments Table */}
-      <Card variant="outlined">
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>App</TableCell>
-                <TableCell>Version</TableCell>
-                <TableCell>Previous</TableCell>
-                <TableCell>Strategy</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Started</TableCell>
-                <TableCell>Duration</TableCell>
-                <TableCell>Deployed By</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(8)].map((__, j) => (
-                      <TableCell key={j}>
-                        <Skeleton width={80} height={20} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : deployments.length === 0 ? (
-                <TableEmptyRow
-                      colSpan={8}
-                      message="No deployments yet"
-                      error={error ?? partialFailure}
-                    />
-              ) : (
-                deployments.map((dep) => (
-                  <TableRow
-                    key={dep.id}
-                    hover
-                    sx={{ '&:last-child td': { borderBottom: 0 } }}
-                  >
-                    <TableCell>
-                      <Typography variant="body2" sx={{
-                        fontWeight: 600
-                      }}>
-                        {dep.app}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontFamily: 'monospace', fontSize: 13 }}
-                      >
-                        {dep.version}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: "text.secondary",
-                          fontFamily: 'monospace',
-                          fontSize: 12
-                        }}>
-                        {dep.previousVersion || '--'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={dep.strategy}
-                        size="small"
-                        variant="outlined"
-                        sx={{ textTransform: 'capitalize', fontSize: 11 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={STATUS_LABELS[dep.status] ?? dep.status}
-                        size="small"
-                        color={STATUS_COLORS[dep.status] ?? 'default'}
-                        variant="filled"
-                        sx={{ fontWeight: 600 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="caption" sx={{
-                        color: "text.secondary"
-                      }}>
-                        {formatDate(dep.startedAt)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                        {(() => {
-                          const ms = deploymentDuration(dep);
-                          return ms === null ? '--' : formatDuration(ms);
-                        })()}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="caption" sx={{
-                        color: "text.secondary"
-                      }}>
-                        {dep.deployedBy ?? '--'}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
+      {/*
+        prism's AdminDataTable, which owns the distinction this page used to
+        make with a local `TableEmptyRow` plus an Alert above the table: no
+        rows AND a failure says "could not load"; rows AND a failure says
+        "some of this is missing". Both used to be one warning bar that also
+        carried action failures, so "the deploy button did not work" and "the
+        list you are reading is incomplete" looked the same.
+      */}
+      <AdminDataTable<Deployment>
+        columns={columns}
+        data={pageRows}
+        total={deployments.length}
+        loading={loading}
+        loadError={error ?? partialFailure ?? null}
+        emptyMessage="No deployments yet"
+        rowKey={(dep) => dep.id}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(0);
+        }}
+        dense
+      />
       {/* Deploy Dialog */}
       <DeployDialog
         open={dialogOpen}

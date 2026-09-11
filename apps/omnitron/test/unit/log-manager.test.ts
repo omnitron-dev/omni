@@ -201,4 +201,47 @@ describe('LogManager', () => {
       expect(logs.map((l) => l.level)).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
     });
   });
+
+  /**
+   * `inspect` told operators to tail a file nothing writes.
+   *
+   * LogManager picks its layout by counting slashes in the app name: three or
+   * more parts means project mode (`projects/{project}/{stack}/logs/{app}/`),
+   * fewer means standalone (`logs/{app}/`). The writer is driven by the
+   * fully-qualified handle name, so logs land in the project path — while
+   * `DaemonRpcService.inspect` passed the name the OPERATOR typed, and
+   * `omnitron inspect main` answered `~/.omnitron/logs/main/app.log`.
+   *
+   * What made it costly rather than cosmetic: that file EXISTS on a machine
+   * old enough to predate project mode, full of genuine log lines from days
+   * earlier, so tailing it during an incident reads as an app that has gone
+   * quiet. `getLogFilePath` mkdirs its own answer, so asking the wrong
+   * question is what created the decoy in the first place.
+   */
+  describe('name resolution', () => {
+    it('puts a qualified app under its project, and a bare name somewhere else', () => {
+      const manager = new LogManager(config, createMockOrchestrator());
+      const qualified = manager.getLogFilePath('acme/dev/main', 'app');
+      const bare = manager.getLogFilePath('main', 'app');
+
+      expect(qualified.endsWith(path.join('projects', 'downstream', 'dev', 'logs', 'main', 'app.log'))).toBe(true);
+      expect(bare.endsWith(path.join('logs', 'main', 'app.log'))).toBe(true);
+      expect(bare).not.toContain('projects');
+      // The difference IS the defect. A future layout change that collapses
+      // the two should fail here loudly rather than quietly making the
+      // caller's mistake harmless.
+      expect(qualified).not.toBe(bare);
+      // The two must differ — that difference is the whole defect, and a
+      // future layout change that collapses them should fail here loudly
+      // rather than quietly making the caller's mistake harmless.
+      expect(qualified).not.toBe(bare);
+    });
+
+    it('creates the directory it names, which is why the wrong name leaves a decoy', () => {
+      const manager = new LogManager(config, createMockOrchestrator());
+      const bare = manager.getLogFilePath('main', 'app');
+      expect(fs.existsSync(path.dirname(bare))).toBe(true);
+    });
+  });
+
 });

@@ -440,9 +440,22 @@ export class DaemonRpcService implements IDaemonService {
     // apps under ~/.omnitron/logs/{app}/. The exact resolution is
     // LogManager's responsibility — we just surface the result so
     // operators don't have to memorise which layout an app uses.
+    //
+    // `handle.name`, NOT `data.name`. LogManager picks the layout by
+    // counting slashes, so it needs the fully-qualified name the writer
+    // uses; `data.name` is whatever the operator typed. `omnitron inspect
+    // main` therefore reported ~/.omnitron/logs/main/app.log while the app
+    // was writing to ~/.omnitron/projects/acme/dev/logs/main/app.log — and
+    // the reported file EXISTS, left over from the standalone era and full
+    // of real log lines from days earlier, so tailing it during an incident
+    // looks like an app that has gone quiet. `getLogFilePath` also mkdirs
+    // its answer, so asking the wrong question created the decoy directory.
+    // `getHandle` already resolves a bare name (see its comment — the same
+    // bug was fixed for `omnitron env main`), so the qualified name is
+    // right here.
     const logPaths: LogPathsDto = {
-      app: this.logManager.getLogFilePath(data.name, 'app'),
-      error: this.logManager.getLogFilePath(data.name, 'error'),
+      app: this.logManager.getLogFilePath(handle.name, 'app'),
+      error: this.logManager.getLogFilePath(handle.name, 'error'),
     };
 
     const appConfig: Record<string, unknown> = {};

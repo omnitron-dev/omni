@@ -20,7 +20,7 @@ import { ContextManager, ContextProvider, resetContextManager } from './context.
 import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
 import { isMultiToken, getTokenName, isOptionalToken, createToken } from './token.js';
 import { Middleware, MiddlewarePipeline } from './middleware.js';
-import { isConstructor } from './provider-utils.js';
+import { isConstructor, isAsyncProvider } from './provider-utils.js';
 import { runInModuleScope } from './container/module-scope.js';
 import type { ContainerStore } from './container/store.js';
 import {
@@ -1785,10 +1785,19 @@ export class Container implements IContainer {
           if (providerWithFactory.useFactory && providerWithFactory.inject) {
             const originalFactory = providerWithFactory.useFactory;
             const moduleName = module.name;
+            // The wrapper is a plain function, so it ERASES the one signal
+            // registration uses to tell an async provider from a sync one
+            // (`useFactory.constructor.name === 'AsyncFunction'`). Carry the
+            // answer across explicitly, before `register()` reads it — see
+            // the note in `RegistrationService.createRegistration`.
+            const wasAsync = isAsyncProvider(providerObj as never);
             // Module scope propagates via AsyncLocalStorage — no shared
             // context mutation, exception-safe by construction.
             providerWithFactory.useFactory = (...args: unknown[]) =>
               runInModuleScope(moduleName, () => originalFactory(...args));
+            if (wasAsync) {
+              (providerObj as { async?: boolean }).async = true;
+            }
           }
           this.register(token, providerObj, options);
         }

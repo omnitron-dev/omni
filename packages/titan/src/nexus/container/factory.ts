@@ -70,16 +70,42 @@ export class FactoryService {
     }
 
     if ('useToken' in provider && provider.useToken) {
-      const aliasToken = provider.useToken;
-      return () => this.store.resolve(aliasToken);
+      return this.createAliasFactory(provider.useToken);
     }
 
     // Handle useExisting (NestJS-style alias provider)
     if ('useExisting' in provider && provider.useExisting) {
-      const aliasToken = provider.useExisting as InjectionToken<any>;
-      return () => this.store.resolve(aliasToken);
+      return this.createAliasFactory(provider.useExisting as InjectionToken<any>);
     }
 
     throw Errors.badRequest('Unable to create factory from provider for token ' + String(token));
+  }
+
+  /**
+   * An alias (`useToken` / `useExisting`) resolves whatever its target
+   * resolves to — including the target's SYNCHRONY.
+   *
+   * This used to be `() => this.store.resolve(aliasToken)` unconditionally,
+   * so an alias to an async provider forced a synchronous resolution from
+   * inside an asynchronous one. It did not look like a failure: the sync path
+   * returned the un-settled Promise, the consumer stored it, and the first
+   * query through it threw somewhere else entirely. Downstream hit this as
+   * `[TransactionAwareRepository] executor has no selectFrom` on every org
+   * audit write in main's delivery module, via `ORG_PGP_KEY_SERVICE` — a
+   * `useExisting` alias the scheduler resolves.
+   *
+   * Returning the promise is correct here: `resolveAsyncInternalCreate`
+   * awaits the factory's result for an async registration, and
+   * `createRegistration` marks an alias to an async target async, so the
+   * sync path refuses it instead of unwrapping nothing.
+   */
+  private createAliasFactory(aliasToken: InjectionToken<any>): () => any {
+    return () => {
+      const target = this.store.getRegistration(aliasToken);
+      if (target?.isAsync) {
+        return this.store.resolveAsyncInternal(aliasToken);
+      }
+      return this.store.resolve(aliasToken);
+    };
   }
 }

@@ -8,7 +8,7 @@
  */
 
 import { isToken } from '../token.js';
-import { isConstructor } from '../provider-utils.js';
+import { isConstructor, isAsyncProvider } from '../provider-utils.js';
 import { InvalidProviderError } from '../errors.js';
 import {
   Scope,
@@ -97,8 +97,37 @@ export class RegistrationService {
     // Create factory function
     const factory = createFactoryFn(token, provider);
 
-    // Determine if this registration should be async
-    let isAsync = 'useFactory' in provider && provider.useFactory?.constructor.name === 'AsyncFunction';
+    // Determine if this registration should be async.
+    //
+    // Delegated to `isAsyncProvider` rather than repeating the
+    // `constructor.name === 'AsyncFunction'` test inline, because that test
+    // alone is defeated by any WRAPPED factory. `Container.loadModule`
+    // replaces every module provider's `useFactory` with a plain arrow that
+    // calls the original inside `runInModuleScope` — so an `async useFactory`
+    // registered through a module arrived here as a sync `Function` and was
+    // classified as synchronous. Nothing then stopped `resolve()` from
+    // handing the raw Promise to a consumer: the downstream project's `DATABASE_CONNECTION` is
+    // an async factory, and a Singleton repository built on the sync path
+    // stored that Promise for the life of the process, so every query through
+    // it threw `[TransactionAwareRepository] executor has no selectFrom`.
+    // `loadModule` now carries the flag across the wrap, and
+    // `isAsyncProvider` honours it.
+    let isAsync = isAsyncProvider(provider as never);
+
+    // An alias is as async as what it points at. It carries no `inject`, so
+    // the dependency sweep below never saw it, and an alias to an async
+    // provider was classified synchronous — which is how a sync resolution
+    // reached one from inside an async one. See `createAliasFactory`.
+    if (!isAsync) {
+      const aliasTarget =
+        ('useToken' in provider && provider.useToken) ||
+        ('useExisting' in provider && (provider as { useExisting?: InjectionToken<any> }).useExisting);
+      if (aliasTarget) {
+        const targetReg = registrations.get(aliasTarget as InjectionToken<any>);
+        const reg = Array.isArray(targetReg) ? targetReg[0] : targetReg;
+        if (reg?.isAsync) isAsync = true;
+      }
+    }
 
     // Check if any injected dependency is async and propagate the async requirement
     if (dependencies && dependencies.length > 0 && !isAsync) {

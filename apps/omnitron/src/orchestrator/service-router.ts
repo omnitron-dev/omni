@@ -64,10 +64,24 @@ export class ServiceRouter {
   ): Promise<void> {
     const qualifiedName = serviceVersion ? `${serviceName}@${serviceVersion}` : serviceName;
 
-    if (this.services.has(qualifiedName)) {
-      this.logger.warn({ qualifiedName, processName }, 'Service already registered in router');
-      return;
-    }
+    // The daemon's Netron is the source of truth here, NOT `this.services`.
+    //
+    // `launchTopology` builds a fresh ServiceRouter on every app launch, so
+    // after a restart this map is empty while the daemon still holds the
+    // registration from the previous launch — bound to a pool whose workers
+    // are gone. The guard used to ask the empty map, find nothing, and call
+    // `exposeService`, which threw `Service already exposed`. The caller logs
+    // that and carries on, so the daemon kept the DEAD registration and every
+    // call through the name failed `Socket closed during RPC` — for the life
+    // of the daemon, not just until the next tick.
+    //
+    // Measured on 2026-09-11: pricing's OHLCV aggregation stopped for forty
+    // minutes across three restarts and did not recover; `queryInterface` from
+    // a fresh client still returned the full method list, and the first call
+    // threw. Only `omnitron down && up` cleared it.
+    //
+    // A new pool for a name must take over: the old one no longer exists.
+    await this.takeOverExisting(qualifiedName, processName);
 
     // Create a dynamic proxy class that delegates to pool.execute()
     const proxyInstance = this.createPoolProxy(pool, serviceName, serviceVersion, methodNames);
@@ -87,6 +101,26 @@ export class ServiceRouter {
       { processName, qualifiedName, methods: methodNames.length },
       'Pool service exposed on daemon Netron via ServiceRouter'
     );
+  }
+
+  /**
+   * Drop any registration already standing under `qualifiedName`, on the
+   * daemon and in this router, so the caller can register in its place.
+   *
+   * Silent when there is nothing there — that is the ordinary first launch.
+   */
+  private async takeOverExisting(qualifiedName: string, processName: string): Promise<void> {
+    const known = this.services.has(qualifiedName);
+    try {
+      await this.netron.peer.unexposeService(qualifiedName);
+      this.logger.info(
+        { qualifiedName, processName, knownToThisRouter: known },
+        'Replaced an existing registration for this service name'
+      );
+    } catch {
+      // Nothing was registered under that name — the normal first-launch path.
+    }
+    this.services.delete(qualifiedName);
   }
 
   /**

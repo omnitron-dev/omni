@@ -186,6 +186,10 @@ export class NotificationManager {
     });
 
     this.initializationDefer = defer();
+    // Nobody may be awaiting `initializationDefer.promise` at the moment it
+    // rejects below, and an unobserved rejection is itself fatal. This marks it
+    // observed without consuming it: every real `await` still sees the error.
+    this.initializationDefer.promise?.catch(() => undefined);
 
     this.loadLuaScripts().then(() => {
       // Guard against race condition: check if instance was destroyed before starting async operations
@@ -209,6 +213,30 @@ export class NotificationManager {
       }
 
       this.initializationDefer.resolve?.(true);
+    }).catch((err: unknown) => {
+      // Without this the whole manager hangs rather than fails.
+      //
+      // Six methods open with `await this.initializationDefer.promise` —
+      // `publish`, `subscribe`, `subscribeToDLQ`, `runLuaScript`,
+      // `waitUntilReady` and the batch helper. The deferred is resolved on the
+      // last line of the `then` above, so anything that threw before it left
+      // the promise pending FOREVER: every publish and every subscribe for the
+      // life of the process waited on an event that could no longer happen,
+      // with no timeout anywhere on that path. The rejection also had no
+      // handler, which ends the process by default — the two failure modes
+      // raced each other.
+      //
+      // It is not hypothetical. `subscribeToPatternUpdates` calls
+      // `createConnection`, and `new Redis(...)` throws synchronously on a
+      // malformed connection string; `dlqManager.startAutoCleanup` and
+      // `startHealthCheck` run there too. (`loadLuaScripts` itself cannot
+      // reject — it swallows everything, because the scripts are an optional
+      // optimisation.)
+      //
+      // Rejecting is the honest outcome: a caller learns the manager never
+      // came up, instead of waiting for it.
+      this.logger.error({ err }, 'Rotif initialization failed — the manager will not accept work');
+      this.initializationDefer.reject?.(err);
     });
   }
 

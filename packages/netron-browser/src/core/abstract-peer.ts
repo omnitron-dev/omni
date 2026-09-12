@@ -12,6 +12,7 @@ import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { Errors, NetronErrors } from '../errors/index.js';
 import { LRUCache, type LRUCacheStats } from '../utils/lru-cache.js';
+import { compareSemver } from '../utils/semver.js';
 
 /**
  * Default options for definition cache
@@ -37,24 +38,6 @@ export interface DefinitionCacheOptions {
   disabled?: boolean;
 }
 
-/**
- * Simple semver comparison for browser (without external dependencies)
- * This is a simplified version that handles basic semver comparison
- */
-function compareSemver(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-
-    if (p1 > p2) return 1;
-    if (p1 < p2) return -1;
-  }
-
-  return 0;
-}
 
 /**
  * Abstract base class representing a peer in the Netron network.

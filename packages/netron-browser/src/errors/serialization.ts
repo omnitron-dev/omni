@@ -209,28 +209,6 @@ export function parseWebSocketError(message: WebSocketErrorMessage): TitanError 
 }
 
 /**
- * Convert any error to TitanError
- */
-export function toTitanError(error: unknown): TitanError {
-  if (error instanceof TitanError) {
-    return error;
-  }
-
-  if (error instanceof Error) {
-    return new TitanError({
-      code: ErrorCode.INTERNAL_ERROR,
-      message: error.message,
-      cause: error,
-    });
-  }
-
-  return new TitanError({
-    code: ErrorCode.UNKNOWN_ERROR,
-    message: String(error),
-  });
-}
-
-/**
  * Check if a value is a serialized error
  */
 export function isSerializedError(value: any): value is SerializedError {

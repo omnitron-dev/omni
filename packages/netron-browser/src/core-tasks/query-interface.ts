@@ -9,6 +9,7 @@
 import type { Definition } from '../core/definition.js';
 import type { ServiceMetadata } from '../core/types.js';
 import { TitanError, ErrorCode } from '../errors/index.js';
+import { compareSemver } from '../utils/semver.js';
 
 /**
  * Query interface request
@@ -75,27 +76,6 @@ export function isQueryInterfaceResponse(obj: any): obj is QueryInterfaceRespons
   );
 }
 
-/**
- * Version comparison helper for browser (simplified semver)
- *
- * @param v1 - First version
- * @param v2 - Second version
- * @returns Comparison result (-1, 0, 1)
- */
-function compareSemver(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-
-    if (p1 > p2) return 1;
-    if (p1 < p2) return -1;
-  }
-
-  return 0;
-}
 
 /**
  * Resolve service name with version wildcard support

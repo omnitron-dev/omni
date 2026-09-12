@@ -861,4 +861,52 @@ describe('RequestBatcher — a throwing listener must not wedge the batcher', ()
 
     batcher.destroy?.();
   });
+
+  it('does not let a request-queued listener throw out of add()', async () => {
+    // The emit sits inside `add`'s Promise executor, between "the entry is in
+    // the queue" and "schedule the flush". A throwing listener therefore
+    // rejected the caller's promise for a request that HAD been accepted, and
+    // skipped the scheduling below it — so the entry sat in the queue with no
+    // timer and no size check, and nothing ever sent it.
+    const batcher = new RequestBatcher(baseUrl, { maxBatchSize: 1, maxBatchWait: 5, enableRetry: false });
+    batcher.on('request-queued', () => {
+      throw new Error('listener blew up');
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'batch-1',
+        success: true,
+        responses: [{ id: 'a', success: true, data: { ok: 1 } }],
+        hints: { successCount: 1, failureCount: 0 },
+      }),
+    } as never);
+
+    await expect(batcher.add(req('a'))).resolves.toEqual({ ok: 1 });
+
+    batcher.destroy?.();
+  });
+
+  it('reports the batch failure once, not the listener failure instead', async () => {
+    // `flushDetached`'s `.catch` exists so a failed flush leaves no unhandled
+    // rejection — and its entire body is an `emit('batch-error', …)`. A
+    // listener that threw produced exactly the rejection the handler was
+    // built to prevent, and Node ends the process on those. It also replaced
+    // the original error with the listener's own.
+    const batcher = new RequestBatcher(baseUrl, { maxBatchSize: 1, maxBatchWait: 5, enableRetry: false });
+    const seen: string[] = [];
+    batcher.on('batch-error', (e: { error: string }) => {
+      seen.push(e.error);
+      throw new Error('listener blew up');
+    });
+
+    mockFetch.mockRejectedValueOnce(new Error('network down'));
+    await expect(batcher.add(req('a'))).rejects.toThrow();
+
+    expect(seen.some((e) => /network down/.test(e)), 'the reported cause was the listener, not the network').toBe(true);
+
+    batcher.destroy?.();
+  });
 });

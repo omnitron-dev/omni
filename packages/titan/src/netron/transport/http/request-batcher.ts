@@ -124,7 +124,7 @@ export class RequestBatcher extends EventEmitter {
       this.queue.push(entry);
       this.stats.currentQueueSize = this.queue.length;
 
-      this.emit('request-queued', {
+      this.safeEmit('request-queued', {
         requestId: request.id,
         queueSize: this.queue.length,
       });
@@ -153,9 +153,34 @@ export class RequestBatcher extends EventEmitter {
    * still leave an unhandled rejection, which Node ends the process on, so
    * the failure is reported here instead.
    */
+  /**
+   * Emit without letting a listener's failure become the batcher's.
+   *
+   * `EventEmitter` runs listeners synchronously, so a throwing one propagates
+   * into whatever emitted. On the error paths that is exactly backwards: the
+   * `.catch` in `flushDetached` exists so a failed flush does NOT leave an
+   * unhandled rejection — and its whole body is an `emit('batch-error', …)`,
+   * so a listener that throws produces the very rejection the handler was
+   * built to prevent, and Node ends the process on those. One throwing
+   * listener also cost the original error, which was replaced by the
+   * listener's own, and a second `batch-error` for the same batch.
+   *
+   * Swallowing is the right answer here rather than reporting: the only
+   * channel left to report on is the one that just threw. The listener's bug
+   * stays the listener's.
+   */
+  private safeEmit(event: string, payload: unknown): void {
+    try {
+      this.emit(event as never, payload as never);
+    } catch {
+      // A listener threw. That is not a batcher failure, and there is
+      // nowhere left to say so that would not re-enter the same fault.
+    }
+  }
+
   private flushDetached(reason: 'size-limit' | 'timer' | 'age'): void {
     void this.flush(reason).catch((error: unknown) => {
-      this.emit('batch-error', { batchId: 'detached', size: 0, error: String(error) });
+      this.safeEmit('batch-error', { batchId: 'detached', size: 0, error: String(error) });
     });
   }
 
@@ -174,13 +199,16 @@ export class RequestBatcher extends EventEmitter {
     // `processing` is cleared in a `finally`, and must be.
     //
     // It was set here and cleared on the last line, with an `await` between.
-    // `processBatch` catches its own network errors, but its catch ends with
-    // `this.emit('batch-error', …)`, and an EventEmitter runs listeners
-    // synchronously — one throwing listener propagates out of the catch, out
-    // of `processBatch`, and past the assignment below. `processing` then
-    // stays true forever and every later `flush` returns at the guard above:
-    // the batcher stops flushing entirely, silently, for the life of the
-    // process. A flag set before an await belongs in a finally.
+    // `processBatch` catches its own network errors, but its catch ended with
+    // a bare `this.emit('batch-error', …)`, and an EventEmitter runs
+    // listeners synchronously — one throwing listener propagated out of the
+    // catch, out of `processBatch`, and past the assignment below.
+    // `processing` then stayed true forever and every later `flush` returned
+    // at the guard above: the batcher stopped flushing entirely, silently,
+    // for the life of the process. A flag set before an await belongs in a
+    // finally. `safeEmit` now stops the propagation at its source as well —
+    // both halves are needed, because the `finally` only limits the damage a
+    // listener's throw can do on its way past.
     this.processing = true;
     try {
       // Take up to maxBatchSize items from queue
@@ -208,7 +236,7 @@ export class RequestBatcher extends EventEmitter {
     const startTime = Date.now();
     const batchId = `batch-${++this.batchIdCounter}`;
 
-    this.emit('batch-start', {
+    this.safeEmit('batch-start', {
       batchId,
       size: batch.length,
       reason,
@@ -257,7 +285,7 @@ export class RequestBatcher extends EventEmitter {
           entry.resolve(result.data);
           this.stats.successfulRequests++;
 
-          this.emit('request-success', {
+          this.safeEmit('request-success', {
             requestId: result.id,
             latency: Date.now() - entry.timestamp,
           });
@@ -270,7 +298,7 @@ export class RequestBatcher extends EventEmitter {
             // Re-queue for retry
             this.queue.push(entry);
 
-            this.emit('request-retry', {
+            this.safeEmit('request-retry', {
               requestId: result.id,
               attempt: entry.retries,
               error: result.error,
@@ -279,7 +307,7 @@ export class RequestBatcher extends EventEmitter {
             entry.reject(Errors.internal(result.error?.message || 'Request failed'));
             this.stats.failedRequests++;
 
-            this.emit('request-failure', {
+            this.safeEmit('request-failure', {
               requestId: result.id,
               error: result.error,
             });
@@ -291,7 +319,7 @@ export class RequestBatcher extends EventEmitter {
       const latency = Date.now() - startTime;
       this.updateStatistics(batch.length, latency);
 
-      this.emit('batch-complete', {
+      this.safeEmit('batch-complete', {
         batchId,
         size: batch.length,
         latency,
@@ -313,7 +341,7 @@ export class RequestBatcher extends EventEmitter {
         }
       }
 
-      this.emit('batch-error', {
+      this.safeEmit('batch-error', {
         batchId,
         size: batch.length,
         error: error.message,

@@ -112,6 +112,54 @@ describe('Cache Utils', () => {
     });
   });
 
+  describe('estimateSize() — cycles and depth', () => {
+    // Every other test in this suite passes a tree. None passed a graph, which
+    // is why `const a = {}; a.self = a` answered RangeError for as long as the
+    // function existed. `LruCache.set` and `LfuCache.set` call it, and most
+    // callers do not await those promises, so the throw arrived as an
+    // unhandled rejection rather than a caught error.
+    it('does not recurse forever on a self-reference', () => {
+      const a: Record<string, unknown> = { name: 'room' };
+      a['self'] = a;
+      expect(() => estimateSize(a)).not.toThrow();
+      expect(estimateSize(a)).toBeGreaterThan(0);
+    });
+
+    it('does not recurse forever on a two-step cycle', () => {
+      // The shape of a tree node that carries a back-reference to its parent.
+      const parent: Record<string, unknown> = { id: 'p' };
+      const child: Record<string, unknown> = { id: 'c', parent };
+      parent['children'] = [child];
+      expect(() => estimateSize(parent)).not.toThrow();
+    });
+
+    it('handles a cycle through a Map, a Set and an array', () => {
+      const m = new Map<string, unknown>();
+      m.set('self', m);
+      const st = new Set<unknown>();
+      st.add(st);
+      const arr: unknown[] = [];
+      arr.push(arr);
+      expect(() => estimateSize(m)).not.toThrow();
+      expect(() => estimateSize(st)).not.toThrow();
+      expect(() => estimateSize(arr)).not.toThrow();
+    });
+
+    it('survives a chain deeper than the stack, with no cycle at all', () => {
+      let node: Record<string, unknown> = { end: true };
+      for (let i = 0; i < 50_000; i += 1) node = { next: node };
+      expect(() => estimateSize(node)).not.toThrow();
+    });
+
+    it('counts a repeated reference once as a value and then as a pointer', () => {
+      const shared = { a: 'x'.repeat(1000) };
+      const twice = { one: shared, two: shared };
+      const once = { one: shared };
+      // The second sighting adds a pointer, not another kilobyte.
+      expect(estimateSize(twice) - estimateSize(once)).toBeLessThan(100);
+    });
+  });
+
   describe('estimateSize()', () => {
     it('should estimate null/undefined size', () => {
       expect(estimateSize(null)).toBe(8);
@@ -198,6 +246,18 @@ describe('Cache Utils', () => {
         },
       };
       expect(estimateSize(nested)).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getExactSize() — the input its catch exists for', () => {
+    it('falls back instead of overflowing on a circular structure', () => {
+      // JSON.stringify throws TypeError here; the catch then called
+      // estimateSize, which used to throw RangeError on the same input. A
+      // fallback that fails harder than the thing it catches is not one.
+      const a: Record<string, unknown> = { id: 1 };
+      a['self'] = a;
+      expect(() => getExactSize(a)).not.toThrow();
+      expect(getExactSize(a)).toBeGreaterThan(0);
     });
   });
 

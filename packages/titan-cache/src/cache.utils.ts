@@ -80,11 +80,43 @@ export async function decompressValue<T>(data: Buffer, algorithm: CompressionAlg
 }
 
 /**
- * Estimate the size of a value in bytes
+ * A reference we have already counted, and the deepest we will walk.
+ *
+ * Without the first, an object that points back at itself recurses until the
+ * stack ends: `const a = {}; a.self = a` answered
+ * `RangeError: Maximum call stack size exceeded`. That is not a theoretical
+ * input — a row with a parent/child back-reference is the ordinary shape of a
+ * tree node, and this function is reached from `LruCache.set` and
+ * `LfuCache.set`, whose promises most callers do not await. A throw there is
+ * an unhandled rejection, not a caught error.
+ *
+ * The depth cap covers the other half: a long enough chain overflows the
+ * stack without ever repeating a reference. 128 is far past any value worth
+ * caching and far short of the ~10k frames V8 allows.
+ */
+const MAX_DEPTH = 128;
+
+/** A second sighting of the same object is a reference, so it costs a pointer. */
+const REFERENCE_SIZE = 8;
+
+/**
+ * Estimate the size of a value in bytes.
+ *
+ * Cycle-safe and depth-bounded: never throws, for any input.
  */
 export function estimateSize(value: unknown): number {
+  return estimateSizeInner(value, new WeakSet<object>(), 0);
+}
+
+function estimateSizeInner(value: unknown, seen: WeakSet<object>, depth: number): number {
   if (value === null || value === undefined) {
     return 8;
+  }
+
+  if (typeof value === 'object') {
+    if (seen.has(value)) return REFERENCE_SIZE;
+    if (depth >= MAX_DEPTH) return REFERENCE_SIZE;
+    seen.add(value);
   }
 
   switch (typeof value) {
@@ -113,21 +145,21 @@ export function estimateSize(value: unknown): number {
       if (Array.isArray(value)) {
         let size = 24 + value.length * 8;
         for (const item of value) {
-          size += estimateSize(item);
+          size += estimateSizeInner(item, seen, depth + 1);
         }
         return size;
       }
       if (value instanceof Map) {
         let size = 48;
         for (const [k, v] of value) {
-          size += estimateSize(k) + estimateSize(v);
+          size += estimateSizeInner(k, seen, depth + 1) + estimateSizeInner(v, seen, depth + 1);
         }
         return size;
       }
       if (value instanceof Set) {
         let size = 48;
         for (const item of value) {
-          size += estimateSize(item);
+          size += estimateSizeInner(item, seen, depth + 1);
         }
         return size;
       }
@@ -136,7 +168,7 @@ export function estimateSize(value: unknown): number {
         for (const key in value) {
           if (Object.prototype.hasOwnProperty.call(value, key)) {
             objSize += key.length * 2 + 8;
-            objSize += estimateSize((value as Record<string, unknown>)[key]);
+            objSize += estimateSizeInner((value as Record<string, unknown>)[key], seen, depth + 1);
           }
         }
         return objSize;
@@ -147,7 +179,14 @@ export function estimateSize(value: unknown): number {
 }
 
 /**
- * Get exact size by serializing
+ * Get exact size by serializing, falling back to the estimate.
+ *
+ * The catch exists for one input above all: a circular structure, which is
+ * what makes `JSON.stringify` throw. Until `estimateSize` grew its cycle
+ * guard, the fallback was itself the crash path — a clean
+ * `TypeError: Converting circular structure to JSON` became
+ * `RangeError: Maximum call stack size exceeded`, which is the one outcome
+ * a fallback must never produce.
  */
 export function getExactSize(value: unknown): number {
   try {

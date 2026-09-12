@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createGzip } from 'node:zlib';
 import { createReadStream, createWriteStream } from 'node:fs';
+import { ensurePrivateDir, sealFile, PRIVATE_FILE_MODE } from '../shared/private-files.js';
 import { pipeline } from 'node:stream/promises';
 import type { LogEntryDto } from '../config/types.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
@@ -84,7 +85,7 @@ export class LogManager {
     }
 
     // Ensure base log dir exists
-    fs.mkdirSync(path.join(this.baseDir, 'logs'), { recursive: true });
+    ensurePrivateDir(path.join(this.baseDir, 'logs'));
 
     // Periodic rotation check for daemon's own log files (every 60s)
     this.rotationCheckTimer = setInterval(() => {
@@ -142,7 +143,7 @@ export class LogManager {
    */
   getLogFilePath(appName: string, type: LogType = 'app'): string {
     const dir = this.getLogDir(appName);
-    fs.mkdirSync(dir, { recursive: true });
+    ensurePrivateDir(dir);
 
     if (appName === 'omnitron') {
       return path.join(dir, type === 'error' ? 'omnitron.error.log' : 'omnitron.log');
@@ -202,8 +203,14 @@ export class LogManager {
     let stream = this.writeStreams.get(filePath);
     if (!stream) {
       // Lazy-create the dir + stream. `flags: 'a'` = append + create.
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      stream = createWriteStream(filePath, { flags: 'a', encoding: 'utf-8' });
+      ensurePrivateDir(path.dirname(filePath));
+      // An application log is not public. Measured on this host: `main`'s
+      // `error.log` and `app.log` each held a line with a user's plaintext
+      // password, written by netron's rejected-request path — and the file
+      // was 0644. That path is fixed, but a log is made of whatever the
+      // application decided to write, so the mode has to hold regardless.
+      stream = createWriteStream(filePath, { flags: 'a', encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
+      sealFile(filePath);
       stream.on('error', (err) => {
          
         console.warn(`[LogManager] write stream error on ${filePath}: ${err.message}`);
@@ -311,7 +318,7 @@ export class LogManager {
     try { fs.renameSync(basePath, `${basePath}.1`); } catch { /* no current file */ }
 
     // Create fresh empty log file
-    try { fs.writeFileSync(basePath, '', 'utf-8'); } catch { /* non-critical */ }
+    try { fs.writeFileSync(basePath, '', { encoding: 'utf-8', mode: PRIVATE_FILE_MODE }); } catch { /* non-critical */ }
 
     // Notify listeners (pino stream reopening)
     for (const cb of this.onRotateCallbacks) {
@@ -331,7 +338,12 @@ export class LogManager {
 
   async compressFile(filePath: string): Promise<void> {
     const gzPath = filePath + '.gz';
-    await pipeline(createReadStream(filePath), createGzip(), createWriteStream(gzPath));
+    await pipeline(
+      createReadStream(filePath),
+      createGzip(),
+      createWriteStream(gzPath, { mode: PRIVATE_FILE_MODE }),
+    );
+    sealFile(gzPath);
     fs.unlinkSync(filePath);
   }
 

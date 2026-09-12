@@ -20,6 +20,7 @@ import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
+import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
 import { dumpToFile, restoreFromFile } from './backup-pipeline.js';
 import {
   parseSchedule,
@@ -132,7 +133,18 @@ export class BackupService {
   ) {
     this.logger = loggerModule.logger;
     this.backupDir = expandPath('~/.omnitron/backups');
-    fs.mkdirSync(this.backupDir, { recursive: true });
+    // 0700 on the directory, 0600 on every file in it — see `private-files`.
+    // The sweep reaches backwards on purpose: the files written before this
+    // existed are the ones that have been world-readable the longest, and a
+    // fix that only protects future backups protects nothing that matters.
+    ensurePrivateDir(this.backupDir);
+    const tightened = sealDirContents(this.backupDir);
+    if (tightened > 0) {
+      this.logger.warn(
+        { dir: this.backupDir, files: tightened },
+        'Backup files were readable beyond their owner — permissions tightened',
+      );
+    }
   }
 
   /**
@@ -202,6 +214,10 @@ export class BackupService {
         await this.pgDumpLocal(dbConfig, filepath, compress);
       }
 
+      // Before it is indexed, and therefore before anything else can learn
+      // the path: a pg_dump redirected into a file lands at whatever the
+      // umask says, which for a normal login shell is 0644.
+      sealFile(filepath);
       const stats = fs.statSync(filepath);
 
       const info: BackupInfo = {
@@ -259,6 +275,9 @@ export class BackupService {
 
   /** Index a already-written backup file into the SQLite backups table. */
   private indexBackupFile(app: string, filepath: string, type: string): BackupInfo {
+    // Every non-DB target — storage objects, tor keys, daemon-state — finishes
+    // here, which makes this the one place their mode can be set once.
+    sealFile(filepath);
     const stats = fs.statSync(filepath);
     const id = randomUUID();
     const createdAt = new Date().toISOString();

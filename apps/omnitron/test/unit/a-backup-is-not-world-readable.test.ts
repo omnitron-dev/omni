@@ -148,6 +148,21 @@ describe('the paths that produce these files seal them', () => {
     expect(src).toContain('sealDirContents(this.backupDir)');
   });
 
+  it('application log files are created private', () => {
+    // Not speculative: `main`'s error.log on this host held a user's plaintext
+    // password, put there by netron's rejected-request path. That path is
+    // fixed, but a log holds whatever the application writes, so the mode has
+    // to stand on its own.
+    const src = read('../../src/monitoring/log-manager.ts');
+
+    expect(src).toContain("createWriteStream(filePath, { flags: 'a', encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
+    expect(src).toContain('createWriteStream(gzPath, { mode: PRIVATE_FILE_MODE })');
+    expect(src, 'a rotation must not recreate the file at the umask default')
+      .toContain("fs.writeFileSync(basePath, '', { encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
+    // Every directory this manager makes goes through the same helper.
+    expect(/fs\.mkdirSync\([^)]*logs/.test(src), 'a log directory bypassed ensurePrivateDir').toBe(false);
+  });
+
   it('the daemon state database is sealed on both open paths', () => {
     const src = read('../../src/daemon/daemon-state-store.service.ts');
 

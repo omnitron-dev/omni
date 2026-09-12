@@ -36,12 +36,12 @@
  * adding a new key never requires a separate migration step.
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { expandPath } from '../shared/paths.js';
+import { ensurePrivateDir, sealFile } from '../shared/private-files.js';
 
 // `better-sqlite3` is loaded sync via createRequire because `initSync()`
 // can't `await import()`. The dynamic `await import()` in `getDb()`
@@ -149,12 +149,18 @@ export class DaemonStateStore {
    */
   initSync(): import('better-sqlite3').Database {
     if (this.rawSqlite) return this.rawSqlite;
-    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+    ensurePrivateDir(path.dirname(this.dbPath));
     const BetterSqlite3 = requireCjs('better-sqlite3') as typeof import('better-sqlite3');
     const database: import('better-sqlite3').Database = new BetterSqlite3(this.dbPath);
     database.pragma('journal_mode = WAL');
     database.pragma('busy_timeout = 5000');
     database.pragma('synchronous = NORMAL');
+    // better-sqlite3 creates the file at 0644 under a default umask, and this
+    // one holds the encrypted secrets, the project registry and the backup
+    // index. Sealed after the WAL pragma, because that is what creates the
+    // `-wal` and `-shm` sidecars — and they carry the same rows as the file
+    // they sit beside.
+    sealFile(this.dbPath);
     this.rawSqlite = database;
     // Apply DDL synchronously via raw exec — Kysely's sql tagged
     // template requires the async wrapper. The schema is small
@@ -396,7 +402,7 @@ export class DaemonStateStore {
     // lifetime, and the documented invariant becomes true.
     let database = this.rawSqlite;
     if (!database) {
-      fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+      ensurePrivateDir(path.dirname(this.dbPath));
       const BetterSqlite3 = (await import('better-sqlite3')).default;
       database = new BetterSqlite3(this.dbPath);
       // WAL mode + busy_timeout + synchronous=NORMAL is the same
@@ -405,6 +411,7 @@ export class DaemonStateStore {
       database.pragma('journal_mode = WAL');
       database.pragma('busy_timeout = 5000');
       database.pragma('synchronous = NORMAL');
+      sealFile(this.dbPath); // after the WAL pragma — see `initSync`
       this.rawSqlite = database;
     }
     const dialect = new SqliteDialect({ database });

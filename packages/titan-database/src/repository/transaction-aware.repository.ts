@@ -291,12 +291,12 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     // itself that surfaces as a 500 on a user's first query against the table,
     // with a message about a factory function this code does not call. The
     // check belongs here, where the name of the fix is known.
-    const uninitialized = plugins.filter((p) => !isTablePluginInitialized(p, this.db as object));
+    const uninitialized = plugins.filter((p) => !isTablePluginInitialized(p));
     if (uninitialized.length > 0) {
       throw new Error(
         `[TransactionAwareRepository] table "${String(this.tableName)}" has plugins that were never initialized: ` +
           `${uninitialized.map((p) => p.name).join(', ')}. ` +
-          'Call `await initializeTablePlugins(connection)` from the app bootstrap after registerTablePlugins(...).',
+          'Call `await initializeTablePlugins(connection)` where the connection is injected, after registerTablePlugins(...).',
       );
     }
 

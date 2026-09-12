@@ -73,47 +73,47 @@ export function getTablePlugins(tableName: string): Plugin[] {
  * yet" and "initialized", instead of discovering it from a user's 500.
  */
 const PLUGIN_INIT_KEY = Symbol.for('titan:database:plugin-initialized');
-const initializedPlugins: WeakMap<Plugin, WeakSet<object>> =
-  (globalStore[PLUGIN_INIT_KEY] as WeakMap<Plugin, WeakSet<object>> | undefined) ??=
-    new WeakMap<Plugin, WeakSet<object>>();
+const initializedPlugins: WeakSet<Plugin> =
+  (globalStore[PLUGIN_INIT_KEY] as WeakSet<Plugin> | undefined) ??= new WeakSet<Plugin>();
 
 /**
  * Run `onInit` for every plugin in the registry against `db`, once each.
  *
- * Call this from an app's bootstrap after its `registerTablePlugins(...)`
- * calls and before it serves traffic. Idempotent per (plugin, db): calling it
- * again after registering more plugins initializes only the new ones.
+ * Call it wherever the connection is reachable — in the downstream project that is a service
+ * with `DATABASE_CONNECTION` injected, not the `afterCreate` bootstrap hook,
+ * where the token is not yet registered in the system container. Idempotent:
+ * calling it again after registering more plugins initializes only the new
+ * ones.
  *
  * A plugin with no `onInit` is marked initialized immediately — there is
  * nothing to wait for, and treating it as pending would block a repository
  * that is perfectly ready.
  */
 export async function initializeTablePlugins(db: object): Promise<void> {
-  const seen = new Set<Plugin>();
   for (const plugins of globalPluginRegistry.values()) {
     for (const plugin of plugins) {
-      if (seen.has(plugin)) continue;
-      seen.add(plugin);
-      if (isTablePluginInitialized(plugin, db)) continue;
+      if (isTablePluginInitialized(plugin)) continue;
       await plugin.onInit?.(db as never);
-      let dbs = initializedPlugins.get(plugin);
-      if (!dbs) {
-        dbs = new WeakSet<object>();
-        initializedPlugins.set(plugin, dbs);
-      }
-      dbs.add(db);
+      initializedPlugins.add(plugin);
     }
   }
 }
 
 /**
- * Has this plugin been initialized against this database?
+ * Has this plugin been initialized?
+ *
+ * Keyed on the plugin alone, not on (plugin, database). `DATABASE_CONNECTION`
+ * is a live reference created fresh on every `getConnectionRef()` call, so
+ * object identity is not stable enough to key on — a repository built from one
+ * proxy and an initialization run against another would disagree forever. An
+ * application has one database; a plugin's `onInit` resolves its own schema
+ * and is idempotent per plugin instance.
  *
  * A plugin without `onInit` needs no initialization and always answers true.
  */
-export function isTablePluginInitialized(plugin: Plugin, db: object): boolean {
+export function isTablePluginInitialized(plugin: Plugin): boolean {
   if (typeof plugin.onInit !== 'function') return true;
-  return initializedPlugins.get(plugin)?.has(db) ?? false;
+  return initializedPlugins.has(plugin);
 }
 
 /**

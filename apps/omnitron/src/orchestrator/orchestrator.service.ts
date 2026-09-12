@@ -1022,6 +1022,26 @@ export class OrchestratorService extends EventEmitter {
    * bootstrap-config cache is cleared because changes to `bootstrap.ts`
    * (topology definition) need to take effect on the next start.
    */
+  /**
+   * Start an app this daemon already supervises, using the entry its handle
+   * carries.
+   *
+   * `startApp(entry)` needs an ecosystem entry, which the daemon's own config
+   * is only one source of — a project stack registers handles this daemon
+   * never declared. `restartAppNow` has always taken the entry off the handle
+   * for exactly that reason; this is the same move for a start, so the name
+   * `list` prints is a name `start` accepts.
+   *
+   * Returns `undefined` when the app is unknown, leaving the caller to decide
+   * what to say about a name that names nothing.
+   */
+  async startKnownApp(name: string): Promise<AppHandle | undefined> {
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
+    if (!handle) return undefined;
+    return this.startApp(handle.entry);
+  }
+
   private async restartAppNow(name: string): Promise<AppHandle> {
     const handle = this.handles.get(name);
     if (!handle) throw new Error(`Unknown app: ${name}`);

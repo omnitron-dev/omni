@@ -55,7 +55,37 @@ export class DaemonRpcService implements IDaemonService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startApp(data: { name: string }): Promise<ProcessInfoDto> {
     const entry = this.findConfiguredApp(data.name);
-    if (!entry) throw Errors.notFound('App', data.name);
+    if (!entry) {
+      // Nothing in THIS daemon's ecosystem config — but a project stack
+      // registers handles the daemon never declared, and those are the names
+      // `list` prints. `stop`, `restart` and `reload` all resolve through the
+      // registry; `start` alone stopped at the config, so every downstream backend
+      // could be stopped and restarted and not started: `omnitron start
+      // acme/dev/storage` answered "App with id acme/dev/storage not found"
+      // directly under an `ls` row reading `stopped`.
+      //
+      // The config still wins where it has an opinion; this only reaches
+      // names it has none about.
+      const known = this.orchestrator.getApp(data.name);
+      if (known) {
+        // Already up, or on its way: `start` is idempotent, not a second
+        // spawn racing the first.
+        if (known.status === 'online' || known.status === 'starting') return known;
+        await this.orchestrator.startKnownApp(data.name);
+        return this.orchestrator.getApp(data.name)!;
+      }
+
+      if (data.name.includes('/')) {
+        const [project, stack] = data.name.split('/');
+        throw Errors.notFound(
+          'App',
+          `${data.name} — this daemon declares no such app and none is registered under that name. ` +
+            `If it belongs to a registered project, bring its stack up with ` +
+            `\`omnitron stack start ${project} ${stack}\``,
+        );
+      }
+      throw Errors.notFound('App', data.name);
+    }
 
     // Accepting the canonical name is only half of it. `namespaceEntry` builds
     // the handle key from THIS daemon's config, and a daemon supervising

@@ -90,6 +90,18 @@ export class AppHandle {
   /** Netron-native service router for topology */
   public serviceRouter: ServiceRouter | null = null;
 
+  /**
+   * The app's own `logger.level`, read from its `config/default.json`.
+   *
+   * A child process builds its logger from `spawnOptions.logLevel`, which
+   * defaulted to `info` with nothing setting it — so an app configured at
+   * `error` still had every worker's netron logging at info. Measured on the
+   * stand: 13 lines on a boot, all `module=netron`, all from children, and
+   * zero from the app itself. The app knows its level; its children should
+   * start there.
+   */
+  public appLogLevel: ('fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent') | undefined;
+
   /** Process topology entries from defineSystem() */
   public topologyProcesses: IProcessEntry[] | null = null;
 

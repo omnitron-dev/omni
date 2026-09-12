@@ -90,6 +90,9 @@ const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
 const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
 import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
+
+/** Levels a pino logger accepts. A child is spawned with nothing else. */
+const PINO_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']);
 import { BuildService, type BuildResult } from './build-service.js';
 import { ProcessJanitor } from './process-janitor.js';
 import { collectOwnedPids } from './owned-pids.js';
@@ -1497,6 +1500,24 @@ export class OrchestratorService extends EventEmitter {
           if (json.omnitron) {
             definition.omnitronConfig = json.omnitron;
           }
+          // The same file already open, and the only place the parent can
+          // learn what the app chose. Children are spawned with it below.
+          //
+          // Validated rather than trusted: this is a hand-edited JSON file, and
+          // a level pino does not know ("verbose", a typo) would be handed
+          // straight to a child's logger constructor. An unrecognised value is
+          // an operator error worth naming, not a reason to spawn oddly.
+          const declared = json.logger?.level;
+          if (typeof declared === 'string') {
+            if (PINO_LEVELS.has(declared)) {
+              handle.appLogLevel = declared as typeof handle.appLogLevel;
+            } else {
+              this.logger.warn(
+                { app: entry.name, configPath, level: declared },
+                'config/default.json declares a logger level this runtime does not know — children keep the default',
+              );
+            }
+          }
         } catch (err) {
           this.logger.error(
             { app: entry.name, configPath, error: (err as Error).message },
@@ -1733,6 +1754,7 @@ export class OrchestratorService extends EventEmitter {
           name: `${entry.name}/${procEntry.name}`,
           version: '1.0.0',
           allMethodsPublic: true,
+          ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
           startupTimeout: procEntry.startupTimeout ?? 60_000,
           ...(entry.env && { env: entry.env as Record<string, string> }),
           ...((entry as any).cwd && { cwd: (entry as any).cwd }),
@@ -1913,6 +1935,7 @@ export class OrchestratorService extends EventEmitter {
           timeout: procEntry.health?.timeout ?? config.monitoring.healthCheck.timeout,
         },
         observability: { metrics: true },
+        ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
       };
 
       children.push({
@@ -2000,6 +2023,7 @@ export class OrchestratorService extends EventEmitter {
         timeout: config.monitoring.healthCheck.timeout,
       },
       observability: { metrics: true },
+      ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
     };
 
     const childConfig: ISupervisorChildConfig = {

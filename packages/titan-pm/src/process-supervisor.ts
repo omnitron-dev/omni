@@ -373,12 +373,36 @@ export class ProcessSupervisor extends EventEmitter {
     try {
       let proxy;
 
+      // A child's logger is built from `options.logLevel`, defaulting to
+      // `info` — and NOTHING set that option, so every worker logged at info
+      // however the application was configured.
+      //
+      // Measured on the stand: messaging with `logger.level: error` emitted 14
+      // lines on a boot, all info, all `module=netron`, all from child
+      // processes (`processName: acme/dev/messaging/http`) — zero from the app
+      // itself, which honours the level correctly. An operator who turns the
+      // level down does not quiet the request path, which is the component
+      // that was logging a rejected sign-in's password until 1ddde84.
+      //
+      // The parent knows its own level; the child should start where the
+      // parent is. An explicit `logLevel` still wins, so a noisy child can be
+      // turned up on its own.
+      const parentLevel = this.logger.getLevel?.();
+      const withLevel = (opts: any) =>
+        parentLevel && !opts?.logLevel ? { ...(opts ?? {}), logLevel: parentLevel } : opts;
+
       if (childDef.pool) {
-        // Create process pool
-        proxy = await this.manager.pool(childDef.processClass, childDef.pool);
+        // A pool builds each worker from `poolOptions.spawnOptions`, not from
+        // the pool options themselves — setting it on the root would be a
+        // field nothing reads, which is the shape this whole change exists to
+        // remove.
+        proxy = await this.manager.pool(childDef.processClass, {
+          ...childDef.pool,
+          spawnOptions: withLevel(childDef.pool.spawnOptions),
+        });
       } else {
         // Create single process
-        proxy = await this.manager.spawn(childDef.processClass, childDef.options);
+        proxy = await this.manager.spawn(childDef.processClass, withLevel(childDef.options));
       }
 
       this.children.set(name, { info: childDef, proxy });

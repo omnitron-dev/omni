@@ -34,6 +34,19 @@ import type { EventEmitter } from '@omnitron-dev/eventemitter';
  * pool options that `process-pool.ts` actually reads.
  */
 export interface IProcessOptions {
+  /**
+   * Log level for the child's own logger.
+   *
+   * Read by `worker-runtime` when it builds the worker's pino. It used to
+   * default to `info` with NOTHING setting it, so a child logged at info
+   * however the application was configured — measured on a real stand, an app
+   * at `logger.level: error` still emitted every `module=netron` line from its
+   * children. `ProcessSupervisor` now seeds it from the parent's own level;
+   * setting it explicitly still wins, so one noisy child can be turned up
+   * alone.
+   */
+  logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+
   /** Process name for identification */
   name?: string;
 

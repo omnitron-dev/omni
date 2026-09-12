@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
-import { SlidingWindowAlgorithm } from '../src/ratelimit.algorithms.js';
+import { SlidingWindowAlgorithm, TokenBucketAlgorithm } from '../src/ratelimit.algorithms.js';
 import { MemoryRateLimitStorage } from '../src/ratelimit.storage.js';
 
 const WINDOW = 60_000;
@@ -120,5 +120,58 @@ describe('MemoryRateLimitStorage.oldestScoreInSortedSet', () => {
     await storage.addToSortedSet('k', 200, 'b');
 
     expect(await storage.oldestScoreInSortedSet('k')).toBe(100);
+  });
+});
+
+describe('a token bucket reports time to ONE token, not to a full bucket', () => {
+  /**
+   * `retryAfter` reused `resetAt`'s number — the time to refill the bucket to
+   * CAPACITY. They answer different questions. A caller asks "when may I try
+   * again", which is when one token exists.
+   *
+   * With capacity 100 and a 100-per-minute refill, an empty bucket has a token
+   * in 0.6 s and is full in 60. Telling the caller 60 is a hundredfold
+   * over-statement, and the middleware puts it into `Retry-After` verbatim.
+   */
+  let storage: MemoryRateLimitStorage;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-12T12:00:00Z'));
+    storage = new MemoryRateLimitStorage();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not quote the time to a full bucket', async () => {
+    const algo = new TokenBucketAlgorithm(100); // 100 tokens per window
+    for (let i = 0; i < 100; i++) await algo.check(storage, 'b', 100, 60_000, true);
+
+    const denied = await algo.check(storage, 'b', 100, 60_000, true);
+    expect(denied.allowed).toBe(false);
+
+    // One token arrives in 600 ms → 1 s after rounding. A full bucket is 60 s
+    // away, and `resetAt` still says so — that is its own question.
+    expect(denied.retryAfter, 'this is the time to a FULL bucket, not to one token').toBe(1);
+    expect(denied.resetAt - Date.now()).toBeGreaterThan(50_000);
+  });
+
+  it('still refuses, and still recovers on schedule', async () => {
+    const algo = new TokenBucketAlgorithm(60); // one token per second
+    for (let i = 0; i < 60; i++) await algo.check(storage, 'c', 60, 60_000, true);
+    expect((await algo.check(storage, 'c', 60, 60_000, true)).allowed).toBe(false);
+
+    vi.advanceTimersByTime(1_100);
+    expect((await algo.check(storage, 'c', 60, 60_000, true)).allowed, 'a token should have arrived').toBe(true);
+  });
+
+  it('never reports zero', async () => {
+    const algo = new TokenBucketAlgorithm(60);
+    for (let i = 0; i < 60; i++) await algo.check(storage, 'd', 60, 60_000, true);
+
+    const denied = await algo.check(storage, 'd', 60, 60_000, true);
+    expect(denied.retryAfter).toBeGreaterThanOrEqual(1);
   });
 });

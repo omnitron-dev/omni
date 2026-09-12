@@ -401,6 +401,19 @@ export class TokenBucketAlgorithm implements IRateLimitAlgorithm {
     const timeToRefill = tokensNeeded > 0 ? (tokensNeeded / refillRate) * windowMs : 0;
     const resetAt = now + timeToRefill;
 
+    // `retryAfter` is a different question from `resetAt`, and reusing the
+    // latter answered the wrong one. A caller asks "when may I try again",
+    // which is when ONE token exists — not when the bucket is full again.
+    // With limit 100 and a 100/min refill, an empty bucket has a token in
+    // 0.6 s and is full in 60; reporting 60 tells a caller to wait a hundred
+    // times too long, and `ratelimit.middleware` puts that straight into the
+    // `Retry-After` header.
+    //
+    // Same family as the sliding window's constant, found by reading the
+    // siblings after fixing that one.
+    const tokensForOne = Math.max(0, 1 - availableTokens);
+    const timeToOneToken = (tokensForOne / refillRate) * windowMs;
+
     // Remaining tokens (floor to avoid fractional tokens). `availableTokens` is
     // already post-decrement when a token was consumed this call, and the current
     // balance otherwise — so a non-consuming peek reports the TRUE available count
@@ -412,7 +425,7 @@ export class TokenBucketAlgorithm implements IRateLimitAlgorithm {
       allowed,
       remaining,
       resetAt,
-      retryAfter: allowed ? undefined : Math.ceil(timeToRefill / 1000),
+      retryAfter: allowed ? undefined : Math.max(1, Math.ceil(timeToOneToken / 1000)),
       limit,
     };
   }

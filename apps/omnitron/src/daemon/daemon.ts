@@ -1052,11 +1052,52 @@ export class OmnitronDaemon {
     const expectedPrefixes = new Set<string>();
     const internalNames = new Set(['omnitron-pg', 'omnitron-nginx']);
 
+    // Load each project's config FIRST. `listStacks` reads the loaded-config
+    // cache and returns [] for a project whose config has not been read —
+    // and this runs before the per-project load loop further down, whose own
+    // comment says loading "populates internal cache used by listStacks".
+    //
+    // So on every boot where projects come from the registry rather than CWD
+    // auto-detection — the normal case — `expectedPrefixes` was EMPTY and
+    // every managed container looked like an orphan. Measured from this
+    // daemon's own log, 2026-09-12 12:46, ten RUNNING containers removed in
+    // fourteen seconds: postgres, redis, bitcoin, monero (daemon and wallet),
+    // nominatim, tor, tiles, minio, gateway — each logged as "not part of any
+    // registered stack" while being part of the registered stack.
+    //
+    // Named volumes survived (`docker rm -f`, no `-v`), so this cost a cold
+    // restart of every service rather than the chain data. That is luck, not
+    // design.
+    let expectationsComplete = true;
     for (const project of projects) {
+      try {
+        await projectService.loadProjectConfig(project.name);
+      } catch (err) {
+        expectationsComplete = false;
+        logger.warn(
+          { project: project.name, error: (err as Error).message },
+          'Could not read this project’s stacks — skipping orphan reconciliation rather than guessing',
+        );
+        continue;
+      }
       const stacks = projectService.listStacks(project.name);
+      if (stacks.length === 0) expectationsComplete = false;
       for (const stack of stacks) {
         expectedPrefixes.add(`${project.name}-${stack.name}-`);
       }
+    }
+
+    // An incomplete picture must not authorise removal. Not knowing what is
+    // expected is not the same as knowing nothing is — the same distinction
+    // the process janitor had to learn about a parent being foreign rather
+    // than dead. Leaving a real orphan running costs an idle container; the
+    // other way costs the platform.
+    if (!expectationsComplete) {
+      logger.warn(
+        { managed: managed.length, expectedPrefixes: expectedPrefixes.size },
+        'Orphan reconciliation skipped — the set of expected stacks is incomplete',
+      );
+      return;
     }
 
     let orphanCount = 0;

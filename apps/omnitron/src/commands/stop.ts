@@ -32,7 +32,17 @@ export async function stopCommand(appName?: string, options: { force?: boolean }
         while (Date.now() - start < maxWait && PidManager.isProcessAlive(pid)) {
           await new Promise((r) => setTimeout(r, 500));
         }
-        if (!PidManager.isProcessAlive(pid)) {
+        // `getPid()` and not `isProcessAlive()`: the second reads the pid
+        // file AND checks the live process's argv against the signature
+        // written there, so it answers "is OUR daemon still at this pid",
+        // which is the question a SIGKILL needs answered. The ten seconds
+        // above are exactly the window in which the daemon exits and the
+        // kernel hands its number to something else — and this branch is
+        // reached only when the daemon did NOT exit on its own, which is
+        // when the file is most likely to be out of date. `daemonStop` was
+        // fixed the same way; leaving the two commands disagreeing is how
+        // one of them gets read as authoritative later.
+        if (pidManager.getPid() !== pid) {
           pidManager.remove();
           log.success('Daemon stopped');
         } else {

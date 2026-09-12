@@ -92,6 +92,22 @@ describe('PidManager tells "alive" from "ours"', () => {
   });
 });
 
+/**
+ * Comments are stripped before any of these look at the source. The prose
+ * explaining WHY each guard is `getPid()` contains the string `getPid()`, so
+ * an assertion over raw text passes on the explanation alone — which is how a
+ * test in this repo once certified a fix that had been reverted.
+ */
+function codeOf(relUrl: string, fnName: string): string {
+  const src = fs.readFileSync(new URL(relUrl, import.meta.url), 'utf8');
+  const bare = src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1: string) => p1);
+  const fn = bare.slice(bare.indexOf(`export async function ${fnName}`));
+  const next = fn.indexOf('\nexport ');
+  return next === -1 ? fn : fn.slice(0, next);
+}
+
 describe('the kill paths ask PidManager rather than the number', () => {
   it('daemonKill validates identity before SIGKILL', () => {
     const src = fs.readFileSync(
@@ -119,5 +135,22 @@ describe('the kill paths ask PidManager rather than the number', () => {
     expect(killAt).toBeGreaterThan(0);
     // The check immediately above it compares against the CURRENT answer.
     expect(body.slice(Math.max(0, killAt - 200), killAt)).toContain('pidManager.getPid() === pid');
+  });
+
+  it('`omnitron stop` escalates on identity too, not on liveness', () => {
+    // The command an operator actually types. It waits ten seconds for the
+    // SIGTERM to land and then force-kills; the wait may poll liveness, but
+    // the decision to send SIGKILL may not rest on it.
+    const body = codeOf('../../src/commands/stop.ts', 'stopCommand');
+
+    const killAt = body.indexOf("process.kill(pid, 'SIGKILL')");
+    expect(killAt, 'stopCommand no longer force-kills — re-point this test').toBeGreaterThan(0);
+
+    const guard = body.slice(Math.max(0, killAt - 300), killAt);
+    expect(guard).toContain('pidManager.getPid()');
+    expect(
+      /isProcessAlive\(pid\)\s*\)\s*\{[\s\S]{0,80}$/.test(guard),
+      'the branch that reaches SIGKILL must not be gated on liveness alone',
+    ).toBe(false);
   });
 });

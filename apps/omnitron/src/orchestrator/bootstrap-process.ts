@@ -93,6 +93,28 @@ function OnShutdown(): MethodDecorator {
 const TOPOLOGY_TOKEN_PREFIX = 'topology:';
 
 /**
+ * Deadline for a topology RPC.
+ *
+ * A topology call is a worker-pool JOB — aggregate five minutes of candles,
+ * transform an upload — not a wire request, and netron's 5 s default is a
+ * deadline for the latter. `connect()` reads `requestTimeout` back out of the
+ * transport registry, and this path registered the unix transport without
+ * options, so every topology call inherited the 5 s.
+ *
+ * Measured on the stand over two days: 97 `OHLCV … aggregation failed` lines,
+ * 70 of them `RPC request timed out after 5000ms` — and scattered THROUGH
+ * healthy runs, minutes after `topology proxy became available`, between ticks
+ * that succeeded. Not a dead peer: a job that occasionally takes longer than
+ * five seconds. The timeout abandons the caller's wait without stopping the
+ * work, so the aggregation ran on and the operator got an error for it.
+ *
+ * 60 s is what `DaemonClient` already uses over this same socket, and it is
+ * still well inside the 5-minute aggregation interval, so a genuine hang
+ * surfaces within one tick rather than being hidden.
+ */
+const TOPOLOGY_REQUEST_TIMEOUT = 60_000;
+
+/**
  * Announce which stage of start-up we reached.
  *
  * Start-up runs config load → module import → `Application.create` →
@@ -146,9 +168,28 @@ export function createReconnectingTopologyProxy(
   let current = initial as Record<string, unknown>;
   let reconnecting: Promise<void> | null = null;
 
-  const looksDisconnected = (error: unknown): boolean => {
+  /**
+   * Errors that mean "this handle is no longer the service", i.e. re-query and
+   * try once more.
+   *
+   * The socket patterns are the obvious half. The other half is `Unknown
+   * member: 'x' is not defined in the service interface`, which is what a
+   * reconnect leaves behind when it lands while the worker's service is not
+   * yet registered on the daemon: `queryInterface` returns a definition
+   * without the methods, `current` is replaced by it, and every later call
+   * fails on a NAME rather than on a socket. That error matched nothing here,
+   * so the proxy stayed wrong until the app restarted — two of them on the
+   * stand, and no path back.
+   *
+   * Retrying a genuinely absent method costs one re-query and then raises the
+   * same error, so widening this cannot turn a real mistake into silence.
+   */
+  const needsFreshHandle = (error: unknown): boolean => {
     const message = String((error as { message?: unknown })?.message ?? '');
-    return /socket closed|connection closed|transport lost|not connected|socket is not open/i.test(message);
+    return (
+      /socket closed|connection closed|transport lost|not connected|socket is not open/i.test(message) ||
+      /unknown member|not defined in the service interface/i.test(message)
+    );
   };
 
   const reconnect = async (): Promise<void> => {
@@ -175,7 +216,7 @@ export function createReconnectingTopologyProxy(
           try {
             return await invoke(prop as string, args);
           } catch (error) {
-            if (!looksDisconnected(error)) throw error;
+            if (!needsFreshHandle(error)) throw error;
             try {
               await reconnect();
             } catch {
@@ -553,6 +594,7 @@ class BootstrapProcess {
 
     // Register Unix transport on the app's Netron for outgoing client connections
     this.app.netron.registerTransport('unix', () => new UnixSocketTransport());
+    this.app.netron.setTransportOptions('unix', { requestTimeout: TOPOLOGY_REQUEST_TIMEOUT });
 
     // Connect with timeout — fail fast if daemon socket is unavailable
     const connectTimeout = 10_000;

@@ -13,6 +13,7 @@
  * zero open connections to the daemon socket.
  */
 import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
 
 import { createReconnectingTopologyProxy } from '../../src/orchestrator/bootstrap-process.js';
 
@@ -82,5 +83,86 @@ describe('topology proxy reconnection', () => {
 
     await expect(Promise.all([proxy.a(), proxy.b()])).resolves.toEqual(['a', 'b']);
     expect(netron.connect, 'each call opened its own connection').toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The second way a handle goes stale, and the one with no way back.
+   *
+   * A reconnect that lands while the worker's service is not yet registered on
+   * the daemon gets an interface WITHOUT the methods. `current` is replaced by
+   * it, and every later call fails on a name — `Unknown member: 'aggregate5Min'
+   * is not defined in the service interface` — which is not a socket error, so
+   * nothing re-queried and the proxy was wrong until the app restarted. Two of
+   * those on the stand, either side of a worker-pool restart.
+   */
+  describe('a handle that came back without the methods', () => {
+    const unknownMember = () =>
+      new Error("Unknown member: 'aggregate5Min' is not defined in the service interface");
+
+    it('re-queries and retries rather than staying wrong forever', async () => {
+      const stale = { aggregate5Min: vi.fn().mockRejectedValue(unknownMember()) };
+      const fresh = { aggregate5Min: vi.fn().mockResolvedValue({ success: true, processed: 7 }) };
+      const queryInterface = vi.fn().mockResolvedValue(fresh);
+      const netron = { connect: vi.fn().mockResolvedValue({ queryInterface }) };
+
+      const proxy = proxyFor(netron, 'OhlcvAggregatorWorker', 'unix:///tmp/d.sock', stale) as {
+        aggregate5Min(): Promise<{ processed: number }>;
+      };
+
+      await expect(proxy.aggregate5Min()).resolves.toEqual({ success: true, processed: 7 });
+      expect(queryInterface).toHaveBeenCalledWith('OhlcvAggregatorWorker');
+    });
+
+    it('still raises when the method is genuinely absent', async () => {
+      // Widening the retry class must not turn a real mistake into silence:
+      // one re-query, the same error, and the caller hears it.
+      const stale = { typo: vi.fn().mockRejectedValue(unknownMember()) };
+      const alsoStale = { typo: vi.fn().mockRejectedValue(unknownMember()) };
+      const netron = {
+        connect: vi.fn().mockResolvedValue({ queryInterface: vi.fn().mockResolvedValue(alsoStale) }),
+      };
+
+      const proxy = proxyFor(netron, 'Worker', 'unix:///tmp/d.sock', stale) as { typo(): Promise<unknown> };
+
+      await expect(proxy.typo()).rejects.toThrow(/Unknown member/);
+      expect(netron.connect, 'it must try exactly once, not spin').toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * The deadline half. A topology call is a worker-pool JOB, and netron's 5 s
+   * default is a deadline for a wire request: `connect()` reads
+   * `requestTimeout` out of the transport registry, and this path registered
+   * the unix transport without options. 70 of the 97 `OHLCV … aggregation
+   * failed` lines on the stand were `RPC request timed out after 5000ms`,
+   * scattered through healthy runs between ticks that succeeded.
+   *
+   * Asserted on the SOURCE with comments stripped — the prose above contains
+   * every string being looked for, and a test that reads its own explanation
+   * passes on a fix that has been reverted.
+   */
+  it('gives topology connections a job-sized deadline, not the wire default', () => {
+    const raw = fs.readFileSync(
+      new URL('../../src/orchestrator/bootstrap-process.ts', import.meta.url),
+      'utf8',
+    );
+    const code = raw
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1: string) => p1);
+
+    const at = code.indexOf("registerTransport('unix'");
+    expect(at, 'the unix transport registration moved — re-point this test').toBeGreaterThan(0);
+
+    // Applied to the same transport, right where it is registered.
+    const after = code.slice(at, at + 400);
+    expect(after).toMatch(/setTransportOptions\(\s*'unix'[\s\S]{0,120}requestTimeout/);
+
+    const value = /TOPOLOGY_REQUEST_TIMEOUT\s*=\s*([0-9_]+)/.exec(code)?.[1];
+    expect(value, 'no topology deadline is declared at all').toBeTruthy();
+    const ms = Number(value!.replace(/_/g, ''));
+    // Longer than the wire default it replaces, and inside the 5-minute
+    // aggregation interval so a genuine hang still surfaces on the next tick.
+    expect(ms).toBeGreaterThan(5_000);
+    expect(ms).toBeLessThan(5 * 60_000);
   });
 });

@@ -466,8 +466,21 @@ export class RemotePeer extends AbstractPeer {
   async subscribe(eventName: string, handler: EventSubscriber) {
     const handlers = this.eventSubscribers.get(eventName);
     if (!handlers) {
-      this.eventSubscribers.set(eventName, [handler]);
+      // The remote task runs BEFORE the local map records the subscription.
+      //
+      // It used to be the other way round, and a refusal then poisoned the
+      // event name for the life of the peer. `runTask('subscribe')` rejects
+      // for ordinary, expected reasons — `forbidden` for a RESERVED_EVENT,
+      // `tooManyRequests` past `maxSubscriptionsPerPeer`, a task timeout, a
+      // closed connection. The caller saw that rejection, but
+      // `eventSubscribers` had already been set to `[handler]`, so every
+      // LATER `subscribe(eventName, …)` took the `else` branch below, pushed
+      // its handler onto a list nothing feeds, and returned successfully.
+      // One refusal, and that event is silently dead for every subsequent
+      // subscriber — with no error to notice, because the second call does
+      // not fail.
       await this.runTask('subscribe', eventName);
+      this.eventSubscribers.set(eventName, [handler]);
     } else if (!handlers.includes(handler)) {
       handlers.push(handler);
     }
@@ -488,8 +501,16 @@ export class RemotePeer extends AbstractPeer {
       if (index >= 0) {
         handlers.splice(index, 1);
         if (handlers.length === 0) {
-          this.eventSubscribers.delete(eventName);
+          // Mirror of `subscribe`: tell the remote first, drop the local
+          // record only once it agreed. Deleting first meant a rejected
+          // unsubscribe left the remote still forwarding the event while this
+          // side had forgotten it — and a later `subscribe` for the same name
+          // would find no handlers, run `subscribe` again, and the remote
+          // would answer from its own idempotency check without ever having
+          // stopped. The handler list is already empty here, so a rejection
+          // leaves the entry recoverable rather than half-removed.
           await this.runTask('unsubscribe', eventName);
+          this.eventSubscribers.delete(eventName);
         }
       }
     }

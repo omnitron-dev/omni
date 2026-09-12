@@ -245,8 +245,17 @@ export class BackendPool extends EventEmitter {
     });
     this.healthCheckProbe.start();
 
-    // Run initial health check (unguarded immediate — unchanged from before).
-    this.runHealthChecks();
+    // Run the initial health check immediately, with a handler.
+    //
+    // `runHealthChecks` catches every per-backend failure, so the only way it
+    // rejects is its last line — `this.emit('healthCheckComplete', results)`.
+    // EventEmitter runs listeners synchronously, so one throwing listener
+    // propagates straight out of the method. That is the same escape that
+    // wedged the HTTP request batcher (431f548); here it would surface as an
+    // unhandled rejection from a pool that had otherwise finished its work.
+    void this.runHealthChecks().catch((error: unknown) => {
+      fallbackLog('error', 'Initial backend health check failed', { error: error as Error });
+    });
   }
 
   /**

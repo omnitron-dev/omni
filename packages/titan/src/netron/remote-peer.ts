@@ -339,7 +339,20 @@ export class RemotePeer extends AbstractPeer {
         try {
           // SECURITY (T#40): pass the netron's configured cap (if any)
           // so transport-side input is gated at decoder entry.
-          this.handlePacket(decodePacket(data, this.netron.options?.maxPacketSize));
+          //
+          // The try/catch covers `decodePacket`, which is synchronous.
+          // `handlePacket` is async, so a rejection from it was never visible
+          // here — the guard looked like it covered the handler and did not.
+          // Every branch inside `handlePacket` is individually wrapped today,
+          // so this is about the guard telling the truth rather than a live
+          // escape: it is reached from a socket 'message' listener, where an
+          // unhandled rejection is decided by the process-level handler and
+          // not by anything on this path.
+          void this.handlePacket(decodePacket(data, this.netron.options?.maxPacketSize)).catch(
+            (error: unknown) => {
+              this.logger.error({ err: error, peerId: this.id }, 'Failed to handle incoming packet');
+            },
+          );
         } catch (error: unknown) {
           this.logger.error({ err: error, peerId: this.id }, 'Failed to decode incoming packet');
         }

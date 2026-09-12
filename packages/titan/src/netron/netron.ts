@@ -1055,8 +1055,15 @@ export class Netron extends EventEmitter implements INetron {
                   peer.id = message.id;
                   this.peers.set(peer.id, peer);
 
-                  // Send our ID back to the server
-                  connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
+                  // Send our ID back to the server.
+                  //
+                  // Awaited: this runs inside an `async` listener whose
+                  // try/catch is synchronous and could not see a rejected
+                  // send. Unawaited, a failed handshake left `peer.init`
+                  // running against a server that never learned our id, and
+                  // the rejection went to the process handler instead of the
+                  // catch twelve lines below that exists for exactly this.
+                  await connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
 
                   await peer.init(true, this.options);
 

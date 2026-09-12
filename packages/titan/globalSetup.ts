@@ -179,9 +179,23 @@ async function startNativeRedis(redisPath: string, port: number): Promise<void> 
   });
 }
 
+/**
+ * Container name, per package rather than per monorepo.
+ *
+ * It was the constant `test-redis-global`, and the first thing `startDockerRedis`
+ * does is `docker rm -f` it — so two package suites running at once removed
+ * each other's Redis mid-test. Now that borrowing 6379 is no longer automatic,
+ * far more runs reach this path at the same time.
+ */
+function dockerRedisName(): string {
+  const pkg = process.cwd().split('/').filter(Boolean).pop() ?? 'unknown';
+  return `test-redis-${pkg.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+}
+
 async function startDockerRedis(dockerPath: string, port: number): Promise<string> {
+  const name = dockerRedisName();
   try {
-    execFileSync(dockerPath, ['rm', '-f', 'test-redis-global'], { stdio: 'pipe', timeout: 5000 });
+    execFileSync(dockerPath, ['rm', '-f', name], { stdio: 'pipe', timeout: 5000 });
   } catch {}
 
   const containerId = execFileSync(
@@ -190,7 +204,7 @@ async function startDockerRedis(dockerPath: string, port: number): Promise<strin
       'run',
       '-d',
       '--name',
-      'test-redis-global',
+      name,
       '-p',
       `${port}:6379`,
       '--health-cmd',
@@ -210,7 +224,7 @@ async function startDockerRedis(dockerPath: string, port: number): Promise<strin
 
   for (let i = 0; i < 30; i++) {
     try {
-      const health = execFileSync(dockerPath, ['inspect', '--format={{.State.Health.Status}}', 'test-redis-global'], {
+      const health = execFileSync(dockerPath, ['inspect', '--format={{.State.Health.Status}}', name], {
         encoding: 'utf-8',
       }).trim();
       if (health === 'healthy') return containerId;
@@ -263,12 +277,26 @@ export async function setup(): Promise<void> {
     }
   } catch {}
 
-  // Strategy 2b: Try default port 6379 as fallback (local redis-server or legacy docker)
-  if (externalPort !== 6379) {
+  // Strategy 2b: the DEFAULT port, and only when asked for by name.
+  //
+  // This used to be automatic, and that is a loaded gun. A Redis answering on
+  // 6379 is whatever the developer happens to be running — on this machine it
+  // is the downstream dev stand, holding db0..db5 (main, storage, messaging,
+  // pricing, payments, geo). These suites are not read-only: the rotif specs
+  // in titan-notifications resolve `getTestRedisConfig(0)` and call
+  // `flushdb()`, and `notifications-service.docker.spec.ts` calls `flushall`.
+  // Borrowing 6379 therefore means erasing main's session database, and the
+  // suite would report a clean run while doing it.
+  //
+  // titan-discovery already carries a regression test that says the endpoint
+  // must never fall back to 6379. It was right, and this is the other half of
+  // it: the isolated instance below costs a few seconds; the wrong answer
+  // costs the stand.
+  if (externalPort !== 6379 && process.env.TEST_REDIS_ALLOW_DEFAULT_PORT === 'true') {
     try {
       const ready = await waitForRedis(6379, 3);
       if (ready) {
-        console.log('[Global Setup] Using existing Redis at localhost:6379');
+        console.log('[Global Setup] Using existing Redis at localhost:6379 (TEST_REDIS_ALLOW_DEFAULT_PORT)');
         writeRedisInfo({ url: 'redis://localhost:6379', port: 6379, isDocker: false, isExternal: true });
         return;
       }
@@ -354,12 +382,12 @@ export async function teardown(): Promise<void> {
     } else if (redisInfo?.isDocker) {
       const dockerPath = findDockerPath();
       try {
-        execFileSync(dockerPath, ['stop', 'test-redis-global'], { stdio: 'pipe', timeout: 30000 });
-        execFileSync(dockerPath, ['rm', '-f', 'test-redis-global'], { stdio: 'pipe', timeout: 10000 });
+        execFileSync(dockerPath, ['stop', dockerRedisName()], { stdio: 'pipe', timeout: 30000 });
+        execFileSync(dockerPath, ['rm', '-f', dockerRedisName()], { stdio: 'pipe', timeout: 10000 });
         console.log('[Global Teardown] Redis container stopped');
       } catch {
         try {
-          execFileSync(dockerPath, ['rm', '-f', 'test-redis-global'], { stdio: 'pipe', timeout: 10000 });
+          execFileSync(dockerPath, ['rm', '-f', dockerRedisName()], { stdio: 'pipe', timeout: 10000 });
         } catch {}
       }
     } else if (redisInfo?.isExternal) {

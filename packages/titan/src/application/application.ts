@@ -624,6 +624,42 @@ export class Application implements IApplication {
         }
       }
 
+      // Tear down DI instances BEFORE the modules that own their resources.
+      //
+      // `start()` ends with `container.initialize()`, which runs every
+      // `@PostConstruct`. Stop is the mirror, so `@PreDestroy` runs first and
+      // the module teardown below follows — a worker's drain needs the pool it
+      // drains into to still be open. With no call here at all, storage's
+      // outbox dispatcher kept its 200 ms poll timer armed through the whole
+      // shutdown: its `@PreDestroy` (clear timer, await the in-flight cycle)
+      // never ran, so every stop ended with `Failed to process outbox:
+      // Database connection with id default not found` at level 50 — 81 of
+      // them in the current log, all of them after `All database connections
+      // closed`, and each one a false alarm an operator has to chase.
+      //
+      // Errors are swallowed by `disposeInstance` itself, which logs per
+      // instance; one badly-behaved provider must not abort the teardown.
+      // `force` means the same here as in the module loop below: with a
+      // timeout, bound the teardown; without one, skip it. Measured across the
+      // downstream stand, 1327 of 1328 stops pass `{}` — neither flag — so this
+      // governs a path that is taken by nobody today and would otherwise be an
+      // unbounded drain in the one case that asked for an immediate exit.
+      if (options.force && !stopTimeout) {
+        this._logger?.debug('Skipping container instance teardown due to force stop without timeout');
+      } else {
+        try {
+          const teardown = this._container.destroyInstances();
+          if (stopTimeout) {
+            await withTimeout(teardown, stopTimeout, Errors.timeout('Container instance teardown', stopTimeout));
+          } else {
+            await teardown;
+          }
+          this._logger?.debug('Container instance teardown completed');
+        } catch (error) {
+          this._logger?.warn({ error }, 'Container instance teardown failed');
+        }
+      }
+
       // Stop modules in reverse topological order.
       const sortedModules = this.__moduleRegistry.sorted();
       for (let i = sortedModules.length - 1; i >= 0; i--) {

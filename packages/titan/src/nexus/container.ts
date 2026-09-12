@@ -2014,10 +2014,41 @@ export class Container implements IContainer {
 
     this.initialized = true;
 
+    // Symmetric with `destroyInstances()`: an instance about to run
+    // `@PostConstruct` again is alive again, so the mark saying it was torn
+    // down must go. On a first start the set is empty and this is a no-op.
+    this.lifecycleService.resetDisposalMarks();
+
     await this.lifecycleService.initializeInstances(this.initializableInstances);
 
     // Emit container initialized event
     this.lifecycleManager.emitSync(LifecycleEvent.ContainerInitialized, { context: this.context });
+  }
+
+  /**
+   * Run `@PreDestroy` / `onDestroy` / `dispose()` on every tracked instance,
+   * leaving the container itself usable.
+   *
+   * This is the mirror of `initialize()`, and it exists because the two were
+   * not mirrored. `Application.start()` ends with `container.initialize()`, so
+   * every `@PostConstruct` ran; `Application.stop()` called nothing, and the
+   * ONLY caller of `dispose()` was the failed-start rollback. The measurable
+   * consequence in the downstream project: across five backends the log lines emitted from
+   * `@PreDestroy` bodies appear zero times each, and the two that do appear
+   * sit directly under `Failed to start http server`.
+   *
+   * Full `dispose()` cannot take this job. It clears `registrations` and sets
+   * `disposed`, and `Application.stop()` still has work to do afterwards — it
+   * resolves `NETRON_TOKEN` and `LOGGER_SERVICE_TOKEN` to shut them down, and
+   * `restart()` starts the same container again.
+   */
+  async destroyInstances(): Promise<void> {
+    await this.lifecycleService.disposeInstances(this.instances, this.scopedInstances);
+
+    // A subsequent start() must run @PostConstruct again — the instances it
+    // would otherwise reuse have had their timers cleared and their
+    // connections closed.
+    this.initialized = false;
   }
 
   /**

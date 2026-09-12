@@ -221,6 +221,22 @@ export class LifecycleService {
   }
 
   /**
+   * Forget which instances have already been torn down.
+   *
+   * `disposedInstances` makes disposal idempotent, which is what stops a
+   * second `dispose()` from running every `@PreDestroy` twice. That same
+   * memory makes a RESTART wrong: stop → start → stop must tear an instance
+   * down on each stop, and after the first one the mark says "already done".
+   *
+   * Called from `Container.initialize()`, so the marks are cleared exactly
+   * when `@PostConstruct` runs again — never in between, where a stray
+   * `dispose()` would re-enter teardown on instances that are already gone.
+   */
+  resetDisposalMarks(): void {
+    this.disposedInstances = new WeakSet<any>();
+  }
+
+  /**
    * Dispose a single instance — calls lifecycle methods in order:
    * 1. @PreDestroy decorated method (if present)
    * 2. onDestroy() method (if present and no dispose)

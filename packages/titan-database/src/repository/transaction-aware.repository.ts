@@ -15,6 +15,7 @@ import {
   isInTransactionContext,
   getCurrentTransaction,
   getTablePlugins,
+  isTablePluginInitialized,
 } from '../transaction/transaction.context.js';
 import { applyWhereClause, type WhereClause } from '@kysera/repository';
 import { upsert as kyseraUpsert, upsertMany as kyseraUpsertMany, type UpsertOptions } from '@kysera/repository';
@@ -284,6 +285,20 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     const alreadyPluginAware =
       isKyseraExecutor(target as Kysely<DB>) && getPlugins(target as never).length > 0;
     if (alreadyPluginAware) return target as Executor<DB>;
+
+    // `createExecutorSync` does not run `onInit`, and `@kysera/rls` refuses to
+    // intercept without it — "Plugin used before initialization". Left to
+    // itself that surfaces as a 500 on a user's first query against the table,
+    // with a message about a factory function this code does not call. The
+    // check belongs here, where the name of the fix is known.
+    const uninitialized = plugins.filter((p) => !isTablePluginInitialized(p, this.db as object));
+    if (uninitialized.length > 0) {
+      throw new Error(
+        `[TransactionAwareRepository] table "${String(this.tableName)}" has plugins that were never initialized: ` +
+          `${uninitialized.map((p) => p.name).join(', ')}. ` +
+          'Call `await initializeTablePlugins(connection)` from the app bootstrap after registerTablePlugins(...).',
+      );
+    }
 
     if (
       this.tablePluginExecutor !== undefined &&

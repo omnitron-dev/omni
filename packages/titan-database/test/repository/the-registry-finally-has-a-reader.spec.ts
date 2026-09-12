@@ -33,6 +33,7 @@ import {
   registerTablePlugins,
   clearPluginRegistry,
   runInTransaction,
+  initializeTablePlugins,
 } from '../../src/transaction/transaction.context.js';
 
 interface NotesTable {
@@ -170,5 +171,45 @@ describe('a registered plugin reaches the query — or deliberately does not', (
     expect(rows.map((r) => r.body).sort()).toEqual(['a1', 'a2']);
     // Once per query, not twice.
     expect(seen.count).toBe(1);
+  });
+
+  it('refuses to run a plugin whose onInit never happened, and says what to call', async () => {
+    // `createExecutorSync` does not run `onInit`, and `@kysera/rls` refuses to
+    // intercept without it. Left alone that surfaces as a 500 on a user's
+    // first query, quoting a factory function this code does not call — which
+    // is how a wired-up RLS policy would have failed on the day it was
+    // enabled, rather than on the day it was written.
+    const seen = { count: 0 };
+    const needsInit: Plugin = {
+      ...ownerOnlyPlugin('alice', seen),
+      onInit: () => {
+        /* never called in this test */
+      },
+    };
+    registerTablePlugins('notes', [needsInit]);
+
+    await expect(new OptedInRepo(db).findAll()).rejects.toThrow(/initializeTablePlugins/);
+  });
+
+  it('runs once initializeTablePlugins has been awaited', async () => {
+    const seen = { count: 0 };
+    let inits = 0;
+    const needsInit: Plugin = {
+      ...ownerOnlyPlugin('alice', seen),
+      onInit: () => {
+        inits++;
+      },
+    };
+    registerTablePlugins('notes', [needsInit]);
+
+    await initializeTablePlugins(db);
+    const rows = await new OptedInRepo(db).findAll();
+
+    expect(rows.map((r) => r.body).sort()).toEqual(['a1', 'a2']);
+    expect(inits, 'onInit runs once per (plugin, db)').toBe(1);
+
+    // Idempotent: a second call after registering nothing new re-inits nothing.
+    await initializeTablePlugins(db);
+    expect(inits).toBe(1);
   });
 });

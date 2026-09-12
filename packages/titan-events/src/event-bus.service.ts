@@ -395,7 +395,18 @@ export class EventBusService {
       for (let i = 0, len = eventsToReplay.length; i < len; i++) {
         const item = eventsToReplay[i]!;
         try {
-          handler(item.data);
+          // A handler may be async — `EventHandler` is typed
+          // `(data, metadata?) => void | Promise<void>`. This try/catch was
+          // written to keep one bad replay from stopping the rest, and a
+          // synchronous catch cannot see a rejected promise, so for every
+          // async subscriber it caught nothing and the rejection left the
+          // process instead. Same handler, same intent, now actually reached.
+          const replayed = handler(item.data);
+          if (replayed instanceof Promise) {
+            void replayed.catch((err: unknown) => {
+              this.logger?.error({ err, event }, 'Error replaying event');
+            });
+          }
         } catch (err) {
           this.logger?.error({ err, event }, 'Error replaying event');
         }
@@ -926,13 +937,23 @@ export class EventBusService {
         resolve(message.data);
       });
 
-      // Publish request
-      this.publish(channel, data, {
+      // Publish request.
+      //
+      // A failed publish has to reject THIS promise. It was called bare, so a
+      // rejection went out as an unhandled rejection and the caller was left
+      // waiting on a response that could never arrive — until the timeout, or
+      // forever when `options.timeout` is omitted and `timer` is null. A
+      // request that cannot be sent should say so, not hang.
+      void this.publish(channel, data, {
         metadata: {
           ...options?.metadata,
           requestId,
           responseChannel,
         },
+      }).catch((err: unknown) => {
+        if (timer) clearTimeout(timer);
+        unsubscribe();
+        reject(err);
       });
     });
   }

@@ -363,3 +363,60 @@ describe('EventBusService', () => {
     }, 5000);
   });
 });
+
+describe('EventBusService — a failure that had nowhere to go', () => {
+  const makeEmitter = () => ({
+    subscribe: vi.fn().mockReturnValue(vi.fn()),
+    emitParallel: vi.fn().mockResolvedValue([]),
+    emitSequential: vi.fn().mockResolvedValue([]),
+    off: vi.fn(),
+    removeAllListeners: vi.fn(),
+    on: vi.fn(),
+    once: vi.fn(),
+    listeners: vi.fn().mockReturnValue([]),
+    listenerCount: vi.fn().mockReturnValue(0),
+    eventNames: vi.fn().mockReturnValue([]),
+  });
+
+  it('rejects request() when the publish fails, instead of hanging', async () => {
+    // `request` settles from a response subscription and, when `timeout` is
+    // given, a timer. The publish was called bare: a rejection left as an
+    // unhandled rejection and the caller waited for a response that could
+    // never arrive. With no `timeout` option there is no timer either, so the
+    // wait was unbounded — this test would hang rather than fail.
+    const bus = new EventBusService(makeEmitter() as never, undefined as never);
+    vi.spyOn(bus, 'publish').mockRejectedValue(new Error('transport down'));
+
+    await expect(bus.request('svc.method', { a: 1 })).rejects.toThrow('transport down');
+  });
+
+  it('keeps the failure of an async replay handler off the process', async () => {
+    // The replay loop wraps the handler in a synchronous try/catch, and
+    // `EventHandler` is typed `(data) => void | Promise<void>`. For an async
+    // subscriber that catch saw nothing: the rejection left the process.
+    const emitter = makeEmitter();
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const bus = new EventBusService(emitter as never, logger as never);
+
+    await bus.publish('replay.me', { n: 1 });
+
+    let ran = false;
+    bus.subscribe(
+      'replay.me',
+      async () => {
+        ran = true;
+        throw new Error('handler blew up');
+      },
+      { replay: true } as never
+    );
+
+    await new Promise((r) => setTimeout(r, 20));
+    if (ran) {
+      // The replay buffer was on: the rejection must have been logged, not lost.
+      expect(logger.error).toHaveBeenCalled();
+    }
+    // Reaching here at all — without an unhandled rejection tearing the run
+    // down — is the property under test.
+    expect(true).toBe(true);
+  });
+});

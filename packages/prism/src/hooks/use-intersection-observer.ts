@@ -178,7 +178,17 @@ export function useIntersectionObserver(options: UseIntersectionObserverOptions 
     [disconnect]
   );
 
-  // Memoize return object to prevent unnecessary re-renders
+  // Memoize return object to prevent unnecessary re-renders.
+  //
+  // `ref` MUST be a dependency. It is a useCallback over the observer options,
+  // so raising `threshold` (or `rootMargin`, `root`, `triggerOnce`, `enabled`)
+  // mints a new callback — but if this memo does not see it, the caller keeps
+  // holding the callback from the first render. React compares ref identity to
+  // decide whether to re-attach, sees no change, and the observer keeps the
+  // options it was constructed with. The new options then apply at the next
+  // `entry` change, if one ever happens, and never at all once `triggerOnce`
+  // has frozen it. Adding it cannot loop: `ref`'s own dependencies are the
+  // destructured primitives, so its identity is stable while they are.
   return useMemo(
     () => ({
       ref,
@@ -186,6 +196,6 @@ export function useIntersectionObserver(options: UseIntersectionObserverOptions 
       isIntersecting: entry?.isIntersecting ?? false,
       disconnect,
     }),
-    [entry, disconnect]
+    [ref, entry, disconnect]
   );
 }

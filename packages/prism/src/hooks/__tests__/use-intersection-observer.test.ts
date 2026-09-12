@@ -3,22 +3,29 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, render, act } from '@testing-library/react';
+import { createElement } from 'react';
 import { useIntersectionObserver } from '../use-intersection-observer.js';
 
 describe('useIntersectionObserver', () => {
   let observerCallback: (entries: IntersectionObserverEntry[]) => void;
   let mockObserve: ReturnType<typeof vi.fn>;
   let mockDisconnect: ReturnType<typeof vi.fn>;
+  // Every options object the hook actually handed to `new IntersectionObserver`.
+  // The mock used to drop this argument, which is why "should accept custom
+  // options" could pass while the options never reached the observer.
+  let constructedWith: (IntersectionObserverInit | undefined)[];
 
   beforeEach(() => {
     mockObserve = vi.fn();
     mockDisconnect = vi.fn();
+    constructedWith = [];
 
     // Must use a class for the mock to work with `new`
     class MockIntersectionObserver {
-      constructor(callback: (entries: IntersectionObserverEntry[]) => void) {
+      constructor(callback: (entries: IntersectionObserverEntry[]) => void, init?: IntersectionObserverInit) {
         observerCallback = callback;
+        constructedWith.push(init);
       }
       observe = mockObserve;
       disconnect = mockDisconnect;
@@ -137,6 +144,31 @@ describe('useIntersectionObserver', () => {
 
     // Observer should be created and observing
     expect(mockObserve).toHaveBeenCalledWith(element);
+    expect(constructedWith).toEqual([{ root, rootMargin: '10px', threshold: 0.5 }]);
+  });
+
+  it('rebuilds the observer when the options change after mount', () => {
+    // The returned object is memoised. It used to omit `ref` from its
+    // dependencies, so after mount the caller kept holding the FIRST `ref`
+    // callback: React saw an unchanged ref, never re-attached, and the
+    // observer went on using the options it was born with. A `threshold` (or
+    // `rootMargin`, or `root`) raised in response to state simply did nothing
+    // — silently, and for as long as no intersection event happened to change
+    // `entry` and recompute the memo.
+    const Subject = ({ threshold }: { threshold: number }) => {
+      const { ref } = useIntersectionObserver({ threshold });
+      return createElement('div', { ref });
+    };
+
+    const { rerender } = render(createElement(Subject, { threshold: 0 }));
+    expect(constructedWith).toEqual([{ root: null, rootMargin: '0px', threshold: 0 }]);
+
+    rerender(createElement(Subject, { threshold: 0.75 }));
+
+    expect(constructedWith).toEqual([
+      { root: null, rootMargin: '0px', threshold: 0 },
+      { root: null, rootMargin: '0px', threshold: 0.75 },
+    ]);
   });
 
   it('should disconnect when manually called', () => {

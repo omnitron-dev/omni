@@ -31,7 +31,7 @@ import {
   isHttpBatchRequest,
 } from './types.js';
 import type { MethodContract } from '../../../validation/contract.js';
-import { validateMethodInput as validateInputAgainstContract } from './handlers/validation.js';
+import { validateMethodInput as validateInputAgainstContract, resolveMethodContract } from '../../validate-input.js';
 import type { HttpRequestContext, HttpRequestHints } from './types.js';
 import { detectRuntime, generateRequestId } from '../../utils.js';
 import { generateUuidV7 } from '../../../utils/id.js';
@@ -506,25 +506,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Register all methods found
       for (const methodName of allMethodNames) {
-        // Get contract for this method if available
-        let methodContract: MethodContract | undefined;
-        const contractObj = meta.contract as
-          | {
-              definition?: unknown;
-              getMethod?: (name: string) => MethodContract;
-              [key: string]: unknown;
-            }
-          | undefined;
-
-        if (contractObj) {
-          // Check if it's a Contract class instance
-          if (contractObj.definition && contractObj.getMethod) {
-            methodContract = contractObj.getMethod(methodName);
-          } else if (contractObj[methodName]) {
-            // Direct contract definition
-            methodContract = contractObj[methodName] as MethodContract;
-          }
-        }
+        // Get contract for this method if available. Shared with the packet
+        // path so both transports read a contract the same way.
+        const methodContract = resolveMethodContract(meta, methodName);
 
         // Get method-level metadata from definition
         const methodMeta = (stub.definition.meta.methods?.[methodName] || {}) as {

@@ -17,6 +17,29 @@ import type { ILogger } from '../../modules/logger/logger.types.js';
 export const serializer = new Serializer();
 
 /**
+ * The metadata a Definition puts on the wire.
+ *
+ * A service's `contract` is zod schemas — live objects with functions on them,
+ * which msgpack cannot encode. Encoding the meta wholesale therefore made
+ * `@Contract` and the packet transports mutually exclusive: exposing a
+ * contracted service over WebSocket, TCP or a Unix socket threw
+ * `Not supported: object` while the definition was being sent, so the service
+ * could not be queried at all. That is why contracts read as an HTTP-only
+ * feature — not by design, by serialisation.
+ *
+ * The contract is a SERVER-side artefact: `HttpServer` and the `TYPE_CALL`
+ * branch both read it off the local stub's own meta, never off a decoded
+ * definition, and nothing on the receiving side reads it at runtime. So it
+ * stays home. Nothing is lost that a peer ever successfully received.
+ */
+function metaForTheWire(meta: Definition['meta']): Definition['meta'] {
+  if (!meta || (meta as { contract?: unknown }).contract === undefined) return meta;
+  const { contract: _contract, ...rest } = meta as Definition['meta'] & { contract?: unknown };
+  return rest as Definition['meta'];
+}
+
+
+/**
  * Optional logger for serializer operations
  */
 let serializerLogger: ILogger | undefined;
@@ -305,7 +328,7 @@ serializer
       buf.write(serializer.encode(obj.id));
       buf.write(serializer.encode(obj.parentId));
       buf.write(serializer.encode(obj.peerId));
-      buf.write(serializer.encode(obj.meta));
+      buf.write(serializer.encode(metaForTheWire(obj.meta)));
     },
     /**
      * Decodes a Definition object from a binary buffer.

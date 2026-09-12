@@ -8,6 +8,7 @@ import { TimedMap } from '@omnitron-dev/common';
 
 // Use type-only import for INetron to break circular dependency
 import type { INetron, INetronOptions, EventSubscriber, RemotePeerSocket } from './interfaces/core-types.js';
+import { validateMethodInput, resolveMethodContract } from './validate-input.js';
 import { STATEFUL_PEER } from './interfaces/core-types.js';
 import type { ILocalPeerInternal, INetronInternal } from './interfaces/internal-types.js';
 import { Interface } from './interface.js';
@@ -1085,12 +1086,22 @@ export class RemotePeer extends AbstractPeer {
           // entry point on the wire, and the one that mattered most in
           // the audit (RPC method invocations).
           await this.enforceMethodAccess(stub, method, args, 'call');
+          // A service's declared input contract is enforced on every transport
+          // that takes a call off the wire, not just HTTP. This branch — the
+          // one WebSocket, TCP and Unix sockets arrive through — checked who
+          // may call the method and never what they sent, so a contract was
+          // a guarantee only for clients that happened to speak HTTP.
+          const validatedArgs = validateMethodInput(
+            args,
+            resolveMethodContract(stub.definition?.meta, method),
+            this.logger,
+          ) as any[];
           await this.sendResponse(
             packet,
             await this.withInvocationFrame(
               () => stub.definition?.meta?.name,
               method,
-              () => stub.call(method, args, this),
+              () => stub.call(method, validatedArgs, this),
             ),
           );
         } catch (err: unknown) {

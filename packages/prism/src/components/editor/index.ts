@@ -44,7 +44,15 @@ export type {
 } from './types.js';
 
 // Extensions (re-export for advanced usage)
-export { ClearFormat, TextTransform, type TextTransformValue } from './extensions/index.js';
+// `TextTransformOptions` is the Mark's own options type; exporting the Mark
+// without it leaves a consumer unable to type a `TextTransform.configure({…})`
+// argument.
+export {
+  ClearFormat,
+  TextTransform,
+  type TextTransformValue,
+  type TextTransformOptions,
+} from './extensions/index.js';
 
 // Icons (re-export for custom toolbars)
 export {

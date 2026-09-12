@@ -33,6 +33,12 @@ export {
   type DateRangeInputProps,
   type DateRangeValue,
   type UseDateRangePickerReturn,
+  // The two types the `translations` / `pickerTranslations` props are
+  // declared with. The props were public and their types were not, so a
+  // consumer supplying translations — the point of them — could not name the
+  // object's shape.
+  type DateRangePickerTranslations,
+  type DateRangeInputTranslations,
 } from './date-range-picker/index.js';
 
 // Country select — minimalist ISO 3166 picker with local flag SVG

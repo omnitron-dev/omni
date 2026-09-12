@@ -888,6 +888,96 @@ describe('Middleware System', () => {
       await container.dispose();
     });
 
+    it('calls begin exactly ONCE for a synchronous transaction', async () => {
+      // The old shape called `begin()`, saw the result was not a Promise, fell
+      // out of the async branch, and the sync branch called it again — `BEGIN;
+      // BEGIN;`. The existing success test could not see it: `toHaveBeenCalled`
+      // is true for one call and for two.
+      const container = new Container();
+      const token = createToken<string>('test');
+      const pipeline = new MiddlewarePipeline().use(TransactionMiddleware);
+
+      const tx = { begin: vi.fn(), commit: vi.fn(), rollback: vi.fn() };
+      const context: MiddlewareContext = { token, container, metadata: {}, transaction: tx };
+
+      await pipeline.execute(context, () => 'ok');
+
+      expect(tx.begin).toHaveBeenCalledTimes(1);
+      expect(tx.commit).toHaveBeenCalledTimes(1);
+
+      await container.dispose();
+    });
+
+    it('awaits an async commit before resolving', async () => {
+      // An unawaited commit means the middleware reports success before the
+      // transaction lands, and a failing commit arrives as an unhandled
+      // rejection with the caller already told it worked.
+      const container = new Container();
+      const token = createToken<string>('test');
+      const pipeline = new MiddlewarePipeline().use(TransactionMiddleware);
+
+      let committed = false;
+      const tx = {
+        begin: vi.fn(),
+        commit: vi.fn(async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          committed = true;
+        }),
+        rollback: vi.fn(),
+      };
+      const context: MiddlewareContext = { token, container, metadata: {}, transaction: tx };
+
+      await pipeline.execute(context, () => 'ok');
+
+      expect(committed, 'resolved before the commit finished').toBe(true);
+
+      await container.dispose();
+    });
+
+    it('surfaces a failing async commit rather than dropping it', async () => {
+      const container = new Container();
+      const token = createToken<string>('test');
+      const pipeline = new MiddlewarePipeline().use(TransactionMiddleware);
+
+      const tx = {
+        begin: vi.fn(),
+        commit: vi.fn().mockRejectedValue(new Error('commit failed')),
+        rollback: vi.fn(),
+      };
+      const context: MiddlewareContext = { token, container, metadata: {}, transaction: tx };
+
+      await expect(pipeline.execute(context, () => 'ok')).rejects.toThrow('commit failed');
+
+      await container.dispose();
+    });
+
+    it('awaits an async rollback before the error propagates', async () => {
+      const container = new Container();
+      const token = createToken<string>('test');
+      const pipeline = new MiddlewarePipeline().use(TransactionMiddleware);
+
+      let rolledBack = false;
+      const tx = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        rollback: vi.fn(async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          rolledBack = true;
+        }),
+      };
+      const context: MiddlewareContext = { token, container, metadata: {}, transaction: tx };
+
+      await expect(
+        pipeline.execute(context, () => {
+          throw new Error('body failed');
+        })
+      ).rejects.toThrow('body failed');
+
+      expect(rolledBack, 'the error propagated while the transaction was still open').toBe(true);
+
+      await container.dispose();
+    });
+
     it('should call begin and commit on success', async () => {
       const container = new Container();
       const token = createToken<string>('test');

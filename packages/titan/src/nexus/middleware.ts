@@ -441,40 +441,69 @@ export const TransactionMiddleware = createMiddleware({
       return next();
     }
 
-    // For async transactions
-    if (tx.begin && typeof tx.begin === 'function') {
-      const beginResult = tx.begin();
-      if (beginResult instanceof Promise) {
-        return beginResult.then(() => {
-          const result = next();
-          if (result instanceof Promise) {
-            return result.then(
-              async (value) => {
-                await tx.commit?.();
-                return value;
-              },
-              async (error) => {
-                await tx.rollback?.();
-                throw error;
-              }
-            );
-          }
-          tx.commit?.();
-          return result;
-        });
-      }
-    }
+    // `begin`, `commit` and `rollback` are each declared `void | Promise<void>`,
+    // so every one of them has to be treated as possibly async. The previous
+    // shape did not, and got three things wrong:
+    //
+    //   - A SYNCHRONOUS `begin` was called TWICE. The async branch called it,
+    //     found the result was not a Promise, fell out of the `if`, and the
+    //     sync branch below called it again. For a transaction that is
+    //     `BEGIN; BEGIN;`.
+    //   - `commit()` was dropped on the async-begin + sync-next path, and both
+    //     `commit()` and `rollback()` on the sync path. An unawaited commit
+    //     means the middleware returns success before the commit lands, and a
+    //     failed one arrives as an unhandled rejection.
+    //   - A rollback that is async was likewise dropped, so the error
+    //     propagated while the transaction was still open.
+    //
+    // Everything now hangs off one chain: begin once, then the body, then
+    // exactly one of commit or rollback, awaited whenever it is thenable.
+    const settleThen = <R>(settled: void | Promise<void>, andThen: () => R): R | Promise<R> =>
+      settled instanceof Promise ? settled.then(andThen) : andThen();
 
-    // Sync transaction handling
-    try {
-      if (tx.begin) tx.begin();
-      const result = next();
-      if (tx.commit) tx.commit();
-      return result;
-    } catch (error) {
-      if (tx.rollback) tx.rollback();
-      throw error;
-    }
+    const runBody = (): unknown => {
+      let result: unknown;
+      try {
+        result = next();
+      } catch (error) {
+        // A synchronous throw from `next`: roll back, then rethrow. The
+        // rethrow has to survive the rollback settling either way — a failed
+        // rollback must not replace the error that caused it.
+        const rolled = tx.rollback?.();
+        if (rolled instanceof Promise) {
+          return rolled.then(
+            () => {
+              throw error;
+            },
+            () => {
+              throw error;
+            }
+          );
+        }
+        throw error;
+      }
+
+      if (result instanceof Promise) {
+        return result.then(
+          async (value) => {
+            await tx.commit?.();
+            return value;
+          },
+          async (error) => {
+            try {
+              await tx.rollback?.();
+            } catch {
+              // Same rule as above: the original error is the one to report.
+            }
+            throw error;
+          }
+        );
+      }
+
+      return settleThen(tx.commit?.(), () => result);
+    };
+
+    return settleThen(tx.begin?.(), runBody) as ReturnType<typeof next>;
   },
 });
 

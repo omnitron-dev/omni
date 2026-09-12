@@ -719,9 +719,18 @@ export class RateLimiter {
    * Start queue processor
    */
   private startQueueProcessor(): void {
-    // Process queue every 100ms
+    // Process queue every 100ms.
+    //
+    // The promise gets a handler rather than being dropped. `processQueue`
+    // guards each request individually, so what is left here is the loop
+    // scaffolding and the batch removal after it — but this is the rate
+    // limiter, and a throw from a timer callback with nothing attached is an
+    // unhandled rejection, which ends the process by default. A rate limiter
+    // that can take the process down is worse than one that skips a tick.
     this.queueInterval = setInterval(() => {
-      this.processQueue();
+      void this.processQueue().catch((err: unknown) => {
+        this.logger.error({ err }, 'Rate limiter queue processing failed');
+      });
     }, 100);
   }
 

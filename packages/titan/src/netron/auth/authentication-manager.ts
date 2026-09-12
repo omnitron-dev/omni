@@ -87,7 +87,16 @@ export class AuthenticationManager {
       ...eventDetails,
     });
 
-    // Non-blocking: fire and forget with error logging
+    // Non-blocking: fire and forget with error logging.
+    //
+    // Every caller `await`s this method. That costs a microtask in the default
+    // async mode, where this branch returns `undefined` — and it is what makes
+    // the OTHER mode mean anything. `asyncAudit: false` is documented as
+    // "blocking mode: wait for audit to complete", and it returned the promise
+    // to eleven call sites that all dropped it: the audit did not block, and a
+    // failed write left as an unhandled rejection with the auth result already
+    // returned. An audit trail a deployment chose to make blocking is a
+    // compliance property, not a preference.
     if (this.asyncAudit) {
       auditPromise.catch((err) => {
         this.logger.error({ err, method }, 'Audit log failed');
@@ -293,7 +302,7 @@ export class AuthenticationManager {
       this.logger.error({ error: validationError }, 'Invalid credentials format');
 
       // Audit failed authentication (non-blocking by default)
-      this.logAudit('authenticate', {
+      await this.logAudit('authenticate', {
         args: [{ username: credentials?.username }],
         success: false,
         error: validationError,
@@ -309,7 +318,7 @@ export class AuthenticationManager {
       this.logger.error('No authentication function configured');
 
       // Audit configuration error (non-blocking by default)
-      this.logAudit('authenticate', {
+      await this.logAudit('authenticate', {
         success: false,
         error: 'Authentication not configured',
       });
@@ -332,7 +341,7 @@ export class AuthenticationManager {
         this.logger.error('Authentication function returned null or undefined');
 
         // Audit failed authentication (non-blocking by default)
-        this.logAudit('authenticate', {
+        await this.logAudit('authenticate', {
           args: [{ username: credentials.username }],
           success: false,
           error: 'Authentication failed: no context returned',
@@ -355,7 +364,7 @@ export class AuthenticationManager {
       );
 
       // Audit successful authentication (non-blocking by default)
-      this.logAudit('authenticate', {
+      await this.logAudit('authenticate', {
         userId: context.userId,
         args: [{ username: credentials.username }],
         success: true,
@@ -381,7 +390,7 @@ export class AuthenticationManager {
       );
 
       // Audit failed authentication (non-blocking by default)
-      this.logAudit('authenticate', {
+      await this.logAudit('authenticate', {
         args: [{ username: credentials.username }],
         success: false,
         error: errorMessage,
@@ -409,7 +418,7 @@ export class AuthenticationManager {
       this.logger.debug({ error: 'Invalid token format' }, 'Token validation failed');
 
       // Audit failed validation (non-blocking by default)
-      this.logAudit('validateToken', {
+      await this.logAudit('validateToken', {
         success: false,
         error: 'Token must be a non-empty string',
       });
@@ -424,7 +433,7 @@ export class AuthenticationManager {
       this.logger.debug({ error: 'Empty token' }, 'Token validation failed');
 
       // Audit failed validation (non-blocking by default)
-      this.logAudit('validateToken', {
+      await this.logAudit('validateToken', {
         success: false,
         error: 'Token cannot be empty',
       });
@@ -456,7 +465,7 @@ export class AuthenticationManager {
       this.logger.error('No token validation function configured');
 
       // Audit configuration error (non-blocking by default)
-      this.logAudit('validateToken', {
+      await this.logAudit('validateToken', {
         success: false,
         error: 'Token validation not configured',
       });
@@ -479,7 +488,7 @@ export class AuthenticationManager {
         this.logger.error('Token validation function returned null or undefined');
 
         // Audit failed validation (non-blocking by default)
-        this.logAudit('validateToken', {
+        await this.logAudit('validateToken', {
           success: false,
           error: 'Token validation failed: no context returned',
           metadata: { duration: Date.now() - startTime },
@@ -500,7 +509,7 @@ export class AuthenticationManager {
       );
 
       // Audit successful validation (non-blocking by default)
-      this.logAudit('validateToken', {
+      await this.logAudit('validateToken', {
         userId: context.userId,
         success: true,
         metadata: {
@@ -540,7 +549,7 @@ export class AuthenticationManager {
       );
 
       // Audit failed validation (non-blocking by default)
-      this.logAudit('validateToken', {
+      await this.logAudit('validateToken', {
         success: false,
         error: errorMessage,
         metadata: { duration: Date.now() - startTime },

@@ -261,31 +261,6 @@ export const generatePrimaryShades = generateColorScale;
 // =============================================================================
 
 /**
- * Calculate relative luminance of a hex color for WCAG contrast calculations.
- */
-function getLuminanceForContrast(hex: string): number {
-  const rgb = hex.replace('#', '').match(/.{2}/g);
-  if (!rgb) return 0;
-  const [r, g, b] = rgb.map((c) => {
-    const val = parseInt(c, 16) / 255;
-    return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/**
- * Get appropriate contrast text color for WCAG AA compliance.
- * Uses luminance to determine if white or dark text provides better contrast.
- * Threshold of 0.4 ensures colored buttons get white text for better UX.
- */
-function getContrastTextColor(bgColor: string): string {
-  const luminance = getLuminanceForContrast(bgColor);
-  // Higher threshold (0.4) ensures most colored backgrounds get white text
-  // Only very bright colors like yellow/warning get dark text
-  return luminance < 0.4 ? '#FFFFFF' : '#212121';
-}
-
-/**
  * Create semantic palette color from a color scale.
  * Maps 11-shade scale to 5-shade semantic naming.
  *
@@ -295,7 +270,14 @@ function getContrastTextColor(bgColor: string): string {
  */
 export function createPaletteColorFromScale(scale: ColorScale, mode: 'light' | 'dark' = 'light'): PaletteColor {
   const mainColor = mode === 'dark' ? scale[400] : scale[500];
-  const contrastText = getContrastTextColor(mainColor);
+  // `getContrastText` measures both candidates instead of switching on a
+  // luminance threshold, and reads the colour through `hexToRgb`, which
+  // expands a three-digit hex. The threshold version this replaced did
+  // neither: it parsed with `match(/.{2}/g)`, so `#fff` produced `NaN`
+  // luminance and therefore WHITE text on a WHITE background. `#212121` stays
+  // the dark candidate — that tone is the palette's choice, not the
+  // threshold's.
+  const contrastText = getContrastText(mainColor, '#FFFFFF', '#212121');
 
   if (mode === 'dark') {
     return {

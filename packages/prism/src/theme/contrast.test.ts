@@ -21,7 +21,13 @@ import { describe, it, expect } from 'vitest';
 
 import { createPrismTheme } from './create-theme.js';
 import { presetNames } from './presets/index.js';
-import { getContrastText, getContrastRatio } from './utils/color.js';
+import {
+  getContrastText,
+  getContrastRatio,
+  generateColorScale,
+  createPaletteColorFromScale,
+} from './utils/color.js';
+import { buildPaletteColor } from './palette/builder.js';
 
 /** WCAG AA for body text. */
 const AA = 4.5;
@@ -153,5 +159,98 @@ describe('every preset', () => {
     }
 
     expect(failures).toEqual([]);
+  });
+});
+
+describe('a three-digit hex is a colour', () => {
+  /**
+   * `#fff` is valid CSS and appears throughout this platform's own styles.
+   * Two of the three luminance implementations in this package parsed a hex
+   * with `hex.replace('#','').match(/.{2}/g)`, which yields ONE pair for a
+   * three-character string and drops the rest. `[r, g, b]` then destructures
+   * to `[value, undefined, undefined]`, every arithmetic result is `NaN`, and
+   * `NaN < threshold` is false — so the threshold version answered WHITE for
+   * `#fff`. A white label on a white button, from a valid colour.
+   *
+   * `getContrastText` reads through `hexToRgb`, which expands shorthand.
+   */
+  const SHORTHAND: Array<[string, string]> = [
+    ['#fff', '#ffffff'],
+    ['#FFF', '#FFFFFF'],
+    ['#000', '#000000'],
+    ['#888', '#888888'],
+    ['#ccc', '#cccccc'],
+    ['#f0a', '#ff00aa'],
+  ];
+
+  it('reads the same as its six-digit form', () => {
+    for (const [short, long] of SHORTHAND) {
+      expect(getContrastRatio(short, '#FFFFFF'), short).toBeCloseTo(getContrastRatio(long, '#FFFFFF'), 6);
+      expect(getContrastText(short), short).toBe(getContrastText(long));
+    }
+  });
+
+  it('never picks a text colour equal to the background', () => {
+    for (const [short] of SHORTHAND) {
+      const chosen = getContrastText(short).toLowerCase();
+      expect(chosen, `${short} got ${chosen}`).not.toBe(short.toLowerCase());
+    }
+  });
+
+  it('gives white a dark label and black a light one', () => {
+    // The two cases the NaN path got exactly backwards for white.
+    expect(getContrastText('#fff')).toBe('#000000');
+    expect(getContrastText('#000')).toBe('#FFFFFF');
+  });
+});
+
+describe('the palette builders use the measured primitive', () => {
+  /**
+   * `getContrastText` was the fix; it landed in one place. `color.ts` kept a
+   * private `getContrastTextColor` and `palette/builder.ts` kept a local
+   * `getContrastText` — same name as the fixed one, so the call site read as
+   * though it reached it — and BOTH still switched on a luminance threshold
+   * computed by the broken parser. Every palette colour built through them
+   * carried whatever that returned.
+   */
+  it('gives every scale-derived palette colour a readable label', () => {
+    const failures: string[] = [];
+    for (const colour of CANDIDATES) {
+      for (const mode of ['light', 'dark'] as const) {
+        const scale = generateColorScale(colour);
+        for (const [name, built] of [
+          ['createPaletteColorFromScale', createPaletteColorFromScale(scale, mode)],
+          ['buildPaletteColor', buildPaletteColor(scale, mode)],
+        ] as const) {
+          const ratio = getContrastRatio(built.main, built.contrastText);
+          if (ratio < 3) {
+            failures.push(`${name} ${colour} ${mode}: ${built.main} on ${built.contrastText} = ${ratio.toFixed(2)}`);
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps #212121 as the dark candidate the palette chose', () => {
+    // The tone is a design decision and must survive the switch away from the
+    // threshold; only the DECISION between the two candidates changes.
+    const scale = generateColorScale('#FFD700');
+    expect(createPaletteColorFromScale(scale, 'light').contrastText).toBe('#212121');
+    expect(buildPaletteColor(scale, 'light').contrastText).toBe('#212121');
+  });
+
+  it('agrees with itself across the two builders', () => {
+    // Two entry points to one decision. They disagreed whenever the two
+    // thresholds (0.4 and 0.3) straddled a colour.
+    for (const colour of CANDIDATES) {
+      const scale = generateColorScale(colour);
+      for (const mode of ['light', 'dark'] as const) {
+        expect(
+          buildPaletteColor(scale, mode).contrastText,
+          `${colour} ${mode}`,
+        ).toBe(createPaletteColorFromScale(scale, mode).contrastText);
+      }
+    }
   });
 });

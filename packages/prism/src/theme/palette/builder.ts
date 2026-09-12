@@ -28,37 +28,11 @@ import {
   cssVarRgba,
 } from '../utils/color.js';
 import { grey as baseGrey, blue, green, purple, red, orange, lightBlue, basic } from '../colors/base.js';
+import { getContrastText } from '../utils/color.js';
 
 // =============================================================================
 // PALETTE COLOR BUILDER
 // =============================================================================
-
-/**
- * Calculate relative luminance of a hex color.
- * Used for determining if text should be light or dark for contrast.
- */
-function getLuminance(hex: string): number {
-  const rgb = hex.replace('#', '').match(/.{2}/g);
-  if (!rgb) return 0;
-  const [r, g, b] = rgb.map((c) => {
-    const val = parseInt(c, 16) / 255;
-    return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/**
- * Get appropriate contrast text color for a background.
- * Uses luminance to determine if white or dark text provides better contrast.
- * Threshold of 0.4 ensures colored buttons get white text for better UX.
- */
-function getContrastText(bgColor: string): string {
-  const luminance = getLuminance(bgColor);
-  // Threshold 0.179 is WCAG standard; 0.3 balances WCAG AA compliance
-  // with UX preference for white text on colored buttons.
-  // Colors brighter than 0.3 luminance (e.g. yellow, light orange) get dark text.
-  return luminance < 0.3 ? '#FFFFFF' : '#212121';
-}
 
 /**
  * Build palette color from color scale.
@@ -70,7 +44,12 @@ function getContrastText(bgColor: string): string {
 export function buildPaletteColor(scale: ColorScale, mode: 'light' | 'dark' = 'light'): PaletteColorWithChannels {
   // Determine main color and calculate appropriate contrast text
   const mainColor = mode === 'dark' ? scale[400] : scale[500];
-  const contrastText = getContrastText(mainColor);
+  // Imported, not local. This file used to declare its OWN `getContrastText`
+  // under the same name as the fixed one in `utils/color.ts`, so the call read
+  // as though it went to the audited primitive while it switched on a
+  // luminance threshold computed by a parser that returns `NaN` for a
+  // three-digit hex. `#212121` stays the dark candidate.
+  const contrastText = getContrastText(mainColor, '#FFFFFF', '#212121');
 
   const color: PaletteColor =
     mode === 'dark'

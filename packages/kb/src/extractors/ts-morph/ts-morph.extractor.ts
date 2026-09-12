@@ -1,7 +1,6 @@
-import { Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import { Project, type SourceFile } from 'ts-morph';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
 import { SymbolExtractor } from './symbol.extractor.js';
 import { DecoratorExtractor } from './decorator.extractor.js';
 import { DependencyExtractor } from './dependency.extractor.js';

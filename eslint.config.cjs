@@ -221,6 +221,13 @@ module.exports = [
         // linted at all.
         project: [
           './packages/*/tsconfig.json',
+          // packages/kb splits its program in two: `tsconfig.json` EXCLUDES
+          // `src/extractors/**` and `src/cli/extract.ts`, and a second
+          // config compiles them (the build runs both). Listing only the
+          // first left six files — 887 lines, including the 364-line symbol
+          // extractor — in no project at all, so every one of them answered
+          // with a parsing error and not a single rule ever ran on them.
+          './packages/kb/tsconfig.extract.json',
           './apps/*/tsconfig*.json',
           './apps/*/webapp/tsconfig.json',
         ],

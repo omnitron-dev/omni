@@ -5,14 +5,10 @@ import {
   type FunctionDeclaration,
   type TypeAliasDeclaration,
   type EnumDeclaration,
-  type VariableStatement,
-  type MethodDeclaration,
-  type PropertyDeclaration,
   type ParameterDeclaration,
-  SyntaxKind,
   Scope,
 } from 'ts-morph';
-import type { ISymbolDoc, IDecoratorDoc, IMemberDoc, SymbolKind } from '../../core/types.js';
+import type { ISymbolDoc, IDecoratorDoc, IMemberDoc } from '../../core/types.js';
 
 /**
  * Extracts symbol documentation from TypeScript source files.

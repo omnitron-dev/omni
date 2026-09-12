@@ -22,13 +22,23 @@
  *                    and called from the synchronous `stopJob`, so a handler
  *                    is all that could be added and stop() does not reject
  *   titan-pm         `performHealthCheck` (fully wrapped in try/catch)
- *   titan            netron `emitSpecial` x7, `request-batcher.flush` x4,
- *                    `cache-adapter` x4 — event emission and cache warming,
- *                    unread in detail
- *   netron-browser   15, unread
- *   titan-events     `runJob` x4 and the cron task handles, same shape as
- *                    titan-scheduler's
+ *   titan            `emitSpecial` x7 (try/catch per listener, try/finally
+ *                    around the drain), `revalidateInBackground`,
+ *                    `initializeConnection`; the four `flush()` calls and
+ *                    three `ICache` ops are fixed (431f548, 3b69f64)
+ *   netron-browser   11 left after the same batcher fix
+ *   titan-events     `runJob` x4 (whole body in try/catch, the retry
+ *                    setTimeout recurses into that same guard) and three
+ *                    node-cron `task.start()` / `task.stop()` handles, typed
+ *                    `void | Promise<void>` and called from synchronous
+ *                    methods — same shape as titan-scheduler's
  *   titan-notifications  7 in rotif, unread
+ *
+ * TWO of this sweep's findings presented as a HANG, not an error: a dropped
+ * rejection left the caller waiting on a promise that could never settle
+ * (`RequestBatcher` 431f548, `EventBusService.request` 8ff461c). Both failed
+ * their regression test by timing out at 120s rather than by asserting. When
+ * triaging "requests stopped completing", suspect a lost rejection.
  */
 // Same resolution the real config uses: typescript-eslint throws on TS >= 7,
 // and `tools/lint` is the workspace package pnpm bound to TypeScript 6. See

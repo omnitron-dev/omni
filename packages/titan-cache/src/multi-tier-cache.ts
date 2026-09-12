@@ -223,7 +223,19 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
     if (options.syncInterval) {
       this.syncTimer = setInterval(() => {
         if (this.writeStrategy === 'back') {
-          this.flushWriteBackBuffer();
+          // The promise gets a handler, the way the recovery path below
+          // already does. `flushWriteBackBuffer` has no try/catch of its own
+          // and awaits both the caller's `onWriteBackFlush` durability
+          // callback and every `l2Adapter.mset`, so an L2 outage rejected it
+          // on every tick — unhandled, which Node ends the process on.
+          //
+          // No data is lost when it fails: `writeBackBuffer.clear()` runs only
+          // after the last mset resolves, so the entries stay buffered and the
+          // next tick retries them. What was missing is any way to know, which
+          // is the part that matters for a write-back cache.
+          void this.flushWriteBackBuffer().catch((err) => {
+            console.warn(`[${this.name}] Write-back buffer flush failed:`, err);
+          });
         } else {
           // Even in write-through mode, run periodic cleanup for accessCounts and l2TagIndex
           this.cleanupAccessCounts();

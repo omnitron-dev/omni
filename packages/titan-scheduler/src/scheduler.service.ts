@@ -623,9 +623,25 @@ export class SchedulerService implements ILifecycle {
     // Remove from registry (emits JOB_REMOVED)
     const removed = this.registry.removeJob(name);
 
-    // Remove from persistence using the id captured before removal
+    // Remove from persistence using the id captured before removal.
+    //
+    // `deleteJob` is synchronous, so the promise cannot be awaited — but it
+    // must not be dropped either. SC-11 above fixed the lookup that stopped
+    // this call ever reaching persistence; a REJECTED call has the same
+    // outcome it describes, the persisted record leaking and resurrecting on
+    // the next boot via `loadAllJobs`, plus an unhandled rejection. Reported
+    // rather than silent: an operator who deletes a job and sees it come back
+    // needs the reason to exist somewhere.
     if (this.persistence && removed && job) {
-      this.persistence.deleteJob(job.id);
+      const deleting = this.persistence.deleteJob(job.id);
+      if (deleting instanceof Promise) {
+        void deleting.catch((err: unknown) => {
+          this.logger?.error(
+            { err, job: name, jobId: job.id },
+            'Scheduled job removed from the registry but NOT from persistence — it will return on the next boot'
+          );
+        });
+      }
     }
 
     return removed;

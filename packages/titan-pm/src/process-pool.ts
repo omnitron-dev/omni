@@ -1190,8 +1190,18 @@ export class ProcessPool<T> {
         method,
       });
 
-      // Try to process queue
-      this.processQueue();
+      // Try to process queue.
+      //
+      // The promise gets a handler. `processQueue` is `async` and carries no
+      // try/catch of its own — per-request failures are routed through
+      // `.catch(request.reject)`, but a throw in the queue scaffolding itself
+      // (worker selection with nothing healthy, for one) rejected the pump.
+      // Dropped, that is an unhandled rejection, which ends the process — a
+      // pool that dies when it cannot find a worker is worse than one that
+      // logs and waits for the next enqueue.
+      void this.processQueue().catch((err: unknown) => {
+        this.logger.error({ err, class: this.processName }, 'Process pool queue processing failed');
+      });
     });
   }
 
@@ -1260,9 +1270,12 @@ export class ProcessPool<T> {
       processed++;
     }
 
-    // Schedule next batch if there are more requests
+    // Schedule next batch if there are more requests — same handler, same
+    // reason as the enqueue path above.
     if (this.queue.length > 0) {
-      this.processQueue();
+      void this.processQueue().catch((err: unknown) => {
+        this.logger.error({ err, class: this.processName }, 'Process pool queue processing failed');
+      });
     }
   }
 

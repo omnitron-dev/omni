@@ -291,6 +291,22 @@ export class MemoryRateLimitStorage implements IRateLimitStorage {
   }
 
   /**
+   * Score of the oldest entry, or null when the set is empty.
+   *
+   * The map is keyed by member and valued by score, so this is a scan. It runs
+   * only on the DENIAL path, where the set is by definition at the limit — and
+   * a limit large enough for the scan to matter is a limit that is not
+   * limiting anything.
+   */
+  async oldestScoreInSortedSet(key: string): Promise<number | null> {
+    const set = this.sortedSets.get(key);
+    if (!set || set.size === 0) return null;
+    let oldest = Infinity;
+    for (const score of set.values()) if (score < oldest) oldest = score;
+    return Number.isFinite(oldest) ? oldest : null;
+  }
+
+  /**
    * RL-3b: atomic sliding-window check + consume.
    *
    * Prune-count-add run with NO `await` between them, so on the single JS thread
@@ -804,6 +820,26 @@ return {1, newval}
     } catch (error) {
       this.redisAvailable = false;
       throw new Error(`Redis ZCARD failed for key ${key}: ${error}`, { cause: error });
+    }
+  }
+
+  /**
+   * Score of the oldest entry, or null when the set is empty.
+   *
+   * `ZRANGE key 0 0 WITHSCORES` — the first element of a sorted set is the
+   * lowest-scored one, so this is O(log N) and returns at most one member.
+   */
+  async oldestScoreInSortedSet(key: string): Promise<number | null> {
+    const fullKey = this.buildKey(key);
+
+    try {
+      const res = (await this.redis.zrange(fullKey, 0, 0, 'WITHSCORES')) as string[];
+      if (!res || res.length < 2) return null;
+      const score = Number(res[1]);
+      return Number.isFinite(score) ? score : null;
+    } catch (error) {
+      this.redisAvailable = false;
+      throw new Error(`Redis ZRANGE failed for key ${key}: ${error}`, { cause: error });
     }
   }
 

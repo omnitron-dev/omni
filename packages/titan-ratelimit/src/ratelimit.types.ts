@@ -97,6 +97,20 @@ export interface IRateLimitStorage {
   countSortedSet(key: string): Promise<number>;
 
   /**
+   * Score of the OLDEST entry in a sorted set, or null when it is empty.
+   *
+   * A sliding window's caller wants to know when the window frees a slot, and
+   * that is when the oldest entry ages out — not one full window from now.
+   * Without this the only honest answer available was the window LENGTH, and
+   * `retryAfter` therefore told every denied caller to wait the maximum: on a
+   * 15-minute sign-in budget, "try again in 900 seconds" when twenty remained.
+   *
+   * @param key - Sorted set key
+   * @returns The lowest score present, or null for an empty/absent set
+   */
+  oldestScoreInSortedSet(key: string): Promise<number | null>;
+
+  /**
    * RL-3b: atomic sliding-window check + consume. Prunes entries older than
    * `windowStart`, counts the survivors, and — only if under `limit` — adds
    * `(score, member)` with `ttl`, all as ONE atomic step (Redis Lua / synchronous

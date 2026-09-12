@@ -129,14 +129,39 @@ export class SlidingWindowAlgorithm implements IRateLimitAlgorithm {
     // Calculate remaining slots
     const remaining = Math.max(0, limit - count);
 
-    // Reset time is one full window from now
-    const resetAt = now + windowMs;
+    // A sliding window does NOT reset one full window from now: it frees a
+    // slot the moment its OLDEST entry ages out. Reporting the window length
+    // was not a rounding error — it told every denied caller to wait the
+    // maximum. On the platform's 15-minute sign-in budget that is "try again
+    // in 900 seconds" when twenty remain, and the middleware puts it straight
+    // into `Retry-After`, so a client that honours the header waits it out.
+    //
+    // The two sibling algorithms in this file already answer honestly
+    // (`windowEnd - now` for the fixed window, `timeToRefill` for the token
+    // bucket); this one was the outlier.
+    //
+    // Read only when DENIED: on the allowed path there is nothing to report
+    // and no reason to pay for the lookup.
+    let oldest: number | null = null;
+    if (!allowed) {
+      try {
+        oldest = await storage.oldestScoreInSortedSet(key);
+      } catch {
+        // A storage that cannot answer must not turn a refusal into an error;
+        // fall back to the window length, which is the old behaviour and is
+        // conservative in the safe direction.
+        oldest = null;
+      }
+    }
+
+    const freesAt = oldest === null ? now + windowMs : oldest + windowMs;
+    const resetAt = allowed ? now + windowMs : freesAt;
 
     return {
       allowed,
       remaining,
       resetAt,
-      retryAfter: allowed ? undefined : Math.ceil(windowMs / 1000),
+      retryAfter: allowed ? undefined : Math.max(1, Math.ceil((freesAt - now) / 1000)),
       limit,
     };
   }

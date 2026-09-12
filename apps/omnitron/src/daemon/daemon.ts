@@ -136,6 +136,37 @@ export function resolveBindHost(configured: string | undefined): string {
   return configured ?? '127.0.0.1';
 }
 
+/** Addresses that reach this host and nowhere else. */
+export function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return true; // absent means the loopback default above
+  const h = host.trim().toLowerCase();
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]' || h.startsWith('127.');
+}
+
+/**
+ * Is the daemon still accepting the password its own migration seeded?
+ *
+ * Resolves the auth service lazily and answers `false` on any failure — a
+ * daemon that cannot reach its database has a louder problem than this, and
+ * a warning that fails the boot would be a worse trade than the risk it
+ * describes.
+ */
+async function isSeededAdminPasswordInUse(
+  app: Application,
+  logger: { warn: (o: object, m: string) => void },
+): Promise<boolean> {
+  try {
+    const auth = await app.container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
+    return await auth.isUsingSeededAdminPassword();
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message },
+      'Could not check whether the seeded admin password is still in use',
+    );
+    return false;
+  }
+}
+
 /**
  * The address other fleet nodes should dial to reach this one.
  *
@@ -316,12 +347,34 @@ export class OmnitronDaemon {
       if (savedConfig?.webapp) {
         try {
           const { WebappService } = await import('../webapp/webapp.service.js');
+
+          // Publishing the console while the seeded password is still in
+          // place hands the whole control plane — start, stop, restart, logs,
+          // config — to anyone who can reach the port and guess a word that
+          // is written in the migration. Migration 001 says the password
+          // "MUST be changed on first login"; nothing enforced it, and a
+          // comment is not a control.
+          //
+          // So the console falls back to loopback rather than refusing to
+          // start: the operator needs it to change the password, and a
+          // control plane that will not come up is its own outage. The log
+          // line says what to do and that this is not the configured bind.
+          let consoleHost = this.dc.consoleBindHost ?? '127.0.0.1';
+          if (!isLoopbackHost(consoleHost) && (await isSeededAdminPasswordInUse(this.app, logger))) {
+            logger.error(
+              { configured: consoleHost, bound: '127.0.0.1' },
+              'REFUSING to publish the Console while the seeded admin password is unchanged — ' +
+                'binding loopback instead. Sign in at http://127.0.0.1 and change it, then restart.',
+            );
+            consoleHost = '127.0.0.1';
+          }
+
           const webapp = new WebappService(
             logger,
             process.cwd(),
             (this.dc.httpPort ?? 9800) + 1,
             this.dc.httpPort ?? 9800,
-            this.dc.consoleBindHost ?? '127.0.0.1'
+            consoleHost
           );
           await webapp.start();
         } catch (err) {
@@ -410,6 +463,24 @@ export class OmnitronDaemon {
     // unauthenticated `stopAll({force:true})` — is answered by the default
     // being loopback and by that manager now being wired.)
     const tcpHost = resolveBindHost(dc.host);
+    if (!isLoopbackHost(tcpHost)) {
+      // Said, not enforced, and the difference is deliberate: silently
+      // rebinding a fleet transport to loopback would take a cluster down,
+      // and a node that cannot be reached is an outage rather than a
+      // hardening. The console above IS rebound, because its whole purpose
+      // is a password prompt and loopback still serves it.
+      void (async () => {
+        const loggerModule = await this.app!.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
+        const log = loggerModule.logger;
+        if (await isSeededAdminPasswordInUse(this.app!, log)) {
+          log.error(
+            { host: tcpHost, port: dc.port },
+            'The daemon fleet transport is published and the seeded admin password is unchanged — ' +
+              'anyone who can reach this port can sign in and stop every app. Change it now.',
+          );
+        }
+      })().catch(() => undefined);
+    }
     this.app.netron.registerTransport('tcp', () => new TcpTransport());
     this.app.netron.registerTransportServer('tcp', {
       name: 'daemon-fleet',

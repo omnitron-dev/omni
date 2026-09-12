@@ -75,12 +75,36 @@ function namesFrom(file, depth = 0, seen = new Set()) {
   return out;
 }
 
+/**
+ * Resolve a published subpath to its SOURCE barrel through the package's own
+ * exports map, not by guessing from the subpath name.
+ *
+ * Two shapes bite. The name and the directory need not match — titan
+ * publishes './module/logger' from 'dist/modules/logger', and guessing
+ * 'src/module/logger' finds nothing, which makes every symbol in that barrel
+ * look unreachable. And an entry may be condition-keyed
+ * (`{ import: { types, default }, require: {…} }`) rather than flat, which
+ * netron-react uses; reading only `types`/`default` resolves it to nothing.
+ * Both were met while generalising this check to the other packages, and both
+ * produced confident-looking findings that were the resolver's fault.
+ */
+function pickDist(entry) {
+  if (typeof entry === 'string') return entry;
+  return entry?.types ?? entry?.default ?? pickDist(entry?.import) ?? pickDist(entry?.require) ?? '';
+}
+
 const reachable = new Set();
 for (const sp of subpaths) {
-  const rel = sp === '.' ? '' : sp.replace(/^\.\//, '');
-  const candidates = rel
-    ? [`${PKG}/src/${rel}/index.ts`, `${PKG}/src/${rel}.ts`, `${PKG}/src/${rel}/index.tsx`]
-    : [`${PKG}/src/index.ts`];
+  const srcRel = String(pickDist(pkgJson.exports[sp]))
+    .replace(/^\.\//, '')
+    .replace(/^dist\//, '')
+    .replace(/\.(d\.ts|js|cjs|d\.cts)$/, '');
+  const candidates = [
+    `${PKG}/src/${srcRel}.ts`,
+    `${PKG}/src/${srcRel}.tsx`,
+    `${PKG}/src/${srcRel}/index.ts`,
+    `${PKG}/src/${srcRel}/index.tsx`,
+  ];
   for (const c of candidates) if (existsSync(c)) { for (const n of namesFrom(c)) reachable.add(n); break; }
 }
 
@@ -114,6 +138,15 @@ for (const b of barrels(join(PKG, 'src'))) {
     if (!reachable.has(must)) fail.push(`${must} is unreachable again`);
   }
   if (!reachable.has('CarouselSlide')) fail.push('the `as` rename is no longer followed');
+  // `pickDist` is asserted directly: prism's own exports map is flat, so
+  // breaking the condition-keyed branch changes nothing here and an indirect
+  // probe passes while it is broken. netron-react uses that shape.
+  if (pickDist({ import: { types: './dist/cache/index.d.ts' } }) !== './dist/cache/index.d.ts') {
+    fail.push('a condition-keyed exports entry is no longer resolved');
+  }
+  if (pickDist({ types: './dist/index.d.ts' }) !== './dist/index.d.ts') {
+    fail.push('a flat exports entry is no longer resolved');
+  }
   // Names that exist ONLY inside a standalone `export type { … }` block —
   // without them the earlier probe for that regression passed while the
   // parser was broken, because every other asserted name also appears in a

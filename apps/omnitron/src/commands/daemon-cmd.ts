@@ -145,7 +145,12 @@ export async function daemonStop(): Promise<void> {
       await new Promise((r) => setTimeout(r, 200));
     }
 
-    if (PidManager.isProcessAlive(pid)) {
+    // Re-validate rather than trusting the number captured twenty seconds
+    // ago. Those twenty seconds are exactly the window in which the daemon
+    // exits and the OS hands its pid to whatever starts next — and this
+    // branch runs only when the daemon has NOT exited on its own, which is
+    // when the file is most likely to be out of date.
+    if (pidManager.getPid() === pid) {
       process.kill(pid, 'SIGKILL');
       s.stop(`Daemon force-killed (PID: ${pid})`);
     } else {
@@ -184,9 +189,24 @@ export async function daemonKill(): Promise<void> {
     return;
   }
 
-  if (!PidManager.isProcessAlive(rawPid)) {
+  // Alive is not the same as ours. A pid outlives the process that owned it
+  // only in the file: the daemon dies, the OS hands the number to something
+  // else, and a SIGKILL aimed at "the daemon" lands on a stranger. The rest
+  // of this file already knows that — `daemonStop` reaches for `getPid()`,
+  // which goes through `isRunning()` and checks the recorded argv signature
+  // (T#56). This path used the raw number and only asked whether SOMETHING
+  // was alive at it.
+  //
+  // `cleanupStale` already treats "different process alive at this pid" as
+  // stale, so the recovery for that case was written and simply never
+  // reached from here.
+  if (!pidManager.getPid()) {
     pidManager.cleanupStale(socketPath);
-    log.warn(`Daemon (PID: ${rawPid}) was already dead — cleaned up stale files`);
+    log.warn(
+      PidManager.isProcessAlive(rawPid)
+        ? `PID ${rawPid} belongs to another process now, not the daemon — cleaned up stale files, killed nothing`
+        : `Daemon (PID: ${rawPid}) was already dead — cleaned up stale files`,
+    );
     return;
   }
 

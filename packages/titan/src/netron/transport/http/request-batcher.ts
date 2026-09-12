@@ -131,11 +131,11 @@ export class RequestBatcher extends EventEmitter {
 
       // Check if we should flush immediately
       if (this.queue.length >= this.maxBatchSize) {
-        this.flush('size-limit');
+        this.flushDetached('size-limit');
       } else if (!this.timer) {
         // Start batch timer
         this.timer = setTimeout(() => {
-          this.flush('timer');
+          this.flushDetached('timer');
         }, this.maxBatchWait);
       }
     });
@@ -144,6 +144,21 @@ export class RequestBatcher extends EventEmitter {
   /**
    * Flush the current batch
    */
+  /**
+   * Fire a flush without awaiting it, but never without a handler.
+   *
+   * All four call sites below are fire-and-forget — an enqueue that hits the
+   * size limit, two timers, and the age checker. `flush` clears `processing`
+   * in a `finally` now, so a throw no longer wedges the batcher; it would
+   * still leave an unhandled rejection, which Node ends the process on, so
+   * the failure is reported here instead.
+   */
+  private flushDetached(reason: 'size-limit' | 'timer' | 'age'): void {
+    void this.flush(reason).catch((error: unknown) => {
+      this.emit('batch-error', { batchId: 'detached', size: 0, error: String(error) });
+    });
+  }
+
   async flush(reason: 'size-limit' | 'timer' | 'age' | 'manual' = 'manual'): Promise<void> {
     // Clear timers
     if (this.timer) {
@@ -175,7 +190,7 @@ export class RequestBatcher extends EventEmitter {
       // Schedule next batch if there are remaining items
       if (this.queue.length > 0 && !this.timer) {
         this.timer = setTimeout(() => {
-          this.flush('timer');
+          this.flushDetached('timer');
         }, this.maxBatchWait);
       }
 
@@ -320,7 +335,7 @@ export class RequestBatcher extends EventEmitter {
         const oldestRequest = this.queue[0];
 
         if (oldestRequest && now - oldestRequest.timestamp >= this.maxRequestAge) {
-          this.flush('age');
+          this.flushDetached('age');
         }
       },
       Math.min(this.maxRequestAge / 2, 10)

@@ -261,9 +261,20 @@ export class HttpCacheAdapter extends EventEmitter {
 
     if (Array.isArray(pattern)) {
       // Invalidate by tags
-      this.cache.invalidateByTags?.(pattern).then((c: number) => {
-        this.log('[HttpCache] INVALIDATED_BY_TAGS', { tags: pattern, count: c });
-      });
+      // `.then` with no `.catch` is an unhandled rejection waiting for the
+      // first backing store that is not in-memory. Every `ICache` operation
+      // here returns a promise and this method is synchronous, so the three
+      // below cannot be awaited — but each one now reports, because a failed
+      // invalidation leaves an entry in the store that this adapter has
+      // already forgotten, and nothing else would ever say so.
+      this.cache
+        .invalidateByTags?.(pattern)
+        .then((c: number) => {
+          this.log('[HttpCache] INVALIDATED_BY_TAGS', { tags: pattern, count: c });
+        })
+        .catch((error: unknown) => {
+          this.log('[HttpCache] INVALIDATE_BY_TAGS_FAILED', { tags: pattern, error: String(error) });
+        });
       // Also clean up metadata
       for (const key of this.entryMeta.keys()) {
         this.entryMeta.delete(key);
@@ -313,7 +324,9 @@ export class HttpCacheAdapter extends EventEmitter {
     this.entryMeta.delete(key);
     this.revalidationPromises.delete(key);
     this.lastHitKeys.delete(key);
-    this.cache.delete(key);
+    void this.cache.delete(key).catch((error: unknown) => {
+      this.log('[HttpCache] DELETE_FAILED', { key, error: String(error) });
+    });
     return had;
   }
 
@@ -324,7 +337,9 @@ export class HttpCacheAdapter extends EventEmitter {
     this.entryMeta.clear();
     this.revalidationPromises.clear();
     this.lastHitKeys.clear();
-    this.cache.clear();
+    void this.cache.clear().catch((error: unknown) => {
+      this.log('[HttpCache] CLEAR_FAILED', { error: String(error) });
+    });
     this.emit('cache-clear');
     this.log('[HttpCache] CLEARED');
   }

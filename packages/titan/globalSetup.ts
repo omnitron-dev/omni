@@ -14,10 +14,7 @@ import { execFileSync, execSync, spawn, type ChildProcess } from 'node:child_pro
 import { writeFileSync, rmSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import net from 'node:net';
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 let nativeRedisProcess: ChildProcess | null = null;
 
@@ -224,9 +221,24 @@ async function startDockerRedis(dockerPath: string, port: number): Promise<strin
   throw new Error('Redis container failed to become healthy within 30 seconds');
 }
 
+/**
+ * Where the handoff file lives.
+ *
+ * The WRITER used `__dirname` and every READER uses `process.cwd()` —
+ * `getTestRedisConfig` in each package looks for
+ * `join(process.cwd(), '.redis-test-info.json')`. Those coincide only while
+ * this file is used by the package it sits in; the moment another package
+ * points its `globalSetup` here, the setup writes beside THIS file and the
+ * workers look beside THEIRS, so every strategy but the last fallback goes
+ * silently unread. Vitest runs with cwd at the package root, which is what
+ * the readers have always assumed.
+ */
+function redisInfoPath(): string {
+  return join(process.cwd(), '.redis-test-info.json');
+}
+
 function writeRedisInfo(info: RedisInfo): void {
-  const infoFile = join(__dirname, '.redis-test-info.json');
-  writeFileSync(infoFile, JSON.stringify(info, null, 2));
+  writeFileSync(redisInfoPath(), JSON.stringify(info, null, 2));
   (globalThis as any).__REDIS_INFO__ = info;
 }
 
@@ -310,8 +322,7 @@ export async function teardown(): Promise<void> {
     let redisInfo: RedisInfo | undefined;
     try {
       const { readFileSync } = await import('node:fs');
-      const infoFile = join(__dirname, '.redis-test-info.json');
-      redisInfo = JSON.parse(readFileSync(infoFile, 'utf-8'));
+      redisInfo = JSON.parse(readFileSync(redisInfoPath(), 'utf-8'));
     } catch {
       redisInfo = (globalThis as any).__REDIS_INFO__;
     }
@@ -358,7 +369,7 @@ export async function teardown(): Promise<void> {
     // Clean up info file
     try {
       const { unlinkSync } = await import('node:fs');
-      unlinkSync(join(__dirname, '.redis-test-info.json'));
+      unlinkSync(redisInfoPath());
     } catch {}
 
     // Clean up SQLite temp files

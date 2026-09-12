@@ -24,6 +24,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.spec.ts', 'test/**/*.test.ts'],
+    globalSetup: ['./globalSetup.ts'],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     clearMocks: true,

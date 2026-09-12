@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { isCluster } from './redis.utils.js';
 import { Errors } from '@omnitron-dev/titan/errors';
-import type { IRedisClient, IRedisPipeline } from './redis.interfaces.js';
+import type { IRedisClient, IRedisPipeline, XAddTrim } from './redis.interfaces.js';
 import { RedisManager } from './redis.manager.js';
 
 export class RedisService {
@@ -597,17 +597,39 @@ export class RedisService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Add an entry to a stream
+   * Add an entry to a stream, optionally capping the stream in the same call.
+   *
+   * `trim` is not a convenience. A producer that appends without one is
+   * writing to a structure with no upper bound, and Redis holds it in memory:
+   * measured on a running deployment, six unbounded exchange tick streams held
+   * **3.95 GB**, the largest 41.2 million entries spanning 73 days — every one
+   * already aggregated into candles. Capping at the point of the write is the
+   * only place it cannot be forgotten, and with `~` it is amortised O(1),
+   * because Redis stops at a radix node boundary instead of rewriting one.
+   *
    * @param key - The stream key
    * @param id - Entry ID ('*' for auto-generate)
    * @param fields - Field-value pairs to add
    * @param namespace - Optional namespace for the Redis client
+   * @param trim - Optional cap applied as part of the same XADD
    * @returns The entry ID
    */
-  async xadd(key: string, id: string, fields: Record<string, string>, namespace?: string): Promise<string | null> {
+  async xadd(
+    key: string,
+    id: string,
+    fields: Record<string, string>,
+    namespace?: string,
+    trim?: XAddTrim
+  ): Promise<string | null> {
     const client = this.getClient(namespace);
     const args = Object.entries(fields).flat();
-    return client.xadd(key, id, ...args);
+    if (!trim) return client.xadd(key, id, ...args);
+    // `~` unless explicitly exact: an exact trim on a hot stream rewrites a
+    // node per write, which is the cost this was added to avoid.
+    const operator = trim.exact === true ? '=' : '~';
+    return (client as unknown as {
+      xadd(...a: unknown[]): Promise<string | null>;
+    }).xadd(key, trim.strategy, operator, String(trim.threshold), id, ...args);
   }
 
   /**

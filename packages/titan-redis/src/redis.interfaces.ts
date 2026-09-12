@@ -26,6 +26,21 @@ export type IRedisClientStatus =
 /**
  * Cluster node configuration
  */
+/**
+ * How an XADD should cap its stream.
+ *
+ * `MAXLEN` bounds the entry count; `MINID` drops entries whose id sorts below
+ * the threshold, which for the millisecond-prefixed default ids means "older
+ * than". Prefer MINID when the useful question is "how far back do we keep",
+ * and MAXLEN when it is "how many".
+ */
+export interface XAddTrim {
+  strategy: 'MAXLEN' | 'MINID';
+  threshold: string | number;
+  /** Exact trimming. Defaults to approximate (`~`), which is amortised O(1). */
+  exact?: boolean;
+}
+
 export interface IRedisClusterNode {
   host: string;
   port: number;

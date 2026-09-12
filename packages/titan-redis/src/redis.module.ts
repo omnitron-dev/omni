@@ -24,6 +24,35 @@ import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/mo
 export class TitanRedisModule {
   name = 'TitanRedisModule';
 
+  /**
+   * Close every Redis client on shutdown.
+   *
+   * `RedisManager` carried a `onModuleDestroy()` — a NestJS name that nothing
+   * in Titan calls. Provider teardown reaches `@PreDestroy`, `onDestroy()` and
+   * `dispose()`, and the manager has none of the three, so `closeAllClients()`
+   * had no caller at all. Measured across the six downstream backends: 4,000+
+   * `Redis client "…" connected successfully` lines and zero
+   * `Redis client "…" closed`. Not once, in any app, ever.
+   *
+   * This belongs on the MODULE, not on the manager, and the difference is
+   * ordering. Modules stop in reverse topological order, so everything that
+   * uses Redis has already stopped by the time this runs — whereas provider
+   * teardown happens before the module loop, which would have pulled the
+   * connections out from under a module still deregistering its node.
+   *
+   * Same shape, and the same reason, as `TitanDatabaseModule.onStop`.
+   */
+  async onStop(app: any): Promise<void> {
+    try {
+      const container = app?.container;
+      if (!container?.has?.(REDIS_MANAGER)) return;
+      const manager: RedisManager = container.resolve(REDIS_MANAGER);
+      await manager.destroy();
+    } catch {
+      // Best-effort — the process may already be tearing down.
+    }
+  }
+
   static forRoot(options: RedisModuleOptions = {}): DynamicModule {
     // Create providers using correct Nexus format: [token, provider]
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [

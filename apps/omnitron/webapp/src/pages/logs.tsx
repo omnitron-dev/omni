@@ -299,7 +299,7 @@ function LogRow({ log, isNew }: LogRowProps) {
 // =============================================================================
 
 export default function LogsPage() {
-  const { activeProject, filterApps, displayName } = useStackContext();
+  const { activeProject, namespacePrefix, filterApps, displayName } = useStackContext();
   const daemonMode = !activeProject;
 
   // ---- Filters ----
@@ -317,7 +317,12 @@ export default function LogsPage() {
   // ---- Data ----
   const [logRows, setLogRows] = useState<LogEntryRow[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);
-  const [appNames, setAppNames] = useState<string[]>([]);
+  // The app filter has two sources, kept apart because they mean different
+  // things: what is RUNNING in the active project, and what has LOGGED at any
+  // point. Both hold fully-namespaced names — the value the daemon actually
+  // stores in `logs.app` — and the short form is a display concern only.
+  const [liveApps, setLiveApps] = useState<string[]>([]);
+  const [loggedApps, setLoggedApps] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -362,17 +367,29 @@ export default function LogsPage() {
     }
   }, [isLive, paused]);
 
-  // ---- Fetch app names + cluster nodes ----
+  // ---- Fetch app names ----
+  //
+  // Scoped to the active project/stack, so it re-runs when that changes.
+  // `filterApps` and `displayName` come from the stack context and are rebuilt
+  // on every switch; running this once on mount left the app dropdown listing
+  // the apps of whichever project happened to be active at mount, with no way
+  // to refresh it short of a reload. The two calls used to share one effect —
+  // the node list below is cluster-wide and has nothing to do with the
+  // project, so it stays on its own.
   useEffect(() => {
     (async () => {
       try {
         const list = await daemon.list();
-        const filtered = filterApps(list);
-        const names = [...new Set(filtered.map((a: any) => displayName(a.name)))];
-        setAppNames(names);
+        setLiveApps(filterApps(list).map((a: any) => a.name));
       } catch {
         /* noop */
       }
+    })();
+  }, [filterApps]);
+
+  // ---- Fetch cluster nodes ----
+  useEffect(() => {
+    (async () => {
       try {
         const nodes = await fleet.listNodes();
         if (Array.isArray(nodes) && nodes.length > 0) {
@@ -389,12 +406,9 @@ export default function LogsPage() {
     try {
       const s: LogStats = await logs.getLogStats();
       setStats(s);
-      if (s.byApp.length > 0) {
-        setAppNames((prev) => {
-          const names = new Set([...prev, ...s.byApp.map((a) => a.app)]);
-          return Array.from(names).sort();
-        });
-      }
+      // Replaced, not unioned: `byApp` is the complete grouping of the log
+      // table, so a union only ever accumulated names that had already gone.
+      setLoggedApps(s.byApp.map((a) => a.app));
     } catch {
       /* stats optional */
     }
@@ -403,6 +417,39 @@ export default function LogsPage() {
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  // ---- App filter options ----
+  //
+  // The value sent to the daemon MUST be the namespaced name: `queryLogs`
+  // matches `app` by equality, so picking the short `main` asked for rows
+  // written under that exact string. Measured on this stand: `main` answers
+  // 36 rows whose newest is five days old, left behind by the pre-project
+  // standalone layout, while the app the operator meant is `acme/dev/main`
+  // with 81 783 rows and a newest entry seconds old. The page built the short
+  // names itself, so it was offering a filter that could only mislead.
+  const appOptions = useMemo(() => {
+    // Un-namespaced names — the daemon's own `omnitron`, plus those standalone
+    // leftovers — have no prefix to match, so they stay visible in every
+    // scope. Same rule the metrics page applies to its series.
+    const inScope = (name: string) =>
+      !namespacePrefix || name.startsWith(namespacePrefix) || !name.includes('/');
+    const values = [...new Set([...liveApps, ...loggedApps])].filter(inScope).sort();
+
+    // Two values can render to one label — `main` and `acme/dev/main` both
+    // display as `main`. Where that happens, show the full value: a dropdown
+    // with two identical entries querying different data is worse than a long
+    // one.
+    const labelCounts = new Map<string, number>();
+    for (const value of values) {
+      const label = displayName(value);
+      labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+    }
+
+    return values.map((value) => {
+      const label = displayName(value);
+      return { value, label: labelCounts.get(label)! > 1 ? value : label };
+    });
+  }, [liveApps, loggedApps, namespacePrefix, displayName]);
 
   // ---- Build filter ----
   const buildFilter = useCallback(
@@ -765,9 +812,9 @@ export default function LogsPage() {
               <MenuItem value="">
                 <em>All Apps</em>
               </MenuItem>
-              {appNames.map((name) => (
-                <MenuItem key={name} value={name} sx={{ fontFamily: MONO, fontSize: 12 }}>
-                  {name}
+              {appOptions.map(({ value, label }) => (
+                <MenuItem key={value} value={value} sx={{ fontFamily: MONO, fontSize: 12 }}>
+                  {label}
                 </MenuItem>
               ))}
             </TextField>

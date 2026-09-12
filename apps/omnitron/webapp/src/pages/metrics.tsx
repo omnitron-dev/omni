@@ -151,7 +151,7 @@ const METRICS_POLL_MS = 10_000;
 // literally. Both were read by nothing.
 
 export default function MetricsPage() {
-  const { displayName, namespacePrefix } = useStackContext();
+  const { namespacePrefix } = useStackContext();
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -298,7 +298,14 @@ export default function MetricsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // `namespacePrefix` filters the series above, and it changes whenever the
+    // operator switches project or stack. With an empty dependency list this
+    // callback kept the prefix it was built with — and the 10 s poll below
+    // re-ran it forever, so the page went on drawing the project the operator
+    // had left. The prefix is also `''` until the project store hydrates,
+    // which disables the filter entirely; capturing that first value showed
+    // every project's apps at once, permanently.
+  }, [namespacePrefix]);
 
   // The page owns its several series in local state, so it takes the schedule
   // only. `autoRefresh` is the toggle the user controls; note that turning it

@@ -495,8 +495,15 @@ function LogRow({ log, isNew }: { log: LogEntryRow; isNew?: boolean }) {
 }
 
 function LogsTab({ appName }: { appName: string }) {
-  // DB stores short app names ("main"), not namespaced ("omni/dev/main")
-  const dbAppName = appName.includes('/') ? appName.split('/').pop()! : appName;
+  // `appName` is the daemon's own namespaced name and goes to the daemon
+  // unchanged. It used to be stripped to its last segment, on the strength of
+  // a comment saying the log store keys on short names. It does not, and has
+  // not since apps moved under projects: `logs.app` holds `acme/dev/main`, and
+  // `getRecentLogs` matches it by equality. Measured on this stand —
+  // `streamLogs({tail: 200, app: 'main'})` returns 36 entries whose newest is
+  // five days old, left by the pre-project standalone layout, against 200 for
+  // `acme/dev/main` with the newest seconds old. So this tab showed a fossil,
+  // or nothing, for every app in every project.
 
   const [logRows, setLogRows] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -525,7 +532,7 @@ function LogsTab({ appName }: { appName: string }) {
 
   // Stream filter
   const streamFilter = useMemo(() => {
-    const f: Record<string, unknown> = { tail: 200, app: dbAppName };
+    const f: Record<string, unknown> = { tail: 200, app: appName };
     if (selectedLevels.length > 0) f.level = selectedLevels;
     if (debouncedSearch.trim()) f.search = debouncedSearch.trim();
     return f;
@@ -764,8 +771,14 @@ function MetricsGaugeCard({ title, value, suffix, color, loading }: {
 }
 
 function MetricsTab({ appName }: { appName: string }) {
-  // Metrics snapshot uses short app names ("main"), not namespaced ("omni/dev/main")
-  const shortName = appName.includes('/') ? appName.split('/').pop()! : appName;
+  // Same correction as LogsTab above, and measured the same way: every metrics
+  // surface keys on the namespaced name. `getSnapshot().apps` is keyed
+  // `acme/dev/main` (and `acme/dev/main/http` for its children), and
+  // `querySeries({apps: ['main']})` answers zero series where
+  // `apps: ['acme/dev/main']` answers one with 30 points. The gauges below
+  // survived only because of their suffix-matching fallback; the charts had
+  // none, so they drew nothing and the catch around them explained the
+  // emptiness as "time-series not available".
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -789,7 +802,7 @@ function MetricsTab({ appName }: { appName: string }) {
         const snapshot: any = await metrics.getSnapshot();
         if (snapshot?.apps) {
           // Find this app in the snapshot — match by full name or short name
-          const appEntry = snapshot.apps[shortName]
+          const appEntry = snapshot.apps[appName]
             ?? Object.entries(snapshot.apps).find(([k]) => k.endsWith(`/${appName.split('/').pop()}`))?.[1];
           if (appEntry) {
             setCpu(Math.round((appEntry as any).cpu * 10) / 10);
@@ -807,7 +820,7 @@ function MetricsTab({ appName }: { appName: string }) {
       if (!gotSnapshot) {
         try {
           const agg: any = await daemon.getMetrics({ name: appName });
-          const appEntry = agg?.apps?.[appName] ?? agg?.apps?.[shortName];
+          const appEntry = agg?.apps?.[appName];
           if (appEntry) {
             setCpu(Math.round(appEntry.cpu * 10) / 10);
             setMemory(appEntry.memory ?? 0);
@@ -823,8 +836,8 @@ function MetricsTab({ appName }: { appName: string }) {
       const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
       try {
         const [cpuData, memData]: [any[], any[]] = await Promise.all([
-          metrics.querySeries({ names: ['cpu_percent'], apps: [shortName], from: fiveMinAgo, interval: '10s' }),
-          metrics.querySeries({ names: ['memory_bytes'], apps: [shortName], from: fiveMinAgo, interval: '10s' }),
+          metrics.querySeries({ names: ['cpu_percent'], apps: [appName], from: fiveMinAgo, interval: '10s' }),
+          metrics.querySeries({ names: ['memory_bytes'], apps: [appName], from: fiveMinAgo, interval: '10s' }),
         ]);
 
         if (cpuData.length > 0) {

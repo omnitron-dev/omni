@@ -1,5 +1,11 @@
 /**
  * Input validation utilities for HTTP handlers
+ *
+ * This is the single implementation. `HttpServer` used to carry a private copy
+ * of the same forty lines, and all three of its dispatch paths called that one
+ * while this file was exported and never imported by anything. Two copies of a
+ * security control drift, and these had already drifted into the same defect
+ * twice over.
  */
 
 import { TitanError, ErrorCode } from '../../../../errors/index.js';
@@ -7,33 +13,52 @@ import type { MethodContract } from '../../../../validation/contract.js';
 import type { LocalPeer } from '../../../local-peer.js';
 
 /**
+ * A declared contract that cannot be evaluated denies the request.
+ *
+ * The client is told only that the server could not check its input. Which
+ * schema, which refinement and what it threw stay in the log: a caller who can
+ * make the validator throw must not also be able to read what it tried to do.
+ */
+function validationUnavailable(): TitanError {
+  return new TitanError({
+    code: ErrorCode.INTERNAL_ERROR,
+    message: 'Input validation unavailable',
+    details: { message: 'The server could not verify the request payload' },
+  });
+}
+
+/**
  * Validate method input against contract
  * @returns The validated and transformed input (with defaults applied), or original input if no validation
  */
 export function validateMethodInput(input: unknown, contract?: MethodContract, logger?: LocalPeer['logger']): unknown {
-  // DEFENSIVE: Check if contract is still valid (race condition prevention)
+  // No contract, or a contract that declares no input schema: nothing was
+  // promised, so nothing is skipped. These two are the only paths that may
+  // return the input unchecked.
   if (!contract) {
     return input;
   }
 
-  // DEFENSIVE: Check if input schema exists and is valid
   if (!contract.input) {
     return input;
   }
 
-  // DEFENSIVE: Verify contract.input has safeParse method (Zod schema)
-  // This guards against "_zod" undefined errors during contract lifecycle changes
+  // `MethodContract.input` is typed `z.ZodSchema`, so a value without
+  // `safeParse` means the contract was built wrong or was swapped mid-flight.
+  // This used to warn and return the input: the service declared a check, the
+  // framework silently did not perform it, and the handler received whatever
+  // arrived. A control that turns itself off when it is confused is worse than
+  // no control, because the code still reads as though it is there.
   if (
     typeof contract.input !== 'object' ||
     !contract.input ||
     typeof (contract.input as { safeParse?: unknown }).safeParse !== 'function'
   ) {
-    // Log warning if logger is available
-    logger?.warn(
+    logger?.error(
       { contractType: typeof contract.input },
-      'Invalid contract schema detected - contract.input is not a Zod schema. Skipping validation.'
+      'Invalid contract schema detected - contract.input is not a Zod schema. Refusing the request.'
     );
-    return input;
+    throw validationUnavailable();
   }
 
   // For HTTP transport, input comes as an array of arguments
@@ -54,18 +79,27 @@ export function validateMethodInput(input: unknown, contract?: MethodContract, l
     // The contract should handle array validation if needed
   }
 
-  // DEFENSIVE: Wrap validation in try-catch to handle contract lifecycle issues
   let validation: { success: boolean; data?: unknown; error?: { issues: Array<{ path: (string | number)[] }> } };
   try {
     validation = (contract.input as { safeParse: (v: unknown) => typeof validation }).safeParse(valueToValidate);
   } catch (error) {
-    // Log contract lifecycle issue
+    // `safeParse` is not exception-free. Measured on the zod this package
+    // depends on (4.5.4): an exception thrown inside a `.refine()` callback
+    // propagates out of `safeParse` rather than becoming a failed result. So a
+    // refinement that calls `JSON.parse`, `new URL` or `BigInt` on the value —
+    // all ordinary things to write — hands the caller a way to choose which
+    // requests get validated.
+    //
+    // The previous comment blamed a "contract lifecycle race condition" and
+    // allowed the request through. Whatever the cause, allowing it is the one
+    // answer that cannot be right: either the contract is broken, in which case
+    // the request must not run, or the input triggered it, in which case the
+    // input is exactly what needed checking.
     logger?.error(
       { error, contractInput: String(contract.input) },
-      'Contract validation failed unexpectedly - possible contract lifecycle race condition. Allowing request without validation.'
+      'Contract validation threw - refusing the request'
     );
-    // Allow request to proceed without validation rather than failing
-    return input;
+    throw validationUnavailable();
   }
 
   if (!validation.success) {

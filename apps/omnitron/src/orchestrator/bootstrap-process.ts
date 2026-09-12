@@ -36,6 +36,16 @@ function pathToFileUrl(p: string): string {
 // Inline PM decorator metadata — avoids importing the full PM module which
 // deadlocks when loaded from source (.ts) alongside the dist-loaded worker-runtime.
 const PROCESS_METADATA_KEY = Symbol.for('process:metadata');
+// These decorators are declared locally rather than imported from
+// `@omnitron-dev/titan-pm` on purpose: this file is a worker ENTRY POINT, and
+// pulling the package in would load it into every child process. They
+// interoperate through `Symbol.for`, which is realm-wide, so the metadata they
+// write is the same metadata `titan-pm`'s `worker-runtime` scans for.
+//
+// That agreement is the whole contract, and it is not enforced by the type
+// system — `a-local-decorator-still-agrees-with-the-runtime.test.ts` pins it.
+// Note the direction of the last divergence: titan-pm's exported `@OnShutdown`
+// wrote a prototype key nothing reads, and THESE copies were the correct ones.
 const PROCESS_METHOD_METADATA_KEY = Symbol.for('process:method:metadata');
 
 function Process(options: { name?: string; allMethodsPublic?: boolean } = {}): ClassDecorator {

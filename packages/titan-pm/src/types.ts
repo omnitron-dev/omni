@@ -167,10 +167,18 @@ export interface IProcessMethodMetadata {
    */
   healthCheck?: { method: string; interval?: number };
   /**
-   * The four below are recorded by `@RateLimit`, `@Cache`, `@Validate`,
+   * Set by `@OnShutdown`. `serviceWrapper.__shutdown` scans for this field and
+   * awaits every method that carries it — per method, so a class may declare
+   * several. The decorator used to write only a prototype-level `'on-shutdown'`
+   * key, which nothing reads, so the handler never ran and the runtime went
+   * straight to `netron.stop()` and `process.exit(0)`.
+   */
+  onShutdown?: boolean;
+  /**
+   * The five below are recorded by `@RateLimit`, `@Cache`, `@Validate`,
    * `@Trace` and `@Metric`, and NOT IMPLEMENTED: the worker runtime reads only
-   * `public` and `healthCheck` from this object, so none of them changes how a
-   * method behaves. The decorators are declarative markers today.
+   * `public`, `healthCheck` and `onShutdown` from this object, so none of them
+   * changes how a method behaves. The decorators are declarative markers today.
    */
   rateLimit?: IRateLimitOptions;
   cache?: ICacheOptions;

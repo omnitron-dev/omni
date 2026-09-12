@@ -540,10 +540,28 @@ export function HealthCheck(options: { interval?: number } = {}): MethodDecorato
 }
 
 /**
- * Handle process shutdown gracefully
+ * Handle process shutdown gracefully.
+ *
+ * Same defect as `@HealthCheck` above, four lines apart and left behind when
+ * that one was fixed: `serviceWrapper.__shutdown` finds handlers by scanning
+ * each method's entry under PROCESS_METHOD_METADATA_KEY for an `onShutdown`
+ * field (`worker-runtime.ts`), and this decorator wrote to a different key
+ * entirely — the string 'on-shutdown', on the prototype rather than per
+ * method. The two never met: a method carrying `@OnShutdown` was never called,
+ * and the runtime went on to `netron.stop()` and `process.exit(0)`. An exit
+ * that skips the cleanup a process asked for looks exactly like a clean one.
+ *
+ * The prototype key was also single-valued, so two `@OnShutdown` methods on one
+ * class overwrote each other — a limit the runtime does not have. Per method,
+ * every handler runs.
  */
 export function OnShutdown(): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const methodMetadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
+    methodMetadata.onShutdown = true;
+
+    // The original prototype-level key is kept: it is part of the shape any
+    // existing reader may rely on, and it costs nothing.
     Reflect.defineMetadata('on-shutdown', propertyKey, target);
   };
 }

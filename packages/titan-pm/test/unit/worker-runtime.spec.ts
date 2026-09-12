@@ -606,7 +606,12 @@ describe('Worker Runtime - Transport Setup', () => {
 
 describe('Worker Runtime - Shutdown Handling', () => {
   describe('Graceful shutdown', () => {
-    it('should call shutdown methods decorated with @OnShutdown', async () => {
+    it('should call shutdown methods carrying onShutdown metadata', async () => {
+      // Renamed: this writes the metadata by hand, so it exercises the
+      // runtime's LOOP and not the decorator. It passed for months while
+      // `@OnShutdown` wrote to a prototype key nothing reads and no decorated
+      // handler ever ran. The decorator's half is pinned in
+      // `a-shutdown-hook-that-never-ran.spec.ts`.
       const shutdownMock = vi.fn();
 
       class ProcessWithShutdown {
@@ -619,7 +624,6 @@ describe('Worker Runtime - Shutdown Handling', () => {
       const prototype = Object.getPrototypeOf(instance);
       const propertyNames = Object.getOwnPropertyNames(prototype);
 
-      // Simulate finding methods with shutdown metadata
       Reflect.defineMetadata(PROCESS_METHOD_METADATA_KEY, { onShutdown: true }, prototype, 'onShutdown');
 
       for (const propertyName of propertyNames) {

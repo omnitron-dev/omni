@@ -1553,7 +1553,12 @@ describe('PM Decorators', () => {
       expect(methodName).toBe('gracefulShutdown');
     });
 
-    it('should only register one shutdown handler per class', () => {
+    it('the legacy prototype key holds only the last handler', () => {
+      // Kept as documentation of that key's limit, NOT of the decorator's
+      // semantics. The runtime finds handlers per method and runs all of them;
+      // see `a-shutdown-hook-that-never-ran.spec.ts`. This assertion used to be
+      // the only one about multiple handlers, and it read as though one per
+      // class were the intended design.
       class MultiShutdownService {
         @OnShutdown()
         async cleanup1() {}
@@ -1562,10 +1567,13 @@ describe('PM Decorators', () => {
         async cleanup2() {}
       }
 
-      const methodName = Reflect.getMetadata('on-shutdown', MultiShutdownService.prototype);
+      expect(Reflect.getMetadata('on-shutdown', MultiShutdownService.prototype)).toBe('cleanup2');
 
-      // Last decorator wins
-      expect(methodName).toBe('cleanup2');
+      // What actually governs shutdown: both, independently.
+      for (const method of ['cleanup1', 'cleanup2']) {
+        const meta = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, MultiShutdownService.prototype, method);
+        expect(meta?.onShutdown, method).toBe(true);
+      }
     });
   });
 

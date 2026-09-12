@@ -26,7 +26,6 @@ import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } fro
 import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
-import { useStackContext } from 'src/hooks/use-stack-context';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { settledPair } from 'src/utils/settled-pair';
@@ -252,7 +251,11 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 // ---------------------------------------------------------------------------
 
 export default function AlertsPage() {
-  const { namespacePrefix, displayName } = useStackContext();
+  // No stack context here on purpose. An `AlertRule` is an expression over
+  // metrics with no app field, and an `ActiveAlert` names the rule that fired,
+  // so there is nothing for `namespacePrefix` to narrow. The page used to pull
+  // it and `displayName` and use neither, which reads like scoping that
+  // happens somewhere below and does not.
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data, loading, error, refresh: fetchData } = usePolledResource(

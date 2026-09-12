@@ -14,10 +14,9 @@ import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, Alert, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
-import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
@@ -160,7 +159,15 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
 // ---------------------------------------------------------------------------
 
 export default function TracesPage() {
-  const { displayName, namespacePrefix } = useStackContext();
+  // Unlike alerts, traces DO have the dimension — `TraceFilter.service`, and
+  // every trace carries a `serviceName` — so this page could scope to the
+  // active project. It does not, and the stack context it used to pull and
+  // never read has been removed rather than left looking like it might.
+  // Scoping it needs one fact this stand cannot supply: `queryTraces` returns
+  // nothing here, so there is no evidence whether `serviceName` holds the
+  // namespaced process name (`acme/dev/main`) or a titan service name, and
+  // guessing is how the log and metrics filters ended up querying a string
+  // nothing was stored under.
   const [expandedTrace, setExpandedTrace] = useState<string | null>(null);
 
   // Filters

@@ -195,6 +195,27 @@ export class ConfigModule {
           },
         ] as any,
 
+        // The schema, resolved from whatever the async factory returns.
+        //
+        // `forRoot` provides `CONFIG_SCHEMA_TOKEN` whenever `options.schema` is
+        // set; this path did not provide it at all. `ConfigService` injects it
+        // optionally and uses it for `validateOnStartup` and `validate()`, so
+        // an app that configured the module asynchronously WITH a schema got no
+        // validation — `validateOnStartup` stayed true and quietly did nothing,
+        // which is worse than being off, because the configuration reads as
+        // validated.
+        //
+        // Async means the schema is not known until the factory has run, so it
+        // is provided by a factory of its own over the resolved options rather
+        // than by a value.
+        [
+          CONFIG_SCHEMA_TOKEN,
+          {
+            useFactory: (resolved: IConfigModuleOptions | undefined) => resolved?.schema,
+            inject: [CONFIG_OPTIONS_TOKEN],
+          },
+        ] as any,
+
         // Config Loader Service - use value instead of class
         [
           CONFIG_LOADER_SERVICE_TOKEN,

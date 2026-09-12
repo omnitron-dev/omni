@@ -118,9 +118,23 @@ export class LoggerModule {
         [
           LOGGER_SERVICE_TOKEN,
           {
-            useFactory: () =>
-              // Pass the options directly from closure
-              new LoggerService(options, options.transports, options.processors),
+            // The optional ConfigService is injected here for the same reason
+            // `forRootAsync` injects it: `LoggerService` reads `logger.level`,
+            // `logger.prettyPrint`, `logger.redact`, `logger.base`,
+            // `logger.timestamp` and `logger.messageKey` from it. Without it
+            // those six keys are silently ignored — an app that sets
+            // `logger.redact` in its config and wires the module with
+            // `forRoot` gets no redaction and no indication that it asked for
+            // any.
+            //
+            // Today no app trips it: the three downstream backends that configure
+            // `logger.*` all use `forRootAsync`, and the three on `forRoot`
+            // configure none. That alignment is a coincidence, not a design —
+            // and the failure it hides is a config key that does nothing.
+            useFactory: (configService?: any) =>
+              // Options still come from the closure; config only fills gaps.
+              new LoggerService(options, options.transports, options.processors, configService),
+            inject: [{ token: CONFIG_SERVICE_TOKEN, optional: true }],
             scope: 'singleton',
           },
         ] as any,

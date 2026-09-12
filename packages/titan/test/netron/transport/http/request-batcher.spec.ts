@@ -824,3 +824,41 @@ describe('RequestBatcher', () => {
     });
   });
 });
+
+describe('RequestBatcher — a throwing listener must not wedge the batcher', () => {
+  const baseUrl = 'http://localhost:3000';
+  const req = (id: string): HttpRequestMessage => ({ id, service: 'S', method: 'm', input: {} });
+
+  it('keeps flushing after a batch-error listener throws', async () => {
+    // `processing` was set before the await and cleared on the line after it.
+    // `processBatch` catches its own network errors, but its catch ends with
+    // `this.emit('batch-error', …)` — and EventEmitter runs listeners
+    // synchronously, so one that throws propagates past the assignment.
+    // `processing` then stayed true and every later flush returned at the
+    // guard: the batcher stopped flushing for the life of the process.
+    const batcher = new RequestBatcher(baseUrl, { maxBatchSize: 1, maxBatchWait: 5, enableRetry: false });
+    batcher.on('batch-error', () => {
+      throw new Error('listener blew up');
+    });
+
+    mockFetch.mockRejectedValueOnce(new Error('network down'));
+    await expect(batcher.add(req('a'))).rejects.toThrow();
+
+    // The wedge shows here: with `processing` stuck, this second request is
+    // never sent and `fetch` is never called again.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'batch-2',
+        success: true,
+        responses: [{ id: 'b', success: true, data: { ok: 1 } }],
+        hints: { successCount: 1, failureCount: 0 },
+      }),
+    } as never);
+
+    await expect(batcher.add(req('b'))).resolves.toEqual({ ok: 1 });
+
+    batcher.destroy?.();
+  });
+});

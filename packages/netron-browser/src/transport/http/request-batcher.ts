@@ -201,23 +201,34 @@ export class RequestBatcher extends EventEmitter {
       return;
     }
 
+    // `processing` is cleared in a `finally`, and must be.
+    //
+    // It was set here and cleared on the last line, with an `await` between.
+    // `processBatch` catches its own network errors, but its catch ends with
+    // `this.emit('batch-error', …)`, and an EventEmitter runs listeners
+    // synchronously — one throwing listener propagates out of the catch, out
+    // of `processBatch`, and past the assignment below. `processing` then
+    // stays true forever and every later `flush` returns at the guard above:
+    // the batcher stops flushing entirely, silently, for the life of the
+    // process. A flag set before an await belongs in a finally.
     this.processing = true;
+    try {
+      // Take up to maxBatchSize items from queue
+      const batch = this.queue.splice(0, this.maxBatchSize);
+      this.stats.currentQueueSize = this.queue.length;
 
-    // Take up to maxBatchSize items from queue
-    const batch = this.queue.splice(0, this.maxBatchSize);
-    this.stats.currentQueueSize = this.queue.length;
+      // Schedule next batch if there are remaining items
+      if (this.queue.length > 0 && !this.timer) {
+        this.timer = setTimeout(() => {
+          this.flush('timer');
+        }, this.maxBatchWait);
+      }
 
-    // Schedule next batch if there are remaining items
-    if (this.queue.length > 0 && !this.timer) {
-      this.timer = setTimeout(() => {
-        this.flush('timer');
-      }, this.maxBatchWait);
+      // Process the batch
+      await this.processBatch(batch, reason);
+    } finally {
+      this.processing = false;
     }
-
-    // Process the batch
-    await this.processBatch(batch, reason);
-
-    this.processing = false;
   }
 
   /**

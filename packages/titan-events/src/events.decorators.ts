@@ -293,7 +293,21 @@ export const ScheduleEvent = createDecorator<{
   .build();
 
 /**
- * Batch event handling - collect multiple events and process as batch
+ * Batch event handling — DECLARATIVE ONLY.
+ *
+ * This records `maxSize` / `maxWait` and nothing collects, buffers or delays
+ * anything: the handler is invoked per event exactly as `@OnEvent` would
+ * invoke it, and the `Symbol.for('event:batch')` entry it writes has no reader
+ * in this repo. Kept because the metadata is there for an application that
+ * wants to implement batching over it; do NOT read the name as a guarantee
+ * that events arrive in batches.
+ *
+ * The same note is on `@Public({ transports })`, which is the other decorator
+ * here that records an intention rather than enforcing one. A marker that
+ * reads like a control is how a queue quietly runs unbatched at a thousand
+ * times the rate its author designed for.
+ *
+ * Original description: collect multiple events and process as batch
  *
  * @example
  * ```typescript

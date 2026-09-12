@@ -93,7 +93,7 @@ export type { EventsHealthCheckResult, EventsHealthThresholds } from './events.h
  * - @OnAnyEvent: Wildcard subscription to all events
  * - @EmitEvent: Automatically emit events based on method results
  * - @ScheduleEvent: Schedule events for delayed/cron emission
- * - @BatchEvents: Batch multiple events for processing
+ * - @BatchEvents: records a batching intention; NOTHING batches (declarative only)
  * - @OnModuleEvent: Module-level event handling with filtering
  *
  * Class decorators:

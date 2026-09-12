@@ -31,6 +31,8 @@
  * at their layer with their own TTL.
  */
 
+import { execSync } from 'node:child_process';
+
 export type Liveness = 'alive' | 'dead' | 'unknown';
 
 export function getLiveness(pid: number | null | undefined): Liveness {
@@ -75,7 +77,13 @@ export function isAlive(pid: number | null | undefined): boolean {
 export function verifyPidIdentity(pid: number, expectedCommandPrefixes: readonly string[]): boolean | null {
   if (!Number.isFinite(pid) || pid < 1) return null;
   try {
-    const { execSync } = require('node:child_process') as typeof import('node:child_process');
+    // `execSync` is imported statically. It used to be pulled in with a bare
+    // `require()` inside this try — in a `"type": "module"` package, where
+    // `require` is not defined. Every call raised `ReferenceError: require is
+    // not defined` on that line, the catch below swallowed it, and the
+    // function answered `null` — "we couldn't confirm" — for every pid it was
+    // ever asked about. So the pid-reuse defence this file exists to provide
+    // has never once run.
     const out = execSync(`ps -p ${pid} -o comm=`, { encoding: 'utf-8', timeout: 1000 }).trim();
     if (!out) return null;
     return expectedCommandPrefixes.some((p) => out === p || out.endsWith('/' + p) || out.includes(p));

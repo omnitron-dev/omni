@@ -141,7 +141,28 @@ export class TitanRateLimitModule {
                 const redisClient = args[0];
                 if (redisClient) {
                   return new RedisRateLimitStorage(redisClient as any, {
-                    keyPrefix: mergedOptions.keyPrefix,
+                    // Empty, deliberately. `RateLimitService.buildKey` already
+                    // puts `keyPrefix` at the front of every key it hands to a
+                    // storage, and the storage prepends its own — with no
+                    // separator, because its default `'ratelimit:'` carries a
+                    // trailing colon that a configured prefix does not.
+                    //
+                    // Passing the prefix here applied it twice. Observed on a
+                    // running deployment, with `keyPrefix: 'main:ratelimit'`:
+                    //
+                    //   main:ratelimitmain:ratelimit:default:Auth@1.0.0.signin:anon
+                    //
+                    // The limits still worked — the doubling is consistent —
+                    // but nothing could find them: a `SCAN main:ratelimit:*`,
+                    // which is how an operator inspects or clears a limit,
+                    // matches none of them. The memory storage does not
+                    // prefix at all, so the same limit was keyed differently
+                    // depending on which storage was in use.
+                    //
+                    // The service owns the key. A storage stores what it is
+                    // given. The option stays for callers who construct the
+                    // storage directly and have no service in front of it.
+                    keyPrefix: '',
                     logger,
                   });
                 }
@@ -221,7 +242,13 @@ export class TitanRateLimitModule {
                 const redisClient = args[1];
                 if (redisClient) {
                   return new RedisRateLimitStorage(redisClient as any, {
-                    keyPrefix: opts?.keyPrefix ?? DEFAULT_RATE_LIMIT_PREFIX,
+                    // Empty for the same reason as the `forRoot` branch above:
+                    // `RateLimitService.buildKey` has already put the prefix
+                    // at the front. This is the branch downstream actually takes —
+                    // `forRootAsync` — which is why the live keys still read
+                    // `main:ratelimitmain:ratelimit:…` after the other one was
+                    // fixed, and why the probe was worth running.
+                    keyPrefix: '',
                     logger,
                   });
                 }

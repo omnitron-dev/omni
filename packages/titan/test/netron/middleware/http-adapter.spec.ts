@@ -444,12 +444,14 @@ describe('HttpBuiltinMiddleware', () => {
 
       expect(logger.info).toHaveBeenCalledTimes(2);
 
-      // Request log
+      // Request log. `userAgent` used to be asserted here, which pinned the
+      // leaky default in place: the middleware now records neither the user
+      // agent nor the client address unless the operator opts in. See
+      // `the-request-log-keeps-no-identity.spec.ts` for both directions.
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           method: 'POST',
           url: '/api/test',
-          userAgent: 'TestAgent/1.0',
         }),
         'HTTP Request'
       );

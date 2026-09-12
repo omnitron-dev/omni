@@ -310,9 +310,42 @@ export class HttpBuiltinMiddleware {
   }
 
   /**
-   * Request logging middleware
+   * Request logging middleware.
+   *
+   * Logs the request PATH, and by default nothing that identifies who sent it.
+   * Both of the omissions are deliberate:
+   *
+   *   - **The query string.** A URL's query carries secrets — share tokens,
+   *     signed-URL signatures, password-reset codes — and a log is the one
+   *     place they outlive the request. This used to log `ctx.request.url`
+   *     whole, on all three lines below. Same defect as the gateway access log
+   *     that kept `/s/<token>?k=…` for every share it served.
+   *   - **`ip` and `user-agent`.** Together they are an identity, and this
+   *     framework runs a platform reached over Tor, where the log is the only
+   *     place that identity can reappear. A built-in must not decide to keep
+   *     it on the operator's behalf.
+   *
+   * An operator who needs either — abuse handling, debugging a specific
+   * client — asks for it, and then owns the retention question.
    */
-  static requestLoggingMiddleware(logger: ILogger): MiddlewareFunction<HttpMiddlewareContext> {
+  static requestLoggingMiddleware(
+    logger: ILogger,
+    options: {
+      /** Record `ip` and `user-agent`. Off by default: together they identify a person. */
+      includeClientIdentity?: boolean;
+      /** Record the query string. Off by default: it is where tokens travel. */
+      includeQueryString?: boolean;
+    } = {}
+  ): MiddlewareFunction<HttpMiddlewareContext> {
+    const { includeClientIdentity = false, includeQueryString = false } = options;
+
+    /** The request target, cut at `?` unless the operator asked for the rest. */
+    const target = (url: string | undefined): string | undefined => {
+      if (url === undefined || includeQueryString) return url;
+      const q = url.indexOf('?');
+      return q === -1 ? url : url.slice(0, q);
+    };
+
     return async (ctx, next) => {
       const start = Date.now();
 
@@ -320,9 +353,11 @@ export class HttpBuiltinMiddleware {
       logger.info(
         {
           method: ctx.request.method,
-          url: ctx.request.url,
-          ip: ctx.request.socket?.remoteAddress,
-          userAgent: ctx.request.headers['user-agent'],
+          url: target(ctx.request.url),
+          ...(includeClientIdentity && {
+            ip: ctx.request.socket?.remoteAddress,
+            userAgent: ctx.request.headers['user-agent'],
+          }),
         },
         'HTTP Request'
       );
@@ -335,7 +370,7 @@ export class HttpBuiltinMiddleware {
         logger.info(
           {
             method: ctx.request.method,
-            url: ctx.request.url,
+            url: target(ctx.request.url),
             statusCode: ctx.response.statusCode,
             duration,
           },
@@ -350,7 +385,7 @@ export class HttpBuiltinMiddleware {
         logger.error(
           {
             method: ctx.request.method,
-            url: ctx.request.url,
+            url: target(ctx.request.url),
             error: errorMessage,
             code: errorCode,
             duration,

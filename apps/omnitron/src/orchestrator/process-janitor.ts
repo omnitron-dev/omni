@@ -24,8 +24,10 @@
  *   4. SIGTERM first, then SIGKILL after `gracefulMs`.
  *
  * Cold-start mode: on daemon boot, before any apps register, do a
- * single scan and kill every fork-worker whose ppid is NOT this
- * daemon's PID. They belong to a previous daemon that's now dead.
+ * single scan and kill every fork-worker whose parent is gone — a
+ * previous daemon that really is dead. A worker whose parent is ALIVE
+ * and is not us belongs to somebody else and is left alone, which is
+ * the same rule the periodic sweep applies.
  */
 
 import { execSync } from 'node:child_process';
@@ -127,7 +129,23 @@ export class ProcessJanitor {
   async coldStartSweep(): Promise<number> {
     const myPid = process.pid;
     const all = this.listProcesses();
-    const stale = all.filter((row) => row.ppid !== myPid);
+    // A foreign parent is not evidence of a dead one.
+    //
+    // This read `row.ppid !== myPid` — reap anything not parented by ME —
+    // on the assumption that only the daemon ever calls this, and only at
+    // boot. Nothing enforces that assumption, and when it is wrong the cost
+    // is every running app on the machine. Measured 2026-09-12: one unit
+    // test constructing an `OrchestratorService` and calling `startApp`
+    // reached `ensureBootReconciled` → `coldStartSweep`, where
+    // `process.pid` was the vitest worker's, and killed all six backends of
+    // the live dev stand. The daemon itself survived, so `omnitron ls`
+    // reported `crashed` for apps nothing had crashed.
+    //
+    // `runSweep` below already had the right rule and this did not: "some
+    // other parent — not ours, leave alone". The two halves of one janitor
+    // disagreed about what an orphan is, and only the cheap half ran at the
+    // moment nothing else was there to object.
+    const stale = all.filter((row) => row.ppid !== myPid && !this.isAlive(row.ppid));
 
     if (stale.length === 0) {
       this.logger?.debug?.({ scanned: all.length }, 'janitor: cold start — no stale fork-workers');

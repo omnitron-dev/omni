@@ -368,7 +368,16 @@ export class WebSocketConnection extends EventEmitter {
         pingPacket.data = null;
 
         const encoded = encodePacket(pingPacket);
-        this.sendRaw(encoded);
+        // `sendRaw` returns a promise and REJECTS when the socket is not
+        // connected or the outbound queue is full. The surrounding try/catch
+        // is synchronous, so it saw neither: the `emit('error')` below never
+        // fired for a failed ping, and the rejection went unhandled. The
+        // connection still closed a keep-alive interval later on the pong
+        // timeout — with "pong timeout" as the reason, which is the symptom
+        // rather than the cause.
+        void this.sendRaw(encoded).catch((error: unknown) => {
+          this.emit('error', error);
+        });
 
         // Set timeout for pong response
         this.keepAlivePongTimeout = setTimeout(() => {

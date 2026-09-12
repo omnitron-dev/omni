@@ -864,7 +864,13 @@ export class NetronWritableStream extends WritableStream<any> {
     const stream = new NetronWritableStream({ peer, streamId, isLive });
 
     if (source) {
-      stream.pipeFrom(source);
+      // `create` returns the stream synchronously, so the caller never holds
+      // the pipe's promise. `pipeFrom` already logs the failure and aborts the
+      // writer before rethrowing — the state is handled — so what was left was
+      // an unhandled rejection on top of an error that had already been dealt
+      // with. Acknowledged here rather than re-reported, which would say the
+      // same thing twice.
+      void stream.pipeFrom(source).catch(() => undefined);
     }
 
     return stream;

@@ -329,10 +329,23 @@ export abstract class AbstractPeer implements IPeer {
     if (iInfo.refCount === 0) {
       this.interfaces.delete(defId);
 
-      for (const i of this.interfaces.values()) {
-        if ((i.instance as any).$def?.parentId === defId) {
-          this.releaseInterface(i.instance);
-        }
+      // Children are released BEFORE the parent, and the recursion is awaited.
+      //
+      // Unawaited, each child's own `releaseInterfaceInternal` — which is what
+      // actually tells the remote peer the reference is gone — ran after the
+      // parent's, inverting the order the release is supposed to happen in.
+      // `releaseInterface` also throws `Errors.badRequest('Invalid interface')`
+      // for an instance without `$def`, so a malformed child left an unhandled
+      // rejection instead of a caller-visible error.
+      //
+      // The children are snapshotted first because the recursive call deletes
+      // from `this.interfaces`, and iterating a Map while awaiting inside the
+      // loop lets those deletions interleave with the iteration.
+      const children = [...this.interfaces.values()]
+        .filter((i) => (i.instance as any).$def?.parentId === defId)
+        .map((i) => i.instance);
+      for (const child of children) {
+        await this.releaseInterface(child, released);
       }
 
       await this.releaseInterfaceInternal(iInstance);

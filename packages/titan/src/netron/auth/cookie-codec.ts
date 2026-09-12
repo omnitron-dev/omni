@@ -177,3 +177,36 @@ function isValidCookieName(name: string): boolean {
   // No control chars, no whitespace, no separators
   return /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/.test(name);
 }
+
+/**
+ * Case-insensitive header lookup.
+ *
+ * Node lowercases incoming header names, but this takes a plain record that
+ * may have been built anywhere — a test fixture, a proxy adapter, another
+ * runtime — so the fallback scan is what makes `Authorization` and
+ * `authorization` the same header to every caller.
+ *
+ * Returns the value unchanged, `string[]` included: a caller that must choose
+ * one has to say which, because for an auth header that choice is a security
+ * decision and not a formatting detail.
+ *
+ * There were three character-identical copies of this — in `csrf.ts` and in
+ * both token transports — one of which carried a comment explaining that it
+ * was "kept inline to avoid a tiny shared module". A tiny shared module is
+ * cheaper than three implementations of one security primitive drifting, and
+ * today's audit found exactly that drift elsewhere in this package.
+ */
+export function readHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string
+): string | string[] | undefined {
+  // Fast path: direct hit on the (presumed lowercase) key.
+  const direct = headers[name];
+  if (direct !== undefined) return direct;
+  // Slow path: case-insensitive scan.
+  const lower = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) return headers[key];
+  }
+  return undefined;
+}

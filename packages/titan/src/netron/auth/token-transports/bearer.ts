@@ -15,6 +15,7 @@
 
 import { extractBearerToken } from '../utils.js';
 import type { ITokenTransport, IssueResult, IssuedTokens, TokenExtractRequest, TokenIssueResponse } from '../token-transport.js';
+import { readHeader } from '../cookie-codec.js';
 
 /**
  * Options for the Bearer transport. All optional — defaults reproduce
@@ -86,18 +87,3 @@ export class BearerTokenTransport implements ITokenTransport {
   }
 }
 
-/**
- * Case-insensitive header lookup. Returns the first string value or
- * the entire array unchanged if the caller stored it that way.
- */
-function readHeader(headers: Record<string, string | string[] | undefined>, name: string): string | string[] | undefined {
-  // Fast path: direct hit on the (presumed lowercase) key
-  const direct = headers[name];
-  if (direct !== undefined) return direct;
-  // Slow path: case-insensitive scan
-  const lower = name.toLowerCase();
-  for (const key of Object.keys(headers)) {
-    if (key.toLowerCase() === lower) return headers[key];
-  }
-  return undefined;
-}

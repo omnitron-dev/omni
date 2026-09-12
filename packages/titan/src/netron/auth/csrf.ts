@@ -38,7 +38,7 @@
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { parseCookieHeader, buildSetCookie, type CookieAttributes } from './cookie-codec.js';
+import { parseCookieHeader, buildSetCookie, type CookieAttributes, readHeader } from './cookie-codec.js';
 
 /**
  * Cookie spec for the CSRF token. Non-HttpOnly (must be readable by
@@ -159,19 +159,3 @@ export class CsrfManager {
   }
 }
 
-/**
- * Case-insensitive header lookup helper (same shape used in
- * token-transports/cookie.ts; kept inline to avoid a tiny shared module).
- */
-function readHeader(
-  headers: Record<string, string | string[] | undefined>,
-  name: string
-): string | string[] | undefined {
-  const direct = headers[name];
-  if (direct !== undefined) return direct;
-  const lower = name.toLowerCase();
-  for (const key of Object.keys(headers)) {
-    if (key.toLowerCase() === lower) return headers[key];
-  }
-  return undefined;
-}

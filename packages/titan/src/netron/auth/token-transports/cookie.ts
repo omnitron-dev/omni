@@ -18,7 +18,7 @@
  * @module @omnitron-dev/titan/netron/auth/token-transports/cookie
  */
 
-import { buildClearCookie, buildSetCookie, parseCookieHeader, type CookieAttributes } from '../cookie-codec.js';
+import { buildClearCookie, buildSetCookie, parseCookieHeader, type CookieAttributes, readHeader } from '../cookie-codec.js';
 import type { ITokenTransport, IssueResult, IssuedTokens, TokenExtractRequest, TokenIssueResponse } from '../token-transport.js';
 import type { CsrfManager } from '../csrf.js';
 
@@ -170,15 +170,3 @@ export class CookieTokenTransport implements ITokenTransport {
   }
 }
 
-function readHeader(
-  headers: Record<string, string | string[] | undefined>,
-  name: string
-): string | string[] | undefined {
-  const direct = headers[name];
-  if (direct !== undefined) return direct;
-  const lower = name.toLowerCase();
-  for (const key of Object.keys(headers)) {
-    if (key.toLowerCase() === lower) return headers[key];
-  }
-  return undefined;
-}

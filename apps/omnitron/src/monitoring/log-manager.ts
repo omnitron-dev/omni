@@ -299,22 +299,43 @@ export class LogManager {
     // on the new `basePath`.
     this.closeStream(basePath);
 
-    // Shift rotated files: .{maxFiles-1} removed, .{i-1} → .{i}
-    for (let i = config.maxFiles - 1; i >= 1; i--) {
-      const from = i === 1 ? basePath : `${basePath}.${i - 1}${ext}`;
-      const to = `${basePath}.${i}${ext}`;
-
+    // Shift ALREADY-rotated files: .{maxFiles-1} removed, .{i-1} → .{i}.
+    //
+    // Starts at 2, not 1. The loop used to include `i === 1`, where `from` is
+    // the LIVE file and `to` is `<base>.1.gz` — so with compression enabled it
+    // renamed `app.log` straight to `app.log.1.gz`, an uncompressed file
+    // wearing a compressed name. The two steps that follow then did nothing:
+    // the rename below found no `basePath`, and the compression looked for
+    // `<base>.1`, which never existed.
+    //
+    // Measured on a running deployment: every rotated file on disk was plain
+    // JSON named `.gz` — `file` says "JSON data", `gunzip -t` says "not in
+    // gzip format" — nine of them per stream at exactly 50 MiB each, roughly
+    // ten times what the same content compresses to. 2.4 GB of logs where the
+    // configuration asked for about 250 MB. It only misbehaved with
+    // `compress: true`, which is the default; with compression off `ext` is
+    // empty, the loop's i=1 case duplicated the rename below, and the second
+    // one silently failed — correct by coincidence.
+    for (let i = config.maxFiles - 1; i >= 2; i--) {
+      if (i === config.maxFiles - 1) {
+        try { fs.unlinkSync(`${basePath}.${i}${ext}`); } catch { /* doesn't exist */ }
+      }
+      // A slot holds the compressed name once `compressFile` has run and the
+      // bare name until then, so try both rather than lose a file to a
+      // rotation that arrives mid-compression.
       try {
-        if (i === config.maxFiles - 1) {
-          try { fs.unlinkSync(to); } catch { /* doesn't exist */ }
-        }
-        fs.renameSync(from, to);
+        fs.renameSync(`${basePath}.${i - 1}${ext}`, `${basePath}.${i}${ext}`);
       } catch {
-        // Source doesn't exist — skip
+        try {
+          fs.renameSync(`${basePath}.${i - 1}`, `${basePath}.${i}`);
+        } catch {
+          // Neither form present — that slot is empty.
+        }
       }
     }
 
-    // Rename current → .1
+    // The live file becomes `.1`, WITHOUT the extension: it is not compressed
+    // yet. `compressFile` below turns it into `.1.gz` and unlinks it.
     try { fs.renameSync(basePath, `${basePath}.1`); } catch { /* no current file */ }
 
     // Create fresh empty log file

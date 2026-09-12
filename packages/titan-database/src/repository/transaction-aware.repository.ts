@@ -8,15 +8,9 @@
  */
 
 import type { Kysely, Transaction, Selectable, Insertable, Updateable } from 'kysely';
-import { isKyseraExecutor, getPlugins, withPluginMetadata, createExecutorSync, type Plugin } from '@kysera/executor';
+import { isKyseraExecutor, getPlugins, withPluginMetadata } from '@kysera/executor';
 import { getTimestampsConfig } from '../database.decorators.js';
-import {
-  getExecutor,
-  isInTransactionContext,
-  getCurrentTransaction,
-  getTablePlugins,
-  isTablePluginInitialized,
-} from '../transaction/transaction.context.js';
+import { getExecutor, isInTransactionContext, getCurrentTransaction } from '../transaction/transaction.context.js';
 import { applyWhereClause, type WhereClause } from '@kysera/repository';
 import { upsert as kyseraUpsert, upsertMany as kyseraUpsertMany, type UpsertOptions } from '@kysera/repository';
 import {
@@ -113,50 +107,6 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   protected readonly createdAtColumn: string = 'createdAt';
   protected readonly updatedAtColumn: string = 'updatedAt';
 
-  /**
-   * Apply the plugins registered for this table via `registerTablePlugins()`.
-   *
-   * OFF by default, and that default is the whole point of this flag.
-   *
-   * `registerTablePlugins` / `getTablePlugins` is a process-global Map in
-   * `transaction.context.ts`. Until this existed it had NO READER: across
-   * omni and downstream the only callers of `getTablePlugins` were the three
-   * registrars themselves — main's RLS policies, payments's database plugins
-   * and messaging's invite-policy trigger bridge — each reading back what it
-   * had just written in order to merge. Everything they registered was
-   * therefore inert, including two complete row-level-security policy sets.
-   *
-   * The break was delivery, not identity: every downstream backend already runs
-   * each RPC inside `rlsContext.runAsync(...)` through its bootstrap's
-   * `invocationWrapper`, so the auth context those policies read is live. The
-   * repositories simply never saw the plugins, because they are handed
-   * `DATABASE_CONNECTION` — `manager.getConnectionRef(...)`, a plain Kysely —
-   * and this class returned it unchanged.
-   *
-   * There is a second, working delivery path in this package:
-   * `@Repository(...)` resolves through `manager.getExecutorRef(name,
-   * allPlugins)`. Two repositories in all of downstream use it, both in pricing,
-   * neither with RLS. Moving 193 hand-constructed repositories onto the
-   * decorator is not the smaller change; giving the registry its reader here
-   * — one choke point every repository already passes through — is.
-   *
-   * Deliberately off by default: turning row-level security on for a schema
-   * that has never enforced it changes what every query returns. An app opts
-   * in on its own base repository, and stages the rollout by choosing which
-   * TABLES it registers plugins for — a table with none is unaffected either
-   * way.
-   */
-  protected readonly applyTablePlugins: boolean = false;
-
-  /**
-   * Cache for {@link withTablePlugins}: an executor wraps one target, so it is
-   * rebuilt whenever the target or the registered plugin list changes. Inside
-   * a transaction the target is a fresh `Transaction` each time, which is
-   * exactly when it must be rebuilt.
-   */
-  private tablePluginTarget?: object;
-  private tablePluginList?: readonly Plugin[];
-  private tablePluginExecutor?: Executor<DB>;
 
   constructor(
     protected db: Kysely<DB>,
@@ -238,7 +188,7 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       Object.assign(err, { diagnostic: sample });
       throw err;
     }
-    return this.withTablePlugins(e);
+    return e;
   }
 
   protected get inTransaction(): boolean {
@@ -256,64 +206,6 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   // ===========================================================================
   // EXECUTOR PLUGIN AWARENESS
   // ===========================================================================
-
-  /**
-   * Wrap the current target in the plugins registered for this table.
-   *
-   * Four ways to return the target untouched, in the order they are cheapest
-   * to check:
-   *
-   *   - the repository has not opted in (the default);
-   *   - no plugin is registered for this table — staging a rollout is done by
-   *     registering tables, not by branching here;
-   *   - the injected connection is ALREADY a kysera executor carrying
-   *     plugins, which is the `@Repository(...)` path; wrapping it again
-   *     would run every interceptor twice;
-   *   - the cached executor still matches this target and this plugin list.
-   *
-   * The cache is keyed on the target's identity rather than a boolean,
-   * because inside a transaction the target is a fresh `Transaction` object
-   * and must get its own wrapper — a plugin bound to the pooled connection
-   * would run the transaction's statements outside it.
-   */
-  private withTablePlugins(target: Kysely<DB> | Transaction<DB>): Executor<DB> {
-    if (!this.applyTablePlugins) return target as Executor<DB>;
-
-    const plugins = getTablePlugins(this.tableName as unknown as string);
-    if (plugins.length === 0) return target as Executor<DB>;
-
-    const alreadyPluginAware =
-      isKyseraExecutor(target as Kysely<DB>) && getPlugins(target as never).length > 0;
-    if (alreadyPluginAware) return target as Executor<DB>;
-
-    // `createExecutorSync` does not run `onInit`, and `@kysera/rls` refuses to
-    // intercept without it — "Plugin used before initialization". Left to
-    // itself that surfaces as a 500 on a user's first query against the table,
-    // with a message about a factory function this code does not call. The
-    // check belongs here, where the name of the fix is known.
-    const uninitialized = plugins.filter((p) => !isTablePluginInitialized(p));
-    if (uninitialized.length > 0) {
-      throw new Error(
-        `[TransactionAwareRepository] table "${String(this.tableName)}" has plugins that were never initialized: ` +
-          `${uninitialized.map((p) => p.name).join(', ')}. ` +
-          'Call `await initializeTablePlugins(connection)` where the connection is injected, after registerTablePlugins(...).',
-      );
-    }
-
-    if (
-      this.tablePluginExecutor !== undefined &&
-      this.tablePluginTarget === (target as unknown as object) &&
-      this.tablePluginList === plugins
-    ) {
-      return this.tablePluginExecutor;
-    }
-
-    const built = createExecutorSync(target as Kysely<DB>, plugins) as unknown as Executor<DB>;
-    this.tablePluginTarget = target as unknown as object;
-    this.tablePluginList = plugins;
-    this.tablePluginExecutor = built;
-    return built;
-  }
 
   /** Whether the injected db is a kysera executor carrying the named plugin. */
   protected hasExecutorPlugin(pluginName: string): boolean {

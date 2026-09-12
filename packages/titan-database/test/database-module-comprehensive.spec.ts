@@ -5,7 +5,6 @@
  * A. TransactionAwareRepository with soft-delete enabled
  * B. TransactionAwareRepository without soft-delete
  * C. runInTransaction / getExecutor / isInTransactionContext
- * D. registerTablePlugins / getTablePlugins / clearPluginRegistry
  * E. DatabaseManager with SQLite
  *
  * All tests use better-sqlite3 in-memory databases - no Docker required.
@@ -20,9 +19,6 @@ import {
   getExecutor,
   isInTransactionContext,
   getTransactionContext,
-  registerTablePlugins,
-  getTablePlugins,
-  clearPluginRegistry,
   DatabaseManager,
 } from '../src/index.js';
 
@@ -644,62 +640,8 @@ describe('Transaction context functions', () => {
 });
 
 // ============================================================================
-// D. registerTablePlugins / getTablePlugins / clearPluginRegistry
 // ============================================================================
 
-describe('Plugin Registry', () => {
-  afterEach(() => {
-    clearPluginRegistry();
-  });
-
-  it('should store and retrieve plugins for a table', () => {
-    const fakePlugin = { name: 'test-plugin', transformQuery: vi.fn() };
-    registerTablePlugins('orders', [fakePlugin]);
-
-    const plugins = getTablePlugins('orders');
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0].name).toBe('test-plugin');
-  });
-
-  it('should return empty array for unregistered table', () => {
-    const plugins = getTablePlugins('nonexistent_table');
-    expect(plugins).toEqual([]);
-  });
-
-  it('should overwrite plugins when registering for the same table', () => {
-    const p1 = { name: 'p1' };
-    const p2 = { name: 'p2' };
-
-    registerTablePlugins('products', [p1] as any);
-    registerTablePlugins('products', [p2] as any);
-
-    const plugins = getTablePlugins('products');
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0].name).toBe('p2');
-  });
-
-  it('clearPluginRegistry should remove all registered plugins', () => {
-    registerTablePlugins('t1', [{ name: 'x' }] as any);
-    registerTablePlugins('t2', [{ name: 'y' }] as any);
-
-    clearPluginRegistry();
-
-    expect(getTablePlugins('t1')).toEqual([]);
-    expect(getTablePlugins('t2')).toEqual([]);
-  });
-
-  it('should handle multiple tables independently', () => {
-    const pA = { name: 'pluginA' };
-    const pB = { name: 'pluginB' };
-    const pC = { name: 'pluginC' };
-
-    registerTablePlugins('tableA', [pA] as any);
-    registerTablePlugins('tableB', [pB, pC] as any);
-
-    expect(getTablePlugins('tableA')).toHaveLength(1);
-    expect(getTablePlugins('tableB')).toHaveLength(2);
-  });
-});
 
 // ============================================================================
 // E. DatabaseManager with SQLite

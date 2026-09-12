@@ -12,10 +12,5 @@ export {
   getCurrentTransaction,
   isInTransactionContext,
   getExecutor,
-  registerTablePlugins,
-  getTablePlugins,
-  initializeTablePlugins,
-  isTablePluginInitialized,
-  clearPluginRegistry,
 } from '../transaction/transaction.context.js';
 export type { TransactionContextData } from '../transaction/transaction.context.js';

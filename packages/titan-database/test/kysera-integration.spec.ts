@@ -842,7 +842,18 @@ describe('DatabaseManager Global Plugins', () => {
     expect(plugins.length).toBe(0);
   });
 
-  it('kysera.plugins takes precedence over legacy builtIn', async () => {
+  it('applies kysera.plugins AND legacy builtIn together', async () => {
+    // This used to assert precedence: `kysera.plugins` won and the builtIn
+    // ones were dropped. That is the behaviour, not the intent — configuring
+    // one explicit plugin silently turned `timestamps` off, and an option that
+    // disables another option without saying so is discovered when rows stop
+    // getting a `createdAt`. The two are merged now.
+    //
+    // It matters beyond tidiness: `kysera.plugins` is the only delivery path
+    // that runs a plugin's async `onInit`, which `@kysera/rls` requires before
+    // it will intercept anything. Anything wanting row-level security has to
+    // go through here, and under the old behaviour would have taken timestamps
+    // out with it.
     manager = new DatabaseManager(
       {
         connection: { dialect: 'sqlite', connection: ':memory:' },
@@ -859,10 +870,9 @@ describe('DatabaseManager Global Plugins', () => {
     );
     await manager.init();
 
-    const plugins = manager.getConnectionPlugins();
-    // kysera.plugins should be used, not legacy builtIn
-    expect(plugins.length).toBe(1);
-    expect(plugins[0].name).toMatch(/soft-delete/);
+    const names = manager.getConnectionPlugins().map((p) => p.name);
+    expect(names.some((n) => /soft-delete/.test(n)), `kysera.plugins missing: ${names}`).toBe(true);
+    expect(names.some((n) => /timestamps/.test(n)), `builtIn dropped: ${names}`).toBe(true);
   });
 });
 

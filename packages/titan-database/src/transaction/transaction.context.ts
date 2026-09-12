@@ -11,7 +11,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { sql } from 'kysely';
 import type { Transaction, Kysely } from 'kysely';
-import type { Plugin } from '@kysera/executor';
 
 /**
  * Transaction context stored in AsyncLocalStorage.
@@ -35,93 +34,6 @@ const TXN_STORAGE_KEY = Symbol.for('titan:database:transaction-storage');
 const transactionStorage: AsyncLocalStorage<TransactionContextData> =
   (globalStore[TXN_STORAGE_KEY] as AsyncLocalStorage<TransactionContextData> | undefined) ??=
     new AsyncLocalStorage<TransactionContextData>();
-
-// ============================================================================
-// Table Plugin Registry (used by apps for RLS plugin registration)
-// ============================================================================
-
-const PLUGIN_REGISTRY_KEY = Symbol.for('titan:database:plugin-registry');
-const globalPluginRegistry: Map<string, Plugin[]> =
-  (globalStore[PLUGIN_REGISTRY_KEY] as Map<string, Plugin[]> | undefined) ??=
-    new Map<string, Plugin[]>();
-
-/**
- * Register plugins for a specific table.
- * Used by application code to register RLS/soft-delete plugins per table.
- */
-export function registerTablePlugins(tableName: string, plugins: Plugin[]): void {
-  globalPluginRegistry.set(tableName, plugins);
-}
-
-/**
- * Get registered plugins for a specific table.
- */
-export function getTablePlugins(tableName: string): Plugin[] {
-  return globalPluginRegistry.get(tableName) || [];
-}
-
-/**
- * Which plugins have had `onInit` run, and against which database.
- *
- * `@kysera/rls` refuses to intercept before initialization — "Plugin used
- * before initialization. Use createExecutor()/createORM() (async, runs
- * onInit)" — and `createExecutorSync`, which is what both delivery paths in
- * this package use, does not run it. So a registered RLS plugin throws on the
- * first query rather than filtering it. Registration is async (it happens in
- * an app's bootstrap); interception is not (it happens in a getter). This map
- * is what lets the sync side tell the difference between "not initialized
- * yet" and "initialized", instead of discovering it from a user's 500.
- */
-const PLUGIN_INIT_KEY = Symbol.for('titan:database:plugin-initialized');
-const initializedPlugins: WeakSet<Plugin> =
-  (globalStore[PLUGIN_INIT_KEY] as WeakSet<Plugin> | undefined) ??= new WeakSet<Plugin>();
-
-/**
- * Run `onInit` for every plugin in the registry against `db`, once each.
- *
- * Call it wherever the connection is reachable — in the downstream project that is a service
- * with `DATABASE_CONNECTION` injected, not the `afterCreate` bootstrap hook,
- * where the token is not yet registered in the system container. Idempotent:
- * calling it again after registering more plugins initializes only the new
- * ones.
- *
- * A plugin with no `onInit` is marked initialized immediately — there is
- * nothing to wait for, and treating it as pending would block a repository
- * that is perfectly ready.
- */
-export async function initializeTablePlugins(db: object): Promise<void> {
-  for (const plugins of globalPluginRegistry.values()) {
-    for (const plugin of plugins) {
-      if (isTablePluginInitialized(plugin)) continue;
-      await plugin.onInit?.(db as never);
-      initializedPlugins.add(plugin);
-    }
-  }
-}
-
-/**
- * Has this plugin been initialized?
- *
- * Keyed on the plugin alone, not on (plugin, database). `DATABASE_CONNECTION`
- * is a live reference created fresh on every `getConnectionRef()` call, so
- * object identity is not stable enough to key on — a repository built from one
- * proxy and an initialization run against another would disagree forever. An
- * application has one database; a plugin's `onInit` resolves its own schema
- * and is idempotent per plugin instance.
- *
- * A plugin without `onInit` needs no initialization and always answers true.
- */
-export function isTablePluginInitialized(plugin: Plugin): boolean {
-  if (typeof plugin.onInit !== 'function') return true;
-  return initializedPlugins.has(plugin);
-}
-
-/**
- * Clear the global plugin registry. Primarily for testing.
- */
-export function clearPluginRegistry(): void {
-  globalPluginRegistry.clear();
-}
 
 // ============================================================================
 // Transaction Context Accessors

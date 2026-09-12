@@ -13,9 +13,6 @@ import {
   runInTransaction,
   getExecutor,
   isInTransactionContext,
-  registerTablePlugins,
-  getTablePlugins,
-  clearPluginRegistry,
 } from '../src/transaction/transaction.context.js';
 
 // ============================================================================
@@ -113,7 +110,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.deleteFrom('users').execute();
   await db.deleteFrom('posts').execute();
-  clearPluginRegistry();
 });
 
 // ============================================================================
@@ -269,30 +265,5 @@ describe('Transaction Context', () => {
         expect(innerExecutor).toBe(outerExecutor);
       });
     });
-  });
-});
-
-describe('Table Plugin Registry', () => {
-  it('should register and retrieve plugins', () => {
-    const mockPlugin = { name: 'test', version: '1.0' };
-    registerTablePlugins('users', [mockPlugin as any]);
-
-    const plugins = getTablePlugins('users');
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0].name).toBe('test');
-  });
-
-  it('should return empty array for unregistered table', () => {
-    expect(getTablePlugins('nonexistent')).toHaveLength(0);
-  });
-
-  it('should clear all plugins', () => {
-    registerTablePlugins('a', [{ name: 'x', version: '1' } as any]);
-    registerTablePlugins('b', [{ name: 'y', version: '1' } as any]);
-
-    clearPluginRegistry();
-
-    expect(getTablePlugins('a')).toHaveLength(0);
-    expect(getTablePlugins('b')).toHaveLength(0);
   });
 });

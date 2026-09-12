@@ -6,7 +6,6 @@
  * - getTransactionContext / getCurrentTransaction / isInTransactionContext
  * - getExecutor (returns transaction if in context, else db)
  * - @AutoTransactional decorator
- * - Plugin registry (registerTablePlugins / getTablePlugins / clearPluginRegistry)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -18,9 +17,6 @@ import {
   isInTransactionContext,
   getExecutor,
   AutoTransactional,
-  registerTablePlugins,
-  getTablePlugins,
-  clearPluginRegistry,
 } from '../../src/transaction/transaction.context.js';
 import type { Kysely, Transaction } from 'kysely';
 
@@ -62,7 +58,6 @@ function createMockDb(trx?: Transaction<unknown>): Kysely<unknown> {
 
 describe('Transaction Context', () => {
   beforeEach(() => {
-    clearPluginRegistry();
   });
 
   // =========================================================================
@@ -286,26 +281,4 @@ describe('Transaction Context', () => {
   // Plugin registry
   // =========================================================================
 
-  describe('Plugin Registry', () => {
-    it('should register and retrieve plugins for a table', () => {
-      const plugins = [{ name: 'soft-delete' } as any];
-      registerTablePlugins('users', plugins);
-
-      expect(getTablePlugins('users')).toBe(plugins);
-    });
-
-    it('should return empty array for unregistered table', () => {
-      expect(getTablePlugins('nonexistent')).toEqual([]);
-    });
-
-    it('should clear all registered plugins', () => {
-      registerTablePlugins('users', [{ name: 'a' } as any]);
-      registerTablePlugins('posts', [{ name: 'b' } as any]);
-
-      clearPluginRegistry();
-
-      expect(getTablePlugins('users')).toEqual([]);
-      expect(getTablePlugins('posts')).toEqual([]);
-    });
   });
-});

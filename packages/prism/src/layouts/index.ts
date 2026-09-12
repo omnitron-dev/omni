@@ -50,6 +50,15 @@ export type { LayoutGlobalStylesProps } from './core/index.js';
 export { LayoutSection, MainSection } from './core/index.js';
 export type { LayoutSectionProps, MainSectionProps } from './core/index.js';
 
+// `UserMenu` lived in `layouts/core` and was reachable from nowhere: this
+// barrel names its re-exports one by one and never listed it, and
+// `./layouts/core` is not a published subpath in package.json. The layouts
+// guide shows `import { DashboardLayout, UserMenu } from
+// '@omnitron-dev/prism/layouts'` in two places, which is the intended usage
+// and did not resolve.
+export { UserMenu } from './core/index.js';
+export type { UserMenuProps, UserMenuUser, UserMenuItem } from './core/index.js';
+
 export { HeaderSection, HeaderToolbar } from './core/index.js';
 export type { HeaderSectionProps, HeaderToolbarProps } from './core/index.js';
 

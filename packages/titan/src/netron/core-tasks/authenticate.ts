@@ -86,7 +86,20 @@ export async function authenticate(peer: RemotePeer, credentials: AuthCredential
     peer.logger.error(
       {
         error,
-        credentials: { ...credentials, password: '***', token: '***' },
+        // Name the credential SHAPE, never its values.
+        //
+        // This used to spread `credentials` and then mask two keys by name.
+        // That is a denylist over a type whose index signature is
+        // `[key: string]: any` — every credential the platform adds later (an
+        // MFA code, a recovery code, a PGP challenge response) was logged
+        // verbatim, and on the FAILURE path, which is the one an attacker can
+        // reach on demand by sending a credential the auth function chokes on.
+        //
+        // The key names alone answer the diagnostic question this log exists
+        // for ("what did the client send?"), and `username` matches what
+        // `AuthenticationManager` already records for the same event.
+        username: credentials.username,
+        credentialFields: Object.keys(credentials).sort(),
       },
       'Authentication error'
     );

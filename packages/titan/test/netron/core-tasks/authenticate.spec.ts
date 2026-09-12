@@ -195,7 +195,11 @@ describe('authenticate core-task', () => {
       expect(result.error).toBe('Token verification failed');
     });
 
-    it('should mask credentials in error logs', async () => {
+    it('should keep credential values out of error logs', async () => {
+      // This test used to assert `credentials.password === '***'`, i.e. it
+      // certified a denylist: the two masked keys were present and correct, so
+      // it passed while every other credential field was logged verbatim. The
+      // contract is now that no credential VALUE is logged at all.
       const credentials: AuthCredentials = {
         username: 'test@example.com',
         password: 'secret123',
@@ -207,10 +211,11 @@ describe('authenticate core-task', () => {
 
       await authenticate(remotePeer, credentials);
 
-      // Verify that password and token are masked
-      const errorCall = mockLogger.error.mock.calls[0];
-      expect(errorCall[0].credentials.password).toBe('***');
-      expect(errorCall[0].credentials.token).toBe('***');
+      const [payload] = mockLogger.error.mock.calls[0] as [Record<string, unknown>];
+      expect(payload).not.toHaveProperty('credentials');
+      expect(payload['credentialFields']).toEqual(['password', 'token', 'username']);
+      expect(JSON.stringify(payload)).not.toContain('secret123');
+      expect(JSON.stringify(payload)).not.toContain('sensitive-token');
     });
   });
 
@@ -343,6 +348,77 @@ describe('authenticate core-task', () => {
         }),
         'Authentication error'
       );
+    });
+  });
+
+  /**
+   * The failure path used to log `{ ...credentials, password: '***', token: '***' }`.
+   * `AuthCredentials` declares `[key: string]: any`, so that mask was a denylist
+   * over an open set: it covered the two fields that existed when it was written
+   * and nothing an application adds afterwards. And it sat in the CATCH, i.e. the
+   * branch a client reaches by sending a credential the auth function chokes on.
+   *
+   * These assert over everything the logger received, because the old code would
+   * pass any check that only looked at `password` and `token`.
+   */
+  describe('the error log names the credential shape, not its values', () => {
+    const loggedText = () =>
+      mockLogger.error.mock.calls
+        .map((c: unknown[]) => JSON.stringify(c, (_k, v) => (v instanceof Error ? v.message : v)))
+        .join('\n');
+
+    it('leaks no credential value, including fields the mask never knew about', async () => {
+      const credentials: AuthCredentials = {
+        username: 'neo',
+        password: 'correct-horse-battery-staple',
+        token: 'eyJhbGciOiJIUzI1NiJ9.payload.sig',
+        mfaCode: '314159',
+        recoveryCode: 'RESCUE-8842-QQ',
+        pgpChallengeResponse: '-----BEGIN PGP MESSAGE-----abc',
+      };
+
+      mockAuthManager.authenticate.mockRejectedValue(new Error('Database error'));
+
+      await authenticate(remotePeer, credentials);
+
+      const text = loggedText();
+      for (const secret of [
+        'correct-horse-battery-staple',
+        'eyJhbGciOiJIUzI1NiJ9.payload.sig',
+        '314159',
+        'RESCUE-8842-QQ',
+        '-----BEGIN PGP MESSAGE-----abc',
+      ]) {
+        expect(text, `secret value reached the log: ${secret}`).not.toContain(secret);
+      }
+    });
+
+    it('still says which fields were supplied, which is what the log is for', async () => {
+      mockAuthManager.authenticate.mockRejectedValue(new Error('Database error'));
+
+      await authenticate(remotePeer, {
+        username: 'neo',
+        password: 'p',
+        mfaCode: '1',
+      } as AuthCredentials);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          username: 'neo',
+          credentialFields: ['mfaCode', 'password', 'username'],
+        }),
+        'Authentication error'
+      );
+    });
+
+    it('does not spread the credentials object under any key', async () => {
+      mockAuthManager.validateToken.mockRejectedValue(new Error('boom'));
+
+      await authenticate(remotePeer, { token: 'tok-should-not-appear' } as AuthCredentials);
+
+      const [payload] = mockLogger.error.mock.calls.at(-1) as [Record<string, unknown>];
+      expect(payload).not.toHaveProperty('credentials');
+      expect(payload['credentialFields']).toEqual(['token']);
     });
   });
 });

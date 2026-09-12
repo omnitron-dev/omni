@@ -1792,13 +1792,21 @@ export class DatabaseManager implements IDatabaseManager {
    * Apply global plugins from options.kysera.plugins to all connections.
    * Called once during init() after all connections are established.
    */
+  /**
+   * Attach every configured plugin to every live connection.
+   *
+   * `kysera.plugins` and the legacy `plugins.builtIn` are MERGED, not
+   * either/or. They used to be alternatives — the first `if` returned as soon
+   * as `kysera.plugins` was non-empty — which meant that adding one explicit
+   * plugin silently dropped `timestamps`, `softDelete` and `audit`. An option
+   * that turns another option off without saying so is the kind of thing
+   * nobody discovers until rows stop getting a `createdAt`.
+   */
   private async applyGlobalPlugins(): Promise<void> {
-    const pluginSpecs = this.options.kysera?.plugins;
-    if (!pluginSpecs || pluginSpecs.length === 0) {
-      // Also handle legacy builtIn config
-      const builtIn = this.options.plugins?.builtIn;
-      if (!builtIn) return;
+    const plugins: Plugin[] = [];
 
+    const builtIn = this.options.plugins?.builtIn;
+    if (builtIn) {
       const legacyPlugins: Plugin[] = [];
       if (builtIn.softDelete) {
         const opts = typeof builtIn.softDelete === 'object' ? builtIn.softDelete : undefined;
@@ -1816,23 +1824,14 @@ export class DatabaseManager implements IDatabaseManager {
         if (plugin) legacyPlugins.push(plugin);
       }
 
-      if (legacyPlugins.length === 0) return;
-
-      this.logger.info(
-        { plugins: legacyPlugins.map((p) => p.name) },
-        'Applying legacy builtIn plugins to all connections'
-      );
-
-      for (const [name, info] of this.connections) {
-        if (info.connected) {
-          await this.setConnectionPlugins(name, legacyPlugins);
-        }
-      }
-      return;
+      plugins.push(...legacyPlugins);
     }
 
-    // Resolve plugin specifications
-    const plugins = await this.resolvePlugins(pluginSpecs);
+    const pluginSpecs = this.options.kysera?.plugins;
+    if (pluginSpecs && pluginSpecs.length > 0) {
+      plugins.push(...(await this.resolvePlugins(pluginSpecs)));
+    }
+
     if (plugins.length === 0) return;
 
     this.logger.info(

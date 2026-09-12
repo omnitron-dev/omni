@@ -38,6 +38,18 @@ const DEFAULT_STREAM_PATTERN = 'notify.*';
 /** Default consumer group name */
 const DEFAULT_GROUP_NAME = 'notification-workers';
 
+/**
+ * `XINFO CONSUMERS` answers as a flat `[key, value, key, value, …]` array on
+ * ioredis and as an object on some clients. One shape in, one shape out.
+ */
+function arrayToRecord(flat: unknown[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    out[String(flat[i])] = flat[i + 1];
+  }
+  return out;
+}
+
 /** Default block timeout for XREADGROUP in milliseconds */
 const DEFAULT_BLOCK_TIMEOUT_MS = 5000;
 
@@ -49,6 +61,33 @@ const DEFAULT_AUTOCLAIM_IDLE_MS = 5 * 60 * 1000;
 
 /** Default interval for XAUTOCLAIM checks in milliseconds (60 seconds) */
 const DEFAULT_AUTOCLAIM_INTERVAL_MS = 60 * 1000;
+
+/**
+ * How long a delivered event stays in the stream (24 hours).
+ *
+ * Nothing trimmed it before. Measured on a running deployment: 45,603 entries,
+ * `lag 0` — every one already consumed — spanning 73 days and occupying 22.8
+ * MB of Redis. A stream that is only ever appended to is a slow memory leak
+ * with no upper bound, and the payloads are notification bodies.
+ *
+ * Trimming is by AGE rather than count, because the useful question after an
+ * incident is "what happened in the last day", not "what were the last N".
+ */
+const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How idle a consumer must be before its registration is removed (1 hour).
+ *
+ * The consumer name is `worker-<pid>-<timestamp>`, so every restart registers
+ * a new one and nothing ever removed the old. Measured on the same
+ * deployment: 429 consumers in one group, the sampled one idle for 1.6 days.
+ * They cost memory and they are walked by XAUTOCLAIM and XINFO.
+ *
+ * Well above `autoclaimIdleMs` on purpose: a consumer that still holds pending
+ * messages is never removed regardless, but the gap keeps a briefly-stalled
+ * live worker from being deregistered underneath itself.
+ */
+const DEFAULT_CONSUMER_IDLE_MS = 60 * 60 * 1000;
 
 export interface NotificationWorkerOptions {
   /** Rotif stream pattern (default: 'notify.*') */
@@ -65,6 +104,10 @@ export interface NotificationWorkerOptions {
   autoclaimIdleMs?: number;
   /** Interval for XAUTOCLAIM checks in ms (default: 60000 = 1 min) */
   autoclaimIntervalMs?: number;
+  /** How long a delivered event stays in the stream (default: 24h). 0 disables trimming. */
+  retentionMs?: number;
+  /** How idle a consumer must be before deregistration (default: 1h). 0 disables. */
+  consumerIdleMs?: number;
 }
 
 @Injectable()
@@ -81,6 +124,8 @@ export class NotificationWorkerService {
   private readCount!: number;
   private autoclaimIdleMs!: number;
   private autoclaimIntervalMs!: number;
+  private retentionMs!: number;
+  private consumerIdleMs!: number;
 
   constructor(
     @Inject(NOTIFICATION_TARGET_RESOLVER) private readonly targetResolver: INotificationTargetResolver,
@@ -123,6 +168,8 @@ export class NotificationWorkerService {
     this.blockTimeoutMs = options.blockTimeoutMs ?? DEFAULT_BLOCK_TIMEOUT_MS;
     this.readCount = options.readCount ?? DEFAULT_READ_COUNT;
     this.autoclaimIdleMs = options.autoclaimIdleMs ?? DEFAULT_AUTOCLAIM_IDLE_MS;
+    this.retentionMs = options.retentionMs ?? DEFAULT_RETENTION_MS;
+    this.consumerIdleMs = options.consumerIdleMs ?? DEFAULT_CONSUMER_IDLE_MS;
     this.autoclaimIntervalMs = options.autoclaimIntervalMs ?? DEFAULT_AUTOCLAIM_INTERVAL_MS;
 
     // Ensure consumer group exists (MKSTREAM creates the stream if absent)
@@ -133,9 +180,13 @@ export class NotificationWorkerService {
 
     // Start periodic autoclaim
     this.autoclaimTimer = setInterval(() => {
-      this.runAutoclaim().catch((err) => {
-        this.logger.error({ err }, 'XAUTOCLAIM periodic check failed');
-      });
+      this.runAutoclaim()
+        // Sequential, not parallel: the trim reads the group's oldest pending
+        // id, and an autoclaim in flight is exactly what changes it.
+        .then(() => this.runJanitor())
+        .catch((err) => {
+          this.logger.error({ err }, 'XAUTOCLAIM periodic check failed');
+        });
     }, this.autoclaimIntervalMs);
 
     // Start the main consume loop
@@ -348,6 +399,114 @@ export class NotificationWorkerService {
   // ---------------------------------------------------------------------------
   // XAUTOCLAIM — recover messages from dead/stalled consumers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Trim delivered events past the retention window, and deregister consumers
+   * that have been idle long enough to be gone.
+   *
+   * Neither existed. The stream was append-only — 45,603 entries, all
+   * consumed, 73 days, 22.8 MB on a measured deployment — and the consumer
+   * registry grew by one entry per worker start, reaching 429.
+   *
+   * Never throws: this is housekeeping running beside message delivery, and a
+   * Redis hiccup here must not stop the loop that delivers notifications.
+   */
+  private async runJanitor(): Promise<void> {
+    try {
+      await this.trimDeliveredEvents();
+    } catch (err) {
+      this.logger.warn({ err, streamKey: this.streamKey }, 'Stream trim failed');
+    }
+    try {
+      await this.removeIdleConsumers();
+    } catch (err) {
+      this.logger.warn({ err, groupName: this.groupName }, 'Idle-consumer sweep failed');
+    }
+  }
+
+  /**
+   * Drop entries older than the retention window — but never past anything
+   * still pending.
+   *
+   * `XTRIM MINID` removes by id, and a stream id begins with a millisecond
+   * timestamp, so the cutoff is expressible directly. The clamp is the part
+   * that matters: a message whose processing failed sits in the PEL waiting
+   * for XAUTOCLAIM, and trimming past it would delete a notification that is
+   * still owed to someone. `XPENDING` in its summary form answers "oldest
+   * pending id" in one call.
+   *
+   * `~` lets Redis trim at node boundaries, which costs nothing here and
+   * avoids rewriting a radix node per call.
+   */
+  private async trimDeliveredEvents(): Promise<void> {
+    if (this.retentionMs <= 0) return;
+
+    let cutoff = Date.now() - this.retentionMs;
+
+    const pending = (await this.redis.xpending(this.streamKey, this.groupName)) as
+      | [number, string | null, string | null, unknown]
+      | null;
+    const oldestPendingId = Array.isArray(pending) ? pending[1] : null;
+    if (typeof oldestPendingId === 'string') {
+      const oldestPendingMs = Number(oldestPendingId.split('-')[0]);
+      if (Number.isFinite(oldestPendingMs)) cutoff = Math.min(cutoff, oldestPendingMs);
+    }
+
+    const removed = (await this.redis.xtrim(
+      this.streamKey,
+      'MINID',
+      '~',
+      `${cutoff}-0`
+    )) as number;
+
+    if (removed > 0) {
+      this.logger.info(
+        { streamKey: this.streamKey, removed, retentionMs: this.retentionMs },
+        'Trimmed delivered notification events',
+      );
+    }
+  }
+
+  /**
+   * Deregister consumers that hold nothing and have been idle past the
+   * threshold.
+   *
+   * `pending > 0` is never removed, whatever the idle time: those messages are
+   * waiting for XAUTOCLAIM to reclaim them, and deleting the consumer would
+   * delete its PEL entries with it. The live consumer excludes itself by the
+   * same rule most of the time, and by name always.
+   */
+  private async removeIdleConsumers(): Promise<void> {
+    if (this.consumerIdleMs <= 0) return;
+
+    const consumers = (await this.redis.xinfo(
+      'CONSUMERS',
+      this.streamKey,
+      this.groupName
+    )) as Array<Record<string, unknown> | unknown[]>;
+
+    let removed = 0;
+    for (const entry of consumers) {
+      const info = Array.isArray(entry) ? arrayToRecord(entry) : entry;
+      const name = String(info['name'] ?? '');
+      const pendingCount = Number(info['pending'] ?? 0);
+      const idle = Number(info['idle'] ?? 0);
+
+      if (!name || name === this.consumerName) continue;
+      if (pendingCount > 0) continue;
+      if (!Number.isFinite(idle) || idle < this.consumerIdleMs) continue;
+
+      await this.redis.xgroup('DELCONSUMER', this.streamKey, this.groupName, name);
+      removed++;
+    }
+
+    if (removed > 0) {
+      this.logger.info(
+        { groupName: this.groupName, removed, idleThresholdMs: this.consumerIdleMs },
+        'Removed idle notification consumers',
+      );
+    }
+  }
 
   private async runAutoclaim(): Promise<void> {
     let startId = '0-0';

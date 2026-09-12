@@ -19,6 +19,10 @@ module.exports = [
   ...base,
   {
     files: ['packages/*/src/**/*.{ts,tsx}', 'apps/*/src/**/*.{ts,tsx}', 'apps/*/webapp/src/**/*.{ts,tsx}'],
+    // Some packages keep specs beside the code (titan-auth/src/*.spec.ts). The
+    // base config sets `project: false` for those, so a type-aware rule cannot
+    // run on them and errors out the whole run if asked to.
+    ignores: ['**/*.spec.ts', '**/*.spec.tsx', '**/*.test.ts', '**/*.test.tsx'],
     plugins: { '@typescript-eslint': eslintTs.plugin },
     rules: {
       '@typescript-eslint/no-misused-promises': [

@@ -800,10 +800,28 @@ export class Application implements IApplication {
 
     // Module-level reconfigure pass — invoke once per module that has
     // a `configure` method and a config section under its name.
+    //
+    // This method is the synchronous fluent API (`app.configure({…})` returns
+    // `this`), so an async module `configure` cannot be awaited here without
+    // changing that contract. It is not left bare either: `IModule.configure`
+    // may return a promise, and a bare call made a failed reconfigure an
+    // unhandled rejection. Registration DOES await it — see
+    // `ModuleRegistry.register` — so this is the one path where an async
+    // module configure is fire-and-forget, and it now says so and reports.
     for (const module of this.__moduleRegistry.values()) {
       if (module.configure) {
         const moduleConfig = this.__configStore.rawGet(module.name);
-        if (moduleConfig !== undefined) module.configure(moduleConfig);
+        if (moduleConfig !== undefined) {
+          const configured = module.configure(moduleConfig);
+          if (configured instanceof Promise) {
+            void configured.catch((err: unknown) => {
+              this._logger?.error(
+                { err, module: module.name },
+                'Module configure() rejected during a synchronous app.configure() — the module keeps its previous configuration'
+              );
+            });
+          }
+        }
       }
     }
 

@@ -336,9 +336,14 @@ export class ModuleRegistry {
     }
 
     // 7. Per-module config hand-off.
+    //
+    // Awaited: `IModule.configure` is declared `void | Promise<void>`, and
+    // registration must not report a module ready before its configuration
+    // has landed. Unawaited, an async `configure` left the module usable with
+    // its defaults and turned a failure into an unhandled rejection.
     const moduleConfig = this.deps.getModuleConfig(instance.name);
     if (instance.configure && moduleConfig !== undefined) {
-      instance.configure(moduleConfig);
+      await instance.configure(moduleConfig);
     }
 
     this.deps.emit(ApplicationEvent.ModuleRegistered, { module: instance.name });
@@ -386,9 +391,27 @@ export class ModuleRegistry {
     }
 
     // Per-module config hand-off.
+    //
+    // `use()` is the SYNCHRONOUS register path, so unlike `register()` above
+    // it cannot await. `IModule.configure` may still return a promise, and a
+    // bare call made a failed configure an unhandled rejection — so the
+    // promise gets a handler here and the failure is reported. A module that
+    // needs its configuration awaited has to go through `register()`.
     if (moduleInstance.configure) {
       const moduleConfig = this.deps.getModuleConfig(moduleInstance.name);
-      if (moduleConfig !== undefined) moduleInstance.configure(moduleConfig);
+      if (moduleConfig !== undefined) {
+        const configured = moduleInstance.configure(moduleConfig);
+        if (configured instanceof Promise) {
+          void configured.catch((err: unknown) => {
+            this.deps
+              .getLogger()
+              ?.error(
+                { err, module: moduleInstance.name },
+                'Module configure() rejected on the synchronous use() path — the module keeps its defaults'
+              );
+          });
+        }
+      }
     }
 
     this.deps.emit(ApplicationEvent.ModuleRegistered, { module: moduleInstance.name });

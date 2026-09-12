@@ -14,6 +14,38 @@ describe('EventValidationService', () => {
     validationService = new EventValidationService();
   });
 
+  describe('an async validator must not pass silently', () => {
+    // `EventValidator` is typed `(data) => boolean | string | Promise<boolean | string>`
+    // and `validate()` is synchronous, so a promise cannot be awaited. The
+    // exact-match path has always said so explicitly. The wildcard path,
+    // thirty lines below it, did not: a promise is `typeof 'object'` and
+    // truthy but carries no `valid` property, so it fell past every branch and
+    // the event validated as fine — an async rule that rejected nothing.
+    it('rejects it on the exact-match path', () => {
+      validationService.registerValidator('order.created', () => Promise.resolve(false));
+      const result = validationService.validate('order.created', { id: 1 });
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects it on the wildcard path too', () => {
+      validationService.registerValidator('order.*', () => Promise.resolve(false));
+      const result = validationService.validate('order.created', { id: 1 });
+      expect(result.valid, 'an async wildcard validator passed the event').toBe(false);
+      expect(result.errors?.join(' ')).toMatch(/Async validation not supported/);
+    });
+
+    it('rejects an unrecognised wildcard result rather than ignoring it', () => {
+      validationService.registerValidator('audit.*', (() => 42) as never);
+      const result = validationService.validate('audit.write', { id: 1 });
+      expect(result.valid).toBe(false);
+    });
+
+    it('still passes a wildcard validator that returns true', () => {
+      validationService.registerValidator('ping.*', () => true);
+      expect(validationService.validate('ping.now', {}).valid).toBe(true);
+    });
+  });
+
   it('should validate event names', () => {
     expect(validationService.isValidEventName('valid.event')).toBe(true);
     expect(validationService.isValidEventName('also.valid.event')).toBe(true);

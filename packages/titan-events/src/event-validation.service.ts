@@ -245,11 +245,26 @@ export class EventValidationService {
           }
         } else if (typeof result === 'string') {
           errors.push(result);
+        } else if (result instanceof Promise) {
+          // Same decision the exact-match path above makes, and for the same
+          // reason: `validate` is synchronous and cannot await. It was missing
+          // here, thirty lines below where it is written out — and an
+          // `EventValidator` MAY return `Promise<boolean | string>`, per its
+          // own type. A promise is `typeof 'object'` and truthy but has no
+          // `valid` property, so it fell past all three branches and
+          // contributed nothing: an async wildcard validator passed every
+          // event it was registered to reject.
+          errors.push('Async validation not supported in sync context');
         } else if (typeof result === 'object' && result && 'valid' in result) {
           const validationResult = result as IEventValidationResult;
           if (!validationResult.valid && validationResult.errors) {
             errors.push(...validationResult.errors);
           }
+        } else {
+          // The exact-match path ends with the same catch-all. A validator
+          // that returns something unrecognised has failed to validate, and
+          // silence is the one answer that cannot be right.
+          errors.push('Invalid validator result');
         }
       }
 

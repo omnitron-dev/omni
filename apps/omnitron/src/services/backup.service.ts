@@ -270,6 +270,44 @@ export class BackupService {
     return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz') };
   }
 
+  /**
+   * Run a script inside a container with the MinIO credentials in its
+   * ENVIRONMENT rather than in the command text.
+   *
+   * `mc alias set _bk http://localhost:9000 ${ak} ${sk}` put a secret into a
+   * string that `/bin/sh -c` then parsed — twice, since the outer command
+   * wrapped it in `sh -c '<inner>'`. A secret containing a single quote ends
+   * the inner quoting and the remainder runs as shell, on the host, as the
+   * daemon user. Nothing validates what a MinIO secret may contain, and a
+   * generated one is exactly the kind of string that eventually holds a
+   * quote.
+   *
+   * `execFile` with an argv array means the arguments never meet a shell, and
+   * the script reads `"$MC_AK"` / `"$MC_SK"` — expanded by the inner shell,
+   * not re-parsed by it.
+   */
+  private async execInMinio(
+    container: string,
+    ak: string,
+    sk: string,
+    script: string,
+    timeoutMs = 600_000,
+  ): Promise<void> {
+    const { execFile } = await import('node:child_process');
+    const args = [
+      'exec',
+      '-e', `MC_AK=${ak}`,
+      '-e', `MC_SK=${sk}`,
+      container,
+      'sh', '-c', script,
+    ];
+    await new Promise<void>((resolve, reject) => {
+      execFile('docker', args, { timeout: timeoutMs, maxBuffer: 200 * 1024 * 1024 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+  }
+
   private async execShell(cmd: string, timeoutMs = 600_000): Promise<void> {
     const { execFile } = await import('node:child_process');
     await new Promise<void>((resolve, reject) => {
@@ -305,15 +343,16 @@ export class BackupService {
     const stage = path.join(this.backupDir, `.storage-restore-${randomUUID().slice(0, 8)}`);
     // Untar on the host, docker cp into the container, then mirror back into the
     // bucket (minio has no tar, so staging happens host-side).
-    const inner = `mc alias set _bk http://localhost:9000 ${ak} ${sk} >/dev/null 2>&1; ` +
+    const inner =
+      `mc alias set _bk http://localhost:9000 "$MC_AK" "$MC_SK" >/dev/null 2>&1; ` +
       `mc mb --ignore-existing _bk/storage >/dev/null 2>&1; ` +
       `mc mirror --overwrite --quiet /tmp/_bk_storage _bk/storage >/dev/null 2>&1; true`;
     try {
       await this.execShell(
         `rm -rf "${stage}" && mkdir -p "${stage}" && tar xzf "${filepath}" -C "${stage}" && ` +
-        `docker exec ${container} rm -rf /tmp/_bk_storage && docker cp "${stage}/_bk_storage" ${container}:/tmp/_bk_storage && ` +
-        `docker exec ${container} sh -c '${inner}'`,
+        `docker exec ${container} rm -rf /tmp/_bk_storage && docker cp "${stage}/_bk_storage" ${container}:/tmp/_bk_storage`,
       );
+      await this.execInMinio(container, ak, sk, inner);
     } finally {
       await this.execShell(`rm -rf "${stage}"`).catch(() => { /* best-effort */ });
     }
@@ -341,13 +380,14 @@ export class BackupService {
     // mc is bundled in the minio image (tar is NOT): mirror the bucket into a
     // container temp dir, `docker cp` it to the host, then tar on the host.
     // Object-level (not raw volume) so it survives minio storage-format changes.
-    const inner = `mc alias set _bk http://localhost:9000 ${ak} ${sk} >/dev/null 2>&1; ` +
+    const inner =
+      `mc alias set _bk http://localhost:9000 "$MC_AK" "$MC_SK" >/dev/null 2>&1; ` +
       `mc mb --ignore-existing _bk/storage >/dev/null 2>&1; ` +
       `rm -rf /tmp/_bk_storage && mkdir -p /tmp/_bk_storage && ` +
       `mc mirror --overwrite --quiet _bk/storage /tmp/_bk_storage >/dev/null 2>&1; true`;
     this.logger.info({ container }, 'Backing up minio storage bucket');
     try {
-      await this.execShell(`docker exec ${container} sh -c '${inner}'`);
+      await this.execInMinio(container, ak, sk, inner);
       await this.execToFile(
         `rm -rf "${stage}" && mkdir -p "${stage}" && docker cp ${container}:/tmp/_bk_storage "${stage}/" && ` +
         `tar czf "${filepath}" -C "${stage}" _bk_storage`,

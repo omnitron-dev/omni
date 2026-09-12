@@ -56,6 +56,16 @@ const DEFAULT_BLOCK_TIMEOUT_MS = 5000;
 /** Default batch size for XREADGROUP COUNT */
 const DEFAULT_READ_COUNT = 100;
 
+/**
+ * Deliveries after which a message is given up on.
+ *
+ * At the default 5-minute idle threshold, twenty attempts is roughly 100
+ * minutes of retrying — long enough to outlast a restart or a database blip,
+ * short enough that a message which can never succeed stops holding the trim
+ * floor.
+ */
+const DEFAULT_MAX_DELIVERIES = 20;
+
 /** Default idle threshold for XAUTOCLAIM in milliseconds (5 minutes) */
 const DEFAULT_AUTOCLAIM_IDLE_MS = 5 * 60 * 1000;
 
@@ -106,6 +116,19 @@ export interface NotificationWorkerOptions {
   autoclaimIntervalMs?: number;
   /** How long a delivered event stays in the stream (default: 24h). 0 disables trimming. */
   retentionMs?: number;
+  /**
+   * Deliveries after which a message is given up on and ACKed (default: 20).
+   *
+   * A processing failure does not ACK, so the message returns through
+   * XAUTOCLAIM. For a transient fault — a closed database connection during a
+   * restart, measured as five bursts of exactly that on one stand — that is
+   * right. For a message that can never succeed it is a retry forever, and it
+   * also pins `trimDeliveredEvents`: the trim floor is clamped to the oldest
+   * PENDING id, so one poisoned message stops the stream being trimmed at all
+   * and it grows without bound again — the very thing the janitor exists to
+   * prevent.
+   */
+  maxDeliveries?: number;
   /** How idle a consumer must be before deregistration (default: 1h). 0 disables. */
   consumerIdleMs?: number;
 }
@@ -125,6 +148,7 @@ export class NotificationWorkerService {
   private autoclaimIdleMs!: number;
   private autoclaimIntervalMs!: number;
   private retentionMs!: number;
+  private maxDeliveries!: number;
   private consumerIdleMs!: number;
 
   constructor(
@@ -169,6 +193,7 @@ export class NotificationWorkerService {
     this.readCount = options.readCount ?? DEFAULT_READ_COUNT;
     this.autoclaimIdleMs = options.autoclaimIdleMs ?? DEFAULT_AUTOCLAIM_IDLE_MS;
     this.retentionMs = options.retentionMs ?? DEFAULT_RETENTION_MS;
+    this.maxDeliveries = options.maxDeliveries ?? DEFAULT_MAX_DELIVERIES;
     this.consumerIdleMs = options.consumerIdleMs ?? DEFAULT_CONSUMER_IDLE_MS;
     this.autoclaimIntervalMs = options.autoclaimIntervalMs ?? DEFAULT_AUTOCLAIM_INTERVAL_MS;
 
@@ -305,12 +330,56 @@ export class NotificationWorkerService {
       await this.processEvent(event);
       await this.ack(messageId);
     } catch (err) {
+      // Do NOT ack — the message stays in the PEL and is picked up by
+      // XAUTOCLAIM after the idle threshold expires. That is right for a
+      // TRANSIENT fault, which is what these mostly are: on one stand, five
+      // instantaneous bursts of `Database connection with id default not
+      // found` around restarts, all recovered on the next pass.
+      //
+      // It is wrong forever. A message that can never succeed would be
+      // redelivered for the life of the deployment, and — because
+      // `trimDeliveredEvents` clamps its cutoff to the oldest PENDING id —
+      // would stop the stream being trimmed AT ALL, which is the unbounded
+      // growth the janitor was added to stop.
+      const deliveries = await this.deliveryCount(messageId);
+      if (deliveries >= this.maxDeliveries) {
+        this.logger.error(
+          { err, messageId, deliveries, channel: event.channel, type: event.type, event },
+          'Giving up on a notification event after repeated failures — ACKed and dropped'
+        );
+        await this.ack(messageId);
+        return;
+      }
+
       this.logger.error(
-        { err, messageId, channel: event.channel, type: event.type },
+        { err, messageId, deliveries, channel: event.channel, type: event.type },
         'Failed to process notification event'
       );
-      // Do NOT ack — the message stays in the PEL and will be picked up
-      // by XAUTOCLAIM after the idle threshold expires.
+    }
+  }
+
+  /**
+   * How many times this message has been delivered.
+   *
+   * `XPENDING <key> <group> <id> <id> 1` returns the single entry as
+   * `[id, consumer, idleMs, deliveryCount]`. Answers 0 when it cannot tell —
+   * an unreadable count must not cause a message to be dropped, so the
+   * fallback keeps it pending.
+   */
+  private async deliveryCount(messageId: string): Promise<number> {
+    try {
+      const rows = (await this.redis.xpending(
+        this.streamKey,
+        this.groupName,
+        messageId,
+        messageId,
+        1
+      )) as unknown as Array<[string, string, number, number]>;
+      const row = Array.isArray(rows) ? rows[0] : undefined;
+      const count = Array.isArray(row) ? Number(row[3]) : NaN;
+      return Number.isFinite(count) ? count : 0;
+    } catch {
+      return 0;
     }
   }
 

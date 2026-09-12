@@ -357,7 +357,21 @@ export class RemotePeer extends AbstractPeer {
           this.logger.error({ err: error, peerId: this.id }, 'Failed to decode incoming packet');
         }
       } else {
-        this.logger.warn({ data, peerId: this.id }, 'Received a non-binary message');
+        // Type and size, not content: whatever arrived here is unparsed
+        // input from the other side, and the frame that most often arrives
+        // malformed is the authentication one.
+        // `data` is declared ArrayBuffer, so the compiler narrows it to
+        // `never` here — which is the point: this branch exists precisely for
+        // what the declared type says cannot arrive.
+        const frame = data as unknown;
+        this.logger.warn(
+          {
+            peerId: this.id,
+            dataType: typeof frame,
+            ...(typeof frame === 'string' && { length: frame.length }),
+          },
+          'Received a non-binary message',
+        );
       }
     });
 

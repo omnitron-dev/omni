@@ -27,6 +27,7 @@ import {
   createSuccessResponse,
   createErrorResponse,
   isHttpRequestMessage,
+  describeRequestShape,
   isHttpBatchRequest,
 } from './types.js';
 import type { MethodContract } from '../../../validation/contract.js';
@@ -1078,7 +1079,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (!isHttpRequestMessage(message)) {
       // Log error if logger is available
       if (this.netronPeer?.logger) {
-        this.netronPeer.logger.error({ message }, 'Invalid request format');
+        // The SHAPE, never the body — `input` is where a signin's password
+        // is, and this is the branch a client with a wrong field name takes.
+        this.netronPeer.logger.error(describeRequestShape(message), 'Invalid request format');
       }
       const requestId = request.headers.get('X-Request-ID') || generateRequestId();
       return this.createErrorResponse(

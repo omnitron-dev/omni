@@ -297,7 +297,14 @@ export class HttpRemotePeer extends AbstractPeer {
    * Send HTTP request message
    */
   private async sendRequestMessage(message: HttpRequestMessage): Promise<HttpResponseMessage> {
-    this.logger.debug({ message }, '[HTTP Peer] Sending request message');
+    // Routing only. This used to log `message` whole, and `message.input` is
+    // the call's arguments — for a signin, the password. A debug level is not
+    // a safeguard: it is a switch somebody turns on while debugging exactly
+    // the auth path that carries the credential.
+    this.logger.debug(
+      { requestId: message.id, service: message.service, method: message.method },
+      '[HTTP Peer] Sending request message',
+    );
 
     // Apply request interceptors
     let processedMessage = message;

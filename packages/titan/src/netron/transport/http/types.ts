@@ -266,6 +266,48 @@ export function isHttpRequestMessage(value: any): value is HttpRequestMessage {
 }
 
 /**
+ * Say what is wrong with a request's SHAPE, without repeating its contents.
+ *
+ * The rejection path used to log the parsed body whole. A caller that gets the
+ * envelope slightly wrong — an old client, a renamed field, someone probing —
+ * has its `input` written to the log file, and `input` is where credentials
+ * live. Measured in a running deployment: a signin sent with `nickname`
+ * instead of `identifier` failed this guard, and both pricing's and
+ * payments's `error.log` recorded
+ * `{"service":"Auth@1.0.0","method":"signin","input":{"nickname":"…","password":"<the actual password>"}}`.
+ * The log files were 0644.
+ *
+ * `service` and `method` are routing, not payload, so they are named when they
+ * are strings. Everything else is reported as a type, which is all the
+ * diagnostic ever needed: this guard only checks types and presence.
+ *
+ * @param value - The parsed body that failed {@link isHttpRequestMessage}
+ * @returns A payload-free description safe to log
+ */
+export function describeRequestShape(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object') {
+    return { bodyType: value === null ? 'null' : typeof value };
+  }
+
+  const record = value as Record<string, unknown>;
+  const typeOf = (key: string): string => (key in record ? (record[key] === null ? 'null' : typeof record[key]) : 'missing');
+
+  return {
+    // Routing identifiers, echoed only when they are the strings the guard
+    // wanted. A non-string here is itself the fault being reported.
+    ...(typeof record['service'] === 'string' && { service: record['service'] }),
+    ...(typeof record['method'] === 'string' && { method: record['method'] }),
+    shape: {
+      id: typeOf('id'),
+      service: typeOf('service'),
+      method: typeOf('method'),
+      input: typeOf('input'),
+    },
+    keys: Object.keys(record).slice(0, 20),
+  };
+}
+
+/**
  * Type guard for response message
  */
 export function isHttpResponseMessage(value: any): value is HttpResponseMessage {

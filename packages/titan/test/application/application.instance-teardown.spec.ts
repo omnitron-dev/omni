@@ -27,7 +27,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Application } from '../../src/application.js';
 import { ApplicationState, type IModule } from '../../src/types.js';
 import { Injectable, PostConstruct, PreDestroy } from '../../src/decorators/index.js';
-import { createToken } from '../../src/nexus/index.js';
+import { createToken, Container } from '../../src/nexus/index.js';
 
 let app: Application | undefined;
 
@@ -164,5 +164,54 @@ describe('stop() tears down DI instances', () => {
     await app.stop({ force: true });
 
     expect(trace, 'a force stop without a timeout must not wait on a drain').not.toContain('worker:drain');
+  });
+
+  it('leaves the container usable for the module teardown that follows', async () => {
+    // The container registers itself (`register(Container, {useValue: this})`)
+    // and has a `dispose()`, so the instance walk handed the unfiltered map
+    // disposes ITSELF partway through: registrations cleared, `disposed` set.
+    // Every `onStop` after that opens with `container.has(TOKEN)` and gets
+    // `false`, so it returns having done nothing — which is how geo and
+    // storage stopped WITHOUT closing their database, silently, while the
+    // module loop still ran for 165 ms.
+    const seen: Array<string> = [];
+    const RESOURCE = createToken<{ closed: boolean }>('TeardownResource');
+    const resource = { closed: false };
+
+    class ResourceModule implements IModule {
+      name = 'resource';
+      async onStop(app: any) {
+        const c = app?.container;
+        seen.push(`has=${String(!!c?.has?.(RESOURCE))}`);
+        try {
+          const r = c.resolve(RESOURCE) as { closed: boolean };
+          r.closed = true;
+          seen.push('resolved');
+        } catch (err) {
+          seen.push(`threw=${(err as Error).message}`);
+        }
+      }
+    }
+
+    Worker.trace = [];
+    app = await Application.create({
+      disableGracefulShutdown: true,
+      disableCoreModules: true,
+      providers: [
+        [WORKER, { useClass: Worker }],
+        [RESOURCE, { useValue: resource }],
+      ],
+    });
+    app.use(new ResourceModule() as any);
+    app.resolve(WORKER);
+    // Injected somewhere — which is what puts the container in its own cache.
+    app.resolve(Container);
+    await app.start();
+
+    await app.stop();
+
+    expect(Worker.trace, 'the instance teardown did not run at all').toContain('worker:drain');
+    expect(seen, 'the module could not see its own provider during onStop').toEqual(['has=true', 'resolved']);
+    expect(resource.closed, 'the resource the module owns was never closed').toBe(true);
   });
 });

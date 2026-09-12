@@ -2026,6 +2026,32 @@ export class Container implements IContainer {
   }
 
   /**
+   * The resolved instances, minus the container itself.
+   *
+   * The constructor does `register(Container, { useValue: this })`, so a
+   * container that anything has injected is sitting in its own instance cache
+   * — and `Container` has a `dispose()`, which is one of the three shapes the
+   * instance teardown calls. Handed the unfiltered map it therefore disposes
+   * ITSELF partway through the walk: `registrations` cleared, `disposed` set,
+   * and every module `onStop` that follows silently early-returns on
+   * `container.has(...)`. Measured on the stand — geo and storage stopped
+   * without closing their database, because `TitanDatabaseModule.onStop`
+   * could no longer see `DATABASE_MANAGER`.
+   *
+   * `doDispose` needs the same filter for a sharper reason: re-entering
+   * `dispose()` from inside itself returns the in-flight `disposePromise`,
+   * and awaiting it from within the walk that promise is waiting on is a
+   * deadlock.
+   */
+  private instancesExceptSelf(): Map<InjectionToken<any>, any> {
+    const out = new Map(this.instances);
+    for (const [token, instance] of out) {
+      if (instance === this) out.delete(token);
+    }
+    return out;
+  }
+
+  /**
    * Run `@PreDestroy` / `onDestroy` / `dispose()` on every tracked instance,
    * leaving the container itself usable.
    *
@@ -2043,7 +2069,7 @@ export class Container implements IContainer {
    * `restart()` starts the same container again.
    */
   async destroyInstances(): Promise<void> {
-    await this.lifecycleService.disposeInstances(this.instances, this.scopedInstances);
+    await this.lifecycleService.disposeInstances(this.instancesExceptSelf(), this.scopedInstances);
 
     // A subsequent start() must run @PostConstruct again — the instances it
     // would otherwise reuse have had their timers cleared and their
@@ -2089,7 +2115,7 @@ export class Container implements IContainer {
     await this.lifecycleService.disposeModules(this.modules, moduleDisposeOrder);
 
     // Dispose instances (lifecycle detection uses prototype-based checks, safe for Proxy values)
-    await this.lifecycleService.disposeInstances(this.instances, this.scopedInstances);
+    await this.lifecycleService.disposeInstances(this.instancesExceptSelf(), this.scopedInstances);
 
     // Clear all caches
     this.registrations.clear();

@@ -142,19 +142,35 @@ export class ServiceRouter {
   }
 
   /**
-   * Clean up all services associated with a process name.
+   * Release every service this router registered on the daemon's Netron.
+   *
+   * The router is built fresh per app launch and torn down whole, so this is
+   * the teardown — it belongs here rather than being spelled out by each
+   * caller. `stopApp` had the loop inline; the stale-duplicate path in
+   * `registerApp` had nothing at all, and dropped the handle with its
+   * registrations still live on the daemon. A name that the next launch
+   * re-exposes is rescued by `takeOverExisting`; one it does not stays
+   * advertised, bound to a pool whose workers are gone, for the life of the
+   * daemon.
+   *
+   * Best-effort by design: a name that is already gone is the outcome we
+   * wanted, and a failure here must not stop an app from being stopped.
+   *
+   * This replaces `cleanupProcess(processName)`, which had no caller and no
+   * correct one: one child of a pool crashing does not mean the service is
+   * gone — the other workers still serve it — so per-process granularity
+   * would have deregistered a service that still works.
    */
-  async cleanupProcess(processName: string): Promise<void> {
-    const toRemove: string[] = [];
-
-    for (const [qualifiedName, reg] of this.services) {
-      if (reg.processName === processName) {
-        toRemove.push(qualifiedName);
+  async releaseAll(): Promise<void> {
+    for (const qualifiedName of [...this.services.keys()]) {
+      try {
+        await this.unexposeService(qualifiedName);
+      } catch (err) {
+        this.logger.debug(
+          { qualifiedName, error: (err as Error).message },
+          'Service was already gone from the daemon Netron',
+        );
       }
-    }
-
-    for (const qualifiedName of toRemove) {
-      await this.unexposeService(qualifiedName);
     }
   }
 

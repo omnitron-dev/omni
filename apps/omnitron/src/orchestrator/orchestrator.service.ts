@@ -674,6 +674,10 @@ export class OrchestratorService extends EventEmitter {
         { stale: key, replacing_with: entry.name, effective },
         'Replacing stale duplicate handle',
       );
+      // The handle is errored or stopped, so `stopApp` never ran for it and
+      // its services are still registered on the daemon's Netron. Dropping the
+      // handle here is the last moment anything knows they exist.
+      await this.releaseExposedServices(h);
       this.handles.delete(key);
       // Drop any metrics that were collected under the stale alias so it
       // doesn't haunt future snapshots as a ghost offline app.
@@ -745,6 +749,27 @@ export class OrchestratorService extends EventEmitter {
     }
   }
 
+  /**
+   * Give back every service an app exposed on the daemon's Netron.
+   *
+   * A registration outlives the process behind it: the daemon keeps answering
+   * `queryInterface` with the full method list and every call through the name
+   * fails at the socket. `takeOverExisting` rescues a name the next launch
+   * re-exposes; one it does not stays advertised for the life of the daemon.
+   */
+  private async releaseExposedServices(handle: AppHandle): Promise<void> {
+    if (!handle.serviceRouter) return;
+    try {
+      await handle.serviceRouter.releaseAll();
+    } catch (err) {
+      this.logger.warn(
+        { app: handle.name, error: (err as Error).message },
+        'Releasing exposed services failed — the daemon may still advertise them',
+      );
+    }
+    handle.serviceRouter = null;
+  }
+
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
     const canonical = this.resolveAppName(name) ?? name;
     // Outside the queue on purpose: the operator's intent lands the
@@ -757,16 +782,7 @@ export class OrchestratorService extends EventEmitter {
       handle.markStopping();
 
       // Unexpose topology services from daemon Netron before stopping processes
-      if (handle.serviceRouter) {
-        try {
-          for (const svcName of handle.serviceRouter.getServiceNames()) {
-            await handle.serviceRouter.unexposeService(svcName);
-          }
-        } catch {
-          // Best-effort cleanup
-        }
-        handle.serviceRouter = null;
-      }
+      await this.releaseExposedServices(handle);
 
       if (handle.mode === 'bootstrap' && handle.supervisor) {
         await handle.supervisor.stop();

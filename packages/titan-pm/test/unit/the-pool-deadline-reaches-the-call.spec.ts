@@ -62,6 +62,27 @@ describe('NetronClient', () => {
   });
 });
 
+describe('the effective deadline is observable', () => {
+  it('is logged at start-up, with the default named rather than left blank', async () => {
+    const lines: Array<Record<string, unknown>> = [];
+    const logger = {
+      trace() {}, debug() {}, warn() {}, error() {}, fatal() {},
+      info(ctx: Record<string, unknown>) { lines.push(ctx); },
+      child() { return logger; },
+    } as never;
+
+    const configured = new NetronClient('p1', logger, { requestTimeout: 120_000 });
+    await transportOptionsFrom(configured);
+    expect(lines.at(-1)).toMatchObject({ requestTimeout: 120_000 });
+
+    const bare = new NetronClient('p2', logger);
+    await transportOptionsFrom(bare);
+    // Not `undefined`: a blank field reads as "not applicable" rather than
+    // "netron decides", which is the confusion this whole change is about.
+    expect(String(lines.at(-1)?.['requestTimeout'])).toContain('5000');
+  });
+});
+
 describe('the deadline travels from the pool to the peer', () => {
   it('the pool puts its requestTimeout into the spawn options', () => {
     const at = POOL.indexOf('const proxy = await this.manager.spawn(');

@@ -123,6 +123,22 @@ export class NetronClient {
       this.netron.setTransportOptions('unix', { requestTimeout: this.options.requestTimeout });
     }
 
+    // Say which deadline this client will actually enforce.
+    //
+    // The defect this replaced was invisible from either end alone: an
+    // operator reads 120 s in the pool config, an engineer reads
+    // `timed out after 5000ms` in the log, and neither observation says the
+    // two are about the same call. One line at start-up makes the effective
+    // value observable where the config claim is made, so the next person
+    // does not have to reconstruct it from a stack trace.
+    this.logger.info(
+      {
+        processId: this.processId,
+        requestTimeout: this.options.requestTimeout ?? 'netron default (5000)',
+      },
+      'PM client RPC deadline'
+    );
+
     await this.netron.start();
   }
 

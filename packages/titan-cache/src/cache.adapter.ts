@@ -172,10 +172,28 @@ export class CacheAdapter {
 
   /**
    * Invalidate all keys matching a glob pattern (e.g., `"coins:*"`).
+   *
+   * `*` is the only wildcard, it matches any run of characters, and the
+   * pattern must match the WHOLE key — glob semantics, which is what the
+   * example above reads as.
+   *
+   * The conversion used to replace every star with a dot-star and hand the
+   * result to `clear()`, which builds an unanchored `new RegExp(...)` and
+   * tests it against every key. Two ways to hit the wrong rows:
+   *
+   *   - Unanchored. `invalidatePattern('user:1')` names one key and dropped
+   *     `user:10`, `user:123` and `session:user:1` with it.
+   *   - Every regex metacharacter but `*` passed through. `'a.b:*'` matched
+   *     `axb:…`; a key fragment carrying `{`, `(` or `[` — a JSON blob, a
+   *     locale tag, a path — made `new RegExp` throw a SyntaxError instead,
+   *     from a method whose caller is trying to invalidate a cache.
+   *
+   * Over-invalidation is cheap and silent, which is why this went unnoticed;
+   * it is still the cache answering a question nobody asked.
    */
   async invalidatePattern(pattern: string): Promise<void> {
     try {
-      const regexPattern = pattern.replace(/\*/g, '.*');
+      const regexPattern = `^${pattern.split('*').map(escapeRegExp).join('.*')}$`;
       await this.cache.clear(regexPattern);
       this.logger.debug({ pattern }, '[CacheAdapter] Invalidated keys');
     } catch (error) {
@@ -234,4 +252,12 @@ export class CacheAdapter {
       '[CacheAdapter] Stats'
     );
   }
+}
+
+/**
+ * Escape every regex metacharacter, so a literal fragment of a cache key
+ * matches itself and nothing else.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

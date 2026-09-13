@@ -170,54 +170,150 @@ function generateCacheKey(
   args: unknown[],
   keyGenerator?: (...args: unknown[]) => string,
   keyParamIndices?: number[]
-): string {
+): string | null {
   if (keyGenerator) {
     return keyGenerator(...args);
   }
 
-  const keyParts: string[] = [keyPrefix, methodName];
+  const selected =
+    keyParamIndices && keyParamIndices.length > 0 ? keyParamIndices.map((index) => args[index]) : args;
 
-  // If specific key parameters are marked, use only those
-  if (keyParamIndices && keyParamIndices.length > 0) {
-    for (const index of keyParamIndices) {
-      keyParts.push(stringifyArg(args[index]));
-    }
-  } else {
-    // Use all arguments
-    for (const arg of args) {
-      keyParts.push(stringifyArg(arg));
-    }
+  const seen = new WeakSet<object>();
+  const keyParts: string[] = [];
+  for (const arg of selected) {
+    const part = stableKeyPart(arg, seen);
+    // No key identifies this call. Say so, rather than inventing one two
+    // different calls could share.
+    if (part === null) return null;
+    keyParts.push(part);
   }
 
-  return keyParts.join(':');
+  return [keyPrefix, methodName, ...keyParts].join(':');
 }
 
 /**
- * Convert argument to string for cache key
+ * Serialise one argument into something that identifies it, deterministically.
+ *
+ * The previous `stringifyArg` was `JSON.stringify` with a `String(arg)`
+ * fallback, and a cache key collision means one caller is served another
+ * caller's result:
+ *
+ *   - `JSON.stringify` THROWS on a BigInt, and the fallback answered
+ *     `[object Object]` — so `{amount: 1n}` and `{amount: 2n}` shared an entry.
+ *     A bare BigInt argument skipped `JSON.stringify` entirely and became
+ *     `String(1n) === '1'`, colliding with the number 1 AND the string '1'.
+ *   - It throws on a circular structure, and the fallback answered
+ *     `[object Object]` there too — every cyclic argument sharing one entry.
+ *   - It follows insertion order, so `{a, b}` and `{b, a}` were different keys
+ *     for the same argument: a silent miss rather than a wrong hit, but a
+ *     cache that misses on half its reads is not a cache.
+ *
+ * Object keys are sorted, cycles are named, and a BigInt keeps an `n` suffix
+ * so it cannot read as the number beside it.
+ *
+ * Scalars stay READABLE — `getUser('123')` still keys `user:getUser:123` —
+ * because `@CacheInvalidate({ keyPattern })` targets these keys by pattern and
+ * quoting every scalar would silently stop every such pattern from matching.
+ * An invalidation that no longer invalidates is worse than the collision it
+ * would buy. What IS escaped inside a string is the `:` separator itself, so
+ * `f('a:b', 'c')` and `f('a', 'b:c')` no longer collapse to one key.
+ *
+ * Residual, documented rather than fixed: a string and a number with the same
+ * text (`'42'` and `42`) still share a key. One parameter position has one
+ * type, so this needs a `string | number` union carrying both values to bite.
+ * Do not "fix" it by quoting without first re-reading the keyPattern contract
+ * above.
+ *
+ * `null` is returned when the value cannot be identified at all (a function, a
+ * symbol). The caller then skips the cache. This is the shape downstream payments
+ * arrived at independently, on its own copy of this decorator.
  */
-function stringifyArg(arg: unknown): string {
-  if (arg === null) return 'null';
-  if (arg === undefined) return 'undefined';
-  if (typeof arg === 'string') return arg;
-  if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
-  if (typeof arg === 'object') {
-    try {
-      return JSON.stringify(arg);
-    } catch {
-      return String(arg);
-    }
+function stableKeyPart(value: unknown, seen: WeakSet<object>): string | null {
+  if (value === null) return 'null';
+  switch (typeof value) {
+    case 'undefined':
+      return 'undefined';
+    case 'bigint':
+      // The `n` keeps it distinct from the number beside it.
+      return `${value}n`;
+    case 'string':
+      return escapeSeparator(value);
+    case 'number':
+    case 'boolean':
+      return String(value);
+    case 'function':
+    case 'symbol':
+      return null;
+    case 'object':
+      // Handled below, where the cycle guard lives.
+      break;
+    default:
+      break;
   }
-  return String(arg);
+
+  const obj = value as object;
+  // A repeat is a reference; naming it keeps the rest of the structure —
+  // which is what distinguishes two different cyclic arguments — intact.
+  if (seen.has(obj)) return '"[Circular]"';
+  seen.add(obj);
+
+  if (obj instanceof Date) return obj.toISOString();
+  if (Array.isArray(obj)) {
+    const parts: string[] = [];
+    for (const item of obj) {
+      const part = stableKeyPart(item, seen);
+      if (part === null) return null;
+      parts.push(part);
+    }
+    // The leading escape character is what a plain string cannot produce: any
+    // backslash inside one is doubled, so `'[1,2]'` and `[1, 2]` stay apart.
+    return `\\[${parts.join(',')}]`;
+  }
+
+  const parts: string[] = [];
+  for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
+    const part = stableKeyPart((obj as Record<string, unknown>)[key], seen);
+    if (part === null) return null;
+    parts.push(`${escapeSeparator(key)}:${part}`);
+  }
+  return `\\{${parts.join(',')}}`;
 }
 
 /**
- * Substitute {0}, {1}, etc. in pattern with actual arguments
+ * Escape the `:` that joins key parts, and the escape character itself, so a
+ * value containing a separator cannot borrow its neighbour's text.
+ */
+function escapeSeparator(literal: string): string {
+  return literal.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+}
+
+/**
+ * Substitute {0}, {1}, etc. in pattern with actual arguments.
+ *
+ * This produces a READABLE fragment for a key the caller spelled out
+ * (`'user:{0}'` → `'user:42'`), which is a different job from
+ * {@link stableKeyPart}: that one must make two different arguments
+ * distinguishable, so it quotes and suffixes, and `'user:"42"'` is not the key
+ * anybody wrote. Do not merge the two.
  */
 function substitutePattern(pattern: string, args: unknown[]): string {
   return pattern.replace(/\{(\d+)\}/g, (_, index) => {
     const argIndex = parseInt(index, 10);
-    return stringifyArg(args[argIndex]);
+    return readableArg(args[argIndex]);
   });
+}
+
+/** One argument as it should read inside a caller-authored key or pattern. */
+function readableArg(arg: unknown): string {
+  if (arg === null) return 'null';
+  if (arg === undefined) return 'undefined';
+  if (typeof arg === 'object') {
+    // Stable and total where JSON.stringify is neither: it throws on a BigInt
+    // and on a cycle, and the old `String(arg)` fallback answered
+    // `[object Object]` for both.
+    return stableKeyPart(arg, new WeakSet()) ?? '[unserialisable]';
+  }
+  return String(arg);
 }
 
 /**
@@ -280,6 +376,12 @@ export function Cacheable(options: CacheableOptions = {}): MethodDecorator {
         options.keyGenerator,
         keyParamIndices
       );
+      // An argument that cannot be identified (a function, a symbol) means no
+      // key names this call. Run it and cache nothing, rather than sharing one
+      // entry between calls that differ.
+      if (cacheKey === null) {
+        return originalMethod.apply(this, args);
+      }
 
       const cache: ICache<unknown> = cacheService.getCache(options.cacheName);
 
@@ -472,7 +574,7 @@ export function CachePut(options: CachePutOptions = {}): MethodDecorator {
 
       // Generate key
       const keyParamIndices = Reflect.getMetadata(CACHE_KEY_METADATA, target, propertyKey) as number[] | undefined;
-      let cacheKey: string;
+      let cacheKey: string | null;
 
       if (options.key) {
         cacheKey = substitutePattern(options.key, args);
@@ -484,6 +586,12 @@ export function CachePut(options: CachePutOptions = {}): MethodDecorator {
           options.keyGenerator,
           keyParamIndices
         );
+      }
+      // No key identifies this call; the method already ran, so return its
+      // result and store nothing. @CachePut writes, so a shared key here would
+      // publish one caller's result under another's question.
+      if (cacheKey === null) {
+        return result;
       }
 
       const cache: ICache<unknown> = cacheService.getCache(options.cacheName);

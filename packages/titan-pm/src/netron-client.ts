@@ -61,6 +61,13 @@ export interface INetronClientOptions {
    * giveaway being a stack that starts in `Decoder.decodeExtData`, i.e. an
    * error deserialised rather than thrown locally.
    *
+   * BASELINE for whoever verifies this after the next daemon restart, because
+   * "the line stopped appearing" needs something to mean: 32 such timeouts in
+   * `omnitron.log` over 49.5 hours to 2026-09-13T08:57Z — 0.65/hour, and 18 /
+   * 10 / 4 across the three days. The daily decline may be falling load rather
+   * than anything else, so compare over a window of the same length, and give
+   * it 6–8 hours before silence says more than luck.
+   *
    * Left undefined, netron's default applies, which is right for a
    * management-plane call and wrong for a job.
    */

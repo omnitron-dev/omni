@@ -667,6 +667,14 @@ export class ProcessPool<T> {
 
       const proxy = await this.manager.spawn(this.processPathOrClass, {
         name: `${this.processName}-pool-${workerIndex}`,
+        // The pool's deadline governs the RPC as well as the queue. It used to
+        // govern only the queue: `execute()` raced the call against
+        // `poolOptions.requestTimeout` while the call itself ran on netron's
+        // 5 s default, so a pool declaring 120 s failed at 5. Overridable per
+        // worker through `spawnOptions`, hence the position before the spreads.
+        ...(this.poolOptions.requestTimeout !== undefined && {
+          requestTimeout: this.poolOptions.requestTimeout,
+        }),
         ...baseOptions,
         ...factoryOptions,
         // Merge dependencies from both sources

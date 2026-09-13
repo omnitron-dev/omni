@@ -1107,6 +1107,20 @@ export interface ISpawnOptions {
    * arriving here from an untyped caller is still honoured as a sandbox
    * request, so the old runtime behaviour is unchanged.
    */
+  /**
+   * Deadline for a single RPC to this worker, in milliseconds.
+   *
+   * Distinct from `startupTimeout`, which bounds the wait for 'ready', and
+   * from `IProcessPoolOptions.requestTimeout`, which bounds the QUEUE wait.
+   * This one reaches the `RemotePeer` and is the deadline the call itself runs
+   * under. Left undefined, netron's 5 s wire default applies — right for a
+   * management-plane call, wrong for a job.
+   *
+   * A pool passes its own `requestTimeout` down to this, so setting one on the
+   * pool governs both halves rather than only the queue.
+   */
+  requestTimeout?: number;
+
   isolation?: 'none' | 'worker' | 'child';
   /**
    * Requested sandbox. Neither 'vm' nor 'container' is implemented; both spawn

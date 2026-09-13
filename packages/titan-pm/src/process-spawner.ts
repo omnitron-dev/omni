@@ -886,7 +886,12 @@ export class ProcessSpawner implements IProcessSpawner {
       // waitForReady() confirmed the child sent 'ready' — process is running.
       // Pass RUNNING as initial status since the message was already consumed.
       if (strategy !== 'none') {
-        netronClient = new NetronClient(processId, this.logger);
+        netronClient = new NetronClient(processId, this.logger, {
+          // The deadline the RPC itself runs under. Without it every call to
+          // this worker uses netron's 5 s wire default, whatever the pool
+          // declared — the pool's own number only ever bounded the queue.
+          ...(options.requestTimeout !== undefined && { requestTimeout: options.requestTimeout }),
+        });
         await netronClient.start();
         await netronClient.connect(transport.url!);
 

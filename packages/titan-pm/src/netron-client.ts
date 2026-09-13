@@ -47,9 +47,27 @@ export interface INetronClientOptions {
    * Whether to enable automatic reconnection (default: false)
    */
   autoReconnect?: boolean;
+  /**
+   * Deadline for a single RPC to the worker, in milliseconds.
+   *
+   * Netron's own default is 5 s, which is a deadline for a WIRE REQUEST. What
+   * travels this socket is a JOB — aggregate five minutes of candles,
+   * transform an upload — and a pool that declares `requestTimeout: 120_000`
+   * was getting 5 s on the leg that matters: the pool honoured its own number
+   * only for the QUEUE wait, and the RPC underneath ran on the default.
+   *
+   * Measured downstream: `OHLCV 5min aggregation failed / RPC request timed out
+   * after 5000ms`, raised on the daemon and carried back to the caller — the
+   * giveaway being a stack that starts in `Decoder.decodeExtData`, i.e. an
+   * error deserialised rather than thrown locally.
+   *
+   * Left undefined, netron's default applies, which is right for a
+   * management-plane call and wrong for a job.
+   */
+  requestTimeout?: number;
 }
 
-const DEFAULT_OPTIONS: Required<INetronClientOptions> = {
+const DEFAULT_OPTIONS: Omit<Required<INetronClientOptions>, 'requestTimeout'> = {
   connectTimeout: 10000,
   maxRetries: 3,
   baseDelay: 1000,
@@ -64,7 +82,7 @@ export class NetronClient {
   private netron: Netron;
   private remotePeer?: RemotePeer;
   private _state: ConnectionState = ConnectionState.DISCONNECTED;
-  private options: Required<INetronClientOptions>;
+  private options: Omit<Required<INetronClientOptions>, 'requestTimeout'> & { requestTimeout?: number };
   private retryCount = 0;
   private disconnectHandler?: () => void;
   private transportUrl?: string;
@@ -96,6 +114,14 @@ export class NetronClient {
     // Register Unix socket transport so the client can connect to unix:// URLs
     const { UnixSocketTransport } = await import('@omnitron-dev/titan/netron/transport/unix');
     this.netron.registerTransport('unix', () => new UnixSocketTransport());
+
+    // `connect()` reads `requestTimeout` back out of the transport registry
+    // and hands it to the `RemotePeer` it builds. Without this the peer is
+    // constructed with `undefined` and falls back to netron's 5 s wire
+    // default — see the option's own note.
+    if (this.options.requestTimeout !== undefined) {
+      this.netron.setTransportOptions('unix', { requestTimeout: this.options.requestTimeout });
+    }
 
     await this.netron.start();
   }

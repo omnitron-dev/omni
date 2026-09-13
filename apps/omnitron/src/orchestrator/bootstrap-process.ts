@@ -111,6 +111,16 @@ const TOPOLOGY_TOKEN_PREFIX = 'topology:';
  * 60 s is what `DaemonClient` already uses over this same socket, and it is
  * still well inside the 5-minute aggregation interval, so a genuine hang
  * surfaces within one tick rather than being hidden.
+ *
+ * MEASURED AFTER, because "it is fixed" is a different claim from "it is
+ * better": 2.39 failures/hour before, 0.55 after — a 4.3x reduction, not an
+ * elimination. The survivors still say `after 5000ms`, which means their
+ * `RemotePeer` was built with `requestTimeout` undefined, so some path reaches
+ * the daemon without the options set two lines below. The obvious candidates
+ * are ruled out by reading: `getTransportForAddress` resolves `unix://` to the
+ * transport named `unix`, `getOptions` is keyed by that same name, the
+ * reconnect path uses this same Netron, and the pool leg is 120 s. Finding the
+ * rest needs instrumentation on a live process, not more reading.
  */
 const TOPOLOGY_REQUEST_TIMEOUT = 60_000;
 

@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for self-healing mechanism
  */
 
-import { Process, Public, SelfHeal, HealthCheck } from '../../src/decorators.js';
+import { Process, Public, HealthCheck } from '../../src/decorators.js';
 import type { IHealthStatus } from '../../src/types.js';
 
 @Process({ name: 'self-healing-service', version: '1.0.0' })
@@ -12,18 +12,11 @@ export default class SelfHealingService {
   private isHealthy = true;
   private autoRecoveryAttempts = 0;
 
+  // Carried an @SelfHeal({ maxAttempts, healStrategy }) that retried nothing:
+  // the decorator only pushed metadata under a key with no reader, and its
+  // options did not even match ISelfHealAction. Retrying is the caller's job
+  // here — see the spec, which does it in a loop.
   @Public()
-  @SelfHeal({
-    maxAttempts: 3,
-    healStrategy: async (error: any, context: any) => {
-      // Custom healing logic
-      if (error.message.includes('temporary')) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        return true; // Healed, can retry
-      }
-      return false; // Cannot heal
-    },
-  })
   async processTask(
     taskId: string,
     simulateError: boolean = false

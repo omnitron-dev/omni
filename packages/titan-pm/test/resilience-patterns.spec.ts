@@ -358,10 +358,13 @@ describe('Resilience Patterns - Self-Healing', () => {
     await pm.cleanup();
   });
 
-  it('should automatically recover from temporary failures', async () => {
+  // Nothing in this package retries a failed call. The process carried an
+  // @SelfHeal decorator that suggested otherwise; it recorded metadata no
+  // reader consumed and has been removed. Retrying is the caller's job, and
+  // that is what this exercises.
+  it('recovers from a temporary failure when the CALLER retries', async () => {
     const service = await pm.spawn<SelfHealingService>(SelfHealingService);
 
-    // In mock environment, we need to manually retry to simulate recovery
     let result;
     let attempts = 0;
 
@@ -397,8 +400,10 @@ describe('Resilience Patterns - Self-Healing', () => {
       } catch {}
     }
 
+    // Two of the three calls threw before the process stopped simulating
+    // failure; `>= 0` held for any number and so asserted nothing.
     const errorCount = await service.getErrorCount();
-    expect(errorCount).toBeGreaterThanOrEqual(0);
+    expect(errorCount).toBe(2);
   });
 
   it('should trigger manual recovery when needed', async () => {

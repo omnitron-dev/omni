@@ -18,7 +18,6 @@ import type {
   ICacheOptions,
   IValidationOptions,
   ICircuitBreakerOptions,
-  ISelfHealAction,
 } from './types.js';
 
 import { Public as CorePublic } from '@omnitron-dev/titan/decorators';
@@ -314,7 +313,23 @@ export function Compensate(stageName: string): MethodDecorator {
 // ============================================================================
 
 /**
- * Mark a class as an Actor
+ * Mark a class as an Actor.
+ *
+ * NOT IMPLEMENTED — records `ACTOR_METADATA_KEY` and nothing reads it. There
+ * is no actor runtime in this package or anywhere in the monorepo: no mailbox,
+ * no serialised message processing, no actor supervision. A class carrying
+ * this behaves exactly as it would without it.
+ *
+ * Marked rather than deleted because it is exported from `index.ts` and is
+ * therefore reachable API, the same reason the aspirational option interfaces
+ * in `types.ts` are marked rather than removed. Nine sibling decorators —
+ * @Saga, @Step, @SharedState, @Compose, @SelfHeal, @AdaptiveBitrate,
+ * @GraphQLService, @DistributedTransaction and @InjectProcess — were equally
+ * inert but reachable only from inside this package, so they went.
+ *
+ * For multi-step work with compensation, which is what @Saga/@Step claimed,
+ * use @Workflow / @Stage / @Compensate: those are executed by
+ * `process-workflow.ts`.
  */
 export function Actor(options: any = {}): ClassDecorator {
   return (target: any) => {
@@ -398,22 +413,6 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
   };
 }
 
-/**
- * Add self-healing behavior to a method
- */
-export function SelfHeal(options: ISelfHealAction): MethodDecorator {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    // Store self-healing metadata for runtime processing
-    const metadata = {
-      method: propertyKey,
-      ...options,
-    };
-
-    const existing = Reflect.getMetadata('self-heal', target) || [];
-    existing.push(metadata);
-    Reflect.defineMetadata('self-heal', existing, target);
-  };
-}
 
 /**
  * Make a method idempotent: a repeated call carrying the same key returns the
@@ -522,53 +521,11 @@ export function Idempotent(options: { key: string; ttl?: string }): MethodDecora
   };
 }
 
-// ============================================================================
-// Dependency Injection Decorators
-// ============================================================================
 
-/**
- * Inject a process as a dependency
- */
-export function InjectProcess(ProcessClass: any): ParameterDecorator {
-  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
-    const _existingTokens = Reflect.getMetadata('design:paramtypes', target) || [];
-    const existingInjects = Reflect.getMetadata('custom:inject:process', target) || [];
-
-    existingInjects[parameterIndex] = ProcessClass;
-    Reflect.defineMetadata('custom:inject:process', existingInjects, target);
-  };
-}
-
-/**
- * Define a composable service
- */
-export function Compose(...services: any[]): MethodDecorator {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = {
-      services,
-      method: propertyKey,
-    };
-
-    const existing = Reflect.getMetadata('compose', target) || [];
-    existing.push(metadata);
-    Reflect.defineMetadata('compose', existing, target);
-  };
-}
 
 // ============================================================================
-// Advanced Decorators
+// Lifecycle Decorators
 // ============================================================================
-
-/**
- * Enable shared state across process instances
- */
-export function SharedState(): PropertyDecorator {
-  return (target: any, propertyKey: string | symbol) => {
-    const existing = Reflect.getMetadata('shared-state', target) || [];
-    existing.push(propertyKey);
-    Reflect.defineMetadata('shared-state', existing, target);
-  };
-}
 
 /**
  * Define a health check method
@@ -622,68 +579,10 @@ export function OnShutdown(): MethodDecorator {
   };
 }
 
-/**
- * Enable adaptive bitrate for streaming
- */
-export function AdaptiveBitrate(options: any): MethodDecorator {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = {
-      method: propertyKey,
-      ...options,
-    };
-    Reflect.defineMetadata('adaptive-bitrate', metadata, target);
-  };
-}
 
-/**
- * Define a GraphQL service
- */
-export function GraphQLService(options: any): ClassDecorator {
-  return (target: any) => {
-    const metadata = {
-      ...options,
-      target,
-    };
-    Reflect.defineMetadata('graphql-service', metadata, target);
-    return target;
-  };
-}
 
-/**
- * Define a distributed transaction
- */
-export function DistributedTransaction(): ClassDecorator {
-  return (target: any) => {
-    Reflect.defineMetadata('distributed-transaction', true, target);
-    return target;
-  };
-}
 
-/**
- * Define a saga
- */
-export function Saga(options: any = {}): ClassDecorator {
-  return (target: any) => {
-    const metadata = {
-      ...options,
-      target,
-      steps: new Map(),
-    };
-    Reflect.defineMetadata('saga', metadata, target);
-    return target;
-  };
-}
 
-/**
- * Define a saga step
- */
-export function Step(options: any = {}): MethodDecorator {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = Reflect.getMetadata('saga', target.constructor) || { steps: new Map() };
-    metadata.steps.set(propertyKey, { ...options, handler: descriptor.value });
-    Reflect.defineMetadata('saga', metadata, target.constructor);
-  };
-}
 
 // ============================================================================
 // Helper Functions

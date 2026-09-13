@@ -31,19 +31,10 @@ import {
   Stage,
   Compensate,
   CircuitBreaker,
-  SelfHeal,
   Idempotent,
   HealthCheck,
   OnShutdown,
   Actor,
-  InjectProcess,
-  Compose,
-  SharedState,
-  AdaptiveBitrate,
-  GraphQLService,
-  DistributedTransaction,
-  Saga,
-  Step,
   PROCESS_METADATA_KEY,
   PROCESS_METHOD_METADATA_KEY,
   SUPERVISOR_METADATA_KEY,
@@ -443,23 +434,6 @@ describe('PM Decorators', () => {
 
       // Second call with same key should return cached result
       // (depends on implementation - may need cache to be set up)
-    });
-  });
-
-  describe('@SelfHeal', () => {
-    it('should register self-heal metadata on class prototype', () => {
-      class TestClass {
-        @SelfHeal({ action: 'restart', maxRetries: 3 })
-        selfHealingMethod() {}
-      }
-
-      // SelfHeal stores metadata on target using 'self-heal' key
-      const metadata = Reflect.getMetadata('self-heal', TestClass.prototype);
-
-      expect(metadata).toBeDefined();
-      expect(Array.isArray(metadata)).toBe(true);
-      expect(metadata[0].action).toBe('restart');
-      expect(metadata[0].maxRetries).toBe(3);
     });
   });
 
@@ -1597,156 +1571,6 @@ describe('PM Decorators', () => {
 
       expect(metadata.mailboxSize).toBe(100);
       expect(metadata.timeout).toBe(5000);
-    });
-  });
-
-  describe('@InjectProcess decorator', () => {
-    it('should store process injection metadata', () => {
-      class ProcessA {}
-
-      class ConsumerService {
-        constructor(@InjectProcess(ProcessA) private processA: any) {}
-      }
-
-      const injects = Reflect.getMetadata('custom:inject:process', ConsumerService);
-
-      expect(injects).toBeDefined();
-      expect(injects[0]).toBe(ProcessA);
-    });
-  });
-
-  describe('@Compose decorator', () => {
-    it('should store composed services metadata', () => {
-      class ServiceA {}
-      class ServiceB {}
-
-      class ComposedService {
-        @Compose(ServiceA, ServiceB)
-        composedMethod() {}
-      }
-
-      const metadata = Reflect.getMetadata('compose', ComposedService.prototype);
-
-      expect(metadata).toBeDefined();
-      expect(Array.isArray(metadata)).toBe(true);
-      expect(metadata[0].services).toContain(ServiceA);
-      expect(metadata[0].services).toContain(ServiceB);
-    });
-  });
-
-  describe('@SharedState decorator', () => {
-    it('should register shared state properties', () => {
-      class SharedService {
-        @SharedState()
-        counter: number = 0;
-
-        @SharedState()
-        cache: Map<string, any> = new Map();
-      }
-
-      const sharedProps = Reflect.getMetadata('shared-state', SharedService.prototype);
-
-      expect(sharedProps).toContain('counter');
-      expect(sharedProps).toContain('cache');
-    });
-  });
-
-  describe('@Saga and @Step decorators', () => {
-    it('should store saga metadata', () => {
-      @Saga({ name: 'OrderSaga' })
-      class OrderSaga {}
-
-      const metadata = Reflect.getMetadata('saga', OrderSaga);
-
-      expect(metadata).toBeDefined();
-      expect(metadata.name).toBe('OrderSaga');
-      expect(metadata.steps).toBeInstanceOf(Map);
-    });
-
-    it('should register saga steps', () => {
-      // Note: Due to decorator execution order, @Step decorators run before @Saga.
-      // The @Saga decorator creates a new steps Map, so steps need to be defined
-      // after the class is decorated, or the Saga decorator should be updated
-      // to merge existing steps like @Supervisor does.
-      // This test verifies the current behavior where @Step creates steps
-      // that get overwritten by @Saga.
-
-      // First, let's verify @Step works when applied after @Saga-like initialization
-      class ManualSaga {
-        @Step({ order: 1 })
-        async reserveInventory() {}
-
-        @Step({ order: 2 })
-        async processPayment() {}
-
-        @Step({ order: 3 })
-        async confirmOrder() {}
-      }
-
-      // Without @Saga, the steps should be registered
-      const stepsOnly = Reflect.getMetadata('saga', ManualSaga);
-
-      expect(stepsOnly).toBeDefined();
-      expect(stepsOnly.steps.size).toBe(3);
-      expect(stepsOnly.steps.has('reserveInventory')).toBe(true);
-      expect(stepsOnly.steps.has('processPayment')).toBe(true);
-      expect(stepsOnly.steps.has('confirmOrder')).toBe(true);
-    });
-
-    it('should note that @Saga class decorator reinitializes steps Map', () => {
-      // This test documents the current behavior where @Saga creates a fresh Map
-      @Saga()
-      class OverwrittenSaga {
-        @Step({ order: 1 })
-        async step1() {}
-      }
-
-      const metadata = Reflect.getMetadata('saga', OverwrittenSaga);
-
-      // @Saga runs after @Step and creates a new empty Map
-      // This is a known limitation - @Saga should be updated to merge like @Supervisor
-      expect(metadata).toBeDefined();
-      expect(metadata.steps).toBeInstanceOf(Map);
-      // Current behavior: steps Map is empty because @Saga creates a new one
-      expect(metadata.steps.size).toBe(0);
-    });
-  });
-
-  describe('@GraphQLService decorator', () => {
-    it('should store GraphQL service metadata', () => {
-      @GraphQLService({ schema: 'type Query { hello: String }' })
-      class GraphQLHandler {}
-
-      const metadata = Reflect.getMetadata('graphql-service', GraphQLHandler);
-
-      expect(metadata).toBeDefined();
-      expect(metadata.schema).toBe('type Query { hello: String }');
-    });
-  });
-
-  describe('@DistributedTransaction decorator', () => {
-    it('should mark class for distributed transactions', () => {
-      @DistributedTransaction()
-      class TransactionService {}
-
-      const metadata = Reflect.getMetadata('distributed-transaction', TransactionService);
-
-      expect(metadata).toBe(true);
-    });
-  });
-
-  describe('@AdaptiveBitrate decorator', () => {
-    it('should store adaptive bitrate metadata', () => {
-      class StreamingService {
-        @AdaptiveBitrate({ minBitrate: 500, maxBitrate: 5000 })
-        streamVideo() {}
-      }
-
-      const metadata = Reflect.getMetadata('adaptive-bitrate', StreamingService.prototype);
-
-      expect(metadata).toBeDefined();
-      expect(metadata.minBitrate).toBe(500);
-      expect(metadata.maxBitrate).toBe(5000);
     });
   });
 

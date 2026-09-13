@@ -458,10 +458,14 @@ export class NotificationWorkerService {
     );
 
     // 4. Signal real-time clients
+    //
+    // The event travels with the signal: the row is already written, so this
+    // call decides only whether to interrupt someone, and that decision needs
+    // to know what it would be interrupting them for.
     if (userIds.length === 1) {
-      await this.signaler.signal(userIds[0]!);
+      await this.signaler.signal(userIds[0]!, event);
     } else {
-      await this.signaler.signalBatch(userIds);
+      await this.signaler.signalBatch(userIds, event);
     }
   }
 

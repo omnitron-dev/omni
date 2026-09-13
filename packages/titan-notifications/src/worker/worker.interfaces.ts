@@ -48,8 +48,20 @@ export interface INotificationPersister {
   persistBatch(records: NotificationRecord[]): Promise<PersistedNotification[]>;
 }
 
-/** Signals real-time clients (long-poll, WebSocket) */
+/**
+ * Signals real-time clients (long-poll, WebSocket).
+ *
+ * The signal is the INTERRUPTION — the row is already persisted by the time
+ * this runs, so declining to signal loses nothing and only decides whether to
+ * disturb someone now. That makes this the layer where a quiet-hours
+ * preference belongs, and a signaler that receives only user ids cannot make
+ * that decision: whether to interrupt depends on WHAT is being signalled. A
+ * security alert is exactly the thing quiet hours must not silence.
+ *
+ * `event` is therefore passed through, optional so existing implementations
+ * that signal unconditionally keep compiling and keep behaving identically.
+ */
 export interface INotificationRealtimeSignaler {
-  signal(userId: string): Promise<void>;
-  signalBatch(userIds: string[]): Promise<void>;
+  signal(userId: string, event?: NotificationEvent): Promise<void>;
+  signalBatch(userIds: string[], event?: NotificationEvent): Promise<void>;
 }

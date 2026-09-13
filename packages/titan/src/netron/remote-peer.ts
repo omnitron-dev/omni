@@ -657,7 +657,24 @@ export class RemotePeer extends AbstractPeer {
           await closeResult; // TransportAdapter returns a Promise
         }
       }
+    } else if (
+      readyState === 2 ||
+      readyState === 'CLOSING' ||
+      readyState === 3 ||
+      readyState === 'CLOSED'
+    ) {
+      // Already going away, which is the ORDINARY case and was reported at
+      // warn level as `Attempt to close socket in unexpected state: 2`. Two
+      // sentences below, `handleTransportLost` documents being called from
+      // both this path AND netron's own "peer disconnected" handler — so the
+      // second arrival is designed for, and the remote closing first is
+      // routine. Warning about it is an operator chasing a shutdown that
+      // worked; the same shape as the netron double-close and the outbox
+      // errors fixed alongside it.
+      this.logger.debug({ readyState }, 'Socket already closing or closed; nothing to close');
     } else {
+      // A value outside the four states IS unexpected — a socket-like object
+      // that does not follow the contract, which is worth saying out loud.
       this.logger.warn(`Attempt to close socket in unexpected state: ${readyState}`);
     }
     this.handleTransportLost('manual disconnect');

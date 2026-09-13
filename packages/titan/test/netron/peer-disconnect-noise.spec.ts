@@ -19,8 +19,11 @@ import { Packet, TYPE_TASK } from '../../src/netron/packet/index.js';
 
 const recordingLogger = () => {
   const lines: Array<{ level: string; msg: string }> = [];
-  const record = (level: string) => (_ctx: unknown, msg?: unknown) =>
-    lines.push({ level, msg: String(msg ?? '') });
+  // pino accepts both `log(msg)` and `log(ctx, msg)`, and this file exercises
+  // call sites of each kind. Recording only the second argument silently
+  // turned every single-argument line into an empty string.
+  const record = (level: string) => (a: unknown, b?: unknown) =>
+    lines.push({ level, msg: String((b ?? (typeof a === 'string' ? a : '')) as string) });
   const logger: Record<string, unknown> = {
     trace: record('trace'),
     debug: record('debug'),
@@ -86,5 +89,71 @@ describe('a peer that disconnects mid-task', () => {
     expect(lines.some((l) => l.level === 'warn' && /Failed to send error response/.test(l.msg))).toBe(
       true
     );
+  });
+
+});
+
+/**
+ * The same rule for the other end of the same event.
+ *
+ * `disconnect()` accepted CONNECTING and OPEN and warned about everything
+ * else as an "unexpected state". CLOSING and CLOSED are not unexpected: they
+ * are what a socket looks like when the remote hung up first, or when
+ * `disconnect()` arrives twice — which `handleTransportLost`, three lines
+ * below the warning, documents as designed for ("safe to call from both the
+ * manual disconnect() path AND the netron-level peer-disconnected handler").
+ *
+ * Seven of these in three hours on the downstream stand, all of them describing a
+ * shutdown that worked.
+ */
+describe('disconnecting a socket that is already going away', () => {
+  const peerWithSocketState = (readyState: number | string) => {
+    const { logger, lines } = recordingLogger();
+    const netron = { logger, options: {} };
+    const close = vi.fn();
+    const socket = { send: vi.fn(), readyState, close };
+    const peer = new RemotePeer(socket as never, netron as never, 'peer-1');
+    (peer as unknown as { logger: unknown }).logger = logger;
+    return { peer, lines, close };
+  };
+
+  for (const state of [2, 'CLOSING', 3, 'CLOSED'] as const) {
+    it(`says nothing at warn level for readyState ${JSON.stringify(state)}`, async () => {
+      const { peer, lines } = peerWithSocketState(state);
+
+      await peer.disconnect();
+
+      expect(
+        lines.filter((l) => l.level === 'warn'),
+        'a socket that was already closing was reported as unexpected'
+      ).toEqual([]);
+    });
+  }
+
+  it('does not try to close a socket that is already closing', async () => {
+    const { peer, close } = peerWithSocketState(2);
+
+    await peer.disconnect();
+
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('still closes one that is open', async () => {
+    const { peer, close, lines } = peerWithSocketState(1);
+
+    await peer.disconnect();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(lines.filter((l) => l.level === 'warn')).toEqual([]);
+  });
+
+  it('still warns about a state that is none of the four', async () => {
+    // A socket-like object that does not follow the contract IS worth saying
+    // out loud — that is what the warning was for.
+    const { peer, lines } = peerWithSocketState('WOBBLY');
+
+    await peer.disconnect();
+
+    expect(lines.some((l) => l.level === 'warn' && /unexpected state/.test(l.msg))).toBe(true);
   });
 });

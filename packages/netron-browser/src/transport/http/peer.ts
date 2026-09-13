@@ -510,18 +510,10 @@ export class HttpRemotePeer extends AbstractPeer {
         try {
           const errorData = await response.json();
           if (errorData.error) {
-            const rawCode = errorData.error.code;
-            const parsedCode =
-              typeof rawCode === 'number'
-                ? rawCode
-                : typeof rawCode === 'string'
-                  ? parseInt(rawCode, 10) || ErrorCode.INTERNAL_ERROR
-                  : ErrorCode.INTERNAL_ERROR;
-
             throw new TitanError({
-              code: parsedCode as ErrorCode,
+              code: resolveErrorCode(errorData.error.code, response.status),
               message: errorData.error.message,
-              details: errorData.error.details,
+              details: withBusinessCode(errorData.error.details, errorData.error.code),
               requestId,
               correlationId,
               traceId,
@@ -666,12 +658,13 @@ export class HttpRemotePeer extends AbstractPeer {
    */
   private createErrorFromResponse(response: HttpResponseMessage): Error {
     if (response.error) {
+      // No HTTP status to fall back on here: this path handles an envelope
+      // that came back 200 with `success: false` (the batch responses do), so
+      // the status says nothing about the failure.
       return new TitanError({
-        code: (typeof response.error.code === 'string'
-          ? parseInt(response.error.code, 10)
-          : response.error.code || ErrorCode.INTERNAL_ERROR) as ErrorCode,
+        code: resolveErrorCode(response.error.code),
         message: response.error.message,
-        details: response.error.details,
+        details: withBusinessCode(response.error.details, response.error.code),
       });
     }
 
@@ -1102,4 +1095,65 @@ export class HttpRemotePeer extends AbstractPeer {
         'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Error-envelope decoding
+// ---------------------------------------------------------------------------
+
+/**
+ * The numeric code for a TitanError, given what the server put in the
+ * envelope's `code` field and the HTTP status it answered with.
+ *
+ * The server sends the BUSINESS code there whenever the error carries one —
+ * `CART_EXPIRED`, `SESSION_EXPIRED`, `DISPUTE_EXISTS` — and the stringified
+ * HTTP status otherwise. `parseInt` on a business code is NaN, and the two
+ * places that decoded it took `NaN || INTERNAL_ERROR` and `NaN as ErrorCode`
+ * respectively. The first turned every business-coded error into a 500; the
+ * second produced a TitanError whose code was NaN and therefore compared
+ * equal to nothing, including itself.
+ *
+ * A 500 here is not a cosmetic mislabel. `isRetryableError` and every retry
+ * policy keyed on 5xx re-send a request that can never succeed, monitoring
+ * counts a buyer's expired cart as a server incident, and the caller cannot
+ * tell "I sent the wrong thing" from "the server broke" — precisely the
+ * failure the server's own `toTitanError` was fixed to stop producing, undone
+ * one hop later.
+ *
+ * The HTTP status is the answer whenever the code is not numeric: the server
+ * derived that status from the same error, through `mapToHttp`.
+ *
+ * A string is accepted as numeric only when it round-trips (`'429'`), so a
+ * hypothetical `'500_INTERNAL'` is treated as the business code it looks like
+ * rather than silently becoming 500.
+ */
+function resolveErrorCode(raw: unknown, httpStatus?: number): ErrorCode {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw as ErrorCode;
+  if (typeof raw === 'string') {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && String(parsed) === raw.trim()) return parsed as ErrorCode;
+  }
+  if (typeof httpStatus === 'number' && httpStatus >= 400) return httpStatus as ErrorCode;
+  return ErrorCode.INTERNAL_ERROR;
+}
+
+/**
+ * Keep the business code reachable on the error.
+ *
+ * `TitanError.code` is numeric by contract, so the string the server sent has
+ * nowhere to live on the error itself — and it is the only thing separating
+ * `CART_EXPIRED` from `CART_VERSION_CONFLICT`, which are both 409, or
+ * `SESSION_EXPIRED` from `TOKEN_EXPIRED`, which are both 401. Discriminating
+ * on the message instead means branching on English prose, which changes the
+ * first time someone rewords a string.
+ *
+ * The server already mirrors it into `details.errorCode`; this restores it for
+ * the envelopes that did not, and never overwrites one that is already there.
+ */
+function withBusinessCode(details: unknown, raw: unknown): any {
+  if (typeof raw !== 'string') return details;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && String(parsed) === raw.trim()) return details;
+  if (details && typeof details === 'object' && 'errorCode' in (details as object)) return details;
+  return { ...((details as object) ?? {}), errorCode: raw };
 }

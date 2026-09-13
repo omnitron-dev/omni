@@ -177,6 +177,20 @@ export class Netron extends EventEmitter implements INetron {
    * tearing down a half-built instance.
    */
   private startPromise: Promise<void> | null = null;
+  /**
+   * The in-flight `stop()`, so a second caller joins it instead of running the
+   * teardown again.
+   *
+   * `start()` has been guarded since the comment in `stop()` below was
+   * written; the mirror was never added. Two concurrent stops both walked
+   * `transportServers` before either reached the `clear()` at the end, so the
+   * first close succeeded and the second met `ERR_SERVER_NOT_RUNNING` — logged
+   * at level 50, which is an operator chasing a shutdown that worked. Seen
+   * five times over eight days on the downstream stand, in storage and main, always
+   * as two `Closing unix transport server` lines in the same millisecond from
+   * one netron id.
+   */
+  private stopPromise: Promise<void> | null = null;
 
   /**
    * Map of exposed services.
@@ -881,7 +895,18 @@ export class Netron extends EventEmitter implements INetron {
    * @example
    * await netron.stop();
    */
-  async stop() {
+  async stop(): Promise<void> {
+    // Joining, not throwing: a caller asking for a stop wants it done, and
+    // both of them want to know when it is.
+    if (this.stopPromise) return this.stopPromise;
+
+    this.stopPromise = this.doStop().finally(() => {
+      this.stopPromise = null;
+    });
+    return this.stopPromise;
+  }
+
+  private async doStop(): Promise<void> {
     this.logger.debug('Stopping Netron instance');
 
     // Let an in-flight start() finish first. Tearing down while it is still

@@ -5,12 +5,79 @@
  * Provides comprehensive fixtures and helpers for testing Redis functionality
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { Redis, RedisOptions } from 'ioredis';
 import { RedisManager } from '@omnitron-dev/titan-redis';
 import { RedisService } from '@omnitron-dev/titan-redis';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+
+/** Where a Vitest `globalSetup` publishes the endpoint it found or started. */
+const REDIS_INFO_FILE = '.redis-test-info.json';
+
+export interface TestRedisEndpoint {
+  host: string;
+  port: number;
+  /** True when no real Redis was available and the caller should mock. */
+  isMock: boolean;
+}
+
+/**
+ * The Redis a test suite should talk to.
+ *
+ * Four packages had grown their own copy of this resolution, and each copy
+ * ended in a hard-coded `TEST_REDIS_PORT ?? 16379` — the `redis-test` service
+ * in the monorepo's `docker-compose.test.yml`. That is a fine default and a
+ * terrible fallback: with no `globalSetup` registered, the earlier steps can
+ * never answer, and nothing listens on 16379 unless that compose file is up.
+ * Suites then hung until the 120 s per-test timeout rather than failing, which
+ * reads as "slow" instead of "misconfigured".
+ *
+ * Order: the file a `globalSetup` published, then `globalThis.globalRedis`
+ * (set in the main process, so workers rarely see it), then `USE_MOCK_REDIS` /
+ * `SKIP_DOCKER_TESTS`, then the compose default.
+ *
+ * It deliberately does NOT fall back to 6379. A Redis answering on the default
+ * port is whatever the developer happens to be running — on a machine with the
+ * downstream stand up, that is main/storage/messaging/pricing/payments/geo in
+ * db0..db5, and these suites call `flushdb`. titan's `globalSetup` will only
+ * use 6379 when `TEST_REDIS_ALLOW_DEFAULT_PORT=true` says so, and publishes
+ * the choice here.
+ */
+export function resolveTestRedisEndpoint(): TestRedisEndpoint {
+  try {
+    const infoPath = join(process.cwd(), REDIS_INFO_FILE);
+    if (existsSync(infoPath)) {
+      const info = JSON.parse(readFileSync(infoPath, 'utf-8')) as {
+        port?: number;
+        isMock?: boolean;
+      };
+      if (info.isMock) return { host: 'localhost', port: 0, isMock: true };
+      if (info.port) return { host: 'localhost', port: info.port, isMock: false };
+    }
+  } catch {
+    // A malformed or half-written file is not a reason to fail the suite;
+    // fall through to the other sources.
+  }
+
+  const fromGlobal = (globalThis as { globalRedis?: { host?: string; port?: number } }).globalRedis;
+  if (fromGlobal?.port) {
+    return { host: fromGlobal.host ?? 'localhost', port: fromGlobal.port, isMock: false };
+  }
+
+  if (process.env['USE_MOCK_REDIS'] === 'true' || process.env['SKIP_DOCKER_TESTS'] === 'true') {
+    return { host: 'localhost', port: 0, isMock: true };
+  }
+
+  return {
+    host: process.env['TEST_REDIS_HOST'] ?? 'localhost',
+    port: Number(process.env['TEST_REDIS_PORT'] ?? 16379),
+    isMock: false,
+  };
+}
 
 /**
  * Create a null logger for testing

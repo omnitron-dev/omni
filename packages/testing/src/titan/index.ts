@@ -30,9 +30,14 @@ export {
   cleanupRedisTestFixture,
   waitForRedis,
   createMockRedis,
+  resolveTestRedisEndpoint,
   RedisPerformanceTester,
 } from './redis-test-utils.js';
-export type { RedisTestFixtureOptions, RedisTestFixture } from './redis-test-utils.js';
+export type {
+  RedisTestFixtureOptions,
+  RedisTestFixture,
+  TestRedisEndpoint,
+} from './redis-test-utils.js';
 
 // Container Utils
 export {

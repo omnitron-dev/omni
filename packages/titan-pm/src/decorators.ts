@@ -416,50 +416,106 @@ export function SelfHeal(options: ISelfHealAction): MethodDecorator {
 }
 
 /**
- * Make a method idempotent
+ * Make a method idempotent: a repeated call carrying the same key returns the
+ * first call's result instead of running the body again.
+ *
+ * `options.key` names a FIELD ON THE FIRST ARGUMENT — `{ key: 'requestId' }`
+ * reads `args[0].requestId`. It is not a template; `'user-{args.0}'` names no
+ * field and is treated as a call with no key.
+ *
+ * A call whose argument does not carry that field is executed and NOT cached.
+ * The previous fallback was `|| options.key`, the option name itself — a
+ * constant — so every keyless call shared one entry for the whole TTL and the
+ * first caller's result was handed to every caller after it. A cache that
+ * answers the wrong question is worse than no cache; without identity there is
+ * nothing to be idempotent about.
+ *
+ * Overlapping calls with the same key share one execution: a retry that
+ * arrives before the first response is the case this decorator exists for. A
+ * rejection is never cached — a failure is not an answer.
+ *
+ * Scope is ONE INSTANCE IN ONE PROCESS. In a pool, the same logical request
+ * routed to another worker runs again; this is a guard against local retries,
+ * not a distributed idempotency store.
  */
 export function Idempotent(options: { key: string; ttl?: string }): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const original = descriptor.value;
-    const cacheMap = new WeakMap<object, Map<string, { result: any; timestamp: number }>>();
-    const ttl = parseDuration(options.ttl || '1h');
+    const ttlSource = options.ttl || '1h';
+    const ttl = parseDuration(ttlSource);
+
+    // parseDuration answers 0 for anything it cannot read, and 'ms' — the
+    // first unit most people try — is not one of the four it supports. Left
+    // to return 0, every lookup compares against a zero window and the
+    // decorator silently caches nothing. Refuse at decoration time, the way
+    // @RateLimit refuses a non-positive limit.
+    if (ttl <= 0) {
+      throw new Error(
+        `@Idempotent: ttl must be a positive duration in s/m/h/d, got ${JSON.stringify(ttlSource)} ` +
+          `on ${target?.constructor?.name ?? 'class'}.${String(propertyKey)}`
+      );
+    }
+
+    interface IIdempotencyEntry {
+      result?: any;
+      inFlight?: Promise<any>;
+      timestamp: number;
+    }
+
+    const cacheMap = new WeakMap<object, Map<string, IIdempotencyEntry>>();
 
     descriptor.value = async function idempotentHandler(this: any, ...args: any[]) {
-      // Get or initialize instance-specific cache
+      const first = args[0];
+      const raw = first !== null && typeof first === 'object' ? (first as any)[options.key] : undefined;
+      if (raw === undefined || raw === null) {
+        return original.apply(this, args);
+      }
+      const key = String(raw);
+
       let cache = cacheMap.get(this);
       if (!cache) {
-        cache = new Map<string, { result: any; timestamp: number }>();
+        cache = new Map<string, IIdempotencyEntry>();
         cacheMap.set(this, cache);
       }
 
-      // Extract idempotency key from request
-      const key = args[0]?.[options.key] || options.key;
-
-      // Check cache
       const cached = cache.get(key);
-      if (cached) {
-        if (Date.now() - cached.timestamp < ttl) {
-          return cached.result;
-        } else {
-          // Clean up expired entry
-          cache.delete(key);
-        }
-      }
+      // Join a running call whatever the clock says: a body that outlives its
+      // own TTL must not be started a second time alongside itself.
+      if (cached?.inFlight) return cached.inFlight;
 
-      // Execute and cache
-      const result = await original.apply(this, args);
-      cache.set(key, { result, timestamp: Date.now() });
-
-      // Cleanup old entries to prevent memory growth
       const now = Date.now();
-      const entries = Array.from(cache.entries());
-      for (const [cacheKey, entry] of entries) {
-        if (now - entry.timestamp >= ttl) {
-          cache.delete(cacheKey);
+      if (cached) {
+        if (now - cached.timestamp < ttl) return cached.result;
+        cache.delete(key);
+      }
+
+      const entry: IIdempotencyEntry = { timestamp: now };
+      const inFlight = (async () => {
+        try {
+          const result = await original.apply(this, args);
+          entry.result = result;
+          entry.inFlight = undefined;
+          entry.timestamp = Date.now();
+          return result;
+        } catch (error) {
+          cache.delete(key);
+          throw error;
+        }
+      })();
+      entry.inFlight = inFlight;
+      cache.set(key, entry);
+
+      // Drop entries that have aged out, so a long-lived instance does not
+      // grow without bound. Never touch a call still running.
+      if (cache.size > 1) {
+        for (const [cacheKey, existing] of cache) {
+          if (cacheKey !== key && !existing.inFlight && now - existing.timestamp >= ttl) {
+            cache.delete(cacheKey);
+          }
         }
       }
 
-      return result;
+      return inFlight;
     };
 
     return descriptor;

@@ -5,7 +5,10 @@
  * @Log / @Monitor method decorators (decorators/utility.ts).
  *
  * Current behavior:
- * - @Logger injects a null logger fallback unless explicitly set
+ * - @Logger resolves LOGGER_SERVICE_TOKEN through the container that created
+ *   the instance; see logger-decorator-reaches-di.spec.ts for that path
+ * - Outside a container, or with no LoggerModule configured, it falls back to
+ *   a shared null logger
  * - @Log/@Monitor look up instance logger via getInstanceLogger() (logger/_logger/log)
  *   and silently no-op when none is found
  */
@@ -63,14 +66,18 @@ describe('@Logger property decorator', () => {
     expect(s.logger).toBe(s.logger);
   });
 
-  it('produces independent loggers per instance', () => {
+  it('shares one no-op logger across instances when there is nothing to log to', () => {
+    // Per-instance loggers are what DI produces (see
+    // logger-decorator-reaches-di.spec.ts). With no LoggerModule there is
+    // nothing to distinguish, so the fallback is shared rather than allocated
+    // per property access.
     class Service {
       @Logger()
       logger!: any;
     }
     const a = new Service();
     const b = new Service();
-    expect(a.logger).not.toBe(b.logger);
+    expect(a.logger).toBe(b.logger);
   });
 
   it('allows overriding the logger via assignment', () => {

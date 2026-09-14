@@ -423,6 +423,14 @@ remote
   });
 
 remote
+  .command('restart <alias> <app>')
+  .description('Restart an app on a registered remote daemon')
+  .action(async (alias, app) => {
+    const { remoteRestartCommand } = await import('../commands/remote.js');
+    await remoteRestartCommand(alias, app);
+  });
+
+remote
   .command('status <alias>')
   .description('Check remote server status')
   .action(async (alias) => {
@@ -548,7 +556,7 @@ const deploy = program.command('deploy').description('Deployment management');
 
 deploy
   .command('app <app>')
-  .description('Deploy app with strategy')
+  .description('Refused — deployment is `omnitron stack start`; see the message')
   .option('-s, --strategy <strategy>', 'Deploy strategy (rolling|all-at-once|blue-green|canary)', 'all-at-once')
   .option('-v, --version <version>', 'Version label (git sha, tag, or custom)')
   .option('-t, --target <server>', 'Target server alias or tag')
@@ -567,7 +575,7 @@ deploy
 
 program
   .command('rollback <app>')
-  .description('Rollback app to previous version')
+  .description('Refused — this never restored a previous version; see the message')
   .option('-t, --target <server>', 'Target server alias or tag')
   .action(async (app, opts) => {
     const { rollbackCommand } = await import('../commands/deploy.js');

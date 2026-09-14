@@ -1,13 +1,14 @@
 /**
- * omnitron deploy <app> --target <server|tag> — Deploy app to remote server
  * omnitron deploy build <app> — Build deployment artifact (tarball)
- * omnitron rollback <app> --target <server> — Rollback to previous version
+ *
+ * `deploy app` and `rollback` are refused here. Both used to call
+ * `restartApp` on a remote daemon — the same call, under two names, each
+ * announcing an operation it did not perform. Deployment is
+ * `omnitron stack start`; see the notes on each function.
  */
 
 import { log } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
-import { ServerRegistry } from '../infrastructure/server-registry.js';
-import { createRemoteDaemonClient } from '../daemon/daemon-client.js';
 
 /**
  * Build a deployment artifact for an app.
@@ -56,73 +57,75 @@ export async function projectBuildCommand(app: string): Promise<void> {
   log.info(`  Built at: ${artifact.builtAt}`);
 }
 
+/**
+ * `omnitron deploy app <app> --target <server>` — refused, with directions.
+ *
+ * What this used to do: connect to the remote daemon and call
+ * `restartApp({ name: app })`, then print `Deployed '<app>' to <alias>`. No
+ * artifact was built, nothing was transferred, nothing was installed. The
+ * `--strategy rolling|blue-green|canary` and `--version` flags were accepted
+ * and read by nothing.
+ *
+ * `rollback` was the SAME call — byte for byte the same operation under a
+ * different name — and printed `Rolled back`. A rollback is a control you
+ * reach for when something is already wrong; discovering at that moment that
+ * it only restarts the version you are trying to get away from is the most
+ * expensive time to discover it.
+ *
+ * Deployment in this system is a STACK operation, and it is implemented:
+ * `stack start` provisions the node, builds and ships the artifact over SSH,
+ * installs dependencies and verifies health. This command belonged to a
+ * different, unfinished model — one app to one server by alias — that never
+ * had a deployer behind it.
+ *
+ * Refusing rather than silently restarting: a refusal costs a command that
+ * did not work anyway, and it says where the working one is. See
+ * `remoteRestartCommand` for the behaviour this used to have, under its own
+ * name.
+ */
 export async function deployCommand(app: string, opts: { target: string }): Promise<void> {
-  if (!opts.target) {
-    log.error('--target is required (server alias or tag)');
-    return;
-  }
-
-  const registry = new ServerRegistry();
-  const servers = resolveTargetServers(registry, opts.target);
-
-  if (servers.length === 0) {
-    log.error(`No servers found for target '${opts.target}'`);
-    return;
-  }
-
-  log.info(`Deploying '${app}' to ${servers.length} server(s): ${servers.map((s) => s.alias).join(', ')}`);
-
-  for (const server of servers) {
-    const s = spinner();
-    s.start(`Deploying '${app}' to ${server.alias}...`);
-
-    const client = createRemoteDaemonClient(server.host, server.port);
-    try {
-      const daemon = await client.service<import('../shared/dto/services.js').IDaemonService>('OmnitronDaemon');
-      await daemon.restartApp({ name: app });
-      s.stop(`Deployed '${app}' to ${server.alias}`);
-    } catch (err) {
-      s.stop(`Failed to deploy to ${server.alias}: ${(err as Error).message}`);
-    }
-    await client.disconnect();
-  }
+  log.error(
+    `\`omnitron deploy\` does not deploy: it only restarted an app that was already on the host.`,
+  );
+  log.info('');
+  log.info('Deployment is a stack operation — it provisions the node, ships the');
+  log.info('artifact over SSH, installs dependencies and verifies health:');
+  log.info('');
+  log.info('    omnitron stack start <project> <stack>');
+  log.info('');
+  log.info(`To restart '${app}' on a registered remote server, which is what this`);
+  log.info('command actually did:');
+  log.info('');
+  log.info(`    omnitron remote restart ${opts.target || '<alias>'} ${app}`);
+  log.info('');
+  log.info('To build an artifact without shipping it:');
+  log.info('');
+  log.info(`    omnitron deploy build ${app}`);
 }
 
-export async function rollbackCommand(app: string, opts: { target: string }): Promise<void> {
-  if (!opts.target) {
-    log.error('--target is required');
-    return;
-  }
-
-  const registry = new ServerRegistry();
-  const servers = resolveTargetServers(registry, opts.target);
-
-  if (servers.length === 0) {
-    log.error(`No servers found for target '${opts.target}'`);
-    return;
-  }
-
-  for (const server of servers) {
-    const s = spinner();
-    s.start(`Rolling back '${app}' on ${server.alias}...`);
-
-    const client = createRemoteDaemonClient(server.host, server.port);
-    try {
-      const daemon = await client.service<import('../shared/dto/services.js').IDaemonService>('OmnitronDaemon');
-      await daemon.restartApp({ name: app });
-      s.stop(`Rolled back '${app}' on ${server.alias}`);
-    } catch (err) {
-      s.stop(`Rollback failed on ${server.alias}: ${(err as Error).message}`);
-    }
-    await client.disconnect();
-  }
+/**
+ * `omnitron rollback <app>` — refused.
+ *
+ * It called `restartApp` — the identical operation to `deploy`, restarting
+ * the running version. There is no version history behind this path to roll
+ * back to. `RemoteDeployer` does keep artifacts per version, under
+ * `/opt/omnitron/artifacts/<project>/<app>/<version>/`, so a real rollback is
+ * implementable — but it has to move the deployed version, not restart it,
+ * and it has to run through the stack path that put them there.
+ */
+export async function rollbackCommand(app: string, _opts: { target: string }): Promise<void> {
+  log.error(
+    `\`omnitron rollback\` does not roll back: it restarted the running version of '${app}'.`,
+  );
+  log.info('');
+  log.info('No previous version is selected or restored by this path. Artifacts are');
+  log.info('kept per version on the node, under');
+  log.info('');
+  log.info('    /opt/omnitron/artifacts/<project>/<app>/<version>/');
+  log.info('');
+  log.info('so a rollback is implementable through the stack deployer, and is not');
+  log.info('implemented yet. Until it is, redeploy the version you want:');
+  log.info('');
+  log.info('    omnitron stack start <project> <stack>');
 }
 
-function resolveTargetServers(registry: ServerRegistry, target: string) {
-  // First try as alias
-  const byAlias = registry.get(target);
-  if (byAlias) return [byAlias];
-
-  // Then try as tag
-  return registry.list().filter((s) => s.tags.includes(target));
-}

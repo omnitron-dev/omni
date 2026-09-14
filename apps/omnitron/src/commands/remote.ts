@@ -69,6 +69,43 @@ export async function remoteListCommand(): Promise<void> {
   });
 }
 
+/**
+ * Restart an app on a registered remote daemon.
+ *
+ * This behaviour existed already — as the body of `omnitron deploy`, which
+ * announced `Deployed '<app>' to <alias>` after doing nothing but this. The
+ * capability is legitimate and had no other home in the CLI: `fleet` only
+ * reads, `remote` only managed the registry. So it moves here, under a name
+ * that says what it does, rather than being deleted along with the lie.
+ *
+ * Deployment — building an artifact, shipping it, installing it — is a STACK
+ * operation: `omnitron stack start <project> <stack>`.
+ */
+export async function remoteRestartCommand(alias: string, app: string): Promise<void> {
+  const registry = new ServerRegistry();
+  const server = registry.get(alias);
+
+  if (!server) {
+    log.error(`Server '${alias}' is not registered. Add it with \`omnitron remote add\`.`);
+    return;
+  }
+
+  const client = createRemoteDaemonClient(server.host, server.port);
+  try {
+    // The target is named by host:port, not by alias. An alias is a local
+    // label; what an operator needs to see before a write is which machine
+    // actually received it.
+    log.info(`Restarting '${app}' on ${alias} (${server.host}:${server.port})...`);
+    const daemon = await client.service<import('../shared/dto/services.js').IDaemonService>('OmnitronDaemon');
+    const result = await daemon.restartApp({ name: app });
+    log.success(`'${app}' restarted on ${alias} — ${result.status}${result.pid ? ` (PID: ${result.pid})` : ''}`);
+  } catch (err) {
+    log.error(`Failed to restart '${app}' on ${alias}: ${(err as Error).message}`);
+  } finally {
+    await client.disconnect();
+  }
+}
+
 export async function remoteStatusCommand(alias: string): Promise<void> {
   const registry = new ServerRegistry();
   const server = registry.get(alias);

@@ -4,6 +4,7 @@ import {
   subtractDecimals,
   multiplyDecimal,
   multiplyDecimals,
+  divideDecimal,
   divideDecimals,
   compareDecimals,
   isZero,
@@ -227,19 +228,32 @@ describe('Cryptocurrency Conversions', () => {
     expect(btcToSatoshis('0.00000001')).toBe(1n);
   });
 
-  it('atomicToXmr (8 decimals)', () => {
-    expect(atomicToXmr(100000000n)).toBe('1.00000000');
-    expect(atomicToXmr(1n)).toBe('0.00000001');
+  it('atomicToXmr converts piconero, which is what the atomic unit is', () => {
+    // These three assertions used to read 100000000n === '1.00000000' — the
+    // SATOSHI relationship under a Monero name. One XMR is 10^12 piconero,
+    // so the conversion was out by a factor of ten thousand in both
+    // directions, and the round-trip test below agreed with it because a
+    // round trip agrees with any scale.
+    expect(atomicToXmr(1_000_000_000_000n)).toBe('1.000000000000');
+    expect(atomicToXmr(1n)).toBe('0.000000000001');
   });
 
   it('xmrToAtomic', () => {
-    expect(xmrToAtomic('1.0')).toBe(100000000n);
-    expect(xmrToAtomic('0.00000001')).toBe(1n);
+    expect(xmrToAtomic('1.0')).toBe(1_000_000_000_000n);
+    expect(xmrToAtomic('0.000000000001')).toBe(1n);
   });
 
-  it('deprecated aliases still work', () => {
-    expect(piconerosToXmr(100000000n)).toBe('1.00000000');
-    expect(xmrToPiconeros('1.0')).toBe(100000000n);
+  it('deprecated aliases still work, and name the unit they convert', () => {
+    expect(piconerosToXmr(1_000_000_000_000n)).toBe('1.000000000000');
+    expect(xmrToPiconeros('1.0')).toBe(1_000_000_000_000n);
+  });
+
+  it('agrees with what payments stores', () => {
+    // `coins.precision` is 12 for XMR and 8 for BTC, and the balance columns
+    // are `numeric(16,12)`. A conversion helper that disagrees with the
+    // column is a helper that cannot be used.
+    expect(atomicToXmr(1n).split('.')[1]).toHaveLength(12);
+    expect(satoshisToBtc(1n).split('.')[1]).toHaveLength(8);
   });
 
   it('round-trip BTC conversion', () => {
@@ -247,9 +261,12 @@ describe('Cryptocurrency Conversions', () => {
     expect(satoshisToBtc(btcToSatoshis(original))).toBe(original);
   });
 
-  it('round-trip XMR conversion', () => {
-    const original = '0.12345678';
+  it('round-trip XMR conversion, at the scale XMR actually has', () => {
+    // The old version round-tripped '0.12345678' and passed at ANY scale,
+    // which is why it never noticed. Twelve digits do not survive eight.
+    const original = '0.123456789012';
     expect(atomicToXmr(xmrToAtomic(original))).toBe(original);
+    expect(xmrToAtomic(original)).toBe(123456789012n);
   });
 });
 
@@ -339,9 +356,28 @@ describe('Precision Constants', () => {
 // ============================================================================
 
 describe('Edge Cases', () => {
-  it('empty string treated as zero', () => {
-    expect(addDecimals('', '5')).toBe('5.000000000000');
-    expect(addDecimals('  ', '5')).toBe('5.000000000000');
+  it('refuses an absent amount rather than reading it as zero', () => {
+    // A missing amount is not an amount of zero. The old behaviour turned a
+    // failed lookup, an absent column or a dropped field into a free
+    // transfer, silently — `addDecimals('', '5')` was `'5.000000000000'`
+    // and nothing anywhere said which operand had gone missing.
+    for (const absent of ['', '  ', null, undefined]) {
+      expect(() => addDecimals(absent as unknown as string, '5'), String(absent)).toThrow(
+        /Not a decimal/
+      );
+    }
+  });
+
+  it('refuses a string that is not a decimal, however BigInt would read it', () => {
+    // `BigInt` accepts hex, octal and binary literals, and the padded digits
+    // made '0x10' one of them: `addDecimals('0x10', '0')` used to return
+    // '4503.599627370496'. A sixteen-character string that is not a number,
+    // read as four and a half thousand coins.
+    for (const junk of ['0x10', '0b101', '0o17', '1e5', '1.2.3', '+1.5', '.5', '5.', 'abc']) {
+      expect(() => addDecimals(junk, '0'), junk).toThrow(/Not a decimal/);
+      // The validator always said so; the parser is what did not ask it.
+      expect(isValidDecimal(junk), junk).toBe(false);
+    }
   });
 
   it('handles string with extra whitespace', () => {
@@ -363,5 +399,142 @@ describe('Edge Cases', () => {
     const a = '99999999999999.999999999999';
     const b = '0.000000000001';
     expect(addDecimals(a, b)).toBe('100000000000000.000000000000');
+  });
+});
+
+// ============================================================================
+// Quantizing below zero
+// ============================================================================
+
+/**
+ * Every rounding assertion in this file used a positive number, and all three
+ * helpers were wrong below zero — each in its own direction, each contradicting
+ * its own docblock. BigInt division truncates TOWARD ZERO, and all three were
+ * written as if it truncated downward.
+ */
+describe('round / floor / ceil below zero', () => {
+  it('rounds to the nearest, ties away from zero', () => {
+    // Was: -1.9 → -1, -1.5 → -1, -1.1 → 0. The last one is the plainest —
+    // a value nine tenths of the way to -1, rounded to nothing at all.
+    expect(roundDecimal('-1.9', 0)).toBe('-2.000000000000');
+    expect(roundDecimal('-1.5', 0)).toBe('-2.000000000000');
+    expect(roundDecimal('-1.1', 0)).toBe('-1.000000000000');
+    expect(roundDecimal('1.5', 0)).toBe('2.000000000000');
+    expect(roundDecimal('1.1', 0)).toBe('1.000000000000');
+  });
+
+  it('floors toward negative infinity, as its name says', () => {
+    // Was: -1.5 → -1, which is the ceiling.
+    expect(floorDecimal('-1.5', 0)).toBe('-2.000000000000');
+    expect(floorDecimal('-1.0', 0)).toBe('-1.000000000000');
+    expect(floorDecimal('1.9', 0)).toBe('1.000000000000');
+  });
+
+  it('ceils toward positive infinity, as its name says', () => {
+    // Was: -1.9 → 0, overshooting past the value's own unit.
+    expect(ceilDecimal('-1.9', 0)).toBe('-1.000000000000');
+    expect(ceilDecimal('-1.0', 0)).toBe('-1.000000000000');
+    expect(ceilDecimal('1.1', 0)).toBe('2.000000000000');
+  });
+
+  it('agrees with Math for every tenth across zero', () => {
+    // A property, because three hand-picked negatives is how the originals
+    // passed: they were all positive.
+    // `+ 0` on both sides: this library never emits a negative zero (pinned
+    // below), and `Math.ceil(-0.9)` is `-0`, which `Object.is` separates.
+    for (let tenths = -30; tenths <= 30; tenths += 1) {
+      const value = (tenths / 10).toFixed(1);
+      expect(Number(roundDecimal(value, 0)) + 0, `round ${value}`).toBe(
+        Math.sign(tenths) * Math.round(Math.abs(tenths) / 10) + 0
+      );
+      expect(Number(floorDecimal(value, 0)) + 0, `floor ${value}`).toBe(Math.floor(tenths / 10) + 0);
+      expect(Number(ceilDecimal(value, 0)) + 0, `ceil ${value}`).toBe(Math.ceil(tenths / 10) + 0);
+    }
+  });
+
+  it('does not throw when asked for more places than the value carries', () => {
+    // `10n ** BigInt(negative)` is a RangeError about exponents, which is not
+    // a thing the caller did. Places are clamped into [0, precision].
+    expect(roundDecimal('1.5', 20, 12)).toBe('1.500000000000');
+    expect(floorDecimal('-1.5', 20, 12)).toBe('-1.500000000000');
+    expect(ceilDecimal('1.5', -3, 12)).toBe('2.000000000000');
+  });
+});
+
+// ============================================================================
+// A scale of zero
+// ============================================================================
+
+describe('precision 0', () => {
+  it('renders an integer, not its digits behind a point', () => {
+    // `str.slice(0, -precision)` is `slice(0, 0)` when precision is 0,
+    // because `-0 === 0`. `formatDecimal('123', 0)` answered '0.123' — every
+    // integer-scale amount off by its own magnitude, and a string no
+    // subsequent parse would read back as the same number.
+    expect(formatDecimal('123', 0)).toBe('123');
+    expect(formatDecimal('0', 0)).toBe('0');
+    expect(formatDecimal('-45', 0)).toBe('-45');
+    expect(addDecimals('100', '23', 0)).toBe('123');
+  });
+
+  it('round-trips through its own parser', () => {
+    expect(formatDecimal(formatDecimal('123', 0), 0)).toBe('123');
+  });
+
+  it('truncates the fraction rather than carrying it', () => {
+    expect(formatDecimal('123.9', 0)).toBe('123');
+    expect(roundDecimal('123.9', 0, 0)).toBe('123');
+  });
+});
+
+// ============================================================================
+// Numbers entering a string library
+// ============================================================================
+
+describe('a number multiplier or divisor', () => {
+  it('survives being small', () => {
+    // `BigInt(Math.round(m * 1e8))` made any multiplier below 5e-9 exactly
+    // zero, so the amount vanished and the call returned successfully.
+    expect(multiplyDecimal('1000000', 1e-9)).toBe('0.001000000000');
+    expect(multiplyDecimal('1', 0.000000001)).toBe('0.000000001000');
+  });
+
+  it('is not bent by the float that used to scale it', () => {
+    // `1.5e-8 * 1e8` is 1.4999999999999998 as a double, so `Math.round` gave
+    // 1 and the divisor became 2e-8 — a third larger than the one asked for.
+    expect(divideDecimal('1', 1.5e-8)).toBe('66666666.666666666666');
+    expect(multiplyDecimal('1', 1.5e-8)).toBe('0.000000015000');
+  });
+
+  it('does not throw a RangeError from inside its own zero check', () => {
+    // A divisor below 5e-9 became `0n` AFTER `if (divisor === 0)` had passed,
+    // and BigInt's own division threw about division by zero — from a
+    // function that had just checked for exactly that.
+    expect(() => divideDecimal('1', 1e-12)).not.toThrow(RangeError);
+    expect(divideDecimal('1', 1e-12)).toBe('1000000000000.000000000000');
+    expect(() => divideDecimal('1', 0)).toThrow('Division by zero');
+  });
+
+  it('accepts a number in exponent notation through Decimal.from', () => {
+    // `String(1e-9)` is '1e-9', which is not a decimal. It used to reach
+    // `BigInt` and throw a SyntaxError naming a padded string the caller
+    // never wrote.
+    expect(Decimal.from(1e-9).toString()).toBe('0.000000001000');
+    expect(Decimal.from(1e21).toString()).toBe('1000000000000000000000.000000000000');
+    expect(parseDecimal(1e-9)).toBe('0.000000001000');
+  });
+
+  it('keeps the fluent API in step with the functions', () => {
+    expect(Decimal.from('1000000').multiply(1e-9).toString()).toBe(multiplyDecimal('1000000', 1e-9));
+    expect(Decimal.from('1').divide(1.5e-8).toString()).toBe(divideDecimal('1', 1.5e-8));
+    expect(Decimal.from('-1.9').round(0).toString()).toBe(roundDecimal('-1.9', 0));
+    expect(Decimal.from('-1.5').floor(0).toString()).toBe(floorDecimal('-1.5', 0));
+    expect(Decimal.from('-1.9').ceil(0).toString()).toBe(ceilDecimal('-1.9', 0));
+  });
+
+  it('never renders a negative zero', () => {
+    expect(Decimal.from('-0.0000000000001').toString()).toBe('0.000000000000');
+    expect(subtractDecimals('1', '1')).toBe('0.000000000000');
+    expect(multiplyDecimal('-1', 0)).toBe('0.000000000000');
   });
 });

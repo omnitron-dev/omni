@@ -102,11 +102,14 @@ export function subtractDecimals(a: string, b: string, precision: number = DEFAU
  * ```
  */
 export function multiplyDecimal(a: string, multiplier: number, precision: number = DEFAULT_PRECISION): string {
-  const aInt = decimalToInt(a, precision);
-  // Use higher intermediate precision to avoid loss
-  const multiplierInt = BigInt(Math.round(multiplier * 1e8));
-  const result = (aInt * multiplierInt) / BigInt(1e8);
-  return intToDecimal(result, precision);
+  // The multiplier goes through its own decimal representation, at the same
+  // scale as everything else. It used to be `BigInt(Math.round(m * 1e8))`,
+  // which is a float multiplication in the middle of a library whose entire
+  // purpose is not doing one, and it had two consequences: any multiplier
+  // below 5e-9 rounded to zero and silently annihilated the amount, and
+  // `1.5e-8 * 1e8` is 1.4999999999999998 as a double, so a rate landed on
+  // the wrong side of `Math.round` and came out a third smaller than asked.
+  return multiplyDecimals(a, numberToDecimalString(multiplier), precision);
 }
 
 /**
@@ -148,12 +151,11 @@ export function divideDecimal(a: string, divisor: number, precision: number = DE
   if (divisor === 0) {
     throw new Error('Division by zero');
   }
-  const aInt = decimalToInt(a, precision);
-  // Use higher intermediate precision
-  const divisorInt = BigInt(Math.round(divisor * 1e8));
-  const scale = BigInt(1e8);
-  const result = (aInt * scale) / divisorInt;
-  return intToDecimal(result, precision);
+  // Same fixed 1e8 float scale as `multiplyDecimal` had, and here it was
+  // worse: a divisor below 5e-9 became `0n`, so the guard above passed and
+  // the BigInt division threw a `RangeError` about division by zero from
+  // inside a function that had just checked for exactly that.
+  return divideDecimals(a, numberToDecimalString(divisor), precision);
 }
 
 /**
@@ -297,7 +299,7 @@ export function formatDecimal(value: string, precision: number = DEFAULT_PRECISI
  * Parse a decimal string or number to normalized format
  */
 export function parseDecimal(value: string | number, precision: number = DEFAULT_PRECISION): string {
-  const str = typeof value === 'number' ? value.toString() : value;
+  const str = typeof value === 'number' ? numberToDecimalString(value) : value;
   return formatDecimal(str, precision);
 }
 
@@ -334,30 +336,35 @@ export function zero(precision: number = DEFAULT_PRECISION): string {
  * Round decimal to specified decimal places
  */
 export function roundDecimal(value: string, decimalPlaces: number, precision: number = DEFAULT_PRECISION): string {
-  const int = decimalToInt(value, precision);
-  const scale = BigInt(10) ** BigInt(precision - decimalPlaces);
-  const rounded = ((int + scale / 2n) / scale) * scale;
-  return intToDecimal(rounded, precision);
+  // Ties away from zero, symmetric about it. `((int + scale/2n) / scale)`
+  // relied on BigInt division, which truncates TOWARD zero, so every
+  // negative value was pulled up by as much as a whole unit at the requested
+  // scale: `roundDecimal('-1.9', 0)` was `-1`, and `roundDecimal('-1.1', 0)`
+  // was `0`. Only positive numbers were ever tested.
+  const scale = quantizeScale(decimalPlaces, precision);
+  return intToDecimal(divRoundHalfUp(decimalToInt(value, precision), scale) * scale, precision);
 }
 
 /**
  * Floor decimal to specified decimal places (round towards negative infinity)
  */
 export function floorDecimal(value: string, decimalPlaces: number, precision: number = DEFAULT_PRECISION): string {
-  const int = decimalToInt(value, precision);
-  const scale = BigInt(10) ** BigInt(precision - decimalPlaces);
-  const floored = (int / scale) * scale;
-  return intToDecimal(floored, precision);
+  // Toward negative infinity, as the name and the docblock both said and
+  // neither did: BigInt division truncates toward ZERO, so `floorDecimal
+  // ('-1.5', 0)` answered `-1`.
+  const scale = quantizeScale(decimalPlaces, precision);
+  return intToDecimal(divFloor(decimalToInt(value, precision), scale) * scale, precision);
 }
 
 /**
  * Ceiling decimal to specified decimal places (round towards positive infinity)
  */
 export function ceilDecimal(value: string, decimalPlaces: number, precision: number = DEFAULT_PRECISION): string {
-  const int = decimalToInt(value, precision);
-  const scale = BigInt(10) ** BigInt(precision - decimalPlaces);
-  const ceiled = ((int + scale - 1n) / scale) * scale;
-  return intToDecimal(ceiled, precision);
+  // Toward positive infinity. The `+ scale - 1n` trick is a ceiling only for
+  // non-negative values; below zero it overshot into the next unit, so
+  // `ceilDecimal('-1.9', 0)` answered `0` where the ceiling is `-1`.
+  const scale = quantizeScale(decimalPlaces, precision);
+  return intToDecimal(divCeil(decimalToInt(value, precision), scale) * scale, precision);
 }
 
 // ============================================================================
@@ -366,8 +373,27 @@ export function ceilDecimal(value: string, decimalPlaces: number, precision: num
 
 /** BTC: 8 decimal places (1 satoshi = 10^-8 BTC) */
 const BTC_DECIMALS = 8;
-/** XMR: 8 decimal places for display/RPC (atomic unit = piconero, but standard display uses 8) */
-const XMR_DECIMALS = 8;
+/**
+ * XMR: 12 decimal places. The atomic unit of Monero is the piconero and
+ * 1 XMR is 10^12 of them — the same relationship the satoshi has to BTC at
+ * 10^8, and the same one `coins.precision` records in payments.
+ *
+ * This constant said 8, with a comment explaining that "standard display
+ * uses 8". Display convention is a real thing and it is not this: these two
+ * functions convert between an on-chain integer and a coin amount, and at a
+ * scale of 8 the conversion was wrong by a factor of ten thousand in both
+ * directions. `atomicToXmr(1_000_000_000_000n)` — one whole XMR — returned
+ * `'10000.00000000'`; `xmrToAtomic('1')` returned a hundred million
+ * piconero, which is 0.0001 XMR. The deprecated aliases name the unit in as
+ * many words: `piconerosToXmr`, `xmrToPiconeros`.
+ *
+ * Nothing in either repository called them, which is the only reason this
+ * could sit in a shared package. The library's own tests pinned it:
+ * `atomicToXmr(100000000n) === '1.00000000'` is the satoshi relationship
+ * under a Monero name, and the round-trip test round-trips at any scale, so
+ * it agreed.
+ */
+const XMR_DECIMALS = 12;
 
 /**
  * Convert satoshis (smallest Bitcoin unit) to BTC string
@@ -385,7 +411,7 @@ export function btcToSatoshis(btc: string): bigint {
 }
 
 /**
- * Convert atomic XMR units to XMR string (8 decimal places)
+ * Convert atomic XMR units (piconero) to an XMR string.
  */
 export function atomicToXmr(atomic: bigint | number | string): string {
   const val = typeof atomic === 'bigint' ? atomic : BigInt(atomic);
@@ -500,7 +526,7 @@ export class Decimal {
    * Create a Decimal from a string or number
    */
   static from(value: string | number, precision: number = DEFAULT_PRECISION): Decimal {
-    const str = typeof value === 'number' ? value.toString() : value;
+    const str = typeof value === 'number' ? numberToDecimalString(value) : value;
     const int = decimalToInt(str, precision);
     return new Decimal(int, precision);
   }
@@ -516,7 +542,7 @@ export class Decimal {
    * Add another decimal
    */
   add(other: string | number | Decimal): Decimal {
-    const otherInt = other instanceof Decimal ? other.value : decimalToInt(String(other), this.precision);
+    const otherInt = other instanceof Decimal ? other.value : decimalToInt(toDecimalString(other), this.precision);
     return new Decimal(this.value + otherInt, this.precision);
   }
 
@@ -524,7 +550,7 @@ export class Decimal {
    * Subtract another decimal
    */
   subtract(other: string | number | Decimal): Decimal {
-    const otherInt = other instanceof Decimal ? other.value : decimalToInt(String(other), this.precision);
+    const otherInt = other instanceof Decimal ? other.value : decimalToInt(toDecimalString(other), this.precision);
     return new Decimal(this.value - otherInt, this.precision);
   }
 
@@ -532,16 +558,14 @@ export class Decimal {
    * Multiply by a number
    */
   multiply(multiplier: number): Decimal {
-    const multiplierInt = BigInt(Math.round(multiplier * 1e8));
-    const result = (this.value * multiplierInt) / BigInt(1e8);
-    return new Decimal(result, this.precision);
+    return this.multiplyBy(numberToDecimalString(multiplier));
   }
 
   /**
    * Multiply by another decimal
    */
   multiplyBy(other: string | number | Decimal): Decimal {
-    const otherInt = other instanceof Decimal ? other.value : decimalToInt(String(other), this.precision);
+    const otherInt = other instanceof Decimal ? other.value : decimalToInt(toDecimalString(other), this.precision);
     const scale = BigInt(10) ** BigInt(this.precision);
     const result = (this.value * otherInt) / scale;
     return new Decimal(result, this.precision);
@@ -554,16 +578,14 @@ export class Decimal {
     if (divisor === 0) {
       throw new Error('Division by zero');
     }
-    const divisorInt = BigInt(Math.round(divisor * 1e8));
-    const result = (this.value * BigInt(1e8)) / divisorInt;
-    return new Decimal(result, this.precision);
+    return this.divideBy(numberToDecimalString(divisor));
   }
 
   /**
    * Divide by another decimal
    */
   divideBy(other: string | number | Decimal): Decimal {
-    const otherInt = other instanceof Decimal ? other.value : decimalToInt(String(other), this.precision);
+    const otherInt = other instanceof Decimal ? other.value : decimalToInt(toDecimalString(other), this.precision);
     if (otherInt === 0n) {
       throw new Error('Division by zero');
     }
@@ -590,7 +612,7 @@ export class Decimal {
    * Compare with another decimal
    */
   compare(other: string | number | Decimal): -1 | 0 | 1 {
-    const otherInt = other instanceof Decimal ? other.value : decimalToInt(String(other), this.precision);
+    const otherInt = other instanceof Decimal ? other.value : decimalToInt(toDecimalString(other), this.precision);
     if (this.value < otherInt) return -1;
     if (this.value > otherInt) return 1;
     return 0;
@@ -656,27 +678,24 @@ export class Decimal {
    * Round to specified decimal places
    */
   round(decimalPlaces: number): Decimal {
-    const scale = BigInt(10) ** BigInt(this.precision - decimalPlaces);
-    const rounded = ((this.value + scale / 2n) / scale) * scale;
-    return new Decimal(rounded, this.precision);
+    const scale = quantizeScale(decimalPlaces, this.precision);
+    return new Decimal(divRoundHalfUp(this.value, scale) * scale, this.precision);
   }
 
   /**
    * Floor to specified decimal places
    */
   floor(decimalPlaces: number): Decimal {
-    const scale = BigInt(10) ** BigInt(this.precision - decimalPlaces);
-    const floored = (this.value / scale) * scale;
-    return new Decimal(floored, this.precision);
+    const scale = quantizeScale(decimalPlaces, this.precision);
+    return new Decimal(divFloor(this.value, scale) * scale, this.precision);
   }
 
   /**
    * Ceiling to specified decimal places
    */
   ceil(decimalPlaces: number): Decimal {
-    const scale = BigInt(10) ** BigInt(this.precision - decimalPlaces);
-    const ceiled = ((this.value + scale - 1n) / scale) * scale;
-    return new Decimal(ceiled, this.precision);
+    const scale = quantizeScale(decimalPlaces, this.precision);
+    return new Decimal(divCeil(this.value, scale) * scale, this.precision);
   }
 
   /**
@@ -713,65 +732,142 @@ export class Decimal {
 // ============================================================================
 
 /**
- * Convert decimal string to BigInt (smallest unit representation)
+ * Convert decimal string to BigInt (smallest unit representation).
+ *
+ * Parses STRICTLY, to `isValidDecimal`'s contract. The library shipped that
+ * validator from the first commit and this function did not use it, so three
+ * shapes it rejects were being accepted here and read as amounts:
+ *
+ *   - `'0x10'` — `BigInt` accepts hex, octal and binary string literals, and
+ *     the padded digits made it a valid one. `addDecimals('0x10', '0')`
+ *     returned `'4503.599627370496'`: a sixteen-character string that is not
+ *     a number becoming four and a half thousand coins.
+ *   - `'1.2.3'` — split on the point and everything past the second part was
+ *     dropped in silence, so the value read as `1.2`.
+ *   - `'+1.5'`, `'.5'`, `'5.'` — accepted here, rejected by the validator.
+ *     Two readings of one string is the defect, whichever one is nicer.
+ *
+ * Empty, whitespace, `null` and `undefined` used to return `0n`. A missing
+ * amount is not an amount of zero: that reading turns a failed lookup, an
+ * absent column or a dropped field into a free transfer, and it does it
+ * without a line in any log. They throw now, like every other thing this
+ * cannot read.
+ *
+ * @throws Error when `value` is not a plain decimal string.
  */
 function decimalToInt(value: string, precision: number): bigint {
-  // Handle empty string
-  if (!value || value.trim() === '') {
-    return 0n;
+  if (typeof value !== 'string') {
+    throw new Error(
+      `Not a decimal string: ${JSON.stringify(value)} (${value === null ? 'null' : typeof value})`,
+    );
   }
 
-  // Remove leading/trailing whitespace
-  value = value.trim();
-
-  // Handle negative numbers
-  const isNeg = value.startsWith('-');
-  if (isNeg) {
-    value = value.slice(1);
+  const trimmed = value.trim();
+  if (!isValidDecimal(trimmed)) {
+    throw new Error(`Not a decimal: ${JSON.stringify(value)}`);
   }
 
-  // Split by decimal point
-  const parts = value.split('.');
-  const intPart = parts[0] || '0';
-  let fracPart = parts[1] || '';
+  const isNeg = trimmed.startsWith('-');
+  const magnitude = isNeg ? trimmed.slice(1) : trimmed;
 
-  // Pad or truncate fractional part to precision
-  if (fracPart.length > precision) {
-    fracPart = fracPart.slice(0, precision);
-  } else {
-    fracPart = fracPart.padEnd(precision, '0');
-  }
+  const [intPart = '0', rawFrac = ''] = magnitude.split('.');
 
-  // Combine and convert to BigInt
-  const combined = intPart + fracPart;
-  let result = BigInt(combined);
+  // Digits below the requested scale are dropped, not rounded: a scale is a
+  // statement about how much of the value is representable, and inventing a
+  // unit at the boundary is how a total comes out above what exists. Callers
+  // that want the nearest value have `roundDecimal`.
+  const fracPart =
+    rawFrac.length > precision ? rawFrac.slice(0, precision) : rawFrac.padEnd(precision, '0');
 
-  if (isNeg) {
-    result = -result;
-  }
-
-  return result;
+  const result = BigInt(`${intPart}${fracPart}`);
+  return isNeg ? -result : result;
 }
 
 /**
- * Convert BigInt (smallest unit) to decimal string
+ * Expand a number to a plain decimal string, exponent notation included.
+ *
+ * `String(1e-9)` is `'1e-9'`, which is not a decimal; before the strict
+ * parser above it reached `BigInt` and threw a `SyntaxError` naming a padded
+ * string the caller never wrote. Every number entering this module goes
+ * through here, so a small multiplier is a small multiplier rather than an
+ * accident of how JavaScript prints it.
  */
-function intToDecimal(value: bigint, precision: number): string {
-  // Handle negative numbers
-  const isNeg = value < 0n;
-  if (isNeg) {
-    value = -value;
+function numberToDecimalString(value: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Not a finite number: ${String(value)}`);
   }
 
-  // Convert to string and pad with leading zeros if needed
-  let str = value.toString();
-  str = str.padStart(precision + 1, '0');
+  const printed = String(Object.is(value, -0) ? 0 : value);
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/.exec(printed);
+  if (!match) return printed;
 
-  // Insert decimal point
-  const intPart = str.slice(0, -precision) || '0';
-  const fracPart = str.slice(-precision);
+  const [, sign = '', intPart = '0', fracPart = '', expPart = '0'] = match;
+  const digits = `${intPart}${fracPart}`;
+  const pointAt = intPart.length + Number(expPart);
 
-  const result = `${intPart}.${fracPart}`;
+  const magnitude =
+    pointAt <= 0
+      ? `0.${'0'.repeat(-pointAt)}${digits}`
+      : pointAt >= digits.length
+        ? `${digits}${'0'.repeat(pointAt - digits.length)}`
+        : `${digits.slice(0, pointAt)}.${digits.slice(pointAt)}`;
 
-  return isNeg ? `-${result}` : result;
+  return `${sign === '-' ? '-' : ''}${magnitude}`;
+}
+
+/** A fluent-API operand as a decimal string; numbers keep their own notation. */
+function toDecimalString(value: string | number): string {
+  return typeof value === 'number' ? numberToDecimalString(value) : value;
+}
+
+/**
+ * The scale that separates `decimalPlaces` from `precision`, for the three
+ * quantizing helpers.
+ *
+ * `decimalPlaces` is clamped into `[0, precision]`. Asking for more places
+ * than the value carries made `10n ** BigInt(negative)` throw a `RangeError`
+ * about exponents, which is not a thing the caller did.
+ */
+function quantizeScale(decimalPlaces: number, precision: number): bigint {
+  const places = Math.min(Math.max(Math.trunc(decimalPlaces), 0), precision);
+  return BigInt(10) ** BigInt(precision - places);
+}
+
+/** Divide toward negative infinity. BigInt `/` truncates toward zero. */
+function divFloor(value: bigint, scale: bigint): bigint {
+  const quotient = value / scale;
+  return value % scale !== 0n && value < 0n ? quotient - 1n : quotient;
+}
+
+/** Divide toward positive infinity. */
+function divCeil(value: bigint, scale: bigint): bigint {
+  const quotient = value / scale;
+  return value % scale !== 0n && value > 0n ? quotient + 1n : quotient;
+}
+
+/** Divide to the nearest, ties away from zero. */
+function divRoundHalfUp(value: bigint, scale: bigint): bigint {
+  const half = scale / 2n;
+  return value >= 0n ? (value + half) / scale : (value - half) / scale;
+}
+
+/**
+ * Convert BigInt (smallest unit) to decimal string.
+ *
+ * At `precision = 0` this used to return the digits behind a decimal point:
+ * `str.slice(0, -0)` is `slice(0, 0)`, because `-0 === 0`, so `123n` came
+ * back as `'0.123'` — every integer-scale amount off by its own magnitude.
+ * A zero scale means no fractional part at all, and no point either.
+ */
+function intToDecimal(value: bigint, precision: number): string {
+  const isNeg = value < 0n;
+  const digits = (isNeg ? -value : value).toString().padStart(precision + 1, '0');
+
+  const magnitude =
+    precision > 0
+      ? `${digits.slice(0, digits.length - precision)}.${digits.slice(digits.length - precision)}`
+      : digits;
+
+  // -0 is not an amount anyone holds.
+  return isNeg && value !== 0n ? `-${magnitude}` : magnitude;
 }

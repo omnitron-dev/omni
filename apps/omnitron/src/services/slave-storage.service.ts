@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Kysely, SqliteDialect, sql } from 'kysely';
+import { withDateBinding } from '../database/sqlite-date-binding.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 const OMNITRON_HOME = path.join(process.env['HOME'] ?? '/tmp', '.omnitron');
@@ -94,7 +95,11 @@ export class SlaveStorageService {
     database.pragma('busy_timeout = 5000');
     database.pragma('synchronous = NORMAL');
 
-    const dialect = new SqliteDialect({ database });
+    // Every `Date` bound to this database becomes an ISO string on the way
+    // in. The daemon runs the same services against Postgres and SQLite, and
+    // only one of the two drivers accepts a Date — see
+    // `database/sqlite-date-binding.ts` for what that cost before this.
+    const dialect = new SqliteDialect({ database: withDateBinding(database) });
     this.db = new Kysely<SlaveDatabase>({ dialect });
 
     // Auto-create tables

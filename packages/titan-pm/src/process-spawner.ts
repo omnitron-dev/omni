@@ -1292,6 +1292,54 @@ export class ProcessSpawner implements IProcessSpawner {
       const stderrRef = { v: stderrBytes };
       const stdoutRef = { v: stdoutBytes };
 
+      /**
+       * How late OUR OWN timers ran while the child was starting.
+       *
+       * A startup timeout is reported against the child — "Worker startup
+       * (pid: 45138) timed out after 180000ms" — and that sentence sends
+       * every reader into the application: its module graph, its migrations,
+       * its container. On 2026-09-14 that reading cost most of an evening.
+       * `daos/dev/main` failed to start six times in a row; the same build,
+       * started beside the supervisor with the same environment, came up in
+       * 3.3 seconds. The machine had 14 MB of free memory and 12.76 GB of a
+       * 14 GB swap file in use, and the supervisor — idle most of the time,
+       * so first to be evicted — was spending whole minutes paging its own
+       * heap back in. It never read the child's output, never processed the
+       * ready message, and blamed the child for its own silence.
+       *
+       * The evidence was already in the crash record and unreadable as such:
+       * `stderrBytes: 136, stdoutBytes: 0` after 180 seconds, from an app
+       * that writes kilobytes before it finishes building its container. A
+       * supervisor that read nothing was not watching a stuck child.
+       *
+       * So measure it. A one-second interval that arrives two seconds late
+       * did not arrive late because the child was slow — nothing the child
+       * does can delay our timers. Whatever the cause (memory pressure, a
+       * synchronous spawn on this thread, CPU starvation), the deadline was
+       * missed on this side of the boundary, and the message should say so
+       * rather than name the child.
+       *
+       * The probe is unref'd, so it can never hold the process open, and
+       * costs one timer per in-flight spawn.
+       */
+      const LAG_PROBE_INTERVAL_MS = 1_000;
+      /**
+       * A tick at least this late means we stopped running. Two seconds is
+       * generous on purpose: ordinary GC pauses and a busy event loop show
+       * up in the tens of milliseconds, so this fires on stalls of a
+       * different kind, not on load.
+       */
+      const LAG_SIGNIFICANT_MS = 2_000;
+      let maxLagMs = 0;
+      let expectedTickAt = Date.now() + LAG_PROBE_INTERVAL_MS;
+      const lagProbe = setInterval(() => {
+        const now = Date.now();
+        const lag = now - expectedTickAt;
+        expectedTickAt = now + LAG_PROBE_INTERVAL_MS;
+        if (lag > maxLagMs) maxLagMs = lag;
+      }, LAG_PROBE_INTERVAL_MS);
+      lagProbe.unref?.();
+
       if (!isWorkerThread) {
         const child = worker as ChildProcess;
         child.stderr?.on('data', (chunk: Buffer) => {
@@ -1317,6 +1365,7 @@ export class ProcessSpawner implements IProcessSpawner {
       };
 
       const timer = setTimeout(() => {
+        clearInterval(lagProbe);
         const pid = !isWorkerThread ? (worker as ChildProcess).pid : undefined;
         const pidHint = pid ? ` (pid: ${pid})` : '';
         const diag = buildDiagnostics();
@@ -1341,7 +1390,21 @@ export class ProcessSpawner implements IProcessSpawner {
         const stderrTail = diag.stderr
           ? '\n--- last child stderr ---\n' + diag.stderr.split('\n').slice(-15).join('\n')
           : '';
+        // Said BEFORE the child's output, because it changes what that
+        // output means: a trail that stops at a stage did not stop there,
+        // it is simply the last thing we managed to read.
+        const supervisorNote =
+          maxLagMs >= LAG_SIGNIFICANT_MS
+            ? `\n--- this timeout is ours, not the child's ---\n` +
+              `The supervisor's own 1s timer ran ${Math.round(maxLagMs / 1000)}s late ` +
+              `during this window, so it was not running to read the child or to ` +
+              `receive its ready message. Check free memory and swap on this host ` +
+              `before reading the application.`
+            : '';
         const err = Errors.timeout(`Worker startup${pidHint}`, timeout);
+        if (supervisorNote) {
+          (err as { message: string }).message += supervisorNote;
+        }
         if (stderrTail) {
           // The factory sets `message` on construction; extending it here keeps
           // `details.operation` clean, so anything grouping errors by operation
@@ -1349,12 +1412,21 @@ export class ProcessSpawner implements IProcessSpawner {
           (err as { message: string }).message += stderrTail;
         }
         // Attach full stderr/stdout for structured logging / diagnostics.
-        (err as any).details = { ...((err as any).details ?? {}), ...diag };
+        // `supervisorMaxLagMs` rides along on every startup timeout, not only
+        // the ones over the threshold: a number that is always present is one
+        // an operator can compare across runs, and a small one is itself the
+        // finding — it rules this side out and leaves the child.
+        (err as any).details = {
+          ...((err as any).details ?? {}),
+          ...diag,
+          supervisorMaxLagMs: maxLagMs,
+        };
         reject(err);
       }, timeout);
 
       const cleanup = () => {
         clearTimeout(timer);
+        clearInterval(lagProbe);
         if (isWorkerThread) {
           (worker as Worker).off('message', messageHandler);
         } else {

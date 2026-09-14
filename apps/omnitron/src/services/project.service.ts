@@ -47,10 +47,11 @@ import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
-import { RemoteDeployer } from './remote-deployer.service.js';
+import { RemoteDeployer, stackNodeToDeployTarget } from './remote-deployer.service.js';
 import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { ExecutionService } from '../execution/execution.service.js';
 
 
 
@@ -107,7 +108,10 @@ export class ProjectService extends EventEmitter {
     // only its backing storage moved.
     this.registry = new ProjectRegistry(daemonStateStore);
     this.infraManager = new StackInfrastructureManager(logger);
-    this.deployer = new RemoteDeployer(logger);
+    // The deployer reaches nodes through the same SSH implementation as the
+    // health checks, which is the only one that can present a password or a
+    // key passphrase — see the note at the top of `remote-deployer.service.ts`.
+    this.deployer = new RemoteDeployer(logger, new ExecutionService(logger));
   }
 
   /**
@@ -1268,9 +1272,9 @@ export class ProjectService extends EventEmitter {
       }
     }
 
-    // Resolve master address (from this daemon's perspective — what slaves connect to)
+    // Resolve master address (from the SLAVE's perspective — what it dials)
     const { DEFAULT_DAEMON_CONFIG: _dc } = await import('../config/defaults.js');
-    const masterHost = _dc.host === '0.0.0.0' ? 'auto' : _dc.host;
+    const { resolveMasterHost } = await import('./master-address.js');
     const masterPort = _dc.port;
 
     // Deploy to each node: provision slave → deploy artifacts → connect
@@ -1281,9 +1285,18 @@ export class ProjectService extends EventEmitter {
       const unsubProvision = this.deployer.onProgress((progress) => {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
+      const target = stackNodeToDeployTarget(node);
+      const master = await resolveMasterHost(
+        { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
+        target,
+      );
+      this.logger.info(
+        { node: nodeKey, masterHost: master.host, from: master.source },
+        'Resolved the master address this slave will dial',
+      );
       const provisioned = await this.deployer.provisionSlaveNode(
-        node,
-        masterHost === 'auto' ? node.host : masterHost, // If master binds 0.0.0.0, slave uses its own view of master
+        target,
+        master.host,
         masterPort,
         projectName,
       );
@@ -1299,7 +1312,7 @@ export class ProjectService extends EventEmitter {
         const unsubDeploy = this.deployer.onProgress((progress) => {
           this.emit('stack:deploy_progress', projectName, stackName, progress);
         });
-        const results = await this.deployer.deployToStack([node], artifacts, projectName);
+        const results = await this.deployer.deployToStack([target], artifacts, projectName);
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');
         if (failed.length > 0) {
@@ -1351,9 +1364,9 @@ export class ProjectService extends EventEmitter {
       }
     }
 
-    // Resolve master address
+    // Resolve master address (from the SLAVE's perspective — what it dials)
     const { DEFAULT_DAEMON_CONFIG: _dc } = await import('../config/defaults.js');
-    const masterHost = _dc.host === '0.0.0.0' ? 'auto' : _dc.host;
+    const { resolveMasterHost } = await import('./master-address.js');
     const masterPort = _dc.port;
 
     // Provision all slave nodes in parallel (install runtime + omnitron + config)
@@ -1362,12 +1375,16 @@ export class ProjectService extends EventEmitter {
       const unsubProvision = this.deployer.onProgress((progress) => {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
-      await this.deployer.provisionSlaveNode(
-        node,
-        masterHost === 'auto' ? node.host : masterHost,
-        masterPort,
-        projectName,
+      const target = stackNodeToDeployTarget(node);
+      const master = await resolveMasterHost(
+        { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
+        target,
       );
+      this.logger.info(
+        { node: node.host, masterHost: master.host, from: master.source },
+        'Resolved the master address this slave will dial',
+      );
+      await this.deployer.provisionSlaveNode(target, master.host, masterPort, projectName);
       unsubProvision();
     }
 
@@ -1376,7 +1393,9 @@ export class ProjectService extends EventEmitter {
       const unsubDeploy = this.deployer.onProgress((progress) => {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
-      const results = await this.deployer.deployToStack(appNodes, artifacts, projectName, { concurrency: 5 });
+      const results = await this.deployer.deployToStack(
+        appNodes.map(stackNodeToDeployTarget), artifacts, projectName, { concurrency: 5 },
+      );
       unsubDeploy();
       const successful = results.filter((r) => r.status === 'success').length;
       const failed = results.filter((r) => r.status === 'failed').length;

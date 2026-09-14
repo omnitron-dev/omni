@@ -240,6 +240,40 @@ export class ExecutionService {
   }
 
   /**
+   * Copy a local file to a remote host over the SSH connection.
+   *
+   * Here rather than in the caller because this class owns the engine, and
+   * because the alternative already existed and could not work: deployment
+   * shelled out to `scp`, which — like the `ssh -o BatchMode=yes` beside it —
+   * can offer a key file and nothing else. The console collects passwords and
+   * key passphrases and keeps them in the daemon's vault, so every node
+   * registered that way was untransferable-to by construction.
+   *
+   * The engine speaks SFTP over the same authenticated connection as
+   * `ssh()`, so one credential path serves both.
+   */
+  async uploadFile(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
+    const engine = await this.getEngine();
+    if (!engine) {
+      // No silent fallback to `scp`. It cannot present a password, so it
+      // would fail with "Permission denied (publickey,password)" — an error
+      // that sends the reader to the node's credentials, which are fine.
+      throw new Error(
+        'Cannot transfer files: the execution engine is unavailable, and the fallback cannot use stored credentials.',
+      );
+    }
+    const ssh = engine.ssh({
+      host: target.host,
+      port: target.port ?? 22,
+      username: target.username ?? 'root',
+      ...(target.privateKey && { privateKey: target.privateKey }),
+      ...(target.passphrase && { passphrase: target.passphrase }),
+      ...(target.password && { password: target.password }),
+    });
+    await ssh.uploadFile(localPath, remotePath);
+  }
+
+  /**
    * Execute command inside a Docker container.
    */
   async docker(target: DockerTarget, command: string, options?: ExecOptions): Promise<ExecResult> {

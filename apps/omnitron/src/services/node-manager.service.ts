@@ -565,6 +565,48 @@ export class NodeManagerService extends EventEmitter {
   }
 
   /**
+   * Convert a registered node into something the deployer can reach.
+   *
+   * The bridge between the two registries. An operator registers machines
+   * here, in the console; deployment reads `stacks.nodes` out of a project
+   * config. Nothing joined them, which is half of why a machine added in the
+   * console could not be deployed to — the other half being that the deployer
+   * could not have used this node's credentials even if it had been handed
+   * one: it shelled out to `ssh -o BatchMode=yes`, and what this method
+   * returns is a password.
+   *
+   * The credentials come from `nodeToSshTarget`, which the manual SSH check
+   * already uses, so there is one place that knows how to unlock a node and
+   * both callers use it.
+   */
+  async nodeToDeployTarget(
+    id: string,
+  ): Promise<import('./remote-deployer.service.js').DeployTarget> {
+    const node = this.nodes.get(id);
+    if (!node) throw new Error(`Node not found: ${id}`);
+    if (node.isLocal) {
+      // Not a refusal on principle — a local daemon is deployed to by running
+      // omnitron, not by SSHing to yourself — but a refusal that says so,
+      // rather than a loopback SSH that fails for a reason the operator then
+      // has to work out.
+      throw new Error('The local node is this daemon; it is not deployed to over SSH.');
+    }
+
+    const ssh = await this.nodeToSshTarget(node);
+    const target: import('./remote-deployer.service.js').DeployTarget = {
+      host: ssh.host,
+      label: node.name,
+      daemonPort: node.daemonPort ?? 9700,
+    };
+    if (ssh.port != null) target.sshPort = ssh.port;
+    if (ssh.username) target.username = ssh.username;
+    if (ssh.privateKey) target.privateKey = ssh.privateKey;
+    if (ssh.passphrase) target.passphrase = ssh.passphrase;
+    if (ssh.password) target.password = ssh.password;
+    return target;
+  }
+
+  /**
    * Check every node.
    *
    * Concurrent, bounded by the same `concurrency` the worker uses. It was a

@@ -639,6 +639,17 @@ export interface IDaemonConfig {
    * accept connections from other hosts; the value is used literally.
    */
   host: string;
+
+  /**
+   * The address slaves should dial to reach this master.
+   *
+   * Only consulted when provisioning a slave, and only needed when `host`
+   * cannot answer the question — which is whenever it is `0.0.0.0`, and
+   * always when the master is behind NAT or a load balancer. Nothing else
+   * can know that address: the daemon sees its own bind, not the path back
+   * to it.
+   */
+  advertiseHost?: string;
   /** HTTP port for webapp portal ↔ daemon Netron RPC */
   httpPort: number;
   pidFile: string;

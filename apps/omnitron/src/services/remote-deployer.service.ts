@@ -26,15 +26,33 @@
  * heredocs replaced with base64 — and none of that has ever met a real host.
  * Its first run will be its first test. Treat a green read of this file as
  * evidence about intent, not about behaviour.
+ *
+ * The first thing that first run found, 2026-09-14: **it could not log in.**
+ * Every command here went through `ssh -o BatchMode=yes` with an optional
+ * `-i <keyfile>`, and `BatchMode=yes` disables every interactive method —
+ * password and key passphrase both. The console's Add Node dialog collects
+ * exactly those, encrypts them in the daemon's vault, and the health monitor
+ * uses them through `ExecutionService.ssh()` on every check round. So the
+ * product had two SSH implementations: one that can present what the operator
+ * gave it, and one — this — that cannot, on the path where it matters most.
+ *
+ * Measured against the test host, whose SSH answers a password in 311 ms:
+ *
+ *   ssh -o BatchMode=yes root@<host> 'echo ok'
+ *   → root@<host>: Permission denied (publickey,password).
+ *
+ * That is the answer to "why can a machine added in the console not be
+ * deployed to": not policy, not a missing feature — the deployer could not
+ * authenticate as the operator had arranged. It goes through the same
+ * `ExecutionService` as the checks now, and takes a `DeployTarget` carrying
+ * the credentials rather than an `IStackNode` whose `ISSHConfig` has nowhere
+ * to put them.
  */
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { IStackNode } from '../config/types.js';
 import type { ArtifactInfo } from '../project/artifact-builder.js';
-
-const exec = promisify(execFile);
+import type { ExecutionService, SSHTarget } from '../execution/execution.service.js';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -91,6 +109,73 @@ export function writeRemoteFileCommand(path: string, content: string): string {
 // Types
 // =============================================================================
 
+/**
+ * A machine this deployer can reach, and how.
+ *
+ * `IStackNode` cannot be this: its `ISSHConfig` holds `user`, `port` and
+ * `privateKey`, so a node whose credential is a password — the console's
+ * default, and what the operator is offered first — has nowhere to be
+ * expressed. Both registries project into this one shape:
+ * `stackNodeToDeployTarget` for a node declared in a project's `stacks.nodes`,
+ * and `NodeManagerService.nodeToDeployTarget` for one an operator registered
+ * in the console, which resolves its secrets from the vault on the way.
+ */
+export interface DeployTarget {
+  host: string;
+  /**
+   * SSH port. Default 22.
+   *
+   * Spelled out rather than inherited as `port` from `SSHTarget`, because the
+   * other port on this type is the daemon's and both are numbers. An
+   * `IStackNode` — whose `port` IS the daemon's — is structurally assignable
+   * to any type whose only required field is `host`, so inheriting `port`
+   * meant a node passed by mistake would have its daemon port dialled as SSH,
+   * and the compiler would agree. With the field named for what it is, the
+   * same mistake reaches SSH's default instead of the wrong number.
+   */
+  sshPort?: number;
+  username?: string;
+  /** Path to a private key file, read by the SSH engine. */
+  privateKey?: string;
+  /** Passphrase for that key, resolved from the vault by the caller. */
+  passphrase?: string;
+  /** SSH password, resolved from the vault by the caller. */
+  password?: string;
+  /** Omnitron daemon (fleet) port on this node. Default 9700. */
+  daemonPort?: number;
+  /** Restrict deployment to these apps; absent means every app. */
+  apps?: string[];
+  /** What to call this node in logs and progress events. */
+  label?: string;
+}
+
+/** The credentials half, in the shape `ExecutionService` takes. */
+function sshTargetOf(target: DeployTarget): SSHTarget {
+  const ssh: SSHTarget = { host: target.host };
+  if (target.sshPort != null) ssh.port = target.sshPort;
+  if (target.username) ssh.username = target.username;
+  if (target.privateKey) ssh.privateKey = target.privateKey;
+  if (target.passphrase) ssh.passphrase = target.passphrase;
+  if (target.password) ssh.password = target.password;
+  return ssh;
+}
+
+/** Project a node declared in a project config into a deploy target. */
+export function stackNodeToDeployTarget(node: IStackNode): DeployTarget {
+  const target: DeployTarget = { host: node.host };
+  if (node.port != null) target.daemonPort = node.port;
+  if (node.ssh?.port != null) target.sshPort = node.ssh.port;
+  if (node.ssh?.user) target.username = node.ssh.user;
+  // A path, read by the engine. `ISSHConfig` has no passphrase field, so a
+  // key declared here must be one that needs none — which is worth knowing
+  // when a deployment from a config fails and the same node works from the
+  // console.
+  if (node.ssh?.privateKey) target.privateKey = node.ssh.privateKey;
+  if (node.apps) target.apps = node.apps;
+  if (node.label) target.label = node.label;
+  return target;
+}
+
 export type DeployStatus = 'pending' | 'transferring' | 'extracting' | 'restarting' | 'verifying' | 'success' | 'failed';
 
 export interface DeployResult {
@@ -120,6 +205,7 @@ export class RemoteDeployer {
 
   constructor(
     private readonly logger: ILogger,
+    private readonly execution: ExecutionService,
   ) {}
 
   /**
@@ -137,12 +223,12 @@ export class RemoteDeployer {
    * Deploy an artifact to a single remote node.
    */
   async deployToNode(
-    node: IStackNode,
+    target: DeployTarget,
     artifact: ArtifactInfo,
     project: string,
   ): Promise<DeployResult> {
     const startTime = Date.now();
-    const nodeKey = `${node.host}:${node.port ?? 9700}`;
+    const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
 
     this.logger.info(
       { node: nodeKey, app: artifact.app, version: artifact.version },
@@ -152,35 +238,35 @@ export class RemoteDeployer {
     try {
       // 1. Verify SSH connectivity
       this.emitProgress(nodeKey, artifact.app, 'pending', 0, 'Connecting via SSH...');
-      await this.verifySSH(node);
+      await this.verifySSH(target);
 
       // 2. Ensure remote directory structure
       const remotePath =
         `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
         `/${assertRemotePathSegment('app name', artifact.app)}` +
         `/${assertRemotePathSegment('version', artifact.version)}`;
-      await this.sshExec(node, `mkdir -p ${shellEscape(remotePath)}`);
+      await this.sshExec(target, `mkdir -p ${shellEscape(remotePath)}`);
 
       // 3. Transfer artifact
       this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
       const remoteFile = `${remotePath}/${artifact.app}-${artifact.version}.tar.gz`;
-      await this.scpTransfer(node, artifact.path, remoteFile);
+      await this.scpTransfer(target, artifact.path, remoteFile);
 
       // 4. Extract on remote
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting artifact...');
-      await this.sshExec(node, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(`${artifact.app}-${artifact.version}.tar.gz`)}`);
+      await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(`${artifact.app}-${artifact.version}.tar.gz`)}`);
 
       // 5. Install production dependencies
       this.emitProgress(nodeKey, artifact.app, 'extracting', 65, 'Installing dependencies...');
-      await this.sshExec(node, `cd ${shellEscape(remotePath)} && npm install --production --ignore-scripts 2>/dev/null || true`);
+      await this.sshExec(target, `cd ${shellEscape(remotePath)} && npm install --production --ignore-scripts 2>/dev/null || true`);
 
       // 6. Signal remote daemon to restart the app
       this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');
-      await this.signalRemoteDaemon(node, artifact.app);
+      await this.signalRemoteDaemon(target, artifact.app);
 
       // 7. Verify health
       this.emitProgress(nodeKey, artifact.app, 'verifying', 90, 'Verifying health...');
-      await this.verifyHealth(node, artifact.app);
+      await this.verifyHealth(target, artifact.app);
 
       const duration = Date.now() - startTime;
       this.emitProgress(nodeKey, artifact.app, 'success', 100, `Deployed in ${Math.round(duration / 1000)}s`);
@@ -209,7 +295,7 @@ export class RemoteDeployer {
    * Deploy artifacts to all nodes in a stack (parallel).
    */
   async deployToStack(
-    nodes: IStackNode[],
+    targets: DeployTarget[],
     artifacts: ArtifactInfo[],
     project: string,
     options?: { concurrency?: number },
@@ -218,12 +304,12 @@ export class RemoteDeployer {
     const results: DeployResult[] = [];
 
     // Build deployment matrix: each app to each node (or node-specific apps)
-    const tasks: Array<{ node: IStackNode; artifact: ArtifactInfo }> = [];
-    for (const node of nodes) {
+    const tasks: Array<{ target: DeployTarget; artifact: ArtifactInfo }> = [];
+    for (const target of targets) {
       for (const artifact of artifacts) {
         // If node has explicit app list, only deploy matching apps
-        if (node.apps && !node.apps.includes(artifact.app)) continue;
-        tasks.push({ node, artifact });
+        if (target.apps && !target.apps.includes(artifact.app)) continue;
+        tasks.push({ target, artifact });
       }
     }
 
@@ -231,7 +317,7 @@ export class RemoteDeployer {
     const executing = new Set<Promise<void>>();
     for (const task of tasks) {
       const promise = (async () => {
-        const result = await this.deployToNode(task.node, task.artifact, project);
+        const result = await this.deployToNode(task.target, task.artifact, project);
         results.push(result);
       })();
 
@@ -265,17 +351,17 @@ export class RemoteDeployer {
    * @param masterPort - The master daemon's fleet TCP port
    */
   async provisionSlaveNode(
-    node: IStackNode,
+    target: DeployTarget,
     masterHost: string,
     masterPort: number,
     project: string,
   ): Promise<boolean> {
-    const nodeKey = `${node.host}:${node.port ?? 9700}`;
+    const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
 
     try {
       // 1. Verify SSH access
       this.emitProgress(nodeKey, '*', 'pending', 0, 'Connecting via SSH...');
-      await this.verifySSH(node);
+      await this.verifySSH(target);
 
       // 2. Ensure runtime (Node.js or Bun)
       this.emitProgress(nodeKey, '*', 'extracting', 10, 'Checking runtime...');
@@ -287,15 +373,15 @@ export class RemoteDeployer {
       // that very likely already has Node. Step 1 above treats SSH failure
       // as failure; so does the install below. These two probes were the
       // only places that did not.
-      const hasNode = await this.sshExec(node, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""');
+      const hasNode = await this.sshExec(target, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""');
       if (!hasNode.trim()) {
-        this.logger.info({ host: node.host }, 'Installing Node.js on remote node...');
+        this.logger.info({ host: target.host }, 'Installing Node.js on remote node...');
         this.emitProgress(nodeKey, '*', 'extracting', 15, 'Installing Node.js...');
         try {
           // Install Node.js via official installer (works on most Linux distros)
-          await this.sshExec(node, 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs 2>/dev/null || (curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - && yum install -y nodejs) 2>/dev/null || (apk add --no-cache nodejs npm)', 120_000);
+          await this.sshExec(target, 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs 2>/dev/null || (curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - && yum install -y nodejs) 2>/dev/null || (apk add --no-cache nodejs npm)', 120_000);
         } catch (err) {
-          this.logger.error({ host: node.host, error: (err as Error).message }, 'Failed to install Node.js');
+          this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to install Node.js');
           return false;
         }
       }
@@ -303,12 +389,12 @@ export class RemoteDeployer {
       // 3. Install omnitron
       this.emitProgress(nodeKey, '*', 'extracting', 30, 'Installing omnitron...');
       // As above: an unreachable host must not read as "omnitron is missing".
-      const hasOmnitron = await this.sshExec(node, 'which omnitron 2>/dev/null || echo ""');
+      const hasOmnitron = await this.sshExec(target, 'which omnitron 2>/dev/null || echo ""');
       if (!hasOmnitron.trim()) {
         try {
-          await this.sshExec(node, 'npm install -g @omnitron-dev/omnitron', 120_000);
+          await this.sshExec(target, 'npm install -g @omnitron-dev/omnitron', 120_000);
         } catch (err) {
-          this.logger.error({ host: node.host, error: (err as Error).message }, 'Failed to install omnitron');
+          this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to install omnitron');
           return false;
         }
       }
@@ -319,13 +405,13 @@ export class RemoteDeployer {
       // Validated here as well as in `deployToNode`: this path provisions a
       // slave without going through artifact deployment first.
       assertRemotePathSegment('project name', project);
-      const configContent = this.generateSlaveConfig(masterHost, masterPort, node.port ?? 9700, project);
-      await this.sshExec(node, `mkdir -p ${shellEscape(configDir)}`);
-      await this.sshExec(node, writeRemoteFileCommand(`${configDir}/omnitron.config.ts`, configContent));
+      const configContent = this.generateSlaveConfig(masterHost, masterPort, target.daemonPort ?? 9700, project);
+      await this.sshExec(target, `mkdir -p ${shellEscape(configDir)}`);
+      await this.sshExec(target, writeRemoteFileCommand(`${configDir}/omnitron.config.ts`, configContent));
 
       // 5. Start slave daemon (or restart if already running)
       this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
-      await this.sshExec(node, `cd ${shellEscape(configDir)} && (omnitron down 2>/dev/null; omnitron up) &`).catch(() => {
+      await this.sshExec(target, `cd ${shellEscape(configDir)} && (omnitron down 2>/dev/null; omnitron up) &`).catch(() => {
         // Background start — may "fail" because SSH returns before daemon fully starts
       });
 
@@ -333,20 +419,20 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, '*', 'verifying', 90, 'Verifying slave daemon...');
       await new Promise((resolve) => setTimeout(resolve, 3000));
       try {
-        const pingResult = await this.sshExec(node, 'omnitron ping 2>/dev/null || echo "unreachable"', 10_000);
+        const pingResult = await this.sshExec(target, 'omnitron ping 2>/dev/null || echo "unreachable"', 10_000);
         if (pingResult.includes('unreachable')) {
-          this.logger.warn({ host: node.host }, 'Slave daemon not yet responding — may still be starting');
+          this.logger.warn({ host: target.host }, 'Slave daemon not yet responding — may still be starting');
         }
       } catch {
-        this.logger.warn({ host: node.host }, 'Could not verify slave daemon — it may still be starting');
+        this.logger.warn({ host: target.host }, 'Could not verify slave daemon — it may still be starting');
       }
 
       this.emitProgress(nodeKey, '*', 'success', 100, 'Slave provisioned');
-      this.logger.info({ host: node.host, masterHost, masterPort }, 'Slave node provisioned');
+      this.logger.info({ host: target.host, masterHost, masterPort }, 'Slave node provisioned');
       return true;
     } catch (err) {
       this.emitProgress(nodeKey, '*', 'failed', 0, (err as Error).message);
-      this.logger.error({ host: node.host, error: (err as Error).message }, 'Failed to provision slave node');
+      this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to provision slave node');
       return false;
     }
   }
@@ -418,54 +504,48 @@ export default {
   // Private — SSH Operations
   // ===========================================================================
 
-  private async verifySSH(node: IStackNode): Promise<void> {
-    await this.sshExec(node, 'echo ok', 10_000);
+  private async verifySSH(target: DeployTarget): Promise<void> {
+    await this.sshExec(target, 'echo ok', 10_000);
   }
 
-  private async sshExec(node: IStackNode, command: string, timeout = 60_000): Promise<string> {
-    const sshArgs = this.buildSSHArgs(node);
-    sshArgs.push(command);
-
-    const { stdout } = await exec('ssh', sshArgs, { timeout });
-    return stdout.trim();
-  }
-
-  private async scpTransfer(node: IStackNode, localPath: string, remotePath: string): Promise<void> {
-    const user = node.ssh?.user ?? 'root';
-    const port = node.ssh?.port ?? 22;
-
-    const scpArgs: string[] = [
-      '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', 'ConnectTimeout=10',
-      '-P', String(port),
-    ];
-
-    if (node.ssh?.privateKey) {
-      scpArgs.push('-i', node.ssh.privateKey);
+  /**
+   * Run a command on the node, through the daemon's one SSH implementation.
+   *
+   * Throws on a non-zero exit, which is what the callers above are written
+   * against — they use `|| echo ""` where they want to see a failure as an
+   * answer, and expect a throw everywhere else. `ExecutionService.ssh` reports
+   * failure in `exitCode` rather than raising, so the check has to be here;
+   * without it every `if (!result.trim())` in this file would read a failed
+   * command as an empty answer, and the two probes in `provisionSlaveNode`
+   * would install a runtime onto a host that already has one.
+   */
+  private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
+    const result = await this.execution.ssh(sshTargetOf(target), command, { timeout });
+    if (result.exitCode !== 0) {
+      const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
+      throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${detail}`);
     }
-
-    // The remote half of an scp target is expanded by a shell on the remote
-    // side, so it needs the same quoting as anything passed to `sshExec`.
-    // The local half does not — `execFile` runs scp without a shell.
-    scpArgs.push(localPath, `${user}@${node.host}:${shellEscape(remotePath)}`);
-
-    await exec('scp', scpArgs, { timeout: 300_000 }); // 5 min for large artifacts
+    return result.stdout.trim();
   }
 
-  private async signalRemoteDaemon(node: IStackNode, appName: string): Promise<void> {
+  private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
+    await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
+  }
+
+  private async signalRemoteDaemon(target: DeployTarget, appName: string): Promise<void> {
     try {
       // Try RPC restart via omnitron CLI on remote
-      await this.sshExec(node, `omnitron restart ${shellEscape(appName)} 2>/dev/null || true`);
+      await this.sshExec(target, `omnitron restart ${shellEscape(appName)} 2>/dev/null || true`);
     } catch {
       // Non-critical — daemon may not be running
-      this.logger.debug({ host: node.host, app: appName }, 'Remote daemon restart signal failed');
+      this.logger.debug({ host: target.host, app: appName }, 'Remote daemon restart signal failed');
     }
   }
 
-  private async verifyHealth(node: IStackNode, appName: string): Promise<void> {
+  private async verifyHealth(target: DeployTarget, appName: string): Promise<void> {
     // Simple health check: ping remote daemon and check app status
     try {
-      const status = await this.sshExec(node, `omnitron status --json 2>/dev/null || echo "{}"`, 15_000);
+      const status = await this.sshExec(target, `omnitron status --json 2>/dev/null || echo "{}"`, 15_000);
       const parsed = JSON.parse(status);
       if (parsed?.apps) {
         const app = (parsed.apps as any[]).find((a: any) => a.name === appName);
@@ -474,25 +554,6 @@ export default {
     } catch {
       // Health check is best-effort
     }
-  }
-
-  private buildSSHArgs(node: IStackNode): string[] {
-    const user = node.ssh?.user ?? 'root';
-    const port = node.ssh?.port ?? 22;
-
-    const args: string[] = [
-      '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', 'ConnectTimeout=10',
-      '-o', 'BatchMode=yes',
-      '-p', String(port),
-    ];
-
-    if (node.ssh?.privateKey) {
-      args.push('-i', node.ssh.privateKey);
-    }
-
-    args.push(`${user}@${node.host}`);
-    return args;
   }
 
   // ===========================================================================

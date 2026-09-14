@@ -156,11 +156,58 @@ describe('the paths that produce these files seal them', () => {
     const src = read('../../src/monitoring/log-manager.ts');
 
     expect(src).toContain("createWriteStream(filePath, { flags: 'a', encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
-    expect(src).toContain('createWriteStream(gzPath, { mode: PRIVATE_FILE_MODE })');
+    // The compressor's stream, asserted as text rather than on disk, because
+    // the property is about a WINDOW. `sealFile` chmods the finished file, so
+    // the end state is private however the stream was opened — which means a
+    // check on the resulting file cannot see this at all. What it would miss
+    // is a 50 MiB log sitting at the umask default for the seconds the
+    // pipeline runs. The test below covers the end state; this covers the
+    // interval, and neither covers the other.
+    expect(/createWriteStream\(\s*partialPath,\s*\{[^}]*mode:\s*PRIVATE_FILE_MODE/.test(src),
+      'the compressor opens its file at the umask default').toBe(true);
     expect(src, 'a rotation must not recreate the file at the umask default')
       .toContain("fs.writeFileSync(basePath, '', { encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
     // Every directory this manager makes goes through the same helper.
     expect(/fs\.mkdirSync\([^)]*logs/.test(src), 'a log directory bypassed ensurePrivateDir').toBe(false);
+  });
+
+  it('a rotated, compressed log is private on disk', async () => {
+    // This was `expect(src).toContain('createWriteStream(gzPath, { mode: … })')`
+    // — the spelling of one call. It went red the day the compression started
+    // writing to a scratch name and renaming, which changed nothing about the
+    // mode and everything about the text. A source assertion fails for the
+    // refactor and passes for the leak: `chmod 0o644` a line later is still a
+    // literal match.
+    //
+    // The property is what the file on disk is, so that is what is asserted.
+    const { LogManager } = await import('../../src/monitoring/log-manager.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-logmode-'));
+    try {
+      const mgr = new LogManager(
+        { baseDir: dir, defaults: { maxSize: '1kb', maxFiles: 4, compress: true } },
+        undefined as never,
+      );
+      const live = path.join(dir, 'logs', 'demo', 'app.log');
+      fs.mkdirSync(path.dirname(live), { recursive: true });
+      fs.writeFileSync(live, JSON.stringify({ msg: 'a secret an application logged' }) + '\n');
+
+      mgr.rotateLog('demo', 'app');
+
+      const gz = `${live}.1.gz`;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && !fs.existsSync(gz)) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(fs.existsSync(gz), 'no compressed rotation appeared').toBe(true);
+
+      // 0o777 masks off the file-type bits; the rotated log must be readable
+      // by its owner and by nobody else.
+      expect(fs.statSync(gz).mode & 0o777).toBe(PRIVATE_FILE_MODE);
+      // And the fresh live file the rotation created in its place.
+      expect(fs.statSync(live).mode & 0o777).toBe(PRIVATE_FILE_MODE);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('the daemon state database is sealed on both open paths', () => {

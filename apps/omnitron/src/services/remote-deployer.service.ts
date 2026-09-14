@@ -53,6 +53,12 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { IStackNode } from '../config/types.js';
 import type { ArtifactInfo } from '../project/artifact-builder.js';
 import type { ExecutionService, SSHTarget } from '../execution/execution.service.js';
+import {
+  PLATFORM_PROBE,
+  parsePlatformProbe,
+  planProvisioning,
+  describePlan,
+} from './remote-provisioner.js';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -157,18 +163,32 @@ export function stackNodeToDeployTarget(node: IStackNode): DeployTarget {
   return target;
 }
 
-/** What an operator has authorised a provisioning run to change on a host. */
+/** What a provisioning run may do to a host. */
 export interface ProvisionOptions {
   /**
-   * Allow installing a Node.js runtime when the node has none.
+   * Allow the host's package manager to be used for missing tools. Default
+   * true — preparing a node is meant to be automatic.
    *
-   * Off by default. Installing one adds a vendor package repository and runs
-   * a package-manager install as root — a durable change to how the machine
-   * gets its software, on a machine that is very likely doing something else
-   * already.
+   * It is a much smaller permission than it was. The runtime itself now comes
+   * from nodejs.org as a tarball under omnitron's own prefix, so the package
+   * manager is reached only for `curl` and `tar` when a host has neither, and
+   * a host that has them is never touched by it at all.
    */
   installRuntime?: boolean;
+  /** Runtime version for a host that has none. Defaults to the pinned LTS. */
+  nodeVersion?: string;
 }
+
+/**
+ * How long a freshly provisioned slave has to answer.
+ *
+ * A daemon start is an application boot: a DI container, a module graph, a
+ * SQLite open. On a loaded host this is tens of seconds, and the old
+ * three-second sleep was shorter than the work by an order of magnitude.
+ */
+const SLAVE_START_TIMEOUT_MS = 120_000;
+/** How often it is asked, while it is starting. */
+const DAEMON_POLL_MS = 3_000;
 
 export type DeployStatus = 'pending' | 'transferring' | 'extracting' | 'restarting' | 'verifying' | 'success' | 'failed';
 
@@ -358,70 +378,67 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, '*', 'pending', 0, 'Connecting via SSH...');
       await this.verifySSH(target);
 
-      // 2. Ensure runtime (Node.js or Bun)
-      this.emitProgress(nodeKey, '*', 'extracting', 10, 'Checking runtime...');
-      // No `.catch(() => '')`. The remote command already answers "absent"
-      // with an empty string — that is what the `|| echo ""` is for — so
-      // swallowing an SSH failure here converts "could not ask the host"
-      // into "the host has no runtime", and the next line acts on it by
-      // running `curl | bash` and a package-manager install against a host
-      // that very likely already has Node. Step 1 above treats SSH failure
-      // as failure; so does the install below. These two probes were the
-      // only places that did not.
-      const hasNode = await this.sshExec(target, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""');
-      if (!hasNode.trim()) {
-        // Installing a runtime means adding a vendor's APT or YUM repository
-        // to the machine, importing its signing key, and running a
-        // package-manager install as root. That is a durable change to how the
-        // host gets its software, and it is not what an operator asked for
-        // when they asked for a slave.
-        //
-        // The machines this reaches are not blank. The host this path was
-        // first run against — a test box, offered as one — turned out to be
-        // running a Monero node, a Tor daemon and two VPN containers, with an
-        // uptime of 599 days. `curl … | bash -` as root on that is a decision
-        // with an owner, and the owner is not this function.
-        //
-        // So it asks. The message names the exact commands, because "enable
-        // installRuntime" without them is a checkbox rather than consent.
-        if (!options.installRuntime) {
-          this.logger.error(
-            { host: target.host },
-            'No Node.js or Bun on the node, and installing one was not authorised',
-          );
-          this.emitProgress(
-            nodeKey, '*', 'failed', 0,
-            `${target.host} has no Node.js or Bun. Installing one would add a vendor package repository ` +
-              `(nodesource) and run a package-manager install as root. Install a runtime yourself, or ` +
-              `re-run with installRuntime enabled to authorise that.`,
-          );
-          return false;
-        }
-        this.logger.warn(
-          { host: target.host },
-          'Installing Node.js on the remote node — this adds a vendor package repository',
-        );
-        this.emitProgress(nodeKey, '*', 'extracting', 15, 'Installing Node.js...');
-        try {
-          // Install Node.js via official installer (works on most Linux distros)
-          await this.sshExec(target, 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs 2>/dev/null || (curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - && yum install -y nodejs) 2>/dev/null || (apk add --no-cache nodejs npm)', 120_000);
-        } catch (err) {
-          this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to install Node.js');
-          return false;
-        }
+      // 2-3. Prepare the host: whatever it is, and whatever it is missing.
+      //
+      // This was two probes and a `||` chain of package-manager installs that
+      // only worked on three Linux families, added a vendor repository to the
+      // host as a side effect, and on failure reported the error from the
+      // LAST alternative — `apk` on a Debian machine that has never had it.
+      //
+      // Now the host is asked what it is in one round trip, a plan is derived
+      // from the answer, and the plan is a value: it can be logged before it
+      // runs and read in a test without a machine. See
+      // `remote-provisioner.ts` for what it decides and why.
+      this.emitProgress(nodeKey, '*', 'extracting', 10, 'Inspecting the host...');
+      const facts = parsePlatformProbe(await this.sshExec(target, PLATFORM_PROBE, 60_000));
+      const plan = planProvisioning(facts, {
+        ...(options.nodeVersion ? { nodeVersion: options.nodeVersion } : {}),
+        ...(options.installRuntime === false ? { usePackageManager: false } : {}),
+      });
+
+      this.logger.info(
+        {
+          host: target.host,
+          os: facts.os,
+          arch: facts.arch,
+          distro: facts.distro,
+          packageManager: facts.packageManager,
+          node: facts.node,
+          omnitron: facts.omnitron,
+          plan: describePlan(plan),
+        },
+        'Host inspected',
+      );
+
+      if (plan.refusal) {
+        this.logger.error({ host: target.host, reason: plan.refusal }, 'Cannot prepare this host');
+        this.emitProgress(nodeKey, '*', 'failed', 0, plan.refusal);
+        return false;
       }
 
-      // 3. Install omnitron
-      this.emitProgress(nodeKey, '*', 'extracting', 30, 'Installing omnitron...');
-      // As above: an unreachable host must not read as "omnitron is missing".
-      const hasOmnitron = await this.sshExec(target, 'which omnitron 2>/dev/null || echo ""');
-      if (!hasOmnitron.trim()) {
+      let progress = 15;
+      const stride = plan.steps.length > 0 ? Math.floor(30 / plan.steps.length) : 0;
+      for (const step of plan.steps) {
+        this.emitProgress(nodeKey, '*', 'extracting', progress, step.what);
+        if (step.touchesPackageManager) {
+          // Said at warning level: this is the one kind of step that changes
+          // how the machine gets its software, and the machines this reaches
+          // are not blank.
+          this.logger.warn({ host: target.host, step: step.what }, 'Using the host package manager');
+        }
         try {
-          await this.sshExec(target, 'npm install -g @omnitron-dev/omnitron', 120_000);
+          await this.sshExec(target, step.command, step.timeoutMs);
         } catch (err) {
-          this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to install omnitron');
+          // The step that failed, by name, rather than the last alternative's
+          // error message.
+          this.logger.error(
+            { host: target.host, step: step.what, error: (err as Error).message },
+            'Host preparation step failed',
+          );
+          this.emitProgress(nodeKey, '*', 'failed', progress, `${step.what}: ${(err as Error).message}`);
           return false;
         }
+        progress += stride;
       }
 
       // 4. Configure and start the slave, through omnitron's own setup path.
@@ -461,20 +478,38 @@ export class RemoteDeployer {
         );
       });
 
-      // 6. Wait briefly and verify daemon is running
+      // 6. Verify the daemon is running, and mean it.
+      //
+      // This slept three seconds, pinged once, and on `unreachable` logged
+      // "may still be starting" — then reported success regardless. Measured
+      // on the first real run: the start command failed with
+      // `omnitron: command not found`, the ping found nothing, and the
+      // function returned `true`. A caller that trusts that goes on to ship
+      // artifacts to a node with no daemon, and the console shows a node
+      // that was "provisioned" and answers nothing.
+      //
+      // A daemon that is starting will answer within the window; one that is
+      // not there will not answer within any window. Polling tells them
+      // apart, which one sample cannot.
       this.emitProgress(nodeKey, '*', 'verifying', 90, 'Verifying slave daemon...');
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      try {
-        const pingResult = await this.sshExec(target, 'omnitron ping 2>/dev/null || echo "unreachable"', 10_000);
-        if (pingResult.includes('unreachable')) {
-          this.logger.warn({ host: target.host }, 'Slave daemon not yet responding — may still be starting');
-        }
-      } catch {
-        this.logger.warn({ host: target.host }, 'Could not verify slave daemon — it may still be starting');
+      const started = await this.awaitDaemon(target, SLAVE_START_TIMEOUT_MS);
+      if (!started.ok) {
+        this.logger.error(
+          { host: target.host, waitedMs: SLAVE_START_TIMEOUT_MS, detail: started.detail },
+          'Slave daemon did not come up',
+        );
+        this.emitProgress(
+          nodeKey, '*', 'failed', 90,
+          `the slave daemon did not answer within ${Math.round(SLAVE_START_TIMEOUT_MS / 1000)}s: ${started.detail}`,
+        );
+        return false;
       }
 
-      this.emitProgress(nodeKey, '*', 'success', 100, 'Slave provisioned');
-      this.logger.info({ host: target.host, masterHost, masterPort }, 'Slave node provisioned');
+      this.emitProgress(nodeKey, '*', 'success', 100, `Slave provisioned — ${started.detail}`);
+      this.logger.info(
+        { host: target.host, masterHost, masterPort, daemon: started.detail },
+        'Slave node provisioned',
+      );
       return true;
     } catch (err) {
       this.emitProgress(nodeKey, '*', 'failed', 0, (err as Error).message);
@@ -486,6 +521,33 @@ export class RemoteDeployer {
   // ===========================================================================
   // Private — SSH Operations
   // ===========================================================================
+
+  /**
+   * Wait for the remote daemon to answer, or report why it did not.
+   *
+   * `omnitron ping` on the far side prints its pid, uptime and version when
+   * the daemon is up, and fails otherwise. The last failure is carried out of
+   * the loop so a caller can say what the host said rather than only that
+   * time ran out.
+   */
+  private async awaitDaemon(
+    target: DeployTarget,
+    timeoutMs: number,
+  ): Promise<{ ok: boolean; detail: string }> {
+    const deadline = Date.now() + timeoutMs;
+    let last = 'no answer';
+    while (Date.now() < deadline) {
+      try {
+        const answer = await this.sshExec(target, 'omnitron ping', 15_000);
+        if (answer) return { ok: true, detail: answer.split('\n').pop()!.trim() };
+        last = 'the ping printed nothing';
+      } catch (err) {
+        last = (err as Error).message;
+      }
+      await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_MS));
+    }
+    return { ok: false, detail: last };
+  }
 
   private async verifySSH(target: DeployTarget): Promise<void> {
     await this.sshExec(target, 'echo ok', 10_000);

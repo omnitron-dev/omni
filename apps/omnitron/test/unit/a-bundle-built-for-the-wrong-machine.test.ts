@@ -32,7 +32,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   planBundle,
-  resolveTarballNames,
+  bundleRootManifest,
   tarballNameFor,
   isWorkspaceRange,
   localVersion,
@@ -57,7 +57,7 @@ const core: PackageManifest = {
 };
 const util: PackageManifest = { name: '@acme/util', version: '0.5.0' };
 
-const planned = () => resolveTarballNames(planBundle('@acme/app', workspace(app, core, util)));
+const planned = () => planBundle('@acme/app', workspace(app, core, util));
 
 describe('what has to travel with the bundle', () => {
   it('follows workspace ranges through their own dependencies', () => {
@@ -72,10 +72,12 @@ describe('what has to travel with the bundle', () => {
   it('leaves registry dependencies alone', () => {
     // They resolve on the target, which is the point — that is where the
     // platform-specific ones get chosen for the right platform.
-    const rootManifest = planned().rewritten.get('@acme/app')!;
+    const root = bundleRootManifest(planned(), '1.0.0') as { dependencies: Record<string, string> };
 
-    expect(rootManifest.dependencies?.['kysely']).toBe('^0.29.5');
-    expect(rootManifest.dependencies?.['pg']).toBeUndefined();
+    expect(root.dependencies['kysely']).toBe('^0.29.5');
+    // `pg` belongs to a vendored package, not to the root, and an override
+    // does not pull it up.
+    expect(root.dependencies['pg']).toBeUndefined();
   });
 
   it('names each tarball by the version the workspace actually has', () => {
@@ -90,22 +92,37 @@ describe('what has to travel with the bundle', () => {
     ]);
   });
 
-  it('points every workspace range at its tarball', () => {
+  it('overrides every vendored package, including the indirect one', () => {
+    // An override replaces a resolution ANYWHERE in the tree, so the entry
+    // for `@acme/util` — which the root never names — is what redirects the
+    // reference inside `@acme/core`'s own tarball. `pnpm pack` turned that
+    // reference into a registry version, which is the copy this channel
+    // exists to avoid.
     const plan = planned();
 
-    expect(plan.rewritten.get('@acme/app')!.dependencies!['@acme/core']).toBe('file:./vendor/acme-core-2.1.0.tgz');
-    // A vendored package's own ranges are rewritten too — `@acme/core` still
-    // needs `@acme/util`, and `workspace:^` would reach npm unresolved.
-    expect(plan.rewritten.get('@acme/core')!.dependencies!['@acme/util']).toBe('file:../acme-util-0.5.0.tgz');
+    expect(plan.overrides).toEqual({
+      '@acme/core': 'file:./vendor/acme-core-2.1.0.tgz',
+      '@acme/util': 'file:./vendor/acme-util-0.5.0.tgz',
+    });
   });
 
-  it('leaves no workspace range anywhere in the bundle', () => {
-    // The property, stated once over everything, rather than per manifest:
-    // one missed range is one unresolvable install.
-    for (const manifest of planned().rewritten.values()) {
-      for (const [dep, range] of Object.entries(manifest.dependencies ?? {})) {
-        expect(isWorkspaceRange(range), `${manifest.name} → ${dep}`).toBe(false);
-      }
+  it('gives the root file: dependencies, not overrides alone', () => {
+    // An override redirects a resolution; a `workspace:*` range has no
+    // resolution to redirect, and npm rejects it before overrides are
+    // consulted. The root's own workspace deps have to be `file:` outright.
+    const root = bundleRootManifest(planned(), '1.0.0') as { dependencies: Record<string, string> };
+
+    expect(root.dependencies['@acme/core']).toBe('file:./vendor/acme-core-2.1.0.tgz');
+  });
+
+  it('leaves no workspace range anywhere in the root manifest', () => {
+    // One missed range is one unresolvable install.
+    const root = bundleRootManifest(planned(), '1.0.0') as {
+      dependencies: Record<string, string>; overrides: Record<string, string>;
+    };
+
+    for (const [dep, range] of Object.entries({ ...root.dependencies, ...root.overrides })) {
+      expect(isWorkspaceRange(range), dep).toBe(false);
     }
   });
 
@@ -143,11 +160,28 @@ describe('what has to travel with the bundle', () => {
       name: '@acme/app', version: '1.0.0',
       optionalDependencies: { '@acme/util': 'workspace:*' },
     };
-    const plan = resolveTarballNames(planBundle('@acme/app', workspace(withOptional, util)));
+    const plan = planBundle('@acme/app', workspace(withOptional, util));
 
     expect(plan.vendored.map((v) => v.name)).toEqual(['@acme/util']);
-    expect(plan.rewritten.get('@acme/app')!.optionalDependencies!['@acme/util'])
-      .toBe('file:./vendor/acme-util-0.5.0.tgz');
+    expect(plan.overrides['@acme/util']).toBe('file:./vendor/acme-util-0.5.0.tgz');
+  });
+});
+
+describe('the manifest the target installs from', () => {
+  it('carries the local version, not the workspace one', () => {
+    // The workspace says 0.2.0 and so does npm. A bundle that installed under
+    // the workspace's version would produce a node reporting a string that
+    // says nothing about which of the two it is running.
+    const root = bundleRootManifest(planned(), '1.0.0+local.abc.202609141900') as { version: string };
+
+    expect(root.version).toBe('1.0.0+local.abc.202609141900');
+  });
+
+  it('is private, because a bundle is not something to publish', () => {
+    // `npm install` in a directory whose manifest lacks `private` will
+    // happily proceed, but a stray `npm publish` there would push a package
+    // whose dependencies are file: paths that exist on one machine.
+    expect((bundleRootManifest(planned(), '1.0.0') as { private: boolean }).private).toBe(true);
   });
 });
 

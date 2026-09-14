@@ -137,3 +137,68 @@ describe('rotating with compression off', () => {
     expect(fs.existsSync(`${live}.1.gz`)).toBe(false);
   });
 });
+
+// =============================================================================
+// The `.gz` name must never name a partial file
+// =============================================================================
+
+describe('a rotated .gz is complete the moment it has that name', () => {
+  it('never appears as a truncated gzip member', async () => {
+    // `createWriteStream` creates its target when it opens, so compressing
+    // straight to `<log>.1.gz` published the name over an empty file and
+    // filled it in afterwards. Everything that reads rotated logs — this
+    // suite, `omnitron logs`, an operator with `gunzip` — sees that window,
+    // and what it sees is "unexpected end of file".
+    //
+    // The suite above waits for the file to EXIST, which is the natural thing
+    // to write and was true before the file was valid; it failed about one
+    // run in three on a loaded host and passed alone every time, which is how
+    // a race gets filed as flakiness.
+    //
+    // Polled hard rather than once: the window is however long the pipeline
+    // takes, and the assertion is that there is no window at all.
+    const base = tmpBase();
+    const mgr = manager(base, true);
+    const live = path.join(base, 'logs', 'demo', 'app.log');
+    fs.mkdirSync(path.dirname(live), { recursive: true });
+    // Big enough that compression is not instantaneous.
+    fs.writeFileSync(live, JSON.stringify({ msg: 'x'.repeat(64) }) + '\n'.repeat(1) .repeat(1) + Array.from(
+      { length: 40_000 },
+      (_, i) => JSON.stringify({ i, msg: 'the quick brown fox jumps over the lazy dog' }),
+    ).join('\n'));
+
+    mgr.rotateLog('demo', 'app');
+
+    const gz = `${live}.1.gz`;
+    const deadline = Date.now() + 5_000;
+    let sawIt = false;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(gz)) {
+        const raw = fs.readFileSync(gz);
+        // If the name exists, the bytes under it must be a whole member.
+        expect(() => gunzipSync(raw), 'the .gz name appeared over an incomplete file').not.toThrow();
+        sawIt = true;
+        break;
+      }
+      await new Promise((r) => setImmediate(r));
+    }
+
+    expect(sawIt, 'compression never produced a .gz').toBe(true);
+  });
+
+  it('leaves no scratch file behind', async () => {
+    // The shift loop reads the directory by name. A `.partial` left over
+    // would sit in a rotation slot's way.
+    const base = tmpBase();
+    const mgr = manager(base, true);
+    const live = path.join(base, 'logs', 'demo', 'app.log');
+    fs.mkdirSync(path.dirname(live), { recursive: true });
+    fs.writeFileSync(live, JSON.stringify({ msg: 'only line' }) + '\n');
+
+    mgr.rotateLog('demo', 'app');
+    await until(() => fs.existsSync(`${live}.1.gz`));
+
+    const leftovers = fs.readdirSync(path.dirname(live)).filter((f) => f.includes('.partial'));
+    expect(leftovers).toEqual([]);
+  });
+});

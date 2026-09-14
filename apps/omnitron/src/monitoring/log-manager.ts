@@ -357,14 +357,42 @@ export class LogManager {
     }
   }
 
+  /**
+   * Compress a rotated log, so that the `.gz` name never names a partial file.
+   *
+   * `createWriteStream` creates its target the moment it opens, so writing
+   * straight to `<log>.1.gz` published that name over an empty file and then
+   * filled it in. For as long as the pipeline ran — which on a 50 MiB log
+   * under load is not instant — anything reading rotated logs got a gzip
+   * member that ends in the middle: `gunzip` says "unexpected end of file",
+   * and `omnitron logs` reading a rotated file gets nothing back from it.
+   *
+   * Measured: the rotation test asserts the file exists and then gunzips it,
+   * which is the natural thing to write and the natural thing a reader does.
+   * It failed roughly one run in three on a loaded host — never in isolation,
+   * which is what made it look like flakiness rather than the race it is.
+   *
+   * Compressing to a temporary name and renaming makes the visible state
+   * binary: either `<log>.1.gz` is absent, or it is a complete member. Rename
+   * within a directory is atomic, so there is no third state to observe.
+   */
   async compressFile(filePath: string): Promise<void> {
     const gzPath = filePath + '.gz';
-    await pipeline(
-      createReadStream(filePath),
-      createGzip(),
-      createWriteStream(gzPath, { mode: PRIVATE_FILE_MODE }),
-    );
-    sealFile(gzPath);
+    const partialPath = `${gzPath}.partial`;
+    try {
+      await pipeline(
+        createReadStream(filePath),
+        createGzip(),
+        createWriteStream(partialPath, { mode: PRIVATE_FILE_MODE }),
+      );
+      sealFile(partialPath);
+      fs.renameSync(partialPath, gzPath);
+    } catch (err) {
+      // A failed compression must not leave its scratch file behind to be
+      // mistaken for a rotation slot by the shift loop above.
+      try { fs.unlinkSync(partialPath); } catch { /* never created */ }
+      throw err;
+    }
     fs.unlinkSync(filePath);
   }
 

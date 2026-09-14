@@ -79,6 +79,68 @@ function xmlEscape(s: string): string {
 }
 
 /**
+ * A value as systemd will read it.
+ *
+ * Two things a unit file does to a value that look like nothing:
+ *
+ * **`%` is a specifier, not a character.** systemd expands `%h`, `%i`, `%n`
+ * and the rest everywhere — `ExecStart=`, `Environment=`,
+ * `WorkingDirectory=`. Measured on a live Ubuntu host, 2026-09-14:
+ *
+ *     WorkingDirectory=/tmp/a%hb   →  /tmp/a/rootb
+ *     Environment=X=/opt/a%hb      →  X=/opt/a/rootb
+ *     Environment=X=/opt/a%%hb     →  X=/opt/a%hb
+ *
+ * It does not fail; it substitutes. `systemd-analyze verify` had nothing to
+ * say about that unit, which is worth knowing about what that check proves.
+ * `%%` is the literal.
+ *
+ * **Whitespace splits.** `Environment=` takes a LIST of assignments separated
+ * by spaces, so a value with one in it is read as an assignment plus
+ * rubbish — measured on the same host:
+ *
+ *     Environment=X=/opt/a b/c     →  X=/opt/a
+ *                                     "Invalid environment assignment, ignoring: b/c"
+ *     Environment="X=/opt/a b/c"   →  X=/opt/a b/c
+ *
+ * The quotes go around the WHOLE assignment, which is why this function
+ * returns the value and `environmentLine` below composes the line: quoting
+ * only the right-hand side is a different thing to systemd.
+ *
+ * Raised by a colleague from the documentation, who could not test it —
+ * macOS has no systemd — and asked for the measurement. Both predictions
+ * held.
+ */
+export function escapeSpecifiers(value: string): string {
+  return value.replace(/%/g, '%%');
+}
+
+/**
+ * A value for a directive that parses its argument as a LIST — `ExecStart=`'s
+ * command line, where whitespace separates arguments.
+ *
+ * Not every directive does. `WorkingDirectory=` takes one path and reads
+ * quotes as part of it; measured on the same host, quoting it produced
+ *
+ *     WorkingDirectory= path is not absolute: "/opt/my omnitron"
+ *     omni-escape-probe.service: Unit configuration has fatal error
+ *
+ * — a unit that will not start, from a fix for a value that did not need one.
+ * The escaping rule is per directive, and applying one rule to all of them
+ * trades a quiet defect for a loud one.
+ */
+export function unitValue(value: string): string {
+  const escaped = escapeSpecifiers(value);
+  return /\s/.test(escaped) ? `"${escaped}"` : escaped;
+}
+
+/** One `Environment=` line, quoted as a whole assignment when it needs to be. */
+export function environmentLine(name: string, value: string): string {
+  const assignment = `${name}=${value.replace(/%/g, '%%')}`;
+  return `Environment=${/\s/.test(assignment) ? `"${assignment}"` : assignment}`;
+}
+
+/**
  * A systemd unit.
  *
  * `--import tsx/esm` is in the ExecStart because project configs are
@@ -89,7 +151,7 @@ function xmlEscape(s: string): string {
  */
 export function renderSystemdUnit(inputs: UnitInputs): string {
   const exec = [inputs.execPath, '--import', 'tsx/esm', inputs.entryPath]
-    .map((a) => (a.includes(' ') ? `"${a}"` : a))
+    .map(unitValue)
     .join(' ');
 
   const system = inputs.scope === 'system';
@@ -106,23 +168,33 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
     '[Service]',
     'Type=simple',
     `ExecStart=${exec}`,
-    `WorkingDirectory=${inputs.workdir}`,
+    // Escaped, not quoted: this directive takes a single path and would
+    // read the quotes as part of it.
+    `WorkingDirectory=${escapeSpecifiers(inputs.workdir)}`,
   ];
 
   if (system && id) {
     // The daemon does not run as root. See the note at the top of this file:
     // its unix socket is the authentication check.
     lines.push(`User=${id.user}`, `Group=${id.user}`);
-    // systemd derives HOME from the account for `User=`, but only in recent
-    // versions and only when PAM is not in play. `os.homedir()` decides where
-    // `~/.omnitron` is — the socket, the state database, the secrets — so it
-    // is stated rather than inferred.
-    lines.push(`Environment=HOME=${id.home}`);
+    // HOME is stated, not inferred, and the reason is HOW it breaks rather
+    // than which systemd version derives it.
+    //
+    // `os.homedir()` decides where `~/.omnitron` is: the socket, the state
+    // database, the secrets. Get it wrong and nothing fails — the daemon
+    // creates a SECOND one and runs happily, while every client dials a
+    // socket that is not there. A silent divergence, for the value the local
+    // trust boundary is drawn around.
+    //
+    // PAM does not participate here: a service opens a PAM session only with
+    // `PAMName=`, and this unit does not set one. If somebody adds it, this
+    // decision needs revisiting — PAM can set HOME itself.
+    lines.push(environmentLine('HOME', id.home));
   }
 
   lines.push(
-    `Environment=OMNITRON_CWD=${inputs.workdir}`,
-    `Environment=PATH=${inputs.path}`,
+    environmentLine('OMNITRON_CWD', inputs.workdir),
+    environmentLine('PATH', inputs.path),
     'Restart=on-failure',
     'RestartSec=10',
     'TimeoutStopSec=30',

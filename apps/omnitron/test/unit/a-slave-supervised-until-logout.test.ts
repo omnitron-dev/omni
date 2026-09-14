@@ -138,6 +138,66 @@ describe('the systemd unit', () => {
   });
 });
 
+describe('values systemd reads differently than they were written', () => {
+  it('escapes a percent, which is a specifier and not a character', () => {
+    // Measured on a live Ubuntu host: `WorkingDirectory=/tmp/a%hb` became
+    // `/tmp/a/rootb`, and `systemd-analyze verify` had nothing to say about
+    // it. It does not fail — it substitutes.
+    const unit = renderSystemdUnit(inputs({ workdir: '/opt/om%hnitron', path: '/usr/%ibin' }));
+
+    expect(unit).toContain('WorkingDirectory=/opt/om%%hnitron');  // escaped, not quoted
+    expect(unit).toContain('/usr/%%ibin');
+    // And no bare specifier survives anywhere in the file.
+    expect(unit).not.toMatch(/(^|[^%])%[a-zA-Z]/m);
+  });
+
+  it('quotes an Environment value containing a space, as a whole assignment', () => {
+    // `Environment=` takes a LIST separated by spaces. Measured:
+    // `Environment=X=/opt/a b/c` → `X=/opt/a` plus "Invalid environment
+    // assignment, ignoring: b/c". The quotes must wrap `X=...`, not just the
+    // value — they are different things to systemd.
+    const unit = renderSystemdUnit(inputs({ path: '/opt/my tools/bin:/usr/bin' }));
+
+    expect(unit).toContain('Environment="PATH=/opt/my tools/bin:/usr/bin"');
+    expect(unit).not.toContain('Environment=PATH="');
+  });
+
+  it('quotes the HOME it sets, but NOT the working directory', () => {
+    // The rule is per directive, and measuring found this. `Environment=`
+    // parses a list, so an assignment with a space must be quoted whole.
+    // `WorkingDirectory=` takes one path and reads the quotes as part of it:
+    //
+    //     WorkingDirectory= path is not absolute: "/opt/my omnitron"
+    //     omni-escape-probe.service: Unit configuration has fatal error
+    //
+    // A fix applied uniformly traded a quiet defect for a unit that will not
+    // start at all.
+    const unit = renderSystemdUnit(inputs({
+      workdir: '/opt/my omnitron',
+      identity: { user: 'omni', home: '/home/o mni' },
+    }));
+
+    expect(unit).toContain('WorkingDirectory=/opt/my omnitron');
+    expect(unit).not.toContain('WorkingDirectory="');
+    expect(unit).toContain('Environment="HOME=/home/o mni"');
+  });
+
+  it('leaves ordinary values unquoted', () => {
+    // Quoting everything would work and would make every unit harder to
+    // read; the cost of a rule is the units a human has to scan.
+    const unit = renderSystemdUnit(inputs());
+
+    expect(unit).toContain('Environment=PATH=/usr/local/bin:/usr/bin:/bin');
+    expect(unit).toContain('WorkingDirectory=/opt/omnitron/lib');
+  });
+
+  it('escapes the ExecStart, which is expanded the same way', () => {
+    const unit = renderSystemdUnit(inputs({ entryPath: '/opt/om%nitron/entry.js' }));
+
+    expect(unit).toContain('/opt/om%%nitron/entry.js');
+  });
+});
+
 describe('the launchd job', () => {
   it('names the account for a LaunchDaemon, which otherwise runs as root', () => {
     const plist = renderLaunchdPlist(inputs({ scope: 'system' }));

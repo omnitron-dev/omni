@@ -27,7 +27,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { fleetBindHostFor, consoleBindHostFor, resolveBindHost } from '../../src/daemon/daemon.js';
+import {
+  fleetBindHostFor, consoleBindHostFor, resolveBindHost, effectiveBindHost,
+} from '../../src/daemon/daemon.js';
 
 describe('a slave binds where it can be reached', () => {
   it('defaults to every interface, because being reachable is its purpose', () => {
@@ -45,6 +47,25 @@ describe('a slave binds where it can be reached', () => {
     // the operator is sitting at, and publishing it is their decision.
     expect(fleetBindHostFor({ role: 'master' })).toBe('127.0.0.1');
     expect(fleetBindHostFor({})).toBe(resolveBindHost(undefined));
+  });
+
+  it('decides from what was configured, not from what was defaulted', () => {
+    // The rule above is correct and, applied to a RUNNING config, cannot
+    // fire: by then `host` has been filled in from the defaults, so "unset"
+    // and "127.0.0.1, deliberately" look identical. Measured on a
+    // provisioned slave before this existed:
+    //
+    //     LISTEN 127.0.0.1:9700   ← the fleet port no master can dial
+    //
+    // Only the saved file distinguishes them, so that is what is asked.
+    expect(effectiveBindHost({ role: 'slave' })).toBe('0.0.0.0');
+    expect(effectiveBindHost({ role: 'slave', host: '127.0.0.1' })).toBe('127.0.0.1');
+    expect(effectiveBindHost({ role: 'slave', host: '10.0.0.5' })).toBe('10.0.0.5');
+  });
+
+  it('leaves a master, and an unconfigured daemon, on the default', () => {
+    expect(effectiveBindHost({ role: 'master' })).toBe('127.0.0.1');
+    expect(effectiveBindHost(null)).toBe('127.0.0.1');
   });
 
   it('publishes the fleet port without publishing the console', () => {

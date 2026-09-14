@@ -53,7 +53,6 @@
   "dependencies": {
     "@kysera/audit": "^0.10.0",
     "@kysera/core": "^0.10.0",
-    "@kysera/dal": "^0.10.0",
     "@kysera/dialects": "^0.10.0",
     "@kysera/executor": "^0.10.0",
     "@kysera/infra": "^0.10.0",

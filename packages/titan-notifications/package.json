@@ -29,8 +29,6 @@
   },
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
-    "@omnitron-dev/eventemitter": "workspace:*",
-    "handlebars": "^4.7.9",
     "ioredis": "^5.11.1",
     "minimatch": "^10.2.6",
     "msgpackr": "^2.1.0",
@@ -60,6 +58,7 @@
     }
   },
   "devDependencies": {
+    "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",
     "@omnitron-dev/titan-events": "workspace:*",
     "@omnitron-dev/titan-redis": "workspace:*",

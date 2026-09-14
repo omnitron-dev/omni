@@ -107,7 +107,6 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/cuid": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/msgpack": "workspace:*",

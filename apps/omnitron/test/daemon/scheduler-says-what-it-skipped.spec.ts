@@ -22,7 +22,7 @@ const recordingLogger = () => {
   return { logger: logger as never, lines };
 };
 
-const run = (present: { auth?: boolean; alert?: boolean; fleet?: boolean }) => {
+const run = (present: { auth?: boolean; alert?: boolean; fleet?: boolean; sync?: boolean }) => {
   const { logger, lines } = recordingLogger();
   const scheduler = { addInterval: vi.fn() } as never;
   registerDaemonJobs(scheduler, {
@@ -34,6 +34,8 @@ const run = (present: { auth?: boolean; alert?: boolean; fleet?: boolean }) => {
     fleetService: present.fleet ? ({ heartbeat: vi.fn(), selfNodeId: 'n1' } as never) : null,
     logManager: { checkRotation: vi.fn() } as never,
     infraService: null,
+    // Present only on a slave: a master has no master to replicate to.
+    syncService: present.sync ? ({ bufferBatch: vi.fn() } as never) : null,
     metricsInterval: 1000,
     healthCheckInterval: 1000,
   });
@@ -48,20 +50,38 @@ describe('daemon job registration', () => {
     expect(registered?.ctx['jobs']).toEqual(['metrics-collection', 'log-rotation']);
 
     const missing = lines.find((l) => l.msg.includes('not registered'));
-    expect(missing, 'three jobs silently did not register').toBeDefined();
+    expect(missing, 'four jobs silently did not register').toBeDefined();
     const skipped = missing?.ctx['skipped'] as Array<{ job: string; because: string }>;
     expect(skipped.map((s) => s.job)).toEqual([
       'session-cleanup',
       'alert-evaluation',
       'fleet-heartbeat',
+      'metrics-replication',
     ]);
     expect(skipped[0]?.because, 'a reader has to know WHY it is absent').toMatch(/requires PG/);
   });
 
-  it('says nothing extra when every job registered', () => {
-    const lines = run({ auth: true, alert: true, fleet: true });
+  it('registers metrics replication only where there is a master to ship to', () => {
+    // The job that fills the replication pipeline. `SyncService.bufferBatch`
+    // had zero callers, so a slave collected metrics and shipped none of
+    // them — and an empty buffer drains successfully every cycle, so nothing
+    // reported the gap. Registering it on a MASTER would be equally silent
+    // and equally wrong: there is nowhere to send.
+    const asSlave = run({ sync: true });
+    expect(asSlave.find((l) => l.msg.includes('jobs registered'))?.ctx['jobs'])
+      .toContain('metrics-replication');
 
-    expect(lines.find((l) => l.msg.includes('jobs registered'))?.ctx['jobs']).toHaveLength(5);
+    const asMaster = run({ auth: true, alert: true, fleet: true });
+    const skipped = asMaster.find((l) => l.msg.includes('not registered'))?.ctx['skipped'] as
+      Array<{ job: string; because: string }>;
+    expect(skipped.map((s) => s.job)).toEqual(['metrics-replication']);
+    expect(skipped[0]?.because).toMatch(/no master to replicate to/);
+  });
+
+  it('says nothing extra when every job registered', () => {
+    const lines = run({ auth: true, alert: true, fleet: true, sync: true });
+
+    expect(lines.find((l) => l.msg.includes('jobs registered'))?.ctx['jobs']).toHaveLength(6);
     expect(
       lines.find((l) => l.msg.includes('not registered')),
       'a complete registration should not report a gap'

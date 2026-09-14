@@ -7,6 +7,7 @@
  *   - Alert evaluation (30s) — master only
  *   - Fleet heartbeat sweep (30s) — master only
  *   - Log rotation check (60s)
+ *   - Metrics replication (configurable) — slave only
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -18,6 +19,7 @@ import type { FleetService } from '../services/fleet.service.js';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { SchedulerService } from '@omnitron-dev/titan-scheduler';
+import type { SyncService } from '../services/sync.service.js';
 
 export function registerDaemonJobs(
   scheduler: SchedulerService,
@@ -30,11 +32,13 @@ export function registerDaemonJobs(
     fleetService: FleetService | null;
     logManager: LogManager;
     infraService: InfrastructureService | null;
+    /** Slave-side replication. Null on a master — there is no master to ship to. */
+    syncService: SyncService | null;
     metricsInterval: number;
     healthCheckInterval: number;
   }
 ): void {
-  const { logger, orchestrator, authService, metricsService, alertService, fleetService, logManager } = deps;
+  const { logger, orchestrator, authService, metricsService, alertService, fleetService, logManager, syncService } = deps;
   const jobs: string[] = [];
   // Three of the five jobs below register only when an optional service is
   // present — all of them "master only, requires PG". The log line at the end
@@ -127,6 +131,73 @@ export function registerDaemonJobs(
     }
   });
   jobs.push('log-rotation');
+
+  // Metrics replication — slave only.
+  //
+  // A slave records its metrics into the same titan-metrics storage a master
+  // uses, and shipped **none** of them: `SyncService.buffer`/`bufferBatch`
+  // had zero callers, so the whole replication path — WAL, backoff, the
+  // master's dedup ledger — moved nothing. This is the producer it lacked.
+  //
+  // The samples are read back out of local storage rather than intercepted at
+  // record time. That reuses one store instead of teeing every call site into
+  // a second, and it means only samples that were actually PERSISTED locally
+  // are replicated — the master cannot end up holding a reading this node
+  // does not.
+  //
+  // The watermark, and what it does NOT promise. titan-metrics buffers
+  // samples and flushes them on its own timer, so a sample stamped T becomes
+  // queryable some time after T. Advancing the watermark to "now" would skip
+  // everything still in that buffer. So the cutoff trails real time by
+  // `REPLICATION_LAG_MS`, and the watermark never moves past it. A sample
+  // that takes longer than the lag to become queryable is NOT replicated:
+  // this is at-most-once past the lag, not exactly-once, and it is written
+  // down because the alternative — re-reading an overlapping window — would
+  // duplicate rows on the master, whose ledger keys on the buffer entry id
+  // and not on (name, app, labels, timestamp).
+  if (syncService) {
+    const REPLICATION_LAG_MS = Math.max(3 * deps.metricsInterval, 30_000);
+    let watermark = Date.now() - REPLICATION_LAG_MS;
+
+    scheduler.addInterval('metrics-replication', Math.max(deps.metricsInterval, 10_000), async () => {
+      const cutoff = Date.now() - REPLICATION_LAG_MS;
+      if (cutoff <= watermark) return;
+
+      try {
+        const series = await metricsService.querySeries({ from: watermark, to: cutoff });
+        const entries = series.flatMap((serie) =>
+          serie.points
+            .filter((point) => point.timestamp > watermark && point.timestamp <= cutoff)
+            .map((point) => ({
+              category: 'metrics' as const,
+              payload: {
+                name: serie.name,
+                app: serie.app,
+                labels: serie.labels,
+                value: point.value,
+                timestamp: point.timestamp,
+              },
+            })),
+        );
+
+        if (entries.length > 0) await syncService.bufferBatch(entries);
+        // Advanced only after the batch is buffered. A throw leaves the
+        // watermark where it was, so the next tick re-reads the same window
+        // rather than stepping over it — the one case where re-reading is
+        // right, because nothing was queued.
+        watermark = cutoff;
+        if (entries.length > 0) logger.debug({ count: entries.length }, 'Queued metric samples for the master');
+      } catch (err) {
+        logger.error(
+          { error: (err as Error).message, since: new Date(watermark).toISOString() },
+          'Metrics replication tick failed — samples since this point have not been queued',
+        );
+      }
+    });
+    jobs.push('metrics-replication');
+  } else {
+    skipped.push({ job: 'metrics-replication', because: 'master role — no master to replicate to' });
+  }
 
   logger.info({ jobs }, 'Daemon scheduler jobs registered');
   if (skipped.length > 0) {

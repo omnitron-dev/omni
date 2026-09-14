@@ -98,6 +98,27 @@ export class LogCollectorService extends EventEmitter {
   private ingestedTotal = 0;
   private droppedTotal = 0;
 
+  /**
+   * Where persisted batches also go, on a slave.
+   *
+   * A slave keeps its logs locally and replicates them to the master; the
+   * replication half was fully built — a WAL, a dedup ledger on the master,
+   * backoff, eviction — and `SyncService.buffer`/`bufferBatch` had **zero
+   * callers**. Everything downstream of them worked and moved nothing,
+   * because nothing upstream ever enqueued. This is the missing producer.
+   *
+   * A sink rather than a constructor dependency, for the reason the
+   * retention setter below gives: this service is registered with `useClass`
+   * and takes the database as its only injected argument, and adding a
+   * second is a change to module wiring that fails at runtime rather than at
+   * compile time.
+   *
+   * Set only on a slave. `bufferBatch` is itself a no-op for any other role,
+   * so a mis-wire costs nothing, but not wiring it on a master also avoids
+   * the work.
+   */
+  private syncSink: ((entries: LogEntry[]) => void) | null = null;
+
   private retentionTimer: NodeJS.Timeout | null = null;
   /** Days of history to keep in the table. Zero or less disables pruning. */
   private retentionDays = 0;
@@ -128,6 +149,18 @@ export class LogCollectorService extends EventEmitter {
    * would be a policy decision made in the wrong place — and a wrong one
    * deletes an operator's history.
    */
+  /**
+   * Replicate persisted batches to the master (slave role only).
+   *
+   * Called with the entries that REACHED the table, not the ones that were
+   * offered: a flush that fails puts its batch back at the front of the
+   * buffer and retries, and queueing on the attempt would send every retried
+   * line twice.
+   */
+  setSyncSink(sink: ((entries: LogEntry[]) => void) | null): void {
+    this.syncSink = sink;
+  }
+
   setRetentionDays(days: number, logger?: LogCollectorService['logger']): void {
     this.retentionDays = days;
     if (logger) this.logger = logger;
@@ -539,6 +572,23 @@ export class LogCollectorService extends EventEmitter {
       }));
 
       await this.db.insertInto('logs').values(rows).execute();
+
+      // After the write, never instead of it: what the master receives is
+      // what this node actually holds. Guarded because a sink that throws
+      // must not turn a successful flush into a failed one — the batch is
+      // already persisted and re-queueing it would duplicate the rows.
+      if (this.syncSink) {
+        try {
+          // The BATCH, not `rows`. `rows` has `labels`/`metadata` already
+          // serialised for this table, and the master's `ingestLog`
+          // serialises what it is given — so shipping rows would store
+          // `"{\"a\":1}"` as a label object on the other side. `LogEntry`
+          // is the unencoded shape both ends already agree on.
+          this.syncSink(batch);
+        } catch (err) {
+          this.emit('sync_error', err);
+        }
+      }
 
       if (this.droppedSinceFlush > 0) {
         this.emit('dropped', this.droppedSinceFlush);

@@ -748,6 +748,57 @@ export class OmnitronDaemon {
       syncDb = await container.resolveAsync(OMNITRON_DB_TOKEN);
     }
     this.syncService = new SyncService(syncDb, loggerModule.logger.child({ component: 'sync' }), syncNodeId, dc.role, dc.sync);
+
+    // Remote metrics into the store the console actually reads.
+    //
+    // `ingestMetric` wrote them to `metrics_raw`, and nothing in this
+    // repository reads that table — the metrics page queries titan-metrics'
+    // own storage. So once the pipeline carried anything, it would have
+    // carried it somewhere invisible. Recording through the same service the
+    // master uses for its own readings makes a remote node a LABEL on the
+    // existing series instead of a second store of the same concept.
+    //
+    // `node` is a distinct argument in the sink's signature rather than a
+    // key a caller may forget to put in `labels`: a sample recorded without
+    // it merges with the master's own, and the chart then shows two machines
+    // summed under one name.
+    if (!isSlave) {
+      const syncMetrics = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
+      this.syncService.setMetricsSink((sample) => {
+        try {
+          syncMetrics.recordTyped('gauge', sample.name, { ...sample.labels, app: sample.app, node: sample.node }, sample.value);
+        } catch (err) {
+          loggerModule.logger.warn(
+            { node: sample.node, name: sample.name, error: (err as Error).message },
+            'Failed to record a replicated metric',
+          );
+        }
+      });
+    }
+
+    // The producer the replication pipeline never had.
+    //
+    // `SyncService` buffers, batches, retries with backoff, evicts when over
+    // budget, and the master keeps a dedup ledger for what it has taken —
+    // all of it built, and `buffer`/`bufferBatch` had ZERO callers. A slave
+    // collected its logs into its own SQLite and replicated none of them,
+    // and nothing said so: an empty buffer drains successfully every cycle.
+    //
+    // Wired only for a slave. `bufferBatch` is a no-op for any other role,
+    // so this is belt and braces rather than the guard itself — but a master
+    // has no master to ship to, and doing the work would be pure cost.
+    if (isSlave) {
+      const syncService = this.syncService;
+      logCollector.setSyncSink((entries) => {
+        void syncService
+          .bufferBatch(entries.map((e) => ({ category: 'logs' as const, payload: e as unknown as Record<string, unknown> })))
+          .catch(() => {
+            // `bufferBatch` logs its own failure. Swallowed here because the
+            // lines are already in the local table: losing the replica copy
+            // must not cost the flush that succeeded.
+          });
+      });
+    }
     const syncRpcService = new SyncRpcService(this.syncService);
     await this.app.netron.peer.exposeService(syncRpcService);
 
@@ -1397,6 +1448,10 @@ export class OmnitronDaemon {
         fleetService,
         logManager,
         infraService: this.infraService,
+        // Only a slave replicates. `bufferBatch` is itself a no-op for any
+        // other role, but passing null keeps the job from registering at all
+        // and makes the scheduler's own "skipped, because" line say so.
+        syncService: isSlave ? this.syncService : null,
         metricsInterval: config.monitoring.metrics.interval,
         healthCheckInterval: config.monitoring.healthCheck.interval,
       });

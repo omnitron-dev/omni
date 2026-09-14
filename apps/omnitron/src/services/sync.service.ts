@@ -56,6 +56,21 @@ import {
 
 export type SyncCategory = 'metrics' | 'logs' | 'events' | 'alerts' | 'traces' | 'state';
 
+/**
+ * Records one ingested remote metric into the store the console reads.
+ *
+ * `node` is separate from `labels` in the signature so it cannot be left out
+ * by a caller building the label map — which is the failure this exists to
+ * prevent.
+ */
+export type MetricsSink = (sample: {
+  node: string;
+  name: string;
+  app: string;
+  labels: Record<string, string>;
+  value: number;
+}) => void;
+
 export interface SyncEntry {
   category: SyncCategory;
   payload: Record<string, unknown>;
@@ -120,6 +135,9 @@ interface ResolvedSyncConfig {
 }
 
 export class SyncService {
+  /** Set on a master; see `setMetricsSink`. */
+  private metricsSink: MetricsSink | null = null;
+
   private readonly config: ResolvedSyncConfig;
   private syncTimer: NodeJS.Timeout | null = null;
   private isSyncing = false;
@@ -248,8 +266,28 @@ export class SyncService {
         payload: JSON.stringify(entry.payload),
       }).execute();
     } catch (err) {
-      this.logger.warn({ category: entry.category, error: (err as Error).message }, 'Failed to buffer sync entry');
+      this.logger.error(
+        { nodeId: this.nodeId, category: entry.category, error: (err as Error).message },
+        'Failed to buffer sync entry — it will not reach the master',
+      );
     }
+  }
+
+  /**
+   * Where ingested remote metrics are recorded, on a master.
+   *
+   * Set by the daemon to `MetricsService.recordTyped`. Without it, remote
+   * metrics only reach `metrics_raw` — a table nothing in this repository
+   * reads, and the console's charts query titan-metrics storage instead. A
+   * remote node's readings would arrive, persist, and be invisible.
+   *
+   * A sink rather than a constructor dependency: this service is built by
+   * hand in `daemon.ts` with five positional arguments, and a sixth is a
+   * change every caller has to get right at runtime rather than at compile
+   * time.
+   */
+  setMetricsSink(sink: MetricsSink | null): void {
+    this.metricsSink = sink;
   }
 
   /**
@@ -269,7 +307,14 @@ export class SyncService {
         }))
       ).execute();
     } catch (err) {
-      this.logger.warn({ count: entries.length, error: (err as Error).message }, 'Failed to buffer sync batch');
+      // ERROR, with the node and the size. A buffer that refuses is data
+      // this node will never replicate, and on the master it looks exactly
+      // like a node that had nothing to say — someone reads an empty screen
+      // and draws a conclusion about the system rather than about the pipe.
+      this.logger.error(
+        { nodeId: this.nodeId, count: filteredEntries.length, category: filteredEntries[0]?.category, error: (err as Error).message },
+        'Failed to buffer sync batch — these entries will not reach the master',
+      );
     }
   }
 
@@ -555,6 +600,17 @@ export class SyncService {
       throw new Error('Only master daemon can receive sync batches');
     }
 
+    // A batch has to say which node it came from, and this is the only place
+    // that can insist. Everything downstream labels the data with `nodeId`:
+    // logs are stored under it, and metrics are recorded with it as a label
+    // that separates this node's readings from the master's own. An empty or
+    // missing value does not fail there — it quietly merges two machines into
+    // one, and a chart then shows the sum of both under a single name.
+    // Refused by name rather than defaulted.
+    if (typeof batch.nodeId !== 'string' || batch.nodeId.trim() === '') {
+      throw new Error('Sync batch rejected: `nodeId` is required and must be a non-empty string.');
+    }
+
     // Rate limiting — prevent flood from misbehaving slaves
     if (!this.checkRateLimit(batch.nodeId)) {
       throw new Error(`Rate limit exceeded for node ${batch.nodeId}. Max ${RATE_LIMIT_PER_MINUTE} batches/min.`);
@@ -679,7 +735,32 @@ export class SyncService {
   // Master-Side: Data Ingestion
   // ===========================================================================
 
+  /**
+   * Store one remote metric sample.
+   *
+   * Two destinations while the second is being proven. `metrics_raw` is where
+   * this always went — and nothing in this repository reads that table, so a
+   * connected pipeline would have filled it invisibly. The sink records the
+   * same sample into titan-metrics, which is what the console's `getSnapshot`
+   * and `querySeries` actually read, tagged with `node` so a remote reading
+   * is a label dimension rather than a second table.
+   *
+   * The `metrics_raw` write stays until the console is observed showing the
+   * label. Removing the old path before the new one is seen working is how
+   * you end up with neither.
+   */
   private async ingestMetric(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
+    if (this.metricsSink) {
+      const labels = (entry.payload['labels'] ?? {}) as Record<string, string>;
+      this.metricsSink({
+        node: nodeId,
+        name: String(entry.payload['name'] ?? 'unknown'),
+        app: String(entry.payload['app'] ?? 'unknown'),
+        labels,
+        value: Number(entry.payload['value'] ?? 0),
+      });
+    }
+
     await db.insertInto('metrics_raw').values({
       timestamp: entry.createdAt,
       nodeId,

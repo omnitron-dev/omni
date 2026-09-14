@@ -30,7 +30,7 @@
  * the same rule the periodic sweep applies.
  */
 
-import { execSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { isProcessAlive } from '@omnitron-dev/titan/utils';
@@ -69,7 +69,7 @@ export interface ProcessJanitorOptions {
    * shells out to `ps -eo pid,ppid,args` and filters for fork-worker
    * paths.
    */
-  readonly listProcesses?: () => readonly PsRow[];
+  readonly listProcesses?: () => readonly PsRow[] | Promise<readonly PsRow[]>;
   /**
    * Override for the liveness probe (tests). Real implementation
    * uses `process.kill(pid, 0)`.
@@ -101,7 +101,7 @@ export class ProcessJanitor {
   private readonly logger: ILogger | undefined;
   private readonly onMetrics: ((m: JanitorSweepMetrics) => void) | undefined;
   private readonly getOwnedPids: () => ReadonlySet<number>;
-  private readonly listProcesses: () => readonly PsRow[];
+  private readonly listProcesses: () => readonly PsRow[] | Promise<readonly PsRow[]>;
   private readonly isAlive: (pid: number) => boolean;
 
   private timer: NodeJS.Timeout | null = null;
@@ -128,7 +128,7 @@ export class ProcessJanitor {
    */
   async coldStartSweep(): Promise<number> {
     const myPid = process.pid;
-    const all = this.listProcesses();
+    const all = await this.listProcesses();
     // A foreign parent is not evidence of a dead one.
     //
     // This read `row.ppid !== myPid` — reap anything not parented by ME —
@@ -145,7 +145,27 @@ export class ProcessJanitor {
     // other parent — not ours, leave alone". The two halves of one janitor
     // disagreed about what an orphan is, and only the cheap half ran at the
     // moment nothing else was there to object.
-    const stale = all.filter((row) => row.ppid !== myPid && !this.isAlive(row.ppid));
+    //
+    // But `!isAlive(ppid)` cannot answer the question this sweep exists for.
+    // When a parent dies its children are REPARENTED — to launchd on macOS,
+    // to init or a subreaper on Linux — so an orphan's `ppid` becomes 1, and
+    // pid 1 is alive on every running system. The test therefore returned
+    // `false` for precisely the processes the docblock above promises to
+    // kill, and the sweep could not reap a single one of them.
+    //
+    // Measured 2026-09-14, minutes after a daemon restart: seven
+    // `fork-worker.js` processes with `ppid = 1`, the oldest four and a half
+    // hours old, still holding their TCP ports. Their supervised replacements
+    // could not bind, failed to start, burned their whole restart budget on
+    // `EADDRINUSE` and gave up — so the console reported the APPLICATIONS as
+    // crashed, and the cause was the supervisor's own leftovers. They also
+    // ignored SIGTERM and needed SIGKILL, which is what `reap` already does.
+    //
+    // `ppid === REAPER_PID` is the orphan signature, and it is the one case
+    // where "not my child" really is evidence of a dead parent.
+    const stale = all.filter(
+      (row) => row.ppid !== myPid && (row.ppid === REAPER_PID || !this.isAlive(row.ppid)),
+    );
 
     if (stale.length === 0) {
       this.logger?.debug?.({ scanned: all.length }, 'janitor: cold start — no stale fork-workers');
@@ -190,7 +210,7 @@ export class ProcessJanitor {
   /** Run one sweep on demand. Useful for tests and manual triggering. */
   async runSweep(): Promise<JanitorSweepMetrics> {
     const owned = this.getOwnedPids();
-    const all = this.listProcesses();
+    const all = await this.listProcesses();
     const myPid = process.pid;
 
     const orphans = all.filter((row) => {
@@ -240,43 +260,124 @@ export class ProcessJanitor {
    * Returns the number of pids successfully terminated (including
    * those killed forcefully).
    */
+  /**
+   * SIGTERM, a grace period, then SIGKILL for whatever is still there.
+   *
+   * Three things this used to get wrong, and all three were invisible:
+   *
+   *  - **A process was counted twice.** One that answered `ESRCH` to SIGTERM
+   *    (already gone) scored a success, and then scored a second one in the
+   *    SIGKILL pass for not being alive. `Math.min(success, pids.length)` at
+   *    the end hid it — for the BATCH, not per process: one double-count plus
+   *    one process that genuinely refused to die still clamped to "all
+   *    reaped". A clamp is not a count.
+   *  - **SIGKILL was assumed to have worked.** Success was recorded when the
+   *    signal was SENT. A process that does not die is exactly the one worth
+   *    knowing about, and it was the one that reported success.
+   *  - **The escalation was silent.** Measured 2026-09-14: every orphan
+   *    holding a port ignored SIGTERM and needed SIGKILL. "Died politely" and
+   *    "had to be killed" produced identical logs, so the fact that these
+   *    processes do not respond to TERM could not be learned from the record.
+   */
   private async reap(pids: number[]): Promise<number> {
-    let success = 0;
+    const pending: number[] = [];
+
     for (const pid of pids) {
       try {
         process.kill(pid, 'SIGTERM');
+        pending.push(pid);
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
-        if (e.code === 'ESRCH') {
-          // Already gone — count as success.
-          success += 1;
-        } else {
+        if (e.code !== 'ESRCH') {
+          // Not "already gone" — a permission problem, most likely. It will
+          // not die on SIGKILL either, so it is not pending.
           this.logger?.warn?.({ pid, err }, 'janitor: SIGTERM failed');
         }
       }
     }
+
+    if (pending.length === 0) return pids.length;
+
     await wait(this.gracefulMs);
-    for (const pid of pids) {
-      if (!this.isAlive(pid)) {
-        success += 1;
-        continue;
-      }
+
+    const stubborn = pending.filter((pid) => this.isAlive(pid));
+    if (stubborn.length > 0) {
+      this.logger?.warn?.(
+        { pids: stubborn.slice(0, 10), gracefulMs: this.gracefulMs },
+        'janitor: processes ignored SIGTERM — escalating to SIGKILL',
+      );
+    }
+
+    for (const pid of stubborn) {
       try {
         process.kill(pid, 'SIGKILL');
-        success += 1;
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
-        if (e.code === 'ESRCH') success += 1;
-        else this.logger?.error?.({ pid, err }, 'janitor: SIGKILL failed');
+        if (e.code !== 'ESRCH') this.logger?.error?.({ pid, err }, 'janitor: SIGKILL failed');
       }
     }
-    return Math.min(success, pids.length);
+
+    // Confirm. A signal sent is not a process gone.
+    if (stubborn.length > 0) await wait(Math.min(this.gracefulMs, 500));
+    const survivors = pids.filter((pid) => this.isAlive(pid));
+    if (survivors.length > 0) {
+      this.logger?.error?.(
+        { pids: survivors.slice(0, 10) },
+        'janitor: processes survived SIGKILL — still holding whatever they hold',
+      );
+    }
+    return pids.length - survivors.length;
   }
 }
 
 // ---------------------------------------------------------------------------
 // Process-table helpers (production defaults)
 // ---------------------------------------------------------------------------
+
+/**
+ * The pid a dead parent's children are handed to.
+ *
+ * 1 on every Unix this runs on — launchd on macOS, init or a subreaper
+ * elsewhere. A `fork-worker.js` parented here was started by a daemon that no
+ * longer exists.
+ */
+const REAPER_PID = 1;
+
+/** How long the janitor waits for `ps` before giving up on a sweep. */
+const PS_TIMEOUT_MS = 10_000;
+
+/**
+ * `ps`, asynchronously and with a deadline.
+ *
+ * This was `execSync('ps -eo …')` with no timeout, called from a 30-second
+ * `setInterval` on the daemon's own event loop. A synchronous spawn blocks
+ * that loop completely: while it runs the daemon answers no RPC, writes no
+ * log line, and services no socket. With no timeout, "while it runs" has no
+ * upper bound.
+ *
+ * That is not hypothetical. Observed 2026-09-14 on the development daemon:
+ * the main thread parked in `SyncProcessRunner::Spawn`, reached from
+ * `Environment::RunTimers`, for eight minutes and counting — `omnitron ping`,
+ * `omnitron ls` and every console request hung, the log stopped mid-second,
+ * and the seventeen supervised app processes ran on with nothing watching
+ * them. One `ps` that does not return takes the entire control plane with it.
+ *
+ * Asynchronous, so a slow `ps` costs a sweep rather than the daemon; and
+ * timed out, so it costs a bounded one.
+ */
+function runPs(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'ps',
+      ['-eo', 'pid,ppid,etime,args'],
+      { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' },
+      (err, stdout) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      },
+    );
+  });
+}
 
 /**
  * Walk `ps -eo pid,ppid,etime,args` and pick rows whose command
@@ -293,12 +394,25 @@ export class ProcessJanitor {
  * spawned workers from the orphan reaper while their
  * supervisor.getChildNames() is still empty.
  */
-function listForkWorkersFromPs(logger?: ILogger): PsRow[] {
+async function listForkWorkersFromPs(logger?: ILogger): Promise<PsRow[]> {
   let raw: string;
   try {
-    raw = execSync('ps -eo pid,ppid,etime,args', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    raw = await runPs();
   } catch (err) {
-    logger?.warn?.({ err }, 'janitor: ps failed');
+    // A `ps` that was KILLED for exceeding the deadline and one that failed
+    // in a millisecond are the same empty result and, without this, the same
+    // log line — so the condition that used to hang the daemon would leave
+    // no trace that it had happened at all. `killed` is what `execFile` sets
+    // when its own timeout fires.
+    const e = err as NodeJS.ErrnoException & { killed?: boolean };
+    if (e.killed) {
+      logger?.error?.(
+        { timeoutMs: PS_TIMEOUT_MS },
+        'janitor: ps exceeded its deadline and was killed — sweep skipped',
+      );
+    } else {
+      logger?.warn?.({ err: e.message }, 'janitor: ps failed');
+    }
     return [];
   }
   const rows: PsRow[] = [];

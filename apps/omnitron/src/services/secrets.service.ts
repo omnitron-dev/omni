@@ -28,6 +28,7 @@ import {
 import { promisify } from 'node:util';
 import { readFile, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import {
   DAEMON_STATE_STORE_TOKEN,
@@ -86,9 +87,25 @@ const IV_LENGTH = 16;
 /** state_kv row key holding the encrypted envelope. */
 const SECRETS_KV_KEY = 'secrets:envelope';
 
+/**
+ * state_kv row key holding the machine binding the envelope was sealed with.
+ *
+ * Not a secret — every value it can hold is readable by anyone on the host
+ * (`ioreg`, `hostname`). It is here because the binding has to be the SAME
+ * string at every derivation, and `probeMachineId` below cannot promise that:
+ * it is a chain of fallbacks, and which link answers depends on whether a
+ * shell command returned in time.
+ */
+const MACHINE_ID_KV_KEY = 'secrets:machine-id';
+
+/** The hard-coded last resort of `probeMachineId`. */
+const FALLBACK_MACHINE_ID = 'omnitron-default-machine-id';
+
 @Injectable()
 export class SecretsService {
   private cache: SecretsMap | null = null;
+  /** The resolved machine binding; see `resolveMachineId`. */
+  private machineId: string | null = null;
 
   /**
    * T-2 part 2 — @Inject + useClass. Passphrase + legacy-path
@@ -189,11 +206,69 @@ export class SecretsService {
   // Encryption / Decryption
   // ===========================================================================
 
-  private async deriveKey(salt: Buffer): Promise<Buffer> {
+  private async deriveKey(salt: Buffer, machineId?: string): Promise<Buffer> {
     // Combine passphrase with machine-id for additional binding
-    const machineId = await this.getMachineId();
-    const combined = `${this.passphrase}:${machineId}`;
+    const id = machineId ?? (await this.resolveMachineId());
+    const combined = `${this.passphrase}:${id}`;
     return scryptAsync(combined, salt, KEY_LENGTH) as Promise<Buffer>;
+  }
+
+  /**
+   * The machine binding, resolved once and then remembered.
+   *
+   * `probeMachineId` asks the OS, and on macOS that means shelling out to
+   * `ioreg` with a five-second deadline. A host busy enough to miss that
+   * deadline falls through to the hostname — silently, and in the middle of
+   * `save()`, which re-encrypts the WHOLE map. One degraded write therefore
+   * re-keys every secret the daemon holds, and the next read, taken when the
+   * probe is fast again, cannot open it.
+   *
+   * That is not hypothetical. Measured 2026-09-14 on the development daemon:
+   * the envelope in `state_kv` held both of the fleet's SSH secrets and
+   * decrypted under `hostname` while the daemon derived under
+   * `IOPlatformUUID`. The console reported "Failed to decrypt secrets. Wrong
+   * passphrase?" — the passphrase was never wrong, and nothing had been lost;
+   * the key had simply been built from a different answer to the same
+   * question. It surfaced only at a restart, because `NodeManagerService`
+   * keeps a pending-secret map that had been serving the plaintext from
+   * memory for as long as the process lived.
+   *
+   * Persisting the answer removes the load dependency: after the first
+   * resolution the probe never runs again, so there is no second answer for
+   * it to give.
+   */
+  private async resolveMachineId(): Promise<string> {
+    if (this.machineId) return this.machineId;
+
+    const stored = await this.store.kvGet<string>(MACHINE_ID_KV_KEY);
+    if (typeof stored === 'string' && stored.length > 0) {
+      this.machineId = stored;
+      return stored;
+    }
+
+    const probed = await this.probeMachineId();
+    await this.store.kvSet(MACHINE_ID_KV_KEY, probed);
+    this.machineId = probed;
+    return probed;
+  }
+
+  /**
+   * Every machine id this host could plausibly have been sealed under.
+   *
+   * Ordered by how a pre-persistence daemon would have answered: whatever is
+   * stored, then the probe's own chain. Used only to recover an envelope the
+   * current binding cannot open.
+   */
+  private async machineIdCandidates(): Promise<string[]> {
+    const seen = new Set<string>();
+    const push = (v: string | null | undefined) => {
+      if (v && !seen.has(v)) seen.add(v);
+    };
+    push(await this.resolveMachineId());
+    push(await this.probeMachineId());
+    push(hostname());
+    push(FALLBACK_MACHINE_ID);
+    return [...seen];
   }
 
   private async encrypt(data: SecretsMap): Promise<SecretsEnvelope> {
@@ -217,11 +292,11 @@ export class SecretsService {
     };
   }
 
-  private async decrypt(envelope: SecretsEnvelope): Promise<SecretsMap> {
+  private async decrypt(envelope: SecretsEnvelope, machineId?: string): Promise<SecretsMap> {
     const salt = Buffer.from(envelope.salt, 'hex');
     const iv = Buffer.from(envelope.iv, 'hex');
     const tag = Buffer.from(envelope.tag, 'hex');
-    const key = await this.deriveKey(salt);
+    const key = await this.deriveKey(salt, machineId);
 
     const decipher = createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
@@ -290,7 +365,8 @@ export class SecretsService {
       // Only attempted when no passphrase is configured: with an explicit
       // one, a decryption failure means the operator's passphrase is wrong,
       // and trying a hardcoded value would be both useless and alarming.
-      const recovered = await this.tryRetiredPassphrase(envelope);
+      const recovered =
+        (await this.tryOtherMachineIds(envelope)) ?? (await this.tryRetiredPassphrase(envelope));
       if (recovered) {
         this.cache = recovered;
         await this.save(recovered);
@@ -324,6 +400,35 @@ export class SecretsService {
     }
   }
 
+  /**
+   * Open an envelope sealed under a machine id this host no longer derives.
+   *
+   * The binding is not a secret and its candidates are a short, known list,
+   * so trying them costs one scrypt each and settles the question the error
+   * message could not: whether the passphrase is wrong, or whether the same
+   * passphrase was combined with a different answer about the machine.
+   *
+   * On success the id that worked becomes the persisted binding, so the next
+   * derivation opens the envelope directly rather than recovering it again —
+   * and `load()` re-encrypts under it, which is a no-op in key terms and
+   * leaves the store in the state the rest of this class expects.
+   */
+  private async tryOtherMachineIds(envelope: SecretsEnvelope): Promise<SecretsMap | null> {
+    const current = await this.resolveMachineId();
+    for (const candidate of await this.machineIdCandidates()) {
+      if (candidate === current) continue;
+      try {
+        const secrets = await this.decrypt(envelope, candidate);
+        await this.store.kvSet(MACHINE_ID_KV_KEY, candidate);
+        this.machineId = candidate;
+        return secrets;
+      } catch {
+        // Not this one. The loop is the whole diagnostic.
+      }
+    }
+    return null;
+  }
+
   private async save(secrets: SecretsMap): Promise<void> {
     const envelope = await this.encrypt(secrets);
     // Single atomic SQLite upsert — no torn-write window, no
@@ -339,10 +444,14 @@ export class SecretsService {
   // ===========================================================================
 
   /**
-   * Get a stable machine identifier for key derivation.
-   * Falls back to hostname if machine-id is unavailable.
+   * Ask the OS what machine this is.
+   *
+   * Called at most once per store — `resolveMachineId` persists the answer —
+   * because this is a chain of fallbacks and which link answers depends on
+   * the host's load at the moment it runs. Everything that derives a key uses
+   * the persisted value, never this.
    */
-  private async getMachineId(): Promise<string> {
+  private async probeMachineId(): Promise<string> {
     try {
       // Linux: /etc/machine-id
       const { readFile: readFs } = await import('node:fs/promises');
@@ -353,13 +462,22 @@ export class SecretsService {
         // Not Linux
       }
 
-      // macOS: IOPlatformUUID via system_profiler
+      // macOS: IOPlatformUUID.
+      //
+      // `execFile`, not `execSync`: this used to block the event loop for up
+      // to its own five-second deadline, inside a call that can be reached
+      // from any RPC handler. The shell is gone with it — the pipe into
+      // `grep` was doing work this process can do on the string it gets back.
       try {
-        const { execSync } = await import('node:child_process');
-        const output = execSync(
-          'ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID',
-          { encoding: 'utf8', timeout: 5000 }
-        );
+        const { execFile } = await import('node:child_process');
+        const output = await new Promise<string>((resolve, reject) => {
+          execFile(
+            'ioreg',
+            ['-rd1', '-c', 'IOPlatformExpertDevice'],
+            { encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 },
+            (error, stdout) => (error ? reject(error) : resolve(stdout)),
+          );
+        });
         const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
         if (match?.[1]) return match[1];
       } catch {
@@ -367,10 +485,9 @@ export class SecretsService {
       }
 
       // Fallback: hostname
-      const os = await import('node:os');
-      return os.hostname();
+      return hostname();
     } catch {
-      return 'omnitron-default-machine-id';
+      return FALLBACK_MACHINE_ID;
     }
   }
 }

@@ -21,7 +21,6 @@ import { describe, it, expect } from 'vitest';
 
 import {
   assertRemotePathSegment,
-  writeRemoteFileCommand,
 } from '../../src/services/remote-deployer.service.js';
 
 describe('assertRemotePathSegment', () => {
@@ -74,52 +73,3 @@ describe('assertRemotePathSegment', () => {
   });
 });
 
-describe('writeRemoteFileCommand', () => {
-  const decode = (command: string): string => {
-    const m = command.match(/printf %s '([^']*)'/);
-    return Buffer.from(m![1]!, 'base64').toString('utf8');
-  };
-
-  it('round-trips ordinary content', () => {
-    const content = "export default {\n  name: 'downstream',\n};\n";
-    expect(decode(writeRemoteFileCommand('/etc/omnitron/omnitron.config.ts', content))).toBe(content);
-  });
-
-  it('survives content containing the old heredoc delimiter', () => {
-    // The regression. `cat > file << 'OMNITRON_EOF'` ends at the first line
-    // equal to OMNITRON_EOF, and everything after it is run as a command by
-    // the remote shell — and `generateSlaveConfig` interpolates the project
-    // name into the file, so the delimiter was reachable from a name.
-    const hostile = "line one\nOMNITRON_EOF\nid > /tmp/pwned\n";
-    const command = writeRemoteFileCommand('/etc/omnitron/omnitron.config.ts', hostile);
-
-    expect(decode(command)).toBe(hostile);
-    expect(command).not.toContain('OMNITRON_EOF');
-    expect(command).not.toContain('/tmp/pwned');
-  });
-
-  it('puts nothing but base64 between the quotes', () => {
-    // Which is why the content cannot influence the command at all: the
-    // alphabet has no character a shell reacts to.
-    const command = writeRemoteFileCommand('/etc/x', "quotes ' and $(id) and `id` and \\ and \n");
-    const payload = command.match(/printf %s '([^']*)'/)![1]!;
-
-    expect(payload).toMatch(/^[A-Za-z0-9+/=]*$/);
-  });
-
-  it('quotes the destination path', () => {
-    const command = writeRemoteFileCommand("/etc/omnitron/a b'c.ts", 'x');
-    expect(command).toContain("'/etc/omnitron/a b'\\''c.ts'");
-  });
-
-  it('handles content the size of a real config', () => {
-    const big = 'x'.repeat(64 * 1024);
-    expect(decode(writeRemoteFileCommand('/etc/x', big))).toBe(big);
-  });
-
-  it('handles empty content without producing a malformed command', () => {
-    const command = writeRemoteFileCommand('/etc/x', '');
-    expect(command).toContain("printf %s ''");
-    expect(command).toContain('base64 -d > ');
-  });
-});

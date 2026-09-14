@@ -54,6 +54,21 @@ export interface SavedDaemonConfig {
    * running daemon.
    */
   httpRateLimit?: IDaemonConfig['httpRateLimit'];
+
+  /**
+   * Transport bind address and the address slaves dial to reach a master.
+   *
+   * Here for the same reason `httpRateLimit` is: this file is what the daemon
+   * boots from. `IDaemonConfig` documents `host` at length — "set `0.0.0.0`
+   * to accept connections from other hosts" — and until these fields existed
+   * there was nowhere to set it that the daemon would read. A provisioned
+   * slave wrote `daemon: { host: '0.0.0.0', … }` into an `omnitron.config.ts`
+   * whose schema has no `daemon` key, and booted on loopback.
+   */
+  host?: string;
+  port?: number;
+  httpPort?: number;
+  advertiseHost?: string;
 }
 
 const DAEMON_CONFIG_PATH = path.join(OMNITRON_HOME, 'config.json');

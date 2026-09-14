@@ -137,6 +137,32 @@ export function resolveBindHost(configured: string | undefined): string {
 }
 
 /**
+ * Where a daemon binds its fleet TCP transport.
+ *
+ * A master follows `daemon.host`, whose default is loopback — the safe answer
+ * for the machine an operator is sitting at.
+ *
+ * A slave cannot use that default, because being reachable is the whole of
+ * what a slave is for: the master dials it to check its health and to pull
+ * from it. Bound to loopback it is a daemon nobody can see, and the console
+ * shows it as offline for ever with no way to tell it from a machine that is
+ * genuinely down.
+ *
+ * It was exactly that, and by a longer route than a wrong default. The
+ * generated slave config carried `daemon: { host: '0.0.0.0', … }` — and
+ * `IEcosystemConfig`, the schema of the file it was written into, has no
+ * `daemon` key; the daemon boots from `~/.omnitron/config.json`, which until
+ * now could not carry one either. So the setting was written, ignored, and
+ * every provisioned slave would have bound 127.0.0.1.
+ *
+ * An explicit `host` still wins, for an operator who wants one interface.
+ */
+export function fleetBindHostFor(dc: { role?: string; host?: string }): string {
+  if (dc.role === 'slave') return dc.host ?? '0.0.0.0';
+  return resolveBindHost(dc.host);
+}
+
+/**
  * Where a daemon binds the surfaces that exist to serve a console: the Netron
  * HTTP RPC and the WebSocket.
  *
@@ -510,7 +536,7 @@ export class OmnitronDaemon {
     // the AuthorizationManager below was missing, giving any LAN host an
     // unauthenticated `stopAll({force:true})` — is answered by the default
     // being loopback and by that manager now being wired.)
-    const tcpHost = resolveBindHost(dc.host);
+    const tcpHost = fleetBindHostFor(dc);
     if (!isLoopbackHost(tcpHost)) {
       // Said, not enforced, and the difference is deliberate: silently
       // rebinding a fleet transport to loopback would take a cluster down,

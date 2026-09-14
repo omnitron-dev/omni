@@ -59,6 +59,14 @@ async function main() {
           // saved config, not the project's ecosystem file — a `trustProxy`
           // set only in the latter never reached the running daemon.
           ...(savedConfig.httpRateLimit ? { httpRateLimit: savedConfig.httpRateLimit } : {}),
+          // The transport settings, for the same reason and by the same
+          // route. Without these `daemon.host` was documented, meaningful to
+          // the code that reads it, and unreachable from any file an operator
+          // or a provisioning run could write.
+          ...(savedConfig.host ? { host: savedConfig.host } : {}),
+          ...(savedConfig.port ? { port: savedConfig.port } : {}),
+          ...(savedConfig.httpPort ? { httpPort: savedConfig.httpPort } : {}),
+          ...(savedConfig.advertiseHost ? { advertiseHost: savedConfig.advertiseHost } : {}),
         }
       : {}),
     auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },

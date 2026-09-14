@@ -86,25 +86,6 @@ export function assertRemotePathSegment(kind: string, value: string): string {
   return value;
 }
 
-/**
- * A shell command that writes `content` to `path` on the remote.
- *
- * This was a heredoc with a fixed `OMNITRON_EOF` delimiter, and the comment
- * above it said it "avoids shell escaping issues with complex content". It
- * avoids most of them. It does not avoid content that contains a line equal
- * to the delimiter — there the heredoc ends early and everything after it is
- * executed as a command by the remote shell. `generateSlaveConfig`
- * interpolates the project name into the file it writes, so the delimiter
- * was reachable from a name.
- *
- * base64 has no delimiter to collide with and an alphabet the shell does not
- * touch, so the content cannot influence the command at all.
- */
-export function writeRemoteFileCommand(path: string, content: string): string {
-  const encoded = Buffer.from(content, 'utf8').toString('base64');
-  return `printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}`;
-}
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -443,20 +424,41 @@ export class RemoteDeployer {
         }
       }
 
-      // 4. Generate slave config
+      // 4. Configure and start the slave, through omnitron's own setup path.
+      //
+      // This wrote `/etc/omnitron/omnitron.config.ts` containing `role`,
+      // `master` and a `daemon` block, then ran a bare `omnitron up` beside
+      // it. Every one of those keys was read by nothing.
+      //
+      // `IEcosystemConfig` — the schema of that file — has no `role`, no
+      // `master` and no `daemon`. The daemon boots from
+      // `~/.omnitron/config.json`, whose `SavedDaemonConfig` carried role and
+      // master and nothing about transports. So a provisioned slave would
+      // have come up as a MASTER, bound to loopback, with no master address
+      // and no sync: three of the four things this step exists to arrange,
+      // silently not arranged.
+      //
+      // `omnitron up --slave <host>:<port>` is the path that writes what the
+      // daemon reads, and it is the same one an operator uses by hand. One
+      // way to configure a slave instead of two, and the one that is
+      // exercised.
       this.emitProgress(nodeKey, '*', 'extracting', 50, 'Configuring slave daemon...');
-      const configDir = '/etc/omnitron';
-      // Validated here as well as in `deployToNode`: this path provisions a
-      // slave without going through artifact deployment first.
       assertRemotePathSegment('project name', project);
-      const configContent = this.generateSlaveConfig(masterHost, masterPort, target.daemonPort ?? 9700, project);
-      await this.sshExec(target, `mkdir -p ${shellEscape(configDir)}`);
-      await this.sshExec(target, writeRemoteFileCommand(`${configDir}/omnitron.config.ts`, configContent));
+      const masterAddr = `${masterHost}:${masterPort}`;
 
       // 5. Start slave daemon (or restart if already running)
       this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
-      await this.sshExec(target, `cd ${shellEscape(configDir)} && (omnitron down 2>/dev/null; omnitron up) &`).catch(() => {
-        // Background start — may "fail" because SSH returns before daemon fully starts
+      await this.sshExec(
+        target,
+        `omnitron down 2>/dev/null; omnitron up --slave ${shellEscape(masterAddr)} --no-infra`,
+        180_000,
+      ).catch((err) => {
+        // Reported, not swallowed. The verification below tells us whether the
+        // daemon came up; this tells us what it said on the way.
+        this.logger.warn(
+          { host: target.host, error: (err as Error).message },
+          'Slave start command did not return cleanly — verifying anyway',
+        );
       });
 
       // 6. Wait briefly and verify daemon is running
@@ -479,69 +481,6 @@ export class RemoteDeployer {
       this.logger.error({ host: target.host, error: (err as Error).message }, 'Failed to provision slave node');
       return false;
     }
-  }
-
-  /**
-   * Generate omnitron.config.ts content for a slave daemon.
-   */
-  /**
-   * The slave's `omnitron.config.ts`, as text.
-   *
-   * Values go in through `JSON.stringify`, not inside quotes of our own. The
-   * file is TypeScript that the remote daemon executes, so `name: '${'$'}{project}'`
-   * meant a project name containing an apostrophe produced a file that would
-   * not parse — and one containing `', evil: …, x: '` produced a file that
-   * parsed and did something else. A quote written by us around a value we
-   * did not check is the whole bug; `JSON.stringify` writes the quotes and
-   * the escaping together, which is why it cannot be got wrong the same way.
-   *
-   * The project name is also validated as a path segment before this is
-   * reached, so this is the second of two locks on the same door.
-   */
-  private generateSlaveConfig(masterHost: string, masterPort: number, slavePort: number, project: string): string {
-    const q = (v: string): string => JSON.stringify(v);
-    return `/**
- * Omnitron Slave Configuration
- * Auto-generated by master during remote/cluster deployment.
- * Project: ${JSON.stringify(project)}
- */
-export default {
-  name: ${q(project)},
-  apps: [],
-  role: 'slave',
-  master: { host: ${q(masterHost)}, port: ${masterPort} },
-  sync: {
-    interval: 30000,
-    batchSize: 1000,
-  },
-  daemon: {
-    socketPath: '~/.omnitron/daemon.sock',
-    port: ${slavePort},
-    host: '0.0.0.0',
-    httpPort: 9800,
-    pidFile: '~/.omnitron/daemon.pid',
-    stateFile: '~/.omnitron/daemon.state',
-  },
-  supervision: {
-    strategy: 'one_for_one',
-    maxRestarts: 10,
-    window: 60000,
-    backoff: { type: 'exponential', initial: 1000, max: 30000, factor: 2 },
-  },
-  monitoring: {
-    healthCheck: { interval: 30000, timeout: 10000 },
-    metrics: { interval: 15000, retention: 86400000 },
-  },
-  logging: {
-    level: 'info',
-    directory: '~/.omnitron/logs',
-    maxSize: '50m',
-    maxFiles: 10,
-    compress: false,
-  },
-  env: 'production',
-};
-`;
   }
 
   // ===========================================================================

@@ -126,6 +126,19 @@ interface PendingRequest {
 /**
  * WebSocket Transport Client implementation
  */
+/**
+ * How long a connection must stay open before it counts as one.
+ *
+ * Anything shorter is the shape a proxy makes in front of a backend that
+ * is not answering: the upgrade succeeds, the socket closes immediately.
+ * Treating that as a success reset the backoff every cycle.
+ *
+ * Five seconds is comfortably longer than that failure (milliseconds) and
+ * comfortably shorter than a real session, so a genuine drop still starts
+ * its next backoff from the beginning.
+ */
+const STABLE_CONNECTION_MS = 5_000;
+
 export class WebSocketClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private wsUrl: string;
@@ -257,7 +270,20 @@ export class WebSocketClient extends EventEmitter {
         ws.addEventListener('open', () => {
           this.state = 'connected' as ConnectionState;
           this.connectedAt = Date.now();
-          this.reconnectAttempts = 0;
+          // The attempt counter is NOT reset here. A socket that opens is
+          // not yet a connection that works: a gateway in front of a dead
+          // backend completes the upgrade and drops the socket at once, and
+          // resetting on `open` turned every such cycle back into "attempt
+          // 1, delay 1000ms". Measured in the portal while messaging was
+          // restarting: 328 opens and 328 reconnects, alternating, every one
+          // reported as attempt 1 — a browser tab hammering a down service
+          // once a second for as long as it stayed down, with a comment two
+          // files up promising "1s → 2s → 4s → 8s → 16s → 30s cap".
+          //
+          // The reset now happens on CLOSE, and only for a session that
+          // lasted (see STABLE_CONNECTION_MS). `getReconnectAttempts()`
+          // still answers 0 while connected, which is its documented
+          // contract.
           this.emit('connect');
           isResolved = true;
           resolve();
@@ -290,6 +316,14 @@ export class WebSocketClient extends EventEmitter {
             clearTimeout(pending.timeout);
           }
           this.pendingRequests.clear();
+
+          // A session that lasted is evidence the far side works, so the
+          // next failure starts the backoff from the beginning. One that
+          // died immediately is evidence of nothing and leaves the counter
+          // where it was, so the delay keeps growing.
+          if (this.connectedAt !== undefined && Date.now() - this.connectedAt >= STABLE_CONNECTION_MS) {
+            this.reconnectAttempts = 0;
+          }
 
           // Attempt reconnection if enabled and not manually disconnected
           if (this.reconnectEnabled && !this.isManualDisconnect) {
@@ -846,10 +880,15 @@ export class WebSocketClient extends EventEmitter {
   }
 
   /**
-   * Get current reconnection attempt count (0 = not reconnecting)
+   * Get current reconnection attempt count (0 = not reconnecting).
+   *
+   * The internal counter now survives a connection that opened and died,
+   * so that a flapping endpoint actually backs off. This accessor keeps
+   * answering 0 while a connection is up, which is what its callers read
+   * it for and what this docblock has always promised.
    */
   getReconnectAttempts(): number {
-    return this.reconnectAttempts;
+    return this.state === ('connected' as ConnectionState) ? 0 : this.reconnectAttempts;
   }
 
   /**

@@ -291,7 +291,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.disableWatch();
   }
 
-  async getWatchStatus(): Promise<{ enabled: boolean; apps: Array<{ name: string; directory: string }> }> {
+  async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
     await this.ensureConnected();
     return this.proxy!.getWatchStatus();
   }

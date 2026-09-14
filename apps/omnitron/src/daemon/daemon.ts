@@ -1978,9 +1978,42 @@ export class OmnitronDaemon {
     }
   }
 
-  getWatchStatus(): { enabled: boolean; apps: Array<{ name: string; directory: string }> } {
-    if (!this.fileWatcher) return { enabled: false, apps: [] };
-    return { enabled: true, apps: this.fileWatcher.getWatchedApps() };
+  /**
+   * Whether file watching is running, and over what.
+   *
+   * `enabled` said only that a `FileWatcher` OBJECT existed. Observed on this
+   * host: `{ enabled: true, apps: [] }` — a watcher running over nothing,
+   * reported to an operator as "watching". Everyone downstream read the
+   * boolean and concluded their edits were being picked up.
+   *
+   * The watch set is built from `config.apps` — the daemon's OWN ecosystem
+   * config. Apps that arrive through the project registry are not in it, so a
+   * daemon serving projects watches none of them however the flag reads.
+   * `watching` is the fact an operator actually wants; `enabled` keeps its
+   * old meaning so existing callers do not silently change behaviour, and
+   * `reason` says why the two can disagree.
+   */
+  getWatchStatus(): {
+    enabled: boolean;
+    watching: boolean;
+    reason?: string;
+    apps: Array<{ name: string; directory: string }>;
+  } {
+    if (!this.fileWatcher) {
+      return { enabled: false, watching: false, reason: 'the file watcher is not running', apps: [] };
+    }
+    const apps = this.fileWatcher.getWatchedApps();
+    if (apps.length === 0) {
+      return {
+        enabled: true,
+        watching: false,
+        reason:
+          'the watcher is running but no app matched: the watch set comes from this daemon\'s own ' +
+          'ecosystem config, and apps registered through a project are not in it',
+        apps,
+      };
+    }
+    return { enabled: true, watching: true, apps };
   }
 
   private async getConfig(): Promise<IEcosystemConfig> {

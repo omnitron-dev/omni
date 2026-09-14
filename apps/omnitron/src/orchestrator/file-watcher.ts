@@ -31,6 +31,19 @@ import type { IEcosystemConfig, IEcosystemAppEntry, IWatchConfig } from '../conf
 import type { OrchestratorService } from './orchestrator.service.js';
 
 /** Directories/patterns to always ignore */
+/**
+ * Path SEGMENTS that never warrant a restart.
+ *
+ * `test` and `__tests__` are here because a running application does not load
+ * its own tests — in any project. That is a property of what a test is, not a
+ * per-app preference, which is why it lives at this level rather than in each
+ * `omnitron.config.ts`.
+ *
+ * The cost of their absence was real: editing a file under `apps/<app>/test/`
+ * restarted the application, and on a loaded host those restarts do not always
+ * fit inside the app's startup budget. A day of writing tests produced a
+ * stream of restarts that could not change anything about the running code.
+ */
 const IGNORE_PATTERNS = [
   'node_modules',
   'dist',
@@ -42,7 +55,19 @@ const IGNORE_PATTERNS = [
   '.cache',
   '__pycache__',
   '.omnitron-build',
+  'test',
+  'tests',
+  '__tests__',
 ];
+
+/**
+ * File-name suffixes that never warrant a restart, wherever they live.
+ *
+ * The segment list above cannot catch a test that sits NEXT TO the code it
+ * tests — `src/foo.spec.ts` has no `test` segment — and several packages in
+ * this repository are laid out that way.
+ */
+const IGNORE_FILE_SUFFIXES = ['.test.ts', '.test.js', '.spec.ts', '.spec.js', '.test.tsx', '.spec.tsx'];
 
 /** File extensions to watch */
 const WATCH_EXTENSIONS = new Set([
@@ -433,6 +458,17 @@ export class FileWatcher {
     }
   }
 
+  /**
+   * Whether a changed path is one a restart cannot be a response to.
+   *
+   * `extraIgnore` — the per-app `ignore` option — is compared as a whole path
+   * SEGMENT, which is what it has always done. Its docblock in
+   * `config/types.ts` used to call the values "glob patterns", so
+   * `ignore: ['test/**']` read as configured and matched nothing: an operator
+   * would write the glob, see it in the config, and believe the directory was
+   * covered. The documentation now says what this does. Real globs would be a
+   * dependency and a deliberate feature, not an accident of wording.
+   */
   private shouldIgnore(filename: string, extraIgnore: string[] = []): boolean {
     // Ignore directories/files matching ignore patterns
     const parts = filename.split(path.sep);
@@ -441,6 +477,10 @@ export class FileWatcher {
       if (extraIgnore.includes(part)) return true;
       if (part.startsWith('.') && part !== '.env') return true;
     }
+
+    // A test beside the code it tests has no `test` segment to catch it.
+    const base = (parts[parts.length - 1] ?? '').toLowerCase();
+    if (IGNORE_FILE_SUFFIXES.some((suffix) => base.endsWith(suffix))) return true;
 
     // Only watch known extensions (files without extension are ignored too)
     const ext = path.extname(filename).toLowerCase();

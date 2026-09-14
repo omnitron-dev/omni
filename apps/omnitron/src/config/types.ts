@@ -609,7 +609,15 @@ export interface IWatchConfig {
   directory: string;
   /** Additional directories to watch */
   include?: string[];
-  /** Glob patterns to ignore (added to defaults: node_modules, dist, .git, etc.) */
+  /**
+   * Path SEGMENTS to ignore, added to the defaults (node_modules, dist, .git,
+   * test, __tests__ and the rest — see `IGNORE_PATTERNS` in `file-watcher.ts`).
+   *
+   * Whole segments, compared for equality — NOT globs. `['test']` works;
+   * `['test/**']` matches nothing. This said "glob patterns" while the
+   * implementation compared segments, so the one form an operator would
+   * reach for first was the one that silently did nothing.
+   */
   ignore?: string[];
   /** Debounce interval in ms (default: 300) */
   debounce?: number;

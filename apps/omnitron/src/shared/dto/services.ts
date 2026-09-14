@@ -74,7 +74,7 @@ export interface IDaemonService {
   // --- Watch Mode ---
   enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }>;
   disableWatch(): Promise<{ success: boolean }>;
-  getWatchStatus(): Promise<{ enabled: boolean; apps: Array<{ name: string; directory: string }> }>;
+  getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }>;
 }
 
 // ============================================================================

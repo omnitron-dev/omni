@@ -490,4 +490,42 @@ describe('FileWatcher', () => {
       watchSpy.mockRestore();
     }
   });
+
+  describe('tests do not restart the thing they test', () => {
+    /**
+     * `IGNORE_PATTERNS` had no `test` segment and `.ts` is a watched
+     * extension, so `test/unit/foo.test.ts` was a watched file: saving it
+     * restarted an application that never loads it. On a loaded host those
+     * restarts do not always fit inside the app's startup budget, so a day of
+     * writing tests produced a stream of restarts that could not change
+     * anything about the running code.
+     *
+     * Every existing case in this file emits `src/changed.ts` or
+     * `src/index.ts` — the path that mattered was never exercised, so the
+     * defect survived a test file covering the very function that held it.
+     */
+    it.each([
+      'test/unit/foo.test.ts',
+      'tests/integration/bar.ts',
+      '__tests__/baz.ts',
+      'src/service.spec.ts',
+      'src/service.test.ts',
+      'src/component.test.tsx',
+    ])('does not restart for %s', async (changed) => {
+      const w = startWatcher();
+      w.emit(changed);
+      await settle();
+      expect(restartMock()).not.toHaveBeenCalled();
+    });
+
+    it('still restarts for the source sitting beside them', async () => {
+      // The guard must not be so wide that it swallows what the watcher is
+      // for: `service.ts` lives in the same directory as `service.spec.ts`.
+      const w = startWatcher();
+      w.emit('src/service.ts');
+      await settle();
+      expect(restartMock()).toHaveBeenCalled();
+    });
+  });
+
 });

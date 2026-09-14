@@ -581,7 +581,7 @@ export class DaemonRpcService implements IDaemonService {
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async getWatchStatus(): Promise<{ enabled: boolean; apps: Array<{ name: string; directory: string }> }> {
+  async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
     return this.daemon.getWatchStatus();
   }
 

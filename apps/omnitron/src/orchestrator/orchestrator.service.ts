@@ -165,6 +165,27 @@ export function ensureNamespacedEntry(entry: IEcosystemAppEntry): IEcosystemAppE
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Startup budget for a child process that declares none of its own.
+ *
+ * There were TWO of these and they disagreed — `?? 60_000` on the pooled path
+ * and `?? 30_000` on the single-process path — and, worse, the pooled one did
+ * not consult `entry.startupTimeout` at all. So an operator who set
+ * `startupTimeout: 120_000` on an app had it honoured for the app and
+ * SILENTLY IGNORED for its child processes, which kept 60 seconds and could
+ * not be given more by any setting.
+ *
+ * Measured on this host: an app whose own successful boot takes 120.6 seconds
+ * carried a 120 s budget, and its `deposit-worker` child — a deposit scanner
+ * — stayed `stopped` while the app itself came up. Two copies of one decision,
+ * one of which discarded the only knob an operator has.
+ *
+ * 60 s rather than 30 s, for the reason the project's own config already
+ * writes down: an over-long ceiling costs a slower failure report, a short one
+ * costs the whole stack.
+ */
+const DEFAULT_CHILD_STARTUP_TIMEOUT = 60_000;
+
 export class OrchestratorService extends EventEmitter {
   private readonly handles = new Map<string, AppHandle>();
 
@@ -1775,7 +1796,7 @@ export class OrchestratorService extends EventEmitter {
           version: '1.0.0',
           allMethodsPublic: true,
           ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
-          startupTimeout: procEntry.startupTimeout ?? 60_000,
+          startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
           ...(entry.env && { env: entry.env as Record<string, string> }),
           ...((entry as any).cwd && { cwd: (entry as any).cwd }),
           dependencies: {
@@ -1937,7 +1958,7 @@ export class OrchestratorService extends EventEmitter {
         name: `${entry.name}/${procEntry.name}`,
         version: '1.0.0',
         allMethodsPublic: true,
-        startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? 30_000,
+        startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
         ...(entry.env && { env: entry.env as Record<string, string> }),
         ...((entry as any).cwd && { cwd: (entry as any).cwd }),
         dependencies: {

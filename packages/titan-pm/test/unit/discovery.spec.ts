@@ -75,7 +75,7 @@ describe('discoverManagedProcesses', () => {
           ? {
               OMNITRON_MANAGED: '1',
               OMNITRON_APP_NAME: 'api',
-              OMNITRON_PROJECT: 'downstream',
+              OMNITRON_PROJECT: 'acme',
               OMNITRON_STACK: 'prod',
             }
           : null,

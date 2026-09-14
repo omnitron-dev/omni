@@ -478,13 +478,20 @@ export interface INetronOptions {
 
   // --- Connection Management Options ---
 
-  /** Maximum connections allowed per peer. Default: 10 */
+  /**
+   * Maximum connections allowed per peer. Default: 10
+   *
+   * NOT ENFORCED. Reaches `ConnectionManager`, which nothing registers a
+   * connection with — `addConnection` has no caller outside its own spec — so
+   * the limit is compared against an empty map. Setting it logs a warning at
+   * construction. See `netron/connection-manager.ts`.
+   */
   maxConnectionsPerPeer?: number;
 
-  /** Global maximum connections across all peers. Default: 100 */
+  /** Global maximum connections across all peers. Default: 100. NOT ENFORCED — see `maxConnectionsPerPeer`. */
   maxTotalConnections?: number;
 
-  /** Default connection pool size per peer for reuse. Default: 3 */
+  /** Default connection pool size per peer for reuse. Default: 3. NOT ENFORCED — see `maxConnectionsPerPeer`. */
   connectionPoolSize?: number;
 
   /** Idle connection timeout in milliseconds. Default: 30000 */

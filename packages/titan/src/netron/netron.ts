@@ -371,6 +371,29 @@ export class Netron extends EventEmitter implements INetron {
     // Transports must be registered explicitly before calling start()
     this.transportRegistry = new TransportRegistry();
 
+    // Say so when a connection limit is configured that nothing enforces.
+    //
+    // `ConnectionManager` is constructed, started and stopped — and that is the
+    // whole of its use. `addConnection` has no caller outside its own spec, so
+    // no connection is ever registered with it, `this.connections` stays empty
+    // for the life of the process, and every limit below is a number compared
+    // against zero. An operator reading `maxTotalConnections` in the options or
+    // in netron/README.md has no way to discover that.
+    //
+    // Deliberately a warning rather than a wiring change. The default is 100
+    // total connections; enforcing it now would start refusing connections
+    // across every backend that has been running without it, which is not a
+    // side effect to ship inside a documentation fix.
+    const inertLimits = (
+      ['maxTotalConnections', 'maxConnectionsPerPeer', 'connectionPoolSize'] as const
+    ).filter((key) => options[key] !== undefined);
+    if (inertLimits.length > 0) {
+      this.logger.warn(
+        { options: inertLimits },
+        'These Netron connection limits are not enforced: nothing registers connections with the connection manager. See netron/connection-manager.ts.'
+      );
+    }
+
     // Initialize connection manager with configuration from options
     const connectionManagerConfig: ConnectionManagerConfig = {
       maxConnectionsPerPeer: options.maxConnectionsPerPeer,

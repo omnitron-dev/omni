@@ -402,7 +402,12 @@ export class HealthMonitorService {
         pingReachable: r.pingReachable,
         pingLatencyMs: r.pingLatencyMs,
         pingError: r.pingError,
-        sshConnected: r.sshConnected,
+        // A persisted row is the record of a check that RAN, and this worker
+        // opens an SSH session on every remote round — so `null` never
+        // reaches here. The column is NOT NULL and would reject it; the
+        // coalesce states which value the schema gets rather than leaving it
+        // to a driver's idea of what to do with null.
+        sshConnected: r.sshConnected ?? false,
         sshLatencyMs: r.sshLatencyMs,
         sshError: r.sshError,
         omnitronConnected: r.omnitronConnected,

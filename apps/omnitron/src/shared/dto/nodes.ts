@@ -38,7 +38,19 @@ export interface INodeStatus {
   pingReachable: boolean;
   pingLatencyMs: number | null;
   pingError?: string;
-  sshConnected: boolean;
+  /**
+   * Whether an SSH connection was established — `null` when none was tried.
+   *
+   * The distinction is load-bearing. Two producers fill this in: the
+   * health-monitor worker, which opens an SSH session on every round, and the
+   * daemon's own fallback check, which does not — it pings and probes the
+   * Netron port, because a node running omnitron is reached over Netron and
+   * SSH is for provisioning it. The fallback used to write `false` here, and
+   * `false` means "SSH was refused" to every reader: the console showed
+   * "Waiting for SSH connection" for a node whose SSH works, and never showed
+   * `omnitronError`, which held the actual reason.
+   */
+  sshConnected: boolean | null;
   sshLatencyMs: number | null;
   sshError?: string;
   omnitronConnected: boolean;

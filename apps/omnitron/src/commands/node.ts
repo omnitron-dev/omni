@@ -9,6 +9,21 @@ import { log, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 /**
+ * Render `sshConnected`, which has three states and not two.
+ *
+ * `null` means no SSH attempt was made — the answer when the daemon is
+ * serving these checks itself, which it does whenever the health-monitor
+ * worker is down. Printing that as `down` reports a refusal that never
+ * happened, and sends an operator to debug SSH on a node whose SSH is fine.
+ */
+function formatSsh(connected: boolean | null | undefined, form: 'short' | 'long' | 'dot' = 'short'): string {
+  if (connected == null) return form === 'long' ? '- not checked' : form === 'dot' ? '-' : '- n/a';
+  if (form === 'dot') return connected ? '●' : '○';
+  if (form === 'long') return connected ? '● connected' : '○ disconnected';
+  return connected ? '● up' : '○ down';
+}
+
+/**
  * How long ago a node's status was taken.
  *
  * `checkedAt` travels all the way from the service to the console's own type
@@ -61,7 +76,7 @@ export async function nodeListCommand(): Promise<void> {
         // left to `omnitron node show`: extra columns are the difference
         // between a readable table and one where every cell is an ellipsis.
         host: `${n.host}:${n.sshPort}`,
-        ssh: n.isLocal ? '-' : n.status?.sshConnected ? '● up' : '○ down',
+        ssh: n.isLocal ? '-' : formatSsh(n.status?.sshConnected),
         omnitron: n.status?.omnitronConnected ? `● v${n.status.omnitronVersion ?? '?'}` : '○ offline',
         checked: formatCheckedAt(n.status?.checkedAt),
         tags: n.tags.join(', ') || '-',
@@ -172,7 +187,7 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
     const nodes = await client.service<any>('OmnitronNodes');
     if (id) {
       const status = await nodes.checkNodeStatus({ id });
-      log.info(`SSH: ${status.sshConnected ? '● connected' : '○ disconnected'}${status.sshLatencyMs != null ? ` (${status.sshLatencyMs}ms)` : ''}`);
+      log.info(`SSH: ${formatSsh(status.sshConnected, 'long')}${status.sshLatencyMs != null ? ` (${status.sshLatencyMs}ms)` : ''}`);
       log.info(`Omnitron: ${status.omnitronConnected ? `● v${status.omnitronVersion}` : '○ offline'}`);
       if (status.os) {
         log.info(`OS: ${status.os.platform} ${status.os.arch} (${status.os.hostname})`);
@@ -188,7 +203,7 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
       for (const s of statuses) {
         const node = await nodes.getNode({ id: s.nodeId });
         const name = node?.name ?? s.nodeId;
-        const ssh = s.sshConnected ? '●' : '○';
+        const ssh = formatSsh(s.sshConnected, 'dot');
         const omn = s.omnitronConnected ? '●' : '○';
         log.info(`${name}: SSH ${ssh}  Omnitron ${omn}`);
       }

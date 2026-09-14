@@ -445,7 +445,9 @@ export class NodeManagerService extends EventEmitter {
       nodeId: id,
       pingReachable: false,
       pingLatencyMs: null,
-      sshConnected: false,
+      // Not `false`: this check does not open an SSH session at all, and
+      // `false` reads as "SSH was refused" everywhere it is consumed.
+      sshConnected: null,
       sshLatencyMs: null,
       omnitronConnected: false,
       checkedAt: new Date().toISOString(),
@@ -508,7 +510,6 @@ export class NodeManagerService extends EventEmitter {
         const latency = Date.now() - connectStart;
 
         status.omnitronConnected = true;
-        status.sshConnected = false; // SSH not checked
         status.sshLatencyMs = null;
         if (info?.version) status.omnitronVersion = info.version;
         if (info?.pid) status.omnitronPid = info.pid;

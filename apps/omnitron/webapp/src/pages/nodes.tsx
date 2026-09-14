@@ -123,7 +123,8 @@ interface INodeStatus {
   pingReachable: boolean;
   pingLatencyMs: number | null;
   pingError?: string;
-  sshConnected: boolean;
+  /** `null` when the check made no SSH attempt — see the daemon's DTO. */
+  sshConnected: boolean | null;
   sshLatencyMs: number | null;
   sshError?: string;
   omnitronConnected: boolean;
@@ -391,11 +392,20 @@ function getOmnitronDotState(status: INodeStatus | null, isLocal: boolean): { st
       : { state: 'offline', tooltip: status.omnitronError ?? 'Not running' };
   }
   if (status.omnitronConnected) return { state: 'online', tooltip: `v${status.omnitronVersion ?? '?'} (${status.omnitronRole ?? '?'})` };
-  // SSH not connected → can't know omnitron state, show as unchecked
-  if (!status.sshConnected) return { state: 'unchecked', tooltip: 'Waiting for SSH connection' };
+  // An SSH session that was REFUSED is the one case where the omnitron state
+  // is genuinely unknown: the check never got far enough to look. `null` is
+  // not that — it means this round did not use SSH, which is how the daemon's
+  // own fallback check works, and it still probed the Netron port and has an
+  // answer in `omnitronError`. Testing the field for falsiness conflated the
+  // two, so a node whose SSH works read "Waiting for SSH connection" for ever
+  // and the reason it had was never shown.
+  if (status.sshConnected === false) {
+    return { state: 'unchecked', tooltip: status.sshError ? `SSH refused: ${status.sshError}` : 'SSH refused' };
+  }
   const err = status.omnitronError ?? '';
   if (/not found|command not found|no such file|ENOENT/i.test(err)) return { state: 'not-installed', tooltip: 'Not installed on this node' };
-  return { state: 'offline', tooltip: err || 'Not running' };
+  if (err) return { state: 'offline', tooltip: err };
+  return { state: 'unchecked', tooltip: 'Not checked yet' };
 }
 
 // =============================================================================
@@ -979,8 +989,13 @@ export default function NodesPage() {
       if (result.sshConnected) {
         const latency = result.sshLatencyMs != null ? ` (${result.sshLatencyMs}ms)` : '';
         snackbar.success(`${label}: SSH connected${latency}`);
-      } else {
+      } else if (result.sshConnected === false) {
         snackbar.error(`${label}: SSH failed — ${result.sshError ?? 'Connection refused'}`);
+      } else {
+        // The round that answered did not use SSH — the daemon serves these
+        // itself whenever the health-monitor worker is down. Reporting "SSH
+        // failed" here blames the node for the daemon's state.
+        snackbar.warning(`${label}: this check did not use SSH — ${result.omnitronConnected ? 'omnitron answered on its Netron port' : result.omnitronError ?? 'no answer on the Netron port'}`);
       }
     } catch (err: any) {
       snackbar.error(`${label}: ${err?.message ?? 'Check failed'}`);

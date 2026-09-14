@@ -18,7 +18,8 @@ export interface IHealthCheckResult {
   pingLatencyMs: number | null;
   pingError: string | null;
 
-  sshConnected: boolean;
+  /** `null` when no SSH attempt was made — see `INodeStatus.sshConnected`. */
+  sshConnected: boolean | null;
   sshLatencyMs: number | null;
   sshError: string | null;
 

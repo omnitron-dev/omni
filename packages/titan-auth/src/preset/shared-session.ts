@@ -394,7 +394,37 @@ export function createSharedSessionAuthManager(
       if (sessionId) {
         let activeSession: ParsedSessionValue | null;
         const redisKey = `${sessionKeyPrefix}${sessionId}`;
-        const rawFastPath = await sessionRedis.get(redisKey);
+        // A cache error is a MISS, not a denial.
+        //
+        // This `get` used to be unguarded, and Redis throwing — `Connection
+        // is closed` during a restart, a timeout under load — propagated out
+        // of `validateToken`, so the caller answered 401 «Authentication
+        // required». Observed on the daos stand while Redis was flapping:
+        // two calls seconds apart with the same valid token, one served and
+        // one rejected.
+        //
+        // The cost is not the rejection itself but WHERE it happens. The
+        // canonical-store fallback below exists for precisely this — a
+        // session Redis cannot confirm — and an exception here jumps past it,
+        // so the authoritative source is never consulted at the one moment it
+        // is needed. The fallback's own failure policy (fail closed, with the
+        // client refreshing) is a deliberate decision recorded there; this was
+        // no decision at all.
+        //
+        // Falling through as a miss keeps both policies intact: with a
+        // canonical store the session is confirmed from the authority, and
+        // without one `activeSession` stays null and the request is refused
+        // below exactly as before — a deployment with no second source has
+        // nothing to degrade to.
+        let rawFastPath: string | null = null;
+        try {
+          rawFastPath = await sessionRedis.get(redisKey);
+        } catch (err) {
+          logger.warn(
+            { err, sessionId },
+            'Session fast-path unavailable — falling through to the canonical store',
+          );
+        }
         activeSession = rawFastPath ? parseSessionValue(rawFastPath) : null;
 
         if (!activeSession && sessionLookup) {

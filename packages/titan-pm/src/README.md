@@ -658,6 +658,28 @@ export default class ExternalAPIService {
 **Circuit Breaker States:**
 - **CLOSED** - Normal operation, requests pass through
 - **OPEN** - Too many failures, requests fail immediately (or use fallback)
+
+**Two things the option names read backwards:**
+
+`fallback` is the method's error handler in *every* state, not the open
+circuit's substitute. A closed circuit whose very first call throws goes
+straight to it. `threshold` governs only when the state flips to `open`, which
+is when calls stop reaching the method at all.
+
+So the fallback's return value is what a caller sees for *any* failure —
+including ones that say nothing about the dependency being down: a malformed
+response, a bad argument, an uninitialised client. Choose it accordingly. A
+fallback is safe when it answers in the vocabulary a genuine failure already
+uses (`false` from something that returns "did it work"); it is unsafe when it
+answers in the vocabulary of a successful measurement. A balance of `0`, an
+empty list, a block height of `0` — a caller cannot tell any of those from a
+real answer. When in doubt, throw from the fallback: a caller that wants a
+default can write one where it knows what a default means.
+
+`threshold` counts failures since the last success, not for the life of the
+instance. (It used to be the latter — a success in the closed state did not
+clear the tally, so five failures five weeks apart opened the circuit as surely
+as five in a row.)
 - **HALF_OPEN** - Testing if service recovered, limited requests allowed
 
 #### @Idempotent(options)

@@ -348,7 +348,38 @@ export function Actor(options: any = {}): ClassDecorator {
 // ============================================================================
 
 /**
- * Add circuit breaker to a method
+ * Add a circuit breaker to a method.
+ *
+ * Two things here are easy to read backwards from the option names, and both
+ * have cost callers real defects.
+ *
+ * **`fallback` is the method's error handler, not the open circuit's.** It is
+ * called on EVERY failure in every state — a closed circuit whose first call
+ * throws goes straight to it — and also in place of the call while the circuit
+ * is open. `threshold` governs only when the state flips to `open`, which is
+ * when calls stop reaching the method at all. So a fallback's return value is
+ * what the caller sees for any failure, including ones that have nothing to do
+ * with the dependency being down: a malformed response, a bad argument, an
+ * uninitialised client.
+ *
+ * That makes the choice of return value load-bearing. A fallback is safe when
+ * it answers in the same vocabulary a genuine failure already uses — `false`
+ * from something that returns "did it work", `isSynced: false` from a sync
+ * check — and unsafe when it answers in the vocabulary of a successful
+ * measurement. A balance of `0`, an empty list of transactions, a height of
+ * `0`: each is a value the caller cannot tell from a real one, and each has
+ * been shipped and read as fact downstream. Prefer throwing; a caller that
+ * wanted a default can write one where it knows what a default means.
+ *
+ * **`threshold` counts failures since the last reset, not consecutive ones.**
+ * It used to count them for the life of the instance: a success in the closed
+ * state did not clear the tally, so five failures spread over five weeks
+ * opened the circuit as surely as five in a row, and the caller was denied for
+ * `timeout` with a healthy dependency. Measured, not reasoned: four
+ * failure-then-success pairs plus a fifth failure left the next healthy call
+ * answering from the fallback without reaching the method. A success now
+ * clears the count in every state, which is what "failures before opening"
+ * says.
  */
 export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
@@ -385,10 +416,13 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
       try {
         const result = await original.apply(this, args);
 
-        // Success - reset on half-open
+        // A success clears the tally, in every state. Clearing it only on
+        // half-open made `threshold` a lifetime count: a long-running process
+        // with an occasional transient failure accumulated its way to an open
+        // circuit and was denied for `timeout` while the dependency was fine.
+        state.failures = 0;
         if (state.state === 'half-open') {
           state.state = 'closed';
-          state.failures = 0;
         }
 
         return result;

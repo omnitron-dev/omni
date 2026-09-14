@@ -163,6 +163,33 @@ export function fleetBindHostFor(dc: { role?: string; host?: string }): string {
 }
 
 /**
+ * The bind address a daemon should END UP with, from what was actually
+ * configured.
+ *
+ * `fleetBindHostFor` above takes the daemon's RUNNING config, and by the time
+ * anything holds one, `host` has been filled in from `DEFAULT_DAEMON_CONFIG`
+ * — so `?? '0.0.0.0'` can never fire and every slave binds loopback. The
+ * information it needs is whether an operator SET a host, and only the saved
+ * file knows that: absent means "no opinion", `127.0.0.1` means "loopback,
+ * deliberately".
+ *
+ * Measured 2026-09-14 on a provisioned slave, after the rule was written and
+ * before this existed:
+ *
+ *     LISTEN 127.0.0.1:9700    ← the fleet port no master can dial
+ *     LISTEN 127.0.0.1:9801
+ *     LISTEN 127.0.0.1:9802
+ *
+ * The rule was right, the value it was given was already decided. This is the
+ * same rule applied where the answer is still open.
+ */
+export function effectiveBindHost(saved: { role?: string; host?: string } | null): string {
+  if (saved?.host) return saved.host;
+  if (saved?.role === 'slave') return '0.0.0.0';
+  return DEFAULT_DAEMON_CONFIG.host;
+}
+
+/**
  * Where a daemon binds the surfaces that exist to serve a console: the Netron
  * HTTP RPC and the WebSocket.
  *

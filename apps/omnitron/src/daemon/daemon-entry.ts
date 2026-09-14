@@ -8,6 +8,7 @@
 
 import { loadDaemonBootConfig } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { effectiveBindHost } from './daemon.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig, ensurePersistedJwtSecret } from '../commands/up.js';
@@ -63,7 +64,11 @@ async function main() {
           // route. Without these `daemon.host` was documented, meaningful to
           // the code that reads it, and unreachable from any file an operator
           // or a provisioning run could write.
-          ...(savedConfig.host ? { host: savedConfig.host } : {}),
+          // Not `savedConfig.host` directly: a slave with no host set must
+          // bind where a master can reach it, and that decision can only be
+          // made here, while "unset" is still distinguishable from
+          // "127.0.0.1, deliberately".
+          host: effectiveBindHost(savedConfig),
           ...(savedConfig.port ? { port: savedConfig.port } : {}),
           ...(savedConfig.httpPort ? { httpPort: savedConfig.httpPort } : {}),
           ...(savedConfig.advertiseHost ? { advertiseHost: savedConfig.advertiseHost } : {}),

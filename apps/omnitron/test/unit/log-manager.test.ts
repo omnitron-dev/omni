@@ -224,16 +224,17 @@ describe('LogManager', () => {
       const qualified = manager.getLogFilePath('acme/dev/main', 'app');
       const bare = manager.getLogFilePath('main', 'app');
 
-      expect(qualified.endsWith(path.join('projects', 'downstream', 'dev', 'logs', 'main', 'app.log'))).toBe(true);
+      // The project segment is the app name's own first part — `acme` here,
+      // from `acme/dev/main`. This read `downstream`, a name no input to this
+      // test produces, so the assertion had never passed: an anonymised
+      // project name was substituted into the expectation and not into the
+      // call beside it.
+      expect(qualified.endsWith(path.join('projects', 'acme', 'dev', 'logs', 'main', 'app.log'))).toBe(true);
       expect(bare.endsWith(path.join('logs', 'main', 'app.log'))).toBe(true);
       expect(bare).not.toContain('projects');
       // The difference IS the defect. A future layout change that collapses
       // the two should fail here loudly rather than quietly making the
       // caller's mistake harmless.
-      expect(qualified).not.toBe(bare);
-      // The two must differ — that difference is the whole defect, and a
-      // future layout change that collapses them should fail here loudly
-      // rather than quietly making the caller's mistake harmless.
       expect(qualified).not.toBe(bare);
     });
 

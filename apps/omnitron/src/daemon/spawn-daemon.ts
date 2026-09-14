@@ -1,11 +1,13 @@
 /**
  * Starting the daemon as a detached process — once, rather than twice.
  *
- * `omnitron up` and `omnitron daemon start` each forked their own copy of
- * this, and the copies had drifted: one waited fifteen seconds, the other
- * thirty; one passed `OMNITRON_NO_INFRA`, the other did not; and neither set
- * the child's working directory, which is what made a remote install fail in
- * a way that took three rounds of guessing to see.
+ * `upCommand` and `daemonStart` — the two functions behind `omnitron up`;
+ * the second has no command of its own any more, and its callers import it
+ * directly — each forked their own copy of this, and the copies had drifted:
+ * one waited fifteen seconds, the other thirty; one passed
+ * `OMNITRON_NO_INFRA`, the other did not; and neither set the child's working
+ * directory, which is what made a remote install fail in a way that took
+ * three rounds of guessing to see.
  *
  * `--import tsx/esm` is resolved by Node IN THE CHILD, from the child's cwd
  * upward — project configs are TypeScript, so the loader has to be there.

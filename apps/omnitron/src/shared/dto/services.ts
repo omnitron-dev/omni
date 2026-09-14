@@ -484,6 +484,17 @@ export interface IOmnitronNodesService {
   getCheckConfig(): NodeCheckConfig;
   setCheckConfig(data: Partial<NodeCheckConfig>): NodeCheckConfig;
   getHistoryConfig(): FleetHistoryConfig;
+  /**
+   * Install a locally built omnitron bundle on a node, beside the version it
+   * is running. Does not change what the node serves.
+   *
+   * `archivePath` is a path on the DAEMON's filesystem — the CLI builds the
+   * bundle and the daemon ships it, because the node's SSH credentials live
+   * in the daemon's vault and must not travel to a caller.
+   */
+  installBundleOnNode(data: { nodeId: string; archivePath: string; version: string }): Promise<boolean>;
+  /** Make an installed version current and restart the node's daemon into it. */
+  activateBundleOnNode(data: { nodeId: string; version: string; keepVersions?: number }): Promise<boolean>;
 }
 
 /**

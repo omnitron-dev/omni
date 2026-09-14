@@ -135,7 +135,8 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
     });
 
     it('should validate connection configuration', async () => {
-      // Use SQLite with invalid path to trigger connection error without network timeouts
+      // SQLite with an invalid path — no network, so the only thing that can
+      // make this slow is the retry policy itself, which is the point.
       manager = new DatabaseManager(
         {
           connection: {
@@ -146,7 +147,11 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
         mockLogger
       );
 
+      const started = Date.now();
       await expect(manager.init()).rejects.toThrow();
+      // A directory that does not exist will not appear. This took 31 seconds
+      // — the whole backoff budget — until the failure was classified.
+      expect(Date.now() - started).toBeLessThan(2_000);
     });
   });
 
@@ -615,13 +620,22 @@ describeOrSkip('DatabaseManager - Unit Tests', () => {
         mockLogger
       );
 
-      // Invalid dialect should throw during init, not hang
-      await expect(
-        Promise.race([
-          manager.init(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000)),
-        ])
-      ).rejects.toThrow();
+      // The earlier form of this raced init() against a 10-second timeout and
+      // asserted `.rejects.toThrow()`. It passed — by timing out. init() took
+      // 31 seconds (five retries with backoff over an error no retry could
+      // fix), the race rejected at 10s, and the assertion was satisfied by the
+      // TIMEOUT's error rather than by init's. A test whose stated property is
+      // "should throw, not hang" was being satisfied by hanging.
+      //
+      // Asserted now on both halves: it rejects, and it rejects promptly.
+      const started = Date.now();
+      await expect(manager.init()).rejects.toThrow();
+      const elapsed = Date.now() - started;
+
+      // The retry budget is 1+2+4+8+16 = 31s. Anything near it means the
+      // permanence classification stopped working and a config literal is
+      // being asked about six times.
+      expect(elapsed).toBeLessThan(2_000);
     });
 
     it('should handle connection test timeout', async () => {

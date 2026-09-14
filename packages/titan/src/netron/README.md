@@ -620,6 +620,16 @@ netron.useForMethod('calculator@1.0.0', 'multiply', rateLimitMiddleware);
 
 ### Connection Pooling
 
+> **Not currently wired.** `ConnectionManager` is constructed, started and
+> stopped by `Netron`, and that is all: `addConnection` has no caller outside
+> its own spec, so no connection is ever registered with it. Every setting
+> below therefore does nothing today — the limits compare against an empty map
+> and the health loop sweeps an empty pool. Setting one of the limits logs a
+> warning at construction so it is not discovered the hard way. Wiring it up is
+> a behaviour change (the default is 100 total connections, which would start
+> refusing traffic on services that have been running without it) and is a
+> separate decision.
+
 The `ConnectionManager` provides connection pooling and health monitoring:
 
 ```typescript

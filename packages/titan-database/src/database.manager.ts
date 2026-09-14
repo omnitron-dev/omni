@@ -141,6 +141,70 @@ interface RetryConfig {
   timeoutMs: number;
 }
 
+/**
+ * Connection failures that will never succeed on a retry.
+ *
+ * `createConnection` probes a new connection with `SELECT 1` and reduces every
+ * probe failure to SERVICE_UNAVAILABLE, which `createConnectionWithRetry`
+ * retries. That wrapper exists for the real transient case — the database
+ * container is still starting — but it swallowed the distinction it was
+ * supposed to preserve. A comment above `shouldRetry` claimed "config mistakes
+ * fail on the FIRST attempt"; that only held for mistakes caught while BUILDING
+ * the driver (a bad dialect). Everything a human actually gets wrong — the
+ * password, the database name, the file path — fails at the PROBE, and so
+ * burned the whole 1+2+4+8+16 = 31 second budget before saying so.
+ *
+ * Measured against the real drivers rather than assumed:
+ *
+ *     wrong password        code 28P01           permanent
+ *     no such database      code 3D000           permanent
+ *     sqlite missing dir    TypeError, NO code   permanent
+ *     sqlite unwritable     SQLITE_CANTOPEN      permanent
+ *     port refused          ECONNREFUSED         transient — container starting
+ *     host does not resolve ENOTFOUND            transient — DNS lags a container
+ *
+ * Deliberately a small allow-list of KNOWN-hopeless conditions: anything not
+ * listed keeps today's retrying behaviour, so this can only shorten a wait
+ * that was never going to end, never shorten one that would have succeeded.
+ * `ENOTFOUND` is left retryable for exactly that reason — a service name can
+ * start resolving a second later.
+ */
+const PERMANENT_DRIVER_CODES = new Set([
+  '28P01', // postgres: invalid_password
+  '28000', // postgres: invalid_authorization_specification
+  '3D000', // postgres: invalid_catalog_name — database does not exist
+  'SQLITE_CANTOPEN',
+  'ER_ACCESS_DENIED_ERROR',
+  'ER_BAD_DB_ERROR',
+  // A connection string that does not parse as a URL will not start parsing.
+  // This is how an unrecognised dialect actually surfaces: the string goes to
+  // URL parsing before the dialect switch is reached, so the `badRequest` the
+  // switch raises for an unknown dialect is never the error you get. Measured
+  // — `{ dialect: 'invalid', connection: ':memory:' }` throws a TypeError with
+  // this code, six times, over 31 seconds.
+  'ERR_INVALID_URL',
+]);
+
+/**
+ * better-sqlite3 throws a bare `TypeError` with no `code` when the directory
+ * does not exist, so this one has to be recognised by its message. Anchored to
+ * the driver's exact wording; a driver that changes it falls back to being
+ * treated as transient, which is the safe direction.
+ */
+const PERMANENT_MESSAGES = [/Cannot open database because the directory does not exist/i];
+
+export function isPermanentConnectionError(error: unknown): boolean {
+  // A BAD_REQUEST is permanent by definition: the request is wrong, and asking
+  // again does not make it right. `createKyselyInstance` raises one for an
+  // unrecognised dialect, which used to be retried five times over 31 seconds
+  // — a value read from a config literal, asked about six times.
+  if (error instanceof TitanError && error.code === ErrorCode.BAD_REQUEST) return true;
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && PERMANENT_DRIVER_CODES.has(code)) return true;
+  const message = error instanceof Error ? error.message : '';
+  return PERMANENT_MESSAGES.some((re) => re.test(message));
+}
+
 @Injectable()
 export class DatabaseManager implements IDatabaseManager {
   /**
@@ -499,12 +563,17 @@ export class DatabaseManager implements IDatabaseManager {
           jitterFactor: 0,
           // Retry transient driver errors AND our own SERVICE_UNAVAILABLE
           // wrapper (createConnection reduces every failed liveness probe to
-          // it, e.g. while the database container is still starting). Config
-          // mistakes (bad dialect, malformed options) fail on the FIRST
-          // attempt instead of burning the whole backoff budget.
-          shouldRetry: (error) =>
-            isTransientError(error) ||
-            (error instanceof TitanError && error.code === ErrorCode.SERVICE_UNAVAILABLE),
+          // it, e.g. while the database container is still starting) — EXCEPT
+          // when the probe already established that no retry can help. See
+          // `isPermanentConnectionError`: a wrong password or a missing
+          // database used to spend 31 seconds being asked five more times.
+          shouldRetry: (error) => {
+            if (error instanceof TitanError && error.details?.['permanent'] === true) return false;
+            return (
+              isTransientError(error) ||
+              (error instanceof TitanError && error.code === ErrorCode.SERVICE_UNAVAILABLE)
+            );
+          },
           onRetry: (attempt, error) => {
             this.logger.warn(
               {
@@ -582,7 +651,17 @@ export class DatabaseManager implements IDatabaseManager {
       // Test connection health (single check — testConnection is redundant)
       const health = await this.validateConnectionHealth(instance, config.dialect);
       if (!health.healthy) {
-        throw Errors.unavailable('Database', `Connection health check failed: ${health.error.message}`);
+        // The code stays SERVICE_UNAVAILABLE — callers branch on it — and the
+        // verdict travels in `details` so the retry policy can read it without
+        // re-deriving it from a message.
+        throw new TitanError({
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+          message: `Connection health check failed: ${health.error.message}`,
+          details: {
+            permanent: isPermanentConnectionError(health.error),
+            driverCode: (health.error as { code?: string }).code,
+          },
+        });
       }
 
       info.connected = true;
@@ -629,10 +708,21 @@ export class DatabaseManager implements IDatabaseManager {
         error: error as Error,
       });
 
+      // This catch covers BOTH halves: the driver failing to build (a bad
+      // dialect, a sqlite path whose directory does not exist — better-sqlite3
+      // throws at construction, not at the first query) and the probe failing.
+      // Without the verdict here, the wrapper flattened every one of them into
+      // a retryable SERVICE_UNAVAILABLE, which is why the comment above
+      // `shouldRetry` — "config mistakes fail on the FIRST attempt" — was not
+      // true of any of them.
+      const permanent =
+        (error instanceof TitanError && error.details?.['permanent'] === true) ||
+        isPermanentConnectionError(error);
+
       throw new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: `Database connection ${name} is unavailable: ${errorMessage}`,
-        details: { connection: name, error: errorMessage },
+        details: { connection: name, error: errorMessage, permanent },
       });
     }
   }

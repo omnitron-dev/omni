@@ -163,9 +163,7 @@ export class ProcessJanitor {
     //
     // `ppid === REAPER_PID` is the orphan signature, and it is the one case
     // where "not my child" really is evidence of a dead parent.
-    const stale = all.filter(
-      (row) => row.ppid !== myPid && (row.ppid === REAPER_PID || !this.isAlive(row.ppid)),
-    );
+    const stale = all.filter((row) => row.ppid !== myPid && this.hasDeadParent(row));
 
     if (stale.length === 0) {
       this.logger?.debug?.({ scanned: all.length }, 'janitor: cold start — no stale fork-workers');
@@ -224,9 +222,17 @@ export class ProcessJanitor {
       // Process whose parent is THIS daemon, but the daemon doesn't
       // claim it → orphan from a partial restart.
       if (row.ppid === myPid) return true;
-      // Process adopted by init (parent is gone) → orphan from a
+      // Process adopted by the reaper (parent is gone) → orphan from a
       // previous daemon that died. Reap it.
-      if (!this.isAlive(row.ppid)) return true;
+      //
+      // This read `!this.isAlive(row.ppid)` and could therefore never fire.
+      // The two halves of this janitor disagreed about what an orphan is:
+      // `coldStartSweep` was corrected to test the reaper pid and this was
+      // left behind, so the branch its own comment describes was unreachable
+      // here for as long as the daemon ran. Measured 2026-09-14 minutes after
+      // a restart: a `fork-worker.js` with `ppid = 1`, five minutes old,
+      // surveyed by every sweep and reaped by none.
+      if (this.hasDeadParent(row)) return true;
       // Some other parent — not ours, leave alone.
       return false;
     });
@@ -253,6 +259,22 @@ export class ProcessJanitor {
     };
     this.onMetrics?.(metrics);
     return metrics;
+  }
+
+  /**
+   * Whether this row's parent is gone.
+   *
+   * One statement, used by both sweeps, because they have already disagreed
+   * about it once: when a parent dies its children are REPARENTED — to
+   * launchd on macOS, to init or a subreaper elsewhere — so an orphan's
+   * `ppid` becomes 1, and pid 1 is alive on every running system. Asking
+   * `isAlive(ppid)` therefore answers "the parent is fine" for precisely the
+   * processes both sweeps exist to reap, and the liveness test is kept only
+   * for the case where a ppid points at something that really has vanished
+   * without reparenting.
+   */
+  private hasDeadParent(row: PsRow): boolean {
+    return row.ppid === REAPER_PID || !this.isAlive(row.ppid);
   }
 
   /**
@@ -318,15 +340,38 @@ export class ProcessJanitor {
     }
 
     // Confirm. A signal sent is not a process gone.
-    if (stubborn.length > 0) await wait(Math.min(this.gracefulMs, 500));
-    const survivors = pids.filter((pid) => this.isAlive(pid));
+    //
+    // Polled rather than checked once. SIGKILL is delivered immediately but
+    // the process is not reaped until the kernel can tear it down, and one in
+    // uninterruptible sleep — blocked on disk, which is the state a machine
+    // under load puts them in — takes longer than any single sample. The
+    // first version waited 500 ms and then reported at ERROR level that the
+    // process had "survived SIGKILL"; observed 2026-09-14 on a pid that was
+    // gone moments later. An alarm that fires on a normal delay teaches its
+    // reader to disregard the case it exists to report.
+    const survivors = await this.awaitDeath(stubborn);
     if (survivors.length > 0) {
       this.logger?.error?.(
-        { pids: survivors.slice(0, 10) },
+        { pids: survivors.slice(0, 10), waitedMs: KILL_CONFIRM_TIMEOUT_MS },
         'janitor: processes survived SIGKILL — still holding whatever they hold',
       );
     }
     return pids.length - survivors.length;
+  }
+
+  /**
+   * Wait for killed pids to leave the process table, up to a deadline.
+   * Returns whichever are still there when it expires.
+   */
+  private async awaitDeath(pids: number[]): Promise<number[]> {
+    if (pids.length === 0) return [];
+    const deadline = Date.now() + KILL_CONFIRM_TIMEOUT_MS;
+    let remaining = pids;
+    while (remaining.length > 0 && Date.now() < deadline) {
+      await wait(KILL_CONFIRM_POLL_MS);
+      remaining = remaining.filter((pid) => this.isAlive(pid));
+    }
+    return remaining;
   }
 }
 
@@ -345,6 +390,11 @@ const REAPER_PID = 1;
 
 /** How long the janitor waits for `ps` before giving up on a sweep. */
 const PS_TIMEOUT_MS = 10_000;
+
+/** How long a SIGKILLed process is given to actually leave the process table. */
+const KILL_CONFIRM_TIMEOUT_MS = 5_000;
+/** How often that is rechecked. */
+const KILL_CONFIRM_POLL_MS = 100;
 
 /**
  * `ps`, asynchronously and with a deadline.

@@ -190,12 +190,96 @@ describe('the two sweeps agree on what an orphan is', () => {
     expect(metrics.orphansFound).toBe(1);
     expect(killed).toEqual([1002]);
   });
+
+  it('runSweep reaps a child the reaper adopted', async () => {
+    // And here they drifted the other way. `coldStartSweep` was corrected to
+    // test the reaper pid; this half kept `!isAlive(ppid)`, which answers
+    // "the parent is fine" for every reparented orphan because pid 1 is alive
+    // on every running system — so the branch whose own comment reads
+    // "adopted by init (parent is gone) → reap it" could not fire.
+    //
+    // Note the fixture: `isAlive` says pid 1 is alive, which is the fact that
+    // made the old test unreachable. A fixture that pretends otherwise passes
+    // against both implementations and pins nothing.
+    const { j, killed } = janitor([row(1003, 1)], () => true);
+
+    const metrics = await j.runSweep();
+
+    expect(metrics.orphansFound).toBe(1);
+    expect(killed).toEqual([1003]);
+  });
+
+  it('runSweep still protects a reparented process the daemon claims', async () => {
+    // Ownership outranks parentage in both sweeps. A pid the orchestrator
+    // vouches for is not reaped whatever its ppid says.
+    const { j, killed } = janitor([row(1004, 1)], () => true, [1004]);
+
+    const metrics = await j.runSweep();
+
+    expect(metrics.orphansFound).toBe(0);
+    expect(killed).toEqual([]);
+  });
+
+  it('runSweep leaves a young reparented process alone', async () => {
+    // The age threshold guards a startup, and it guards it on every route
+    // into the orphan test — not only the one that names this daemon.
+    const { j, killed } = janitor([row(1005, 1, 5)], () => true);
+
+    const metrics = await j.runSweep();
+
+    expect(metrics.orphansFound).toBe(0);
+    expect(killed).toEqual([]);
+  });
 });
 
 
 // =============================================================================
 // Reaping: what a count means
 // =============================================================================
+
+describe('a process is dead when it leaves the table, not when the signal is sent', () => {
+  // `process.kill` is spied on below; restore it so no later file inherits a
+  // no-op kill.
+  afterEach(() => vi.restoreAllMocks());
+
+  it('waits for a pid that dies a moment after SIGKILL', async () => {
+    // SIGKILL is delivered at once; reaping is not. A process blocked in
+    // uninterruptible sleep — on disk, which is where load puts them — is
+    // still listed for a while after. The first version sampled once at
+    // 500 ms and reported at ERROR that the process had "survived SIGKILL";
+    // observed live on a pid that was gone moments later.
+    let alive = true;
+    setTimeout(() => { alive = false; }, 300);
+    const { j, killed } = janitor([row(2001, process.pid)], () => alive);
+    // Let the real reap run: it is what does the waiting.
+    delete (j as unknown as { reap?: unknown }).reap;
+    const sent: Array<[number, string]> = [];
+    vi.spyOn(process, 'kill').mockImplementation(((pid: number, sig: string) => {
+      sent.push([pid, sig]);
+      return true;
+    }) as never);
+
+    const metrics = await j.runSweep();
+
+    expect(sent.map(([, sig]) => sig)).toContain('SIGKILL');
+    // It died during the confirmation window, so it is reaped, not a survivor.
+    expect(metrics.orphansKilled).toBe(1);
+    expect(metrics.killErrors).toBe(0);
+    void killed;
+  });
+
+  it('reports one that is still there when the window closes', async () => {
+    const { j } = janitor([row(2002, process.pid)], () => true);
+    delete (j as unknown as { reap?: unknown }).reap;
+    vi.spyOn(process, 'kill').mockImplementation((() => true) as never);
+
+    const metrics = await j.runSweep();
+
+    // The alarm still fires for the case it exists to report.
+    expect(metrics.orphansKilled).toBe(0);
+    expect(metrics.killErrors).toBe(1);
+  }, 20_000);
+});
 
 describe('reap — a signal sent is not a process gone', () => {
   /**

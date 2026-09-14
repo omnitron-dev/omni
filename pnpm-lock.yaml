@@ -165,6 +165,9 @@ importers:
       cron-parser:
         specifier: ^5.10.0
         version: 5.10.0
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       jose:
         specifier: ^6.2.11
         version: 6.2.11
@@ -180,6 +183,9 @@ importers:
       systeminformation:
         specifier: ^5.33.8
         version: 5.33.8
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
     devDependencies:
       '@emotion/react':
         specifier: ^11.14.0
@@ -205,9 +211,6 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
-      esbuild:
-        specifier: ^0.28.2
-        version: 0.28.2
       happy-dom:
         specifier: ^20.14.0
         version: 20.14.0
@@ -220,9 +223,6 @@ importers:
       react-router-dom:
         specifier: 7.18.3
         version: 7.18.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

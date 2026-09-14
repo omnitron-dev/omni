@@ -373,9 +373,6 @@ importers:
 
   packages/kb:
     dependencies:
-      '@omnitron-dev/common':
-        specifier: workspace:*
-        version: link:../common
       '@surrealdb/node':
         specifier: ^3.0.3
         version: 3.0.3(surrealdb@2.0.8(tslib@2.8.1)(typescript@7.0.2))
@@ -438,9 +435,6 @@ importers:
 
   packages/netron-browser:
     dependencies:
-      '@omnitron-dev/common':
-        specifier: workspace:*
-        version: link:../common
       '@omnitron-dev/cuid':
         specifier: workspace:*
         version: link:../cuid
@@ -823,9 +817,6 @@ importers:
       kysely:
         specifier: ^0.29.5
         version: 0.29.5
-      uuid:
-        specifier: ^14.0.2
-        version: 14.0.2
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -887,12 +878,6 @@ importers:
       ipaddr.js:
         specifier: ^2.5.0
         version: 2.5.0
-      minimatch:
-        specifier: ^10.2.6
-        version: 10.2.6
-      msgpackr:
-        specifier: ^2.1.0
-        version: 2.1.0
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -1017,9 +1002,6 @@ importers:
         specifier: ^0.10.0
         version: 0.10.0(@kysera/executor@0.10.0(kysely@0.29.5))(@kysera/repository@0.10.0(kysely@0.29.5)(zod@4.5.4))(kysely@0.29.5)(zod@4.5.4)
       '@kysera/core':
-        specifier: ^0.10.0
-        version: 0.10.0(kysely@0.29.5)
-      '@kysera/dal':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.5)
       '@kysera/dialects':
@@ -1203,18 +1185,12 @@ importers:
       '@omnitron-dev/common':
         specifier: workspace:*
         version: link:../common
-      '@omnitron-dev/eventemitter':
-        specifier: workspace:*
-        version: link:../eventemitter
       amqplib:
         specifier: '>=0.10.0'
         version: 2.0.1
       firebase-admin:
         specifier: '>=12.0.0'
         version: 14.3.0
-      handlebars:
-        specifier: ^4.7.9
-        version: 4.7.9
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
@@ -1234,6 +1210,9 @@ importers:
         specifier: '>=4.0.0'
         version: 6.1.0
     devDependencies:
+      '@omnitron-dev/eventemitter':
+        specifier: workspace:*
+        version: link:../eventemitter
       '@omnitron-dev/titan':
         specifier: workspace:*
         version: link:../titan
@@ -4977,11 +4956,6 @@ packages:
     resolution: {integrity: sha512-+CqsMbHPiSTdtSO14O51eMNlrp9N79gmeqmXeouJOhfucAedHw9noVe/n5uJk3tbKE6a+6ZCQg3RPhVhHByAIw==}
     engines: {node: '>=18'}
 
-  handlebars@4.7.9:
-    resolution: {integrity: sha512-4E71E0rpOaQuJR2A3xDZ+GM1HyWYv1clR58tC8emQNeQe3RH7MAzSbat+V0wG78LQBo6m6bzSG/L4pBuCsgnUQ==}
-    engines: {node: '>=0.4.7'}
-    hasBin: true
-
   happy-dom@20.14.0:
     resolution: {integrity: sha512-4bRh1KzRvKDnFNTlLhzT1RZTpkKhQbQDl9j+7GXszWsvuspYdo29k6OHRf4PwiM6oLb8r/pMWeYiJjkfod5AvQ==}
     engines: {node: '>=20.0.0'}
@@ -7032,11 +7006,6 @@ packages:
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
 
-  uglify-js@3.19.3:
-    resolution: {integrity: sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ==}
-    engines: {node: '>=0.8.0'}
-    hasBin: true
-
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
@@ -7295,9 +7264,6 @@ packages:
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
-
-  wordwrap@1.0.0:
-    resolution: {integrity: sha512-gvVzJFlPycKc5dZN4yPkP8w7Dc37BtP1yczEneOb4uq34pXZcvrtRTmWV8W+Ume+XCxKgbjM+nevkyFPMybd4Q==}
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -11140,15 +11106,6 @@ snapshots:
       - supports-color
     optional: true
 
-  handlebars@4.7.9:
-    dependencies:
-      minimist: 1.2.8
-      neo-async: 2.6.2
-      source-map: 0.6.1
-      wordwrap: 1.0.0
-    optionalDependencies:
-      uglify-js: 3.19.3
-
   happy-dom@20.14.0:
     dependencies:
       '@types/node': 25.9.5
@@ -13685,9 +13642,6 @@ snapshots:
 
   ufo@1.6.4: {}
 
-  uglify-js@3.19.3:
-    optional: true
-
   unbox-primitive@1.1.0:
     dependencies:
       call-bound: 1.0.4
@@ -14109,8 +14063,6 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
-
-  wordwrap@1.0.0: {}
 
   wrap-ansi@7.0.0:
     dependencies:

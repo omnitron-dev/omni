@@ -88,10 +88,18 @@ export async function deployCommand(app: string, opts: { target: string }): Prom
     `\`omnitron deploy\` does not deploy: it only restarted an app that was already on the host.`,
   );
   log.info('');
-  log.info('Deployment is a stack operation — it provisions the node, ships the');
-  log.info('artifact over SSH, installs dependencies and verifies health:');
+  log.info('Deployment is a stack operation:');
   log.info('');
   log.info('    omnitron stack start <project> <stack>');
+  log.info('');
+  // Said plainly, because the alternative is to describe what the code
+  // INTENDS and let the reader hear a promise — which is the same fault this
+  // command is being refused for, one level up.
+  log.warn('Note: the remote half of that path — provision the node, ship the');
+  log.warn('artifact over SSH, install dependencies, verify health — has never');
+  log.warn('been executed in any known configuration. No project config declares');
+  log.warn('`stacks.nodes`, so it has not been reached. Expect its first run to be');
+  log.warn('its first test.');
   log.info('');
   log.info(`To restart '${app}' on a registered remote server, which is what this`);
   log.info('command actually did:');
@@ -124,7 +132,9 @@ export async function rollbackCommand(app: string, _opts: { target: string }): P
   log.info('    /opt/omnitron/artifacts/<project>/<app>/<version>/');
   log.info('');
   log.info('so a rollback is implementable through the stack deployer, and is not');
-  log.info('implemented yet. Until it is, redeploy the version you want:');
+  log.info('implemented yet. Note that the stack deployer has itself never been');
+  log.info('executed in any known configuration. Until then, redeploy the version');
+  log.info('you want:');
   log.info('');
   log.info('    omnitron stack start <project> <stack>');
 }

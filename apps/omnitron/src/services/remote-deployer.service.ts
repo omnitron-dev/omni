@@ -13,6 +13,19 @@
  *
  * Artifact path on remote: /opt/omnitron/artifacts/<project>/<app>/<version>/
  * Remote daemon config: /etc/omnitron/omnitron.config.ts
+ *
+ * NEVER EXECUTED, as of 2026-09-14. Measured rather than assumed: no log in
+ * `~/.omnitron/logs` carries a single line this class emits ("Starting
+ * deployment to node", "Slave provisioned", "Deployment successful"), no
+ * artifact directory exists, and — decisively — no project config declares
+ * `stacks.nodes`, which `startRemoteStack` requires before it can reach here.
+ * So both entry points are unreachable in every current configuration.
+ *
+ * This matters to anyone reading the code below and taking it for a working
+ * path. It is careful code — arguments are quoted, path segments validated,
+ * heredocs replaced with base64 — and none of that has ever met a real host.
+ * Its first run will be its first test. Treat a green read of this file as
+ * evidence about intent, not about behaviour.
  */
 
 import { execFile } from 'node:child_process';

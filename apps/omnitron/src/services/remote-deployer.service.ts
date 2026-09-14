@@ -176,6 +176,19 @@ export function stackNodeToDeployTarget(node: IStackNode): DeployTarget {
   return target;
 }
 
+/** What an operator has authorised a provisioning run to change on a host. */
+export interface ProvisionOptions {
+  /**
+   * Allow installing a Node.js runtime when the node has none.
+   *
+   * Off by default. Installing one adds a vendor package repository and runs
+   * a package-manager install as root — a durable change to how the machine
+   * gets its software, on a machine that is very likely doing something else
+   * already.
+   */
+  installRuntime?: boolean;
+}
+
 export type DeployStatus = 'pending' | 'transferring' | 'extracting' | 'restarting' | 'verifying' | 'success' | 'failed';
 
 export interface DeployResult {
@@ -355,6 +368,7 @@ export class RemoteDeployer {
     masterHost: string,
     masterPort: number,
     project: string,
+    options: ProvisionOptions = {},
   ): Promise<boolean> {
     const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
 
@@ -375,7 +389,37 @@ export class RemoteDeployer {
       // only places that did not.
       const hasNode = await this.sshExec(target, 'which node 2>/dev/null || which bun 2>/dev/null || echo ""');
       if (!hasNode.trim()) {
-        this.logger.info({ host: target.host }, 'Installing Node.js on remote node...');
+        // Installing a runtime means adding a vendor's APT or YUM repository
+        // to the machine, importing its signing key, and running a
+        // package-manager install as root. That is a durable change to how the
+        // host gets its software, and it is not what an operator asked for
+        // when they asked for a slave.
+        //
+        // The machines this reaches are not blank. The host this path was
+        // first run against — a test box, offered as one — turned out to be
+        // running a Monero node, a Tor daemon and two VPN containers, with an
+        // uptime of 599 days. `curl … | bash -` as root on that is a decision
+        // with an owner, and the owner is not this function.
+        //
+        // So it asks. The message names the exact commands, because "enable
+        // installRuntime" without them is a checkbox rather than consent.
+        if (!options.installRuntime) {
+          this.logger.error(
+            { host: target.host },
+            'No Node.js or Bun on the node, and installing one was not authorised',
+          );
+          this.emitProgress(
+            nodeKey, '*', 'failed', 0,
+            `${target.host} has no Node.js or Bun. Installing one would add a vendor package repository ` +
+              `(nodesource) and run a package-manager install as root. Install a runtime yourself, or ` +
+              `re-run with installRuntime enabled to authorise that.`,
+          );
+          return false;
+        }
+        this.logger.warn(
+          { host: target.host },
+          'Installing Node.js on the remote node — this adds a vendor package repository',
+        );
         this.emitProgress(nodeKey, '*', 'extracting', 15, 'Installing Node.js...');
         try {
           // Install Node.js via official installer (works on most Linux distros)

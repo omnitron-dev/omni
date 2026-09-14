@@ -94,7 +94,7 @@ describe('provisionSlaveNode when a probe cannot reach the host', () => {
     expect(commands.some((c) => c.includes('npm install -g @omnitron-dev/omnitron'))).toBe(false);
   });
 
-  it('still installs when the host answers and the runtime really is absent', async () => {
+  it('still installs when the host answers, the runtime is absent, and it was authorised', async () => {
     // The empty string has to keep meaning "absent" — the fix must not turn
     // a real answer into a failure.
     const d = new RemoteDeployer(logger, execution((command) => {
@@ -102,7 +102,7 @@ describe('provisionSlaveNode when a probe cannot reach the host', () => {
       return { stdout: 'ok' };
     }));
 
-    await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+    await d.provisionSlaveNode(target, 'master.local', 9700, 'proj', { installRuntime: true });
 
     expect(commands.some((c) => c.includes('nodesource'))).toBe(true);
   });
@@ -117,5 +117,60 @@ describe('provisionSlaveNode when a probe cannot reach the host', () => {
 
     expect(ok).toBe(false);
     expect(commands).toEqual(['echo ok']);
+  });
+});
+
+// =============================================================================
+// Changing how a machine gets its software is somebody's decision
+// =============================================================================
+
+describe('installing a runtime is authorised, not assumed', () => {
+  it('refuses when the node has no runtime and nobody said to install one', async () => {
+    // `curl https://deb.nodesource.com/… | bash -` as root adds a vendor
+    // repository and its signing key to the machine, permanently. The host
+    // this path was first run against — offered as a test box — turned out to
+    // be running a Monero node, a Tor daemon and two VPN containers, with an
+    // uptime of 599 days.
+    const d = new RemoteDeployer(logger, execution((command) => {
+      if (command.includes('which node')) return { stdout: '' };
+      return { stdout: 'ok' };
+    }));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(false);
+    expect(commands.some((c) => c.includes('nodesource') || c.includes('apt-get'))).toBe(false);
+  });
+
+  it('says what it would have run, not just that it refused', async () => {
+    // "Enable installRuntime" without naming the commands is a checkbox
+    // rather than consent.
+    const seen: string[] = [];
+    const d = new RemoteDeployer(logger, execution((command) => {
+      if (command.includes('which node')) return { stdout: '' };
+      return { stdout: 'ok' };
+    }));
+    d.onProgress((p) => seen.push(p.message));
+
+    await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    const refusal = seen.find((m) => m.includes('no Node.js'));
+    expect(refusal).toBeTruthy();
+    expect(refusal).toMatch(/package repository/);
+    expect(refusal).toMatch(/installRuntime/);
+  });
+
+  it('does not ask when the node already has a runtime', async () => {
+    // The authorisation is about CHANGING the machine. A host that already
+    // has Node needs no permission to be left alone.
+    const d = new RemoteDeployer(logger, execution((command) => {
+      if (command.includes('which node')) return { stdout: '/usr/bin/node' };
+      return { stdout: 'ok' };
+    }));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(true);
+    expect(commands.some((c) => c.includes('nodesource'))).toBe(false);
   });
 });

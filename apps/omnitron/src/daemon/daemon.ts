@@ -136,6 +136,23 @@ export function resolveBindHost(configured: string | undefined): string {
   return configured ?? '127.0.0.1';
 }
 
+/**
+ * Where a daemon binds the surfaces that exist to serve a console: the Netron
+ * HTTP RPC and the WebSocket.
+ *
+ * A master follows `daemon.host`, like everything else. A slave does not,
+ * because on a slave that knob is published for a different reason: a fleet
+ * node has to bind its TCP transport somewhere the master can reach, and a
+ * generated slave config therefore says `0.0.0.0`. The same value then
+ * published two more surfaces — an authentication endpoint and a WebSocket
+ * one that has no rate limit available to it — and a slave serves no console,
+ * so nothing dials either. They were cost without benefit, on a machine whose
+ * whole point is being somewhere else.
+ */
+export function consoleBindHostFor(dc: { role?: string; host?: string }): string {
+  return dc.role === 'slave' ? '127.0.0.1' : resolveBindHost(dc.host);
+}
+
 /** Addresses that reach this host and nowhere else. */
 export function isLoopbackHost(host: string | undefined): boolean {
   if (!host) return true; // absent means the loopback default above
@@ -595,7 +612,23 @@ export class OmnitronDaemon {
     // these over the same loopback; nginx fronts the public surface.
     // Operators who proxy in from another host opt in via `daemon.host`
     // (same knob that controls TCP, with the same literal meaning).
-    const localHost = resolveBindHost(dc.host);
+    //
+    // Except on a slave, where that knob has to be published for a different
+    // reason and publishing these with it is pure cost. A fleet node must
+    // bind its TCP transport somewhere the master can reach — that is what
+    // `daemon.host: '0.0.0.0'` in a generated slave config is for — and the
+    // same value then published the Netron HTTP RPC and the WebSocket
+    // alongside it. A slave serves no console: the operator uses the
+    // master's. So the two surfaces it gained are an authentication endpoint
+    // it does not need and a WebSocket one that, as the note below records,
+    // has no rate limit available to it.
+    //
+    // Rebound rather than warned about, which is the opposite of the choice
+    // made for the TCP transport twenty lines up — and for the opposite
+    // reason. Rebinding the fleet port would take a cluster down, because
+    // being reachable is that port's whole job. Rebinding these costs a slave
+    // nothing, because nothing dials them.
+    const localHost = consoleBindHostFor(dc);
 
     // HTTP — Netron RPC API (internal port, nginx proxies from public port)
     // The public `httpPort` (9800) is nginx in front of the console; the

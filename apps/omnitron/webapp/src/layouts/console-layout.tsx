@@ -5,7 +5,7 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
-import { ErrorBoundary, DashboardLayout, LoadingScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
+import { ErrorBoundary, DashboardLayout, SplashScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
 import type { ThemeMode, LayoutNavData } from '@omnitron-dev/prism';
 import { StatusBar } from 'src/components/status-bar';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
@@ -261,7 +261,14 @@ export function ConsoleLayout() {
       }}
     >
       <ErrorBoundary showDetails onError={reportCrash}>
-        <Suspense fallback={<LoadingScreen />}>
+        {/*
+          A route chunk, not the app — so this stays contained rather than
+          full-screen, and the chrome around it (sidebar, header) keeps
+          rendering. What it gains is a message: measured on this host, a cold
+          route took thirty seconds to arrive, and for all thirty a bare
+          progress bar is indistinguishable from a page that broke.
+        */}
+        <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
           <Outlet />
         </Suspense>
       </ErrorBoundary>

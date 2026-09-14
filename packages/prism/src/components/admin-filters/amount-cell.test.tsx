@@ -28,10 +28,27 @@ describe('AmountCell', () => {
   });
 
   it('scales to the requested precision by decimal value, not float', () => {
-    // `Number('1.005').toFixed(2)` is '1.00' — the double sits just below
-    // 1.005. This component is for money; that digit matters.
-    render(<AmountCell amount="1.005" decimals={2} />);
-    expect(screen.getByText(/^1\.01/)).toBeInTheDocument();
+    // The witness is an XMR balance shown at display precision, because that
+    // is where a double runs out of digits before the coin does:
+    // `Number('1234567.123456789012').toFixed(8)` is '1234567.12345679' — it
+    // cannot hold the value it was handed and rounds the damage UP. The
+    // decimal path drops the four digits this column has no room for and
+    // leaves the eight it does have exactly as the ledger holds them.
+    render(<AmountCell amount="1234567.123456789012" decimals={8} />);
+    expect(screen.getByText(/^1,234,567\.12345678$/)).toBeInTheDocument();
+  });
+
+  it('never shows more money than the amount it was given', () => {
+    // This cell is for financial tables. A figure rounded UP is one a person
+    // can read off the screen, type into a withdrawal, and be refused for.
+    // `1.005` at two decimals is one whole unit and a half-cent, not 1.01.
+    const { unmount } = render(<AmountCell amount="1.005" decimals={2} />);
+    expect(screen.getByText(/^1\.00$/)).toBeInTheDocument();
+    unmount();
+
+    // Toward zero on the other side of it, too.
+    render(<AmountCell amount="-1.999" decimals={2} />);
+    expect(screen.getByText(/^-1\.99$/)).toBeInTheDocument();
   });
 
   it('keeps every digit of a high-precision amount', () => {

@@ -193,7 +193,7 @@ export class SyncService {
     );
 
     this.syncTimer = setInterval(() => {
-      this.syncCycle().catch((err) => {
+      this.syncTick().catch((err) => {
         this.logger.error({ error: (err as Error).message }, 'Sync cycle failed');
       });
     }, this.config.interval);
@@ -203,7 +203,7 @@ export class SyncService {
     // call four lines above logs its failure; this one swallowed it, and it
     // is the more informative of the two: it is the first evidence that a
     // slave can reach its master at all.
-    this.syncCycle().catch((err) => {
+    this.syncTick().catch((err) => {
       this.logger.error({ error: (err as Error).message }, 'Initial sync cycle failed');
     });
   }
@@ -357,6 +357,36 @@ export class SyncService {
   // Sync Cycle (push to master — legacy, kept for backward compatibility)
   // ===========================================================================
 
+  /**
+   * One scheduled pass: bound the buffer, then try to drain it.
+   *
+   * The order is the whole point. `enforceBufferBounds` used to be the last
+   * statement of `syncCycle`'s `try`, which meant it ran on a SUCCESSFUL
+   * cycle and on nothing else — and a successful cycle is the one case where
+   * the buffer is being drained and needs no bound. Every path that leaves it
+   * growing skipped it:
+   *
+   *   - no master configured at all → `syncCycle` returns at its second line;
+   *   - master unreachable → the push throws and control leaves via `catch`;
+   *   - and then the backoff, which saturates at five minutes, returns at the
+   *     third line for most ticks after that.
+   *
+   * So the guarantee in this file's header — "bounded buffer, oldest entries
+   * evicted when maxBufferSize is reached" — held only while it was not
+   * needed. A slave that lost its master still buffered until the disk filled,
+   * which is the exact failure the bound was written to prevent and the
+   * reason it is not read as a replication bug when it happens: what fills is
+   * the disk, and what breaks is everything else sharing it.
+   *
+   * The bound is a local database operation. It needs no master, so it does
+   * not belong behind a check for one.
+   */
+  private async syncTick(): Promise<void> {
+    if (this.disposed) return;
+    await this.enforceBufferBounds();
+    await this.syncCycle();
+  }
+
   private async syncCycle(): Promise<void> {
     if (this.disposed || this.isSyncing) return;
     if (!this.masterInvoke) return; // No master connection — skip
@@ -404,10 +434,6 @@ export class SyncService {
       this.backoff = { attempt: 0, nextRetryAt: 0 };
       this.lastSyncAt = Date.now();
       this.lastError = null;
-
-      // Evict old synced entries
-      await this.enforceBufferBounds();
-
     } catch (err) {
       const message = (err as Error).message;
       this.lastError = message;

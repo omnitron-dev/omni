@@ -7,6 +7,7 @@
 
 import { log, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { requireDaemon } from './daemon-required.js';
 
 /**
  * Render `sshConnected`, which has three states and not two.
@@ -47,8 +48,7 @@ export function formatCheckedAt(iso: string | undefined): string {
 
 export async function nodeListCommand(): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running. Start with `omnitron up`.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }
@@ -110,8 +110,7 @@ export async function nodeAddCommand(options: {
   tags?: string[];
 }): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }
@@ -139,8 +138,7 @@ export async function nodeUpdateCommand(id: string, options: {
   tags?: string[];
 }): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }
@@ -158,8 +156,7 @@ export async function nodeUpdateCommand(id: string, options: {
 
 export async function nodeRemoveCommand(id: string): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }
@@ -177,8 +174,7 @@ export async function nodeRemoveCommand(id: string): Promise<void> {
 
 export async function nodeCheckCommand(id?: string): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }
@@ -217,8 +213,7 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
 
 export async function nodeSshKeysCommand(): Promise<void> {
   const client = createDaemonClient();
-  if (!(await client.isReachable())) {
-    log.error('Daemon is not running.');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

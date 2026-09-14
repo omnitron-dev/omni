@@ -34,7 +34,9 @@ import type {
   LogEntryDto,
   AppDiagnosticsDto,
 } from '../shared/dto/services.js';
-import { DAEMON_SERVICE_ID, DEFAULT_SOCKET_PATH } from '../config/defaults.js';
+import { DAEMON_SERVICE_ID, DEFAULT_SOCKET_PATH, DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { PidManager } from './pid-manager.js';
+import { expandPath } from '../shared/paths.js';
 
 const CLI_REQUEST_TIMEOUT = 60_000;
 
@@ -46,6 +48,23 @@ const CLI_REQUEST_TIMEOUT = 60_000;
  * long this command is willing to wait for its actual work".
  */
 const REACHABILITY_TIMEOUT = 5_000;
+
+/**
+ * Why a daemon did not answer.
+ *
+ * Three different situations, three different things for an operator to do,
+ * and the CLI reported all of them as "Daemon is not running" — advice that
+ * is right for one of them and actively misleading for the other two.
+ */
+export type DaemonAbsence =
+  /** No pid file: nothing has been started. `omnitron up`. */
+  | { kind: 'stopped' }
+  /** A pid file pointing at a process that no longer exists: it crashed. */
+  | { kind: 'stale'; pid: number }
+  /** Alive, and did not answer in time. Usually busy; wait or investigate. */
+  | { kind: 'silent'; pid: number; waitedMs: number }
+  /** The pid file could not be read, so the question stays open. */
+  | { kind: 'unknown'; reason: string };
 
 /**
  * How long `disconnect()` waits for an in-flight connect to settle.
@@ -316,6 +335,24 @@ export class DaemonClient implements IDaemonService {
    * different amounts of time to answer.
    */
   async isReachable(): Promise<boolean> {
+    return (await this.whyUnreachable()) === null;
+  }
+
+  /**
+   * Why the daemon did not answer — or `null` when it did.
+   *
+   * `isReachable()` answers a three-state question with a boolean and throws
+   * the interesting state away. Twenty-five commands then printed "Daemon is
+   * not running", which is one of three things this can mean and the only one
+   * that tells the operator to start it. The other two are a daemon that IS
+   * running and has not answered in five seconds — during a stack boot, say,
+   * where the right advice is to wait — and a pid file left behind by a
+   * daemon that crashed, where the right advice is to clean it up.
+   *
+   * `status.ts` has drawn this distinction all along, in its own copy, for
+   * itself. This puts it where the question is asked so every caller gets it.
+   */
+  async whyUnreachable(): Promise<DaemonAbsence | null> {
     try {
       await Promise.race([
         this.ping(),
@@ -323,10 +360,41 @@ export class DaemonClient implements IDaemonService {
           setTimeout(() => reject(new Error('daemon did not answer')), REACHABILITY_TIMEOUT).unref?.(),
         ),
       ]);
-      return true;
-    } catch {
-      return false;
+      return null;
+    } catch (err) {
+      return this.diagnoseAbsence(err as Error);
     }
+  }
+
+  /**
+   * Read the pid file to tell a stopped daemon from a silent one.
+   *
+   * Deliberately not a second reachability probe: the socket has already had
+   * its five seconds. This asks the operating system a different question —
+   * does the process exist — whose answer the socket cannot give.
+   */
+  private diagnoseAbsence(err: Error): DaemonAbsence {
+    try {
+      const pid = new PidManager(this.resolvePidFile()).readPid();
+      if (pid === null) return { kind: 'stopped' };
+      if (!PidManager.isProcessAlive(pid)) return { kind: 'stale', pid };
+      return { kind: 'silent', pid, waitedMs: REACHABILITY_TIMEOUT };
+    } catch {
+      // The pid file is unreadable. That is not evidence either way, and
+      // saying "not running" here would be the same guess in new clothes.
+      return { kind: 'unknown', reason: err.message };
+    }
+  }
+
+  /**
+   * Where this daemon's pid file lives.
+   *
+   * Its own method so the diagnosis above can be exercised against a pid file
+   * a test controls. Inlined, the only way to reach `diagnoseAbsence` was to
+   * have a real daemon in a real state — which is to say, not at all.
+   */
+  protected resolvePidFile(): string {
+    return expandPath(DEFAULT_DAEMON_CONFIG.pidFile);
   }
 
   async disconnect(): Promise<void> {

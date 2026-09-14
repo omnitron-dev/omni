@@ -16,6 +16,7 @@ import {
 } from '../shared/format.js';
 import { formatMemory } from '../shared/format.js';
 import { isJsonMode, emitError } from './output.js';
+import { requireDaemon } from './daemon-required.js';
 
 export async function monitCommand(): Promise<void> {
   // Live TUI dashboards do not have a meaningful JSON representation —
@@ -29,8 +30,7 @@ export async function monitCommand(): Promise<void> {
 
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

@@ -12,38 +12,31 @@ import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { formatUptime, formatMemoryColored } from '../shared/format.js';
 import { expandPath } from '../shared/paths.js';
+import { reportAbsence } from './daemon-required.js';
 
 export async function statusCommand(): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    // Socket not responding — check PID file for diagnostics
-    try {
-      const dc = DEFAULT_DAEMON_CONFIG;
-      const pidFile = expandPath(dc.pidFile);
-      const socketPath = expandPath(dc.socketPath);
-      const pidManager = new PidManager(pidFile);
-
-      const rawPid = pidManager.readPid();
-      if (rawPid !== null) {
-        if (PidManager.isProcessAlive(rawPid)) {
-          log.warn(`Daemon process exists (PID: ${rawPid}) but socket is not responding`);
-          log.info('The daemon may still be starting. Retry in a few seconds, or stop it:');
-          log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
-          log.info('  omnitron kill          # force immediately');
-        } else {
-          // Stale PID — clean up
-          const cleaned = pidManager.cleanupStale(socketPath);
-          if (cleaned) {
-            log.warn('Cleaned up stale PID/socket from a previously crashed daemon');
-          }
-          log.warn('Daemon is not running');
+  const absence = await client.whyUnreachable();
+  if (absence) {
+    // This command's own copy of the pid-file check was, for a long time, the
+    // only place in the CLI that told a stopped daemon from a silent one.
+    // That copy is now `DaemonClient.whyUnreachable()`, so every command gets
+    // the distinction; what stays here is the part only `status` does —
+    // clearing up after a daemon that crashed.
+    reportAbsence(absence);
+    if (absence.kind === 'stale') {
+      try {
+        const dc = DEFAULT_DAEMON_CONFIG;
+        const pidManager = new PidManager(expandPath(dc.pidFile));
+        if (pidManager.cleanupStale(expandPath(dc.socketPath))) {
+          log.info('Cleaned up the PID file and socket it left behind');
         }
-      } else {
-        log.warn('Daemon is not running');
-      }
-    } catch {
-      log.warn('Daemon is not running');
+      } catch { /* diagnostics only — the report above is what matters */ }
+    }
+    if (absence.kind === 'silent') {
+      log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
+      log.info('  omnitron kill          # force immediately');
     }
 
     await client.disconnect();

@@ -19,6 +19,7 @@ import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
 import { formatUptime } from '../shared/format.js';
 import { expandPath } from '../shared/paths.js';
+import { reportAbsence } from './daemon-required.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -171,7 +172,10 @@ export async function daemonPing(): Promise<void> {
     const info = await client.ping();
     log.success(`Daemon is running (PID: ${info.pid}, uptime: ${formatUptime(info.uptime)}, v${info.version})`);
   } catch {
-    log.error('Daemon is not running');
+    // A ping that did not come back is not proof of a daemon that is not
+    // there — this is the command an operator runs precisely to find out
+    // which it is, so it must not answer with a guess.
+    reportAbsence(await client.whyUnreachable() ?? { kind: 'unknown', reason: 'the ping did not return' });
   }
 
   await client.disconnect();

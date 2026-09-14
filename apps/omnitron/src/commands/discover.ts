@@ -9,6 +9,7 @@
 import { box, log, prism, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { DiscoveryScanResult } from '../services/discovery.service.js';
+import { describeAbsence } from './daemon-required.js';
 
 /** Typed view of the daemon-exposed `OmnitronDiscovery` peer service. */
 interface IDiscoveryRpcService {
@@ -18,9 +19,10 @@ interface IDiscoveryRpcService {
 export async function discoverCommand(): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
+  const absence = await client.whyUnreachable();
+  if (absence) {
     // Offline mode: basic Docker discovery without daemon
-    log.warn('Daemon is not running — performing local Docker discovery only');
+    log.warn(`${describeAbsence(absence)} — performing local Docker discovery only`);
     await localDockerDiscovery();
     await client.disconnect();
     return;

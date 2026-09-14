@@ -12,6 +12,7 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import type { LogEntryDto } from '../config/types.js';
 import { emitJson, emitError, isJsonMode } from './output.js';
+import { describeAbsence } from './daemon-required.js';
 
 const LOG_DIR = path.join(OMNITRON_HOME, 'logs');
 
@@ -54,9 +55,14 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
 
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
+  const absence = await client.whyUnreachable();
+  if (absence) {
     await client.disconnect();
-    if (!isJsonMode()) log.info('Daemon is not running — reading from log files');
+    // The fallback is right whatever the reason, but the reason still belongs
+    // on screen: reading the files is a different answer from reading the
+    // daemon, and an operator who thinks the daemon is down when it is merely
+    // busy will not know why the tail stops where it does.
+    if (!isJsonMode()) log.info(`${describeAbsence(absence)} — reading from log files`);
     readLogsFromFile(appName, lines, filter);
     return;
   }

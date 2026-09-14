@@ -12,6 +12,7 @@
 import { box, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { HealthReport, PlatformHealthReport } from '../services/health-check.service.js';
+import { requireDaemon } from './daemon-required.js';
 
 /**
  * Typed proxy for the `OmnitronHealth` Netron service exposed directly
@@ -31,8 +32,7 @@ interface IHealthCheckRpcService {
 export async function healthCheckCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    log.warn('Daemon is not running — cannot perform health check');
+  if (!(await requireDaemon(client, 'cannot perform health check'))) {
     await client.disconnect();
     return;
   }

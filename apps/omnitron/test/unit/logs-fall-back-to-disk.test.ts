@@ -44,6 +44,10 @@ const disconnected = { count: 0 };
 
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({
+    // `null` is "the daemon answered" — the command asks WHY it did not,
+    // because "not running" and "did not answer in five seconds" send an
+    // operator to different places.
+    whyUnreachable: async () => null,
     isReachable: async () => true,
     getLogs: async () => daemonEntries.value,
     disconnect: async () => { disconnected.count++; },

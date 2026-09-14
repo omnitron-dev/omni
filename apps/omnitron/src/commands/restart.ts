@@ -2,9 +2,9 @@
  * omnitron restart [app|all]
  */
 
-import { log } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
+import { requireDaemon } from './daemon-required.js';
 
 /**
  * These commands wait for a whole Titan application to come up.
@@ -25,8 +25,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-clien
 export async function restartCommand(appName?: string): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
 
-  if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

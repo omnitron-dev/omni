@@ -4,12 +4,12 @@
 
 import { log } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { requireDaemon } from './daemon-required.js';
 
 export async function execCommand(appName: string, service: string, method: string, args: string[]): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

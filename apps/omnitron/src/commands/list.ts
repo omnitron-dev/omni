@@ -14,17 +14,13 @@ import {
   formatRestarts,
   formatPort,
 } from '../shared/format.js';
-import { emitJson, emitError, isJsonMode } from './output.js';
+import { emitJson } from './output.js';
+import { requireDaemon } from './daemon-required.js';
 
 export async function listCommand(): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    if (isJsonMode()) {
-      emitError('Daemon is not running');
-    } else {
-      log.warn('Daemon is not running');
-    }
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

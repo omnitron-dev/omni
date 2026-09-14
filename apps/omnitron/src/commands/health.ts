@@ -4,16 +4,15 @@
  * Shows overall cluster health with per-app check details.
  */
 
-import { box, log, prism } from '@xec-sh/kit';
+import { box, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import { emitJson, emitError, isJsonMode } from './output.js';
+import { emitJson, emitError } from './output.js';
+import { requireDaemon } from './daemon-required.js';
 
 export async function healthCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await client.isReachable())) {
-    if (isJsonMode()) emitError('Daemon is not running');
-    else log.warn('Daemon is not running');
+  if (!(await requireDaemon(client))) {
     await client.disconnect();
     return;
   }

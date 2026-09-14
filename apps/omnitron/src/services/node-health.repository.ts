@@ -5,7 +5,7 @@
  * This repository reads them for the RPC layer — no worker proxy needed.
  */
 
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 
 export interface HealthCheckRow {
@@ -49,8 +49,15 @@ const MIN_INTERVAL_MS = 5 * 60_000;
 const MAX_INTERVAL_MS = 24 * 60 * 60_000;
 const STEP_MS = 5 * 60_000;
 
+/**
+ * The errors that mean "omnitron is not installed here" rather than
+ * "omnitron is not running". Kept as one string so the SQL aggregate and the
+ * console's dot state test the same thing.
+ */
+const NOT_INSTALLED_PATTERN = 'not found|command not found|no such file|ENOENT';
+
 export function clampUptimeInterval(ms: number): number {
-  const clamped = Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, ms));
+  const clamped = Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Number.isFinite(ms) ? ms : MIN_INTERVAL_MS));
   return Math.round(clamped / STEP_MS) * STEP_MS;
 }
 
@@ -78,78 +85,83 @@ export class NodeHealthRepository {
    * @param intervalMs - Bucket width in ms (will be clamped/rounded to 5min multiples)
    *
    * Returns oldest→newest for chart rendering.
+   *
+   * The aggregation happens in Postgres. It used to `SELECT` every row in the
+   * window and count them in JavaScript, and the window is
+   * `bucketCount × interval` — the console asks for 200 buckets of 24 hours,
+   * so each of these calls pulled *every check row of the last 200 days for
+   * that node* across the wire to produce 200 numbers, once per node, on
+   * every poll. What comes back now is one row per bucket that actually has
+   * data.
    */
   async getUptimeBar(nodeId: string, bucketCount = 60, intervalMs = MIN_INTERVAL_MS): Promise<UptimeBucket[]> {
     const interval = clampUptimeInterval(intervalMs);
-    const totalSpanMs = bucketCount * interval;
-    const cutoff = new Date(Date.now() - totalSpanMs).toISOString();
-
-    const rows = await this.db
-      .selectFrom('node_health_checks')
-      .select(['checkedAt', 'pingReachable', 'omnitronConnected', 'omnitronError'])
-      .where('nodeId', '=', nodeId)
-      .where('checkedAt', '>=', cutoff as any)
-      .orderBy('checkedAt', 'asc')
-      .execute();
-
-    // Build time-bucketed aggregation
+    const count = Math.max(1, Math.floor(bucketCount));
+    const totalSpanMs = count * interval;
     const now = Date.now();
     const bucketStart = now - totalSpanMs;
-    const buckets: UptimeBucket[] = [];
+    const cutoff = new Date(bucketStart).toISOString();
 
-    for (let i = 0; i < bucketCount; i++) {
-      const from = bucketStart + i * interval;
-      buckets.push({
-        t: new Date(from).toISOString(),
-        ping: -1,   // will be set below
-        omnitron: -1,
-        checks: 0,
-      });
+    const { rows } = await sql<{
+      idx: number | string;
+      checks: number | string;
+      ping_up: number | string;
+      omni_up: number | string;
+      omni_applicable: number | string;
+    }>`
+      SELECT
+        floor(
+          (extract(epoch from "checkedAt") * 1000 - ${bucketStart}) / ${interval}
+        )::int AS idx,
+        count(*) AS checks,
+        count(*) FILTER (WHERE "pingReachable") AS ping_up,
+        count(*) FILTER (WHERE "omnitronConnected") AS omni_up,
+        count(*) FILTER (
+          WHERE coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN}
+        ) AS omni_applicable
+      FROM node_health_checks
+      WHERE "nodeId" = ${nodeId}
+        AND "checkedAt" >= ${cutoff}::timestamptz
+      GROUP BY idx
+    `.execute(this.db);
+
+    const buckets: UptimeBucket[] = [];
+    for (let i = 0; i < count; i++) {
+      buckets.push({ t: new Date(bucketStart + i * interval).toISOString(), ping: -1, omnitron: -1, checks: 0 });
     }
 
-    // Assign each row to its bucket
     for (const row of rows) {
-      const ts = new Date((row as any).checkedAt).getTime();
-      const idx = Math.floor((ts - bucketStart) / interval);
-      if (idx < 0 || idx >= bucketCount) continue;
+      const idx = Number(row.idx);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= count) continue;
+      const checks = Number(row.checks);
+      if (checks <= 0) continue;
 
       const bucket = buckets[idx]!;
-      bucket.checks++;
-
-      // Accumulate ping
-      if (bucket.ping === -1) bucket.ping = 0;
-      if ((row as any).pingReachable) bucket.ping++;
-
-      // Accumulate omnitron
-      const err = (row as any).omnitronError ?? '';
-      const notInstalled = /not found|command not found|no such file|ENOENT/i.test(err);
-
-      if (notInstalled) {
-        // Mark as not-installed only if ALL checks in bucket are not-installed
-        if (bucket.omnitron === -1) bucket.omnitron = -2; // sentinel: all not-installed so far
-        // If previously had real data, leave it
-      } else {
-        if (bucket.omnitron === -1 || bucket.omnitron === -2) bucket.omnitron = 0;
-        if ((row as any).omnitronConnected) bucket.omnitron++;
-      }
-    }
-
-    // Convert counts to percentages
-    for (const b of buckets) {
-      if (b.checks === 0) {
-        b.ping = -1;    // no data
-        b.omnitron = -1;
-      } else {
-        b.ping = b.ping < 0 ? 0 : b.ping / b.checks;
-        if (b.omnitron === -2) {
-          b.omnitron = -1; // all not-installed
-        } else {
-          b.omnitron = b.omnitron < 0 ? 0 : b.omnitron / b.checks;
-        }
-      }
+      bucket.checks = checks;
+      bucket.ping = Number(row.ping_up) / checks;
+      // A bucket in which every check said "omnitron is not installed" is not
+      // 0% uptime — it is a node that was never meant to run one. `-1` is the
+      // console's "no data" shade; 0 would paint it red.
+      bucket.omnitron = Number(row.omni_applicable) > 0 ? Number(row.omni_up) / checks : -1;
     }
 
     return buckets;
+  }
+
+  /**
+   * Delete every check row for a node.
+   *
+   * A removed node's rows are not history any more — nothing can name the id
+   * they belong to, they are never read again, and they keep accumulating in
+   * a table whose retention sweep only looks at age. Called when a node
+   * leaves the registry.
+   */
+  async deleteHistory(nodeId: string): Promise<number> {
+    const result = await this.db
+      .deleteFrom('node_health_checks')
+      .where('nodeId', '=', nodeId)
+      .executeTakeFirst();
+    return Number(result.numDeletedRows ?? 0);
   }
 }
 

@@ -93,14 +93,14 @@ import type { BackupInfo } from './backups.js';
 import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
-import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo } from './nodes.js';
+import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig } from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
 
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
 import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
 
-export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo } from './nodes.js';
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig } from './nodes.js';
 
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
@@ -473,7 +473,7 @@ export interface IOmnitronNodesService {
   getNode(data: { id: string }): INodeWithStatus | null;
   addNode(data: AddNodeInput): Promise<INode>;
   updateNode(data: { id: string } & UpdateNodeInput): Promise<INode>;
-  removeNode(data: { id: string }): void;
+  removeNode(data: { id: string }): Promise<void>;
   checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
@@ -481,6 +481,9 @@ export interface IOmnitronNodesService {
   getNodeHealthSummaries(): Promise<INodeHealthSummary[]>;
   triggerNodeCheck(data: { nodeId?: string }): Promise<INodeHealthSummary[]>;
   listSshKeys(): SshKeyInfo[];
+  getCheckConfig(): NodeCheckConfig;
+  setCheckConfig(data: Partial<NodeCheckConfig>): NodeCheckConfig;
+  getHistoryConfig(): FleetHistoryConfig;
 }
 
 /**

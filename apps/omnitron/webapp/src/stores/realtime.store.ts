@@ -52,6 +52,15 @@ interface RealtimeState {
   lastEvent: { channel: string; timestamp: number; data: unknown } | null;
 
   /**
+   * Last `node.*` event.
+   *
+   * Separate from `lastEvent` so the fleet page refetches when the FLEET
+   * changes rather than on every app restart and metrics tick the daemon
+   * happens to emit.
+   */
+  lastNodeEvent: { channel: string; timestamp: number; data: unknown } | null;
+
+  /**
    * Deploy progress pushed by the daemon (`stack.deploy_progress`).
    *
    * Nothing renders this yet — the daemon emits it and the store keeps it,
@@ -139,6 +148,7 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   alerts: [],
   lastMetricsUpdate: 0,
   lastEvent: null,
+  lastNodeEvent: null,
   deployProgress: [],
 
   activeDeployProgress: () => stillActive(get().deployProgress, Date.now()),
@@ -259,6 +269,19 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
         } else {
           set({ lastEvent: event });
         }
+      })
+    );
+
+    // Node events.
+    //
+    // Nothing in the console subscribed to `node.*`. The daemon has been
+    // broadcasting `node.check_completed` on every check round, and the
+    // fleet page ignored it and polled on a thirty-second timer instead — so
+    // a node going down took up to half a minute to appear, and the push that
+    // would have said so immediately was thrown away at the socket.
+    unsubscribers.push(
+      ws.on('node.*', (event) => {
+        set({ lastNodeEvent: event, lastEvent: event });
       })
     );
 

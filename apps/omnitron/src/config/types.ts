@@ -758,6 +758,17 @@ export interface IDaemonConfig {
     retentionDays?: number;
     /** Uptime bar bucket interval in ms (default: 86_400_000 = 24h) */
     uptimeIntervalMs?: number;
+    /**
+     * How long the worker gets to boot before the daemon gives up, ms
+     * (default: 120_000).
+     *
+     * The unit of work is a whole Titan application: a DI container, a module
+     * graph and a PG pool. Managed applications are given two to five minutes
+     * for the same thing; this was 30 seconds, and on a loaded host it expired
+     * on every attempt — so the fleet ran on the daemon's fallback checks
+     * indefinitely while the worker was restarted and killed, over and over.
+     */
+    startupTimeoutMs?: number;
   };
 }
 

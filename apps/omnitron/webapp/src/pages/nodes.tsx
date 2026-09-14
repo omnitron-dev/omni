@@ -31,6 +31,7 @@ import { keyframes, useTheme, type Theme } from '@mui/material/styles';
 import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
   NodesIcon,
@@ -39,8 +40,61 @@ import {
   RefreshIcon,
   ChipIcon,
 } from 'src/assets/icons';
-/** One bar segment = 24 hours. Checks run every minute = 1440 checks per segment. */
-const UPTIME_BUCKET_MS = 86_400_000; // 24h
+/**
+ * Fallbacks for the bar's shape, used until the daemon answers.
+ *
+ * They used to be the whole story: a hard-coded 24-hour bucket and a request
+ * for 200 of them, against a daemon that keeps 90 days of history — so three
+ * of every four segments were "no data" by construction, and every poll asked
+ * the database for a window that cannot exist. The daemon now says how wide a
+ * segment is and how far back its history goes, and both are read from it.
+ */
+const DEFAULT_UPTIME_BUCKET_MS = 86_400_000; // 24h
+const DEFAULT_RETENTION_DAYS = 90;
+
+/** Segments to draw: the retention window, in buckets, capped for sanity. */
+function bucketsFor(retentionDays: number, intervalMs: number): number {
+  const span = retentionDays * 86_400_000;
+  return Math.max(1, Math.min(400, Math.ceil(span / Math.max(1, intervalMs))));
+}
+
+/**
+ * How often the bars are refetched.
+ *
+ * A bar segment is a DAY. Re-aggregating a 90-day window per node every
+ * thirty seconds, alongside the node list, bought a picture that cannot
+ * visibly change between two refreshes.
+ */
+const UPTIME_POLL_MS = 300_000;
+
+/**
+ * A reading older than this is called out rather than shown as current.
+ *
+ * The console displayed `checkedAt` nowhere. A fleet whose checker had
+ * stopped rendered exactly like a healthy one — observed live: two days of
+ * "PING ● / OMNITRON ●" taken from a worker that died shortly after boot.
+ */
+const STALE_AFTER_MS = 300_000;
+
+/** How long ago a status was taken, at the resolution an operator cares about. */
+function formatAge(iso: string | undefined): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return 'never';
+  if (ms < 60_000) return 'just now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/** Whether a status is old enough that it should not be read as current. */
+function isStale(iso: string | undefined): boolean {
+  if (!iso) return true;
+  const ts = Date.parse(iso);
+  return !Number.isFinite(ts) || Date.now() - ts > STALE_AFTER_MS;
+}
 
 // =============================================================================
 // Types
@@ -84,6 +138,21 @@ interface INodeStatus {
 
 interface INodeWithStatus extends INode { status: INodeStatus | null }
 interface SshKeyInfo { name: string; path: string; type: string }
+
+/** The operator-tunable half of how the fleet is checked. */
+interface NodeCheckConfig {
+  pingEnabled: boolean;
+  pingTimeout: number;
+  sshTimeout: number;
+  omnitronCheckTimeout: number;
+  concurrency: number;
+}
+
+/** How much history the daemon keeps, and how wide one bar segment is. */
+interface FleetHistoryConfig {
+  uptimeIntervalMs: number;
+  retentionDays: number;
+}
 
 /** Backend UptimeBucket — per-interval aggregation */
 interface UptimeBucket {
@@ -353,6 +422,9 @@ function NodeCard({
   const omnState = getOmnitronDotState(status, node.isLocal);
   const pingState: DotState = status?.pingReachable == null ? 'unchecked'
     : status.pingReachable ? 'online' : 'offline';
+  // The local node's facts are read from this daemon's own process on every
+  // request, so they are never stale; only a remote node's reading has an age.
+  const stale = !node.isLocal && isStale(status?.checkedAt);
 
   return (
     <Card sx={{
@@ -416,10 +488,12 @@ function NodeCard({
           </Stack>
         </Stack>
 
-        {/* Status dots: PING + OMNITRON */}
-        <Stack direction="row" spacing={2} sx={{
-          mb: 1.5
-        }}>
+        {/* Status dots: PING + OMNITRON, and when the reading was taken */}
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ mb: 1.5, alignItems: 'center' }}
+        >
           {node.isLocal ? (
             <StatusDot state={omnState.state} label="OMNITRON" tooltip={omnState.tooltip} />
           ) : (
@@ -429,6 +503,29 @@ function NodeCard({
               <StatusDot state={omnState.state} label="OMNITRON" tooltip={omnState.tooltip} />
             </>
           )}
+          {/* A reachability answer is worth what its age says it is worth.
+              Without this the card showed a two-day-old reading and a
+              freshly-taken one identically. */}
+          <Tooltip
+            arrow
+            title={
+              status?.checkedAt
+                ? `Last checked ${new Date(status.checkedAt).toLocaleString()}`
+                : 'This node has never been checked'
+            }
+          >
+            <Typography
+              variant="caption"
+              noWrap
+              sx={{
+                ml: 'auto !important',
+                fontSize: 10,
+                color: stale ? 'warning.main' : 'text.disabled',
+              }}
+            >
+              {formatAge(status?.checkedAt)}
+            </Typography>
+          </Tooltip>
         </Stack>
 
         <Divider sx={{ mb: 1.5 }} />
@@ -609,7 +706,15 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
               />
             </>
           ) : (
-            <TextField label="SSH Password" value={form.sshPassword} onChange={(e) => up('sshPassword', e.target.value)} fullWidth type="password" />
+            <TextField
+              label="SSH Password"
+              value={form.sshPassword}
+              onChange={(e) => up('sshPassword', e.target.value)}
+              fullWidth
+              type="password"
+              placeholder={editNode?.hasPassword ? 'Stored — leave empty to keep' : ''}
+              helperText={editNode?.hasPassword ? 'Password is stored encrypted. Enter a new value to change it.' : undefined}
+            />
           )}
           <Divider />
           <Stack direction="row" spacing={2}>
@@ -634,6 +739,111 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
 }
 
 // =============================================================================
+// Check settings
+// =============================================================================
+
+/**
+ * How the fleet is checked.
+ *
+ * These values existed on the daemon, were readable and writable over RPC,
+ * and had no surface anywhere — and would not have worked if they had: they
+ * were held in a field that only the daemon's own fallback path read, never
+ * persisted, and never sent to the worker that performs the checks. All
+ * three are fixed on the daemon side; this is the control that was missing.
+ */
+function CheckSettingsDialog({ open, onClose, onSaved }: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: (config: NodeCheckConfig) => void;
+}) {
+  const [config, setConfig] = useState<NodeCheckConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    nodesRpc.getCheckConfig()
+      .then((c: NodeCheckConfig) => setConfig(c))
+      .catch((err: Error) => setError(err?.message ?? 'Could not read the current settings'));
+  }, [open]);
+
+  const up = (field: keyof NodeCheckConfig, value: number | boolean) =>
+    setConfig((prev) => (prev ? { ...prev, [field]: value } : prev));
+
+  const handleSave = async () => {
+    if (!config) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // The daemon clamps these and answers with what it stored, which is
+      // not always what was sent — so the caller is handed back the stored
+      // values rather than the typed ones.
+      const saved: NodeCheckConfig = await nodesRpc.setCheckConfig(config);
+      onSaved(saved);
+      onClose();
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Failed to save settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Check Settings</DialogTitle>
+      <DialogContent sx={{ pt: '8px !important' }}>
+        {error && <FormAlert onClose={() => setError(null)}>{error}</FormAlert>}
+        {!config ? (
+          <Skeleton variant="rounded" height={220} />
+        ) : (
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>ICMP Ping</InputLabel>
+              <Select
+                value={config.pingEnabled ? 'on' : 'off'}
+                label="ICMP Ping"
+                onChange={(e) => up('pingEnabled', e.target.value === 'on')}
+              >
+                <MenuItem value="on">Enabled</MenuItem>
+                <MenuItem value="off">Disabled</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Ping timeout (ms)" type="number" fullWidth value={config.pingTimeout}
+              onChange={(e) => up('pingTimeout', parseInt(e.target.value, 10) || 0)}
+              helperText="250-60000"
+              disabled={!config.pingEnabled}
+            />
+            <TextField
+              label="SSH timeout (ms)" type="number" fullWidth value={config.sshTimeout}
+              onChange={(e) => up('sshTimeout', parseInt(e.target.value, 10) || 0)}
+              helperText="1000-120000"
+            />
+            <TextField
+              label="Omnitron probe timeout (ms)" type="number" fullWidth value={config.omnitronCheckTimeout}
+              onChange={(e) => up('omnitronCheckTimeout', parseInt(e.target.value, 10) || 0)}
+              helperText="1000-120000"
+            />
+            <TextField
+              label="Concurrent checks" type="number" fullWidth value={config.concurrency}
+              onChange={(e) => up('concurrency', parseInt(e.target.value, 10) || 0)}
+              helperText="1-100 - how many nodes are checked at once"
+            />
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} color="inherit" disabled={saving}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave} disabled={!config || saving}>
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// =============================================================================
 // Page
 // =============================================================================
 
@@ -648,6 +858,13 @@ export default function NodesPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uptimeBars, setUptimeBars] = useState<Record<string, UptimeBucket[]>>({});
   const [listError, setListError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [history, setHistory] = useState<FleetHistoryConfig>({
+    uptimeIntervalMs: DEFAULT_UPTIME_BUCKET_MS,
+    retentionDays: DEFAULT_RETENTION_DAYS,
+  });
+  const historyRef = useRef(history);
+  historyRef.current = history;
 
   /** The last list that arrived, so a failed poll can return it unchanged. */
   const nodeListRef = useRef<INodeWithStatus[]>([]);
@@ -675,7 +892,12 @@ export default function NodesPage() {
     await Promise.allSettled(nodes.map(async (node) => {
       try {
         // Request more buckets than can fit — UptimeStrip will trim to visible width
-        results[node.id] = await nodesRpc.getUptimeBar({ nodeId: node.id, bucketCount: 200, intervalMs: UPTIME_BUCKET_MS });
+        const { uptimeIntervalMs, retentionDays } = historyRef.current;
+        results[node.id] = await nodesRpc.getUptimeBar({
+          nodeId: node.id,
+          bucketCount: bucketsFor(retentionDays, uptimeIntervalMs),
+          intervalMs: uptimeIntervalMs,
+        });
       } catch { results[node.id] = []; }
     }));
     setUptimeBars(results);
@@ -687,21 +909,63 @@ export default function NodesPage() {
     try { setSshKeys(await nodesRpc.listSshKeys()); } catch { /* keep the last good list */ }
   }, []);
 
-  // Nodes and their uptime bars refresh together — the bars are per-node, so
-  // fetching them against a stale node list would draw bars for nodes that
-  // are gone.
+  // The shared daemon socket. The store's refcount keeps it alive across
+  // page changes; this page used to poll blind while the daemon pushed a
+  // `node.*` event on every check round that nothing was listening for.
+  const wsConnected = useRealtimeStore((st) => st.connected);
+  const lastNodeEvent = useRealtimeStore((st) => st.lastNodeEvent);
+  const initializeRealtime = useRealtimeStore((st) => st.initialize);
+
+  useEffect(() => initializeRealtime(), [initializeRealtime]);
+
+  // With the socket up the poll is only a safety net. Without it, it is the
+  // whole mechanism — so it keeps the old cadence.
+  usePollingEffect(() => void fetchNodes(), { intervalMs: wsConnected ? 120_000 : 30_000 });
+
+  // A check round finished, or a node changed state: read the new list now
+  // rather than at the next tick.
+  useEffect(() => {
+    if (lastNodeEvent) void fetchNodes();
+  }, [lastNodeEvent, fetchNodes]);
+
+  // The bars are on their own, much slower schedule: a segment is a day wide,
+  // and re-aggregating 90 days per node every half-minute cannot change what
+  // is drawn.
   usePollingEffect(
-    () => void (async () => {
-      const n = await fetchNodes();
-      await fetchUptimeBars(n);
-    })(),
-    { intervalMs: 30_000 }
+    () => void (async () => { await fetchUptimeBars(nodeListRef.current); })(),
+    { intervalMs: UPTIME_POLL_MS }
   );
+
+  // ...but a node that has just appeared needs its bars now, not in five
+  // minutes. Keyed on the id SET rather than the list: the list object is new
+  // on every poll, and re-running this on each one would put the slow query
+  // back on the fast schedule by another route.
+  const nodeIdKey = nodeList.map((n) => n.id).sort().join(',');
+  useEffect(() => {
+    if (!nodeIdKey) return;
+    void fetchUptimeBars(nodeListRef.current);
+  }, [nodeIdKey, fetchUptimeBars]);
 
   useEffect(() => {
     // SSH keys change only when an operator edits them; once is enough.
     void fetchSshKeys();
   }, [fetchSshKeys]);
+
+  useEffect(() => {
+    // Daemon configuration; it changes when the daemon is reconfigured, which
+    // this page will not outlive.
+    //
+    // Called through `Promise.resolve().then` so a daemon that does not have
+    // this endpoint is a rejected promise rather than a synchronous
+    // `is not a function` thrown inside an effect — which React answers with a
+    // blank page. The console and the daemon are versioned separately; a
+    // console one release ahead must fall back to its defaults, not
+    // white-screen the fleet view.
+    Promise.resolve()
+      .then(() => nodesRpc.getHistoryConfig())
+      .then((c: FleetHistoryConfig) => setHistory(c))
+      .catch(() => { /* the defaults above are the fallback */ });
+  }, []);
 
   const snackbar = useSnackbar();
 
@@ -776,8 +1040,17 @@ export default function NodesPage() {
         name: form.name.trim(), host: form.host.trim(), sshPort: form.sshPort,
         sshUser: form.sshUser.trim(), sshAuthMethod: form.sshAuthMethod,
         sshPrivateKey: form.sshAuthMethod === 'key' ? form.sshPrivateKey : undefined,
+        // An empty secret field means "leave it alone", never "clear it".
+        // The passphrase was already read that way; the password was not, so
+        // opening an existing password-auth node, changing its NAME and
+        // pressing Save sent `sshPassword: ''` — and the daemon reads an
+        // empty string as an instruction to delete the stored credential.
+        // The node then failed every check with no sign of what had happened,
+        // because the form never showed the password in the first place.
+        // A stored credential is dropped by switching the auth method, which
+        // is the only gesture that says so.
         sshPassphrase: form.sshAuthMethod === 'key' && form.sshPassphrase ? form.sshPassphrase : undefined,
-        sshPassword: form.sshAuthMethod === 'password' ? form.sshPassword : undefined,
+        sshPassword: form.sshAuthMethod === 'password' && form.sshPassword ? form.sshPassword : undefined,
         runtime: form.runtime, daemonPort: form.daemonPort,
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
       };
@@ -806,6 +1079,10 @@ export default function NodesPage() {
         links={[{ name: 'Nodes' }]}
         action={
           <Stack direction="row" spacing={1}>
+            <Button variant="outlined" size="small" startIcon={<SettingsIcon sx={{ fontSize: 18 }} />}
+              onClick={() => setSettingsOpen(true)}>
+              Check Settings
+            </Button>
             <Button variant="outlined" size="small" startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}
               onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}>
               Refresh
@@ -868,6 +1145,17 @@ export default function NodesPage() {
       <NodeDialog open={dialogOpen} onClose={handleCloseDialog} onSubmit={handleSubmit}
         editNode={editNode} sshKeys={sshKeys} loading={submitting}
         error={submitError} onDismissError={() => setSubmitError(null)} />
+
+      <CheckSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={(cfg) => {
+          snackbar.success(
+            `Check settings saved — ping ${cfg.pingEnabled ? 'on' : 'off'}, SSH timeout ${cfg.sshTimeout}ms`,
+          );
+          void fetchNodes();
+        }}
+      />
     </Stack>
   );
 }

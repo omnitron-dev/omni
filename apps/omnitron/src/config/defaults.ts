@@ -85,6 +85,9 @@ export const DEFAULT_DAEMON_CONFIG: IDaemonConfig = {
     omnitronCheckTimeout: 15_000,
     retentionDays: 90, // 90 days — need history for uptime bars
     uptimeIntervalMs: 86_400_000, // 24 hours per bar segment
+    // A Titan application boot, not a script start. 30s expired on every
+    // attempt on a loaded host.
+    startupTimeoutMs: 120_000,
   },
 };
 

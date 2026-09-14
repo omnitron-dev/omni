@@ -206,6 +206,16 @@ export class OmnitronDaemon {
   private nodeManagerService: import('../services/node-manager.service.js').NodeManagerService | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private systemWorkerManager: import('../workers/system-worker-manager.js').SystemWorkerManager | null = null;
+  /** Everything the health-monitor worker needs to be spawned again. */
+  private healthWorkerSpawn: (() => Promise<void>) | null = null;
+  private healthWorkerRestartTimer: NodeJS.Timeout | null = null;
+  private healthWorkerRestartAttempts = 0;
+  /** The startup budget the worker is given, so a failure can name it. */
+  private healthWorkerStartupTimeout = 0;
+  /** In-daemon check timer, armed only while the worker is down. */
+  private fallbackNodeCheckTimer: NodeJS.Timeout | null = null;
+  /** Set by the shutdown task so nothing schedules work on the way out. */
+  private isShuttingDown = false;
   private leaderElection: any = null;
   private configSyncService: any = null;
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
@@ -383,6 +393,28 @@ export class OmnitronDaemon {
       }
     }
 
+    // 8.9. Fleet monitoring. Started BEFORE managed apps and not awaited.
+    //
+    // It used to be step 11.5, after `startApps`, `startScheduledTasks` and
+    // `startBackgroundServices`. Fleet monitoring is about MACHINES; it has
+    // nothing to do with whether this daemon's managed applications start, and
+    // gating it behind them means one application that fails its startup
+    // leaves the whole fleet unwatched for as long as the supervisor keeps
+    // retrying it. Measured on this host: ten minutes after a daemon start,
+    // with two applications still cycling through failed starts, not a single
+    // node had been checked and nothing had said so.
+    //
+    // Not awaited, for the same reason in the other direction: spawning the
+    // worker has a 30-second startup timeout, and the applications should not
+    // wait behind it. The function handles and logs its own failures, and arms
+    // the in-daemon fallback checks when the worker cannot run.
+    void this.startHealthMonitorWorker(logger).catch((err: Error) => {
+      // It handles its own failures; this is the last resort, because an
+      // unhandled rejection is a crash of the daemon rather than a lost
+      // subsystem.
+      logger.error({ error: err.message }, 'Health monitor startup threw');
+    });
+
     // 9. Start managed apps (waits for infra gate if apps have `requires`)
     await this.startApps(config, logger);
 
@@ -392,8 +424,7 @@ export class OmnitronDaemon {
     // 11. Start remaining background services (telemetry, traces, leader election)
     await this.startBackgroundServices(config, logger);
 
-    // 11.5. Start health monitor system worker (master only)
-    await this.startHealthMonitorWorker(logger);
+    // (Fleet monitoring is started at 8.5, above — before managed apps.)
 
     // 12. Wire event broadcasting (orchestrator events → WebSocket push)
     await this.wireEventBroadcasting(logger);
@@ -1459,36 +1490,55 @@ export class OmnitronDaemon {
   // Health Monitor System Worker
   // ============================================================================
 
+  /**
+   * Start the health-monitor system worker, and keep it started.
+   *
+   * Three things were wrong with the previous version, and they compounded
+   * into one outage:
+   *
+   *  - It returned SILENTLY when a precondition failed, so a daemon that
+   *    never checked a single node looked exactly like one that checked them
+   *    all. Each branch now says which precondition it was.
+   *  - Nothing watched the worker's process. When it died, the master kept
+   *    the proxy, and every fleet check — the console's Refresh, the Check
+   *    button, `omnitron node check` — answered
+   *    `TitanError: Service with id HealthMonitor@1.0.0 not found`. Observed
+   *    live: a fleet frozen at the worker's last report for two days, with
+   *    the console rendering it as current.
+   *  - The fallback timer existed only inside the catch for a FAILED SPAWN,
+   *    so a worker that started and later crashed had no fallback at all.
+   *
+   * The worker is now respawned with backoff, the proxy is dropped the moment
+   * its process ends, and the daemon runs the checks itself in the meantime.
+   */
   private async startHealthMonitorWorker(
     logger: import('@omnitron-dev/titan/module/logger').ILogger,
   ): Promise<void> {
-    if (!this.app || !this.nodeManagerService || this.dc.role === 'slave') return;
+    if (this.dc.role === 'slave') return; // By design: slaves do not manage a fleet.
+    if (!this.app) {
+      logger.warn({}, 'Health monitor not started — application is not available');
+      return;
+    }
+    if (!this.nodeManagerService) {
+      logger.warn({}, 'Health monitor not started — node manager was not constructed');
+      return;
+    }
+
+    const nodeManager = this.nodeManagerService;
 
     try {
       const titanPm = await import('@omnitron-dev/titan-pm');
       const { SystemWorkerManager } = await import('../workers/system-worker-manager.js');
       const { fileURLToPath } = await import('node:url');
       const nodePath = await import('node:path');
+      const { omnitronPgConnectionString } = await import('../database/connection.js');
 
       // Resolve PM from DI
       const pm = await this.app.container.resolveAsync<any>(titanPm.PM_MANAGER_TOKEN);
 
       const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
-      this.systemWorkerManager = new SystemWorkerManager(pm, loggerModule.logger.child({ component: 'system-workers' }));
-
-      // Build health monitor config
-      const hmDefaults = this.dc.healthMonitor ?? {};
-      const healthConfig = {
-        intervalMs: hmDefaults.intervalMs ?? 30_000,
-        concurrency: hmDefaults.concurrency ?? 20,
-        offlineTimeoutMs: hmDefaults.offlineTimeoutMs ?? 90_000,
-        pingTimeout: hmDefaults.pingTimeout ?? 5_000,
-        sshTimeout: hmDefaults.sshTimeout ?? 10_000,
-        omnitronCheckTimeout: hmDefaults.omnitronCheckTimeout ?? 15_000,
-        pingEnabled: hmDefaults.pingEnabled ?? true,
-        retentionDays: hmDefaults.retentionDays ?? 7,
-        dbUrl: 'postgresql://omnitron:omnitron@localhost:5480/omnitron',
-      };
+      const workerManager = new SystemWorkerManager(pm, loggerModule.logger.child({ component: 'system-workers' }));
+      this.systemWorkerManager = workerManager;
 
       // Get worker process path. The naive heuristic of "tsx in execArgv → .ts"
       // is wrong: the daemon binary itself is loaded with `--import tsx/esm`
@@ -1499,64 +1549,127 @@ export class OmnitronDaemon {
       const workersDir = nodePath.resolve(thisDir, '..', 'workers');
       const tsPath = nodePath.join(workersDir, 'health-monitor-process.ts');
       const jsPath = nodePath.join(workersDir, 'health-monitor-process.js');
-      const workerPath = (await import('node:fs')).existsSync(jsPath)
+      const fsMod = await import('node:fs');
+      const workerPath = fsMod.existsSync(jsPath)
         ? jsPath
-        : (await import('node:fs')).existsSync(tsPath)
+        : fsMod.existsSync(tsPath)
           ? tsPath
           : jsPath; // fall through to .js — error will be clear if missing
-
-      // Convert nodes to check targets
-      const nodesJson = JSON.stringify(await this.nodeManagerService.getNodeCheckTargets());
-      const configJson = JSON.stringify(healthConfig);
 
       const spawnOpts: { execArgv?: string[]; startupTimeout?: number } = {};
       if (process.execArgv.some((a) => a.includes('tsx'))) {
         spawnOpts.execArgv = ['--import', 'tsx/esm'];
       }
-      spawnOpts.startupTimeout = 30_000;
+      // What the worker has to do before it can report ready is create a
+      // Titan application — a DI container, a module graph and a PG pool.
+      // Managed applications get two to five minutes for that; this was
+      // thirty seconds, and on a loaded host it expired on every attempt.
+      // A deadline shorter than the work turns a healthy subsystem into one
+      // that is started and killed for ever, which is what was observed:
+      // fifty minutes of restart attempts, none of which could have finished.
+      spawnOpts.startupTimeout =
+        this.dc.healthMonitor?.startupTimeoutMs
+        ?? DEFAULT_DAEMON_CONFIG.healthMonitor?.startupTimeoutMs
+        ?? 120_000;
+      this.healthWorkerStartupTimeout = spawnOpts.startupTimeout;
 
-      const proxy = await this.systemWorkerManager.spawn(
-        'health-monitor',
-        workerPath,
-        { configJson, nodesJson },
-        spawnOpts,
-      );
+      /**
+       * The worker's configuration.
+       *
+       * Read at every spawn, not once: the operator's check settings live in
+       * the node manager and change at runtime. The fallbacks come from
+       * `DEFAULT_DAEMON_CONFIG` rather than being written out again here —
+       * the inline copies said 30 s and 7 days while the declared defaults
+       * said 60 s and 90 days, so which numbers a deployment got depended on
+       * whether its config file happened to mention `healthMonitor` at all.
+       */
+      const buildConfig = () => {
+        const declared = DEFAULT_DAEMON_CONFIG.healthMonitor ?? {};
+        const configured = this.dc.healthMonitor ?? {};
+        const operator = nodeManager.getCheckConfig();
+        return {
+          intervalMs: configured.intervalMs ?? declared.intervalMs ?? 60_000,
+          concurrency: operator.concurrency,
+          offlineTimeoutMs: configured.offlineTimeoutMs ?? declared.offlineTimeoutMs ?? 90_000,
+          pingTimeout: operator.pingTimeout,
+          sshTimeout: operator.sshTimeout,
+          omnitronCheckTimeout: operator.omnitronCheckTimeout,
+          pingEnabled: operator.pingEnabled,
+          retentionDays: configured.retentionDays ?? declared.retentionDays ?? 90,
+          // Was a hard-coded DSN, password included, in this file — the sixth
+          // copy of literals `database/connection.ts` exists to be the only
+          // copy of. A daemon pointed elsewhere by OMNITRON_DATABASE_URL wrote
+          // its check history to a database nothing else used.
+          dbUrl: omnitronPgConnectionString(),
+        };
+      };
 
-      // Wire IPC: worker → master status cache updates via PM's public API
-      const nodeManager = this.nodeManagerService;
-      const eventBroadcaster = this.eventBroadcaster;
+      this.healthWorkerSpawn = async () => {
+        const healthConfig = buildConfig();
+        const nodesJson = JSON.stringify(await nodeManager.getNodeCheckTargets());
+        const proxy = await workerManager.spawn(
+          'health-monitor',
+          workerPath,
+          { configJson: JSON.stringify(healthConfig), nodesJson },
+          spawnOpts,
+        );
 
-      this.systemWorkerManager.onMessage('health-monitor', (msg: any) => {
-        if (msg?.type === 'health:status_batch' && Array.isArray(msg.summaries)) {
-          nodeManager.updateStatusCacheFromWorker(msg.summaries);
-          // Broadcast node status updates via WebSocket
-          if (eventBroadcaster) {
-            const online = msg.summaries.filter((s: any) => s.status === 'online').length;
-            const degraded = msg.summaries.filter((s: any) => s.status === 'degraded').length;
-            const offline = msg.summaries.filter((s: any) => s.status === 'offline').length;
-            eventBroadcaster.broadcast(NODE_EVENTS.CHECK_COMPLETED, {
-              nodeCount: msg.summaries.length,
-              onlineCount: online,
-              degradedCount: degraded,
-              offlineCount: offline,
-            });
+        // Wire IPC: worker → master status cache updates via PM's public API
+        workerManager.onMessage('health-monitor', (msg: any) => {
+          if (msg?.type === 'health:status_batch' && Array.isArray(msg.summaries)) {
+            nodeManager.updateStatusCacheFromWorker(msg.summaries);
+            this.broadcastNodeCheckCompleted(msg.summaries);
           }
+        });
+
+        if (this.nodeManagerRpcService) {
+          this.nodeManagerRpcService.setHealthWorkerProxy(proxy as any);
         }
+        this.healthWorkerRestartAttempts = 0;
+        this.stopFallbackNodeChecks();
+        logger.info({ intervalMs: healthConfig.intervalMs }, 'Health monitor system worker started');
+      };
+
+      // A worker that ends — crash or deliberate stop — must take its proxy
+      // with it. `expected` is true only while the daemon is shutting down,
+      // which is also when a respawn would be wrong.
+      workerManager.onExit('health-monitor', (exit) => {
+        this.nodeManagerRpcService?.setHealthWorkerProxy(null);
+        if (exit.expected || this.isShuttingDown) return;
+        this.startFallbackNodeChecks(logger);
+        this.scheduleHealthMonitorRestart(logger);
+      });
+
+      // Operator changes to the check settings have to reach the process that
+      // performs the checks. They reached a field on the node manager that
+      // only the daemon's own fallback path read, so turning ping off in the
+      // console turned nothing off.
+      nodeManager.on('checkConfig:changed', () => {
+        void callWorkerMethod(workerManager, 'updateConfig', JSON.stringify(buildConfig())).catch((err: Error) => {
+          logger.warn({ error: err.message }, 'Failed to push check config to health monitor');
+        });
       });
 
       // Wire node CRUD events → sync to worker
       const syncNodesToWorker = async () => {
+        if (!workerManager.get('health-monitor')) return;
         const targets = await nodeManager.getNodeCheckTargets();
-        (proxy as any).updateNodes(JSON.stringify(targets)).catch(() => {});
+        await callWorkerMethod(workerManager, 'updateNodes', JSON.stringify(targets)).catch((err: Error) => {
+          logger.warn({ error: err.message }, 'Failed to sync node list to health monitor');
+        });
       };
       nodeManager.on('node:added', syncNodesToWorker);
       nodeManager.on('node:updated', syncNodesToWorker);
       nodeManager.on('node:removed', syncNodesToWorker);
 
-      // Wire RPC service to use worker proxy + PG repository for direct reads
+      // A node changing state is the event the console subscribes to. Four of
+      // the five NODE_EVENTS channels were declared and never emitted.
+      nodeManager.on('node:health', (t: import('../services/node-manager.service.js').NodeHealthTransition) => {
+        this.broadcastNodeTransition(t);
+      });
+
+      // Wire PG repository for direct history reads (bypasses worker)
       if (this.nodeManagerRpcService) {
-        this.nodeManagerRpcService.setHealthWorkerProxy(proxy as any);
-        // Wire PG repository for direct history reads (bypasses worker)
         try {
           const db = await this.app!.container.resolveAsync(OMNITRON_DB_TOKEN);
           const { NodeHealthRepository } = await import('../services/node-health.repository.js');
@@ -1566,21 +1679,114 @@ export class OmnitronDaemon {
         }
       }
 
-      logger.info({ intervalMs: healthConfig.intervalMs }, 'Health monitor system worker started');
+      // The console needs these to size its uptime bars against history that
+      // actually exists.
+      const bootConfig = buildConfig();
+      nodeManager.setHistoryConfig({
+        uptimeIntervalMs:
+          this.dc.healthMonitor?.uptimeIntervalMs
+          ?? DEFAULT_DAEMON_CONFIG.healthMonitor?.uptimeIntervalMs
+          ?? 86_400_000,
+        retentionDays: bootConfig.retentionDays,
+      });
+
+      await this.healthWorkerSpawn();
     } catch (err) {
       logger.warn(
         { error: (err as Error).message },
         'Health monitor worker failed to start — falling back to direct checks'
       );
-      // Fallback: start legacy periodic checks if worker fails
-      // This ensures node status still works even without the worker
-      if (this.nodeManagerService) {
-        const intervalMs = this.dc.healthMonitor?.intervalMs ?? 30_000;
-        const timer = setInterval(() => void this.nodeManagerService?.checkAllNodes(), intervalMs);
-        timer.unref();
-        void this.nodeManagerService.checkAllNodes();
-      }
+      this.startFallbackNodeChecks(logger);
+      if (this.healthWorkerSpawn) this.scheduleHealthMonitorRestart(logger);
     }
+  }
+
+  /**
+   * Try the health-monitor worker again, backing off.
+   *
+   * Capped at a minute: the worker is cheap to start and the fleet view is
+   * blind without it, but a worker that cannot start (a missing file, a bad
+   * runtime) must not be respawned in a tight loop for the life of the daemon.
+   */
+  private scheduleHealthMonitorRestart(
+    logger: import('@omnitron-dev/titan/module/logger').ILogger,
+  ): void {
+    if (this.healthWorkerRestartTimer || this.isShuttingDown || !this.healthWorkerSpawn) return;
+
+    const attempt = ++this.healthWorkerRestartAttempts;
+    const delay = Math.min(60_000, 2_000 * 2 ** Math.min(attempt - 1, 5));
+    logger.warn({ attempt, delayMs: delay }, 'Health monitor worker is down — restarting');
+
+    this.healthWorkerRestartTimer = setTimeout(() => {
+      this.healthWorkerRestartTimer = null;
+      if (this.isShuttingDown || !this.healthWorkerSpawn) return;
+      this.healthWorkerSpawn().catch((err: Error) => {
+        logger.warn(
+          { attempt, startupTimeoutMs: this.healthWorkerStartupTimeout, error: err.message },
+          'Health monitor worker restart failed',
+        );
+        this.scheduleHealthMonitorRestart(logger);
+      });
+    }, delay);
+    this.healthWorkerRestartTimer.unref();
+  }
+
+  /**
+   * Run node checks in the daemon while the worker is unavailable.
+   *
+   * Idempotent, and stopped as soon as the worker is back — two check loops
+   * against the same fleet would double every remote host's load and write
+   * two rows per interval.
+   */
+  private startFallbackNodeChecks(
+    logger: import('@omnitron-dev/titan/module/logger').ILogger,
+  ): void {
+    if (this.fallbackNodeCheckTimer || !this.nodeManagerService) return;
+    const declared = DEFAULT_DAEMON_CONFIG.healthMonitor ?? {};
+    const intervalMs = this.dc.healthMonitor?.intervalMs ?? declared.intervalMs ?? 60_000;
+    logger.warn({ intervalMs }, 'Checking nodes from the daemon until the health monitor returns');
+    this.fallbackNodeCheckTimer = setInterval(() => {
+      void this.nodeManagerService?.checkAllNodes();
+    }, intervalMs);
+    this.fallbackNodeCheckTimer.unref();
+    void this.nodeManagerService.checkAllNodes();
+  }
+
+  private stopFallbackNodeChecks(): void {
+    if (!this.fallbackNodeCheckTimer) return;
+    clearInterval(this.fallbackNodeCheckTimer);
+    this.fallbackNodeCheckTimer = null;
+  }
+
+  /** Aggregate counts from a worker batch → one console event. */
+  private broadcastNodeCheckCompleted(summaries: Array<{ status?: string }>): void {
+    if (!this.eventBroadcaster) return;
+    const count = (s: string) => summaries.filter((x) => x.status === s).length;
+    this.eventBroadcaster.broadcast(NODE_EVENTS.CHECK_COMPLETED, {
+      nodeCount: summaries.length,
+      onlineCount: count('online'),
+      degradedCount: count('degraded'),
+      offlineCount: count('offline'),
+    });
+  }
+
+  /** One node's health changing → the channel named after the new state. */
+  private broadcastNodeTransition(
+    transition: import('../services/node-manager.service.js').NodeHealthTransition,
+  ): void {
+    if (!this.eventBroadcaster) return;
+    const payload = {
+      nodeId: transition.nodeId,
+      status: transition.status,
+      ...(transition.previousStatus ? { previousStatus: transition.previousStatus } : {}),
+    };
+    this.eventBroadcaster.broadcast(NODE_EVENTS.STATUS_UPDATED, payload);
+    const channel =
+      transition.status === 'online' ? NODE_EVENTS.WENT_ONLINE
+        : transition.status === 'offline' ? NODE_EVENTS.WENT_OFFLINE
+          : transition.status === 'degraded' ? NODE_EVENTS.WENT_DEGRADED
+            : null;
+    if (channel) this.eventBroadcaster.broadcast(channel, payload);
   }
 
   // ============================================================================
@@ -1928,6 +2134,16 @@ export class OmnitronDaemon {
         if (this.configSyncService?.stopPeriodicSync) this.configSyncService.stopPeriodicSync();
       } catch { /* non-critical */ }
 
+      // Before stopping the workers: a worker exiting on the way out must not
+      // be read as a crash and rescheduled.
+      this.isShuttingDown = true;
+      this.healthWorkerSpawn = null;
+      if (this.healthWorkerRestartTimer) {
+        clearTimeout(this.healthWorkerRestartTimer);
+        this.healthWorkerRestartTimer = null;
+      }
+      this.stopFallbackNodeChecks();
+
       if (this.systemWorkerManager) {
         try { await this.systemWorkerManager.stopAll(); } catch { /* non-critical */ }
         this.systemWorkerManager = null;
@@ -1980,4 +2196,26 @@ export class OmnitronDaemon {
       this.pidManager?.remove();
     }, ShutdownPriority.Last);
   }
+}
+
+
+/**
+ * Call a method on a system worker's proxy.
+ *
+ * `ServiceProxy` is typed with an index signature whose values may be an
+ * async iterable as well as a function, so a direct `worker.updateConfig(…)`
+ * does not type-check. Resolving through one place keeps the cast in one
+ * place, and returns without throwing when the worker is not running — the
+ * only correct answer for "tell the health monitor" when there is none.
+ */
+async function callWorkerMethod(
+  manager: import('../workers/system-worker-manager.js').SystemWorkerManager,
+  method: string,
+  ...args: unknown[]
+): Promise<unknown> {
+  const worker = manager.get<Record<string, unknown>>('health-monitor');
+  if (!worker) return undefined;
+  const fn = (worker as unknown as Record<string, unknown>)[method];
+  if (typeof fn !== 'function') return undefined;
+  return (fn as (...a: unknown[]) => unknown).apply(worker, args);
 }

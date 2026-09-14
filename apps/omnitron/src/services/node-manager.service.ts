@@ -16,9 +16,15 @@ import os from 'node:os';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { RemoteOpsService, type NodeCheckConfig, DEFAULT_CHECK_CONFIG } from './remote-ops.service.js';
+import {
+  RemoteOpsService,
+  type NodeCheckConfig,
+  DEFAULT_CHECK_CONFIG,
+  normalizeCheckConfig,
+  assertNodeHost,
+} from './remote-ops.service.js';
 import { CLI_VERSION } from '../config/defaults.js';
-import type { INodeHealthSummary, INodeCheckTarget } from '../workers/types.js';
+import type { INodeHealthSummary, INodeCheckTarget, NodeHealthStatus } from '../workers/types.js';
 import type { SecretsService } from './secrets.service.js';
 import type {
   INode,
@@ -27,6 +33,7 @@ import type {
   AddNodeInput,
   UpdateNodeInput,
   SshKeyInfo,
+  FleetHistoryConfig,
 } from '../shared/dto/nodes.js';
 
 // =============================================================================
@@ -40,8 +47,15 @@ export type {
   AddNodeInput,
   UpdateNodeInput,
   SshKeyInfo,
+  FleetHistoryConfig,
 } from '../shared/dto/nodes.js';
 
+/** A node's health status changing from one value to another. */
+export interface NodeHealthTransition {
+  nodeId: string;
+  status: NodeHealthStatus;
+  previousStatus: NodeHealthStatus | null;
+}
 
 // =============================================================================
 // Constants
@@ -51,6 +65,9 @@ const OMNITRON_HOME = path.join(os.homedir(), '.omnitron');
 const NODES_FILE = path.join(OMNITRON_HOME, 'nodes.json');
 const LOCAL_NODE_ID = 'local';
 
+/** DaemonStateStore key holding the operator-set check configuration. */
+const CHECK_CONFIG_KEY = 'nodes:check-config';
+
 // =============================================================================
 // Service
 // =============================================================================
@@ -58,8 +75,26 @@ const LOCAL_NODE_ID = 'local';
 export class NodeManagerService extends EventEmitter {
   private nodes: Map<string, INode> = new Map();
   private statusCache: Map<string, INodeStatus> = new Map();
+  /**
+   * Aggregated health per node — the shape the worker reports and the console
+   * reads. Kept here so a daemon whose worker is down can still answer
+   * `triggerNodeCheck`, and so status TRANSITIONS have something to compare
+   * against: `node.went_offline` and its siblings are declared event channels
+   * that nothing ever emitted, because no one held the previous value.
+   */
+  private summaryCache: Map<string, INodeHealthSummary> = new Map();
   private readonly remoteOps: RemoteOpsService;
   private checkConfig: NodeCheckConfig = DEFAULT_CHECK_CONFIG;
+  /** Set by the daemon from its own config; see `setHistoryConfig`. */
+  private historyConfig: FleetHistoryConfig = { uptimeIntervalMs: 86_400_000, retentionDays: 90 };
+  /**
+   * Secrets read out of a node row and not yet written to the vault.
+   *
+   * The migration in `healLeakedSecrets` is async and starts at construction;
+   * without this, a check running in that window would find no passphrase and
+   * report a perfectly reachable node as unreachable.
+   */
+  private pendingSecrets = new Map<string, string>();
 
   constructor(
     private readonly logger: ILogger,
@@ -81,13 +116,54 @@ export class NodeManagerService extends EventEmitter {
 
   }
 
-  /** Update check configuration (ping/SSH timeouts, ping enabled/disabled) */
+  /**
+   * Update check configuration (ping/SSH timeouts, ping enabled/disabled).
+   *
+   * Persisted and announced. Both were missing: the setting lived in this
+   * field alone, so it was lost on restart, and the health-monitor worker —
+   * which performs every check the console displays — kept running with the
+   * values it was handed at boot. An operator turning ping off in the console
+   * changed a value that only the daemon's own fallback path ever read.
+   */
   setCheckConfig(config: Partial<NodeCheckConfig>): void {
-    this.checkConfig = { ...this.checkConfig, ...config };
+    const next = normalizeCheckConfig({ ...this.checkConfig, ...config });
+    const changed = (Object.keys(next) as Array<keyof NodeCheckConfig>)
+      .some((k) => next[k] !== this.checkConfig[k]);
+    this.checkConfig = next;
+    if (!changed) return;
+
+    try {
+      this.store.kvSetSync(CHECK_CONFIG_KEY, next);
+    } catch (err) {
+      this.logger.warn({ error: (err as Error).message }, 'Failed to persist node check config');
+    }
+    this.logger.info({ config: next }, 'Node check config updated');
+    this.emit('checkConfig:changed', next);
   }
 
   getCheckConfig(): NodeCheckConfig {
     return { ...this.checkConfig };
+  }
+
+  /**
+   * Tell the service how history is kept, so the console can be told too.
+   *
+   * `uptimeIntervalMs` was declared in the daemon config, documented, given a
+   * default — and read by nothing. The console used a constant of its own,
+   * and no caller anywhere could have discovered the retention window that
+   * bounds what the bars can show.
+   */
+  setHistoryConfig(config: Partial<FleetHistoryConfig>): void {
+    if (Number.isFinite(config.uptimeIntervalMs)) {
+      this.historyConfig.uptimeIntervalMs = config.uptimeIntervalMs as number;
+    }
+    if (Number.isFinite(config.retentionDays)) {
+      this.historyConfig.retentionDays = config.retentionDays as number;
+    }
+  }
+
+  getHistoryConfig(): FleetHistoryConfig {
+    return { ...this.historyConfig };
   }
 
   // ===========================================================================
@@ -96,7 +172,7 @@ export class NodeManagerService extends EventEmitter {
 
   listNodes(): INodeWithStatus[] {
     return Array.from(this.nodes.values()).map((node) => ({
-      ...node,
+      ...toWireNode(node),
       status: this.statusFor(node.id),
     }));
   }
@@ -104,7 +180,7 @@ export class NodeManagerService extends EventEmitter {
   getNode(id: string): INodeWithStatus | null {
     const node = this.nodes.get(id);
     if (!node) return null;
-    return { ...node, status: this.statusFor(id) };
+    return { ...toWireNode(node), status: this.statusFor(id) };
   }
 
   /**
@@ -148,19 +224,23 @@ export class NodeManagerService extends EventEmitter {
     const node: INode = {
       id,
       name: input.name,
-      host: input.host,
-      sshPort: input.sshPort ?? 22,
+      // A host is not free text: it is spelled into an SSH target and into
+      // the argument list of `ping`. Rejected at the WRITE so a stored value
+      // cannot surprise a reader downstream.
+      host: assertNodeHost(input.host),
+      sshPort: assertPort('SSH port', input.sshPort ?? 22),
       sshUser: input.sshUser ?? 'root',
       sshAuthMethod: input.sshAuthMethod ?? 'key',
       ...(input.sshPrivateKey && { sshPrivateKey: input.sshPrivateKey }),
       runtime: input.runtime ?? 'node',
-      daemonPort: input.daemonPort ?? 9700,
+      daemonPort: assertPort('daemon port', input.daemonPort ?? 9700),
       tags: input.tags ?? [],
       isLocal: false,
       createdAt: now,
       updatedAt: now,
       ...(input.offlineTimeout != null && { offlineTimeout: input.offlineTimeout }),
     };
+    if (!node.name.trim()) throw new Error('Node name is required');
 
     // Store secrets encrypted (passphrase, password) — only boolean markers in nodes.json.
     // Must await before connectivity check, otherwise getSecret() reads stale file.
@@ -195,6 +275,9 @@ export class NodeManagerService extends EventEmitter {
 
     // Extract secrets before spreading into node (they must not be saved to nodes.json)
     const { sshPassphrase, sshPassword, ...safeInput } = input;
+    if (safeInput.host !== undefined) safeInput.host = assertNodeHost(safeInput.host);
+    if (safeInput.sshPort !== undefined) safeInput.sshPort = assertPort('SSH port', safeInput.sshPort);
+    if (safeInput.daemonPort !== undefined) safeInput.daemonPort = assertPort('daemon port', safeInput.daemonPort);
 
     const updated: INode = {
       ...node,
@@ -225,6 +308,24 @@ export class NodeManagerService extends EventEmitter {
       }
     }
 
+    // A credential that belongs to the other auth method is dead weight that
+    // still authenticates: leaving a stored password on a node switched to
+    // key auth means the console shows "SSH Key" while the daemon may log in
+    // with a password the operator believes they stopped using.
+    if (updated.sshAuthMethod !== node.sshAuthMethod) {
+      if (updated.sshAuthMethod === 'key' && updated.hasPassword) {
+        updated.hasPassword = false;
+        await this.deleteSecret(id, 'password');
+      }
+      if (updated.sshAuthMethod === 'password') {
+        delete updated.sshPrivateKey;
+        if (updated.hasPassphrase) {
+          updated.hasPassphrase = false;
+          await this.deleteSecret(id, 'passphrase');
+        }
+      }
+    }
+
     this.nodes.set(id, updated);
     this.save();
     this.emit('node:updated', updated);
@@ -237,17 +338,37 @@ export class NodeManagerService extends EventEmitter {
     return updated;
   }
 
-  removeNode(id: string): void {
+  /**
+   * Remove a node from the registry.
+   *
+   * Deletes the ROW, not just the map entry. `save()` rewrites every node
+   * still held in memory, which is how the file-backed registry used to
+   * express a deletion — but an UPSERT-per-row store expresses it by
+   * deleting, and the row for a removed node stayed behind. The console
+   * reported the node gone, and the next daemon start read it back in.
+   *
+   * Secret deletion is awaited for the same reason: fired and forgotten, a
+   * failure left an SSH password in the vault under the id of a node nobody
+   * can see any more.
+   */
+  async removeNode(id: string): Promise<void> {
     const node = this.nodes.get(id);
     if (!node) throw new Error(`Node not found: ${id}`);
     if (node.isLocal) throw new Error('Cannot remove local node');
 
     // Clean up encrypted secrets
-    void this.deleteSecret(id, 'passphrase');
-    void this.deleteSecret(id, 'password');
+    await this.deleteSecret(id, 'passphrase');
+    await this.deleteSecret(id, 'password');
 
     this.nodes.delete(id);
     this.statusCache.delete(id);
+    this.summaryCache.delete(id);
+    try {
+      this.store.deleteNodeSync(id);
+    } catch (err) {
+      this.logger.warn({ nodeId: id, error: (err as Error).message }, 'Failed to delete node row');
+      throw err;
+    }
     this.save();
     this.emit('node:removed', id);
     this.logger.info({ nodeId: id, name: node.name }, 'Node removed');
@@ -287,21 +408,25 @@ export class NodeManagerService extends EventEmitter {
         continue;
       }
 
-      // Check if it looks like a private key (starts with -----BEGIN)
+      // Check if it looks like a private key (starts with -----BEGIN).
+      // Read the HEADER, not the file: this walks a directory of private
+      // keys, and `readFileSync(...).slice(0, 100)` pulled every byte of
+      // every one of them into the daemon's heap to look at the first line.
+      let head: string;
       try {
-        const head = fs.readFileSync(fullPath, 'utf-8').slice(0, 100);
-        if (head.includes('-----BEGIN') && head.includes('KEY')) {
-          // Detect key type from header
-          let type = 'unknown';
-          if (head.includes('RSA')) type = 'rsa';
-          else if (head.includes('EC')) type = 'ecdsa';
-          else if (head.includes('OPENSSH')) type = 'ed25519';
-          else if (head.includes('DSA')) type = 'dsa';
-
-          keys.push({ name: entry, path: fullPath, type });
-        }
+        head = readFileHead(fullPath, 100);
       } catch {
-        // Can't read — skip
+        continue; // Can't read — skip
+      }
+      if (head.includes('-----BEGIN') && head.includes('KEY')) {
+        // Detect key type from header
+        let type = 'unknown';
+        if (head.includes('RSA')) type = 'rsa';
+        else if (head.includes('EC')) type = 'ecdsa';
+        else if (head.includes('OPENSSH')) type = 'ed25519';
+        else if (head.includes('DSA')) type = 'dsa';
+
+        keys.push({ name: entry, path: fullPath, type });
       }
     }
 
@@ -336,18 +461,13 @@ export class NodeManagerService extends EventEmitter {
       status.omnitronPid = process.pid;
       status.omnitronUptime = process.uptime() * 1000;
       status.omnitronRole = 'master';
+      status.omnitronVersion = CLI_VERSION;
       status.os = {
         platform: os.platform(),
         arch: os.arch(),
         hostname: os.hostname(),
         release: os.release(),
       };
-      try {
-        const { CLI_VERSION } = await import('../config/defaults.js');
-        status.omnitronVersion = CLI_VERSION;
-      } catch {
-        status.omnitronVersion = '0.1.0';
-      }
     } else {
       // Remote node — ping + Netron TCP (no SSH — SSH is manual-only via UI)
 
@@ -366,19 +486,21 @@ export class NodeManagerService extends EventEmitter {
       //    Master connects to slave via SlaveConnector; if already connected,
       //    the heartbeat confirms status. Otherwise try a quick TCP connect + ping.
       const port = node.daemonPort ?? 9700;
+      let probeNetron: { stop(): Promise<void> } | null = null;
       try {
         const { Netron } = await import('@omnitron-dev/titan/netron');
         const { TcpTransport } = await import('@omnitron-dev/titan/netron/transport/tcp');
         const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
 
-        const probeNetron = new Netron(createNullLogger(), { id: `probe-${node.host}` });
-        probeNetron.registerTransport('tcp', () => new TcpTransport());
+        const probe = new Netron(createNullLogger(), { id: `probe-${node.host}` });
+        probeNetron = probe;
+        probe.registerTransport('tcp', () => new TcpTransport());
 
         const connectStart = Date.now();
-        const peer = await Promise.race([
-          probeNetron.connect(`tcp://${node.host}:${port}`, false),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), this.checkConfig.omnitronCheckTimeout)),
-        ]);
+        const peer = await withTimeout(
+          probe.connect(`tcp://${node.host}:${port}`, false),
+          this.checkConfig.omnitronCheckTimeout,
+        );
 
         // Ping via OmnitronDaemon service
         const daemon = await (peer as any).queryInterface('OmnitronDaemon');
@@ -396,20 +518,27 @@ export class NodeManagerService extends EventEmitter {
           { node: node.name, host: node.host, latencyMs: latency, version: info?.version },
           'Node check: Netron TCP ping OK'
         );
-
-        // Disconnect probe — SlaveConnector manages persistent connections
-        await probeNetron.stop();
       } catch (err) {
         status.omnitronConnected = false;
+        status.omnitronError = (err as Error).message;
         this.logger.debug(
           { node: node.name, host: node.host, port, error: (err as Error).message },
           'Node check: Netron TCP ping failed'
         );
+      } finally {
+        // Stop the probe on EVERY path. It only ran on success, so each
+        // failed check — the common case for an offline node, once a minute,
+        // for ever — left a Netron instance with a registered TCP transport
+        // behind in the daemon.
+        if (probeNetron) {
+          try {
+            await probeNetron.stop();
+          } catch { /* the probe is being discarded either way */ }
+        }
       }
     }
 
-    this.statusCache.set(id, status);
-    this.emit('node:status', id, status);
+    this.recordStatus(node, status);
     return status;
   }
 
@@ -434,15 +563,32 @@ export class NodeManagerService extends EventEmitter {
     return target;
   }
 
+  /**
+   * Check every node.
+   *
+   * Concurrent, bounded by the same `concurrency` the worker uses. It was a
+   * `for` loop with an `await` in it, so a fleet of twenty nodes with one
+   * unreachable host took the ping timeout plus the TCP timeout SERIALLY —
+   * twenty seconds of a thirty-second check interval spent on one node.
+   */
   async checkAllNodes(): Promise<INodeStatus[]> {
+    const ids = Array.from(this.nodes.keys());
     const results: INodeStatus[] = [];
-    for (const node of this.nodes.values()) {
-      try {
-        const status = await this.checkNodeStatus(node.id);
-        results.push(status);
-      } catch (err) {
-        this.logger.warn({ nodeId: node.id, error: (err as Error).message }, 'Failed to check node');
-      }
+    const width = Math.max(1, this.checkConfig.concurrency);
+
+    for (let i = 0; i < ids.length; i += width) {
+      const batch = ids.slice(i, i + width);
+      const settled = await Promise.allSettled(batch.map((id) => this.checkNodeStatus(id)));
+      settled.forEach((r, idx) => {
+        if (r.status === 'fulfilled') {
+          results.push(r.value);
+        } else {
+          this.logger.warn(
+            { nodeId: batch[idx], error: (r.reason as Error)?.message },
+            'Failed to check node',
+          );
+        }
+      });
     }
     return results;
   }
@@ -478,7 +624,42 @@ export class NodeManagerService extends EventEmitter {
       if (check.omnitronError) status.omnitronError = check.omnitronError;
       this.statusCache.set(summary.nodeId, status);
       this.emit('node:status', summary.nodeId, status);
+      this.setSummary(summary);
     }
+  }
+
+  /**
+   * Aggregated health, for a daemon serving checks without the worker.
+   *
+   * `triggerNodeCheck` used to return `[]` when the worker was absent, and an
+   * empty array on a page whose subject is the fleet reads as "no nodes".
+   */
+  getHealthSummaries(nodeId?: string): INodeHealthSummary[] {
+    if (nodeId) {
+      const one = this.summaryCache.get(nodeId);
+      return one ? [one] : [];
+    }
+    return Array.from(this.summaryCache.values());
+  }
+
+  /**
+   * Note that the health worker could not be reached.
+   *
+   * Called by the RPC layer when a worker call throws. The daemon re-spawns
+   * the worker; this exists so the reason appears once, in the daemon's log,
+   * rather than only in the error text of whichever console button was pressed.
+   */
+  reportWorkerUnavailable(method: string, err: Error): void {
+    this.logger.warn(
+      { method, error: err.message },
+      'Health monitor worker unavailable — serving this check from the daemon',
+    );
+    this.emit('worker:unavailable', method, err);
+  }
+
+  /** Report a non-fatal failure in node bookkeeping, with the reason. */
+  reportProblem(operation: string, err: Error): void {
+    this.logger.warn({ operation, error: err.message }, 'Node maintenance step failed');
   }
 
   /**
@@ -526,13 +707,25 @@ export class NodeManagerService extends EventEmitter {
     return `node:${nodeId}:${field}`;
   }
 
-  private async getSecret(nodeId: string, field: string): Promise<string | null> {
+  /** The vault's own answer, with no in-memory fallback. */
+  private async readVault(nodeId: string, field: string): Promise<string | null> {
     if (!this.secrets) return null;
     try {
       return await this.secrets.get(this.secretKey(nodeId, field));
     } catch {
       return null;
     }
+  }
+
+  private async getSecret(nodeId: string, field: string): Promise<string | null> {
+    const key = this.secretKey(nodeId, field);
+    if (this.secrets) {
+      try {
+        const stored = await this.secrets.get(key);
+        if (stored) return stored;
+      } catch { /* fall through to the pending value, if any */ }
+    }
+    return this.pendingSecrets.get(key) ?? null;
   }
 
   private async setSecret(nodeId: string, field: string, value: string): Promise<void> {
@@ -585,10 +778,96 @@ export class NodeManagerService extends EventEmitter {
   }
 
   // ===========================================================================
+  // Status bookkeeping
+  // ===========================================================================
+
+  /** Record a check this service performed, and derive its health summary. */
+  private recordStatus(node: INode, status: INodeStatus): void {
+    this.statusCache.set(node.id, status);
+    this.emit('node:status', node.id, status);
+
+    const previous = this.summaryCache.get(node.id);
+    const reachable = status.sshConnected || status.pingReachable || status.omnitronConnected;
+    const offlineTimeout = node.offlineTimeout ?? DEFAULT_OFFLINE_TIMEOUT_MS;
+
+    let health: NodeHealthStatus;
+    if (status.omnitronConnected) {
+      health = 'online';
+    } else if (reachable) {
+      health = 'degraded';
+    } else {
+      const lastSeen = previous?.lastSeenOnline;
+      health = lastSeen && Date.now() - Date.parse(lastSeen) < offlineTimeout ? 'degraded' : 'offline';
+    }
+
+    this.setSummary({
+      nodeId: node.id,
+      status: health,
+      lastCheck: {
+        nodeId: node.id,
+        checkedAt: status.checkedAt,
+        checkDurationMs: 0,
+        pingReachable: status.pingReachable,
+        pingLatencyMs: status.pingLatencyMs,
+        pingError: status.pingError ?? null,
+        sshConnected: status.sshConnected,
+        sshLatencyMs: status.sshLatencyMs,
+        sshError: status.sshError ?? null,
+        omnitronConnected: status.omnitronConnected,
+        omnitronVersion: status.omnitronVersion ?? null,
+        omnitronPid: status.omnitronPid ?? null,
+        omnitronUptime: status.omnitronUptime ?? null,
+        omnitronRole: status.omnitronRole ?? null,
+        omnitronError: status.omnitronError ?? null,
+        os: status.os ?? null,
+      },
+      lastSeenOnline: reachable ? status.checkedAt : (previous?.lastSeenOnline ?? null),
+      consecutiveFailures: reachable ? 0 : (previous?.consecutiveFailures ?? 0) + 1,
+    });
+  }
+
+  /**
+   * Store a summary, write it to the row, and announce a change of state.
+   *
+   * `nodes.status` and `nodes.last_heartbeat` are columns the schema declares,
+   * `selectNodesSync` reads back, and nothing ever wrote: every row on a live
+   * daemon said `status = 'unknown'` with a null heartbeat, because the only
+   * writer — `touchNodeHeartbeatSync` — had no callers. The upsert filled
+   * them with its own `'unknown'` default on every save.
+   *
+   * What this buys beyond tidiness: `lastSeenOnline` survives a daemon
+   * restart, so the offline grace period is measured from when the node was
+   * actually last seen rather than from boot.
+   */
+  private setSummary(summary: INodeHealthSummary): void {
+    const previous = this.summaryCache.get(summary.nodeId) ?? null;
+    this.summaryCache.set(summary.nodeId, summary);
+
+    try {
+      this.store.touchNodeHeartbeatSync(
+        summary.nodeId,
+        summary.status,
+        summary.lastCheck?.checkedAt ?? new Date().toISOString(),
+      );
+    } catch { /* the in-memory answer is still correct */ }
+
+    if (previous?.status === summary.status) return;
+    const transition: NodeHealthTransition = {
+      nodeId: summary.nodeId,
+      status: summary.status,
+      previousStatus: previous?.status ?? null,
+    };
+    this.emit('node:health', transition);
+  }
+
+  // ===========================================================================
   // Persistence
   // ===========================================================================
 
   private load(): void {
+    /** Rows found carrying a plaintext secret; healed after the loop. */
+    const leaked: Array<{ node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> }> = [];
+
     try {
       // First-pass: read from SQLite. Each row's `metadata` column
       // holds the full INode JSON; the denormalised columns are for
@@ -597,8 +876,27 @@ export class NodeManagerService extends EventEmitter {
       for (const row of rows) {
         if (!row.metadata) continue;
         try {
-          const node = JSON.parse(row.metadata) as INode;
+          const raw = JSON.parse(row.metadata) as INode & { sshPassphrase?: string; sshPassword?: string };
+          const { node, strays } = splitStoredSecrets(raw);
           this.nodes.set(node.id, node);
+          if (strays.length > 0) {
+            for (const stray of strays) this.pendingSecrets.set(this.secretKey(node.id, stray.field), stray.value);
+            leaked.push({ node, strays });
+          }
+          // Restore the last known health, but NOT a status reading: a
+          // reachability answer from a previous daemon is not a current one,
+          // and the console has no way to tell them apart on the dots. What
+          // is worth keeping is when the node was last up, which is what the
+          // offline grace period is measured against.
+          if (row.status && row.status !== 'unknown') {
+            this.summaryCache.set(node.id, {
+              nodeId: node.id,
+              status: row.status as NodeHealthStatus,
+              lastCheck: null,
+              lastSeenOnline: row.status === 'offline' ? null : row.last_heartbeat ?? null,
+              consecutiveFailures: 0,
+            });
+          }
         } catch {
           // Corrupt row — skip and let the next mutation overwrite.
         }
@@ -625,6 +923,71 @@ export class NodeManagerService extends EventEmitter {
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Failed to load nodes from store');
     }
+
+    if (leaked.length > 0) void this.healLeakedSecrets(leaked);
+
+    this.loadCheckConfig();
+  }
+
+  /**
+   * Move a plaintext secret out of a node row and into the vault.
+   *
+   * Observed on a live daemon: a node row whose `metadata` JSON contained
+   * `"sshPassphrase": "<the operator's actual passphrase>"` next to
+   * `"hasPassphrase": true`. An older `updateNode` spread its whole input
+   * into the node — the destructure that stops that was added afterwards, and
+   * it fixed new writes without touching rows already written. `listNodes`
+   * then spread the parsed row onto the wire, so the passphrase went to every
+   * caller with the VIEWER role, and to `omnitron node list`.
+   *
+   * Two things are needed and they are not the same: the wire shape is now
+   * built field by field (`toWireNode`), which stops the leak for any
+   * residue, present or future; and this moves the value to where it should
+   * have been, so the row itself stops holding it.
+   */
+  private async healLeakedSecrets(
+    leaked: Array<{ node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> }>,
+  ): Promise<void> {
+    for (const { node, strays } of leaked) {
+      for (const { field, value } of strays) {
+        this.logger.warn(
+          { nodeId: node.id, field },
+          'Node row held a plaintext SSH secret — moving it to the secret store',
+        );
+        // Read the VAULT, not `getSecret`: that one falls back to
+        // `pendingSecrets`, which is where this value already is — so asking
+        // it whether the secret is stored answers "yes" about the copy we are
+        // trying to store, and the write never happens.
+        const existing = await this.readVault(node.id, field);
+        if (!existing) {
+          if (!this.secrets) {
+            // Nothing to migrate into. The row keeps the value for now — the
+            // node would otherwise stop authenticating — but it no longer
+            // reaches the wire, which is the part that matters.
+            this.logger.error(
+              { nodeId: node.id, field },
+              'No secret store available — plaintext secret left in the node row',
+            );
+            continue;
+          }
+          await this.setSecret(node.id, field, value);
+        }
+      }
+      // Rewrite the row from the sanitised node.
+      this.persistNode(node);
+      for (const { field } of strays) this.pendingSecrets.delete(this.secretKey(node.id, field));
+    }
+  }
+
+  /** Restore the operator's check configuration, if one was ever set. */
+  private loadCheckConfig(): void {
+    try {
+      const stored = this.store.kvGetSync<Partial<NodeCheckConfig>>(CHECK_CONFIG_KEY);
+      if (!stored) return;
+      this.checkConfig = normalizeCheckConfig({ ...DEFAULT_CHECK_CONFIG, ...stored });
+    } catch (err) {
+      this.logger.warn({ error: (err as Error).message }, 'Failed to load node check config — using defaults');
+    }
   }
 
   /**
@@ -634,12 +997,18 @@ export class NodeManagerService extends EventEmitter {
    */
   private persistNode(node: INode): void {
     try {
+      // Carry the status forward. `upsertNodeSync` defaults it to `'unknown'`,
+      // so a `save()` triggered by an unrelated edit used to erase what the
+      // last check had established.
+      const known = this.summaryCache.get(node.id);
       this.store.upsertNodeSync({
         id: node.id,
         name: node.name,
         host: node.host,
         port: node.daemonPort,
         role: node.isLocal ? 'master' : 'slave',
+        status: known?.status ?? 'unknown',
+        last_heartbeat: known?.lastCheck?.checkedAt ?? null,
         metadata: node as unknown as Record<string, unknown>,
       });
     } catch (err) {
@@ -686,6 +1055,95 @@ export class NodeManagerService extends EventEmitter {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+/**
+ * The node as it may be sent to a caller.
+ *
+ * Built field by field on purpose. `listNodes` used to spread the object
+ * parsed out of the `metadata` column, which means the payload was whatever
+ * happened to have been written there — and on a live daemon that included
+ * an SSH passphrase in plaintext. A DTO is a promise about what is returned;
+ * spreading a JSON blob delegates that promise to whoever last wrote the row.
+ */
+function toWireNode(node: INode): INode {
+  const wire: INode = {
+    id: node.id,
+    name: node.name,
+    host: node.host,
+    sshPort: node.sshPort,
+    sshUser: node.sshUser,
+    sshAuthMethod: node.sshAuthMethod,
+    runtime: node.runtime,
+    daemonPort: node.daemonPort,
+    tags: node.tags ?? [],
+    isLocal: node.isLocal,
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
+  };
+  // The key is a PATH or key content chosen by the operator; the booleans say
+  // only whether a secret exists. Neither is a secret itself.
+  if (node.sshPrivateKey !== undefined) wire.sshPrivateKey = node.sshPrivateKey;
+  if (node.hasPassphrase !== undefined) wire.hasPassphrase = node.hasPassphrase;
+  if (node.hasPassword !== undefined) wire.hasPassword = node.hasPassword;
+  if (node.offlineTimeout !== undefined) wire.offlineTimeout = node.offlineTimeout;
+  return wire;
+}
+
+/** Separate a stored node from any plaintext secret its row still carries. */
+function splitStoredSecrets(
+  raw: INode & { sshPassphrase?: string; sshPassword?: string },
+): { node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> } {
+  const { sshPassphrase, sshPassword, ...rest } = raw;
+  const node = rest as INode;
+  const strays: Array<{ field: 'passphrase' | 'password'; value: string }> = [];
+  if (typeof sshPassphrase === 'string' && sshPassphrase) {
+    node.hasPassphrase = true;
+    strays.push({ field: 'passphrase', value: sshPassphrase });
+  }
+  if (typeof sshPassword === 'string' && sshPassword) {
+    node.hasPassword = true;
+    strays.push({ field: 'password', value: sshPassword });
+  }
+  return { node, strays };
+}
+
+/** Fallback offline timeout, matching the health monitor's own default. */
+const DEFAULT_OFFLINE_TIMEOUT_MS = 90_000;
+
+/** A TCP port the daemon will actually try to connect to. */
+function assertPort(kind: string, value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new Error(`Invalid ${kind}: ${JSON.stringify(value)}. Expected an integer between 1 and 65535.`);
+  }
+  return value;
+}
+
+/** Reject a promise that has not settled within `ms`. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Read the first `bytes` of a file without loading the whole thing. */
+function readFileHead(filePath: string, bytes: number): string {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(bytes);
+    const read = fs.readSync(fd, buf, 0, bytes, 0);
+    return buf.subarray(0, read).toString('utf-8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 /**
  * Read SSH private key file contents.

@@ -1,8 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { INodeHealthSummary, IHealthCheckResult } from '../../src/workers/types.js';
 
-// Must mock before importing the service
-vi.mock('../../src/services/remote-ops.service.js', () => {
+// Must mock before importing the service.
+//
+// Only the CLASS is replaced. The module also exports pure functions the
+// service calls on every write — `assertNodeHost`, `normalizeCheckConfig` —
+// and a hand-written object literal that lists what the mock's author
+// happened to know about silently drops them: the service then fails with
+// "No export is defined on the mock", which is a fault in the fixture
+// wearing the costume of a fault in the code. `importOriginal` keeps the
+// real module as the floor.
+vi.mock('../../src/services/remote-ops.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/remote-ops.service.js')>();
   class MockRemoteOpsService {
     ping = vi.fn().mockResolvedValue({ reachable: true, latencyMs: 10 });
     checkSsh = vi.fn().mockResolvedValue({ connected: true, latencyMs: 50 });
@@ -10,15 +19,7 @@ vi.mock('../../src/services/remote-ops.service.js', () => {
     dispose = vi.fn();
     constructor(_logger: any) {}
   }
-  return {
-    RemoteOpsService: MockRemoteOpsService,
-    DEFAULT_CHECK_CONFIG: {
-      pingEnabled: true,
-      pingTimeout: 5000,
-      sshTimeout: 10000,
-      omnitronCheckTimeout: 15000,
-    },
-  };
+  return { ...actual, RemoteOpsService: MockRemoteOpsService };
 });
 
 // Must import after mocks

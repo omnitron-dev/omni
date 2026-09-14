@@ -95,3 +95,39 @@ export interface SshKeyInfo {
   path: string;
   type: string;
 }
+
+/**
+ * How the fleet is checked — the operator-tunable half.
+ *
+ * Declared here rather than beside the checker for the reason in the header:
+ * the console reads and writes this shape over RPC, and a console type that
+ * had to import the checker would drag `node:child_process` with it.
+ */
+export interface NodeCheckConfig {
+  /** Whether ICMP ping is attempted at all. */
+  pingEnabled: boolean;
+  /** Ping timeout, ms. */
+  pingTimeout: number;
+  /** SSH connect+command timeout, ms. */
+  sshTimeout: number;
+  /** Remote omnitron probe timeout, ms. */
+  omnitronCheckTimeout: number;
+  /** Max nodes checked at once. */
+  concurrency: number;
+}
+
+/**
+ * How much history there is, and how the console should slice it.
+ *
+ * `uptimeIntervalMs` and `retentionDays` are daemon configuration the console
+ * needs in order to ask a question that can be answered: it hard-coded a
+ * 24-hour bucket and asked for 200 of them against a daemon that keeps 90
+ * days, so three of every four segments were "no data" by construction and
+ * every poll asked the database for a window that cannot exist.
+ */
+export interface FleetHistoryConfig {
+  /** Width of one uptime-bar segment, ms. */
+  uptimeIntervalMs: number;
+  /** How long check history is kept, days. */
+  retentionDays: number;
+}

@@ -38,6 +38,8 @@ export class HealthMonitorService {
   private remoteOps!: RemoteOpsService;
   private checkTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  /** When the in-flight check round began; 0 when idle. */
+  private roundStartedAt = 0;
   private lastCleanup = 0;
   private readonly logger: ILogger;
 
@@ -127,20 +129,50 @@ export class HealthMonitorService {
     return rows as IHealthCheckResult[];
   }
 
-  /** Update config at runtime */
+  /**
+   * Update config at runtime.
+   *
+   * Merged onto the running config rather than replacing it: the console
+   * sends only the knobs an operator changed (ping on/off, the three
+   * timeouts), and a wholesale replacement dropped `dbUrl` and
+   * `retentionDays` — leaving the worker writing to nothing and pruning
+   * against `undefined` days.
+   */
   updateConfig(configJson: string): void {
-    const newConfig: IHealthMonitorConfig = JSON.parse(configJson);
-    this.config = newConfig;
-    this.startCheckLoop(); // Restart timer with new interval
-    this.logger.info({ intervalMs: newConfig.intervalMs }, 'Config updated');
+    const patch: Partial<IHealthMonitorConfig> = JSON.parse(configJson);
+    if (!this.config) {
+      this.logger.warn({}, 'Config update before init — ignored');
+      return;
+    }
+    const previousInterval = this.config.intervalMs;
+    this.config = { ...this.config, ...patch };
+    if (this.config.intervalMs !== previousInterval) {
+      this.startCheckLoop(); // Re-arm only when the schedule actually changed
+    }
+    this.logger.info({ config: redactConfig(this.config) }, 'Config updated');
   }
 
-  /** Health check for PM */
-  async checkHealth(): Promise<{ status: string; timestamp: number }> {
-    return {
-      status: this.isRunning ? 'degraded' : 'healthy',
-      timestamp: Date.now(),
-    };
+  /**
+   * Health check for PM.
+   *
+   * `isRunning` is "a check round is in progress" — the worker doing exactly
+   * what it exists to do. Reporting that as `degraded` and an idle worker as
+   * `healthy` inverted the answer: under a supervisor that acts on health,
+   * the busiest worker is the one that looks sick.
+   *
+   * What actually makes this worker unhealthy is a check loop that has
+   * stopped, or a round that started and never finished.
+   */
+  async checkHealth(): Promise<{ status: string; timestamp: number; reason?: string }> {
+    const now = Date.now();
+    if (!this.checkTimer) {
+      return { status: 'unhealthy', timestamp: now, reason: 'check loop is not running' };
+    }
+    const stallLimit = Math.max(this.config.intervalMs * 3, 5 * 60_000);
+    if (this.isRunning && this.roundStartedAt > 0 && now - this.roundStartedAt > stallLimit) {
+      return { status: 'degraded', timestamp: now, reason: `check round has run for ${now - this.roundStartedAt}ms` };
+    }
+    return { status: 'healthy', timestamp: now };
   }
 
   async shutdown(): Promise<void> {
@@ -173,6 +205,7 @@ export class HealthMonitorService {
   private async runAllChecks(): Promise<void> {
     if (this.isRunning) return; // No overlap
     this.isRunning = true;
+    this.roundStartedAt = Date.now();
 
     try {
       const nodeList = Array.from(this.nodes.values());
@@ -218,6 +251,7 @@ export class HealthMonitorService {
       this.logger.error({ error: (err as Error).message }, 'Error during health check round');
     } finally {
       this.isRunning = false;
+      this.roundStartedAt = 0;
     }
   }
 
@@ -291,7 +325,7 @@ export class HealthMonitorService {
     result.sshConnected = ssh.connected;
     result.sshLatencyMs = ssh.latencyMs;
     if (ssh.error) result.sshError = ssh.error;
-    if (ssh.os) result.os = { ...ssh.os, release: '' };
+    if (ssh.os) result.os = ssh.os;
 
     // 3. Omnitron (only if SSH connected)
     if (result.sshConnected) {
@@ -302,6 +336,12 @@ export class HealthMonitorService {
       if (omn.uptime) result.omnitronUptime = omn.uptime;
       if (omn.role) result.omnitronRole = omn.role;
       if (omn.os) result.os = omn.os;
+      // The console tells "not installed" from "not running" by matching this
+      // text. It was never written, so the only state the remote node's
+      // OMNITRON dot could reach was a flat "offline".
+      if (omn.error) result.omnitronError = omn.error;
+    } else {
+      result.omnitronError = 'SSH unavailable — omnitron state unknown';
     }
 
     result.checkDurationMs = Date.now() - start;
@@ -380,22 +420,47 @@ export class HealthMonitorService {
     }
   }
 
+  /**
+   * Delete check rows past the retention horizon.
+   *
+   * Batched, and repeated until a batch comes back short. One capped DELETE
+   * per hour is a sweep that can fall permanently behind its own inflow: a
+   * fleet checked every 30 seconds writes 120 rows an hour per node, and a
+   * backlog — a retention window shortened, a table that ran unbounded for a
+   * while — is never caught up by a limit that only ever removes 10 000 in
+   * the same hour. The per-batch cap stays: it is what keeps the delete off
+   * the lock for minutes at a time.
+   */
   private async cleanupOldRows(): Promise<void> {
     if (!this.db) return;
 
+    const BATCH = 10_000;
+    const MAX_BATCHES = 50; // 500k rows per sweep — a bound on the sweep itself
     try {
       const cutoff = new Date(Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000).toISOString();
       const { sql } = await import('kysely');
-      await sql`
-        DELETE FROM node_health_checks
-        WHERE id IN (
-          SELECT id FROM node_health_checks
-          WHERE "checkedAt" < ${cutoff}
-          LIMIT 10000
-        )
-      `.execute(this.db);
-    } catch {
-      // Non-critical — cleanup will retry next hour
+      let removed = 0;
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        const result = await sql`
+          DELETE FROM node_health_checks
+          WHERE id IN (
+            SELECT id FROM node_health_checks
+            WHERE "checkedAt" < ${cutoff}
+            LIMIT ${sql.lit(BATCH)}
+          )
+        `.execute(this.db);
+        const n = Number(result.numAffectedRows ?? 0);
+        removed += n;
+        if (n < BATCH) break;
+      }
+      if (removed > 0) {
+        this.logger.info({ removed, retentionDays: this.config.retentionDays }, 'Pruned old health check rows');
+      }
+    } catch (err) {
+      // Non-critical — cleanup will retry next hour. It is still worth saying
+      // so: a sweep that fails every hour and says nothing is a table that
+      // grows for ever with a janitor written for it.
+      this.logger.warn({ error: (err as Error).message }, 'Health check retention sweep failed');
     }
   }
 
@@ -418,6 +483,18 @@ export class HealthMonitorService {
       summaries: Array.from(this.statusCache.values()),
     });
   }
+}
+
+/**
+ * The config without its connection string.
+ *
+ * `dbUrl` carries the database password. It was logged in full at info level
+ * on every config update, and a log line is a place a secret does not come
+ * back from.
+ */
+function redactConfig(config: IHealthMonitorConfig): Record<string, unknown> {
+  const { dbUrl, ...rest } = config;
+  return { ...rest, dbUrl: dbUrl ? '[set]' : '[unset]' };
 }
 
 /** Read SSH key: if path -> read file, if already content -> return as-is */

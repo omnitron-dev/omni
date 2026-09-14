@@ -19,14 +19,37 @@ import { Application } from '@omnitron-dev/titan';
 import { RedisModule } from '../src/index.js';
 import { REDIS_MANAGER } from '../src/redis.constants.js';
 import type { RedisManager } from '../src/redis.manager.js';
+import { getTestRedisConfig } from './utils/redis-test-utils.js';
 
-const HOST = process.env['REDIS_HOST'] || 'localhost';
-const PORT = Number(process.env['REDIS_PORT'] || 6379);
+// Ask the global setup where Redis is, rather than defaulting to 6379.
+//
+// `REDIS_PORT || 6379` walked straight past the defence the setup exists to
+// provide: `packages/titan/globalSetup.ts` refuses the default port unless
+// `TEST_REDIS_ALLOW_DEFAULT_PORT` is set by name, because a Redis answering on
+// 6379 is whatever the developer happens to be running — here, the downstream
+// dev stand holding db0..db5. This spec only PINGs, so it was borrowing rather
+// than damaging, but it was also ignoring an isolated instance the setup had
+// already started: on a machine with nothing on 6379 it failed while a
+// perfectly good Redis was waiting on another port.
+//
+// db 15 is the convention in this package for a scratch database.
+const { host: HOST, port: PORT } = getTestRedisConfig(15);
 
 let app: Application | undefined;
 afterEach(async () => {
   try { await app?.stop({ force: true }); } catch { /* already down */ }
   app = undefined;
+});
+
+describe('the fixture is the setup\'s Redis, not the machine\'s', () => {
+  it('does not fall back to the default port', () => {
+    // Without this the file passes either way on a developer machine, because
+    // the stand's Redis on 6379 answers a PING as happily as an isolated one —
+    // so the test would say nothing about which one it used. titan-discovery
+    // carries the same assertion for the same reason.
+    if (process.env['TEST_REDIS_ALLOW_DEFAULT_PORT'] === 'true') return;
+    expect(PORT, 'borrowing whatever Redis is on 6379 — usually the dev stand').not.toBe(6379);
+  });
 });
 
 describe('TitanRedisModule closes its clients on stop', () => {

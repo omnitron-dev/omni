@@ -913,6 +913,15 @@ export class OmnitronDaemon {
       );
       this.nodeManagerService = nodeManager;
       const nodeManagerRpcService = new NodeManagerRpcService(nodeManager);
+      // The deployer reaches nodes through the same SSH implementation as the
+      // health checks — the only one that can present a stored password or a
+      // key passphrase.
+      {
+        const { RemoteDeployer } = await import('../services/remote-deployer.service.js');
+        const { ExecutionService } = await import('../execution/execution.service.js');
+        const deployLogger = loggerModule.logger.child({ component: 'deploy' });
+        nodeManagerRpcService.setRemoteDeployer(new RemoteDeployer(deployLogger, new ExecutionService(deployLogger)));
+      }
       this.nodeManagerRpcService = nodeManagerRpcService;
       await this.app.netron.peer.exposeService(nodeManagerRpcService);
     }

@@ -91,9 +91,25 @@ function xmlEscape(s: string): string {
  *     Environment=X=/opt/a%hb      →  X=/opt/a/rootb
  *     Environment=X=/opt/a%%hb     →  X=/opt/a%hb
  *
- * It does not fail; it substitutes. `systemd-analyze verify` had nothing to
- * say about that unit, which is worth knowing about what that check proves.
- * `%%` is the literal.
+ * It does not fail; it substitutes. `%%` is the literal.
+ *
+ * ## What `systemd-analyze verify` proves, and what it does not
+ *
+ * It said nothing about the unit above. Not a warning — the substitution is
+ * not an error to systemd, it is the feature working.
+ *
+ * So a clean `verify` means the syntax parses and the files it names exist.
+ * It does NOT mean a value arrives the way it was written, and reading it
+ * that way is how these two defects survived a check that had already been
+ * run against this renderer and reported no findings.
+ *
+ * The question "did the value survive" has its own command:
+ *
+ *     systemctl show <unit> -p Environment -p WorkingDirectory -p ExecStart
+ *
+ * which prints what systemd actually holds. Both of the rules below were
+ * confirmed with it, and the one correction to them — that
+ * `WorkingDirectory=` must NOT be quoted — came from it too.
  *
  * **Whitespace splits.** `Environment=` takes a LIST of assignments separated
  * by spaces, so a value with one in it is read as an assignment plus

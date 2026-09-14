@@ -62,6 +62,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   private healthWorkerProxy: IHealthWorkerProxy | null = null;
   private healthRepo: NodeHealthRepository | null = null;
 
+  private remoteDeployer: import('./remote-deployer.service.js').RemoteDeployer | null = null;
+
   constructor(private readonly nodeManager: NodeManagerService) {}
 
   /** Set the health worker proxy after the worker is spawned */
@@ -193,6 +195,53 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       await this.nodeManager.checkAllNodes();
     }
     return this.nodeManager.getHealthSummaries(data.nodeId);
+  }
+
+  /**
+   * Install a bundle on a node, beside what it is running.
+   *
+   * On the daemon rather than in the CLI because the node's credentials are
+   * in the daemon's vault. `nodeToDeployTarget` resolves them here and they
+   * go no further; the caller passes an id and gets back whether it worked.
+   *
+   * OPERATOR, not VIEWER: this writes several hundred megabytes to a remote
+   * machine.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async installBundleOnNode(data: { nodeId: string; archivePath: string; version: string }): Promise<boolean> {
+    const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    return this.deployer().installBundle(target, data.archivePath, data.version);
+  }
+
+  /**
+   * Make an installed version current, and restart the node into it.
+   *
+   * Separate from the install for the reason the versioned layout exists:
+   * this is the only step that changes what the node serves.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async activateBundleOnNode(data: { nodeId: string; version: string; keepVersions?: number }): Promise<boolean> {
+    const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    return this.deployer().activateBundle(target, data.version, '/opt/omnitron', data.keepVersions ?? 3);
+  }
+
+  /**
+   * The deployer, made once and kept.
+   *
+   * Lazily, because a daemon that never upgrades a node should not pay for an
+   * execution engine at boot — and because `RemoteDeployer` is only reachable
+   * from these two methods, so there is nothing else to construct it for.
+   */
+  private deployer(): import('./remote-deployer.service.js').RemoteDeployer {
+    if (!this.remoteDeployer) {
+      throw new Error('Remote deployment is not configured on this daemon.');
+    }
+    return this.remoteDeployer;
+  }
+
+  /** Wired by the daemon at startup, on a master. */
+  setRemoteDeployer(deployer: import('./remote-deployer.service.js').RemoteDeployer | null): void {
+    this.remoteDeployer = deployer;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

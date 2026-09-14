@@ -70,6 +70,16 @@ const READY_UBUNTU = [BLANK_UBUNTU, 'node=v22.14.0', 'npm=10.9.2', 'omnitron=0.2
 const isProbe = (c: string) => c.includes('uname -s');
 
 /**
+ * What a healthy daemon answers `omnitron ping` with.
+ *
+ * Returning a bare `'ok'` here used to pass, because the verification trusted
+ * the exit code. It reads the ANSWER now — a node runs whatever version it
+ * has, and an older one exits 0 while printing that the daemon is not
+ * running. A fixture that says `ok` is a daemon saying nothing.
+ */
+const PING_OK = 'Daemon is running (PID: 4242, uptime: 2s, v0.2.0)';
+
+/**
  * Commands other than the probe itself.
  *
  * The probe asks which package managers exist, so its own text contains
@@ -121,7 +131,9 @@ describe('provisionSlaveNode on a host that answered', () => {
     // Preparing a node is meant to be automatic. What that now means is a
     // runtime tarball under omnitron's own prefix — not a vendor repository
     // added to the machine.
-    const d = new RemoteDeployer(logger, execution((c) => ({ stdout: isProbe(c) ? BLANK_UBUNTU : 'ok' })));
+    const d = new RemoteDeployer(logger, execution((c) => ({
+      stdout: isProbe(c) ? BLANK_UBUNTU : c === 'omnitron ping' ? PING_OK : 'ok',
+    })));
 
     await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
 
@@ -133,7 +145,7 @@ describe('provisionSlaveNode on a host that answered', () => {
 
   it('touches nothing on a machine that already has everything', async () => {
     const d = new RemoteDeployer(logger, execution((c) => ({
-      stdout: isProbe(c) ? READY_UBUNTU : c === 'omnitron ping' ? 'Daemon is running (PID: 42, v0.2.0)' : 'ok',
+      stdout: isProbe(c) ? READY_UBUNTU : c === 'omnitron ping' ? PING_OK : 'ok',
     })));
 
     const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
@@ -164,6 +176,21 @@ describe('provisionSlaveNode on a host that answered', () => {
     // And it stopped: no point installing a CLI onto a host with no runtime.
     expect(commands.some((c) => c.includes('npm install -g'))).toBe(false);
   });
+
+  it('does not call a daemon healthy because something was printed', async () => {
+    // What made this file's own fixtures wrong for a while. `omnitron ping`
+    // on an older node exits 0 and prints "Daemon is not running" — so a
+    // verification that trusts the exit code, or merely that output arrived,
+    // reports a node upgraded and serving while it is neither. A node runs
+    // whatever version it has, and this code upgrades nodes from older ones.
+    const d = new RemoteDeployer(logger, execution((c) => ({
+      stdout: isProbe(c) ? READY_UBUNTU : c === 'omnitron ping' ? 'Daemon is not running' : 'ok',
+    })));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(false);
+  }, 200_000);
 
   it('refuses a host it cannot identify instead of guessing Linux', async () => {
     const d = new RemoteDeployer(logger, execution((c) => ({ stdout: isProbe(c) ? '' : 'ok' })));
@@ -203,7 +230,7 @@ describe('the run reports what actually happened', () => {
   it('succeeds on a daemon that answers, and says what it answered', async () => {
     const d = new RemoteDeployer(logger, execution((c) => {
       if (isProbe(c)) return { stdout: READY_UBUNTU };
-      if (c === 'omnitron ping') return { stdout: 'Daemon is running (PID: 4242, uptime: 2s, v0.2.0)' };
+      if (c === 'omnitron ping') return { stdout: PING_OK };
       return { stdout: 'ok' };
     }));
     const progress: string[] = [];
@@ -224,7 +251,7 @@ describe('the run reports what actually happened', () => {
       if (isProbe(c)) return { stdout: READY_UBUNTU };
       if (c === 'omnitron ping') {
         attempts += 1;
-        return attempts < 3 ? { exitCode: 1, stderr: 'connection refused' } : { stdout: 'Daemon is running (PID: 7)' };
+        return attempts < 3 ? { exitCode: 1, stderr: 'connection refused' } : { stdout: PING_OK };
       }
       return { stdout: 'ok' };
     }));

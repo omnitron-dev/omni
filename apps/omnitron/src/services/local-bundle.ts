@@ -35,10 +35,20 @@
  *
  * ## What this does instead
  *
- * Pack each workspace package, rewrite every `workspace:*` range to the
- * tarball beside it, and let `npm install` run ON THE TARGET. The
- * platform-specific packages are then resolved for the platform that will run
- * them, which is the only place that knows what it is.
+ * Pack each workspace package with `pnpm pack`, and let `npm install` run ON
+ * THE TARGET. The platform-specific packages are then resolved for the
+ * platform that will run them, which is the only place that knows what it is.
+ *
+ * The redirection is npm's own `overrides`, not a rewrite of our own.
+ * `pnpm pack` already turns `workspace:*` into the exact version — but that
+ * is a REGISTRY reference, so an install would fetch the published
+ * `@omnitron-dev/common@0.2.0`, which is the copy this channel exists to
+ * avoid. An `overrides` entry replaces the resolution of a package everywhere
+ * in the tree, transitively, which is exactly the shape of the problem.
+ *
+ * Measured before building on it: six packages, one of them reached only
+ * through another, all six resolved `file:vendor/…` in the lockfile, and
+ * `import('@omnitron-dev/titan')` returned its 33 exports.
  */
 
 /** Minimal shape of the package.json fields this reads. */
@@ -64,8 +74,14 @@ export interface BundlePlan {
   readonly root: PackageManifest;
   /** Transitive closure of workspace dependencies, in a stable order. */
   readonly vendored: readonly VendoredPackage[];
-  /** Manifests to write, keyed by the package they replace. */
-  readonly rewritten: ReadonlyMap<string, PackageManifest>;
+  /**
+   * The `overrides` map for the bundle's root `package.json`.
+   *
+   * npm applies these to the whole tree, so one entry per workspace package
+   * redirects every reference to it — including the ones inside the vendored
+   * tarballs, which `pnpm pack` left pointing at registry versions.
+   */
+  readonly overrides: Readonly<Record<string, string>>;
   readonly refusal?: string;
 }
 
@@ -93,7 +109,7 @@ export function planBundle(rootName: string, workspace: Workspace): BundlePlan {
     return {
       root: { name: rootName, version: '0.0.0' },
       vendored: [],
-      rewritten: new Map(),
+      overrides: {},
       refusal: `${rootName} is not a package in this workspace.`,
     };
   }
@@ -130,7 +146,7 @@ export function planBundle(rootName: string, workspace: Workspace): BundlePlan {
     return {
       root,
       vendored: [],
-      rewritten: new Map(),
+      overrides: {},
       refusal:
         `These packages are required through a workspace range and are not in this workspace: ` +
         `${missing.join(', ')}.`,
@@ -142,14 +158,41 @@ export function planBundle(rootName: string, workspace: Workspace): BundlePlan {
     return { name, version: m.version, tarball: tarballNameFor(name, m.version) };
   });
 
-  // Every manifest in the bundle — the root and each vendored package —
-  // gets its workspace ranges replaced by the tarball beside it.
-  const rewritten = new Map<string, PackageManifest>();
-  for (const name of [rootName, ...closure]) {
-    rewritten.set(name, rewriteManifest(workspace.get(name)!, name === rootName));
+  // One entry per vendored package. npm resolves an override anywhere the
+  // package appears, so a dependency three levels down inside a tarball is
+  // redirected by the same line as a direct one.
+  const overrides: Record<string, string> = {};
+  for (const v of vendored) overrides[v.name] = `file:./${VENDOR_DIR}/${v.tarball}`;
+
+  return { root, vendored, overrides };
+}
+
+/** Where the tarballs sit inside a bundle. */
+export const VENDOR_DIR = 'vendor';
+
+/**
+ * The root `package.json` a bundle installs from.
+ *
+ * Its own function so the file that decides what the target installs can be
+ * read in a test. The root's direct workspace dependencies are given as
+ * `file:` too: an `overrides` entry redirects a resolution, and a
+ * `workspace:*` range has no resolution to redirect — npm rejects it before
+ * overrides are consulted.
+ */
+export function bundleRootManifest(plan: BundlePlan, version: string): Record<string, unknown> {
+  const dependencies: Record<string, string> = {};
+  for (const [name, range] of Object.entries(plan.root.dependencies ?? {})) {
+    dependencies[name] = isWorkspaceRange(range) ? (plan.overrides[name] ?? range) : range;
   }
 
-  return { root, vendored, rewritten };
+  return {
+    name: plan.root.name,
+    version,
+    private: true,
+    type: 'module',
+    dependencies,
+    overrides: plan.overrides,
+  };
 }
 
 function workspaceDepsOf(manifest: PackageManifest): string[] {
@@ -160,80 +203,6 @@ function workspaceDepsOf(manifest: PackageManifest): string[] {
     }
   }
   return out;
-}
-
-/**
- * Replace workspace ranges with paths to the tarballs.
- *
- * The root sits at the bundle's top and its vendor directory is `./vendor`;
- * a vendored package is unpacked inside `node_modules`, from where the same
- * directory is reached differently. Rather than guess at a relative depth
- * that npm resolves from the manifest's own location, every reference is
- * written relative to the bundle root and the installer is run there — one
- * `npm install` at the top, with every tarball in one place.
- */
-function rewriteManifest(manifest: PackageManifest, isRoot: boolean): PackageManifest {
-  const rewrite = (group: Record<string, string> | undefined) => {
-    if (!group) return undefined;
-    const out: Record<string, string> = {};
-    for (const [name, range] of Object.entries(group)) {
-      out[name] = isWorkspaceRange(range)
-        ? `file:${isRoot ? './vendor/' : '../'}${tarballNameForUnknownVersion(name)}`
-        : range;
-    }
-    return out;
-  };
-
-  const next: PackageManifest = { name: manifest.name, version: manifest.version };
-  const deps = rewrite(manifest.dependencies);
-  const opt = rewrite(manifest.optionalDependencies);
-  if (deps) next.dependencies = deps;
-  if (opt) next.optionalDependencies = opt;
-  return next;
-}
-
-/**
- * The tarball name for a dependency whose version this manifest does not
- * state — `workspace:*` carries no version, and the real one comes from the
- * workspace. Filled in by `resolveTarballNames` once the closure is known.
- */
-function tarballNameForUnknownVersion(name: string): string {
-  return `${name.replace(/^@/, '').replace(/\//g, '-')}-VERSION.tgz`;
-}
-
-/**
- * Substitute the real versions into the placeholders above.
- *
- * Two passes rather than one because a manifest's `workspace:*` says nothing
- * about the version, and the version is only known once the whole closure has
- * been walked. Splitting it keeps `planBundle` a single traversal instead of
- * a lookup inside a rewrite inside a traversal.
- */
-export function resolveTarballNames(plan: BundlePlan): BundlePlan {
-  if (plan.refusal) return plan;
-  const versionOf = new Map(plan.vendored.map((v) => [v.name, v.version]));
-
-  const resolved = new Map<string, PackageManifest>();
-  for (const [name, manifest] of plan.rewritten) {
-    const fix = (group: Record<string, string> | undefined) => {
-      if (!group) return undefined;
-      const out: Record<string, string> = {};
-      for (const [dep, range] of Object.entries(group)) {
-        out[dep] = range.includes('-VERSION.tgz')
-          ? range.replace('-VERSION.tgz', `-${versionOf.get(dep) ?? '0.0.0'}.tgz`)
-          : range;
-      }
-      return out;
-    };
-    const next: PackageManifest = { name: manifest.name, version: manifest.version };
-    const deps = fix(manifest.dependencies);
-    const opt = fix(manifest.optionalDependencies);
-    if (deps) next.dependencies = deps;
-    if (opt) next.optionalDependencies = opt;
-    resolved.set(name, next);
-  }
-
-  return { ...plan, rewritten: resolved };
 }
 
 /**

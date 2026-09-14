@@ -327,28 +327,88 @@ export class BackupService {
     });
   }
 
-  private async execShell(cmd: string, timeoutMs = 600_000): Promise<void> {
+  /** Run a shell command, rejecting on a non-zero exit. Returns its stdout. */
+  private async execShell(cmd: string, timeoutMs = 600_000): Promise<string> {
     const { execFile } = await import('node:child_process');
-    await new Promise<void>((resolve, reject) => {
-      execFile('/bin/sh', ['-c', cmd], { timeout: timeoutMs, maxBuffer: 200 * 1024 * 1024 }, (err) => {
-        if (err) reject(err); else resolve();
+    return new Promise<string>((resolve, reject) => {
+      execFile('/bin/sh', ['-c', cmd], { timeout: timeoutMs, maxBuffer: 200 * 1024 * 1024 }, (err, stdout) => {
+        if (err) reject(err); else resolve(String(stdout ?? ''));
       });
     });
   }
 
+  /**
+   * Run a command that produces a backup file, and publish the name only if
+   * the file is READABLE.
+   *
+   * The check was `size === 0`, and "not empty" is not "not corrupt".
+   * Measured in `~/.omnitron/backups` 2026-09-14, four files that passed it:
+   *
+   *     main_2026-09-14T07-51…sql.gz          98 304 B  gzip header, body cut off
+   *     priceverse_2026-09-10T06-27…sql.gz      1.5 MB  same
+   *     storage-objects_2026-07-02T10-22…gz       122 B  «OCI runtime exec failed:
+   *                                                       "tar": not found in $PATH»
+   *
+   * The last one is the shape in miniature: a shell error message, sitting
+   * under a `.tar.gz` name, 122 bytes long and therefore "not empty". The
+   * property that matters is whether the archive opens; the property measured
+   * was how many bytes exist.
+   *
+   * The write also lands on the final name from its first byte, so a command
+   * interrupted half-way — a full disk, a killed container — leaves a
+   * truncated archive under the name a restore would pick up. Today's
+   * ENOSPC-mid-write is exactly that case.
+   *
+   * So: write to `<name>.partial`, verify, then rename. Rename within a
+   * directory is atomic, which makes the visible state binary — either the
+   * name is absent, or it names an archive that opened.
+   */
   private async execToFile(cmd: string, outputPath: string, timeoutMs = 600_000): Promise<void> {
+    const staging = `${outputPath}.partial`;
+    fs.rmSync(staging, { force: true });
+
     try {
-      await this.execShell(cmd, timeoutMs);
-      if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+      await this.execShell(cmd.split(outputPath).join(staging), timeoutMs);
+      if (!fs.existsSync(staging) || fs.statSync(staging).size === 0) {
         throw new Error('backup produced an empty file');
       }
+      await this.assertReadable(staging, outputPath);
+      fs.renameSync(staging, outputPath);
     } catch (err) {
       // The empty-file check was already here and works — it kept these out
       // of the index. What it did not do was clean up: 22 zero-byte
       // `tor-keys` files had accumulated in the backup directory, on disk but
       // in no listing, which is the worst place for a file to be.
+      fs.rmSync(staging, { force: true });
       fs.rmSync(outputPath, { force: true });
       throw err;
+    }
+  }
+
+  /**
+   * Open the archive and fail if it does not open.
+   *
+   * Keyed on the FINAL name's extension, not the staging one — `.partial` is
+   * an implementation detail and would otherwise match nothing and verify
+   * nothing, which is the failure mode this whole method exists to remove.
+   *
+   * An extension nobody has taught this to check passes: the alternative is
+   * refusing a backup that was taken correctly, and a verification gap is
+   * better than losing a good archive. The three formats produced here are
+   * all covered.
+   */
+  private async assertReadable(staging: string, finalPath: string): Promise<void> {
+    if (finalPath.endsWith('.gz')) {
+      await this.execShell(`gzip -t "${staging}"`, 300_000);
+      return;
+    }
+    if (finalPath.endsWith('.db')) {
+      // `.backup` produces a consistent snapshot, but a disk that filled
+      // during the copy produces a short file that sqlite still opens.
+      const out = await this.execShell(`sqlite3 "${staging}" "PRAGMA integrity_check;"`, 300_000);
+      if (out.trim() !== 'ok') {
+        throw new Error(`backup failed its integrity check: ${out.trim().slice(0, 200)}`);
+      }
     }
   }
 

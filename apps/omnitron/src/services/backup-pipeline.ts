@@ -21,6 +21,19 @@
  * Streaming through `spawn` fixes all three: both ends of the pipe are real
  * processes whose exit codes are observed, arguments are passed as an array
  * so nothing is parsed, and nothing is held in memory.
+ *
+ * ## …and the file only takes its name once it is whole
+ *
+ * All of that catches a dump that FAILS. None of it catches a dump that is
+ * never allowed to finish: the process killed, the host disk full, the VM
+ * stopped mid-write. There no catch of ours runs, and the stream has been
+ * writing under the FINAL name since its first byte.
+ *
+ * Measured in `~/.omnitron/backups` after this host filled on 2026-09-14 —
+ * `main_…07-51….sql.gz` at 98 304 bytes and `priceverse_…sql.gz` at 1.5 MB,
+ * both a gzip header with the body cut off, both sitting under their final
+ * names where a restore would have taken them. So the write goes to
+ * `<name>.partial` and is renamed once the exit code has been checked.
  */
 
 import { spawn } from 'node:child_process';
@@ -67,6 +80,10 @@ export async function dumpToFile(
   compress: boolean,
   options: PipelineOptions = {}
 ): Promise<void> {
+  // Written under a name that is not a backup, and renamed once it is one.
+  const staging = `${outputPath}.partial`;
+  await fs.promises.rm(staging, { force: true });
+
   const child = spawn(command, args, {
     env: options.env ?? process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -110,7 +127,7 @@ export async function dumpToFile(
     // full run, because load is what decides which side of the race wins.
     await started;
 
-    const out = fs.createWriteStream(outputPath);
+    const out = fs.createWriteStream(staging);
     pumping = compress ? pipeline(child.stdout, createGzip(), out) : pipeline(child.stdout, out);
 
     // Both of these must be awaited together. Awaiting only the stream would
@@ -121,6 +138,13 @@ export async function dumpToFile(
     if (code !== 0) {
       throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
     }
+
+    // Only now does the name exist. Rename within a directory is atomic, so
+    // the visible state is binary: either no file, or a complete one. The
+    // guard above covers a dump that FAILED; this covers one that was never
+    // allowed to finish — the process killed, the host disk full — where no
+    // catch of ours runs at all.
+    await fs.promises.rename(staging, outputPath);
   } catch (err) {
     // Let the pipeline finish failing before removing the file. Otherwise the
     // same race returns by the other door: `Promise.all` rejects on the exit
@@ -128,7 +152,9 @@ export async function dumpToFile(
     // removal. Its rejection is also the one nothing else is waiting on.
     if (pumping) await pumping.catch(() => undefined);
     // A partial file is worse than none: it has a plausible size and restores
-    // nothing.
+    // nothing. Both names, because the rename may have happened before a
+    // later step threw.
+    await fs.promises.rm(staging, { force: true });
     await fs.promises.rm(outputPath, { force: true });
     throw err;
   } finally {

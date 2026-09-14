@@ -65,9 +65,22 @@ function daemonEntryPath(): string {
  *   1. No omnitron.config.ts lives there, so daemon-entry's autoDetect()
  *      cannot re-register the directory as a phantom project (the daemon
  *      resolves its project from the registry instead).
- *   2. `--import tsx/esm` resolves from here upward through node_modules,
- *      which the package's install tree provides — needed because project
- *      configs are TypeScript.
+ *   2. `--import tsx/esm` resolves from here upward through node_modules —
+ *      needed because project configs are TypeScript.
+ *
+ * The second point used to end "which the package's install tree provides",
+ * and that was an assertion rather than a fact. `tsx` was a devDependency,
+ * which npm does not install for a published package, so on a node prepared
+ * from the registry the tree provided nothing. Measured there:
+ * `import('tsx')` → ERR_MODULE_NOT_FOUND. The unit this function's callers
+ * write would have failed at install and at every boot after it, with an
+ * ExecStart naming a loader that is not there.
+ *
+ * It is a runtime dependency now. Nothing in this file could have caught
+ * that: `tsx` is never imported, only named in an argv, so the scanners that
+ * read import specifiers cannot see it — which is why
+ * `a-dependency-the-package-does-not-declare.test.ts` checks `--import`
+ * flags separately.
  */
 function serviceWorkdir(): string {
   return path.resolve(__dirname, '../..');

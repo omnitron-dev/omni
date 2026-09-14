@@ -31,9 +31,22 @@ import { builtinModules } from 'node:module';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
+/**
+ * What a consumer of this package will actually have.
+ *
+ * `devDependencies` are deliberately excluded, and that is the whole
+ * distinction this file turns on: npm does not install them for a published
+ * package. Everything under `src/` is shipped code, so a runtime import that
+ * resolves only because of a devDependency resolves only here.
+ *
+ * Counting them was this test's own first weakness. With devDependencies in
+ * the set, moving `tsx` back out of `dependencies` — the exact regression —
+ * left it green, because the name was still somewhere in the file. A check
+ * that accepts the defect it was written for is worth less than no check, so
+ * it is measured the way the consumer experiences it.
+ */
 const declared = new Set([
   ...Object.keys(pkg.dependencies ?? {}),
-  ...Object.keys(pkg.devDependencies ?? {}),
   ...Object.keys(pkg.peerDependencies ?? {}),
   ...Object.keys(pkg.optionalDependencies ?? {}),
   // A package may name itself: `init.ts` puts the package name inside the
@@ -146,5 +159,78 @@ describe('every package src imports is declared', () => {
 
   it('declares systeminformation, the one this file was written for', () => {
     expect(pkg.dependencies?.systeminformation, 'the published package could not boot without it').toBeTruthy();
+  });
+});
+
+// =============================================================================
+// A package can be a dependency without ever being imported
+// =============================================================================
+
+describe('packages handed to a child process are dependencies too', () => {
+  /**
+   * `--import tsx/esm` names a package, and no import scanner can see it.
+   *
+   * Two scanners looked at this tree today — a regexp over import lines and a
+   * colleague's, which reads specifiers with the TypeScript parser. Both found
+   * `esbuild`, correctly. Neither found `tsx`, correctly: it is never
+   * imported. It appears as a string inside `execArgv`, resolved by Node in a
+   * CHILD process, from that child's working directory.
+   *
+   * Which makes it the more dangerous of the two, because the thing that
+   * would notice cannot look there. `service.ts` builds the launchd and
+   * systemd units' ExecStart as
+   * `[execPath, '--import', 'tsx/esm', daemonEntryPath()]`, and the docblock
+   * beside it states the requirement and asserts it is met: "`--import
+   * tsx/esm` resolves from here upward through node_modules, which the
+   * package's install tree provides".
+   *
+   * It did not provide it. `tsx` was in devDependencies, which npm does not
+   * install for a published package. Measured on a host with omnitron
+   * installed from the registry:
+   *
+   *     esbuild              NOT FOUND ERR_MODULE_NOT_FOUND
+   *     tsx                  NOT FOUND ERR_MODULE_NOT_FOUND
+   *     systeminformation    NOT FOUND ERR_MODULE_NOT_FOUND
+   *
+   * So a node prepared from npm, registered with its OS supervisor, would
+   * have had a service that cannot start — at install, and again at every
+   * boot.
+   */
+  const RUNTIME_FLAG_PACKAGES = /--import['"\s,\]]+['"]([^'"]+)['"]/g;
+
+  it('declares every package named in an --import flag', () => {
+    const undeclared = new Map<string, string>();
+    for (const file of sources(path.join(root, 'src'))) {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const m of text.matchAll(RUNTIME_FLAG_PACKAGES)) {
+        const name = packageOf(m[1]!);
+        if (name && !declared.has(name)) undeclared.set(name, path.relative(root, file));
+      }
+    }
+
+    expect(
+      [...undeclared].map(([name, where]) => `${name} (${where})`),
+      'handed to a child process by name, and not a declared dependency',
+    ).toEqual([]);
+  });
+
+  it('finds the flags it is looking for', () => {
+    // The check above passes trivially against a tree with no such flags, and
+    // this tree has several — so a refactor that changes the spelling makes
+    // this fail rather than making the check silently vacuous.
+    const found = sources(path.join(root, 'src'))
+      .flatMap((f) => [...fs.readFileSync(f, 'utf8').matchAll(RUNTIME_FLAG_PACKAGES)])
+      .map((m) => m[1]!);
+
+    expect(found.length).toBeGreaterThan(3);
+    expect(found).toContain('tsx/esm');
+  });
+
+  it('ships the runtime halves of the TypeScript path, both of them', () => {
+    // A `.ts` app goes: compile with esbuild, and on failure fall back to a
+    // child spawned with `--import tsx/esm`. Both halves were devDependencies,
+    // so on a published install the fallback had nothing to fall back to.
+    expect(pkg.dependencies?.esbuild, 'the build path needs it at runtime').toBeTruthy();
+    expect(pkg.dependencies?.tsx, 'the fallback path needs it at runtime').toBeTruthy();
   });
 });

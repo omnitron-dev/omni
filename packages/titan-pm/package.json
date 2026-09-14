@@ -25,7 +25,8 @@
   "dependencies": {
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/titan-metrics": "workspace:*",
-    "pino": "^10.3.1"
+    "pino": "^10.3.1",
+    "reflect-metadata": "^0.2.2"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"
@@ -33,7 +34,6 @@
   "devDependencies": {
     "@omnitron-dev/titan": "workspace:*",
     "@types/node": "25.6.0",
-    "reflect-metadata": "^0.2.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }

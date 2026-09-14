@@ -40,6 +40,7 @@
  * no `code` at all.
  */
 import { describe, it, expect } from 'vitest';
+import { TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
 import { DatabaseManager, isPermanentConnectionError } from '../src/database.manager.js';
 
 const silent = {
@@ -68,6 +69,16 @@ const PROMPT_MS = 3_000;
 describe('a configuration no retry can fix fails at once', () => {
   it('a connection string that does not parse', async () => {
     expect(await timeToReject({ dialect: 'invalid', connection: ':memory:' })).toBeLessThan(PROMPT_MS);
+  });
+
+  it('a connection config that is missing entirely', async () => {
+    // `parseConnectionConfig` raises BAD_REQUEST before anything is parsed as
+    // a URL, which is the branch of the classifier the driver-code cases below
+    // cannot reach. Without this case that branch was carried on the strength
+    // of an assumption — and the assumption it was added for turned out to be
+    // wrong: an unknown dialect never reaches the dialect switch's
+    // `badRequest`, it throws ERR_INVALID_URL on the way there.
+    expect(await timeToReject({ dialect: 'postgres' })).toBeLessThan(PROMPT_MS);
   });
 
   it('a sqlite path whose directory does not exist', async () => {
@@ -121,6 +132,9 @@ describe('a transient failure keeps its retries', () => {
     ['the server is starting up', Object.assign(new Error('the database system is starting up'), { code: '57P03' })],
     ['too many connections', Object.assign(new Error('sorry, too many clients already'), { code: '53300' })],
     ['a health-check timeout', new Error('Health check timed out after 5000ms')],
+    // A TitanError that is NOT a bad request stays retryable — the branch
+    // reads the code, not the type.
+    ['our own SERVICE_UNAVAILABLE', new TitanError({ code: ErrorCode.SERVICE_UNAVAILABLE, message: 'probe failed' })],
   ] as const;
 
   it.each(transient)('%s is not permanent', (_label, error) => {
@@ -128,6 +142,13 @@ describe('a transient failure keeps its retries', () => {
   });
 
   const permanent = [
+    // One case per branch of the classifier, each satisfying that branch and
+    // no other: a TitanError with no driver code and no matching message; a
+    // driver code with an unremarkable message; a message with no code at all.
+    // An OR whose branches are only ever exercised together leaves some of
+    // them decoration — the rule omni-d3 arrived at from the other direction,
+    // that an AND needs a row satisfying each half WITHOUT the other.
+    ['our own BAD_REQUEST', new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'connection configuration is required' })],
     ['a wrong password', Object.assign(new Error('password authentication failed'), { code: '28P01' })],
     ['a database that does not exist', Object.assign(new Error('database "x" does not exist'), { code: '3D000' })],
     ['a sqlite file that cannot be opened', Object.assign(new Error('unable to open database file'), { code: 'SQLITE_CANTOPEN' })],

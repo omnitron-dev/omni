@@ -2057,6 +2057,15 @@ export class OrchestratorService extends EventEmitter {
         bootstrapPath: bootstrapAbsPath,
         ...(bundledModulePath && { bundledModulePath }),
       },
+      // Omitted when unset, which delegates the budget to titan-pm —
+      // `process-spawner.ts`: `options.startupTimeout ?? resources?.timeout ??
+      // 30_000`. Worth naming, because it is otherwise invisible from here:
+      // an APP that declares nothing gets 30s while its CHILD processes get
+      // `DEFAULT_CHILD_STARTUP_TIMEOUT`, 60s. Backwards if anything, since the
+      // app usually does the heavier work — and the downstream project's own
+      // config carries a note about a 30s default that kept a whole stack from
+      // starting. Left as delegation rather than changed here: raising it is a
+      // decision about titan-pm's contract, not about this call site.
       ...(entry.startupTimeout != null && { startupTimeout: entry.startupTimeout }),
       health: {
         enabled: true,

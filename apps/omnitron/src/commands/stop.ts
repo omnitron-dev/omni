@@ -7,13 +7,29 @@
 
 import { log } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { expandPath } from '../shared/paths.js';
 
+/**
+ * These commands wait for a whole Titan application to come up.
+ *
+ * The daemon allows an app up to its own `startupTimeout` — configured at two
+ * and five minutes for the applications on this host — while the CLI's default
+ * ceiling is sixty seconds. So the client gave up first, on an operation the
+ * daemon had four more minutes to finish, and reported
+ * `RPC request timed out after 60000ms`. Observed: three consecutive
+ * `omnitron restart` calls "failed" that way and one of the apps came up
+ * anyway. `daemon-client.ts` says why that is the worst thing to report — the
+ * daemon cancels nothing when the caller stops waiting, so the operation runs
+ * on with its outcome unknown, and an operator acts on the word "failed".
+ *
+ * `LONG_REQUEST_TIMEOUT` already exists for exactly this and was wired into
+ * the STACK commands only; the per-app ones kept the default.
+ */
 export async function stopCommand(appName?: string, options: { force?: boolean } = {}): Promise<void> {
-  const client = createDaemonClient();
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
 
   if (!(await client.isReachable())) {
     // Fall back: try to find and kill daemon via PID file

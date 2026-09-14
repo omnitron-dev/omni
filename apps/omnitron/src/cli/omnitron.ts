@@ -554,12 +554,15 @@ program
 
 const deploy = program.command('deploy').description('Deployment management');
 
+// `--strategy rolling|blue-green|canary` and `--version` used to be declared
+// here, accepted by the parser, and read by nothing on the way to a command
+// that only restarted an app. An accepted flag is a promise — `--help`
+// advertised four deploy strategies this system has never implemented — so
+// they are gone rather than left decorating a refusal.
 deploy
   .command('app <app>')
   .description('Refused — deployment is `omnitron stack start`; see the message')
-  .option('-s, --strategy <strategy>', 'Deploy strategy (rolling|all-at-once|blue-green|canary)', 'all-at-once')
-  .option('-v, --version <version>', 'Version label (git sha, tag, or custom)')
-  .option('-t, --target <server>', 'Target server alias or tag')
+  .option('-t, --target <server>', 'Server alias, used only to name the restart command in the message')
   .action(async (app, opts) => {
     const { deployCommand } = await import('../commands/deploy.js');
     await deployCommand(app, opts);

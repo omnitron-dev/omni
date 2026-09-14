@@ -87,14 +87,24 @@ program
 
 const service = program
   .command('service')
-  .description('Supervise the daemon with the OS (launchd/systemd): auto-restart on crash, start at login');
+  .description('Supervise the daemon with the OS (launchd/systemd): auto-restart on crash, start at boot');
 
 service
   .command('install')
-  .description('Install + start the OS service (macOS LaunchAgent / systemd user unit)')
-  .action(async () => {
+  .description('Install + start the OS service (macOS launchd / Linux systemd)')
+  .option(
+    '--scope <scope>',
+    'user (stops at logout) or system (starts at boot, needs root). Default: system for a slave, user otherwise',
+  )
+  .action(async (options: { scope?: string }) => {
+    if (options.scope && options.scope !== 'user' && options.scope !== 'system') {
+      const { log } = await import('@xec-sh/kit');
+      log.error(`Unknown scope ${JSON.stringify(options.scope)}. Use 'user' or 'system'.`);
+      process.exitCode = 1;
+      return;
+    }
     const { serviceInstall } = await import('../commands/service.js');
-    await serviceInstall();
+    await serviceInstall(options.scope ? { scope: options.scope as 'user' | 'system' } : {});
   });
 
 service

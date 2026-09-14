@@ -38,10 +38,24 @@ export interface UptimeBucket {
   t: string;
   /** PING uptime 0.0–1.0 */
   ping: number;
-  /** OMNITRON uptime 0.0–1.0 (-1 = not installed, all checks returned "not found") */
+  /**
+   * OMNITRON uptime over the checks that could measure it, or -1 when none
+   * could.
+   *
+   * Not every check is a measurement. One that found no omnitron installed is
+   * not evidence of downtime — there is nothing there to be down — and one
+   * whose SSH was refused did not get far enough to look. Both used to sit in
+   * the denominator, where they pulled the figure towards zero in proportion
+   * to how many of them there were, and the console painted the result red.
+   * Observed: a node with 60 "not installed" checks and 13 SSH failures in one
+   * day, summarised as "OMNITRON 0%" — which reads as an outage, of software
+   * that was never installed.
+   */
   omnitron: number;
-  /** Total checks in this bucket */
+  /** Total checks in this bucket, measurements or not. */
   checks: number;
+  /** When `omnitron` is -1 and checks ran, what those checks actually found. */
+  omnitronUnmeasured?: 'absent' | 'unreachable';
 }
 
 /** Min 5min, max 24h, must be multiple of 5min */
@@ -55,6 +69,16 @@ const STEP_MS = 5 * 60_000;
  * console's dot state test the same thing.
  */
 const NOT_INSTALLED_PATTERN = 'not found|command not found|no such file|ENOENT';
+
+/** One row of the per-bucket aggregate. Postgres returns counts as strings. */
+export interface UptimeAggregateRow {
+  idx: number | string;
+  checks: number | string;
+  ping_up: number | string;
+  omni_up: number | string;
+  omni_measured: number | string;
+  omni_absent: number | string;
+}
 
 export function clampUptimeInterval(ms: number): number {
   const clamped = Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Number.isFinite(ms) ? ms : MIN_INTERVAL_MS));
@@ -102,13 +126,7 @@ export class NodeHealthRepository {
     const bucketStart = now - totalSpanMs;
     const cutoff = new Date(bucketStart).toISOString();
 
-    const { rows } = await sql<{
-      idx: number | string;
-      checks: number | string;
-      ping_up: number | string;
-      omni_up: number | string;
-      omni_applicable: number | string;
-    }>`
+    const { rows } = await sql<UptimeAggregateRow>`
       SELECT
         floor(
           (extract(epoch from "checkedAt") * 1000 - ${bucketStart}) / ${interval}
@@ -116,36 +134,25 @@ export class NodeHealthRepository {
         count(*) AS checks,
         count(*) FILTER (WHERE "pingReachable") AS ping_up,
         count(*) FILTER (WHERE "omnitronConnected") AS omni_up,
+        -- A measurement is a check that could have seen omnitron running:
+        -- it either did, or it reached the machine and found omnitron absent
+        -- from it in the "not running" sense rather than the "not installed"
+        -- one. A check whose SSH was refused reached nothing and measured
+        -- nothing.
         count(*) FILTER (
-          WHERE coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN}
-        ) AS omni_applicable
+          WHERE "omnitronConnected"
+             OR ("sshConnected" AND coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN})
+        ) AS omni_measured,
+        count(*) FILTER (
+          WHERE coalesce("omnitronError", '') ~* ${NOT_INSTALLED_PATTERN}
+        ) AS omni_absent
       FROM node_health_checks
       WHERE "nodeId" = ${nodeId}
         AND "checkedAt" >= ${cutoff}::timestamptz
       GROUP BY idx
     `.execute(this.db);
 
-    const buckets: UptimeBucket[] = [];
-    for (let i = 0; i < count; i++) {
-      buckets.push({ t: new Date(bucketStart + i * interval).toISOString(), ping: -1, omnitron: -1, checks: 0 });
-    }
-
-    for (const row of rows) {
-      const idx = Number(row.idx);
-      if (!Number.isInteger(idx) || idx < 0 || idx >= count) continue;
-      const checks = Number(row.checks);
-      if (checks <= 0) continue;
-
-      const bucket = buckets[idx]!;
-      bucket.checks = checks;
-      bucket.ping = Number(row.ping_up) / checks;
-      // A bucket in which every check said "omnitron is not installed" is not
-      // 0% uptime — it is a node that was never meant to run one. `-1` is the
-      // console's "no data" shade; 0 would paint it red.
-      bucket.omnitron = Number(row.omni_applicable) > 0 ? Number(row.omni_up) / checks : -1;
-    }
-
-    return buckets;
+    return assembleBuckets(rows, bucketStart, interval, count);
   }
 
   /**
@@ -163,6 +170,53 @@ export class NodeHealthRepository {
       .executeTakeFirst();
     return Number(result.numDeletedRows ?? 0);
   }
+}
+
+/**
+ * Turn the per-bucket counts into the series the console draws.
+ *
+ * Its own function because this is where the arithmetic lives, and the
+ * arithmetic is what was wrong: inside the method it could only be reached
+ * with a live Postgres, so the one part worth checking was the one part no
+ * test could see.
+ */
+export function assembleBuckets(
+  rows: readonly UptimeAggregateRow[],
+  bucketStart: number,
+  interval: number,
+  count: number,
+): UptimeBucket[] {
+  const buckets: UptimeBucket[] = [];
+  for (let i = 0; i < count; i++) {
+    buckets.push({ t: new Date(bucketStart + i * interval).toISOString(), ping: -1, omnitron: -1, checks: 0 });
+  }
+
+  for (const row of rows) {
+    const idx = Number(row.idx);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= count) continue;
+    const checks = Number(row.checks);
+    if (checks <= 0) continue;
+
+    const bucket = buckets[idx]!;
+    bucket.checks = checks;
+    bucket.ping = Number(row.ping_up) / checks;
+
+    // Uptime is measured over the checks that were measurements. The guard
+    // below was here for the all-or-nothing case — "every check said not
+    // installed" — and the proportion underneath it still divided by every
+    // check, so a bucket that MIXED the two got the wrong number rather than
+    // no number.
+    const measured = Number(row.omni_measured);
+    bucket.omnitron = measured > 0 ? Number(row.omni_up) / measured : -1;
+    if (measured === 0) {
+      // Nothing was measured, and which kind of nothing is the whole
+      // difference between "there is no omnitron here" and "we could not get
+      // to this machine".
+      bucket.omnitronUnmeasured = Number(row.omni_absent) > 0 ? 'absent' : 'unreachable';
+    }
+  }
+
+  return buckets;
 }
 
 function mapRow(row: any): HealthCheckRow {

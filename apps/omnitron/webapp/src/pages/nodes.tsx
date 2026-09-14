@@ -26,7 +26,7 @@ import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Divider from '@mui/material/Divider';
-import { keyframes, useTheme, type Theme } from '@mui/material/styles';
+import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
 import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
@@ -160,9 +160,16 @@ interface UptimeBucket {
   t: string;
   /** 0.0–1.0 uptime pct, -1 = no data */
   ping: number;
-  /** 0.0–1.0 uptime pct, -1 = no data / not installed */
+  /** 0.0–1.0 over the checks that could measure it; -1 when none could. */
   omnitron: number;
   checks: number;
+  /**
+   * Why `omnitron` is -1 on a bucket that ran checks: `absent` when they found
+   * no omnitron installed, `unreachable` when they could not get to the
+   * machine to look. Optional so a daemon that predates the field renders as
+   * it did before rather than throwing.
+   */
+  omnitronUnmeasured?: 'absent' | 'unreachable';
 }
 
 // =============================================================================
@@ -224,8 +231,26 @@ function StatusDot({ state, label, tooltip }: { state: DotState; label: string; 
  * Maps to hue: 0° (red) → 120° (green) through yellow/orange.
  * Saturation and lightness extracted from theme success/error colors.
  */
-function uptimeColor(pct: number, theme: Theme): string {
-  if (pct < 0) return theme.palette.action.disabledBackground; // no data
+/**
+ * The segment's colour.
+ *
+ * `pct < 0` carries two different facts and they are not the same news.
+ * `getUptimeBar` returns `-1` for a bucket with no checks in it, and `-1`
+ * again for a bucket whose every check reported that omnitron is not
+ * installed on the node — a deliberate choice, because 0 would paint a
+ * machine that was never meant to run one solid red. Painting them alike
+ * instead tells the operator nothing was measured, when in fact something was
+ * measured repeatedly and had a definite answer.
+ *
+ * `checks` is what separates them: a bucket that ran checks and still reports
+ * `-1` is the "not installed" case.
+ */
+function uptimeColor(pct: number, theme: Theme, unmeasured?: 'absent' | 'unreachable'): string {
+  if (pct < 0) {
+    if (unmeasured === 'absent') return alpha(theme.palette.info.main, 0.35); // nothing installed here
+    if (unmeasured === 'unreachable') return alpha(theme.palette.warning.main, 0.3); // could not look
+    return theme.palette.action.disabledBackground; // nothing recorded
+  }
 
   // Parse theme colors to HSL for proper interpolation
   const gHsl = hexToHsl(theme.palette.success.main);
@@ -314,7 +339,7 @@ function UptimeStrip<T extends Record<string, any>>({
   }, [segWidth, gap]);
 
   // Pad data to fill visible area: take last N from data, pad front with empty
-  const segments: Array<{ val: number; time: string; checks?: number }> = [];
+  const segments: Array<{ val: number; time: string; checks?: number; unmeasured?: 'absent' | 'unreachable' }> = [];
   if (visibleCount > 0) {
     const tail = data.slice(-visibleCount);
     // Left-pad with empty (no-data) segments so the strip is always full width
@@ -324,7 +349,14 @@ function UptimeStrip<T extends Record<string, any>>({
     for (const entry of tail) {
       const val = entry[metric] as number;
       const time = entry.t ? new Date(entry.t as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-      segments.push({ val, time, checks: entry.checks as number | undefined });
+      segments.push({
+        val,
+        time,
+        checks: entry.checks as number | undefined,
+        // Only the omnitron metric has a reason to give; ping either ran or
+        // it did not.
+        unmeasured: entry['omnitronUnmeasured'] as 'absent' | 'unreachable' | undefined,
+      });
     }
   }
 
@@ -333,6 +365,10 @@ function UptimeStrip<T extends Record<string, any>>({
   const avgPct = withData.length > 0
     ? Math.round((withData.reduce((sum, s) => sum + s.val, 0) / withData.length) * 100)
     : -1;
+  // A strip that measured plenty and has no percentage to show is saying
+  // something — "nothing to run here" — and the blank corner said it as
+  // though the page had simply not loaded.
+  const notInstalled = avgPct < 0 && segments.some((s) => s.unmeasured === 'absent');
 
   return (
     <Stack spacing={0.25}>
@@ -352,18 +388,27 @@ function UptimeStrip<T extends Record<string, any>>({
           }}>
           {label}
         </Typography>
-        {avgPct >= 0 && (
+        {avgPct >= 0 ? (
           <Typography variant="caption" sx={{ fontSize: 9, color: avgPct >= 95 ? 'success.main' : avgPct >= 50 ? 'warning.main' : 'error.main' }}>
             {avgPct}%
           </Typography>
-        )}
+        ) : notInstalled ? (
+          <Typography variant="caption" sx={{ fontSize: 9, color: 'info.main' }}>
+            not installed
+          </Typography>
+        ) : null}
       </Stack>
       <Stack ref={containerRef} direction="row" sx={{ height, gap: `${gap}px` }}>
         {segments.map((seg, i) => {
-          const bg = uptimeColor(seg.val, theme);
+          const bg = uptimeColor(seg.val, theme, seg.unmeasured);
+          const checked = seg.checks != null ? ` (${seg.checks} checks)` : '';
           const tip = seg.val < 0
-            ? (seg.time ? `${seg.time} — no data` : 'No data')
-            : `${seg.time} — ${Math.round(seg.val * 100)}% up${seg.checks != null ? ` (${seg.checks} checks)` : ''}`;
+            ? seg.unmeasured === 'absent'
+              ? `${seg.time} — omnitron not installed${checked}`
+              : seg.unmeasured === 'unreachable'
+                ? `${seg.time} — could not reach the node${checked}`
+                : (seg.time ? `${seg.time} — no data` : 'No data')
+            : `${seg.time} — ${Math.round(seg.val * 100)}% up${checked}`;
           return (
             <Tooltip key={i} title={tip} arrow>
               <Box sx={{
@@ -876,6 +921,9 @@ export default function NodesPage() {
   const historyRef = useRef(history);
   historyRef.current = history;
 
+  /** Why the uptime bars are not current, when they are not. */
+  const [barsError, setBarsError] = useState<string | null>(null);
+
   /** The last list that arrived, so a failed poll can return it unchanged. */
   const nodeListRef = useRef<INodeWithStatus[]>([]);
   nodeListRef.current = nodeList;
@@ -899,6 +947,7 @@ export default function NodesPage() {
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
     const results: Record<string, UptimeBucket[]> = {};
+    let failure: string | null = null;
     await Promise.allSettled(nodes.map(async (node) => {
       try {
         // Request more buckets than can fit — UptimeStrip will trim to visible width
@@ -908,9 +957,19 @@ export default function NodesPage() {
           bucketCount: bucketsFor(retentionDays, uptimeIntervalMs),
           intervalMs: uptimeIntervalMs,
         });
-      } catch { results[node.id] = []; }
+      } catch (err) {
+        // Two things this used to do, both wrong in the same way as blanking
+        // the list above. It wrote `[]`, which the strip draws as a row of
+        // "no data" — a definite statement that nothing was ever recorded,
+        // made on the strength of one failed call. And it swallowed the
+        // reason entirely: a bar that is empty because the query failed and
+        // one that is empty because the node is new are the same picture.
+        failure ??= (err as Error)?.message ?? 'Could not load uptime history';
+      }
     }));
-    setUptimeBars(results);
+    // Merge, so a node whose call failed keeps the bars it had.
+    setUptimeBars((previous) => ({ ...previous, ...results }));
+    setBarsError(failure);
   }, []);
 
   const fetchSshKeys = useCallback(async () => {
@@ -1113,6 +1172,13 @@ export default function NodesPage() {
         <FormAlert severity="warning" onClose={() => setListError(null)}>
           Could not refresh the node list — {listError}. The cards below are the
           last state the daemon reported.
+        </FormAlert>
+      )}
+
+      {barsError && (
+        <FormAlert severity="warning" onClose={() => setBarsError(null)}>
+          Could not refresh the uptime history — {barsError}. The strips below are
+          the last aggregation that arrived, and may be behind the cards.
         </FormAlert>
       )}
 

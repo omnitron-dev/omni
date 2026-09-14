@@ -148,14 +148,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.11.1
+        version: 0.11.1
       '@xec-sh/kit':
         specifier: ^0.9.0
         version: 0.9.0(typescript@7.0.2)
       '@xec-sh/ops':
-        specifier: ^0.9.0
-        version: 0.9.0(typescript@7.0.2)
+        specifier: ^0.11.1
+        version: 0.11.1(typescript@7.0.2)
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -3772,8 +3772,15 @@ packages:
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
 
-  '@xec-sh/core@0.9.0':
-    resolution: {integrity: sha512-D68P4MqUM47raErFx1TqmrvXRAw9hpu/RNIPoQjBlwd0bcTRcYT/0b3wv4UyUI5P07YFTWpR6Yp+Kra9r2TPSg==}
+  '@xec-sh/core@0.11.1':
+    resolution: {integrity: sha512-wsKvv89raZboKp6u26Hp1f/WFQ9twpDDO7DiSq6w2mN8TKD8TWVMmQF0YoTpJbc6TZWLbeL/CrD8DkLVpOz/vw==}
+    engines: {node: '>=20.0.0'}
+
+  '@xec-sh/kit@0.11.1':
+    resolution: {integrity: sha512-MfjiiNl6iwsFDqtYK7LgrBKDUWPl9kii9nNfYyf3RvxcbtsmPzkckK79x8Q9JXcr0XDBxGPwHNb8+hMcPE1LUg==}
+    engines: {bun: '>=1.2.0', node: '>=20.0.0'}
+    peerDependencies:
+      typescript: ^5.9.3
 
   '@xec-sh/kit@0.9.0':
     resolution: {integrity: sha512-OJUliAc00XIS7Rtob2zN6kZpaQk0++58R2bfmH76OSsLbn0YeRd020poG47CggsMSlbsg8aqVi4gCWMDp0SEfQ==}
@@ -3781,16 +3788,13 @@ packages:
     peerDependencies:
       typescript: ^5.9.3
 
-  '@xec-sh/loader@0.9.0':
-    resolution: {integrity: sha512-fi6QjzBpRhn5+BO0kAGX/oJWc+yPpfpEBhBTnx1351gEg/ruYoFYmQh/JTKjdhdUA4uv7RdUD+cazNX58yTboA==}
-    peerDependencies:
-      chokidar: ^5.0.0
-    peerDependenciesMeta:
-      chokidar:
-        optional: true
+  '@xec-sh/loader@0.11.1':
+    resolution: {integrity: sha512-Jck6CQf5kKx7AVF2jD9ne4N+J1lfkuSMYtoktaWJPELh8EUNRLOxF645zP/nlotOn9/igtG2h2T+L8O7fel2rA==}
+    engines: {node: '>=20.0.0'}
 
-  '@xec-sh/ops@0.9.0':
-    resolution: {integrity: sha512-Ho4Re8enwkz7GoFHx+H1ZNZAHe6s3lk/Wj5QPR/ASYIItI7buyf6zMN3KHK22fXCxzM/X1raDkLgeN6tQ9+ciw==}
+  '@xec-sh/ops@0.11.1':
+    resolution: {integrity: sha512-mii5BF8ieX/v5SVkHW7nhjDZQyWmKnG3fwFWQgB15soUB0nhLm5kPrXUX4OqXjkqWw9yhdCg2/fJ1jMHB6EOhQ==}
+    engines: {node: '>=20.0.0'}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -6557,9 +6561,6 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
-
-  shell-escape@0.2.0:
-    resolution: {integrity: sha512-uRRBT2MfEOyxuECseCZd28jC1AJ8hmqqneWQ4VWUTgCAFvb3wKU1jLqj6egC4Exrr88ogg3dp+zroH4wJuaXzw==}
 
   short-uuid@6.0.3:
     resolution: {integrity: sha512-UMZ3rYOoid307EqWsPTnoBUSOB51Fi28vUMPigUsSCmbaSvslyf/SlXZWOn4btj8tokhBTBkPFKVKKlIolEG1w==}
@@ -9667,37 +9668,38 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@xec-sh/core@0.9.0':
+  '@xec-sh/core@0.11.1':
     dependencies:
-      js-yaml: 4.3.2
-      shell-escape: 0.2.0
       ssh2: 1.17.0
-      zod: 4.5.4
+
+  '@xec-sh/kit@0.11.1(typescript@7.0.2)':
+    dependencies:
+      sisteransi: 1.0.5
+      typescript: 7.0.2
 
   '@xec-sh/kit@0.9.0(typescript@7.0.2)':
     dependencies:
       sisteransi: 1.0.5
       typescript: 7.0.2
 
-  '@xec-sh/loader@0.9.0(typescript@7.0.2)':
+  '@xec-sh/loader@0.11.1(typescript@7.0.2)':
     dependencies:
-      '@xec-sh/kit': 0.9.0(typescript@7.0.2)
+      '@xec-sh/kit': 0.11.1(typescript@7.0.2)
       esbuild: 0.27.7
     transitivePeerDependencies:
       - typescript
 
-  '@xec-sh/ops@0.9.0(typescript@7.0.2)':
+  '@xec-sh/ops@0.11.1(typescript@7.0.2)':
     dependencies:
-      '@xec-sh/core': 0.9.0
-      '@xec-sh/kit': 0.9.0(typescript@7.0.2)
-      '@xec-sh/loader': 0.9.0(typescript@7.0.2)
+      '@xec-sh/core': 0.11.1
+      '@xec-sh/kit': 0.11.1(typescript@7.0.2)
+      '@xec-sh/loader': 0.11.1(typescript@7.0.2)
       dotenv: 17.4.2
       fs-extra: 11.4.0
       glob: 13.0.6
       js-yaml: 4.3.2
       zod: 4.5.4
     transitivePeerDependencies:
-      - chokidar
       - typescript
 
   '@xtuc/ieee754@1.2.0': {}
@@ -13144,8 +13146,6 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
-
-  shell-escape@0.2.0: {}
 
   short-uuid@6.0.3:
     dependencies:

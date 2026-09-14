@@ -1,28 +1,26 @@
 /**
  * Provisioning a remote node when the host stops answering.
  *
- * `which node … || echo ""` already answers "absent" with an empty string —
- * that is what the `|| echo ""` is for. So a `.catch(() => '')` around it
- * turned "could not ask the host" into "the host has no runtime", and the
- * very next line acts on that by piping a vendor script into `bash` and
- * running a package-manager install. Against a host that almost certainly
- * has Node already, and that the daemon has just failed to reach.
+ * The original defect: `which node … || echo ""` already answers "absent"
+ * with an empty string, so a `.catch(() => '')` around it turned "could not
+ * ask the host" into "the host has no runtime" — and the next line acted on
+ * that by piping a vendor script into `bash` and running a package-manager
+ * install, against a host the daemon had just failed to reach.
  *
- * The asymmetry is what made it visible: `verifySSH` treats an SSH failure
- * as a failure, and so does the install step's own handler. The two probes
- * were the only places that did not.
+ * Rewritten twice in one day, and the second rewrite is the interesting one.
  *
- * Rewritten 2026-09-14 when the deployer stopped shelling out to `ssh(1)`.
- * This file mocked `node:child_process`, and after the transport changed two
- * of its three cases still passed — not because the probes were right, but
- * because every command now failed for an unrelated reason. A test that
- * survives the removal of the thing it exercises is testing nothing; the
- * doubles here are the execution service the deployer actually calls.
+ * First, when the deployer stopped shelling out to `ssh(1)`: this file mocked
+ * `node:child_process`, and after the transport changed two of its three
+ * cases still passed — not because the probes were right but because every
+ * command failed for an unrelated reason.
  *
- * The behaviour also moved from "the probe throws" to "the probe exits
- * non-zero", because that is how `ExecutionService.ssh` reports failure. The
- * distinction the file exists for is unchanged: a command that FAILED is not
- * a command that answered "no".
+ * Then, when host preparation became automatic and cross-platform. The
+ * defect this file was written for is now structurally impossible: there is
+ * one probe rather than several, it ends in `true` so it cannot report
+ * failure as an empty answer, and nothing catches around it — an unreachable
+ * host raises, which is what it is. What survives from the original is the
+ * property, and these test that: **a host that did not answer must not be
+ * treated as a host that answered "nothing installed".**
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -61,116 +59,179 @@ const logger = {
 /** How an unreachable host answers: the command never ran. */
 const unreachable: Reply = { exitCode: 255, stderr: 'ssh: connect to host 10.0.0.7 port 22: Connection timed out' };
 
+/** A blank Ubuntu box, as the platform probe reports one. */
+const BLANK_UBUNTU = [
+  'os=linux', 'machine=x86_64', 'distro=ubuntu', 'uid=0', 'pm=apt-get', 'curl=yes', 'tar=yes',
+].join('\n');
+
+/** The same box with a runtime and omnitron already on it. */
+const READY_UBUNTU = [BLANK_UBUNTU, 'node=v22.14.0', 'npm=10.9.2', 'omnitron=0.2.0'].join('\n');
+
+const isProbe = (c: string) => c.includes('uname -s');
+
+/**
+ * Commands other than the probe itself.
+ *
+ * The probe asks which package managers exist, so its own text contains
+ * `apt-get` — an assertion that "no apt-get command ran" matches the
+ * question as well as the answer. Asking about a package manager is not
+ * using one.
+ */
+const actions = () => commands.filter((c) => !isProbe(c));
+
 beforeEach(() => {
   commands.length = 0;
 });
 
-describe('provisionSlaveNode when a probe cannot reach the host', () => {
-  it('does not install a runtime because the host stopped answering', async () => {
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command === 'echo ok') return { stdout: 'ok' };
-      if (command.includes('which node')) return unreachable;
-      return { stdout: '' };
-    }));
-
-    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
-
-    expect(ok).toBe(false);
-    // The line that used to run: `curl … | bash - && apt-get install -y nodejs`.
-    expect(commands.some((c) => c.includes('nodesource') || c.includes('apt-get install'))).toBe(false);
-  });
-
-  it('does not reinstall omnitron because the second probe failed', async () => {
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command === 'echo ok') return { stdout: 'ok' };
-      if (command.includes('which node')) return { stdout: '/usr/bin/node' };
-      if (command.includes('which omnitron')) return { exitCode: 255, stderr: 'ssh: broken pipe' };
-      return { stdout: '' };
-    }));
-
-    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
-
-    expect(ok).toBe(false);
-    expect(commands.some((c) => c.includes('npm install -g @omnitron-dev/omnitron'))).toBe(false);
-  });
-
-  it('still installs when the host answers, the runtime is absent, and it was authorised', async () => {
-    // The empty string has to keep meaning "absent" — the fix must not turn
-    // a real answer into a failure.
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command.includes('which node')) return { stdout: '' };
-      return { stdout: 'ok' };
-    }));
-
-    await d.provisionSlaveNode(target, 'master.local', 9700, 'proj', { installRuntime: true });
-
-    expect(commands.some((c) => c.includes('nodesource'))).toBe(true);
-  });
-
-  it('asks the host before it decides anything', async () => {
-    // `verifySSH` first: the probes below it are only meaningful once the
-    // connection itself is known to work, and a run that starts by installing
-    // things on an unreachable host has already lost.
+describe('provisionSlaveNode when the host cannot be reached', () => {
+  it('installs nothing, because it never learned anything', async () => {
     const d = new RemoteDeployer(logger, execution(() => unreachable));
 
     const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
 
     expect(ok).toBe(false);
+    // Not one package-manager command, and not one download.
+    expect(commands.some((c) => c.includes('apt-get') || c.includes('nodejs.org'))).toBe(false);
+  });
+
+  it('stops at the door rather than after it', async () => {
+    // `verifySSH` runs first: the probe below it is only meaningful once the
+    // connection is known to work.
+    const d = new RemoteDeployer(logger, execution(() => unreachable));
+
+    await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
     expect(commands).toEqual(['echo ok']);
   });
-});
 
-// =============================================================================
-// Changing how a machine gets its software is somebody's decision
-// =============================================================================
-
-describe('installing a runtime is authorised, not assumed', () => {
-  it('refuses when the node has no runtime and nobody said to install one', async () => {
-    // `curl https://deb.nodesource.com/… | bash -` as root adds a vendor
-    // repository and its signing key to the machine, permanently. The host
-    // this path was first run against — offered as a test box — turned out to
-    // be running a Monero node, a Tor daemon and two VPN containers, with an
-    // uptime of 599 days.
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command.includes('which node')) return { stdout: '' };
-      return { stdout: 'ok' };
-    }));
+  it('does not read a failed probe as an empty host', async () => {
+    // The original defect, in the shape it could still take: connection up,
+    // probe itself refused.
+    const d = new RemoteDeployer(logger, execution((c) => (isProbe(c) ? unreachable : { stdout: 'ok' })));
 
     const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
 
     expect(ok).toBe(false);
-    expect(commands.some((c) => c.includes('nodesource') || c.includes('apt-get'))).toBe(false);
+    expect(commands.some((c) => c.includes('nodejs.org') || c.includes('npm install -g'))).toBe(false);
   });
+});
 
-  it('says what it would have run, not just that it refused', async () => {
-    // "Enable installRuntime" without naming the commands is a checkbox
-    // rather than consent.
-    const seen: string[] = [];
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command.includes('which node')) return { stdout: '' };
-      return { stdout: 'ok' };
-    }));
-    d.onProgress((p) => seen.push(p.message));
+describe('provisionSlaveNode on a host that answered', () => {
+  it('prepares a blank machine without being asked twice', async () => {
+    // Preparing a node is meant to be automatic. What that now means is a
+    // runtime tarball under omnitron's own prefix — not a vendor repository
+    // added to the machine.
+    const d = new RemoteDeployer(logger, execution((c) => ({ stdout: isProbe(c) ? BLANK_UBUNTU : 'ok' })));
 
     await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
 
-    const refusal = seen.find((m) => m.includes('no Node.js'));
-    expect(refusal).toBeTruthy();
-    expect(refusal).toMatch(/package repository/);
-    expect(refusal).toMatch(/installRuntime/);
+    const all = commands.join('\n');
+    expect(all).toContain('nodejs.org/dist/v');
+    expect(all).toContain('npm install -g');
+    expect(all).not.toContain('nodesource');
   });
 
-  it('does not ask when the node already has a runtime', async () => {
-    // The authorisation is about CHANGING the machine. A host that already
-    // has Node needs no permission to be left alone.
-    const d = new RemoteDeployer(logger, execution((command) => {
-      if (command.includes('which node')) return { stdout: '/usr/bin/node' };
+  it('touches nothing on a machine that already has everything', async () => {
+    const d = new RemoteDeployer(logger, execution((c) => ({
+      stdout: isProbe(c) ? READY_UBUNTU : c === 'omnitron ping' ? 'Daemon is running (PID: 42, v0.2.0)' : 'ok',
+    })));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(true);
+    expect(commands.some((c) => c.includes('nodejs.org') || c.includes('npm install -g'))).toBe(false);
+    // It still configures and starts the slave — preparation being a no-op
+    // is not the same as provisioning being one.
+    expect(commands.some((c) => c.includes('omnitron up --slave'))).toBe(true);
+  });
+
+  it('names the step that failed, not the last one it tried', async () => {
+    // The `||` chain this replaced reported `apk`'s error on a Debian host.
+    const d = new RemoteDeployer(logger, execution((c) => {
+      if (isProbe(c)) return { stdout: BLANK_UBUNTU };
+      if (c.includes('nodejs.org')) return { exitCode: 1, stderr: 'curl: (22) 404' };
+      return { stdout: 'ok' };
+    }));
+    const progress: string[] = [];
+    d.onProgress((p) => progress.push(`${p.status}:${p.message}`));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(false);
+    const failure = progress.find((p) => p.startsWith('failed:'));
+    expect(failure).toContain('Node.js');
+    expect(failure).toContain('404');
+    // And it stopped: no point installing a CLI onto a host with no runtime.
+    expect(commands.some((c) => c.includes('npm install -g'))).toBe(false);
+  });
+
+  it('refuses a host it cannot identify instead of guessing Linux', async () => {
+    const d = new RemoteDeployer(logger, execution((c) => ({ stdout: isProbe(c) ? '' : 'ok' })));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(false);
+    expect(actions().some((c) => c.includes('apt-get') || c.includes('nodejs.org'))).toBe(false);
+  });
+});
+
+// =============================================================================
+// "Provisioned" has to mean the daemon is there
+// =============================================================================
+
+describe('the run reports what actually happened', () => {
+  it('fails when the daemon never answers', async () => {
+    // Measured on the first real run against a host: the start command failed
+    // with `omnitron: command not found`, the single ping found nothing, the
+    // code logged "may still be starting" — and returned true. A caller that
+    // trusts that ships artifacts to a node with no daemon.
+    const d = new RemoteDeployer(logger, execution((c) => {
+      if (isProbe(c)) return { stdout: READY_UBUNTU };
+      if (c === 'omnitron ping') return { exitCode: 127, stderr: 'bash: omnitron: command not found' };
+      return { stdout: 'ok' };
+    }));
+    const progress: string[] = [];
+    d.onProgress((p) => progress.push(`${p.status}:${p.message}`));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(false);
+    const failure = progress.find((p) => p.startsWith('failed:'));
+    expect(failure).toContain('command not found');
+  }, 200_000);
+
+  it('succeeds on a daemon that answers, and says what it answered', async () => {
+    const d = new RemoteDeployer(logger, execution((c) => {
+      if (isProbe(c)) return { stdout: READY_UBUNTU };
+      if (c === 'omnitron ping') return { stdout: 'Daemon is running (PID: 4242, uptime: 2s, v0.2.0)' };
+      return { stdout: 'ok' };
+    }));
+    const progress: string[] = [];
+    d.onProgress((p) => progress.push(`${p.status}:${p.message}`));
+
+    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+
+    expect(ok).toBe(true);
+    // The evidence, not just the verdict.
+    expect(progress.find((p) => p.startsWith('success:'))).toContain('PID: 4242');
+  });
+
+  it('waits for a daemon that is still booting rather than failing at three seconds', async () => {
+    // A daemon start is an application boot — a DI container, a module graph,
+    // a SQLite open. The old code slept three seconds and asked once.
+    let attempts = 0;
+    const d = new RemoteDeployer(logger, execution((c) => {
+      if (isProbe(c)) return { stdout: READY_UBUNTU };
+      if (c === 'omnitron ping') {
+        attempts += 1;
+        return attempts < 3 ? { exitCode: 1, stderr: 'connection refused' } : { stdout: 'Daemon is running (PID: 7)' };
+      }
       return { stdout: 'ok' };
     }));
 
     const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
 
     expect(ok).toBe(true);
-    expect(commands.some((c) => c.includes('nodesource'))).toBe(false);
-  });
+    expect(attempts).toBe(3);
+  }, 60_000);
 });

@@ -374,9 +374,19 @@ describe('HealthService', () => {
 
   describe('getUptime', () => {
     it('should return uptime in milliseconds', async () => {
+      // Asserted as "it advances", not "it is at least 10 after a 10ms wait".
+      // The wait and the reading use different clocks — libuv schedules the
+      // timer, `Date.now()` measures it — and the earlier form sat exactly on
+      // the boundary between them. Measured here: `setTimeout(10)` elapses as
+      // 9ms by `Date.now()` in 40 of 4000 runs, so that assertion failed
+      // roughly once per hundred suite runs, which is what it did in the sweep
+      // that found this.
+      const before = healthService.getUptime();
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const uptime = healthService.getUptime();
-      expect(uptime).toBeGreaterThanOrEqual(10);
+      const after = healthService.getUptime();
+
+      expect(before).toBeGreaterThanOrEqual(0);
+      expect(after).toBeGreaterThan(before);
     });
   });
 });

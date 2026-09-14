@@ -30,6 +30,26 @@
  * minutes until the load came down. `forkedPids` closes it: titan-pm records
  * each pid at `fork()`, which is where it first exists.
  *
+ * The third omission is the one this parameter is now named for. Both of the
+ * channels above walk the ORCHESTRATOR's app handles, and the daemon spawns
+ * processes that belong to no app at all: the health-monitor runs as a
+ * `fork-worker.js` child of the daemon, through the same process manager,
+ * owned by `SystemWorkerManager`. `forkedPids` covered it only until its
+ * spawn settled — the claim is released there by design, "from then on the
+ * WorkerHandle registry is the authority" — and nothing then asked that
+ * registry about a process with no app handle. So every system worker became
+ * an orphan the moment it finished starting, and stayed one until the age
+ * threshold expired.
+ *
+ * Measured 2026-09-14 on the development daemon: the health-monitor worker
+ * was reaped 108 times in three and a half hours, each death within 0.4-2.7
+ * seconds of a janitor sweep. It exits 0 because SIGTERM reaches Titan's
+ * graceful shutdown, so the record read `code: 0, signal: null` — a clean
+ * exit, indistinguishable in the log from a worker that decided to stop.
+ * Meanwhile the console served the daemon's fallback readings, which know
+ * only whether a TCP port answers, in place of the worker's, which had
+ * established over SSH that omnitron was not installed on the node at all.
+ *
  * Being generous here is the safe direction: a pid wrongly included survives
  * one more sweep, while a pid wrongly omitted is a live worker killed.
  */
@@ -58,19 +78,21 @@ export interface OwnedPidHandle {
  * @param resolvePid maps a process-manager worker id to its OS pid; returns
  *   undefined when the worker has no pid of its own (a worker thread shares
  *   the daemon's), which must NOT be substituted for a real one
- * @param forkedPids every pid the process manager has forked and not seen
- *   exit — the only source that answers during a child's startup
+ * @param managerPids every pid the process manager vouches for, whatever it
+ *   was started for — spawns still in flight (the only source that answers
+ *   during a child's startup) and every non-terminal process in its registry,
+ *   which is the only source that answers for a worker belonging to no app
  */
 export function collectOwnedPids(
   handles: Iterable<OwnedPidHandle>,
   resolvePid: (workerId: string) => number | undefined,
-  forkedPids: Iterable<number> = []
+  managerPids: Iterable<number> = []
 ): Set<number> {
   const owned = new Set<number>();
 
-  // Everything the process manager forked, whether or not it has finished
-  // starting. The two loops below can only see children that have.
-  for (const pid of forkedPids) owned.add(pid);
+  // Everything the process manager knows it started. The two loops below see
+  // only children that belong to an app AND have finished starting.
+  for (const pid of managerPids) owned.add(pid);
 
   for (const handle of handles) {
     for (const childName of handle.supervisor?.getChildNames() ?? []) {

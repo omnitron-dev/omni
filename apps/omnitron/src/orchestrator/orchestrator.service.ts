@@ -93,6 +93,17 @@ import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
 
 /** Levels a pino logger accepts. A child is spawned with nothing else. */
 const PINO_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']);
+
+/**
+ * Process-manager states in which a record no longer describes a live process.
+ *
+ * Read by `managerOwnedPids`, where the distinction decides whether a pid is
+ * protected from the janitor. Written as strings rather than imported from
+ * `ProcessStatus` because that export is a const object whose values are
+ * these same literals; the set has to hold values, not keys, and a typo here
+ * would silently protect a dead pid — so it is pinned by a test.
+ */
+const TERMINAL_PROCESS_STATUSES: ReadonlySet<string> = new Set(['stopped', 'failed', 'crashed']);
 import { BuildService, type BuildResult } from './build-service.js';
 import { ProcessJanitor } from './process-janitor.js';
 import { collectOwnedPids } from './owned-pids.js';
@@ -592,8 +603,33 @@ export class OrchestratorService extends EventEmitter {
     return collectOwnedPids(
       this.handles.values(),
       (workerId) => this.pm.getWorkerHandle(workerId)?.pid,
-      this.pm.getForkedPids?.() ?? [],
+      this.managerOwnedPids(),
     );
+  }
+
+  /**
+   * Every pid the process manager currently vouches for.
+   *
+   * Two windows, and a process is only safe if both are asked. `getForkedPids`
+   * holds a claim from `fork()` until `spawn()` resolves and releases it —
+   * after that its own docstring says "the WorkerHandle registry is the
+   * authority". `listProcesses()` IS that registry, and it is the only source
+   * that answers for a process the orchestrator did not start: the daemon's
+   * system workers go through this same manager but belong to no app handle,
+   * so walking `this.handles` can never see them.
+   *
+   * Terminal records are excluded deliberately. They keep the pid they had,
+   * the OS reuses pids, and a stale one here would vouch for exactly the
+   * leaked worker the janitor exists to reap.
+   */
+  private managerOwnedPids(): number[] {
+    const pids: number[] = [...(this.pm.getForkedPids?.() ?? [])];
+    for (const info of this.pm.listProcesses?.() ?? []) {
+      if (typeof info.pid !== 'number') continue;
+      if (TERMINAL_PROCESS_STATUSES.has(info.status)) continue;
+      pids.push(info.pid);
+    }
+    return pids;
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {

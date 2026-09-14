@@ -756,6 +756,7 @@ export class Decimal {
  * @throws Error when `value` is not a plain decimal string.
  */
 function decimalToInt(value: string, precision: number): bigint {
+  assertPrecision(precision);
   if (typeof value !== 'string') {
     throw new Error(
       `Not a decimal string: ${JSON.stringify(value)} (${value === null ? 'null' : typeof value})`,
@@ -815,6 +816,22 @@ function numberToDecimalString(value: number): string {
   return `${sign === '-' ? '-' : ''}${magnitude}`;
 }
 
+/**
+ * A scale has to be a whole count of digits.
+ *
+ * `NaN` was the dangerous one and it arrives easily — `Number(row.precision)`
+ * on a column a query forgot to select is `NaN`, and every string operation
+ * downstream treats it as 0: `padEnd(NaN)` pads nothing and `slice(0, NaN)`
+ * takes nothing, so `'0.01'` scaled to `NaN` is 10000000000 and `'100'` is
+ * 100. The comparison then says a hundredth of a coin exceeds a hundred
+ * coins, and every value involved looks perfectly ordinary in the message.
+ */
+function assertPrecision(precision: number): void {
+  if (!Number.isInteger(precision) || precision < 0) {
+    throw new Error(`Precision must be a non-negative integer, got ${String(precision)}`);
+  }
+}
+
 /** A fluent-API operand as a decimal string; numbers keep their own notation. */
 function toDecimalString(value: string | number): string {
   return typeof value === 'number' ? numberToDecimalString(value) : value;
@@ -860,6 +877,7 @@ function divRoundHalfUp(value: bigint, scale: bigint): bigint {
  * A zero scale means no fractional part at all, and no point either.
  */
 function intToDecimal(value: bigint, precision: number): string {
+  assertPrecision(precision);
   const isNeg = value < 0n;
   const digits = (isNeg ? -value : value).toString().padStart(precision + 1, '0');
 

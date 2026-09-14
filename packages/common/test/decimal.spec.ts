@@ -538,3 +538,32 @@ describe('a number multiplier or divisor', () => {
     expect(multiplyDecimal('-1', 0)).toBe('0.000000000000');
   });
 });
+
+// ============================================================================
+// A scale that is not a scale
+// ============================================================================
+
+describe('precision must be a whole count of digits', () => {
+  it('refuses NaN rather than quietly treating it as zero', () => {
+    // How this arrives: `Number(row.precision)` on a column the query forgot
+    // to select. Every string operation downstream reads NaN as 0 —
+    // `padEnd(NaN)` pads nothing, `slice(0, NaN)` takes nothing — so '0.01'
+    // scaled to NaN is 10000000000 while '100' is 100, and a comparison
+    // reports that a hundredth of a coin exceeds a hundred coins. Every
+    // value in the resulting message looks perfectly ordinary.
+    expect(() => addDecimals('0.01', '100', Number.NaN)).toThrow(/non-negative integer/);
+    expect(() => formatDecimal('1', Number.NaN)).toThrow(/non-negative integer/);
+  });
+
+  it('refuses a fractional or negative scale', () => {
+    for (const bad of [1.5, -1, Number.POSITIVE_INFINITY]) {
+      expect(() => addDecimals('1', '1', bad), String(bad)).toThrow(/non-negative integer/);
+    }
+  });
+
+  it('still accepts every scale a coin actually has', () => {
+    expect(addDecimals('1', '1', 0)).toBe('2');
+    expect(addDecimals('1', '1', 8)).toBe('2.00000000');
+    expect(addDecimals('1', '1', 12)).toBe('2.000000000000');
+  });
+});

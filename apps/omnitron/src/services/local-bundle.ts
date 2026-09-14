@@ -1,0 +1,261 @@
+/**
+ * Shipping the omnitron in this working tree to a node, instead of the one on
+ * npm.
+ *
+ * The registry channel installs `@omnitron-dev/omnitron` and whatever it
+ * depends on. That is the right default and it has one property an operator
+ * cannot change: it ships what was published. Measured 2026-09-14, the
+ * published version was five months and 224 commits behind the working tree
+ * and carried the same version number, so a node built from it reported
+ * `v0.2.0` — indistinguishable from a node built from today's code.
+ *
+ * This is the other channel: build here, ship that.
+ *
+ * ## Why it is not `npm pack`
+ *
+ * `apps/omnitron` declares ten workspace dependencies, and they declare four
+ * more between them — fourteen packages that resolve inside this repository
+ * and nowhere else. A tarball of the app alone carries `workspace:*` ranges
+ * that npm on the far side cannot resolve at all.
+ *
+ * ## Why it is not `pnpm deploy`
+ *
+ * It exists, it produces a self-contained tree with `node_modules`, and
+ * shipping that tree is wrong in a way that only shows up on the target.
+ * Measured on a tree deployed from this machine:
+ *
+ *     node_modules/.pnpm/@esbuild+darwin-arm64@0.28.2
+ *     node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2
+ *     node_modules/.pnpm/fsevents@2.3.3
+ *
+ * Every one of those is for the machine that built it. `@esbuild/linux-x64`
+ * is not in the tree, because this machine never needed it. Unpacked on a
+ * Linux node the daemon starts and its build path does not, and the reason is
+ * three directories deep in a tarball nobody opens.
+ *
+ * ## What this does instead
+ *
+ * Pack each workspace package, rewrite every `workspace:*` range to the
+ * tarball beside it, and let `npm install` run ON THE TARGET. The
+ * platform-specific packages are then resolved for the platform that will run
+ * them, which is the only place that knows what it is.
+ */
+
+/** Minimal shape of the package.json fields this reads. */
+export interface PackageManifest {
+  name: string;
+  version: string;
+  dependencies?: Record<string, string> | undefined;
+  optionalDependencies?: Record<string, string> | undefined;
+}
+
+/** Everything the workspace holds, by package name. */
+export type Workspace = ReadonlyMap<string, PackageManifest>;
+
+/** A workspace package that has to travel with the bundle. */
+export interface VendoredPackage {
+  readonly name: string;
+  readonly version: string;
+  /** File name inside the bundle's `vendor/` directory. */
+  readonly tarball: string;
+}
+
+export interface BundlePlan {
+  readonly root: PackageManifest;
+  /** Transitive closure of workspace dependencies, in a stable order. */
+  readonly vendored: readonly VendoredPackage[];
+  /** Manifests to write, keyed by the package they replace. */
+  readonly rewritten: ReadonlyMap<string, PackageManifest>;
+  readonly refusal?: string;
+}
+
+/** `workspace:*`, `workspace:^`, `workspace:1.2.3` — all of them. */
+export function isWorkspaceRange(range: string): boolean {
+  return typeof range === 'string' && range.startsWith('workspace:');
+}
+
+/** A tarball name that is a safe file name and identifies the package. */
+export function tarballNameFor(name: string, version: string): string {
+  // `@omnitron-dev/titan-pm` → `omnitron-dev-titan-pm-0.2.0.tgz`, which is
+  // what `npm pack` produces, minus the leading `@`.
+  return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
+}
+
+/**
+ * Work out what has to be packed, and what each manifest becomes.
+ *
+ * Pure: the workspace is passed in. The caller reads it from disk, which is
+ * the part that cannot be tested without one.
+ */
+export function planBundle(rootName: string, workspace: Workspace): BundlePlan {
+  const root = workspace.get(rootName);
+  if (!root) {
+    return {
+      root: { name: rootName, version: '0.0.0' },
+      vendored: [],
+      rewritten: new Map(),
+      refusal: `${rootName} is not a package in this workspace.`,
+    };
+  }
+
+  // Breadth-first over workspace ranges, so the closure is complete and the
+  // order is stable. A `dependencies` map is iterated in insertion order and
+  // the queue preserves it, which keeps a bundle byte-identical between runs
+  // that change nothing — an identity a fleet upgrade can compare.
+  const closure: string[] = [];
+  const seen = new Set<string>([rootName]);
+  const queue: string[] = [...workspaceDepsOf(root)];
+  const missing: string[] = [];
+
+  while (queue.length > 0) {
+    const name = queue.shift()!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+
+    const manifest = workspace.get(name);
+    if (!manifest) {
+      // A `workspace:*` range naming a package the workspace does not have.
+      // Packing what is left would produce a bundle that installs and then
+      // fails at the first import — reported instead.
+      missing.push(name);
+      continue;
+    }
+    closure.push(name);
+    for (const dep of workspaceDepsOf(manifest)) {
+      if (!seen.has(dep)) queue.push(dep);
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      root,
+      vendored: [],
+      rewritten: new Map(),
+      refusal:
+        `These packages are required through a workspace range and are not in this workspace: ` +
+        `${missing.join(', ')}.`,
+    };
+  }
+
+  const vendored = closure.map((name) => {
+    const m = workspace.get(name)!;
+    return { name, version: m.version, tarball: tarballNameFor(name, m.version) };
+  });
+
+  // Every manifest in the bundle — the root and each vendored package —
+  // gets its workspace ranges replaced by the tarball beside it.
+  const rewritten = new Map<string, PackageManifest>();
+  for (const name of [rootName, ...closure]) {
+    rewritten.set(name, rewriteManifest(workspace.get(name)!, name === rootName));
+  }
+
+  return { root, vendored, rewritten };
+}
+
+function workspaceDepsOf(manifest: PackageManifest): string[] {
+  const out: string[] = [];
+  for (const group of [manifest.dependencies, manifest.optionalDependencies]) {
+    for (const [name, range] of Object.entries(group ?? {})) {
+      if (isWorkspaceRange(range)) out.push(name);
+    }
+  }
+  return out;
+}
+
+/**
+ * Replace workspace ranges with paths to the tarballs.
+ *
+ * The root sits at the bundle's top and its vendor directory is `./vendor`;
+ * a vendored package is unpacked inside `node_modules`, from where the same
+ * directory is reached differently. Rather than guess at a relative depth
+ * that npm resolves from the manifest's own location, every reference is
+ * written relative to the bundle root and the installer is run there — one
+ * `npm install` at the top, with every tarball in one place.
+ */
+function rewriteManifest(manifest: PackageManifest, isRoot: boolean): PackageManifest {
+  const rewrite = (group: Record<string, string> | undefined) => {
+    if (!group) return undefined;
+    const out: Record<string, string> = {};
+    for (const [name, range] of Object.entries(group)) {
+      out[name] = isWorkspaceRange(range)
+        ? `file:${isRoot ? './vendor/' : '../'}${tarballNameForUnknownVersion(name)}`
+        : range;
+    }
+    return out;
+  };
+
+  const next: PackageManifest = { name: manifest.name, version: manifest.version };
+  const deps = rewrite(manifest.dependencies);
+  const opt = rewrite(manifest.optionalDependencies);
+  if (deps) next.dependencies = deps;
+  if (opt) next.optionalDependencies = opt;
+  return next;
+}
+
+/**
+ * The tarball name for a dependency whose version this manifest does not
+ * state — `workspace:*` carries no version, and the real one comes from the
+ * workspace. Filled in by `resolveTarballNames` once the closure is known.
+ */
+function tarballNameForUnknownVersion(name: string): string {
+  return `${name.replace(/^@/, '').replace(/\//g, '-')}-VERSION.tgz`;
+}
+
+/**
+ * Substitute the real versions into the placeholders above.
+ *
+ * Two passes rather than one because a manifest's `workspace:*` says nothing
+ * about the version, and the version is only known once the whole closure has
+ * been walked. Splitting it keeps `planBundle` a single traversal instead of
+ * a lookup inside a rewrite inside a traversal.
+ */
+export function resolveTarballNames(plan: BundlePlan): BundlePlan {
+  if (plan.refusal) return plan;
+  const versionOf = new Map(plan.vendored.map((v) => [v.name, v.version]));
+
+  const resolved = new Map<string, PackageManifest>();
+  for (const [name, manifest] of plan.rewritten) {
+    const fix = (group: Record<string, string> | undefined) => {
+      if (!group) return undefined;
+      const out: Record<string, string> = {};
+      for (const [dep, range] of Object.entries(group)) {
+        out[dep] = range.includes('-VERSION.tgz')
+          ? range.replace('-VERSION.tgz', `-${versionOf.get(dep) ?? '0.0.0'}.tgz`)
+          : range;
+      }
+      return out;
+    };
+    const next: PackageManifest = { name: manifest.name, version: manifest.version };
+    const deps = fix(manifest.dependencies);
+    const opt = fix(manifest.optionalDependencies);
+    if (deps) next.dependencies = deps;
+    if (opt) next.optionalDependencies = opt;
+    resolved.set(name, next);
+  }
+
+  return { ...plan, rewritten: resolved };
+}
+
+/**
+ * The identity of a locally built bundle.
+ *
+ * `0.2.0` on npm and `0.2.0` in this tree are two different programs. A node
+ * running either reports the same string, so "which of my nodes are behind"
+ * has no answer and `fleet upgrade` cannot know whom to upgrade.
+ *
+ * Build metadata (`+local.<sha>.<stamp>`) is the semver-legal way to say
+ * this: comparison ignores everything after `+`, so nothing that reasons
+ * about versions is confused by it, while two builds are still visibly
+ * different strings.
+ */
+export function localVersion(baseVersion: string, commit: string, at: Date): string {
+  const stamp =
+    at.getUTCFullYear().toString() +
+    String(at.getUTCMonth() + 1).padStart(2, '0') +
+    String(at.getUTCDate()).padStart(2, '0') +
+    String(at.getUTCHours()).padStart(2, '0') +
+    String(at.getUTCMinutes()).padStart(2, '0');
+  // Build metadata may hold only alphanumerics, dots and dashes.
+  const sha = commit.replace(/[^0-9a-zA-Z]/g, '').slice(0, 12) || 'nocommit';
+  return `${baseVersion}+local.${sha}.${stamp}`;
+}

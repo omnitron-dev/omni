@@ -16,7 +16,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { log, select, isCancel } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
@@ -147,6 +146,20 @@ async function ensureDaemonConfig(options?: UpCommandOptions): Promise<SavedDaem
     role = 'master';
   } else if (options?.slave) {
     role = 'slave';
+  } else if (!process.stdin.isTTY) {
+    // Nobody can answer a prompt here, and waiting for one is the worst of
+    // the available failures: the command does not fail, it hangs, and
+    // whatever is driving it — a provisioning run, a CI step, a `ssh host
+    // omnitron up` — sits there until its own timeout and reports something
+    // unrelated.
+    //
+    // Measured 2026-09-14, activating a new version on a remote node over
+    // SSH: `omnitron up --no-infra` printed "Welcome to Omnitron! Running
+    // first-time setup." and the role menu, then waited. The upgrade reported
+    // a daemon that would not start; the daemon had never been asked to.
+    log.error('This is omnitron\'s first run here and there is no terminal to ask which role it should take.');
+    log.info('  Pass --master, or --slave <host:port>, and run it again.');
+    process.exit(1);
   } else {
     // Interactive prompt
     const selected = await select<DaemonRole>({
@@ -388,22 +401,22 @@ async function startBackground(
     }
   }
 
+  let spawned: import('../daemon/spawn-daemon.js').SpawnedDaemon | null = null;
   if (!viaService) {
-    // Fork the daemon entry point as a detached child process
-    const daemonScript = path.resolve(__dirname, '../daemon/daemon-entry.js');
-    const child = fork(daemonScript, [], {
-      detached: true,
-      stdio: 'ignore',
+    const { spawnDaemon } = await import('../daemon/spawn-daemon.js');
+    spawned = spawnDaemon({
+      entryPath: path.resolve(__dirname, '../daemon/daemon-entry.js'),
+      // Where `node_modules` is — see `spawn-daemon.ts`. This file used to
+      // fork without it, and the child looked for `tsx` in the operator's
+      // login directory.
+      packageRoot: path.resolve(__dirname, '../..'),
+      operatorCwd: process.cwd(),
+      bootLogPath: path.join(expandPath(dc.logDir), 'daemon-boot.err.log'),
       env: {
-        ...process.env,
-        OMNITRON_CWD: process.cwd(),
         ...(options?.noInfra ? { OMNITRON_NO_INFRA: '1' } : {}),
         ...(options?.noWatch ? { OMNITRON_NO_WATCH: '1' } : {}),
       },
-      execArgv: ['--import', 'tsx/esm'],
     });
-
-    child.unref();
   }
 
   // Wait for daemon to become reachable via Unix socket
@@ -424,9 +437,25 @@ async function startBackground(
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  s.stop('Daemon started — verifying connectivity timed out (may still be initializing)');
   await client.disconnect();
-  process.exit(0);
+
+  if (!spawned) {
+    // Started through the OS supervisor, which owns the restart. Nothing here
+    // can say more than that it has not answered yet.
+    s.stop(`The supervised daemon did not answer within ${maxWait / 1000}s`);
+    log.info('  Check `omnitron service status`.');
+    process.exit(1);
+  }
+
+  const { describeStartupTimeout } = await import('../daemon/spawn-daemon.js');
+  const outcome = describeStartupTimeout(spawned, maxWait);
+  s.stop(outcome.message);
+  if (outcome.ok) {
+    log.info(`  ${outcome.detail}`);
+    process.exit(0);
+  }
+  log.error(`  ${outcome.detail}`);
+  process.exit(1);
 }
 
 /**

@@ -8,12 +8,12 @@
  * are kept because callers import them.
  */
 
-import { fork } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { log } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
 import { PidManager } from '../daemon/pid-manager.js';
+import { spawnDaemon, describeStartupTimeout } from '../daemon/spawn-daemon.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
@@ -58,14 +58,33 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
   s.start('Starting Omnitron daemon...');
 
   const daemonScript = path.resolve(__dirname, '../daemon/daemon-entry.js');
-  const child = fork(daemonScript, [], {
-    detached: true,
-    stdio: 'ignore',
-    env: { ...process.env, OMNITRON_CWD: process.cwd() },
-    execArgv: ['--import', 'tsx/esm'],
+  // The package root: `dist/commands` → up two. This is where the daemon's
+  // `node_modules` is, and it has to be the child's working directory.
+  //
+  // `--import tsx/esm` is resolved by Node in the CHILD, from the CHILD's
+  // cwd, upward. The fork inherited whatever directory the CLI happened to be
+  // run from — and over SSH that is the login directory. Measured
+  // 2026-09-14 on a node with omnitron installed under `/opt/omnitron`:
+  //
+  //     Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tsx'
+  //     imported from /root/
+  //
+  // The daemon exited immediately, `stdio: 'ignore'` swallowed the reason,
+  // and `up` reported "verifying connectivity timed out (may still be
+  // initializing)" — a message that describes a slow start, about a process
+  // that was already gone. The same reasoning is written out in
+  // `service.ts`'s `serviceWorkdir`, for the supervisor's `WorkingDirectory`;
+  // the fork here needed it too and did not have it.
+  //
+  // `OMNITRON_CWD` still carries the operator's directory, which is what the
+  // daemon uses to find a project — that is a separate question from where
+  // its own dependencies live.
+  const spawned = spawnDaemon({
+    entryPath: daemonScript,
+    packageRoot: path.resolve(__dirname, '../..'),
+    operatorCwd: process.cwd(),
+    bootLogPath: path.join(expandPath(DEFAULT_DAEMON_CONFIG.logDir), 'daemon-boot.err.log'),
   });
-
-  child.unref();
 
   // Wait for daemon to be reachable via Unix socket
   const client = createDaemonClient(socketPath);
@@ -82,7 +101,13 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  s.stop('Daemon may have started — could not verify connectivity');
+  const outcome = describeStartupTimeout(spawned, maxWait);
+  s.stop(outcome.message);
+  if (outcome.ok) log.info(`  ${outcome.detail}`);
+  else {
+    log.error(`  ${outcome.detail}`);
+    process.exitCode = 1;
+  }
   await client.disconnect();
 }
 
@@ -176,6 +201,15 @@ export async function daemonPing(): Promise<void> {
     // there — this is the command an operator runs precisely to find out
     // which it is, so it must not answer with a guess.
     reportAbsence(await client.whyUnreachable() ?? { kind: 'unknown', reason: 'the ping did not return' });
+    // And say so in the exit code, which is the only part a script reads.
+    //
+    // This printed the reason and exited 0. Measured 2026-09-14, activating a
+    // new version on a remote node: the verification ran `omnitron ping`,
+    // got a zero exit with output, and reported the node upgraded and
+    // serving — while the text it had just captured was
+    // "Daemon is not running. Start it with `omnitron up`." Every word true,
+    // the verdict wrong, and the caller had no way to tell.
+    process.exitCode = 1;
   }
 
   await client.disconnect();

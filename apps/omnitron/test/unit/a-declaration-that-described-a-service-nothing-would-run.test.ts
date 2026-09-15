@@ -262,3 +262,58 @@ describe('which network a stack runs a service on', () => {
     expect(chosen!.systemdUnit).toBe('bitcoind');
   });
 });
+
+describe('a unit the host does not have', () => {
+  const withUnit = spec({
+    systemdUnit: 'bitcoind',
+    unitContent: '[Service]\nExecStart=/usr/local/bin/bitcoind',
+    user: 'bitcoin',
+  });
+
+  it('is written, systemd is told, and then the service is started', () => {
+    const plan = planBareMetal(withUnit, observe({ unitKnown: false, unitActive: false, unitEnabled: false, unitContent: null }));
+
+    // A binary installed from an upstream tarball ships no unit, and the
+    // alternative to declaring one is an `installCommand` that writes a
+    // service file as a side effect of "installing" — which is where
+    // hardening goes to be forgotten.
+    expect(kinds(plan)).toEqual(['write-unit', 'daemon-reload', 'enable-unit', 'start-unit']);
+    expect(plan.refusals).toEqual([]);
+  });
+
+  it('is left alone when somebody else wrote it', () => {
+    const plan = planBareMetal(withUnit, observe({ unitContent: '[Service]\nExecStart=/snap/bin/bitcoin-core.daemon' }));
+
+    // Same rule as a config file and for a stronger reason: a unit somebody
+    // else wrote is how their service starts. The node this was written for
+    // has exactly such a unit, pointing at a binary that is not installed.
+    expect(kinds(plan)).toEqual([]);
+    expect(plan.refusals[0]).toContain('was not written by omnitron');
+  });
+
+  it('restarts the service when its own unit changes', () => {
+    const plan = planBareMetal(withUnit, observe({ unitContent: `${OMNITRON_CONFIG_MARKER}\n[Service]\nExecStart=/old/bitcoind` }));
+
+    expect(kinds(plan)).toEqual(['write-unit', 'daemon-reload', 'restart-unit']);
+    expect((plan.actions.at(-1) as { because: string }).because).toMatch(/unit changed/);
+  });
+
+  it('still refuses when there is no unit and no template for one', () => {
+    const plan = planBareMetal(spec({ systemdUnit: 'bitcoind' }), observe({ unitKnown: false }));
+
+    expect(plan.refusals[0]).toMatch(/provides no `unitTemplate`/);
+  });
+
+  it('writes nothing at all when a placeholder is unfilled', () => {
+    const plan = planBareMetal(
+      spec({ systemdUnit: 'bitcoind', unitContent: 'ExecStart=x --datadir=${dataDir}', unresolved: ['${dataDir}'] }),
+      observe({ unitKnown: false, unitContent: null }),
+    );
+
+    // A unit naming a data directory it could not resolve starts a chain
+    // daemon in the wrong place, and the wrong place is a second copy of
+    // the chain.
+    expect(kinds(plan)).toEqual([]);
+    expect(plan.refusals[0]).toContain('${dataDir}');
+  });
+});

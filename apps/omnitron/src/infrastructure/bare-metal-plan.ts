@@ -35,6 +35,10 @@ export interface BareMetalSpec {
   dataDir?: string | undefined;
   user?: string | undefined;
   validateCommand?: string | undefined;
+  /** Where the unit file goes, when this provides one. */
+  unitFile?: string | undefined;
+  /** Rendered unit content, when the host has no unit to adopt. */
+  unitContent?: string | undefined;
   /**
    * Placeholders the template could not fill.
    *
@@ -58,6 +62,8 @@ export interface BareMetalObservation {
   unitEnabled: boolean;
   /** Current contents of `configFile`, or null when it is not there. */
   configContent: string | null;
+  /** Current contents of `unitFile`, or null when it is not there. */
+  unitContent?: string | null | undefined;
 }
 
 export type BareMetalAction =
@@ -65,6 +71,8 @@ export type BareMetalAction =
   | { type: 'create-user'; user: string }
   | { type: 'create-data-dir'; path: string; owner: string | undefined }
   | { type: 'write-config'; path: string; content: string; owner: string | undefined; mode: string }
+  | { type: 'write-unit'; path: string; content: string }
+  | { type: 'daemon-reload' }
   | { type: 'enable-unit'; unit: string }
   | { type: 'start-unit'; unit: string }
   | { type: 'restart-unit'; unit: string; because: string };
@@ -123,10 +131,11 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
 
   // 4. Its configuration.
   let configChanged = false;
-  if (spec.unresolved && spec.unresolved.length > 0) {
+  const hasUnfilled = Boolean(spec.unresolved && spec.unresolved.length > 0);
+  if (hasUnfilled) {
     refusals.push(
-      `${spec.name}'s config template still has ${spec.unresolved.join(', ')} in it — ` +
-        'nothing resolved those, and writing the file as it stands would configure the service with a placeholder.',
+      `${spec.name}'s templates still have ${spec.unresolved!.join(', ')} in them — ` +
+        'nothing resolved those, and writing the files as they stand would configure the service with a placeholder.',
     );
   } else if (spec.configFile && spec.configContent !== undefined) {
     const wanted = withMarker(spec.configContent);
@@ -144,21 +153,51 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
     }
   }
 
-  // 5. The unit.
-  if (spec.systemdUnit) {
-    if (!observed.unitKnown) {
+  // 5. The unit itself, when nothing on the host provides one.
+  let unitChanged = false;
+  if (spec.systemdUnit && spec.unitContent !== undefined && !hasUnfilled) {
+    const path = spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`;
+    const wanted = withMarker(spec.unitContent);
+    const current = observed.unitContent ?? null;
+
+    if (current === null) {
+      actions.push({ type: 'write-unit', path, content: wanted });
+      unitChanged = true;
+    } else if (!current.includes(OMNITRON_CONFIG_MARKER)) {
+      // Same rule as a config file, and for a stronger reason: a unit
+      // somebody else wrote is how their service starts.
       refusals.push(
-        `systemd does not know a unit called \`${spec.systemdUnit}\` — the package that provides it may not be installed yet.`,
+        `${path} was not written by omnitron, so it is left alone. ` +
+          `Add \`${OMNITRON_CONFIG_MARKER}\` to it to let this manage it.`,
+      );
+    } else if (normalise(current) !== normalise(wanted)) {
+      actions.push({ type: 'write-unit', path, content: wanted });
+      unitChanged = true;
+    }
+
+    if (unitChanged) actions.push({ type: 'daemon-reload' });
+  }
+
+  // 6. Its state.
+  if (spec.systemdUnit) {
+    if (!observed.unitKnown && !unitChanged) {
+      refusals.push(
+        `systemd does not know a unit called \`${spec.systemdUnit}\`, and this declaration provides no \`unitTemplate\` — nothing here can create it.`,
       );
     } else {
       if (!observed.unitEnabled) actions.push({ type: 'enable-unit', unit: spec.systemdUnit });
 
       if (!observed.unitActive) {
         actions.push({ type: 'start-unit', unit: spec.systemdUnit });
-      } else if (configChanged) {
+      } else if (configChanged || unitChanged) {
         // A running service holds the configuration it started with. Last,
         // so the file is already in place when it re-reads it.
-        actions.push({ type: 'restart-unit', unit: spec.systemdUnit, because: 'its configuration changed' });
+        actions.push({
+          type: 'restart-unit',
+          unit: spec.systemdUnit,
+          because: configChanged && unitChanged ? 'its unit and configuration changed'
+            : unitChanged ? 'its unit changed' : 'its configuration changed',
+        });
       }
     }
   }
@@ -284,17 +323,33 @@ export function selectBareMetal(
   if (merged.user) spec.user = merged.user;
   if (merged.validateCommand) spec.validateCommand = merged.validateCommand;
 
+  const values = {
+    ports: requirement.ports,
+    secrets: requirement.secrets,
+    dataDir: merged.dataDir,
+    user: merged.user,
+    bindAddress: merged.bindAddress,
+  };
+  const unresolved: string[] = [];
+
   if (merged.configTemplate) {
-    const rendered = renderConfigTemplate(merged.configTemplate, {
-      ports: requirement.ports,
-      secrets: requirement.secrets,
-      dataDir: merged.dataDir,
-      user: merged.user,
-      bindAddress: merged.bindAddress,
-    });
+    const rendered = renderConfigTemplate(merged.configTemplate, values);
     spec.configContent = rendered.content;
-    if (rendered.unresolved.length > 0) spec.unresolved = rendered.unresolved;
+    unresolved.push(...rendered.unresolved);
   }
+
+  const withUnit = merged as typeof merged & { unitTemplate?: string; unitFile?: string };
+  if (withUnit.unitTemplate) {
+    const rendered = renderConfigTemplate(withUnit.unitTemplate, values);
+    spec.unitContent = rendered.content;
+    unresolved.push(...rendered.unresolved);
+  }
+  if (withUnit.unitFile) spec.unitFile = withUnit.unitFile;
+
+  // A placeholder anywhere stops everything. A unit that names a data
+  // directory it could not resolve starts a daemon in the wrong place, and
+  // for a chain daemon the wrong place is a second copy of the chain.
+  if (unresolved.length > 0) spec.unresolved = [...new Set(unresolved)];
 
   return spec;
 }

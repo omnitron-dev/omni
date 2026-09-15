@@ -199,6 +199,75 @@ export class ExecutionService {
   /**
    * Execute command on a remote host via SSH.
    */
+  /**
+   * A local port that speaks to `remotePort` on the target, over SSH.
+   *
+   * The master reaches a node's daemon on its TCP port. A node whose firewall
+   * allows only SSH — which is the normal posture for a machine on the public
+   * internet, and what the first provisioned node turned out to have — is
+   * then unreachable, and the mesh it is supposed to join cannot form. The
+   * symptom is silence: the node answers SSH, deploys fine, reports healthy,
+   * and replicates nothing.
+   *
+   * Measured on that node: `ss -ltn` shows the daemon on `0.0.0.0:9700`, and
+   * `ufw status` allows 22/tcp and three ports from one private address. A
+   * direct connection times out; through this, the same daemon answers.
+   *
+   * Opening the port on the node would be the other fix, and it is worse: it
+   * asks every operator to widen a firewall for a control plane that already
+   * holds SSH credentials for the machine. Whoever can open this tunnel can
+   * already run commands there.
+   *
+   * The caller owns the returned handle and must `close()` it — each one
+   * holds an SSH connection.
+   */
+  async tunnel(
+    target: SSHTarget,
+    remotePort: number,
+    options?: { remoteHost?: string; localHost?: string },
+  ): Promise<{ host: string; port: number; close(): Promise<void> }> {
+    const engine = await this.getEngine();
+    if (!engine) throw new Error('SSH tunnelling needs the xec engine, which is not available');
+
+    const ssh = engine.ssh({
+      host: target.host,
+      port: target.port ?? 22,
+      username: target.username ?? 'root',
+      ...(target.privateKey && { privateKey: target.privateKey }),
+      ...(target.passphrase && { passphrase: target.passphrase }),
+      ...(target.password && { password: target.password }),
+    });
+
+    if (typeof ssh.tunnel !== 'function') {
+      throw new Error('The installed @xec-sh/core has no SSH tunnel support');
+    }
+
+    // `remoteHost` is resolved ON the node, so loopback is the node's own
+    // daemon rather than ours.
+    const handle = await ssh.tunnel({
+      localHost: options?.localHost ?? '127.0.0.1',
+      remoteHost: options?.remoteHost ?? '127.0.0.1',
+      remotePort,
+    });
+
+    this.logger.debug(
+      { host: target.host, localPort: handle.localPort, remotePort },
+      'SSH tunnel open',
+    );
+
+    return {
+      host: handle.localHost ?? '127.0.0.1',
+      port: handle.localPort,
+      close: async () => {
+        try {
+          await handle.close();
+        } catch (err) {
+          this.logger.debug({ host: target.host, error: (err as Error).message }, 'SSH tunnel close failed');
+        }
+      },
+    };
+  }
+
   async ssh(target: SSHTarget, command: string, options?: ExecOptions): Promise<ExecResult> {
     const engine = await this.getEngine();
     const start = Date.now();

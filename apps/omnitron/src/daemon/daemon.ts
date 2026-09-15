@@ -845,6 +845,10 @@ export class OmnitronDaemon {
       // generated password usable: a data directory keeps the one it was
       // initialised with.
       isSlave ? await container.resolveAsync(SECRETS_SERVICE_TOKEN).catch(() => undefined) as never : undefined,
+      // The logger, because the one thing this service says on its own — that
+      // a deployment is running on a default credential — is said at error
+      // level and reaches nobody without it.
+      loggerModule.logger.child({ component: 'infra' }),
     );
     await this.app.netron.peer.exposeService(infraRpcService);
 

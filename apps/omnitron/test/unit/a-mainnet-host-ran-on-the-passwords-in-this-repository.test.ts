@@ -267,3 +267,29 @@ describe('asking whether a volume exists', () => {
     await expect(volumeExists('omnitron-test-definitely-not-a-real-volume-xyz')).resolves.toBe(false);
   });
 });
+
+describe('the report that a deployment is on a default credential', () => {
+  it('goes to the logger the daemon passed', async () => {
+    const { withGeneratedCredentials } = await import('../../src/infrastructure/service-credentials.js');
+    const errors: string[] = [];
+    // Shaped like the daemon's logger, because that is what gets passed and
+    // a callback the real one cannot satisfy is a test that proves nothing.
+    const logger = { error: (obj: object, msg?: string) => errors.push(`${msg} ${JSON.stringify(obj)}`) };
+
+    await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
+      project: 'daos', stack: 'test', vault: vault(),
+      hasExistingState: async () => true,
+      onLeftOnDefault: (service, field) =>
+        logger.error({ service, secret: field }, `${service} is still on its default ${field}`),
+    });
+
+    // A volume that exists means the service was initialised with some other
+    // password, so nothing is generated — and the whole value of that
+    // decision is in saying it. The logger was an optional constructor
+    // argument that nothing passed: the mechanism worked and reported to
+    // nobody, which is the same shape as the defects it exists to prevent.
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/postgres is still on its default password/);
+    expect(errors[0]).toContain('"service":"postgres"');
+  });
+});

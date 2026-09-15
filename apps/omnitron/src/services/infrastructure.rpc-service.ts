@@ -50,7 +50,16 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * nothing is generated — there is nothing to generate it for.
      */
     private readonly vault?: import('../infrastructure/service-credentials.js').CredentialStore,
-    private readonly logger?: { error?: (o: unknown, m?: string) => void } | undefined,
+    /**
+     * Where this service says what only it knows.
+     *
+     * Optional in the type and required in practice: the one thing
+     * `provisionStack` reports on its own — that a deployment is running on
+     * a default credential — is said at error level, and an absent logger
+     * turns a safety mechanism into a silent one. It was absent, and the
+     * mechanism worked and said nothing.
+     */
+    private readonly logger?: { error(obj: object, msg?: string, ...args: any[]): void } | undefined,
   ) {}
 
   /**
@@ -185,7 +194,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
             // ERROR, because this is a public host running on a published
             // password and nothing else will say so. Naming the fix, because
             // the fix is destructive and must be a decision.
-            this.logger?.error?.(
+            this.logger?.error(
               { service, secret: field },
               `${service} predates generated credentials and is still on its default ${field}. ` +
                 'Its volume holds the old one, so changing it here would break the service. ' +

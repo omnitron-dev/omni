@@ -1330,7 +1330,40 @@ export class ProjectService extends EventEmitter {
         continue;
       }
 
-      // 2. Deploy app artifacts via SSH
+      // 2. Bring up the stack's infrastructure, ON the node, before the
+      //    applications that need it arrive.
+      //
+      //    This step did not exist. A remote stack provisioned the daemon,
+      //    shipped the artifacts and opened the mesh connection, and the
+      //    stack's `infrastructure` block — its Postgres, its Redis, its
+      //    MinIO — was read by the master and never left it. The
+      //    applications started on the node and had nothing to connect to,
+      //    which surfaces as every one of them failing its first query
+      //    rather than as a missing deployment step.
+      //
+      //    Ordered before the artifacts deliberately: an app that starts
+      //    against a database that is not there yet spends its startup
+      //    budget retrying, and a supervisor's deadline turns that into a
+      //    crash loop over a condition that would have resolved.
+      if (stackConfig.infrastructure) {
+        const ready = await this.provisionNodeInfrastructure(
+          connector,
+          node,
+          stackConfig.infrastructure as import('../infrastructure/types.js').InfrastructureConfig,
+        );
+        if (!ready) {
+          // Not fatal: a node whose infrastructure is incomplete can still
+          // be looked at, and stopping here would leave the fleet in a state
+          // no command describes. It is said at error level with the node,
+          // and the applications will say the rest.
+          this.logger.error(
+            { node: nodeKey, stack: stackName },
+            'Node infrastructure is not ready — deploying anyway, applications may not reach their databases',
+          );
+        }
+      }
+
+      // 3. Deploy app artifacts via SSH
       if (artifacts.length > 0) {
         const unsubDeploy = this.deployer.onProgress((progress) => {
           this.emit('stack:deploy_progress', projectName, stackName, progress);
@@ -1343,7 +1376,7 @@ export class ProjectService extends EventEmitter {
         }
       }
 
-      // 3. Connect master to slave daemon via Netron TCP
+      // 4. Connect master to slave daemon via Netron TCP
       await connector.addSlave({
         host: node.host,
         port: node.port ?? 9700,
@@ -1351,6 +1384,54 @@ export class ProjectService extends EventEmitter {
         stack: stackName,
         project: projectName,
       });
+    }
+  }
+
+  /**
+   * Ask a node to bring up the infrastructure a stack declares.
+   *
+   * Over the mesh connection rather than over SSH: the node already runs a
+   * reconciler that knows how to wait on a container's health, how to detect
+   * a drifted spec, and how to clean up a phantom endpoint. Driving `docker`
+   * over SSH from here would be a second implementation of all of it, on the
+   * side of the wire with the least information.
+   *
+   * The connection is opened for this and kept — it is the same one the mesh
+   * uses afterwards, so the node is joined by the time its applications
+   * start rather than at the next heartbeat.
+   */
+  private async provisionNodeInfrastructure(
+    connector: SlaveConnector,
+    node: { host: string; port?: number | undefined; label?: string | undefined },
+    infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
+  ): Promise<boolean> {
+    const host = node.host;
+    const port = node.port ?? 9700;
+
+    await connector.addSlave({ host, port, label: node.label });
+
+    try {
+      const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
+        { config: infrastructure },
+      ])) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
+
+      this.logger.info(
+        {
+          node: `${host}:${port}`,
+          ready: report?.ready ?? false,
+          running: report?.running?.length ?? 0,
+          missing: report?.missing ?? [],
+          failed: report?.failed ?? [],
+        },
+        report?.detail ?? 'Node infrastructure provisioned',
+      );
+      return report?.ready === true;
+    } catch (err) {
+      this.logger.error(
+        { node: `${host}:${port}`, error: (err as Error).message },
+        'Could not bring up this node\'s infrastructure',
+      );
+      return false;
     }
   }
 

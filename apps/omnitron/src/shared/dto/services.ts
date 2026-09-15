@@ -349,6 +349,19 @@ export interface IOmnitronDeployService {
  * console's build.
  */
 export interface IOmnitronInfraService {
+  /**
+   * Bring up a stack's infrastructure on THIS node.
+   *
+   * The node executes; the master orchestrates. Refused by a daemon that
+   * does not host one, rather than quietly doing nothing.
+   */
+  provisionStack(data: { config: import('../../infrastructure/types.js').InfrastructureConfig }): Promise<{
+    ready: boolean;
+    detail: string;
+    running: string[];
+    failed: Array<{ name: string; status: string; error: string | null }>;
+    missing: string[];
+  }>;
   getState(): Promise<InfrastructureState | null>;
   listContainers(): Promise<ContainerState[]>;
   getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null>;

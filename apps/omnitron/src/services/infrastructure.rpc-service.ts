@@ -9,6 +9,8 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import type { InfrastructureConfig } from '../infrastructure/types.js';
+import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 import {
@@ -21,7 +23,77 @@ import {
 
 @Service({ name: 'OmnitronInfra' })
 export class InfrastructureRpcService implements IOmnitronInfraService {
-  constructor(private readonly getInfra: () => InfrastructureService | null) {}
+  constructor(
+    private readonly getInfra: () => InfrastructureService | null,
+    /**
+     * How this daemon builds and adopts an infrastructure it is asked for.
+     *
+     * The daemon does it, not this service: it holds the logger the node
+     * logs through, and it is what has to remember the result — the same
+     * field `getState`, the health indicator and the shutdown path read.
+     *
+     * Absent on a daemon that will not host one, and the call is then
+     * refused by name rather than silently doing nothing, which is the
+     * difference between "this node does not do that" and "it worked".
+     */
+    private readonly hostInfra?: (config: InfrastructureConfig) => InfrastructureService,
+  ) {}
+
+  /**
+   * Bring up the infrastructure a stack needs, here, on this node.
+   *
+   * A node deployed to by `omnitron stack start` received its applications
+   * and nothing for them to connect to. `startRemoteStack` provisioned the
+   * daemon, shipped the artifacts and opened the mesh connection; the
+   * stack's `infrastructure` block — its Postgres, its Redis, its MinIO —
+   * was read by the master and never left it. Worse, a provisioned slave is
+   * started with `--no-infra`, and the boot path is guarded by
+   * `config.infrastructure && !isSlave`, so a node would not have acted on
+   * one even if it had been given one.
+   *
+   * Everything needed was already here. `InfrastructureService` reconciles
+   * containers against a desired set, waits on health, and keeps a janitor
+   * for stale endpoints; it runs against the `docker` CLI directly, which is
+   * what a provisioned node has. The only thing missing was a way to ask.
+   *
+   * The master orchestrates and the node executes, which is the same
+   * division the mesh already uses: a node that loses its master keeps
+   * supervising what it was given.
+   *
+   * Idempotent, because reconciliation is: calling it twice with the same
+   * config leaves the containers alone and returns the same report.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async provisionStack(data: { config: InfrastructureConfig }): Promise<{
+    ready: boolean;
+    detail: string;
+    running: string[];
+    failed: Array<{ name: string; status: string; error: string | null }>;
+    missing: string[];
+  }> {
+    if (!this.hostInfra) {
+      throw Errors.badRequest('This daemon does not host stack infrastructure.');
+    }
+    if (!data?.config || typeof data.config !== 'object') {
+      throw Errors.badRequest('provisionStack requires an `infrastructure` config.');
+    }
+
+    // Reused when this node already has one: reconciliation is idempotent,
+    // and building a second service would give the node two janitors and
+    // two health monitors over one set of containers.
+    const service = this.getInfra() ?? this.hostInfra(data.config);
+
+    const state = await service.provision();
+    const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
+
+    return {
+      ready: outcome.ready,
+      detail: describeProvisioning(outcome),
+      running: outcome.running.map((s) => s.name),
+      failed: outcome.failed.map((s) => ({ name: s.name, status: String(s.status), error: s.error ?? null })),
+      missing: outcome.missing.map((s) => s.name),
+    };
+  }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getState(): Promise<InfrastructureState | null> {

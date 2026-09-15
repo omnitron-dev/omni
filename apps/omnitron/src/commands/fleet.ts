@@ -173,11 +173,21 @@ export async function fleetUpgradeCommand(
   nodeNames: string[],
   options: { dryRun?: boolean; keep?: number } = {},
 ): Promise<void> {
-  const { createDaemonClient } = await import('../daemon/daemon-client.js');
+  const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await import('../daemon/daemon-client.js');
   const { requireDaemon } = await import('./daemon-required.js');
   const { planUpgrade, runUpgrade } = await import('../services/node-upgrade.js');
 
-  const client = createDaemonClient();
+  // The long timeout, for the same reason `start` and `stop` use it: the call
+  // this makes IS the work. Installing a bundle is a transfer of tens of
+  // megabytes plus an `npm install` of 150 packages on the far side — minutes,
+  // against netron's 60-second default.
+  //
+  // Measured 2026-09-15, the first live run: "RPC request timed out after
+  // 60000ms", reported as the upgrade failing, while the node went on
+  // installing perfectly well. A timeout shorter than the work turns a
+  // successful operation into a failed report and leaves the caller with no
+  // idea which it was.
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   if (!(await requireDaemon(client, 'cannot upgrade a fleet'))) {
     await client.disconnect();
     return;
@@ -192,18 +202,27 @@ export async function fleetUpgradeCommand(
       name: n.name,
       currentVersion: n.status?.omnitronVersion ?? null,
       isLocal: n.isLocal,
-      // The last check is what we have. A node that answered it is worth
-      // shipping to; one that did not would spend the transfer's whole
-      // timeout telling us what we already know.
-      reachable: Boolean(n.status?.omnitronConnected),
+      // SSH, not the daemon: that is the channel an upgrade travels over. A
+      // node whose daemon is unreachable is often exactly the one to upgrade.
+      sshReachable: n.status?.sshConnected ?? null,
     }));
 
     // Built before the plan is printed, because the plan names the version
     // and the version comes from the build.
-    const { buildBundle, archiveBundle } = await import('../services/bundle-builder.js');
+    const { buildBundle, archiveBundle, findWorkspaceRoot } = await import('../services/bundle-builder.js');
     const path = await import('node:path');
     const os = await import('node:os');
-    const workspaceRoot = path.resolve(process.cwd());
+    // Not `process.cwd()`: run from `apps/omnitron`, that is two levels below
+    // the packages this has to bundle, and the failure it produces —
+    // "@omnitron-dev/omnitron is not a package in this workspace" — is true of
+    // the directory and says nothing about the mistake.
+    const workspaceRoot = findWorkspaceRoot(process.cwd());
+    if (!workspaceRoot) {
+      log.error('This command builds omnitron from source, and there is no workspace above this directory.');
+      log.info('  Run it from inside the omnitron repository.');
+      process.exitCode = 1;
+      return;
+    }
     const staging = path.join(os.tmpdir(), `omnitron-bundle-${process.pid}`);
 
     const s = spinner();

@@ -93,7 +93,9 @@ import type { BackupInfo } from './backups.js';
 import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
-import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig } from './nodes.js';
+import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig,
+  IMeshNodeStatus,
+} from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
 
@@ -475,6 +477,13 @@ export interface IOmnitronNodesService {
   updateNode(data: { id: string } & UpdateNodeInput): Promise<INode>;
   removeNode(data: { id: string }): Promise<void>;
   checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
+  /**
+   * Whether each node is replicating, and how it is being reached.
+   *
+   * Separate from `checkNodeStatus`, which answers "can this master reach
+   * it". A node can pass every reachability check and deliver nothing.
+   */
+  getMeshStatus(): Promise<IMeshNodeStatus[]>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;

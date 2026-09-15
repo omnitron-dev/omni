@@ -970,6 +970,9 @@ export class OmnitronDaemon {
         this.slaveConnector = connector;
         const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
         projectService.setSlaveConnector(connector);
+        // So the console can answer "is this node replicating", which is a
+        // different question from "can this master reach it".
+        nodeManagerRpcService.setSlaveConnector(connector);
         this.meshHandle = startMesh({ registry: nodeManager, connector, logger: meshLogger });
       } catch (err) {
         // A master with no mesh still supervises its own apps, so this does

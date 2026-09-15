@@ -337,3 +337,51 @@ describe('the id a replicated row is stored under', () => {
     expect(stableNodeUuid('10.0.0.7', 9700)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 });
+
+describe('what the console is told about the mesh', () => {
+  async function rpc(nodes: Array<{ id: string; host: string; daemonPort: number }>, connections: unknown[]) {
+    const { NodeManagerRpcService } = await import('../../src/services/node-manager.rpc-service.js');
+    const service = new NodeManagerRpcService({ listNodes: () => nodes } as never);
+    service.setSlaveConnector({ getConnections: () => connections } as never);
+    return service.getMeshStatus();
+  }
+
+  const registered = [{ id: 'n1', host: '10.0.0.7', daemonPort: 9700 }];
+
+  it('reports a registered node the master never dialled', async () => {
+    const [row] = await rpc(registered, []);
+
+    // The state every node was in: in the registry, shown healthy, connected
+    // to by nothing.
+    expect(row).toMatchObject({ nodeId: 'n1', inMesh: false, status: 'disconnected', authenticated: false, via: null });
+  });
+
+  it('reports how a joined node is reached', async () => {
+    const [row] = await rpc(registered, [
+      { host: '10.0.0.7', port: 9700, status: 'connected', via: 'ssh-tunnel', authenticated: true, lastHeartbeat: 1700, lastError: null },
+    ]);
+
+    expect(row).toMatchObject({ inMesh: true, status: 'connected', via: 'ssh-tunnel', authenticated: true, lastHeartbeat: 1700 });
+  });
+
+  it('matches a connection to a node on the daemon port, not the host alone', async () => {
+    // Two daemons on one machine are two nodes. Keyed on the host alone,
+    // each would be shown the other's membership.
+    const rows = await rpc(
+      [{ id: 'a', host: '10.0.0.7', daemonPort: 9700 }, { id: 'b', host: '10.0.0.7', daemonPort: 9800 }],
+      [{ host: '10.0.0.7', port: 9800, status: 'connected', via: 'direct', authenticated: true, lastHeartbeat: 1, lastError: null }],
+    );
+
+    expect(rows.find((r) => r.nodeId === 'a')!.inMesh).toBe(false);
+    expect(rows.find((r) => r.nodeId === 'b')!.inMesh).toBe(true);
+  });
+
+  it('answers without a connector at all', async () => {
+    const { NodeManagerRpcService } = await import('../../src/services/node-manager.rpc-service.js');
+    const service = new NodeManagerRpcService({ listNodes: () => registered } as never);
+
+    // A daemon whose mesh failed to start still serves this page, and the
+    // honest answer there is "not joined" — which is exactly true.
+    await expect(service.getMeshStatus()).resolves.toMatchObject([{ nodeId: 'n1', inMesh: false }]);
+  });
+});

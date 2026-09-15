@@ -355,11 +355,23 @@ export class ProjectService extends EventEmitter {
         const { isDockerAvailable, ensureImage } = await import('../infrastructure/container-runtime.js');
         const dockerReady = await isDockerAvailable();
         if (dockerReady) {
-          // Pull images in background (don't block stack creation)
+          // Pull images in background (don't block stack creation).
+          //
+          // Asked of the presets, not spelled again here. These three were
+          // written out a second time, and the copies had already drifted:
+          // this one named `minio/minio:latest`, which Docker Hub answers
+          // `pull access denied` for, while the preset named the image the
+          // resolver actually uses. A prefetch that pulls something else is
+          // worse than none — it reports success and warms nothing.
+          const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
+          const presets = createDefaultRegistry();
           const images = new Set<string>();
-          if (stackConfig.infrastructure.postgres) images.add('postgres:17-alpine');
-          if (stackConfig.infrastructure.redis) images.add('redis:7-alpine');
-          if (stackConfig.infrastructure.minio) images.add('minio/minio:latest');
+          for (const name of ['postgres', 'redis', 'minio'] as const) {
+            if (!stackConfig.infrastructure[name]) continue;
+            const declared = (stackConfig.infrastructure[name] as { image?: string }).image;
+            const image = declared ?? presets.get(name)?.defaultImage;
+            if (image) images.add(image);
+          }
           for (const img of images) {
             ensureImage(img).catch((err: Error) =>
               this.logger.warn({ image: img, error: err.message }, 'Failed to pull image')

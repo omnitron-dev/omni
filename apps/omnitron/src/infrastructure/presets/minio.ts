@@ -11,7 +11,23 @@ import type { IServicePreset, IPostProvisionContext } from './types.js';
 export const minioPreset: IServicePreset = {
   name: 'minio',
   type: 'storage',
-  defaultImage: 'minio/minio',
+  /**
+   * quay.io, and pinned.
+   *
+   * `minio/minio` on Docker Hub answers `pull access denied ... repository
+   * does not exist or may require 'docker login'` — for `:latest` and for an
+   * exact RELEASE tag alike. The image is still in the local cache of every
+   * machine that pulled it before the change, which is why nothing noticed:
+   * the development host runs it happily and a NEW node cannot get it at
+   * all. Measured provisioning the test server, where MinIO was the one
+   * service of three that did not come up.
+   *
+   * Pinned rather than `:latest`, because an unpinned tag is how this
+   * arrived: a config that names no version cannot be reasoned about after
+   * the registry changes under it, and "it worked yesterday" stops being
+   * evidence of anything.
+   */
+  defaultImage: 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
   defaultPorts: { api: 9000, console: 9001 },
   defaultSecrets: { accessKey: 'minioadmin', secretKey: 'minioadmin' },
 

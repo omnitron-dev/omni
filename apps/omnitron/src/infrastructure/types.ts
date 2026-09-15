@@ -74,7 +74,7 @@ export interface RedisServiceConfig {
 }
 
 export interface MinioServiceConfig {
-  image?: string; // Default: 'minio/minio'
+  image?: string; // Default: the minio preset's pinned quay.io image
   ports?: { api?: number; console?: number }; // Default: 9000, 9001
   accessKey?: string;
   secretKey?: string | SecretRef;

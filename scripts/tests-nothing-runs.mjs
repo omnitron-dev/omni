@@ -41,8 +41,14 @@
  * reports nothing, and a runner that stops answering must not look like a
  * discovery.
  *
- * Usage: node scripts/tests-nothing-runs.mjs [--json]
+ * Usage: node scripts/tests-nothing-runs.mjs [--json] [--root <dir>]
  * Takes a few minutes: it starts each runner once per config.
+ *
+ * `--root` points it at another repository. Without it the root is THIS
+ * script's repository, not the working directory — which is the right default
+ * for a scan invoked from anywhere inside its own tree, and a trap when the
+ * question is about a different monorepo: run it from there and it silently
+ * measures this one, reporting a clean result for a tree it never read.
  */
 
 import { execSync, execFileSync } from 'node:child_process';
@@ -51,8 +57,18 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 import { stripComments } from './lib/strip-comments.mjs';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
+const rootArg = process.argv.indexOf('--root');
+const ROOT = resolve(
+  rootArg !== -1 && process.argv[rootArg + 1]
+    ? process.argv[rootArg + 1]
+    : new URL('..', import.meta.url).pathname,
+);
 const JSON_OUT = process.argv.includes('--json');
+
+if (!existsSync(join(ROOT, '.git'))) {
+  console.error(`not a repository: ${ROOT}`);
+  process.exit(2);
+}
 
 /**
  * Deliberate absences, each with the reason it is deliberate. An entry here
@@ -176,15 +192,24 @@ const globToRe = (g) =>
 // A scan that silently skips is the thing this scan is about. Both ways of
 // not being checked are counted and printed.
 const selfCheck = [];
+const notAnchored = [];
 {
   // The exclude reader must see a real one. `apps/omnitron` excludes exactly
   // one file and writes down why; if this stops matching, every deliberate
   // exclusion starts reading as a finding.
-  const omni = existsSync(join(ROOT, 'apps/omnitron/vitest.config.ts'))
-    ? excludedBy('apps/omnitron', ['vitest.config.ts'])
-    : [];
-  if (!omni.some((g) => g.includes('orchestrator'))) {
-    selfCheck.push('the exclude reader no longer sees apps/omnitron’s one written-down exclusion');
+  //
+  // Two anchors below name files in THIS repository. Under `--root` they may
+  // not exist, and an anchor whose subject is absent has not been violated —
+  // it has not been evaluated. The first version treated the two the same and
+  // exited 2 on a healthy tree, which is the shape this scan exists to catch
+  // pointed at itself: a check that cannot run, reported as a verdict.
+  if (existsSync(join(ROOT, 'apps/omnitron/vitest.config.ts'))) {
+    const omni = excludedBy('apps/omnitron', ['vitest.config.ts']);
+    if (!omni.some((g) => g.includes('orchestrator'))) {
+      selfCheck.push('the exclude reader no longer sees apps/omnitron’s one written-down exclusion');
+    }
+  } else {
+    notAnchored.push('the exclude reader (no apps/omnitron/vitest.config.ts under this root)');
   }
   // The playwright reader must find a testDir. prism runs its e2e and its
   // accessibility suites from one; if this returns nothing, 56 prism files
@@ -192,8 +217,11 @@ const selfCheck = [];
   if (existsSync(join(ROOT, 'packages/prism/playwright.config.ts'))) {
     const got = playwrightCollects('packages/prism', 'playwright.config.ts');
     if (!got || got.length === 0) selfCheck.push('the playwright reader found no tests under prism’s testDir');
+  } else {
+    notAnchored.push('the playwright reader (no packages/prism/playwright.config.ts under this root)');
   }
-  // The glob translation must actually match what it is given.
+  // The glob translation must actually match what it is given. This one needs
+  // no repository and so always runs.
   if (!globToRe('test/runtime/**/*.ts').test('test/runtime/a/b.ts') || globToRe('test/*.ts').test('test/a/b.ts')) {
     selfCheck.push('glob translation is wrong in one direction or the other');
   }
@@ -201,6 +229,11 @@ const selfCheck = [];
 if (selfCheck.length) {
   console.error(`SELF-CHECK FAILED: ${selfCheck.join('; ')}`);
   process.exit(2);
+}
+if (notAnchored.length && !JSON_OUT) {
+  console.error(
+    `note: ${notAnchored.length} self-check(s) had nothing to anchor on here — ${notAnchored.join('; ')}`,
+  );
 }
 
 const orphans = [];

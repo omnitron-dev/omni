@@ -150,6 +150,31 @@ function stackLabels(): Record<string, string> {
  * - Service is disabled by stack override
  * - Stack override provides an external address
  */
+/**
+ * An HTTP probe that works in the image it runs in.
+ *
+ * `curl -sf` was the generic form, and alpine-based images do not ship curl.
+ * Measured on the gateway: `/bin/sh: curl: not found`, exit 1, every ten
+ * seconds forever — a container serving traffic correctly (the onion in
+ * front of it answered 200) reported `unhealthy` for its whole life, and
+ * `provisionStack` reported the stack NOT ready because of it.
+ *
+ * The lesson was already learned once in this file: `resolveOmnitronNginx`
+ * uses wget with a comment saying curl is not in the image. It was learned
+ * for one container and not for the generic path every other service takes.
+ *
+ * Tries curl, then wget, then falls back to failing. Both spellings, because
+ * busybox wget and GNU wget disagree about flags but agree about these:
+ * `-q` quiet, `-O -` to stdout, `-T` timeout.
+ */
+function httpProbe(url: string): string {
+  return (
+    `curl -sf --max-time 5 ${url} >/dev/null 2>&1 ` +
+    `|| wget -q -O /dev/null -T 5 ${url} >/dev/null 2>&1 ` +
+    '|| exit 1'
+  );
+}
+
 export function resolveServiceRequirement(
   serviceName: string,
   requirement: IServiceRequirement,
@@ -301,7 +326,7 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
       };
     case 'http':
       return {
-        test: ['CMD-SHELL', `curl -sf http://localhost${check.target} || exit 1`],
+        test: ['CMD-SHELL', httpProbe(`http://localhost${check.target}`)],
         interval: everyDefault(check.interval),
         timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,

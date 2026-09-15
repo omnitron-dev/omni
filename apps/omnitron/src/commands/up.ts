@@ -483,7 +483,78 @@ async function startBackground(
  *
  * Stop the daemon — stops ALL projects, ALL stacks, ALL infrastructure.
  */
+/**
+ * What stopping the daemon has to do, given how it was started.
+ *
+ * `down` killed the process — SIGTERM, then SIGKILL — and said "Daemon
+ * force-killed". When the daemon is installed as a service, that is not
+ * stopping it: the supervisor has `KeepAlive`, and it starts a new one as
+ * soon as the old one dies. Measured on this machine:
+ *
+ *     omnitron down   → "Daemon force-killed (PID: 69597)"
+ *     29 seconds later → a new daemon, PID 73095, PPID 1
+ *
+ * The command reported success, the operator believed the daemon was down,
+ * and anything done on that belief — rebuilding the package it runs from —
+ * ran against a live daemon. The plist's `ThrottleInterval` is 10 seconds,
+ * so the window in which the report is true is ten seconds wide.
+ *
+ * Unloading the service FIRST is the whole fix. Killing first and unloading
+ * second leaves the same race, smaller: the supervisor can start a
+ * replacement between the two.
+ */
+export interface DownPlan {
+  /** Steps in the order they must happen. */
+  steps: Array<'unload-service' | 'stop-process'>;
+  /** What the operator is told, when the daemon is supervised. */
+  note: string | null;
+}
+
+export function planDown(supervised: boolean): DownPlan {
+  if (!supervised) return { steps: ['stop-process'], note: null };
+
+  return {
+    steps: ['unload-service', 'stop-process'],
+    // Said because it is a change the operator did not ask for and will
+    // notice at the next login. `up` arms it again.
+    note: 'Autostart is off until `omnitron up` — the service is unloaded, so nothing will restart the daemon.',
+  };
+}
+
 export async function downCommand(): Promise<void> {
-  const { daemonStop } = await import('./daemon-cmd.js');
-  await daemonStop();
+  const { isServiceInstalled, serviceBootout } = await import('./service.js');
+  const plan = planDown(isServiceInstalled());
+
+  for (const step of plan.steps) {
+    if (step === 'unload-service') {
+      serviceBootout();
+      // The supervisor sends SIGTERM and waits; the daemon's own shutdown
+      // tasks run in that window. Give it the same budget the plist does
+      // before deciding the process needs stopping directly.
+      if (await waitForDaemonExit(35_000)) {
+        log.success('Daemon stopped, and its service is unloaded.');
+        if (plan.note) log.info(`  ${plan.note}`);
+        return;
+      }
+      log.warn('The service is unloaded but the daemon is still running — stopping the process directly.');
+      continue;
+    }
+
+    const { daemonStop } = await import('./daemon-cmd.js');
+    await daemonStop();
+    if (plan.note) log.info(`  ${plan.note}`);
+  }
+}
+
+/** True once no daemon process is alive, false if it outlived the budget. */
+async function waitForDaemonExit(budgetMs: number): Promise<boolean> {
+  const pidFile = expandPath(DEFAULT_DAEMON_CONFIG.pidFile);
+  const deadline = Date.now() + budgetMs;
+
+  while (Date.now() < deadline) {
+    const pid = new PidManager(pidFile).getPid();
+    if (!pid || !PidManager.isProcessAlive(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
 }

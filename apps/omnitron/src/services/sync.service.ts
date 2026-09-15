@@ -42,6 +42,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
+import { toIsoUtc } from '../database/sqlite-date-binding.js';
 import {
   deliveredIds,
   sweepMadeProgress,
@@ -469,7 +470,9 @@ export class SyncService {
       id: String(r.id),
       category: r.category as SyncCategory,
       payload: (typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload) as Record<string, unknown>,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+      // Whatever spelling the local column holds, the master receives a
+      // timestamp that states its zone. See `toIsoUtc`.
+      createdAt: toIsoUtc(r.createdAt),
     }));
 
     // Compute integrity checksum
@@ -593,11 +596,45 @@ export class SyncService {
     }
   }
 
-  /** Size and row counts of the WAL, or null when the database cannot say. */
+  /**
+   * Size and row counts of the WAL, or null when the database cannot say.
+   *
+   * This asked `pg_total_relation_size('sync_buffer')` — a Postgres function,
+   * about the one table that only ever exists where the database is SQLite.
+   * A slave buffers and a master receives, so the measurement the bound above
+   * depends on threw `no such function: pg_total_relation_size` on every
+   * pass, on every slave. Observed on a provisioned node, every thirty
+   * seconds, immediately behind the `Date`-binding fix that let the pass get
+   * this far:
+   *
+   *     05:58:48  Sync buffer retention pass failed
+   *       error: "no such function: pg_total_relation_size"
+   *
+   * Three defects stacked on one guarantee: the bound ran only on the cycle
+   * that did not need it, then could not bind its own cutoff, and then could
+   * not measure. Each fix revealed the next, and only the last one makes
+   * "bounded buffer" true. The routine delete of synced rows sits before this
+   * call and was unaffected throughout.
+   *
+   * The replacement measures the same quantity in the same terms on both
+   * dialects: the bytes of the buffered payloads. That is deliberately not
+   * the relation's on-disk footprint — it excludes indexes, row headers and
+   * Postgres's TOAST compression — because one definition of `maxBufferSize`
+   * that means the same thing on a master and on a slave is worth more than
+   * two that each drift by whatever their storage engine adds. The payload is
+   * the term that grows.
+   *
+   * `cast(payload as text)` is required by both: the column is `jsonb` on
+   * Postgres, where `length()` has no jsonb form, and TEXT on SQLite, where
+   * the cast costs nothing. `octet_length` rather than `length` because the
+   * second counts CHARACTERS — a buffer of Cyrillic log lines measures at
+   * half its size, and a budget is about bytes. Verified against both engines
+   * (postgres:17-alpine, better-sqlite3 13.0.3 / SQLite 3.53.4).
+   */
   private async bufferStats(): Promise<{ totalBytes: number; totalRows: number; syncedRows: number } | null> {
     const { sql } = await import('kysely');
     const row = await sql<{ total_bytes: string | number; total_rows: string | number; synced_rows: string | number }>`
-      SELECT pg_total_relation_size('sync_buffer') AS total_bytes,
+      SELECT coalesce(sum(octet_length(cast(payload as text))), 0) AS total_bytes,
              count(*) AS total_rows,
              count(*) FILTER (WHERE "syncedAt" IS NOT NULL) AS synced_rows
       FROM sync_buffer

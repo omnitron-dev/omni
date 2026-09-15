@@ -101,6 +101,23 @@ export interface AdminDataTableProps<T> {
    * the most damage.
    */
   loadError?: string | null;
+  /**
+   * What to CALL a failed read, in the reader's language.
+   *
+   * `loadError` itself is a reason the caller has already translated; these
+   * two are the sentences around it, and they were English literals in this
+   * file. That was invisible while one consumer passed `loadError` at all —
+   * and the moment four more did, four Russian screens grew an English
+   * heading. Same contract as `emptyMessage` and `paginationLabels`: the
+   * component states the situation, the host names it. Omitted, the English
+   * defaults apply.
+   */
+  loadErrorLabels?: {
+    /** Heading when the list is empty AND the read failed. */
+    empty?: string;
+    /** Heading when some rows arrived and the read still failed. */
+    partial?: string;
+  };
   /** Extract unique key from row */
   rowKey?: (row: T) => string;
   /** Row click handler */
@@ -282,6 +299,7 @@ export function AdminDataTable<T>({
   onSort,
   emptyMessage = 'No data found',
   loadError = null,
+  loadErrorLabels,
   rowKey,
   onRowClick,
   rowSx,
@@ -448,7 +466,7 @@ export function AdminDataTable<T>({
             // reason the reader needs must not be the palette's quietest text.
             sx={{ color: loadError ? 'text.secondary' : 'text.disabled' }}
           >
-            {loadError ? 'Could not load this data' : emptyMessage}
+            {loadError ? (loadErrorLabels?.empty ?? 'Could not load this data') : emptyMessage}
           </Typography>
           {loadError && (
             <Typography variant="caption" sx={{ color: 'text.disabled', maxWidth: 420, textAlign: 'center' }}>
@@ -477,7 +495,7 @@ export function AdminDataTable<T>({
           }}
         >
           <Typography variant="body2" sx={{ color: 'warning.dark', fontWeight: 600 }}>
-            Some of this data could not be loaded
+            {loadErrorLabels?.partial ?? 'Some of this data could not be loaded'}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             {loadError}

@@ -534,8 +534,41 @@ export function toTitanError(error: unknown): TitanError {
 
     // Check both .status (Express-style) and .statusCode (AppError-style) for HTTP semantics.
     const status = ((error as any).status ?? (error as any).statusCode) as number | undefined;
-    const httpCode =
-      status && status >= 400 && status < 600 && status in ErrorCode ? (status as ErrorCode) : ErrorCode.INTERNAL_ERROR;
+    const declaredForAResponse = Boolean(status && status >= 400 && status < 600 && status in ErrorCode);
+    const httpCode = declaredForAResponse ? (status as ErrorCode) : ErrorCode.INTERNAL_ERROR;
+
+    // A programming fault or a system error is not a sentence anyone wrote for
+    // a caller, and it names things the caller has no business reading:
+    //
+    //   TypeError: Cannot read properties of undefined (reading 'map')
+    //   Error: ENOENT: no such file or directory, open '/srv/app/secrets.json'
+    //   Error: connect ECONNREFUSED 10.0.0.5:5432
+    //
+    // an internal field, a path on the server, a host that is not meant to be
+    // reachable from outside. The full error still travels as `cause`, so
+    // server-side logs lose nothing — the same trade the database branch above
+    // already makes, for the same reason.
+    //
+    // A hand-written `new Error('Shop is closed')` is left alone. There is no
+    // way to tell one meant for the caller from one that is not, and breaking
+    // the ones that are is worse than forwarding the ones that should not be.
+    // Declaring a `status`/`statusCode` says the error was written WITH a
+    // response in mind, so those keep their message whatever their class.
+    // A system error is recognised by `errno`/`syscall`, which Node sets on
+    // every one of them and nothing else sets — NOT by the spelling of `code`.
+    // A first version matched `/^E[A-Z0-9]+$/` and swallowed a business code
+    // of `EXPIRED`, whose message ("Your link has expired") is exactly the
+    // kind written for a caller. `ERR_*` stays, being Node's own namespace.
+    const sys = error as { errno?: unknown; syscall?: unknown; code?: unknown };
+    const internalFault =
+      !declaredForAResponse &&
+      (error instanceof TypeError ||
+        error instanceof RangeError ||
+        error instanceof ReferenceError ||
+        error instanceof SyntaxError ||
+        typeof sys.errno === 'number' ||
+        typeof sys.syscall === 'string' ||
+        (typeof sys.code === 'string' && sys.code.startsWith('ERR_')));
 
     // Preserve the business error code (e.g., "SESSION_EXPIRED", "TOKEN_EXPIRED")
     // so the transport layer can forward it to clients for precise error handling.
@@ -544,7 +577,7 @@ export function toTitanError(error: unknown): TitanError {
 
     return new TitanError({
       code: httpCode,
-      message: error.message,
+      message: internalFault ? 'An unexpected error occurred' : error.message,
       cause: error,
       details: businessCode ? { ...details, errorCode: businessCode } : details,
     });

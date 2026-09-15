@@ -83,6 +83,41 @@ export interface SlaveConnection {
 // SlaveConnector
 // =============================================================================
 
+/** The part of a peer this needs: netron's `authenticate` core-task. */
+export interface AuthenticatingPeer {
+  runTask?: (task: string, payload: unknown) => Promise<{ success?: boolean; error?: string } | undefined>;
+}
+
+/**
+ * Present the master's credential, and tell a refusal from a broken line.
+ *
+ * netron's `authenticate` core-task catches everything a credential can do
+ * wrong — an invalid signature, an expired token, a role the node will not
+ * grant — and RESOLVES with `{ success: false, error }`. It throws only when
+ * the call itself did not complete.
+ *
+ * This called `link.onRejected` for both, and the difference is not
+ * cosmetic: `onRejected` drops the cached signing secret and logs "Node
+ * refused the master credential". Measured on a master while it was starting
+ * six applications: two of those lines, and the same credential
+ * authenticated first try when asked again a minute later —
+ * `success: true, roles: [service_role]`. The node had refused nothing; the
+ * tunnel had not survived a busy moment. An operator reading that line goes
+ * looking at authentication, which is the one thing that was working.
+ */
+export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink): Promise<void> {
+  const runTask = peer.runTask;
+  if (typeof runTask !== 'function') {
+    throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
+  }
+
+  const auth = await runTask.call(peer, 'authenticate', { token: link.token });
+  if (!auth?.success) {
+    link.onRejected?.(auth?.error);
+    throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
+  }
+}
+
 export class SlaveConnector {
   private readonly connections = new Map<string, SlaveConnection>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -291,17 +326,7 @@ export class SlaveConnector {
         if (typeof runTask !== 'function') {
           throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
         }
-        const auth = await runTask.call(peer, 'authenticate', { token: link.token }).catch((err: unknown) => {
-          // A refusal and a broken connection arrive at the same place. Both
-          // reach the catch below, but only one of them is answered by
-          // reading the node's secret again.
-          link.onRejected?.();
-          throw err;
-        });
-        if (!auth?.success) {
-          link.onRejected?.();
-          throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
-        }
+await authenticatePeer(peer as AuthenticatingPeer, link);
       }
 
       // Verify slave is alive

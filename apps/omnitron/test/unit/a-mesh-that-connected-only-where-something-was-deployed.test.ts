@@ -337,6 +337,81 @@ describe('reaching a node', () => {
   });
 });
 
+describe('a refusal is not a broken connection', () => {
+  const link = (onRejected: (reason?: string) => void) => ({
+    url: 'tcp://127.0.0.1:1', via: 'ssh-tunnel' as const, token: 'a-token', onRejected,
+  });
+
+  it('drops the cached secret when the node says no, and says why', async () => {
+    const { authenticatePeer } = await import('../../src/cluster/slave-connector.js');
+    const dropped: Array<string | undefined> = [];
+
+    // netron's `authenticate` core-task catches everything a credential can
+    // do wrong and RESOLVES with `{ success: false, error }`.
+    const refusing = { runTask: async () => ({ success: false, error: 'signature mismatch' }) };
+
+    await expect(authenticatePeer(refusing, link((r) => dropped.push(r)) as never)).rejects.toThrow(/signature mismatch/);
+    expect(dropped).toEqual(['signature mismatch']);
+  });
+
+  it('keeps the secret when the CONNECTION broke', async () => {
+    const { authenticatePeer } = await import('../../src/cluster/slave-connector.js');
+    const dropped: string[] = [];
+
+    // It throws only when the call did not complete. Measured on a live
+    // master while it was starting six applications: two "Node refused the
+    // master credential" lines, and the same credential authenticated first
+    // try a minute later — `success: true, roles: [service_role]`. The node
+    // had refused nothing; the tunnel had not survived a busy moment, and an
+    // operator reading that line goes looking at authentication, which is
+    // the one thing that was working.
+    const broken = { runTask: async () => { throw new Error('RPC request timed out after 5000ms'); } };
+
+    await expect(authenticatePeer(broken, link((r) => dropped.push(r!)) as never)).rejects.toThrow(/timed out/);
+    expect(dropped).toEqual([]);
+  });
+
+  it('accepts a node that accepts the credential', async () => {
+    const { authenticatePeer } = await import('../../src/cluster/slave-connector.js');
+    const ok = { runTask: async () => ({ success: true }) };
+
+    await expect(authenticatePeer(ok, link(() => {}) as never)).resolves.toBeUndefined();
+  });
+
+  it('refuses a transport with no authenticate task rather than connecting unauthenticated', async () => {
+    const { authenticatePeer } = await import('../../src/cluster/slave-connector.js');
+
+    await expect(authenticatePeer({}, link(() => {}) as never)).rejects.toThrow(/no authenticate task/);
+  });
+
+  it('carries the node s own words into the log line', async () => {
+    const { createMeshDialer } = await import('../../src/cluster/mesh-link.js');
+    const net = await import('node:net');
+    const warned: Array<Record<string, unknown>> = [];
+    const noisy: any = { ...logger, warn: (o: Record<string, unknown>) => warned.push(o), child: () => noisy };
+
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as import('node:net').AddressInfo).port;
+
+    const dial = createMeshDialer({
+      logger: noisy,
+      execution: { ssh: vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 })), tunnel: vi.fn() } as never,
+      subject: 'mesh:test',
+      sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
+    });
+
+    const dialled = await dial({ host: '127.0.0.1', port });
+    dialled.onRejected?.('signature mismatch');
+
+    // Without the reason the line names a conclusion and withholds the
+    // evidence for it, and the next question — why — has nowhere to go.
+    expect(warned[0]?.['reason']).toBe('signature mismatch');
+
+    server.close();
+  });
+});
+
 describe('the credential a node accepts', () => {
   it('is a service_role token issued by omnitron, and expires', async () => {
     const { jwtVerify } = await import('jose');

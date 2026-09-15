@@ -824,10 +824,11 @@ export class OmnitronDaemon {
       // second one over RPC would give one machine two reconcilers over one
       // set of containers.
       isSlave
-        ? (infraConfig) => {
+        ? (infraConfig, declaredServices) => {
             const service = new InfrastructureService(
               loggerModule.logger.child({ component: 'infra' }),
               infraConfig,
+              declaredServices,
             );
             this.infraService = service;
             return service;

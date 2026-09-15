@@ -999,55 +999,9 @@ export class ProjectService extends EventEmitter {
     }
 
     // 1. Load bootstrap definitions (needed for both infra provisioning and config resolution)
-    const appDefinitions = new Map<string, IAppDefinition>();
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
     const project = this.registry.get(projectName);
-
-    for (const entry of appEntries) {
-      if (entry.bootstrap && project) {
-        try {
-          const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
-          const { loadBootstrapConfig } = await import('../orchestrator/bootstrap-loader.js');
-          const definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
-
-          // Populate omnitronConfig from app's config/default.json if not already set
-          if (!definition.omnitronConfig) {
-            const srcDir = path.dirname(bootstrapAbsPath);
-            const appRoot = path.resolve(srcDir, '..');
-            const configPath = path.join(appRoot, 'config', 'default.json');
-            // Absent and malformed are different events under one comment
-            // naming only the first: an app without a `config/default.json`
-            // is ordinary, one whose default.json does not parse is an
-            // operator who edited it and got defaults with nothing said.
-            // Same shape as `orchestrator.service.ts`, which reads the same
-            // file for the same reason.
-            let content: string | null = null;
-            try {
-              content = fs.readFileSync(configPath, 'utf-8');
-            } catch {
-              // Absent, or unreadable — the app has defaults.
-            }
-            if (content !== null) {
-              try {
-                const json = JSON.parse(content);
-                if (json.omnitron) {
-                  definition.omnitronConfig = json.omnitron as OmnitronAppConfig;
-                }
-              } catch (err) {
-                this.logger.error(
-                  { app: entry.name, configPath, error: (err as Error).message },
-                  'config/default.json does not parse — its `omnitron` section is being ignored'
-                );
-              }
-            }
-          }
-
-          appDefinitions.set(entry.name, definition);
-        } catch {
-          // Non-critical — app can start without definition
-        }
-      }
-    }
+    const appDefinitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
 
     // 2. Provision per-stack infrastructure (built-in + app-declared services)
     //    Auto-detect core services (postgres, redis, minio) from app requirements,
@@ -1273,6 +1227,15 @@ export class ProjectService extends EventEmitter {
 
     const connector = this.getSlaveConnector();
 
+    // What the applications in this stack declare they need.
+    //
+    // Collected here and sent to the node, because the node does not have
+    // the application definitions when it is asked to provision — and
+    // reading them again on that side would be a second implementation of
+    // variant selection and override merging, on the side with less
+    // information.
+    const declaredServices = await this.collectDeclaredServices(projectName, stackConfig, ecosystemConfig);
+
     // Build artifacts for apps in this stack
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
     const project = this.registry.get(projectName);
@@ -1345,11 +1308,12 @@ export class ProjectService extends EventEmitter {
       //    against a database that is not there yet spends its startup
       //    budget retrying, and a supervisor's deadline turns that into a
       //    crash loop over a condition that would have resolved.
-      if (stackConfig.infrastructure) {
+      if (stackConfig.infrastructure || declaredServices) {
         const ready = await this.provisionNodeInfrastructure(
           connector,
           node,
-          stackConfig.infrastructure as import('../infrastructure/types.js').InfrastructureConfig,
+          (stackConfig.infrastructure ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
+          declaredServices,
         );
         if (!ready) {
           // Not fatal: a node whose infrastructure is incomplete can still
@@ -1404,6 +1368,7 @@ export class ProjectService extends EventEmitter {
     connector: SlaveConnector,
     node: { host: string; port?: number | undefined; label?: string | undefined },
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
+    services?: Record<string, import('../infrastructure/types.js').IServiceRequirement> | undefined,
   ): Promise<boolean> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -1412,7 +1377,7 @@ export class ProjectService extends EventEmitter {
 
     try {
       const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
-        { config: infrastructure },
+        { config: infrastructure, services },
       ])) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 
       this.logger.info(
@@ -1660,6 +1625,118 @@ export class ProjectService extends EventEmitter {
     }
 
     return configStacks;
+  }
+
+  /**
+   * Every application in a stack, with what it declares it needs.
+   *
+   * Extracted because a remote stack needs exactly this and had no way to
+   * get it: `startRemoteStack` built its own list of app ENTRIES and never
+   * their definitions, so the `infrastructure` an application declares —
+   * its chain daemon, its cache — was invisible on that path. The local
+   * path had it all along, twenty lines up from where it was needed.
+   */
+  private async loadAppDefinitions(
+    projectName: string,
+    stackConfig: IStackConfig,
+    ecosystemConfig: IEcosystemConfig,
+  ): Promise<Map<string, IAppDefinition>> {
+    const appDefinitions = new Map<string, IAppDefinition>();
+    const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
+    const project = this.registry.get(projectName);
+
+    for (const entry of appEntries) {
+      if (entry.bootstrap && project) {
+        try {
+          const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
+          const { loadBootstrapConfig } = await import('../orchestrator/bootstrap-loader.js');
+          const definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
+
+          // Populate omnitronConfig from app's config/default.json if not already set
+          if (!definition.omnitronConfig) {
+            const srcDir = path.dirname(bootstrapAbsPath);
+            const appRoot = path.resolve(srcDir, '..');
+            const configPath = path.join(appRoot, 'config', 'default.json');
+            // Absent and malformed are different events under one comment
+            // naming only the first: an app without a `config/default.json`
+            // is ordinary, one whose default.json does not parse is an
+            // operator who edited it and got defaults with nothing said.
+            // Same shape as `orchestrator.service.ts`, which reads the same
+            // file for the same reason.
+            let content: string | null = null;
+            try {
+              content = fs.readFileSync(configPath, 'utf-8');
+            } catch {
+              // Absent, or unreadable — the app has defaults.
+            }
+            if (content !== null) {
+              try {
+                const json = JSON.parse(content);
+                if (json.omnitron) {
+                  definition.omnitronConfig = json.omnitron as OmnitronAppConfig;
+                }
+              } catch (err) {
+                this.logger.error(
+                  { app: entry.name, configPath, error: (err as Error).message },
+                  'config/default.json does not parse — its `omnitron` section is being ignored'
+                );
+              }
+            }
+          }
+
+          appDefinitions.set(entry.name, definition);
+        } catch {
+          // Non-critical — app can start without definition
+        }
+      }
+    }
+
+    return appDefinitions;
+  }
+
+  /**
+   * The infrastructure a stack's applications declare, merged and overridden.
+   *
+   * One entry per service name: two applications that both declare
+   * `postgres` mean one Postgres, which is what `serviceOverrides` keys on
+   * and what the container resolver has always assumed. A later declaration
+   * that disagrees with an earlier one is not merged silently — the first
+   * wins and the disagreement is said, because two applications wanting
+   * different versions of one service is a fact about the stack, not a
+   * detail to resolve by ordering.
+   */
+  private async collectDeclaredServices(
+    projectName: string,
+    stackConfig: IStackConfig,
+    ecosystemConfig: IEcosystemConfig,
+  ): Promise<Record<string, import('../infrastructure/types.js').IServiceRequirement>> {
+    const merged: Record<string, import('../infrastructure/types.js').IServiceRequirement> = {};
+    const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
+
+    for (const [appName, definition] of definitions) {
+      const declared = definition.omnitronConfig?.infrastructure;
+      if (!declared) continue;
+
+      for (const [name, requirement] of Object.entries(declared)) {
+        const override = stackConfig.serviceOverrides?.[`${appName}/${name}`] ?? stackConfig.serviceOverrides?.[name];
+        if (override?.disabled) continue;
+        // Pointed at something that already exists: there is nothing to
+        // provision, and the address reaches the application through its
+        // environment instead.
+        if (override?.external) continue;
+
+        if (merged[name]) {
+          this.logger.debug(
+            { service: name, app: appName },
+            'Service already declared by another app in this stack — the first declaration stands',
+          );
+          continue;
+        }
+        merged[name] = requirement as import('../infrastructure/types.js').IServiceRequirement;
+      }
+    }
+
+    return merged;
   }
 
   private resolveStackApps(

@@ -1039,4 +1039,43 @@ kb.command('query <question>')
 // Run
 // ============================================================================
 
-program.parse();
+/**
+ * Leave when the command is done, whatever the transport is still holding.
+ *
+ * A CLI process should end when its work ends. This one did not: after
+ * talking to the daemon it was kept alive by unix-socket handles that
+ * `netron.stop()` had not closed — and it cannot close them, because closing
+ * a socket gracefully needs the other end, which is exactly what is missing
+ * when the daemon is wedged or starved.
+ *
+ * Measured 2026-09-15 with the development daemon starved at a load average
+ * of 107:
+ *
+ *     $ omnitron ping
+ *     ▲  Daemon is running (PID 69597) but did not answer within 5s
+ *     ●  It is most likely busy starting apps…
+ *     (then nothing; killed by the shell's timeout at 2:00)
+ *
+ *     active resources after disconnect: ["PipeWrap","PipeWrap","PipeWrap"]
+ *
+ * The command had said everything it had to say and still could not return,
+ * which is worse for a script than either the hang or the error alone: the
+ * output arrived and the exit never did.
+ *
+ * `process.exitCode` is what the commands set to report failure, so it is
+ * what is used — this changes when the process leaves, not what it says.
+ *
+ * Commands that run indefinitely by design — `monit`, `logs --follow` — hold
+ * the loop with their own work and never reach here.
+ */
+program.parseAsync().then(
+  () => process.exit(process.exitCode ?? 0),
+  (err: unknown) => {
+    // Commander prints its own errors and sets an exit code; anything else
+    // reaching here is a bug in a command, and swallowing it would hide it.
+    if ((err as { exitCode?: number })?.exitCode == null) {
+      console.error(err instanceof Error ? err.stack ?? err.message : String(err));
+    }
+    process.exit(process.exitCode ?? 1);
+  },
+);

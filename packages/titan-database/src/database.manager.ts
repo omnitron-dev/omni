@@ -1226,8 +1226,17 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected && !info.connecting) {
-      // Try to reconnect
-      await this.reconnect(name);
+      // A reconnect that fails throws the retry wrapper's OWN error, and that
+      // is what reached the caller — three messages nested inside each other,
+      // carrying the driver's sentence and the configured connection string:
+      //
+      //   Database connection default failed after 5 retries: Database
+      //   connection default is unavailable: Failed to connect to database
+      //   "default": Cannot open database because the directory does not exist
+      //
+      // The attempt is logged where it fails, by `createConnection`'s catch.
+      // What the caller needs is the verdict below, and only that.
+      await this.reconnect(name).catch(() => undefined);
     }
 
     // `reconnect` REPLACES the entry rather than repairing it: `close()` drops
@@ -1241,7 +1250,7 @@ export class DatabaseManager implements IDatabaseManager {
     const live = this.connections.get(name) ?? info;
 
     if (!live.connected) {
-      throw Errors.unavailable(name, live.lastError ? describeError(live.lastError) : 'Unknown error');
+      throw this.unavailable(name);
     }
 
     // Return executor (with plugins) if available, otherwise raw instance
@@ -1279,7 +1288,8 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected && !info.connecting) {
-      await this.reconnect(name);
+      // See `getConnection`: a failed reconnect's own error is the operator's.
+      await this.reconnect(name).catch(() => undefined);
     }
 
     // See `getConnection`: `reconnect` replaces the map entry, so the object
@@ -1287,7 +1297,7 @@ export class DatabaseManager implements IDatabaseManager {
     const live = this.connections.get(name) ?? info;
 
     if (!live.connected) {
-      throw Errors.unavailable(name, live.lastError ? describeError(live.lastError) : 'Unknown error');
+      throw this.unavailable(name);
     }
 
     // If specific plugins provided, create new executor
@@ -1360,13 +1370,33 @@ export class DatabaseManager implements IDatabaseManager {
    * and can retry — which is what the proactive health check is already doing
    * on their behalf.
    */
+  /**
+   * What a CALLER is told when a connection is down.
+   *
+   * Deliberately without a cause. `Errors.unavailable` puts its reason in the
+   * message AND in `details`, and both cross the wire — measured on the live
+   * stand, a paysys 503 reached the client as
+   * `details: { service: 'default', reason: 'Connection health check failed: ' }`.
+   * Now that `describeError` fills that in, the same field would carry
+   * `connect ECONNREFUSED 127.0.0.1:5432` or a SQLSTATE like `28P01`.
+   *
+   * None of which a caller can act on, and an anonymous one should not read.
+   * The cause is not lost: it is written where it happened, by
+   * `createConnection`'s catch and by `handleHealthCheckFailure`, both through
+   * `describeError` — which is what that helper was added for. Repeating it to
+   * the caller was the redundant half.
+   */
+  private unavailable(name: string): ReturnType<typeof Errors.unavailable> {
+    return Errors.unavailable(name);
+  }
+
   private requireLiveConnection(name: string): object {
     const info = this.connections.get(name);
     if (!info) {
       throw Errors.notFound('Database connection', name);
     }
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Connection is not established');
+      throw this.unavailable(name);
     }
     return (info.executor ?? info.instance) as object;
   }
@@ -1378,7 +1408,7 @@ export class DatabaseManager implements IDatabaseManager {
       throw Errors.notFound('Database connection', name);
     }
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Connection is not established');
+      throw this.unavailable(name);
     }
     return info.instance;
   }
@@ -1412,7 +1442,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected) {
-      throw Errors.unavailable(name, 'Connection not established');
+      throw this.unavailable(name);
     }
 
     this.logger.info({ connection: name, plugins: plugins.map((p) => p.name) }, 'Setting connection plugins');

@@ -334,3 +334,68 @@ describe('the circuit breaker belongs to the connection that ends up serving', (
     );
   });
 });
+
+/**
+ * And what the caller is told does not include why.
+ *
+ * `Errors.unavailable(service, reason)` puts its reason in the message AND in
+ * `details`, and both cross the wire. Measured on the live stand, a paysys 503
+ * reached the client as
+ *
+ *     details: { service: 'default', reason: 'Connection health check failed: ' }
+ *
+ * — empty after the colon only because that build predated `describeError`.
+ * With it, the same field carries `connect ECONNREFUSED 127.0.0.1:5432`, or a
+ * SQLSTATE like `28P01` for a password that did not work.
+ *
+ * None of which a caller can act on, and an anonymous one should not read. The
+ * cause is not lost: `createConnection`'s catch and `handleHealthCheckFailure`
+ * both write it through `describeError`, which is what that helper is for.
+ */
+describe('a caller is told the connection is down, not why', () => {
+  let manager: DatabaseManager | undefined;
+
+  afterEach(async () => {
+    await manager?.closeAll().catch(() => {});
+    manager = undefined;
+  });
+
+  it('the error carries no driver text, in the message or the details', async () => {
+    const created = new DatabaseManager(
+      { connection: { dialect: 'sqlite', connection: join(TMP, 'no-leak.sqlite') } },
+      silentLogger() as never,
+    );
+    await created.init();
+    manager = created;
+
+    // A connection that is down AND cannot be rebuilt, so the thrown error is
+    // the real one the driver produced rather than a planted string.
+    const badPath = join(TMP, 'no', 'such', 'dir', 'x.sqlite');
+    const info = (created as unknown as {
+      connections: Map<string, { connected: boolean; config: { connection: string } }>;
+    }).connections.get('default')!;
+    info.connected = false;
+    info.config.connection = badPath;
+
+    const err = await created.getConnection().then(
+      () => null,
+      (e: unknown) => e as { message: string; details?: Record<string, unknown> },
+    );
+
+    expect(err, 'a connection that cannot be rebuilt must refuse').not.toBeNull();
+
+    // Structural, so it cannot go vacuous: `Errors.unavailable` writes its
+    // reason into `details.reason`, and there must not be one.
+    expect(err!.details?.['reason'], 'the cause belongs in the log').toBeUndefined();
+
+    const seen = `${err!.message} ${JSON.stringify(err!.details ?? {})}`;
+    expect(seen, 'the connection name is fine — it is not a secret').toContain('default');
+    // The driver's own sentence, measured rather than guessed: better-sqlite3
+    // says "Cannot open database because the directory does not exist". A
+    // first version of this test looked for `ENOENT` and the path, neither of
+    // which that driver produces, so it passed with the leak restored.
+    expect(seen).not.toContain('Cannot open database');
+    expect(seen).not.toContain('directory does not exist');
+    expect(seen).not.toContain(badPath);
+  });
+});

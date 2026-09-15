@@ -1728,8 +1728,21 @@ export class ProjectService extends EventEmitter {
           }
 
           appDefinitions.set(entry.name, definition);
-        } catch {
-          // Non-critical — app can start without definition
+        } catch (err) {
+          // An app can start without its definition; a STACK cannot be
+          // provisioned without it. The definition is where an application
+          // declares what it needs — its database, its cache, its chain
+          // daemon — so a swallowed failure here does not degrade the
+          // deployment, it silently removes a whole category from it.
+          //
+          // Measured: a remote stack reported `declared by apps: (none)` and
+          // provisioned no infrastructure, because every bootstrap import
+          // had failed in a process that could not load TypeScript. Nothing
+          // said so at any level.
+          this.logger.warn(
+            { app: entry.name, bootstrap: entry.bootstrap, error: (err as Error).message },
+            'Could not load this app\'s definition — anything it declares it needs will not be provisioned',
+          );
         }
       }
     }

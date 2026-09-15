@@ -54,5 +54,27 @@ export function hasMinimumRole(userRoles: string[], minimumRole: OmnitronRole): 
 export const VIEWER_ROLES: OmnitronRole[] = ['admin', 'operator', 'viewer'];
 /** Roles that can operate (start/stop/deploy) — admin + operator */
 export const OPERATOR_ROLES: OmnitronRole[] = ['admin', 'operator'];
+
+/**
+ * An operator, or another omnitron acting on its own behalf.
+ *
+ * A master reaches its nodes with a `service_role` token minted from the
+ * node's own signing secret — no session, no human. The replication
+ * endpoints have always listed the role explicitly; anything else the
+ * control plane asks a node to do needs it too, and spelling it out three
+ * times is how one of them ends up without it.
+ *
+ * Measured: `provisionStack` was declared OPERATOR_ROLES, so the master's
+ * own credential could not call the method that exists for the master to
+ * call — `Missing required role`, from a node that had just authenticated
+ * that very credential.
+ *
+ * Not `OmnitronRole[]`, deliberately. That type is the human hierarchy —
+ * admin > operator > viewer — and `service_role` has no place in an
+ * ordering: it is not more than an operator or less than one, it is a
+ * different kind of principal. Typing it into the hierarchy would make
+ * `hasRole('service_role', 'viewer')` a question with an answer.
+ */
+export const CONTROL_PLANE_ROLES: string[] = ['admin', 'operator', 'service_role'];
 /** Roles that can administer (shutdown, secrets, backup) — admin only */
 export const ADMIN_ROLES: OmnitronRole[] = ['admin'];

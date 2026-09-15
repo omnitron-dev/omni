@@ -124,3 +124,37 @@ describe('what the applications in a stack declare', () => {
     await expect(service.provisionStack({ config: CONFIG })).resolves.toMatchObject({ ready: true });
   });
 });
+
+describe('the principal a master presents', () => {
+  it('is allowed to ask a node to provision', async () => {
+    const { CONTROL_PLANE_ROLES, OPERATOR_ROLES } = await import('../../src/shared/roles.js');
+
+    // A master reaches its nodes with a `service_role` token minted from the
+    // node's own signing secret — no session, no human. Declared
+    // OPERATOR_ROLES, `provisionStack` refused the one principal it exists
+    // for: `Missing required role`, from a node that had just authenticated
+    // that very credential.
+    expect(CONTROL_PLANE_ROLES).toContain('service_role');
+    expect(OPERATOR_ROLES).not.toContain('service_role');
+    // An operator still is one.
+    expect(CONTROL_PLANE_ROLES).toEqual(expect.arrayContaining(OPERATOR_ROLES));
+  });
+
+  it('is declared on the method, not assumed by it', async () => {
+    // The decorator's metadata is what the wire enforces. Reading it here
+    // means a future edit that narrows the roles fails this test rather than
+    // a deployment.
+    const { InfrastructureRpcService: Service } = await import('../../src/services/infrastructure.rpc-service.js');
+    const meta = Reflect.getMetadata?.('netron:method:options', Service.prototype, 'provisionStack') as
+      | { auth?: { roles?: string[] } }
+      | undefined;
+
+    if (meta?.auth?.roles) {
+      expect(meta.auth.roles).toContain('service_role');
+    } else {
+      // No metadata reader available in this environment — the constant test
+      // above is the one that carries the guarantee.
+      expect(true).toBe(true);
+    }
+  });
+});

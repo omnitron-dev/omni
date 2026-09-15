@@ -7,7 +7,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
-import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
@@ -66,7 +66,12 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * Idempotent, because reconciliation is: calling it twice with the same
    * config leaves the containers alone and returns the same report.
    */
-  @Public({ auth: { roles: OPERATOR_ROLES } })
+  // CONTROL_PLANE_ROLES, not OPERATOR_ROLES: the caller is a master
+  // presenting a `service_role` token minted from this node's own signing
+  // secret. Declared for operators only, this method refused the one
+  // principal it exists for — `Missing required role`, from a node that had
+  // just authenticated that credential.
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async provisionStack(data: {
     config: InfrastructureConfig;
     /**

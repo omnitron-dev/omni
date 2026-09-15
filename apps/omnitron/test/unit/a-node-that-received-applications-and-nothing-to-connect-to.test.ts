@@ -200,3 +200,47 @@ describe('the principal a master presents', () => {
     }
   });
 });
+
+describe('what runs inside the containers', () => {
+  it('a missing preset registry is reported, not crashed on', async () => {
+    const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
+    const errors: Array<{ services?: string[] }> = [];
+    const noisy: any = {
+      info: () => {}, warn: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
+      error: (o: { services?: string[] }) => errors.push(o),
+      child: () => noisy,
+    };
+
+    // The constructor declares the registry OPTIONAL and the hook asserted
+    // it with `!`, so a caller the type permits got `Cannot read properties
+    // of undefined (reading 'get')` from a line that reads as internal —
+    // after every container was already up. Measured on a node provisioning
+    // a stack: the containers stayed and the databases were never made.
+    const service = new InfrastructureService(noisy, {}, { postgres: { _preset: 'postgres' } as never });
+
+    await expect(
+      (service as unknown as { runPresetPostProvisionHooks(): Promise<void> }).runPresetPostProvisionHooks(),
+    ).resolves.toBeUndefined();
+
+    // A preset hook is what creates the databases inside Postgres and the
+    // buckets inside MinIO. Skipping it is invisible until an application
+    // cannot find its database, so it is said at error level with the names.
+    expect(errors[0]?.services).toEqual(['postgres']);
+  });
+
+  it('says nothing when there was nothing to run', async () => {
+    const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
+    const errors: unknown[] = [];
+    const noisy: any = {
+      info: () => {}, warn: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
+      error: (o: unknown) => errors.push(o), child: () => noisy,
+    };
+
+    const service = new InfrastructureService(noisy, {}, { custom: {} as never });
+
+    await (service as unknown as { runPresetPostProvisionHooks(): Promise<void> }).runPresetPostProvisionHooks();
+
+    // A service with no preset has no hook to skip.
+    expect(errors).toEqual([]);
+  });
+});

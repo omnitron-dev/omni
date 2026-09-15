@@ -683,10 +683,34 @@ export class InfrastructureService {
     const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
 
+    // A preset hook is what creates the databases inside Postgres and the
+    // buckets inside MinIO — the containers are running either way, so a
+    // failure here is invisible until an application cannot find its
+    // database.
+    //
+    // `this.presetRegistry!` asserted a dependency the constructor declares
+    // OPTIONAL, so a caller that did not pass one — which the type permits —
+    // got `Cannot read properties of undefined (reading 'get')` from a line
+    // that reads as internal, after every container was already up.
+    // Measured on a node provisioning a stack, where the containers stayed
+    // and the databases were never made.
+    if (!this.presetRegistry) {
+      const withPresets = Object.entries(this.normalizedServices)
+        .filter(([, r]) => r._preset)
+        .map(([name]) => name);
+      if (withPresets.length > 0) {
+        this.logger.error(
+          { services: withPresets },
+          'No preset registry, so post-provision steps were skipped — these services are running but their databases and buckets were not created',
+        );
+      }
+      return;
+    }
+
     for (const [serviceName, requirement] of Object.entries(this.normalizedServices)) {
       if (!requirement._preset) continue;
 
-      const preset = this.presetRegistry!.get(requirement._preset);
+      const preset = this.presetRegistry.get(requirement._preset);
       if (!preset?.postProvision) continue;
 
       const container = this.desiredContainers.find((c) => c.name.endsWith(`-${serviceName}`));

@@ -39,6 +39,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     private readonly hostInfra?: (
       config: InfrastructureConfig,
       services: Record<string, IServiceRequirement>,
+      registry: import('../infrastructure/presets/registry.js').PresetRegistry,
     ) => InfrastructureService,
   ) {}
 
@@ -113,12 +114,16 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // which was true of what it had been given and false of what was asked.
     const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
     const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
-    const fromStack = normalizeInfraConfig(data.config, createDefaultRegistry());
+    // One registry, used to expand the config AND to run the post-provision
+    // hooks that create what is inside those containers — the databases and
+    // the buckets. Two registries would be two answers to what a preset is.
+    const registry = createDefaultRegistry();
+    const fromStack = normalizeInfraConfig(data.config, registry);
 
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const service = this.getInfra() ?? this.hostInfra(data.config, declared);
+    const service = this.getInfra() ?? this.hostInfra(data.config, declared, registry);
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.

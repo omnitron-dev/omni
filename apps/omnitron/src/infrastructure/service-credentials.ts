@@ -152,9 +152,32 @@ const SUGAR_CREDENTIALS = [
  * Only the sugar blocks. A service declared the long way, with an explicit
  * `secrets` map, was configured by someone who was looking at it.
  */
+export interface CredentialOptions {
+  project: string;
+  stack: string;
+  vault: CredentialStore;
+  /**
+   * Whether this service already holds state initialised with some other
+   * password.
+   *
+   * A Postgres data directory keeps the password it was created with and
+   * ignores `POSTGRES_PASSWORD` thereafter. Generating one for a service
+   * that already has a volume produces an application holding a credential
+   * the database has never heard of — a failure that reads as a bad config
+   * and is fixed by neither side.
+   *
+   * So generation happens at FIRST provision, where the volume and the
+   * vault entry are created together and cannot disagree. A deployment that
+   * predates this keeps what it has, and is told.
+   */
+  hasExistingState?: ((service: string) => Promise<boolean>) | undefined;
+  /** Told when an existing deployment is left on a default credential. */
+  onLeftOnDefault?: ((service: string, field: string) => void) | undefined;
+}
+
 export async function withGeneratedCredentials<T extends Record<string, any>>(
   config: T,
-  options: { project: string; stack: string; vault: CredentialStore },
+  options: CredentialOptions,
 ): Promise<T> {
   const next: Record<string, any> = { ...config };
 
@@ -169,9 +192,21 @@ export async function withGeneratedCredentials<T extends Record<string, any>>(
 
     const key = credentialKey(options.project, options.stack, service, field);
     const existing = await options.vault.get(key);
-    const secret = existing ?? generateSecret();
-    if (!existing) await options.vault.set(key, secret);
 
+    if (existing) {
+      next[service] = { ...block, [field]: existing };
+      continue;
+    }
+
+    // Nothing in the vault: either this is the first provision, or the
+    // service predates generated credentials. The volume answers which.
+    if (options.hasExistingState && (await options.hasExistingState(service))) {
+      options.onLeftOnDefault?.(service, field);
+      continue;
+    }
+
+    const secret = generateSecret();
+    await options.vault.set(key, secret);
     next[service] = { ...block, [field]: secret };
   }
 

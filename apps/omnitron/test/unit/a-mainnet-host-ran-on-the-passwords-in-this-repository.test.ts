@@ -202,3 +202,68 @@ describe('a stack config, with credentials filled in', () => {
     expect(config.postgres.password).toBe('postgres');
   });
 });
+
+describe('a service that already holds state', () => {
+  it('is left on what it has, and said so', async () => {
+    const { withGeneratedCredentials } = await import('../../src/infrastructure/service-credentials.js');
+    const v = vault();
+    const told: Array<[string, string]> = [];
+
+    const filled = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
+      project: 'daos', stack: 'test', vault: v,
+      hasExistingState: async () => true,
+      onLeftOnDefault: (service, field) => told.push([service, field]),
+    });
+
+    // A Postgres data directory keeps the password it was created with and
+    // ignores `POSTGRES_PASSWORD` thereafter. Generating one here produces
+    // an application holding a credential the database has never heard of —
+    // a failure that reads as a bad config and is fixed by neither side.
+    expect(filled.postgres.password).toBe('postgres');
+    expect(v.store.size).toBe(0);
+    expect(told).toEqual([['postgres', 'password']]);
+  });
+
+  it('generates at a FIRST provision, where volume and vault agree', async () => {
+    const { withGeneratedCredentials } = await import('../../src/infrastructure/service-credentials.js');
+    const v = vault();
+
+    const filled = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
+      project: 'daos', stack: 'test', vault: v,
+      hasExistingState: async () => false,
+    });
+
+    expect(filled.postgres.password).not.toBe('postgres');
+  });
+
+  it('never re-asks once the vault has an answer', async () => {
+    const { withGeneratedCredentials } = await import('../../src/infrastructure/service-credentials.js');
+    const v = vault();
+    let asked = 0;
+
+    await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
+      project: 'daos', stack: 'test', vault: v, hasExistingState: async () => { asked += 1; return false; },
+    });
+    const second = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
+      project: 'daos', stack: 'test', vault: v, hasExistingState: async () => { asked += 1; return false; },
+    });
+
+    // The vault entry IS the record that generation happened; a volume that
+    // was removed and recreated must not produce a second password for a
+    // service the vault already speaks for.
+    expect(asked).toBe(1);
+    expect(second.postgres.password).toBe(await v.get('infra:daos:test:postgres:password'));
+  });
+});
+
+describe('asking whether a volume exists', () => {
+  it('answers "assume state" when it cannot tell', async () => {
+    const { volumeExists } = await import('../../src/infrastructure/container-runtime.js');
+
+    // Only the message that means absence answers absence. Docker
+    // unreachable, a timeout, a permission error — none of those are
+    // evidence that a volume is missing, and the caller generates a
+    // credential when this says false.
+    await expect(volumeExists('omnitron-test-definitely-not-a-real-volume-xyz')).resolves.toBe(false);
+  });
+});

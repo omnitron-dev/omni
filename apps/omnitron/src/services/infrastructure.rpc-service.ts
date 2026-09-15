@@ -50,6 +50,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * nothing is generated — there is nothing to generate it for.
      */
     private readonly vault?: import('../infrastructure/service-credentials.js').CredentialStore,
+    private readonly logger?: { error?: (o: unknown, m?: string) => void } | undefined,
   ) {}
 
   /**
@@ -173,6 +174,24 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
           project: data.project ?? 'omnitron',
           stack: data.stack ?? 'default',
           vault: this.vault,
+          // The volume is what says whether this service already holds state
+          // initialised with another password.
+          hasExistingState: async (service) => {
+            const { volumeExists } = await import('../infrastructure/container-runtime.js');
+            const { getContainerPrefix } = await import('../infrastructure/service-resolver.js');
+            return volumeExists(`${getContainerPrefix()}-${service}-data`);
+          },
+          onLeftOnDefault: (service, field) => {
+            // ERROR, because this is a public host running on a published
+            // password and nothing else will say so. Naming the fix, because
+            // the fix is destructive and must be a decision.
+            this.logger?.error?.(
+              { service, secret: field },
+              `${service} predates generated credentials and is still on its default ${field}. ` +
+                'Its volume holds the old one, so changing it here would break the service. ' +
+                'Recreate the service with an empty volume, or set the password explicitly in the stack config.',
+            );
+          },
         })
       : data.config;
 

@@ -144,7 +144,7 @@ export interface IStartupOutput {
  * the child has been reaped; before that the OS is, and `liveness.ts` already
  * asks it with signal 0 — this file simply never called it.
  */
-function hasExited(child: ChildProcess): boolean {
+export function hasExited(child: ChildProcess): boolean {
   if (child.exitCode !== null || child.signalCode !== null) return true;
   return child.pid == null ? true : !isPidAlive(child.pid);
 }
@@ -169,7 +169,7 @@ function hasExited(child: ChildProcess): boolean {
  * surface rather than swallow — the process is still out there holding
  * whatever it held.
  */
-async function killChildAndVerify(
+export async function killChildAndVerify(
   child: ChildProcess,
   logger: ILogger,
   context: Record<string, unknown>,

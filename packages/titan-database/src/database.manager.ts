@@ -1491,6 +1491,11 @@ export class DatabaseManager implements IDatabaseManager {
     // Remove from map immediately to prevent double-close
     this.connections.delete(name);
     this.healthCheckFailures.delete(name);
+    // The breaker belongs to the connection, not to the name. It was left
+    // behind, so `getCircuitBreaker` answered for a connection that no longer
+    // existed; a reconnect overwrote it anyway, which is the behaviour this
+    // makes explicit rather than accidental.
+    this.circuitBreakers.delete(name);
 
     this.logger.info({ name }, 'Closing database connection');
 
@@ -1793,8 +1798,15 @@ export class DatabaseManager implements IDatabaseManager {
     name: string = DATABASE_DEFAULT_CONNECTION,
     fn: (db: Kysely<unknown>) => Promise<T>
   ): Promise<T> {
-    const breaker = this.circuitBreakers.get(name);
     const db = await this.getConnection(name);
+
+    // The breaker is read AFTER the connection, not before. `getConnection`
+    // reconnects a connection that is down, and `createConnection` installs a
+    // NEW `CircuitBreaker` at the same key — so reading it first ran the call
+    // on the object the reconnect had just replaced. Every failure counted
+    // there was invisible to the breaker everyone else consults, and a breaker
+    // that was open refused a call the fresh connection would have served.
+    const breaker = this.circuitBreakers.get(name);
 
     if (breaker) {
       return breaker.execute(() => fn(db));

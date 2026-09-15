@@ -45,6 +45,7 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './lib/strip-comments.mjs';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -86,7 +87,7 @@ function exportsOf(file, depth = 0) {
   )) names.add(m[1]);
 
   for (const m of src.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
-    const block = m[1].replace(/\/\/[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+    const block = stripComments(m[1]);
     for (const part of block.split(',')) {
       const t = part.trim().replace(/^type\s+/, '');
       if (!t) continue;

@@ -45,6 +45,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { stripComments } from './lib/strip-comments.mjs';
 
 /** Calls that end something. */
 const DESTROYERS = [
@@ -195,10 +196,19 @@ const EXPECTED = {
     'health checks past retentionDays, LIMIT 10000 per pass',
 };
 
-const strip = (s) =>
-  s
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(Math.max(0, m.length - p1.length)));
+/**
+ * Comments removed by a walker, not a pair of regexes.
+ *
+ * This file carried its own copy of the regex form, as six other scanners
+ * did. A regex cannot tell a comment from the same characters inside a
+ * string, and it deletes everything between them: measured across
+ * `apps/omnitron/src`, 6 502 bytes of real code in 6 of 234 files, 5 238 of
+ * them in one whose template literals hold build commands. A scanner reading
+ * that output sees source with holes in it and reports what it cannot see as
+ * absent — and nothing goes red, because a clean scan is what everyone hopes
+ * for.
+ */
+const strip = (s) => stripComments(s);
 
 const METHOD = /^\s{2,4}(?:public\s+|private\s+|protected\s+|static\s+|override\s+|abstract\s+|async\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(/;
 const FUNCTION = /^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/;

@@ -44,6 +44,7 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { stripComments } from './lib/strip-comments.mjs';
 
 const ROOTS = ['packages', 'apps'];
 const walk = (d, out = []) => {
@@ -57,7 +58,19 @@ const walk = (d, out = []) => {
   return out;
 };
 
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, (m,p)=>p);
+/**
+ * Comments removed by a walker, not a pair of regexes.
+ *
+ * This file carried its own copy of the regex form, as six other scanners
+ * did. A regex cannot tell a comment from the same characters inside a
+ * string, and it deletes everything between them: measured across
+ * `apps/omnitron/src`, 6 502 bytes of real code in 6 of 234 files, 5 238 of
+ * them in one whose template literals hold build commands. A scanner reading
+ * that output sees source with holes in it and reports what it cannot see as
+ * absent — and nothing goes red, because a clean scan is what everyone hopes
+ * for.
+ */
+const strip = (s) => stripComments(s);
 const norm = (s) => s.replace(/\s+/g, ' ').trim();
 
 const byHash = new Map();

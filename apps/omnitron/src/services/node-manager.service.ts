@@ -218,6 +218,39 @@ export class NodeManagerService extends EventEmitter {
     return merged;
   }
 
+  /**
+   * One row per daemon.
+   *
+   * `host` plus `daemonPort` names a DAEMON, and two registry rows naming
+   * the same one are always a mistake — there is no second thing there to
+   * manage. Two daemons on one machine are two ports, and those are still
+   * allowed.
+   *
+   * It was worth every cost it caused, all measured on one machine that had
+   * been registered twice:
+   *
+   *   - the health monitor checked it on both rows, 120 connections an hour
+   *     to one socket;
+   *   - `fleet upgrade` transferred and installed the bundle to it twice;
+   *   - the mesh holds one connection per ADDRESS, so exactly one of the two
+   *     rows receives the node's data and the other reads "not joined"
+   *     forever — and which one is arbitrary.
+   *
+   * Refused rather than merged: the existing row may carry credentials,
+   * tags and history, and picking which of two to keep is the operator's
+   * call, not this function's.
+   */
+  private assertAddressIsFree(host: string, daemonPort: number, exceptId?: string): void {
+    for (const existing of this.nodes.values()) {
+      if (existing.id === exceptId) continue;
+      if (existing.host !== host || existing.daemonPort !== daemonPort) continue;
+      throw new Error(
+        `${host}:${daemonPort} is already registered as "${existing.name}". ` +
+          'One row per daemon — edit that node, or give this one a different daemon port.',
+      );
+    }
+  }
+
   async addNode(input: AddNodeInput): Promise<INode> {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -241,6 +274,7 @@ export class NodeManagerService extends EventEmitter {
       ...(input.offlineTimeout != null && { offlineTimeout: input.offlineTimeout }),
     };
     if (!node.name.trim()) throw new Error('Node name is required');
+    this.assertAddressIsFree(node.host, node.daemonPort);
 
     // Store secrets encrypted (passphrase, password) — only boolean markers in nodes.json.
     // Must await before connectivity check, otherwise getSecret() reads stale file.
@@ -287,6 +321,12 @@ export class NodeManagerService extends EventEmitter {
       createdAt: node.createdAt,
       updatedAt: new Date().toISOString(),
     };
+
+    // An edit can collide as readily as an add — correcting one node's host
+    // to the address another already holds is exactly how a duplicate gets
+    // made. Checked before any secret is written, so a refused edit leaves
+    // nothing behind.
+    this.assertAddressIsFree(updated.host, updated.daemonPort, id);
 
     // Update encrypted secrets — await to ensure they're persisted before connectivity check
     if (sshPassphrase !== undefined) {

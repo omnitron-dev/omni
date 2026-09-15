@@ -118,6 +118,16 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
   }
 }
 
+/**
+ * How long a call to a node may take.
+ *
+ * Ten minutes, because the operations a master asks of a node are
+ * provisioning ones: pulling images, waiting on health checks, installing a
+ * bundle. A caller that needs a shorter bound imposes it itself — the
+ * heartbeat does.
+ */
+const SLAVE_REQUEST_TIMEOUT = 10 * 60_000;
+
 export class SlaveConnector {
   private readonly connections = new Map<string, SlaveConnection>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -343,6 +353,20 @@ export class SlaveConnector {
 
       const netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
       netron.registerTransport('tcp', () => new TcpTransport());
+      // The calls this connection carries ARE the work: a container set
+      // coming up, an image being pulled, a bundle being installed. netron's
+      // default is five seconds, and the failure it produces names a
+      // timeout while the node goes on doing exactly what it was asked:
+      //
+      //     Could not bring up this node's infrastructure:
+      //       RPC request timed out after 5000ms
+      //
+      // measured against a node that provisioned it successfully.
+      //
+      // The one call that must fail fast is the heartbeat, and it is bounded
+      // by its own race rather than by this — which is why raising this does
+      // not make a dead node look alive.
+      netron.setTransportOptions('tcp', { requestTimeout: SLAVE_REQUEST_TIMEOUT });
 
       const peer = await netron.connect(link.url, false);
 

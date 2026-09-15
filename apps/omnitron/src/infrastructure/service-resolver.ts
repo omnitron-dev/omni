@@ -80,6 +80,33 @@ export function getManagedNetwork(): string {
  */
 export function applyManagedDefaults(spec: ResolvedContainer): ResolvedContainer {
   if (spec.network === undefined) spec.network = getManagedNetwork();
+
+  // Published ports bind to loopback unless a container asks otherwise.
+  //
+  // Docker's default is every interface, and Docker's iptables rules are
+  // inserted ahead of ufw's — so a published port is reachable from the
+  // internet no matter what the host firewall says. Measured on the test
+  // server, whose ufw allows 22/tcp and nothing else:
+  //
+  //     nc -vz 37.27.130.185 9700   → timed out (ufw, as configured)
+  //     nc -vz 37.27.130.185 5480   → OPEN      (docker, straight past it)
+  //
+  // 5480 is omnitron's own Postgres. An operator who reads their firewall
+  // rules and concludes the database is private is reading a control that
+  // does not cover it, which is the worst kind of wrong: a check that
+  // answers confidently about something it cannot see.
+  //
+  // The applications that use these containers run on the same host and
+  // reach them over loopback. Anything further away comes through
+  // omnitron's own transport, which is authenticated. So the default costs
+  // nothing and the exposure had no beneficiary.
+  //
+  // A container that genuinely must be reachable says so by setting
+  // `bindHost` — a deliberate line in a config, reviewable in a diff.
+  for (const port of spec.ports ?? []) {
+    if (port.bindHost === undefined) port.bindHost = '127.0.0.1';
+  }
+
   return spec;
 }
 

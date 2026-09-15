@@ -64,9 +64,7 @@ export function validateMethodInput(input: unknown, contract?: MethodContract, l
   // For HTTP transport, input comes as an array of arguments
   // Most methods take a single object parameter, so extract it
   let valueToValidate = input;
-  let isArrayInput = false;
   if (Array.isArray(input)) {
-    isArrayInput = true;
     // If it's a single-element array, validate the first element
     // This handles the common case of methods with a single object parameter
     if (input.length === 1) {
@@ -117,9 +115,30 @@ export function validateMethodInput(input: unknown, contract?: MethodContract, l
     });
   }
 
-  // Return the validated data (with defaults applied by Zod)
-  // If input was an array, wrap the validated value back in an array
-  return isArrayInput && Array.isArray(input) && input.length === 1 ? [validation.data] : validation.data;
+  // Return the validated data, with defaults applied by Zod.
+  //
+  // An argument list in must be an argument list out. The unwrap above handles
+  // BOTH a single-element list and an empty one — a method called with no
+  // arguments validates `undefined` — while the re-wrap handled only the
+  // single-element case, so a zero-argument call came back as bare `undefined`
+  // and `ServiceStub.processArgs` then ran `args.map(...)` on it. Declaring a
+  // contract therefore turned every legal no-argument call into a 500, which
+  // is how the feature met its first real caller: a cookie-mode
+  // `refreshAccessToken` sends an empty body ON PURPOSE, because the token it
+  // needs is in an HttpOnly cookie the client cannot read.
+  if (!Array.isArray(input)) {
+    return validation.data;
+  }
+  if (input.length === 1) {
+    return [validation.data];
+  }
+  if (input.length === 0) {
+    // A schema carrying a default turns `undefined` into a value, and that
+    // value is the argument the handler should receive. Without one the call
+    // stays argument-less rather than gaining an `undefined` it never had.
+    return validation.data === undefined ? [] : [validation.data];
+  }
+  return validation.data;
 }
 
 /**

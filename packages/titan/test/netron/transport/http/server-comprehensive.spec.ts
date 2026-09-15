@@ -48,10 +48,14 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
     server = new HttpServer({
       port: testPort,
       host: 'localhost',
-      cors: {
-        origin: '*',
-        credentials: true,
-      },
+      // `origin: '*'` WITH `credentials: true` is refused by the constructor
+      // now — and this file is where that mattered: the preflight handler
+      // ignored the policy and reflected the caller's own origin, so this
+      // configuration emitted `Allow-Origin: http://example.com` beside
+      // `Allow-Credentials: true`. A browser refuses the wildcard pairing and
+      // accepts the reflected one, so the safe-looking config produced the
+      // dangerous headers.
+      cors: { origin: '*' },
       compression: {
         threshold: 1024,
       },
@@ -742,6 +746,9 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://example.com');
+      // The answer depends on the request's Origin, so a shared cache must not
+      // serve one origin's response to another.
+      expect(response.headers.get('Vary')).toContain('Origin');
       expect(response.headers.get('Access-Control-Allow-Methods')).toContain('POST');
     });
 
@@ -803,7 +810,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       expect(data.success).toBe(true);
     });
 
-    it('should include credentials header when configured', async () => {
+    it('does not send credentials for a wildcard origin', async () => {
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'OPTIONS',
         headers: {
@@ -811,7 +818,50 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         },
       });
 
-      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+    });
+
+    it('a server with no CORS policy tells nobody their origin is allowed', async () => {
+      // The reason this change exists, and the only case that separates the
+      // two emitters: `applyCorsHeaders` has always required `options.cors`
+      // and the preflight handler did not. So a server never asked to do CORS
+      // answered `OPTIONS` with `Allow-Origin: <whatever you sent>` and then
+      // withheld the header from the response that followed — granting a
+      // permission it would not honour.
+      const plain = new HttpServer({ port: testPort + 1, host: 'localhost' });
+      plain.setPeer(mockPeer);
+      await plain.listen();
+      try {
+        const response = await fetch(`http://localhost:${testPort + 1}/netron/invoke`, {
+          method: 'OPTIONS',
+          headers: { Origin: 'http://example.com', 'Access-Control-Request-Method': 'POST' },
+        });
+        expect(response.status).toBe(204);
+        expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      } finally {
+        await plain.close();
+      }
+    });
+
+    it('refuses to construct a server that pairs credentials with reflect-any', () => {
+      // The pairing the CORS specification will not let you express as `*`,
+      // and which reflecting the caller's origin smuggles past: any site could
+      // then make a credentialed request and read the response. Refused at
+      // construction so a deployment learns its origin list is missing.
+      for (const origin of ['*', true, undefined]) {
+        expect(
+          () => new HttpServer({ port: 0, cors: { ...(origin !== undefined && { origin }), credentials: true } as never }),
+          `origin: ${String(origin)}`,
+        ).toThrow(/origin.*allow-list/i);
+      }
+    });
+
+    it('sends credentials for an origin that is actually listed', () => {
+      const listed = new HttpServer({
+        port: 0,
+        cors: { origin: 'https://app.example', credentials: true },
+      });
+      expect(listed).toBeDefined();
     });
   });
 

@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import type { CorsOptions } from './http/middleware/types.js';
 import type { Packet } from '../packet/packet.js';
 
 // Re-export Packet for convenience
@@ -86,7 +87,21 @@ export interface TransportOptions {
   /** Enable automatic service discovery (HTTP only, default: true) */
   discovery?: boolean;
   port?: number;
-  cors?: any;
+  /**
+   * CORS policy.
+   *
+   * `true` reflects whatever `Origin` the request carried, which is the
+   * behaviour every caller has today and is only safe where something in front
+   * of the server already refuses foreign origins. An object says which
+   * origins may be reflected.
+   *
+   * `credentials: true` cannot be combined with reflect-any. That pairing is
+   * exactly what the CORS specification refuses to let you express as
+   * `Access-Control-Allow-Origin: *`, and reflecting the request's own origin
+   * smuggles it past the rule: any site could then make a credentialed request
+   * and READ the response. The constructor throws rather than emitting it.
+   */
+  cors?: boolean | CorsOptions;
   /** Enable request/response logging (HTTP only, default: false) */
   logging?: boolean;
   /**

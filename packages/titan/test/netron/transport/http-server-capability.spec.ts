@@ -63,13 +63,20 @@ describe('HTTP Transport - Server Capability', () => {
 
     it('should create server with CORS enabled', async () => {
       server = await transport.createServer({
-        cors: {
-          origin: '*',
-          credentials: true,
-        },
+        cors: { origin: 'https://app.example', credentials: true },
       });
 
       expect(server).toBeDefined();
+    });
+
+    it('refuses credentials without an origin allow-list', async () => {
+      // `'*'` with credentials used to construct happily and then emit the
+      // caller's own origin beside `Allow-Credentials: true`, because the
+      // preflight handler ignored the policy and reflected. A browser refuses
+      // the wildcard pairing and accepts the reflected one.
+      await expect(
+        transport.createServer({ cors: { origin: '*', credentials: true } }),
+      ).rejects.toThrow(/origin.*allow-list/i);
     });
 
     it('should create server with compression enabled', async () => {

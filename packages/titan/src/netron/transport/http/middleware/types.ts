@@ -207,7 +207,15 @@ export interface HttpTransportContext extends TransportContext {
  * CORS configuration options
  */
 export interface CorsOptions {
-  origin?: string | string[] | boolean | ((origin: string | undefined) => boolean | string);
+  /**
+   * Which origins may be answered.
+   *
+   * `true` (and an absent value) reflects whatever `Origin` arrived — safe
+   * only where something in front already refuses foreign ones. Anything else
+   * is an allow-list. `credentials: true` requires one: see the check in
+   * `HttpServer`'s constructor for why that pairing cannot be emitted.
+   */
+  origin?: string | string[] | boolean | RegExp | ((origin: string | undefined) => boolean | string);
   methods?: string[];
   headers?: string[];
   credentials?: boolean;

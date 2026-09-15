@@ -225,6 +225,37 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     super();
     this.options = options || {};
 
+    // Credentials + reflect-any is the one CORS configuration that must not
+    // exist. The specification refuses to let you write
+    // `Access-Control-Allow-Origin: *` beside
+    // `Access-Control-Allow-Credentials: true`; reflecting the request's own
+    // origin says the same thing and the browser accepts it, so any site could
+    // make a credentialed request and read the response.
+    //
+    // Refused here rather than dropped at emit time: a deployment that asked
+    // for credentials should learn that its origin list is missing, not serve
+    // quietly without them and be discovered by whoever notices the session is
+    // not travelling.
+    //
+    // `origin: '*'` counts. A reader writes it meaning "public, and browsers
+    // will refuse credentials with a wildcard anyway" — and the preflight
+    // handler ignored the policy entirely and reflected the request's own
+    // origin, so what actually went out was `Allow-Origin: <caller>` beside
+    // `Allow-Credentials: true`. The configuration a browser would have
+    // rejected became the one it accepts.
+    const cors = this.options.cors;
+    if (typeof cors === 'object' && cors !== null) {
+      const policy = cors as { origin?: unknown; credentials?: boolean };
+      const reflectsAny =
+        policy.origin === undefined || policy.origin === true || policy.origin === '*';
+      if (policy.credentials === true && reflectsAny) {
+        throw new Error(
+          'CORS: `credentials: true` requires an explicit `origin` allow-list — ' +
+            'reflecting any origin with credentials lets any site read an authenticated response.',
+        );
+      }
+    }
+
     // OPTIMIZATION: Configure request timeout from options.
     // T#46: use nullish coalescing so explicit `requestTimeout: 0`
     // (operator intent: "disable the per-request timeout") is
@@ -414,7 +445,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   setPeer(peer: LocalPeer): void {
     this.netronPeer = peer;
     this.middlewareAdapter = new HttpMiddlewareAdapter({
-      cors: this.options.cors || undefined,
+      // `cors: true` is shorthand for "reflect any origin"; the adapter takes
+      // the object form, so say it in the form it understands rather than
+      // handing it a boolean it has no property in common with.
+      cors: this.options.cors === true ? { origin: true } : (this.options.cors || undefined),
     });
 
     // Store logging option for use in request handlers
@@ -2128,15 +2162,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private handleCorsPreflightRequest(request: Request): Response {
     const headers = new Headers();
-    const origin = request.headers.get('Origin');
+    // Through the same matcher as every other response. This used to answer
+    // `if (origin)` alone — so a server with no `cors` option at all told any
+    // caller its origin was allowed, and only the absence of the actual
+    // response headers stopped the browser acting on it.
+    const origin = this.allowedOrigin(request);
 
     if (origin) {
       headers.set('Access-Control-Allow-Origin', origin);
+      headers.append('Vary', 'Origin');
       headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      const extra =
+        typeof this.options.cors === 'object' && this.options.cors !== null
+          ? ((this.options.cors as { allowedHeaders?: readonly string[] }).allowedHeaders ?? [])
+          : [];
+      headers.set(
+        'Access-Control-Allow-Headers',
+        ['Content-Type', 'Authorization', ...extra].join(', '),
+      );
       headers.set('Access-Control-Max-Age', '86400');
 
-      if (this.options.cors && (this.options.cors as any).credentials) {
+      if (this.corsCredentials) {
         headers.set('Access-Control-Allow-Credentials', 'true');
       }
     }
@@ -2588,16 +2634,66 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
+   * The origin this request may be answered as, or `null`.
+   *
+   * `cors: true` reflects whatever arrived — the behaviour every caller has
+   * today, and only safe where something in front already refuses foreign
+   * origins. `{ origin }` restricts it.
+   *
+   * Both emitters go through here. They did not before: `applyCorsHeaders`
+   * checked `options.cors` and the preflight handler did not, so a server with
+   * CORS off still answered `OPTIONS` with
+   * `Access-Control-Allow-Origin: <whatever you sent>`.
+   */
+  private allowedOrigin(request: Request): string | null {
+    const origin = request.headers.get('Origin');
+    if (!origin || !this.options.cors) return null;
+
+    const policy = this.options.cors;
+    if (policy === true) return origin;
+
+    const allow = (policy as { origin?: unknown }).origin ?? true;
+    // `'*'` is how CORS spells reflect-any, and it is a third spelling the
+    // matcher has to know: compared as a literal it matches no real origin, so
+    // a server configured `origin: '*'` would have answered nobody.
+    if (allow === true || allow === '*') return origin;
+    if (allow === false) return null;
+    if (typeof allow === 'string') return allow === origin ? origin : null;
+    if (Array.isArray(allow)) return allow.includes(origin) ? origin : null;
+    if (allow instanceof RegExp) return allow.test(origin) ? origin : null;
+    // `CorsOptions.origin` also allows a predicate — `true` means "this one is
+    // allowed", a string means "answer as this origin instead". Both forms are
+    // in the type, so both are handled; a matcher that quietly returned null
+    // for a shape its own type permits is a gate that refuses what the
+    // deployment configured.
+    if (typeof allow === 'function') {
+      const verdict = (allow as (o: string | undefined) => boolean | string)(origin);
+      if (verdict === true) return origin;
+      if (typeof verdict === 'string') return verdict;
+      return null;
+    }
+    return null;
+  }
+
+  /** Whether this server may answer with credentials. */
+  private get corsCredentials(): boolean {
+    const policy = this.options.cors;
+    return typeof policy === 'object' && policy !== null && (policy as { credentials?: boolean }).credentials === true;
+  }
+
+  /**
    * Apply CORS headers to response headers
    * Consolidated from 4 duplicate implementations
    */
   private applyCorsHeaders(headers: Headers, request: Request): void {
-    const origin = request.headers.get('Origin');
-    if (origin && this.options.cors) {
-      headers.set('Access-Control-Allow-Origin', origin);
-      if ((this.options.cors as any).credentials) {
-        headers.set('Access-Control-Allow-Credentials', 'true');
-      }
+    const origin = this.allowedOrigin(request);
+    if (!origin) return;
+    headers.set('Access-Control-Allow-Origin', origin);
+    // `Vary`, because the answer depends on the request's Origin — without it
+    // a shared cache can serve one origin's response to another.
+    headers.append('Vary', 'Origin');
+    if (this.corsCredentials) {
+      headers.set('Access-Control-Allow-Credentials', 'true');
     }
   }
 

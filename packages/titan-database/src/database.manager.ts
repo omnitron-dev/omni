@@ -126,6 +126,13 @@ interface ConnectionInfo {
   connected: boolean;
   connecting: boolean;
   lastError?: Error;
+  /**
+   * Set when the last attempt failed for a reason retrying cannot change — a
+   * dialect that does not exist, a sqlite path whose directory does not. The
+   * verdict was already computed by `createConnection` and only ever reported;
+   * storing it is what lets the health-check loop tell "down" from "wrong".
+   */
+  permanent?: boolean;
   metrics: {
     queryCount: number;
     errorCount: number;
@@ -255,6 +262,8 @@ export class DatabaseManager implements IDatabaseManager {
    * Track consecutive health check failures for circuit breaker pattern.
    */
   private healthCheckFailures: Map<string, number> = new Map();
+  /** Connections a background recovery is in flight for; the timer does not await a tick. */
+  private readonly recovering = new Set<string>();
 
   /**
    * Maximum consecutive failures before marking connection as unhealthy.
@@ -374,10 +383,46 @@ export class DatabaseManager implements IDatabaseManager {
     for (const [name, info] of this.connections) {
       if (info.connected) {
         promises.push(this.runSingleHealthCheck(name, info));
+      } else if (!info.connecting && !info.permanent && !this.recovering.has(name)) {
+        promises.push(this.recoverConnection(name));
       }
     }
     if (promises.length > 0) {
       await Promise.all(promises);
+    }
+  }
+
+  /**
+   * Bring back a connection that is registered but down.
+   *
+   * This loop used to visit only entries whose `connected` was true, so it
+   * stopped watching a connection at exactly the moment it needed watching:
+   * one that failed to establish at boot, and one whose reconnect after a
+   * failed check did not take, both stayed down until something else happened
+   * to ask for them. An entry that is explicitly closed is DELETED from the
+   * map rather than marked, so "present and down" already means "wanted".
+   *
+   * A failure the driver calls permanent is not retried. `createConnection`
+   * has always decided that; this is the first thing to read the verdict
+   * rather than only report it in an error nobody catches.
+   *
+   * The `recovering` guard matters because the timer does not await the tick:
+   * `setInterval` fires again whether or not the previous run finished, and
+   * `reconnect` tears down a pool and builds another.
+   */
+  private async recoverConnection(name: string): Promise<void> {
+    this.recovering.add(name);
+    try {
+      await this.reconnect(name);
+      this.healthCheckFailures.set(name, 0);
+      this.logger.info({ connection: name }, 'Connection recovered by the health check loop');
+    } catch (error) {
+      this.logger.warn(
+        { connection: name, error: describeError(error) },
+        'Connection is still down; will try again on the next health check'
+      );
+    } finally {
+      this.recovering.delete(name);
     }
   }
 
@@ -719,6 +764,7 @@ export class DatabaseManager implements IDatabaseManager {
       const permanent =
         (error instanceof TitanError && error.details?.['permanent'] === true) ||
         isPermanentConnectionError(error);
+      info.permanent = permanent;
 
       throw new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,

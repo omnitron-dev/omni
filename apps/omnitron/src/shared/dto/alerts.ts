@@ -73,4 +73,12 @@ export interface ActiveAlert {
   firedAt: string;
   resolvedAt: string | null;
   acknowledged: boolean;
+  /**
+   * The node that raised it, or null when this master raised it itself.
+   *
+   * A replicated alert carries it in `annotations.node` — `alert_events` has
+   * no column for a node, and an alert that says "disk above 90%" without
+   * saying whose disk is one nobody can act on.
+   */
+  node: string | null;
 }

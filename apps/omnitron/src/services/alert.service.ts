@@ -319,8 +319,23 @@ export class AlertService {
       .execute();
 
     return rows.map((row) => {
-      const annotations = (row.eventAnnotations ?? row.ruleAnnotations) as Record<string, unknown> | null;
-      const summary = typeof annotations?.['summary'] === 'string' ? (annotations['summary'] as string) : null;
+      // Merged, not chosen.
+      //
+      // This was `eventAnnotations ?? ruleAnnotations`, so an event with ANY
+      // annotations of its own lost every annotation its rule carried —
+      // including `summary`, which is the sentence this list shows. An event
+      // annotated `{node: …}` and nothing else would have rendered as the
+      // raw expression, which is exactly what a replicated alert now looks
+      // like: the master stamps the node it came from onto every one.
+      //
+      // The event's own values win where both have a key: the rule's
+      // annotations are the template and the event's are what happened.
+      const annotations = {
+        ...((row.ruleAnnotations ?? {}) as Record<string, unknown>),
+        ...((row.eventAnnotations ?? {}) as Record<string, unknown>),
+      };
+      const summary = typeof annotations['summary'] === 'string' ? (annotations['summary'] as string) : null;
+      const node = typeof annotations['node'] === 'string' ? (annotations['node'] as string) : null;
       const value = row.value !== null && row.value !== undefined ? String(row.value) : null;
 
       return {
@@ -332,6 +347,10 @@ export class AlertService {
         firedAt: new Date(row.firedAt as unknown as string).toISOString(),
         resolvedAt: row.resolvedAt ? new Date(row.resolvedAt as unknown as string).toISOString() : null,
         acknowledged: row.acknowledgedAt !== null && row.acknowledgedAt !== undefined,
+        // Null for an alert this master raised about itself. Present for one
+        // replicated from a node, which is the case where "disk above 90%"
+        // is unactionable without it.
+        node,
       };
     });
   }

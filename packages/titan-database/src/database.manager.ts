@@ -1184,17 +1184,27 @@ export class DatabaseManager implements IDatabaseManager {
       await this.reconnect(name);
     }
 
-    if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Unknown error');
+    // `reconnect` REPLACES the entry rather than repairing it: `close()` drops
+    // the name from the map and `createConnectionWithRetry` stores a brand new
+    // `ConnectionInfo`. So `info` above is the object the reconnect discarded,
+    // whose `connected` is false by construction and whose `lastError` is
+    // whatever broke it in the first place. Reading it meant a SUCCESSFUL
+    // recovery was reported as `Errors.unavailable(...)`, with a stale reason,
+    // on every call for the life of the process — while each of those calls
+    // tore the pool down and built a new one first.
+    const live = this.connections.get(name) ?? info;
+
+    if (!live.connected) {
+      throw Errors.unavailable(name, live.lastError ? describeError(live.lastError) : 'Unknown error');
     }
 
     // Return executor (with plugins) if available, otherwise raw instance
     // This ensures all consumers get plugin-aware queries by default
-    if (info.executor) {
-      return info.executor as Kysely<DB>;
+    if (live.executor) {
+      return live.executor as Kysely<DB>;
     }
 
-    return info.instance as Kysely<DB>;
+    return live.instance as Kysely<DB>;
   }
 
   /**
@@ -1226,8 +1236,12 @@ export class DatabaseManager implements IDatabaseManager {
       await this.reconnect(name);
     }
 
-    if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Unknown error');
+    // See `getConnection`: `reconnect` replaces the map entry, so the object
+    // resolved above is the one it discarded.
+    const live = this.connections.get(name) ?? info;
+
+    if (!live.connected) {
+      throw Errors.unavailable(name, live.lastError ? describeError(live.lastError) : 'Unknown error');
     }
 
     // If specific plugins provided, create new executor
@@ -1236,16 +1250,16 @@ export class DatabaseManager implements IDatabaseManager {
         { connection: name, plugins: plugins.map((p) => p.name) },
         'Creating executor with custom plugins'
       );
-      return createExecutor(info.instance, plugins);
+      return createExecutor(live.instance, plugins);
     }
 
     // Return cached executor if available
-    if (info.executor) {
-      return info.executor;
+    if (live.executor) {
+      return live.executor;
     }
 
     // Create executor without plugins (still provides executor interface)
-    return createExecutor(info.instance, []);
+    return createExecutor(live.instance, []);
   }
 
   /**

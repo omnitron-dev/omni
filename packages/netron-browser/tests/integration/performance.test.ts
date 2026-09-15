@@ -36,13 +36,25 @@ function benchmark(operation: string, times: number[]): BenchmarkResult {
   };
 }
 
-// TODO: These tests are currently skipped due to breaking changes in Titan server
-// The server now requires UUID-based definition IDs, but the netron-browser client
-// still sends service names (e.g., "calculator@1.0.0"). This needs to be fixed by:
-// 1. Implementing service discovery/query in the client
-// 2. Caching service UUIDs
-// 3. Using UUIDs instead of service names in CALL/GET/SET packets
-// Related commit: dcd67ed9 - "refactor(netron): Comprehensive improvements - security, architecture, and code quality"
+// These benchmarks are skipped, and the reason has changed.
+//
+// The note that stood here said the client "still sends service names" where
+// the server wants UUID definition ids, and listed three things to build:
+// discovery, a UUID cache, and UUIDs in CALL/GET/SET. All three exist —
+// `resolveDefinitionId` asks the server's `query_interface` core-task, caches
+// `serviceName -> defId`, clears the cache on every reconnect because defIds
+// are minted per server process, and recovers from a stale one.
+//
+// What the note missed is that discovery is OPT-IN. This file never set
+// `enableServiceDiscovery`, so it kept the behaviour the note described and
+// every call here timed out at 60s. That is fixed below, and `errors.test.ts`
+// runs the same round-trip green.
+//
+// They stay skipped for a different reason: they are load benchmarks — 100+
+// iterations per test, plus a sustained-load suite — and the file does not
+// finish inside seven minutes even with the client working. Timings are not a
+// correctness guard and do not belong in a suite anything waits on. Whoever
+// owns performance next should run them deliberately, with a budget.
 describe.skip('Performance Benchmarks - WebSocket', () => {
   let server: TitanServerFixture;
   let client: WebSocketClient;
@@ -59,6 +71,10 @@ describe.skip('Performance Benchmarks - WebSocket', () => {
       url: server.wsUrl,
       reconnect: false,
       timeout: 30000,
+      // Discovery is opt-in, and without it the client sends the qualified
+      // service name where the server expects a defId — which is what the
+      // TODO above described and what made every call here time out.
+      enableServiceDiscovery: true,
     });
 
     await client.connect();
@@ -385,7 +401,7 @@ describe.skip('Performance Benchmarks - HTTP vs WebSocket', () => {
     });
 
     httpClient = new HttpClient({ url: server.httpUrl });
-    wsClient = new WebSocketClient({ url: server.wsUrl, reconnect: false });
+    wsClient = new WebSocketClient({ url: server.wsUrl, reconnect: false, enableServiceDiscovery: true });
 
     await httpClient.connect();
     await wsClient.connect();
@@ -517,6 +533,7 @@ describe.skip('Performance Regression Detection', () => {
     client = new WebSocketClient({
       url: server.wsUrl,
       reconnect: false,
+      enableServiceDiscovery: true,
     });
 
     await client.connect();

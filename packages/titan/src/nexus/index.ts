@@ -26,6 +26,7 @@ import { Container } from './container.js';
  * DevTools debugger).
  */
 export * from './dependency-graph.js';
+export { classOfProvider, classOfToken, classOfRegistration } from './registration-class.js';
 
 // ============================================================================
 // Core Container

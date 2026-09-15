@@ -111,31 +111,6 @@ describe('the liveness module answers correctly, and always did', () => {
   });
 });
 
-describe('the spawner no longer asks `killed` about liveness', () => {
-  it('has no `child.killed` left in code, only in the notes explaining it', async () => {
-    const { readFileSync } = await import('node:fs');
-    const src = readFileSync(new URL('../src/process-spawner.ts', import.meta.url), 'utf8');
-
-    const codeLines = src
-      .split('\n')
-      .filter((l) => l.includes('child.killed'))
-      .filter((l) => !/^\s*(\*|\/\/)/.test(l.trim()) && !/^\s*\*/.test(l));
-
-    expect(codeLines, `still read as liveness in: ${codeLines.join(' | ')}`).toEqual([]);
-  });
-
-  it('and the escalation it does run verifies the outcome', () => {
-    const src = readFileSync(new URL('../src/process-spawner.ts', import.meta.url), 'utf8');
-    expect(src).toMatch(/async function killChildAndVerify/);
-    expect(src).toMatch(/function hasExited/);
-    expect(src, 'the cleanup must await the verified kill').toMatch(
-      /await killChildAndVerify\(child, this\.logger/,
-    );
-  });
-});
-
-import { readFileSync } from 'node:fs';
-
 describe('and the other arm of the old predicate was wrong too', () => {
   it('`exitCode === null` stays true for a child killed BY a signal', async () => {
     // The companion error, quieter than the first: Node fills `signalCode` and
@@ -161,3 +136,87 @@ describe('and the other arm of the old predicate was wrong too', () => {
     expect(isAlive(pid), 'and the OS knows better').toBe(false);
   });
 });
+
+describe('the spawner no longer asks `killed` about liveness', () => {
+  it('has no `child.killed` left in code, only in the notes explaining it', () => {
+    const src = readFileSync(new URL('../src/process-spawner.ts', import.meta.url), 'utf8');
+    const codeLines = src
+      .split('\n')
+      .filter((l) => l.includes('child.killed'))
+      .filter((l) => !/^\s*(\*|\/\/)/.test(l.trim()) && !/^\s*\*/.test(l));
+
+    expect(codeLines, `still read as liveness in: ${codeLines.join(' | ')}`).toEqual([]);
+  });
+});
+
+/**
+ * The helpers, exercised rather than named.
+ *
+ * An earlier version of this file asserted `expect(src).toMatch(/async function
+ * killChildAndVerify/)` — which pins a NAME. A redaction, a guard or a kill
+ * asserted by source text passes just as well when nothing calls it or when it
+ * does the wrong thing under the right name, and that is the weakness this
+ * repository keeps finding in its own checks. So: run them.
+ */
+describe('hasExited answers about the process, not about us', () => {
+  it('false for a child that ignored our SIGTERM', async () => {
+    const child = await startStubbornChild();
+    child.kill('SIGTERM');
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(hasExited(child)).toBe(false);
+  });
+
+  it('true once it is actually gone', async () => {
+    const child = await startStubbornChild();
+    const exited = new Promise((r) => child.once('exit', r));
+    child.kill('SIGKILL');
+    await exited;
+
+    expect(hasExited(child)).toBe(true);
+  });
+});
+
+describe('killChildAndVerify escalates, and says so honestly', () => {
+  const quiet = () => {};
+  const logger = { warn: quiet, error: quiet, info: quiet, debug: quiet, trace: quiet, fatal: quiet } as never;
+
+  it('kills a child that ignores SIGTERM, and reports that it is gone', async () => {
+    const child = await startStubbornChild();
+    const pid = child.pid!;
+
+    const gone = await killChildAndVerify(child, logger, { test: 'stubborn' });
+
+    expect(gone, 'the escalation to SIGKILL has to actually happen').toBe(true);
+    expect(osSaysAlive(pid), 'and the process is really gone').toBe(false);
+  });
+
+  it('does not spend the grace period on a child that leaves promptly', async () => {
+    // The failure path is inside a spawn error, which a restart waits on. If
+    // this always burned the full 3s grace, every failed spawn would take
+    // three seconds longer to report — so the wait has to end on the exit
+    // event, not on the timer.
+    const child = await startStubbornChild();
+    child.kill('SIGKILL'); // prompt exit, whatever the handler says
+    await new Promise((r) => child.once('exit', r));
+
+    const started = Date.now();
+    const gone = await killChildAndVerify(child, logger, { test: 'prompt' });
+    const elapsed = Date.now() - started;
+
+    expect(gone).toBe(true);
+    expect(elapsed, `waited ${elapsed}ms on an already-dead child`).toBeLessThan(500);
+  });
+
+  it('is a no-op on a child that already exited', async () => {
+    const child = await startStubbornChild();
+    const exited = new Promise((r) => child.once('exit', r));
+    child.kill('SIGKILL');
+    await exited;
+
+    await expect(killChildAndVerify(child, logger, { test: 'already-dead' })).resolves.toBe(true);
+  });
+});
+
+import { readFileSync } from 'node:fs';
+import { hasExited, killChildAndVerify } from '../src/process-spawner.js';

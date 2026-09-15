@@ -49,7 +49,11 @@ describe('asking a node to host a stack s infrastructure', () => {
 
     const report = await service.provisionStack({ config: CONFIG });
 
-    expect(host).toHaveBeenCalledWith(CONFIG, {});
+    // The config, and the services it expands to — the stack's Postgres is
+    // written as sugar and has to be a service requirement before anything
+    // can act on it.
+    expect(host.mock.calls[0]![0]).toBe(CONFIG);
+    expect(Object.keys(host.mock.calls[0]![1] as Record<string, unknown>)).toContain('postgres');
     expect(report.ready).toBe(true);
     expect(report.running.sort()).toEqual(['pg', 'redis']);
     expect(report.missing).toEqual([]);
@@ -114,7 +118,10 @@ describe('what the applications in a stack declare', () => {
     // The node does not have the application definitions when it is asked,
     // and reading them again on that side would be a second implementation
     // of variant selection and override merging.
-    expect(host).toHaveBeenCalledWith(CONFIG, declared);
+    // The node does not have the application definitions when it is asked,
+    // and reading them again on that side would be a second implementation
+    // of variant selection and override merging.
+    expect(host.mock.calls[0]![1]).toMatchObject(declared as Record<string, unknown>);
   });
 
   it('is optional — a stack may declare nothing of its own', async () => {
@@ -122,6 +129,41 @@ describe('what the applications in a stack declare', () => {
     const service = new InfrastructureRpcService(() => null, (() => infra) as never);
 
     await expect(service.provisionStack({ config: CONFIG })).resolves.toMatchObject({ ready: true });
+  });
+});
+
+describe('the stack s own services reach the node', () => {
+  it('expands the config sugar before provisioning it', async () => {
+    const infra = fakeInfra({}, []);
+    const host = vi.fn(() => infra);
+    const service = new InfrastructureRpcService(() => null, host as never);
+
+    await service.provisionStack({ config: { postgres: { image: 'postgres:17', port: 5432 } } as never });
+
+    // `resolveInfrastructure` reads ONLY the normalized services and ignores
+    // the raw config it is also handed, so skipping the expansion is not a
+    // degraded provision: it is an empty one that reports success. Measured:
+    // a node asked for `postgres, redis, minio` answered "nothing is
+    // declared, so nothing was provisioned".
+    const declared = host.mock.calls[0]![1] as Record<string, unknown>;
+    expect(Object.keys(declared)).toContain('postgres');
+  });
+
+  it('lets an application s declaration win over the stack s sugar', async () => {
+    const infra = fakeInfra({}, []);
+    (infra as any).addAppContainers = vi.fn();
+    const host = vi.fn(() => infra);
+    const service = new InfrastructureRpcService(() => null, host as never);
+
+    const appVersion = { ports: { main: 6380 }, env: {}, docker: { image: 'redis:7.4' } } as never;
+    await service.provisionStack({
+      config: { redis: { port: 6379 } } as never,
+      services: { redis: appVersion },
+    });
+
+    // The app is the side that knows what it needs of it.
+    const declared = host.mock.calls[0]![1] as Record<string, unknown>;
+    expect(declared['redis']).toBe(appVersion);
   });
 });
 

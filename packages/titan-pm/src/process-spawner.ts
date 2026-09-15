@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import net from 'node:net';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { isAlive as isPidAlive } from './liveness.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type {
   IProcessSpawner,
@@ -117,6 +118,98 @@ const EARLY_LOG_MAX_BYTES = 1024 * 1024;
 export interface IStartupOutput {
   stdout: string;
   stderr: string;
+}
+
+/**
+ * Has this child actually exited?
+ *
+ * NOT `child.killed`. Node sets `killed` when a signal was successfully SENT —
+ * it says nothing about whether the process received it, honoured it, or is
+ * still running. Measured on a child that installs an empty `SIGTERM` handler,
+ * which is what a titan child does:
+ *
+ *     after kill('SIGTERM'):  killed = true,  still alive = true
+ *     3.1s later:             killed = true,  still alive = true
+ *
+ * So every `if (!child.killed)` guarding an escalation is dead code, and every
+ * `!child.killed` used as "is it alive" answers DEAD about a running process.
+ *
+ * And the companion half of the old predicate was wrong in the OTHER
+ * direction: `exitCode === null` is ALSO true for a child that was killed BY a
+ * signal — Node fills `signalCode` and leaves `exitCode` null. So
+ * `!child.killed && child.exitCode === null` reported alive-when-dead as
+ * readily as dead-when-alive, and both arms had to go.
+ *
+ * `exitCode`/`signalCode` together are the authoritative in-process answer once
+ * the child has been reaped; before that the OS is, and `liveness.ts` already
+ * asks it with signal 0 — this file simply never called it.
+ */
+function hasExited(child: ChildProcess): boolean {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return child.pid == null ? true : !isPidAlive(child.pid);
+}
+
+/**
+ * Stop a child and VERIFY it stopped: SIGTERM, wait, SIGKILL, wait, report.
+ *
+ * Used by the spawn-error path, which used to hand-roll
+ *
+ *     child.kill('SIGTERM');
+ *     setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 3000);
+ *
+ * whose escalation could never fire (see `hasExited`) and which verified
+ * nothing afterwards. A child that ignores SIGTERM therefore survived the
+ * cleanup, while the `finally` below released the spawner's claim on it — so
+ * it belonged to nobody, kept its listen port, and every replacement failed
+ * with EADDRINUSE. Observed on a live daemon: an app reported `crashed` with
+ * no pid while its own child, parented to that same daemon, answered on the
+ * port.
+ *
+ * Returns true when the child is gone. A false is a leak the caller should
+ * surface rather than swallow — the process is still out there holding
+ * whatever it held.
+ */
+async function killChildAndVerify(
+  child: ChildProcess,
+  logger: ILogger,
+  context: Record<string, unknown>,
+  termGraceMs = 3000,
+): Promise<boolean> {
+  if (hasExited(child)) return true;
+
+  const exited = new Promise<boolean>((resolve) => {
+    const done = () => resolve(true);
+    child.once('exit', done);
+    setTimeout(() => {
+      child.off('exit', done);
+      resolve(false);
+    }, termGraceMs).unref();
+  });
+
+  try {
+    child.kill('SIGTERM');
+  } catch {
+    // Already gone between the check and here.
+    return true;
+  }
+
+  if (await exited) return true;
+  if (hasExited(child)) return true;
+
+  logger.warn({ ...context, pid: child.pid }, 'Child ignored SIGTERM during cleanup — escalating to SIGKILL');
+  try {
+    child.kill('SIGKILL');
+  } catch {
+    return true;
+  }
+
+  // SIGKILL is not deliverable-and-ignorable, but it IS deferrable: a process
+  // in an uninterruptible syscall stays until it leaves it. Give the kernel a
+  // moment, then answer honestly either way.
+  await new Promise((r) => {
+    setTimeout(r, 200).unref();
+  });
+  return hasExited(child);
 }
 
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {
@@ -349,7 +442,10 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
       child.once('error', errorHandler);
 
       // Check if already exited
-      if (child.exitCode !== null || child.killed) {
+      // `child.killed` here meant "we signalled it", so a child that ignored
+      // SIGTERM took this early exit and `terminate()` resolved without it
+      // having stopped. Ask whether it EXITED.
+      if (hasExited(child)) {
         cleanup();
         resolve();
         return;
@@ -367,7 +463,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
 
       // Schedule SIGTERM after graceful timeout
       termTimer = setTimeout(() => {
-        if (resolved || child.exitCode !== null || child.killed) return;
+        if (resolved || hasExited(child)) return;
 
         this.logger.debug({ workerId: this.id }, 'Graceful shutdown timeout, sending SIGTERM');
         try {
@@ -379,7 +475,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
 
       // Schedule SIGKILL as last resort
       killTimer = setTimeout(() => {
-        if (resolved || child.exitCode !== null || child.killed) return;
+        if (resolved || hasExited(child)) return;
 
         this.logger.warn({ workerId: this.id }, 'SIGTERM timeout, sending SIGKILL');
         try {
@@ -450,7 +546,12 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
       return this._status === ProcessStatus.RUNNING;
     } else {
       const child = this.worker as ChildProcess;
-      return !child.killed && child.exitCode === null;
+      // `!child.killed` answered DEAD for a child that was sent SIGTERM and
+      // ignored it — which is every titan child, since they install a handler.
+      // That is the bookkeeping half of the stranded-worker bug: the
+      // orchestrator asks this, hears "dead", marks the app crashed, and the
+      // process keeps running and keeps its listen port. See `hasExited`.
+      return !hasExited(child);
     }
   }
 
@@ -949,14 +1050,21 @@ export class ProcessSpawner implements IProcessSpawner {
           await (worker as Worker).terminate();
         } else {
           const child = worker as ChildProcess;
-          if (child.pid && !child.killed) {
-            child.kill('SIGTERM');
-            // Give it 3s to exit gracefully, then force kill
-            setTimeout(() => {
-              if (!child.killed) {
-                child.kill('SIGKILL');
-              }
-            }, 3000).unref();
+          if (child.pid) {
+            // Awaited, and verified. The previous version fired SIGTERM and
+            // scheduled an escalation behind `if (!child.killed)`, which can
+            // never be true once a signal has been sent — so a child that
+            // ignored SIGTERM outlived the cleanup while the `finally` below
+            // released our claim on it.
+            const gone = await killChildAndVerify(child, this.logger, { serviceName, processId });
+            if (!gone) {
+              this.logger.error(
+                { serviceName, processId, pid: child.pid },
+                'Child survived SIGKILL after a failed spawn — it still holds whatever it held ' +
+                  '(ports, locks). It is parented to this process, so the orphan sweep will not ' +
+                  'see it: it needs the abandoned-child sweep.'
+              );
+            }
           }
         }
       } catch (killError) {

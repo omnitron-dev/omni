@@ -101,14 +101,33 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Reused when this node already has one: reconciliation is idempotent,
     // and building a second service would give the node two janitors and
     // two health monitors over one set of containers.
-    const declared = data.services ?? {};
+    // The stack's own block — its Postgres, Redis, MinIO — is written as
+    // sugar (`postgres: { image, port, databases }`) and has to be expanded
+    // through the preset registry before anything can act on it.
+    // `resolveInfrastructure` reads ONLY the normalized services and ignores
+    // the raw config it is also handed, so skipping this step is not a
+    // degraded provision: it is an empty one that reports success.
+    //
+    // Measured: a node asked to provision `postgres, redis, minio` answered
+    // "Infrastructure: nothing is declared, so nothing was provisioned" —
+    // which was true of what it had been given and false of what was asked.
+    const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
+    const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
+    const fromStack = normalizeInfraConfig(data.config, createDefaultRegistry());
+
+    // An application's declaration wins over the stack's sugar for the same
+    // name: the app is the side that knows what it needs of it.
+    const declared = { ...fromStack, ...(data.services ?? {}) };
     const service = this.getInfra() ?? this.hostInfra(data.config, declared);
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.
-    if (Object.keys(declared).length > 0) {
+    if (Object.keys(data.services ?? {}).length > 0) {
+      // Only the app-declared half: the stack's own services are already in
+      // the service's desired set, and adding them twice gives one container
+      // two entries and the reconciler two opinions about it.
       const { resolveAppInfrastructure } = await import('../infrastructure/service-resolver.js');
-      const containers = resolveAppInfrastructure(declared);
+      const containers = resolveAppInfrastructure(data.services ?? {});
       if (containers.length > 0) service.addAppContainers(containers);
     }
 

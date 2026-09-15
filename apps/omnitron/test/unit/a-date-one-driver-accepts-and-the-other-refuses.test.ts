@@ -33,6 +33,23 @@ import { describe, it, expect, vi } from 'vitest';
 import { serialiseDates, withDateBinding } from '../../src/database/sqlite-date-binding.js';
 
 describe('serialising the parameters a statement is given', () => {
+  it('converts a Date inside the ARRAY a driver passes', () => {
+    // The form that matters, and the one the first version of this test did
+    // not use. Kysely's SQLite driver calls `stmt.all(parameters)` and
+    // `stmt.run(parameters)` — one argument, which IS the binding array.
+    // Converting only the spread form left the defect in place and the test
+    // green, and the failure went on every thirty seconds on a real node.
+    const at = new Date('2026-09-15T05:53:02.160Z');
+
+    expect(serialiseDates([['app', at, 42]])).toEqual([['app', '2026-09-15T05:53:02.160Z', 42]]);
+  });
+
+  it('leaves an array alone when it holds no Date', () => {
+    const params = [['app', 1, null]];
+
+    expect(serialiseDates(params)).toBe(params);
+  });
+
   it('turns a Date into the ISO form these columns hold', () => {
     const at = new Date('2026-09-14T19:12:46.085Z');
 
@@ -75,6 +92,19 @@ describe('wrapping the database', () => {
     };
     return { bound, statement, prepare: vi.fn(() => statement) };
   }
+
+  it('serialises for the calling convention Kysely uses', () => {
+    // Not a restatement of the unit above: this pins the whole path, from the
+    // wrapped statement down, in the exact shape the only real caller uses.
+    const db = fakeDatabase();
+    const wrapped = withDateBinding(db as never) as unknown as typeof db;
+    const at = new Date('2026-09-15T00:00:00.000Z');
+
+    const s = wrapped.prepare('delete from sync_buffer where syncedAt < ?') as typeof db.statement;
+    s.run([at]);
+
+    expect(db.bound).toEqual([[['2026-09-15T00:00:00.000Z']]]);
+  });
 
   it('serialises for every method a statement is run through', () => {
     // Kysely reaches for `all` on a select, `run` on a delete, `iterate` on a

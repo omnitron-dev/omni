@@ -69,7 +69,31 @@ export interface ProcessJanitorOptions {
    * shells out to `ps -eo pid,ppid,args` and filters for fork-worker
    * paths.
    */
-  readonly listProcesses?: () => readonly PsRow[] | Promise<readonly PsRow[]>;
+  /**
+   * How to read the process table.
+   *
+   * `null` means the table could not be read — distinct from `[]`, which
+   * means it was read and holds no fork-workers. The two used to be one
+   * value and therefore one set of metrics, so a janitor that had not
+   * completed a sweep in hours reported clean ones.
+   */
+  readonly listProcesses?: () => readonly PsRow[] | null | Promise<readonly PsRow[] | null>;
+
+  /**
+   * How a process is signalled. Defaults to `process.kill`.
+   *
+   * Injectable because a janitor whose kill cannot be intercepted cannot be
+   * tested without killing: a test naming a pid it believes is imaginary
+   * sends a real signal to whatever holds that number on the machine
+   * running the suite. That is not hypothetical — it happened while writing
+   * the tests for this file, to a process holding a port on a live stand,
+   * and this repository has a previous incident of the same shape where a
+   * unit test reached `coldStartSweep` and killed six backends.
+   *
+   * A seam here makes the dangerous path unreachable from a test by
+   * construction, rather than by every future test remembering.
+   */
+  readonly kill?: (pid: number, signal: NodeJS.Signals) => void;
   /**
    * Override for the liveness probe (tests). Real implementation
    * uses `process.kill(pid, 0)`.
@@ -87,6 +111,15 @@ export interface PsRow {
 
 export interface JanitorSweepMetrics {
   readonly scannedAt: Date;
+  /**
+   * False when `ps` could not be read at all.
+   *
+   * Without this a failed sweep reported `forkWorkersAlive: 0`, `orphansFound:
+   * 0` — a measurement of nothing, indistinguishable from a machine with
+   * nothing to reap. Measured on the development host: 990 sweeps skipped
+   * and every one of them recorded as a clean one.
+   */
+  readonly swept: boolean;
   readonly forkWorkersAlive: number;
   readonly ownedPids: number;
   readonly orphansFound: number;
@@ -98,10 +131,13 @@ export class ProcessJanitor {
   private readonly intervalMs: number;
   private readonly gracefulMs: number;
   private readonly minProcessAgeSeconds: number;
+  /** Sweeps that could not read the process table, in a row. */
+  private consecutiveSkips = 0;
   private readonly logger: ILogger | undefined;
   private readonly onMetrics: ((m: JanitorSweepMetrics) => void) | undefined;
   private readonly getOwnedPids: () => ReadonlySet<number>;
-  private readonly listProcesses: () => readonly PsRow[] | Promise<readonly PsRow[]>;
+  private readonly listProcesses: () => readonly PsRow[] | null | Promise<readonly PsRow[] | null>;
+  private readonly kill: (pid: number, signal: NodeJS.Signals) => void;
   private readonly isAlive: (pid: number) => boolean;
 
   private timer: NodeJS.Timeout | null = null;
@@ -115,6 +151,7 @@ export class ProcessJanitor {
     this.onMetrics = options.onMetrics;
     this.getOwnedPids = options.getOwnedPids;
     this.listProcesses = options.listProcesses ?? (() => listForkWorkersFromPs(this.logger));
+    this.kill = options.kill ?? ((pid, signal) => process.kill(pid, signal));
     this.isAlive = options.isAlive ?? defaultIsAlive;
   }
 
@@ -128,7 +165,14 @@ export class ProcessJanitor {
    */
   async coldStartSweep(): Promise<number> {
     const myPid = process.pid;
-    const all = await this.listProcesses();
+    const listed = await this.listProcesses();
+    if (listed === null) {
+      this.logger?.error?.(
+        'janitor: cold start could not read the process table — leftovers from a previous daemon are not being reaped',
+      );
+      return 0;
+    }
+    const all = listed;
     // A foreign parent is not evidence of a dead one.
     //
     // This read `row.ppid !== myPid` — reap anything not parented by ME —
@@ -208,8 +252,38 @@ export class ProcessJanitor {
   /** Run one sweep on demand. Useful for tests and manual triggering. */
   async runSweep(): Promise<JanitorSweepMetrics> {
     const owned = this.getOwnedPids();
-    const all = await this.listProcesses();
+    const listed = await this.listProcesses();
     const myPid = process.pid;
+
+    if (listed === null) {
+      // A sweep that could not look is not a sweep that found nothing. Both
+      // used to produce the same metrics and the same silence, so a janitor
+      // disabled for hours was indistinguishable from a tidy machine.
+      this.consecutiveSkips += 1;
+      // The first skip is noise; a run of them is a janitor that has stopped
+      // working, and the number is what makes that visible.
+      const level = this.consecutiveSkips >= 5 ? 'error' : 'warn';
+      this.logger?.[level]?.(
+        { consecutiveSkips: this.consecutiveSkips, intervalMs: this.intervalMs },
+        this.consecutiveSkips >= 5
+          ? 'janitor: has not completed a sweep in several attempts — orphaned workers are not being reaped'
+          : 'janitor: sweep skipped, could not read the process table',
+      );
+      const skipped: JanitorSweepMetrics = {
+        scannedAt: new Date(),
+        swept: false,
+        forkWorkersAlive: 0,
+        ownedPids: owned.size,
+        orphansFound: 0,
+        orphansKilled: 0,
+        killErrors: 0,
+      };
+      this.onMetrics?.(skipped);
+      return skipped;
+    }
+
+    this.consecutiveSkips = 0;
+    const all = listed;
 
     const orphans = all.filter((row) => {
       // Owned by the orchestrator → not an orphan.
@@ -251,6 +325,7 @@ export class ProcessJanitor {
 
     const metrics: JanitorSweepMetrics = {
       scannedAt: new Date(),
+      swept: true,
       forkWorkersAlive: all.length,
       ownedPids: owned.size,
       orphansFound: orphans.length,
@@ -306,7 +381,7 @@ export class ProcessJanitor {
 
     for (const pid of pids) {
       try {
-        process.kill(pid, 'SIGTERM');
+        this.kill(pid, 'SIGTERM');
         pending.push(pid);
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
@@ -332,7 +407,7 @@ export class ProcessJanitor {
 
     for (const pid of stubborn) {
       try {
-        process.kill(pid, 'SIGKILL');
+        this.kill(pid, 'SIGKILL');
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
         if (e.code !== 'ESRCH') this.logger?.error?.({ pid, err }, 'janitor: SIGKILL failed');
@@ -389,7 +464,26 @@ export class ProcessJanitor {
 const REAPER_PID = 1;
 
 /** How long the janitor waits for `ps` before giving up on a sweep. */
-const PS_TIMEOUT_MS = 10_000;
+/**
+ * How long `ps` may take.
+ *
+ * This was ten seconds, and `ps -eo pid,ppid,etime,args` over a thousand
+ * processes takes 0.07. The deadline was not protecting against a slow `ps`;
+ * it was firing because the DAEMON'S event loop was too busy to read the
+ * result, and `execFile`'s timer — also on that loop — eventually killed a
+ * process that had already finished.
+ *
+ * Measured on the development host: 990 sweeps killed their own `ps` and
+ * skipped, while 36 fork-workers accumulated as children of a daemon that
+ * claimed none of them. The janitor stops working exactly when the machine
+ * is loaded, which is exactly when orphans appear.
+ *
+ * Sixty seconds is protection against a `ps` that genuinely hangs — an NFS
+ * mount, a wedged process table — and not against a control plane doing
+ * its job. It is a third of the sweep interval, so a slow sweep still
+ * finishes before the next one starts.
+ */
+const PS_TIMEOUT_MS = 60_000;
 
 /** How long a SIGKILLed process is given to actually leave the process table. */
 const KILL_CONFIRM_TIMEOUT_MS = 5_000;
@@ -444,7 +538,7 @@ function runPs(): Promise<string> {
  * spawned workers from the orphan reaper while their
  * supervisor.getChildNames() is still empty.
  */
-async function listForkWorkersFromPs(logger?: ILogger): Promise<PsRow[]> {
+async function listForkWorkersFromPs(logger?: ILogger): Promise<PsRow[] | null> {
   let raw: string;
   try {
     raw = await runPs();
@@ -463,7 +557,10 @@ async function listForkWorkersFromPs(logger?: ILogger): Promise<PsRow[]> {
     } else {
       logger?.warn?.({ err: e.message }, 'janitor: ps failed');
     }
-    return [];
+    // `null`, not `[]`. An empty list is an answer — "nothing is running" —
+    // and returning it for a sweep that could not look reported 990 clean
+    // sweeps on a host where 36 fork-workers were accumulating.
+    return null;
   }
   const rows: PsRow[] = [];
   for (const line of raw.split('\n')) {

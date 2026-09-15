@@ -566,6 +566,38 @@ export async function createVolume(name: string): Promise<void> {
 }
 
 /**
+ * Does a Docker volume exist?
+ *
+ * The question behind this one is "does this service already hold state
+ * initialised with some other password" — a Postgres data directory keeps
+ * the password it was created with and ignores `POSTGRES_PASSWORD`
+ * thereafter, so a volume is the difference between a first provision and
+ * one that would lock an application out of its own database.
+ *
+ * `docker volume inspect` rather than listing and filtering: the answer is
+ * about one name, and a list is a different question that happens to
+ * contain it.
+ */
+export async function volumeExists(name: string): Promise<boolean> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  try {
+    await promisify(execFile)('docker', ['volume', 'inspect', name], { timeout: 15_000 });
+    return true;
+  } catch (err) {
+    // "No such volume" is an answer. Anything else — docker unreachable, a
+    // timeout, a permission error — is NOT, and the two must not be
+    // collapsed: the caller generates a credential when this says false, and
+    // generating one for a volume that does exist locks an application out
+    // of its own database. So only the message that means absence answers
+    // absence; everything else answers "assume there is state", which
+    // leaves a service on a default loudly rather than breaking it quietly.
+    const message = err instanceof Error ? err.message : String(err);
+    return !/no such volume/i.test(message);
+  }
+}
+
+/**
  * Get container logs.
  */
 export async function getContainerLogs(nameOrId: string, tail = 100): Promise<string> {

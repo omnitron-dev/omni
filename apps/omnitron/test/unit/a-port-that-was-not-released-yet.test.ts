@@ -58,3 +58,39 @@ describe('what the retry treats as transient', () => {
     expect(isPortNotYetReleased('endpoint with name x already exists in network y')).toBe(false);
   });
 });
+
+describe('when waiting does not help', () => {
+  it('names the container holding the port, and the command that frees it', async () => {
+    const { describeBindFailure } = await import('../../src/infrastructure/container-runtime.js');
+
+    // `port is already allocated` is true and useless: it names the port and
+    // withholds the only thing an operator can act on. Measured on a node
+    // where three services would not start, and the holder was
+    // `omnitron-postgres` — a container from an earlier naming of the same
+    // stack that the reconciler had stopped recognising, and therefore
+    // stopped managing.
+    const said = await describeBindFailure(
+      { name: 'daos-test-postgres', ports: [{ host: 5432, bindHost: '127.0.0.1' }] },
+      'Bind for 127.0.0.1:5432 failed: port is already allocated',
+      async () => 'omnitron-postgres',
+    );
+
+    expect(said).toContain('omnitron-postgres');
+    expect(said).toContain('docker rm -f omnitron-postgres');
+    // The volume is data. Saying it is kept is what makes the command
+    // something an operator will actually run.
+    expect(said).toContain('keeps its volume');
+  });
+
+  it('keeps the original message when nothing holds the port', async () => {
+    const { describeBindFailure } = await import('../../src/infrastructure/container-runtime.js');
+
+    const original = 'docker: some other failure entirely';
+    // Nothing holding it is its own information: the bind failed for
+    // another reason, and inventing a holder would send the operator to
+    // remove a container that is not the problem.
+    await expect(
+      describeBindFailure({ name: 'x', ports: [{ host: 1234 }] }, original, async () => null),
+    ).resolves.toBe(original);
+  });
+});

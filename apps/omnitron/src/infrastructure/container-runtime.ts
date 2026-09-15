@@ -287,6 +287,72 @@ export function isPortNotYetReleased(message: string): boolean {
 }
 
 /**
+ * Which container holds a host port, if any.
+ *
+ * `port is already allocated` is true and useless: it names the port and
+ * withholds the only thing an operator can act on. Measured on a node where
+ * three services would not start —
+ *
+ *     Bind for 127.0.0.1:5432 failed: port is already allocated
+ *
+ * — and the holder was `omnitron-postgres`, a container from an earlier
+ * naming of the same stack that the reconciler had stopped recognising and
+ * therefore stopped managing. Nothing in the failure said that, and nothing
+ * else would: the reconciler converges the containers it can name, and a
+ * container it no longer names is invisible to it while remaining very
+ * visible to the kernel.
+ *
+ * Answers null when nothing holds it, which is its own information: the
+ * bind failed for another reason.
+ */
+export async function containerHoldingPort(hostPort: number): Promise<string | null> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  try {
+    const { stdout } = await promisify(execFile)(
+      'docker',
+      ['ps', '-a', '--format', '{{.Names}}\t{{.Ports}}'],
+      { encoding: 'utf-8', timeout: 20_000 },
+    );
+    for (const line of String(stdout).split('\n')) {
+      const [name, ports] = line.split('\t');
+      if (!name || !ports) continue;
+      // `127.0.0.1:5432->5432/tcp` and `0.0.0.0:5480->5432/tcp`: the host
+      // port is the one before the arrow, and it is the one that collides.
+      if (new RegExp(`:${hostPort}->`).test(ports)) return name;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Explain a bind failure by naming what is holding the port.
+ *
+ * Kept separate from the retry because it answers a different question:
+ * the retry asks "will this resolve on its own", and this asks "if not,
+ * what do I tell the operator".
+ */
+export async function describeBindFailure(
+  config: { name: string; ports: Array<{ host: number; bindHost?: string | undefined }> },
+  original: string,
+  /** The lookup, as a parameter so this is answerable without a docker. */
+  lookup: (hostPort: number) => Promise<string | null> = containerHoldingPort,
+): Promise<string> {
+  for (const port of config.ports) {
+    const holder = await lookup(port.host);
+    if (!holder || holder === config.name) continue;
+    return (
+      `${config.name} cannot take ${port.bindHost ?? '0.0.0.0'}:${port.host} — the container ` +
+      `\`${holder}\` is holding it. If that is a leftover from an earlier naming of this stack, ` +
+      `\`docker rm -f ${holder}\` releases the port and keeps its volume.`
+    );
+  }
+  return original;
+}
+
+/**
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer): Promise<string> {
@@ -446,7 +512,16 @@ export async function createContainer(config: ResolvedContainer): Promise<string
       throw err;
     }
   }
-  if (lastError || stdout === undefined) throw lastError ?? new Error(`docker run produced no container id for ${config.name}`);
+  if (lastError || stdout === undefined) {
+    const message = lastError instanceof Error ? lastError.message : String(lastError ?? '');
+    if (isPortNotYetReleased(message)) {
+      // Waiting did not help, so something is holding the port rather than
+      // letting go of it. Name it: the docker error names the port and
+      // withholds the one thing an operator can act on.
+      throw new Error(await describeBindFailure(config, message));
+    }
+    throw lastError ?? new Error(`docker run produced no container id for ${config.name}`);
+  }
 
   // Post-create guard: a container can report "running" yet have its declared
   // host ports UNpublished when it silently reused an orphaned endpoint

@@ -6,28 +6,82 @@
 
 import { log, table, prism } from '@xec-sh/kit';
 import { ServerRegistry } from '../infrastructure/server-registry.js';
-import { createRemoteDaemonClient } from '../daemon/daemon-client.js';
+import {
+  mergeKnownMachines,
+  NO_MACHINES_MESSAGE,
+  type KnownMachine,
+  type NodeLike,
+} from '../infrastructure/known-machines.js';
+import { createRemoteDaemonClient, createDaemonClient } from '../daemon/daemon-client.js';
 import { formatStatus, formatMemory } from '../shared/format.js';
 import { spinner } from './spinner.js';
 
+
+/**
+ * Every remote machine this installation knows, from both registries.
+ *
+ * The fleet commands read `servers.json` alone, which is why they reported
+ * "No remote servers registered" on an installation with two machines in the
+ * console's registry. See `known-machines.ts` for what was measured.
+ *
+ * The node registry is reached through the daemon, because it lives in the
+ * daemon's SQLite. A daemon that cannot be asked is not an error here — the
+ * `servers.json` half still answers, and saying so is better than failing a
+ * status command because one of two sources is quiet.
+ */
+async function knownMachines(): Promise<{ machines: KnownMachine[]; nodesUnavailable: string | null }> {
+  const servers = new ServerRegistry().list();
+
+  let nodes: NodeLike[] = [];
+  let nodesUnavailable: string | null = null;
+  const client = createDaemonClient();
+  try {
+    if (await client.isReachable()) {
+      const svc = await client.service<import('../shared/dto/services.js').IOmnitronNodesService>('OmnitronNodes');
+      nodes = (await svc.listNodes()) as unknown as NodeLike[];
+    } else {
+      nodesUnavailable = 'the daemon did not answer, so machines registered in the console are not listed';
+    }
+  } catch (err) {
+    nodesUnavailable = `could not read the node registry: ${(err as Error).message}`;
+  } finally {
+    await client.disconnect();
+  }
+
+  return { machines: mergeKnownMachines(servers, nodes), nodesUnavailable };
+}
+
 export async function fleetStatusCommand(): Promise<void> {
-  const registry = new ServerRegistry();
-  const servers = registry.list();
+  const { machines: servers, nodesUnavailable } = await knownMachines();
+  if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
 
   if (servers.length === 0) {
-    log.info('No remote servers registered. Use `omnitron remote add` to add servers.');
+    log.info(NO_MACHINES_MESSAGE);
     return;
   }
 
   const results: Array<{ alias: string; host: string; status: string; apps: number; cpu: string; memory: string }> = [];
+  const registry = new ServerRegistry();
 
-  for (const server of servers) {
+  /**
+   * Remember what this probe found — but only for machines that live in
+   * `servers.json`.
+   *
+   * A machine from the node registry has its liveness recorded there, by the
+   * health monitor, every minute. Writing it here as well would create the
+   * duplicate entry the merge exists to prevent, and it would be created by
+   * a READ command, which is not a thing a status should do.
+   */
+  const remember = (m: KnownMachine, status: 'online' | 'offline') => {
+    if (!m.sources.includes('servers.json')) return;
+    registry.add({ alias: m.name, host: m.host, port: m.port, tags: [...m.tags], status, lastSeen: Date.now() });
+  };
+
+  for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
     const client = createRemoteDaemonClient(server.host, server.port);
     try {
       const d = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const status = await d.status();
-      server.status = 'online';
-      server.lastSeen = Date.now();
-      registry.add(server);
+      remember(server, 'online');
 
       results.push({
         alias: server.alias,
@@ -38,8 +92,7 @@ export async function fleetStatusCommand(): Promise<void> {
         memory: formatMemory(status.totalMemory),
       });
     } catch {
-      server.status = 'offline';
-      registry.add(server);
+      remember(server, 'offline');
       results.push({
         alias: server.alias,
         host: `${server.host}:${server.port}`,
@@ -67,15 +120,16 @@ export async function fleetStatusCommand(): Promise<void> {
 }
 
 export async function fleetHealthCommand(): Promise<void> {
-  const registry = new ServerRegistry();
-  const servers = registry.list();
+  const { machines, nodesUnavailable } = await knownMachines();
+  if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
+  const servers = machines.map((m) => ({ ...m, alias: m.name }));
 
   if (servers.length === 0) {
-    log.info('No remote servers registered');
+    log.info(NO_MACHINES_MESSAGE);
     return;
   }
 
-  for (const server of servers) {
+  for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
     const client = createRemoteDaemonClient(server.host, server.port);
     try {
       const dh = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const health = await dh.getHealth({});
@@ -104,11 +158,12 @@ export async function fleetHealthCommand(): Promise<void> {
 }
 
 export async function fleetMetricsCommand(): Promise<void> {
-  const registry = new ServerRegistry();
-  const servers = registry.list();
+  const { machines, nodesUnavailable } = await knownMachines();
+  if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
+  const servers = machines.map((m) => ({ ...m, alias: m.name }));
 
   if (servers.length === 0) {
-    log.info('No remote servers registered');
+    log.info(NO_MACHINES_MESSAGE);
     return;
   }
 
@@ -116,7 +171,7 @@ export async function fleetMetricsCommand(): Promise<void> {
   let totalMemory = 0;
   let totalApps = 0;
 
-  for (const server of servers) {
+  for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
     const client = createRemoteDaemonClient(server.host, server.port);
     try {
       const dm = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const metrics = await dm.getMetrics({});

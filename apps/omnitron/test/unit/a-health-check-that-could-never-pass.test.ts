@@ -21,15 +21,17 @@ import { describe, it, expect } from 'vitest';
 
 import { resolveServiceRequirement } from '../../src/infrastructure/service-resolver.js';
 
-const probeOf = (target: string) => {
+const probeWith = (target: string, ports: Record<string, number>, check: Record<string, unknown> = {}) => {
   const container = resolveServiceRequirement('thing', {
-    ports: { http: 8080 },
+    ports,
     env: {},
     docker: { image: 'openresty/openresty:alpine' },
-    healthCheck: { type: 'http', target, interval: '10s', timeout: '5s', retries: 3 },
+    healthCheck: { type: 'http', target, interval: '10s', timeout: '5s', retries: 3, ...check },
   } as never);
   return container?.healthCheck?.test?.[1] ?? '';
 };
+
+const probeOf = (target: string) => probeWith(target, { http: 8080 });
 
 describe('an HTTP health probe', () => {
   it('does not depend on a tool the image may not have', () => {
@@ -54,5 +56,36 @@ describe('an HTTP health probe', () => {
 
     expect(probe).toMatch(/--max-time \d+/);
     expect(probe).toMatch(/-T \d+/);
+  });
+});
+
+describe('which port the probe knocks on', () => {
+  it('is the service s own, not 80', () => {
+    // The probe was `http://localhost<path>` — port 80, always. The gateway
+    // listens on 8080, so the check connected to nothing:
+    //
+    //     wget: can't connect to remote host: Connection refused
+    //
+    // on a container serving correctly on its own port, behind an onion
+    // address that answered 200.
+    expect(probeWith('/nginx-health', { http: 8080 })).toContain('http://localhost:8080/nginx-health');
+  });
+
+  it('takes the only port a service declares', () => {
+    // A service with one port cannot mean another.
+    expect(probeWith('/health', { api: 9000 })).toContain('http://localhost:9000/health');
+  });
+
+  it('lets a check name its port when there are several', () => {
+    const probe = probeWith('/health', { api: 9000, console: 9001 }, { port: 'console' });
+
+    expect(probe).toContain('http://localhost:9001/health');
+  });
+
+  it('falls back to the convention rather than picking arbitrarily', () => {
+    // Several ports and no way to choose: 80 is the convention, and an
+    // arbitrary pick that happens to work once is worse than a stated
+    // default.
+    expect(probeWith('/health', { a: 1234, b: 5678 })).toContain('http://localhost:80/health');
   });
 });

@@ -21,6 +21,7 @@ const outcome = (o: Partial<IngestOutcome>): IngestOutcome => ({
   accepted: [],
   duplicates: [],
   failed: [],
+  discarded: [],
   ...o,
 });
 
@@ -33,6 +34,14 @@ describe('deliveredIds — guarantee 1, zero data loss', () => {
     // A retry after a lost acknowledgement. Holding it forever would be the
     // mirror-image bug — a buffer that never drains.
     expect(deliveredIds(outcome({ duplicates: ['a'] }))).toEqual(['a']);
+  });
+
+  it('releases what the master will never accept, and says so elsewhere', () => {
+    // Distinct from a rejection worth retrying. A malformed uuid or a
+    // foreign key the master does not have answers identically every time,
+    // so holding the entry parks it at the head of the buffer with
+    // everything behind it. Each one is logged at ERROR before release.
+    expect(deliveredIds(outcome({ discarded: ['x'] }))).toEqual(['x']);
   });
 
   it('never releases what the master rejected', () => {

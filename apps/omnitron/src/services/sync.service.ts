@@ -44,6 +44,7 @@ import type { ISyncConfig, DaemonRole } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import { toIsoUtc } from '../database/sqlite-date-binding.js';
 import {
+  classifyIngestFailure,
   deliveredIds,
   sweepMadeProgress,
   planEviction,
@@ -105,6 +106,16 @@ export interface IngestBatchResult {
   acceptedIds: string[];
   duplicateIds: string[];
   failedIds: string[];
+  /**
+   * Entries the master will never accept, and the slave should release.
+   *
+   * Distinct from `failedIds`, which are worth offering again. An entry the
+   * database refuses on its content — a malformed uuid, a foreign key the
+   * master does not have — answers the same way every time, and leaving it
+   * unacknowledged parks it at the head of the buffer with everything behind
+   * it waiting.
+   */
+  discardedIds: string[];
 }
 
 interface SyncBackoffState {
@@ -507,12 +518,15 @@ export class SyncService {
 
     const allIds = batch.entries.map((e) => e.id);
     if (!response || !Array.isArray(response.acceptedIds)) {
-      return { accepted: allIds, duplicates: [], failed: [] };
+      return { accepted: allIds, duplicates: [], failed: [], discarded: [] };
     }
     return {
       accepted: response.acceptedIds,
       duplicates: Array.isArray(response.duplicateIds) ? response.duplicateIds : [],
       failed: Array.isArray(response.failedIds) ? response.failedIds : [],
+      // An older master answers without this field. Treating a missing list
+      // as an empty one is right: it discarded nothing.
+      discarded: Array.isArray(response.discardedIds) ? response.discardedIds : [],
     };
   }
 
@@ -685,7 +699,7 @@ export class SyncService {
       throw new Error(`Checksum mismatch for batch ${batch.batchId}. Expected ${expectedChecksum}, got ${batch.checksum}. Batch rejected.`);
     }
 
-    const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [] };
+    const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [], discarded: [] };
 
     for (const entry of batch.entries) {
       try {
@@ -695,6 +709,7 @@ export class SyncService {
         // applied, which is what "idempotent" was always supposed to mean.
         const result = await this.claimAndIngest(batch.nodeId, entry);
         if (result === 'duplicate') outcome.duplicates.push(entry.id);
+        else if (result === 'discarded') outcome.discarded.push(entry.id);
         else outcome.accepted.push(entry.id);
       } catch (err) {
         // Not marked delivered. The slave keeps it and offers it again —
@@ -734,6 +749,10 @@ export class SyncService {
       acceptedIds: outcome.accepted,
       duplicateIds: outcome.duplicates,
       failedIds: outcome.failed,
+      // Released, not stored. The slave must let these go or it offers them
+      // forever; the ERROR beside each one is the only record that they
+      // existed.
+      discardedIds: outcome.discarded,
     };
   }
 
@@ -745,6 +764,40 @@ export class SyncService {
    * ingestion fails, leaving nothing recorded.
    */
   private async claimAndIngest(
+    nodeId: string,
+    entry: { id: string; category: SyncCategory; payload: Record<string, unknown>; createdAt: string }
+  ): Promise<'accepted' | 'duplicate' | 'discarded'> {
+    try {
+      return await this.claimAndIngestOnce(nodeId, entry);
+    } catch (err) {
+      if (classifyIngestFailure(err) !== 'permanent') throw err;
+
+      // The database says this entry can never be stored. Leaving it
+      // unacknowledged would offer it again on every sweep, forever, with
+      // everything behind it in the buffer waiting — and the only symptom is
+      // one "Sync pull stalled" line per pull.
+      //
+      // The claim is made in its own transaction because the one above rolled
+      // back with the failure, taking the claim with it. Claiming it here is
+      // what stops it coming back.
+      await this.db
+        .insertInto('sync_ingested')
+        .values({ nodeId, entryId: entry.id })
+        .onConflict((oc) => oc.columns(['nodeId', 'entryId']).doNothing())
+        .execute()
+        .catch(() => undefined);
+
+      // ERROR, with everything needed to find the entry: this is data that
+      // will never arrive, and the node has been told to forget it.
+      this.logger.error(
+        { nodeId, entryId: entry.id, category: entry.category, error: (err as Error).message },
+        'Sync entry rejected permanently — discarded so the buffer can drain',
+      );
+      return 'discarded';
+    }
+  }
+
+  private async claimAndIngestOnce(
     nodeId: string,
     entry: { id: string; category: SyncCategory; payload: Record<string, unknown>; createdAt: string }
   ): Promise<'accepted' | 'duplicate'> {
@@ -848,12 +901,32 @@ export class SyncService {
     }).execute();
   }
 
-  private async ingestAlert(db: SyncExecutor, _nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
+  /**
+   * A remote alert, with the machine that raised it.
+   *
+   * `nodeId` was `_nodeId` here: accepted and discarded. `alert_events` has
+   * no node column, so it goes into `annotations`, which is the jsonb this
+   * table already carries context in — an alert that says "disk above 90%"
+   * and cannot say whose disk is an alert an operator cannot act on.
+   *
+   * `ruleId` keeps its `?? 'unknown'` only so the shape is unchanged; the
+   * column is a `uuid` with a foreign key to `alert_rules`, so that literal
+   * is refused by the database and the entry is now discarded by
+   * `classifyIngestFailure` instead of being offered forever. A slave's
+   * rules are its own, so the same is true of any real ruleId the master
+   * does not share — which is what makes the permanent-failure path the
+   * important half of this.
+   */
+  private async ingestAlert(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
+    const annotations = {
+      ...(entry.payload['annotations'] as Record<string, unknown> | undefined),
+      node: nodeId,
+    };
     await db.insertInto('alert_events').values({
       ruleId: (entry.payload['ruleId'] as string) ?? 'unknown',
       status: (entry.payload['status'] as string) ?? 'firing',
       value: entry.payload['value'] != null ? String(entry.payload['value']) : null,
-      annotations: entry.payload['annotations'] ? JSON.stringify(entry.payload['annotations']) as any : null,
+      annotations: JSON.stringify(annotations) as any,
       firedAt: (entry.payload['firedAt'] as string) ?? entry.createdAt,
       resolvedAt: (entry.payload['resolvedAt'] as string) ?? null,
       acknowledgedAt: null,
@@ -861,7 +934,17 @@ export class SyncService {
     }).execute();
   }
 
-  private async ingestTrace(db: SyncExecutor, _nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
+  /**
+   * A remote span, with the machine that produced it.
+   *
+   * The node went into `tags` as `entry.payload['tags'] ?? { nodeId }` — a
+   * fallback, so it was recorded ONLY for a span that carried no tags at
+   * all, and dropped for every span that carried any. The `??` fires exactly
+   * when there is nothing to lose and is skipped exactly when there is.
+   * Merged now, and the node wins the key, because the span's own view of
+   * which node it ran on is the one thing about it the master can check.
+   */
+  private async ingestTrace(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
     await db.insertInto('traces').values({
       traceId: (entry.payload['traceId'] as string) ?? 'unknown',
       spanId: (entry.payload['spanId'] as string) ?? 'unknown',
@@ -872,7 +955,7 @@ export class SyncService {
       endTime: (entry.payload['endTime'] as string) ?? entry.createdAt,
       duration: Number(entry.payload['duration'] ?? 0),
       status: (entry.payload['status'] as string) ?? 'ok',
-      tags: JSON.stringify(entry.payload['tags'] ?? { nodeId: _nodeId }) as any,
+      tags: JSON.stringify({ ...(entry.payload['tags'] as Record<string, unknown> | undefined), node: nodeId }) as any,
       logs: entry.payload['logs'] ? JSON.stringify(entry.payload['logs']) as any : null,
     }).execute();
   }

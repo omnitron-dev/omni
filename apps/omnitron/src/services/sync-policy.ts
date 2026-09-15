@@ -34,6 +34,8 @@
 
 /** What the master did with each entry of a batch. */
 export interface IngestOutcome {
+  /** Claimed and dropped: the master can never store them. */
+  discarded: string[];
   /** Entries ingested for the first time. */
   accepted: string[];
   /** Entries the master had already ingested — delivered, not re-applied. */
@@ -43,16 +45,22 @@ export interface IngestOutcome {
 }
 
 /**
- * Which entries the slave may mark as delivered.
+ * Which entries the slave may release.
  *
- * A duplicate counts as delivered: the master has it. A failure does not,
- * however many times it has been attempted — data the master rejected is
- * still data the slave holds, and dropping it here is the loss that
- * guarantee 1 forbids. If it is unacceptable forever, the buffer bound is
- * what removes it, loudly.
+ * A duplicate counts as delivered: the master has it. A transient failure
+ * does not, however many times it has been attempted — data the master
+ * rejected because it was momentarily unable is still data the slave holds,
+ * and dropping it here is the loss that guarantee 1 forbids.
+ *
+ * A DISCARD is different, and it is released. The master has said this entry
+ * can never be stored — a malformed uuid, a foreign key it does not have —
+ * and answered the same way for every attempt. Holding it does not preserve
+ * it: it parks it at the head of the buffer with everything behind it
+ * waiting, until the bound above eventually drops the lot. Releasing the one
+ * entry the master named, loudly, costs that entry and saves the rest.
  */
 export function deliveredIds(outcome: IngestOutcome): string[] {
-  return [...outcome.accepted, ...outcome.duplicates];
+  return [...outcome.accepted, ...outcome.duplicates, ...outcome.discarded];
 }
 
 /**
@@ -120,4 +128,65 @@ export function planEviction(params: {
   plan.overflowRows = Math.min(rowsToDrop, totalRows);
   plan.discardsUndelivered = plan.overflowRows > syncedRows;
   return plan;
+}
+
+// =============================================================================
+// Permanent vs transient ingest failure
+// =============================================================================
+
+/**
+ * Can retrying this entry ever work?
+ *
+ * `receiveBatch` leaves a failed entry unacknowledged so the slave offers it
+ * again, which is right when the master is momentarily unable — a dropped
+ * connection, a deadlock, a full disk. It is wrong when the DATA cannot be
+ * stored, because the answer will be the same every time and the entry sits
+ * at the head of the buffer forever with everything behind it.
+ *
+ * That is not hypothetical. `alert_events.ruleId` is a `uuid` with a foreign
+ * key to `alert_rules`, and `ingestAlert` writes `payload.ruleId ?? 'unknown'`
+ * — so an alert whose rule the master does not have, or one with no ruleId at
+ * all, is refused:
+ *
+ *     select 'unknown'::uuid;
+ *     ERROR:  invalid input syntax for type uuid: "unknown"
+ *
+ * A slave's alert rules are its own. The first alert a node raises would
+ * therefore wedge that node's entire replication, and the only symptom is one
+ * "Sync pull stalled" line per sweep.
+ *
+ * The same function already draws this distinction for an unknown category —
+ * "retrying cannot make it known" — and drops it. This extends that to the
+ * failures the database itself calls permanent.
+ *
+ * Unrecognised errors are TRANSIENT. Getting this wrong in that direction
+ * costs a retry; getting it wrong the other way discards data.
+ */
+export type IngestFailureKind = 'permanent' | 'transient';
+
+/** Postgres classes 22 (data exception) and 23 (integrity violation). */
+const PERMANENT_PG_PREFIXES = ['22', '23'];
+
+/** better-sqlite3 spells the same thing differently. */
+const PERMANENT_SQLITE = /^SQLITE_(CONSTRAINT|MISMATCH)/;
+
+export function classifyIngestFailure(err: unknown): IngestFailureKind {
+  const code = (err as { code?: unknown })?.code;
+
+  if (typeof code === 'string') {
+    if (PERMANENT_SQLITE.test(code)) return 'permanent';
+    // Postgres SQLSTATE is five characters; the first two are the class.
+    if (/^[0-9A-Z]{5}$/.test(code) && PERMANENT_PG_PREFIXES.includes(code.slice(0, 2))) {
+      return 'permanent';
+    }
+  }
+
+  // A driver that reports no code at all still says this much in its text,
+  // and the two that matter here are the ones a malformed payload produces.
+  const message = (err as { message?: unknown })?.message;
+  if (typeof message === 'string' && /invalid input syntax|violates (foreign key|not-null|check) constraint/i.test(message)) {
+    return 'permanent';
+  }
+
+  return 'transient';
 }

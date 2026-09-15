@@ -164,6 +164,16 @@ export interface ContainerState {
   error?: string | undefined;
   /** Desired-spec fingerprint from the omnitron.spec-hash label (config-drift detection). */
   specHash?: string | undefined;
+  /**
+   * Which declared service this container IS, from the `omnitron.service`
+   * label — `postgres`, `redis`, `omnitron-pg`.
+   *
+   * The NAME carries a project-and-environment prefix (`daos-test-postgres`),
+   * so it answers "which deployment" and not "which service". Anything that
+   * needs the second must read this: guessing the name works only on a host
+   * whose prefix happens to match the guess.
+   */
+  service?: string | undefined;
   /** False when a 'running' container is detached from all networks (OrbStack/dockerd restart artifact). */
   networkAttached?: boolean | undefined;
 }

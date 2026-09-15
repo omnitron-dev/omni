@@ -18,6 +18,7 @@
 import { log, table, prism } from '@xec-sh/kit';
 import { loadEcosystemConfig } from '../config/loader.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import type { ContainerState } from '../infrastructure/types.js';
 import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
 import {
   listManagedContainers,
@@ -182,35 +183,81 @@ export async function infraLogsCommand(service?: string, opts?: { follow?: boole
   }
 }
 
-export async function infraPsqlCommand(database?: string): Promise<void> {
-  const db = database ?? 'postgres';
-  const { execFileSync } = await import('node:child_process');
+/**
+ * The running container for a declared service, found by its label.
+ *
+ * A container's NAME carries the project-and-environment prefix
+ * (`daos-test-postgres`); only the `omnitron.service` label says which
+ * service it is. These two commands used to guess the name — `omnitron-postgres`,
+ * then `omnitron-pg`, then `omnitron-redis` — and on a host where the stack
+ * is anything but the default they all missed. Measured on the `daos/test`
+ * node: `daos-test-postgres` and `daos-test-redis` both up and healthy, and
+ * `infra psql` answered "No PostgreSQL container found. Run: omnitron infra up"
+ * — the wrong cause, and advice to re-provision a database that was serving.
+ */
+async function runningContainerForService(...services: string[]): Promise<ContainerState | null> {
+  const managed = await listManagedContainers();
+  for (const service of services) {
+    const found = managed.find((c) => c.service === service && c.status === 'running');
+    if (found) return found;
+  }
+  return null;
+}
 
+/**
+ * Hand the terminal to a tool inside a container.
+ *
+ * The lookup happens BEFORE the exec so the two outcomes stay separate: a
+ * container that is not there is this command's problem to explain, while a
+ * non-zero exit from psql or redis-cli belongs to the user's own session and
+ * must not be reported as a missing container. The previous form could not
+ * tell them apart — quitting psql after a failed query looked exactly like an
+ * absent container and sent the reader to `infra up`.
+ */
+async function execInteractively(
+  what: string,
+  services: string[],
+  argv: (container: ContainerState) => string[],
+): Promise<void> {
+  const container = await runningContainerForService(...services);
+  if (!container) {
+    const managed = await listManagedContainers();
+    const present = managed.filter((c) => services.includes(c.service ?? '')).map((c) => `${c.name} (${c.status})`);
+    log.error(
+      present.length > 0
+        ? `No RUNNING ${what} container. Found: ${present.join(', ')}. Start it with: omnitron infra up`
+        : `No ${what} container on this host. Run: omnitron infra up`,
+    );
+    return;
+  }
+
+  const { execFileSync } = await import('node:child_process');
   try {
-    execFileSync('docker', ['exec', '-it', 'omnitron-postgres', 'psql', '-U', 'postgres', '-d', db], {
-      stdio: 'inherit',
-    });
-  } catch {
-    // Try omnitron's own PG
-    try {
-      execFileSync('docker', ['exec', '-it', 'omnitron-pg', 'psql', '-U', 'omnitron', '-d', db], {
-        stdio: 'inherit',
-      });
-    } catch {
-      log.error('No PostgreSQL container found. Run: omnitron infra up');
-    }
+    execFileSync('docker', ['exec', '-it', container.name, ...argv(container)], { stdio: 'inherit' });
+  } catch (err) {
+    // The container was found a moment ago, so this is the tool's own exit
+    // status or a docker failure — report it as such rather than as absence.
+    const status = (err as { status?: number }).status;
+    if (typeof status === 'number' && status !== 0) return; // the user's own session ended non-zero
+    log.error(`Could not attach to ${container.name}: ${(err as Error).message}`);
   }
 }
 
+export async function infraPsqlCommand(database?: string): Promise<void> {
+  const db = database ?? 'postgres';
+  // The stack's own Postgres first, then the daemon's internal one: a caller
+  // asking for `psql` wants the application database when there is one.
+  await execInteractively('PostgreSQL', ['postgres', 'omnitron-pg'], (c) => [
+    'psql',
+    '-U',
+    c.service === 'omnitron-pg' ? 'omnitron' : 'postgres',
+    '-d',
+    db,
+  ]);
+}
+
 export async function infraRedisCliCommand(): Promise<void> {
-  const { execFileSync } = await import('node:child_process');
-  try {
-    execFileSync('docker', ['exec', '-it', 'omnitron-redis', 'redis-cli'], {
-      stdio: 'inherit',
-    });
-  } catch {
-    log.error('Redis container not found. Run: omnitron infra up');
-  }
+  await execInteractively('Redis', ['redis'], () => ['redis-cli']);
 }
 
 export async function infraMigrateCommand(app?: string): Promise<void> {

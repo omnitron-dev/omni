@@ -115,7 +115,30 @@ export class ProjectService extends EventEmitter {
   }
 
   /**
-   * Get or create the SlaveConnector (lazy — only created when first remote/cluster stack starts).
+   * Adopt the daemon's mesh connector.
+   *
+   * There must be ONE of these per master. It holds a live connection — and,
+   * for a node whose daemon port is firewalled, an SSH tunnel — per node, so
+   * a second instance means a second connection to every node and two
+   * independent pulls of the same buffer, racing over which one acks an
+   * entry the other has not ingested yet.
+   *
+   * The daemon builds it, because the daemon is what knows how to reach a
+   * node: the SSH credentials live in the node registry's vault, not here.
+   * Absent one, the lazy fallback below keeps the behaviour this class had
+   * on its own, which is what the tests construct.
+   */
+  setSlaveConnector(connector: SlaveConnector): void {
+    this.slaveConnector = connector;
+  }
+
+  /**
+   * Get or create the SlaveConnector.
+   *
+   * Created lazily here only when the daemon has not handed one over —
+   * historically this was the sole owner, and it created one when the first
+   * remote or cluster stack started. That is also why a node with no stack
+   * on it was never connected to at all: nothing else ever asked.
    */
   private getSlaveConnector(): SlaveConnector {
     if (!this.slaveConnector) {

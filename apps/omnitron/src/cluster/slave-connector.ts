@@ -27,6 +27,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 // Peer type from netron.connect() — RemotePeer for TCP connections
 import type { FleetService } from '../services/fleet.service.js';
 import type { SyncService } from '../services/sync.service.js';
+import { directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
 
 // =============================================================================
 // Types
@@ -35,11 +36,32 @@ import type { SyncService } from '../services/sync.service.js';
 export interface SlaveNodeConfig {
   host: string;
   port: number;
+  /**
+   * The MASTER's identifier for this node — the registry's `randomUUID()`.
+   *
+   * What a slave calls itself is `${hostname}-${port}`, and the columns the
+   * master stores replicated rows in are `uuid`. So every ingest failed with
+   * `invalid input syntax for type uuid: "daos-cpp-9700"` and every entry
+   * was left unacknowledged. This is also the id the node list, the charts
+   * and the log filters join on, so it is the right one regardless.
+   *
+   * Absent for a node that arrived through a stack rather than the registry;
+   * see `stableNodeUuid`.
+   */
+  nodeId?: string | undefined;
   label?: string | undefined;
-  /** Stack this slave belongs to */
-  stack: string;
-  /** Project this slave belongs to */
-  project: string;
+  /**
+   * Stack and project this node belongs to, when it belongs to one.
+   *
+   * Optional because a node joins the mesh by being REGISTERED, not by
+   * hosting a stack. Required here, the only nodes the master ever connected
+   * to were the ones a remote stack had just started on — so a machine added
+   * through the console, provisioned, and left to collect its own metrics
+   * was never dialled, and buffered until told otherwise. Measured on the
+   * first such node: 47,407 entries, none replicated, over eleven hours.
+   */
+  stack?: string | undefined;
+  project?: string | undefined;
 }
 
 export type SlaveConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -53,6 +75,8 @@ export interface SlaveConnection {
   lastError: string | null;
   reconnectAttempt: number;
   reconnectTimer: NodeJS.Timeout | null;
+  /** How this connection was reached, and what has to be released. */
+  link: MeshLink | null;
 }
 
 // =============================================================================
@@ -68,15 +92,25 @@ export class SlaveConnector {
   private readonly heartbeatInterval: number;
   /** Max reconnect backoff (ms) */
   private readonly maxBackoff: number;
+  /**
+   * How to reach a node, and what to present when there.
+   *
+   * Defaults to dialling the daemon port with no credential, which is what
+   * this class always did — so a caller that arranges nothing behaves as
+   * before, and the decision about firewalls and tokens lives outside a
+   * connection manager.
+   */
+  private readonly dial: MeshDialer;
 
   constructor(
     private readonly logger: ILogger,
     private readonly fleetService: FleetService | undefined,
     private readonly syncService: SyncService | null,
-    options?: { heartbeatInterval?: number; maxBackoff?: number },
+    options?: { heartbeatInterval?: number; maxBackoff?: number; dial?: MeshDialer },
   ) {
     this.heartbeatInterval = options?.heartbeatInterval ?? 15_000;
     this.maxBackoff = options?.maxBackoff ?? 120_000;
+    this.dial = options?.dial ?? directLink;
   }
 
   // ===========================================================================
@@ -90,7 +124,10 @@ export class SlaveConnector {
     const key = `${config.host}:${config.port}`;
 
     if (this.connections.has(key)) {
-      this.logger.warn({ host: config.host, port: config.port }, 'Slave already registered');
+      // Debug, not warn: the node registry re-asserts its members whenever a
+      // health check sees one, so "already registered" is the normal case
+      // and a warning per node per check is noise that hides the real ones.
+      this.logger.debug({ host: config.host, port: config.port }, 'Node already in the mesh');
       return;
     }
 
@@ -103,6 +140,7 @@ export class SlaveConnector {
       lastError: null,
       reconnectAttempt: 0,
       reconnectTimer: null,
+      link: null,
     };
 
     this.connections.set(key, conn);
@@ -158,10 +196,14 @@ export class SlaveConnector {
   getConnections(): Array<{
     host: string;
     port: number;
-    stack: string;
+    stack: string | undefined;
     status: SlaveConnectionStatus;
     lastHeartbeat: number | null;
     lastError: string | null;
+    /** How the master reached it — a node on the slow path should say so. */
+    via: MeshLink['via'] | null;
+    /** False here means `ping` works and no data can be pulled. */
+    authenticated: boolean;
   }> {
     return [...this.connections.values()].map((conn) => ({
       host: conn.config.host,
@@ -170,6 +212,8 @@ export class SlaveConnector {
       status: conn.status,
       lastHeartbeat: conn.lastHeartbeat,
       lastError: conn.lastError,
+      via: conn.link?.via ?? null,
+      authenticated: Boolean(conn.link?.token),
     }));
   }
 
@@ -221,10 +265,32 @@ export class SlaveConnector {
     conn.status = 'connecting';
 
     try {
+      const link = await this.dial({ host: conn.config.host, port: conn.config.port });
+      conn.link = link;
+
       const netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
       netron.registerTransport('tcp', () => new TcpTransport());
 
-      const peer = await netron.connect(`tcp://${conn.config.host}:${conn.config.port}`, false);
+      const peer = await netron.connect(link.url, false);
+
+      // Present the credential before asking for anything that needs it.
+      //
+      // `ping` is reachable without one, which is why this connection looked
+      // healthy while every data call behind it answered `Authentication
+      // required` — the connector's only failure signal was a debug line in
+      // the pull, and a slave with nothing to say looks the same as one that
+      // is refusing.
+      if (link.token) {
+        const runTask = (peer as { runTask?: (task: string, payload: unknown) => Promise<{ success?: boolean; error?: string }> })
+          .runTask;
+        if (typeof runTask !== 'function') {
+          throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
+        }
+        const auth = await runTask.call(peer, 'authenticate', { token: link.token });
+        if (!auth?.success) {
+          throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
+        }
+      }
 
       // Verify slave is alive
       const daemon = await peer.queryInterface<any>('OmnitronDaemon');
@@ -238,8 +304,14 @@ export class SlaveConnector {
       conn.reconnectAttempt = 0;
 
       this.logger.info(
-        { host: conn.config.host, port: conn.config.port, slaveVersion: pingResult?.version },
-        'Slave connected'
+        {
+          host: conn.config.host,
+          port: conn.config.port,
+          slaveVersion: pingResult?.version,
+          via: link.via,
+          authenticated: Boolean(link.token),
+        },
+        'Node joined the mesh'
       );
 
       // Pull buffered sync data from slave immediately
@@ -266,6 +338,9 @@ export class SlaveConnector {
       conn.lastError = (err as Error).message;
       conn.netron = null;
       conn.peer = null;
+      // A tunnel outlives the netron that failed over it, and each one holds
+      // an SSH connection. Released here or they accumulate one per retry.
+      await this.releaseLink(conn);
 
       this.logger.debug(
         { host: conn.config.host, port: conn.config.port, error: conn.lastError, attempt: conn.reconnectAttempt },
@@ -291,8 +366,25 @@ export class SlaveConnector {
       conn.netron = null;
     }
 
+    await this.releaseLink(conn);
+
     conn.peer = null;
     conn.status = 'disconnected';
+  }
+
+  /** Give back whatever was opened to make this connection possible. */
+  private async releaseLink(conn: SlaveConnection): Promise<void> {
+    const close = conn.link?.close;
+    conn.link = null;
+    if (!close) return;
+    try {
+      await close();
+    } catch (err) {
+      this.logger.debug(
+        { host: conn.config.host, error: (err as Error).message },
+        'Releasing the mesh link failed',
+      );
+    }
   }
 
   private scheduleReconnect(key: string, conn: SlaveConnection): void {
@@ -387,10 +479,19 @@ export class SlaveConnector {
       let totalPulled = 0;
       const seen = new Set<string>();
 
+      // The master labels the data with the id IT knows this node by.
+      //
+      // `batch.nodeId` is the slave's own `${hostname}-${port}`, and the
+      // columns it lands in are `uuid`. Trusting a remote machine's name for
+      // itself is also how two nodes that pick the same hostname become one
+      // series; the master dialled this connection and knows what it dialled.
+      const nodeId = conn.config.nodeId ?? stableNodeUuid(conn.config.host, conn.config.port);
+
       // Pull in batches until slave buffer is empty
       while (true) {
-        const batch = await syncProxy.drainBuffer({ limit: 1000 });
-        if (!batch || !batch.entries || batch.entries.length === 0) break;
+        const drained = await syncProxy.drainBuffer({ limit: 1000 });
+        if (!drained || !drained.entries || drained.entries.length === 0) break;
+        const batch = { ...drained, nodeId };
 
         // Ingest into master, then release on the slave — in that order.
         // `drainBuffer` used to mark entries synced before returning them,

@@ -274,6 +274,8 @@ export class OmnitronDaemon {
   private eventBroadcaster: EventBroadcasterService | null = null;
   private syncService: SyncService | null = null;
   private nodeManagerService: import('../services/node-manager.service.js').NodeManagerService | null = null;
+  private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
+  private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private systemWorkerManager: import('../workers/system-worker-manager.js').SystemWorkerManager | null = null;
   /** Everything the health-monitor worker needs to be spawned again. */
@@ -924,6 +926,60 @@ export class OmnitronDaemon {
       }
       this.nodeManagerRpcService = nodeManagerRpcService;
       await this.app.netron.peer.exposeService(nodeManagerRpcService);
+
+      // The mesh: every registered node, connected and replicating.
+      //
+      // `SlaveConnector` maintains the connections and pulls each node's
+      // write-ahead buffer on connect and on every heartbeat, and all of it
+      // worked — but the only caller of `addSlave` was a remote or cluster
+      // stack starting. So the master connected to the nodes something had
+      // been deployed onto, and to no others. A node added through the
+      // console, provisioned, and collecting its own metrics and logs was
+      // never dialled, and buffered locally forever: measured at 47,407
+      // undelivered entries over eleven hours on the first such node, which
+      // reported healthy the whole time.
+      //
+      // Built here rather than inside ProjectService because reaching a node
+      // needs what only this side has — the registry's SSH credentials, for
+      // the token the node's daemon demands and for the tunnel a firewalled
+      // daemon port needs. ProjectService adopts the same instance: one per
+      // master, or two connectors pull the same buffer and race to ack it.
+      try {
+        const { SlaveConnector } = await import('../cluster/slave-connector.js');
+        const { createMeshDialer } = await import('../cluster/mesh-link.js');
+        const { startMesh } = await import('../cluster/mesh.js');
+        const { ExecutionService: Exec } = await import('../execution/execution.service.js');
+
+        const meshLogger = loggerModule.logger.child({ component: 'mesh' });
+        const fleetService = await container
+          .resolveAsync<FleetService>(FLEET_SERVICE_TOKEN)
+          .catch(() => undefined);
+
+        const connector = new SlaveConnector(meshLogger, fleetService, this.syncService ?? null, {
+          dial: createMeshDialer({
+            logger: meshLogger,
+            execution: new Exec(meshLogger),
+            subject: `mesh:${os.hostname()}`,
+            sshTargetFor: async ({ host }) => {
+              const node = nodeManager.listNodes().find((n) => n.host === host && !n.isLocal);
+              return node ? nodeManager.nodeToSshTarget(node) : null;
+            },
+          }),
+        });
+
+        this.slaveConnector = connector;
+        const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+        projectService.setSlaveConnector(connector);
+        this.meshHandle = startMesh({ registry: nodeManager, connector, logger: meshLogger });
+      } catch (err) {
+        // A master with no mesh still supervises its own apps, so this does
+        // not stop the daemon — but nothing else reports it, and a silent
+        // failure here looks exactly like a fleet that has nothing to say.
+        loggerModule.logger.error(
+          { error: (err as Error).message },
+          'Mesh not started — registered nodes will buffer their data locally and replicate nothing',
+        );
+      }
     }
 
     // =====================================================================
@@ -2304,6 +2360,20 @@ export class OmnitronDaemon {
 
     // --- Priority: Normal (50) — System workers, node manager, sync, cluster ---
     app.registerShutdownTask('stop-system-services', async () => {
+      // The mesh first: stop following the registry, then drop the
+      // connections. Each one may hold an SSH tunnel, and a tunnel that
+      // outlives its daemon holds a socket and a remote session open with
+      // nothing left to notice.
+      try {
+        this.meshHandle?.stop();
+      } catch { /* non-critical */ }
+      this.meshHandle = null;
+
+      if (this.slaveConnector) {
+        try { await this.slaveConnector.dispose(); } catch { /* non-critical */ }
+        this.slaveConnector = null;
+      }
+
       if (this.syncService) {
         try { await this.syncService.stop(); } catch { /* non-critical */ }
         this.syncService = null;

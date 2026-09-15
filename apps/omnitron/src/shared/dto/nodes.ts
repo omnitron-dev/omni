@@ -143,3 +143,24 @@ export interface FleetHistoryConfig {
   /** How long check history is kept, days. */
   retentionDays: number;
 }
+
+/**
+ * A node's membership of the mesh, as the console shows it.
+ *
+ * Distinct from `INodeStatus`, which answers "can this master reach it" —
+ * SSH, ping, a daemon that answers. A node can pass all of that and
+ * replicate nothing, which is what every registered node did until the
+ * master started dialling the ones no stack had been deployed onto.
+ */
+export interface IMeshNodeStatus {
+  nodeId: string;
+  /** False means the master is not connected to it at all. */
+  inMesh: boolean;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  /** `ssh-tunnel` means the node's daemon port is closed to this master. */
+  via: 'direct' | 'ssh-tunnel' | null;
+  /** False on a live connection means pings work and no data can be pulled. */
+  authenticated: boolean;
+  lastHeartbeat: number | null;
+  lastError: string | null;
+}

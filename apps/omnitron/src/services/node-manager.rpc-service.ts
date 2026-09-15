@@ -27,7 +27,7 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus } from '../shared/dto/nodes.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
 
@@ -63,6 +63,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   private healthRepo: NodeHealthRepository | null = null;
 
   private remoteDeployer: import('./remote-deployer.service.js').RemoteDeployer | null = null;
+
+  private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
 
   constructor(private readonly nodeManager: NodeManagerService) {}
 
@@ -242,6 +244,44 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   /** Wired by the daemon at startup, on a master. */
   setRemoteDeployer(deployer: import('./remote-deployer.service.js').RemoteDeployer | null): void {
     this.remoteDeployer = deployer;
+  }
+
+  /** The daemon's mesh connector, so the console can be told what it sees. */
+  setSlaveConnector(connector: import('../cluster/slave-connector.js').SlaveConnector | null): void {
+    this.slaveConnector = connector;
+  }
+
+  /**
+   * Whether each node is replicating, and how it is being reached.
+   *
+   * The node page could say a node was up — SSH answers, the daemon answers
+   * a ping — while nothing it collected ever arrived. Reachability and
+   * membership are different questions, and only the second one is about
+   * whether the data on the master is the whole of what the fleet knows.
+   *
+   * Three states are worth distinguishing, and the console renders all
+   * three: not in the mesh at all; connected but UNAUTHENTICATED, which
+   * answers pings and can replicate nothing; and connected over an SSH
+   * tunnel, which works but says the node's daemon port is closed to this
+   * master and is worth knowing before someone debugs the latency.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getMeshStatus(): Promise<IMeshNodeStatus[]> {
+    const connections = this.slaveConnector?.getConnections() ?? [];
+    const byAddress = new Map(connections.map((c) => [`${c.host}:${c.port}`, c]));
+
+    return this.nodeManager.listNodes().map((node) => {
+      const conn = byAddress.get(`${node.host}:${node.daemonPort}`);
+      return {
+        nodeId: node.id,
+        inMesh: Boolean(conn),
+        status: conn?.status ?? 'disconnected',
+        via: conn?.via ?? null,
+        authenticated: conn?.authenticated ?? false,
+        lastHeartbeat: conn?.lastHeartbeat ?? null,
+        lastError: conn?.lastError ?? null,
+      };
+    });
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

@@ -138,6 +138,17 @@ interface INodeStatus {
 }
 
 interface INodeWithStatus extends INode { status: INodeStatus | null }
+
+/** Mirrors the daemon's `IMeshNodeStatus`; see `getMeshStatus`. */
+interface IMeshNodeStatus {
+  nodeId: string;
+  inMesh: boolean;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  via: 'direct' | 'ssh-tunnel' | null;
+  authenticated: boolean;
+  lastHeartbeat: number | null;
+  lastError: string | null;
+}
 interface SshKeyInfo { name: string; path: string; type: string }
 
 /** The operator-tunable half of how the fleet is checked. */
@@ -512,7 +523,7 @@ const SEG_GAP = 4;
 const SEG_HEIGHT = 10;
 
 function NodeCard({
-  node, onEdit, onRemove, onCheckSsh, checking, uptimeData, newest,
+  node, onEdit, onRemove, onCheckSsh, checking, uptimeData, newest, mesh,
 }: {
   node: INodeWithStatus;
   onEdit: (n: INodeWithStatus) => void;
@@ -522,6 +533,8 @@ function NodeCard({
   uptimeData: UptimeBucket[];
   /** The newest version anything in this fleet reports. */
   newest: string | undefined;
+  /** Whether this node is replicating, or undefined before the first answer. */
+  mesh: IMeshNodeStatus | undefined;
 }) {
   const { status } = node;
   // PING/OMNITRON dots reflect periodic worker checks — NOT the SSH button state
@@ -648,6 +661,7 @@ function NodeCard({
           {status?.omnitronUptime != null && status.omnitronUptime > 0 && (
             <DetailRow label="Uptime" value={formatUptime(status.omnitronUptime)} />
           )}
+          {!node.isLocal && <MeshRow mesh={mesh} />}
         </Stack>
 
         {node.tags.length > 0 && (
@@ -676,6 +690,98 @@ function NodeCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Whether a node's data is reaching this master.
+ *
+ * Every other signal on this card answers "can we reach it" — SSH, a ping, a
+ * daemon that replies with its version. A node can be green on all of them
+ * and replicate nothing, and for every registered node that no stack had
+ * been deployed onto, that is exactly what happened: 47,407 entries buffered
+ * on one, none delivered, over eleven hours, while this page showed it
+ * healthy. Reachability and membership are different questions and the card
+ * now asks both.
+ */
+export type MeshStanding =
+  | { text: 'not joined'; tone: 'idle'; tooltip: string }
+  | { text: 'failing'; tone: 'bad'; tooltip: string }
+  | { text: 'joining'; tone: 'quiet'; tooltip: string }
+  | { text: 'unauthenticated'; tone: 'warn'; tooltip: string }
+  | { text: 'over SSH'; tone: 'info'; tooltip: string }
+  | { text: 'direct'; tone: 'good'; tooltip: string };
+
+/**
+ * What to say about a node's membership, given what the daemon reported.
+ *
+ * Its own function because the order of these tests is the whole content of
+ * the row, and it is the part that is easy to get wrong: `connected` is
+ * checked BEFORE `authenticated`, so a live connection that can pull nothing
+ * reads as a warning rather than as health. That state — pings fine,
+ * replicates nothing — is the one that looks best and carries least.
+ */
+export function meshStanding(mesh: IMeshNodeStatus): MeshStanding {
+  const heartbeat = mesh.lastHeartbeat
+    ? ` Last heartbeat ${formatAge(new Date(mesh.lastHeartbeat).toISOString())}.`
+    : '';
+
+  if (!mesh.inMesh || mesh.status === 'disconnected') {
+    return {
+      text: 'not joined',
+      tone: 'idle',
+      tooltip: mesh.lastError ?? 'This master is not connected to the node. Nothing it collects is being replicated.',
+    };
+  }
+  if (mesh.status === 'error') {
+    return { text: 'failing', tone: 'bad', tooltip: mesh.lastError ?? 'The connection to this node is failing.' };
+  }
+  if (mesh.status === 'connecting') {
+    return { text: 'joining', tone: 'quiet', tooltip: 'Connecting.' };
+  }
+  if (!mesh.authenticated) {
+    return {
+      text: 'unauthenticated',
+      tone: 'warn',
+      tooltip: 'Connected, but without a credential this node accepts — it answers pings and replicates nothing.',
+    };
+  }
+  if (mesh.via === 'ssh-tunnel') {
+    return {
+      text: 'over SSH',
+      tone: 'info',
+      tooltip: `Replicating through an SSH tunnel: this node's daemon port is not open to this master.${heartbeat}`,
+    };
+  }
+  return {
+    text: 'direct',
+    tone: 'good',
+    tooltip: `Replicating over a direct connection to the daemon port.${heartbeat}`,
+  };
+}
+
+const MESH_TONE: Record<MeshStanding['tone'], string> = {
+  idle: 'text.disabled',
+  quiet: 'text.secondary',
+  bad: 'error.main',
+  warn: 'warning.main',
+  info: 'info.main',
+  good: 'success.main',
+};
+
+function MeshRow({ mesh }: { mesh: IMeshNodeStatus | undefined }) {
+  if (!mesh) return null;
+  const standing = meshStanding(mesh);
+
+  return (
+    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 11 }}>Mesh</Typography>
+      <Tooltip arrow title={standing.tooltip}>
+        <Typography variant="caption" noWrap sx={{ fontSize: 11, color: MESH_TONE[standing.tone], maxWidth: 190 }}>
+          {standing.text}
+        </Typography>
+      </Tooltip>
+    </Stack>
   );
 }
 
@@ -1019,6 +1125,8 @@ export default function NodesPage() {
   const nodeListRef = useRef<INodeWithStatus[]>([]);
   nodeListRef.current = nodeList;
 
+  const [mesh, setMesh] = useState<Record<string, IMeshNodeStatus>>({});
+
   const fetchNodes = useCallback(async () => {
     try {
       const list: INodeWithStatus[] = await nodesRpc.listNodes();
@@ -1034,6 +1142,17 @@ export default function NodesPage() {
       setListError((err as Error)?.message ?? 'Could not reach the daemon');
       return nodeListRef.current;
     } finally { setLoading(false); }
+  }, []);
+
+  const fetchMesh = useCallback(async () => {
+    try {
+      const rows: IMeshNodeStatus[] = await nodesRpc.getMeshStatus();
+      setMesh(Object.fromEntries(rows.map((r) => [r.nodeId, r])));
+    } catch {
+      // Left as it was. An unanswered call says nothing about whether a node
+      // is replicating, and showing "not joined" because the daemon was busy
+      // reports an outage this page invented.
+    }
   }, []);
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
@@ -1081,6 +1200,12 @@ export default function NodesPage() {
   // With the socket up the poll is only a safety net. Without it, it is the
   // whole mechanism — so it keeps the old cadence.
   usePollingEffect(() => void fetchNodes(), { intervalMs: wsConnected ? 120_000 : 30_000 });
+
+  // Mesh membership on its own tick, and a faster one than the node list.
+  // It changes for reasons the node list never hears about — a tunnel drops,
+  // a credential expires, a reconnect succeeds — and none of those produce
+  // the events that refresh the list.
+  usePollingEffect(() => void fetchMesh(), { intervalMs: 15_000 });
 
   // A check round finished, or a node changed state: read the new list now
   // rather than at the next tick.
@@ -1299,7 +1424,7 @@ export default function NodesPage() {
             <Grid key={node.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <NodeCard node={node} onEdit={handleOpenEdit} onRemove={setConfirmRemoveId}
                 onCheckSsh={handleCheckSsh} checking={checkingId === node.id}
-                uptimeData={uptimeBars[node.id] ?? []} newest={newestInFleet} />
+                uptimeData={uptimeBars[node.id] ?? []} newest={newestInFleet} mesh={mesh[node.id]} />
             </Grid>
           ))}
         </Grid>

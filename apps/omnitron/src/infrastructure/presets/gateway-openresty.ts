@@ -20,9 +20,30 @@ export const gatewayOpenrestyPreset: IServicePreset = {
   defaultPorts: { http: 80 },
   defaultSecrets: {},
 
+  /**
+   * Accepting connections, not serving a particular path.
+   *
+   * This asked for `/nginx-health`, an endpoint a reverse proxy's config may
+   * or may not define — and the config is the operator's, mounted from their
+   * repository. The one omnitron was pointed at has no such location, so the
+   * check could never pass: measured on the test node, a gateway reporting
+   * unhealthy for hours while serving an onion address that answered HTTP
+   * 200 through the Tor network.
+   *
+   * A preset must not assert the contents of a config it does not own. What
+   * it can assert is that the server it started is up and accepting
+   * connections on the port it declares — which is the whole of what this
+   * preset is responsible for. Whether a given route answers is the
+   * operator's config, and a health check that fails on their routing is a
+   * report about the wrong thing.
+   *
+   * `resolveGateway` reached the same conclusion for the same image and
+   * checked the nginx pid file. This checks the socket, which is one step
+   * stronger: a master process can be alive with no listener.
+   */
   defaultHealthCheck: {
-    type: 'http',
-    target: '/nginx-health',
+    type: 'command',
+    target: 'nc -z 127.0.0.1 80 || exit 1',
     interval: '10s',
     timeout: '5s',
     retries: 3,

@@ -9,9 +9,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { sql, type Kysely } from 'kysely';
+import { type Kysely, type ExpressionBuilder, type Expression, type SqlBool } from 'kysely';
 
 import { planRetention, batchesPerPass } from './log-retention.js';
+import { jsonContains } from '../database/dialect.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { EventEmitter } from 'node:events';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
@@ -361,72 +362,63 @@ export class LogCollectorService extends EventEmitter {
     const limit = Math.min(filter.limit ?? 100, 1000);
     const offset = filter.offset ?? 0;
 
-    let query = this.db.selectFrom('logs').selectAll();
+    // One definition of "which rows", used by both queries.
+    //
+    // There were two, and they had drifted: the rows honoured `nodeId` and
+    // `labels`, the count did not. So a log view filtered to one node showed
+    // that node's lines under a total counting every node's — a pager
+    // offering pages that hold nothing, and a number an operator reads as
+    // how much that node said. The two lists were written together and
+    // maintained apart, which is the failure mode of writing them twice.
+    const matching = (eb: ExpressionBuilder<OmnitronDatabase, 'logs'>) => {
+      const clauses: Expression<SqlBool>[] = [];
 
-    // Apply filters
-    if (filter.app) {
-      query = query.where('app', '=', filter.app);
-    }
+      if (filter.app) clauses.push(eb('app', '=', filter.app));
 
-    if (filter.level) {
-      if (Array.isArray(filter.level)) {
-        query = query.where('level', 'in', filter.level);
-      } else {
-        query = query.where('level', '=', filter.level);
+      if (filter.level) {
+        clauses.push(
+          Array.isArray(filter.level)
+            ? eb('level', 'in', filter.level)
+            : eb('level', '=', filter.level),
+        );
       }
-    }
 
-    if (filter.search) {
-      query = query.where('message', 'like', `%${escapeLike(filter.search)}%`);
-    }
+      if (filter.search) clauses.push(eb('message', 'like', `%${escapeLike(filter.search)}%`));
+      if (filter.traceId) clauses.push(eb('traceId', '=', filter.traceId));
+      if (filter.nodeId) clauses.push(eb('nodeId', '=', filter.nodeId));
 
-    if (filter.traceId) {
-      query = query.where('traceId', '=', filter.traceId);
-    }
-
-    if (filter.nodeId) {
-      query = query.where('nodeId', '=', filter.nodeId);
-    }
-
-    if (filter.labels && Object.keys(filter.labels).length > 0) {
-      // jsonb containment — the operator the GIN index answers.
-      const wanted = JSON.stringify(filter.labels);
-      query = query.where(sql<boolean>`labels @> ${wanted}::jsonb`);
-    }
-
-    if (filter.from) {
-      const fromDate = typeof filter.from === 'string' ? new Date(filter.from) : filter.from;
-      query = query.where('timestamp', '>=', fromDate);
-    }
-
-    if (filter.to) {
-      const toDate = typeof filter.to === 'string' ? new Date(filter.to) : filter.to;
-      query = query.where('timestamp', '<=', toDate);
-    }
-
-    // Get total count for pagination
-    let countQuery = this.db.selectFrom('logs').select(
-      this.db.fn.countAll<string>().as('count')
-    );
-
-    if (filter.app) countQuery = countQuery.where('app', '=', filter.app);
-    if (filter.level) {
-      if (Array.isArray(filter.level)) {
-        countQuery = countQuery.where('level', 'in', filter.level);
-      } else {
-        countQuery = countQuery.where('level', '=', filter.level);
+      if (filter.labels && Object.keys(filter.labels).length > 0) {
+        // Containment, asked the way each engine understands it. Written as
+        // `labels @> ?::jsonb`, this was a syntax error on every slave —
+        // SQLite reads `@` as an unrecognized token and refuses the whole
+        // statement — so a log query carrying a label filter threw on the
+        // exact nodes whose logs you go looking for. See `jsonContains`.
+        clauses.push(jsonContains(this.db, 'labels', filter.labels) as Expression<SqlBool>);
       }
-    }
-    if (filter.search) countQuery = countQuery.where('message', 'like', `%${escapeLike(filter.search)}%`);
-    if (filter.traceId) countQuery = countQuery.where('traceId', '=', filter.traceId);
-    if (filter.from) {
-      const fromDate = typeof filter.from === 'string' ? new Date(filter.from) : filter.from;
-      countQuery = countQuery.where('timestamp', '>=', fromDate);
-    }
-    if (filter.to) {
-      const toDate = typeof filter.to === 'string' ? new Date(filter.to) : filter.to;
-      countQuery = countQuery.where('timestamp', '<=', toDate);
-    }
+
+      if (filter.from) {
+        const fromDate = typeof filter.from === 'string' ? new Date(filter.from) : filter.from;
+        clauses.push(eb('timestamp', '>=', fromDate));
+      }
+
+      if (filter.to) {
+        const toDate = typeof filter.to === 'string' ? new Date(filter.to) : filter.to;
+        clauses.push(eb('timestamp', '<=', toDate));
+      }
+
+      // No filter at all is not "match nothing" — the unfiltered view is
+      // the default one. `lit`, not `val`: a bound `true` is a JS boolean,
+      // and better-sqlite3 binds "numbers, strings, bigints, buffers, and
+      // null", so a parameter here would refuse every unfiltered log query
+      // on every slave. `true` as a keyword is understood by both engines.
+      return clauses.length > 0 ? eb.and(clauses) : eb.lit(true);
+    };
+
+    const query = this.db.selectFrom('logs').selectAll().where(matching);
+    const countQuery = this.db
+      .selectFrom('logs')
+      .select(this.db.fn.countAll<string>().as('count'))
+      .where(matching);
 
     const [entries, countResult] = await Promise.all([
       query.orderBy('timestamp', 'desc').limit(limit).offset(offset).execute(),
@@ -516,8 +508,10 @@ export class LogCollectorService extends EventEmitter {
 
     if (filter.nodeId) query = query.where('nodeId', '=', filter.nodeId);
     if (filter.labels && Object.keys(filter.labels).length > 0) {
-      const wanted = JSON.stringify(filter.labels);
-      query = query.where(sql<boolean>`labels @> ${wanted}::jsonb`);
+      // Both paths, deliberately: a filter honoured by the paginated query
+      // and not by the live tail is how a viewer changes its answer when you
+      // press Live.
+      query = query.where(jsonContains(this.db, 'labels', filter.labels));
     }
 
     // Range filters — critical for efficient live polling (since parameter)

@@ -72,3 +72,67 @@ describe('the -p value itself', () => {
     expect(portArg({ host: 5432, container: 5432 })).toBe('5432:5432');
   });
 });
+
+// =============================================================================
+// Every managed container, not just the one that was found exposed
+// =============================================================================
+
+describe('a published port binds to loopback unless asked otherwise', () => {
+  it('binds omnitron s own database to loopback', async () => {
+    const { resolveOmnitronPg } = await import('../../src/infrastructure/service-resolver.js');
+
+    const pg = resolveOmnitronPg();
+
+    // Measured on the test server, whose ufw allows 22/tcp and nothing else:
+    //
+    //     nc -vz <node> 9700  → timed out (ufw, as configured)
+    //     nc -vz <node> 5480  → OPEN      (docker, straight past it)
+    //
+    // Docker inserts its iptables rules ahead of ufw's, so a published port
+    // is reachable from the internet whatever the host firewall says. An
+    // operator who reads their firewall rules and concludes the database is
+    // private is reading a control that does not cover it.
+    expect(pg.ports?.[0]?.bindHost).toBe('127.0.0.1');
+  });
+
+  it('binds a service an application declared', async () => {
+    const { resolveServiceRequirement } = await import('../../src/infrastructure/service-resolver.js');
+
+    const container = resolveServiceRequirement('redis', {
+      ports: { main: 6379 },
+      env: {},
+      docker: { image: 'redis:7-alpine' },
+    } as never);
+
+    // The applications that use these run on the same host and reach them
+    // over loopback. Anything further away comes through omnitron's own
+    // transport, which is authenticated — so the default costs nothing and
+    // the exposure had no beneficiary.
+    expect(container?.ports?.every((p) => p.bindHost === '127.0.0.1')).toBe(true);
+  });
+
+  it('leaves a deliberate exposure alone', async () => {
+    const { applyManagedDefaults } = await import('../../src/infrastructure/service-resolver.js');
+
+    const spec = applyManagedDefaults({
+      name: 'public-thing',
+      image: 'nginx',
+      ports: [{ host: 443, container: 443, bindHost: '0.0.0.0' }],
+      environment: {},
+      volumes: [],
+    } as never);
+
+    // A container that genuinely must be reachable says so — a deliberate
+    // line in a config, reviewable in a diff.
+    expect(spec.ports?.[0]?.bindHost).toBe('0.0.0.0');
+  });
+
+  it('renders the bind into the docker argument', async () => {
+    const { portArg } = await import('../../src/infrastructure/container-runtime.js');
+
+    expect(portArg({ host: 5480, container: 5432, bindHost: '127.0.0.1' })).toBe('127.0.0.1:5480:5432');
+    // Without one, docker publishes on every interface — which is the
+    // behaviour this default exists to stop.
+    expect(portArg({ host: 5480, container: 5432 })).toBe('5480:5432');
+  });
+});

@@ -293,3 +293,56 @@ describe('the report that a deployment is on a default credential', () => {
     expect(errors[0]).toContain('"service":"postgres"');
   });
 });
+
+describe('the secret store, resolved per call', () => {
+  it('is asked each time rather than captured at boot', async () => {
+    const { InfrastructureRpcService } = await import('../../src/services/infrastructure.rpc-service.js');
+    let asks = 0;
+    const v = vault();
+    const infra = {
+      provision: async () => ({ services: {}, ready: true }),
+      getDesiredServices: () => [],
+      getState: () => ({ services: {}, ready: true }),
+      addAppContainers: () => {},
+    } as never;
+
+    const service = new InfrastructureRpcService(
+      () => null,
+      (() => infra) as never,
+      () => { asks += 1; return v as never; },
+      { error: () => {} },
+    );
+
+    await service.provisionStack({ config: {} as never, project: 'daos', stack: 'test' });
+    await service.provisionStack({ config: {} as never, project: 'daos', stack: 'test' });
+
+    // Captured once at boot, a resolution that failed during startup left
+    // credential generation off for the life of the daemon, and the absence
+    // read exactly like a node that needs no credentials.
+    expect(asks).toBe(2);
+  });
+
+  it('says so when there is no store, rather than quietly using defaults', async () => {
+    const { InfrastructureRpcService } = await import('../../src/services/infrastructure.rpc-service.js');
+    const errors: string[] = [];
+    const infra = {
+      provision: async () => ({ services: {}, ready: true }),
+      getDesiredServices: () => [],
+      getState: () => ({ services: {}, ready: true }),
+      addAppContainers: () => {},
+    } as never;
+
+    const service = new InfrastructureRpcService(
+      () => null,
+      (() => infra) as never,
+      () => undefined,
+      { error: (_o: object, m?: string) => errors.push(String(m)) },
+    );
+
+    await service.provisionStack({ config: {} as never, project: 'daos', stack: 'test' });
+
+    // Silence here is indistinguishable from a deployment that needed no
+    // credentials at all.
+    expect(errors.join(' ')).toMatch(/no secret store/i);
+  });
+});

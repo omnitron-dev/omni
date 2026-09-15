@@ -45,6 +45,9 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     spec.configFile ? host.readFile(spec.configFile) : Promise.resolve(null),
   ]);
 
+  const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
+  const unitContent = spec.unitContent !== undefined && unitPath ? await host.readFile(unitPath) : null;
+
   return {
     installed,
     userExists,
@@ -53,6 +56,7 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     unitActive: unit.active,
     unitEnabled: unit.enabled,
     configContent,
+    unitContent,
   };
 }
 
@@ -145,6 +149,19 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       await host.writeFile(action.path, action.content, { mode: action.mode, owner: action.owner });
       return;
 
+    case 'write-unit':
+      // 0644 and root-owned: systemd refuses to read a unit that is group-
+      // or world-writable, and a unit holds no secret — the config it points
+      // at does.
+      await host.writeFile(action.path, action.content, { mode: '0644' });
+      return;
+
+    case 'daemon-reload': {
+      const r = await host.run(['systemctl', 'daemon-reload']);
+      if (!r.ok) throw new Error(`could not reload systemd: ${firstLine(r.stderr)}`);
+      return;
+    }
+
     case 'enable-unit': {
       const r = await host.run(['systemctl', 'enable', action.unit]);
       if (!r.ok) throw new Error(`could not enable ${action.unit}: ${firstLine(r.stderr)}`);
@@ -168,6 +185,8 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
 export function describe(action: BareMetalAction): string {
   switch (action.type) {
     case 'install': return `install (${firstLine(action.command)})`;
+    case 'write-unit': return `write unit ${action.path}`;
+    case 'daemon-reload': return 'reload systemd';
     case 'create-user': return `create service account ${action.user}`;
     case 'create-data-dir': return `create ${action.path}`;
     case 'write-config': return `write ${action.path} (${action.mode})`;

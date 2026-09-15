@@ -408,6 +408,24 @@ export interface IBareMetalServiceConfig {
   /** Validation command to check if service is installed. */
   validateCommand?: string;
 
+  /**
+   * The systemd unit, when the host has none to adopt.
+   *
+   * A package that ships its own unit needs nothing here — omnitron adopts
+   * it, and `systemdUnit` alone says which. A binary installed from an
+   * upstream tarball ships no unit, and the alternative to declaring one is
+   * an `installCommand` that writes a service file as a side effect of
+   * "installing", which is where hardening goes to be forgotten.
+   *
+   * Same `${...}` vocabulary as `configTemplate`. Written to
+   * `/etc/systemd/system/${systemdUnit}.service` unless `unitFile` says
+   * otherwise, and never over a unit omnitron did not write.
+   */
+  unitTemplate?: string;
+
+  /** Where the unit goes. Default: `/etc/systemd/system/${systemdUnit}.service`. */
+  unitFile?: string;
+
   /** Variants keyed by networkMode. */
   variants?: Record<string, Partial<Omit<IBareMetalServiceConfig, 'variants'>>>;
 }

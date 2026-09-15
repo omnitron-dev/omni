@@ -1276,10 +1276,20 @@ export class ProjectService extends EventEmitter {
         { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
         target,
       );
-      this.logger.info(
-        { node: nodeKey, masterHost: master.host, from: master.source },
-        'Resolved the master address this slave will dial',
-      );
+      if (master.host) {
+        this.logger.info(
+          { node: nodeKey, masterHost: master.host, from: master.source },
+          'Resolved the master address this slave will dial',
+        );
+      } else {
+        // Not an obstacle: the mesh connects the other way. Said once, at
+        // warn level, because a deployment that hands out no master address
+        // is worth noticing if somebody expected the push path to exist.
+        this.logger.warn(
+          { node: nodeKey, because: master.reason },
+          'Provisioning this node without a master address — it will be pulled from, not dial in',
+        );
+      }
       const provisioned = await this.deployer.provisionSlaveNode(
         target,
         master.host,
@@ -1450,7 +1460,7 @@ export class ProjectService extends EventEmitter {
         target,
       );
       this.logger.info(
-        { node: node.host, masterHost: master.host, from: master.source },
+        { node: node.host, masterHost: master.host ?? '(none — this node is pulled from)', from: master.source },
         'Resolved the master address this slave will dial',
       );
       await this.deployer.provisionSlaveNode(target, master.host, masterPort, projectName);

@@ -367,7 +367,17 @@ export class RemoteDeployer {
    */
   async provisionSlaveNode(
     target: DeployTarget,
-    masterHost: string,
+    /**
+     * Where this node should dial to reach the master, or null when there is
+     * nowhere — a master behind NAT, which is where remote stacks are
+     * started from.
+     *
+     * Null is not a failure. Replication is master-PULL: the master opens
+     * the connection, over SSH when the node's daemon port is closed, and
+     * drains the node's buffer. `omnitron up --slave` takes the address
+     * optionally for exactly this reason.
+     */
+    masterHost: string | null,
     masterPort: number,
     project: string,
     options: ProvisionOptions = {},
@@ -462,13 +472,18 @@ export class RemoteDeployer {
       // exercised.
       this.emitProgress(nodeKey, '*', 'extracting', 50, 'Configuring slave daemon...');
       assertRemotePathSegment('project name', project);
-      const masterAddr = `${masterHost}:${masterPort}`;
+      const masterAddr = masterHost ? `${masterHost}:${masterPort}` : null;
 
       // 5. Start slave daemon (or restart if already running)
       this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
       await this.sshExec(
         target,
-        `omnitron down 2>/dev/null; omnitron up --slave ${shellEscape(masterAddr)} --no-infra`,
+        masterAddr
+          ? `omnitron down 2>/dev/null; omnitron up --slave ${shellEscape(masterAddr)} --no-infra`
+          // `--slave` with no address still sets the role; the node buffers
+          // locally and waits to be pulled from, which is what it would do
+          // with an address it cannot reach anyway.
+          : 'omnitron down 2>/dev/null; omnitron up --slave --no-infra',
         180_000,
       ).catch((err) => {
         // Reported, not swallowed. The verification below tells us whether the

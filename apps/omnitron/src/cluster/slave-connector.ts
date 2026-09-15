@@ -264,6 +264,11 @@ export class SlaveConnector {
 
     conn.status = 'connecting';
 
+    // Anything left from a previous attempt goes back before a new one is
+    // made. The disconnect path releases it too; this is the guarantee that
+    // does not depend on which path got here.
+    await this.releaseLink(conn);
+
     try {
       const link = await this.dial({ host: conn.config.host, port: conn.config.port });
       conn.link = link;
@@ -323,9 +328,16 @@ export class SlaveConnector {
       netron.on('peer:disconnected', () => {
         if (this.disposed) return;
         this.logger.warn({ host: conn.config.host, port: conn.config.port }, 'Slave disconnected');
-        conn.status = 'disconnected';
-        conn.peer = null;
-        this.scheduleReconnect(key, conn);
+        // Give back the netron and the link BEFORE reconnecting.
+        //
+        // This dropped the peer and kept both, and `connectSlave` overwrites
+        // them with the new ones — so every reconnect leaked a Netron and,
+        // for a node reached over SSH, a tunnel holding an open SSH session.
+        // The nodes that reconnect are the ones on a poor link, so the leak
+        // is fastest exactly where it is worst, and it ends at sshd's
+        // session limit: the master locked out of the node entirely,
+        // including the path it deploys over.
+        void this.disconnectSlave(conn).finally(() => this.scheduleReconnect(key, conn));
       });
 
     } catch (err) {

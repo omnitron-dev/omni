@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { Netron } from '../../src/netron/netron.js';
 import { HttpTransport } from '../../src/netron/transport/http/http-transport.js';
-import { Service } from '../../src/decorators/core.js';
+import { Service, Public } from '../../src/decorators/core.js';
 import { Contract } from '../../src/decorators/validation.js';
 import { contract } from '../../src/validation/index.js';
 import { createMockLogger } from '../netron/test-utils.js';
@@ -89,14 +89,17 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('calculator@1.0.0')
     @Contract(CalculatorContract)
     class CalculatorService {
+      @Public()
       add(input: { a: number; b: number }): number {
         return input.a + input.b;
       }
 
+      @Public()
       subtract(input: { a: number; b: number }): number {
         return input.a - input.b;
       }
 
+      @Public()
       multiply(input: { a: number; b: number }): number {
         return input.a * input.b;
       }
@@ -193,6 +196,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     class UserService {
       private users = new Map<string, any>();
 
+      @Public()
       createUser(input: { email: string; age: number; username: string }) {
         if (this.users.has(input.email)) {
           throw new Error('USER_EXISTS: User already exists');
@@ -337,6 +341,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('stream@1.0.0')
     @Contract(StreamContract)
     class StreamService {
+      @Public()
       async *generateNumbers(input: { start: number; end: number; step: number }) {
         for (let i = input.start; i <= input.end; i += input.step) {
           yield i;
@@ -466,6 +471,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('metadata@1.0.0')
     @Contract(MetadataContract)
     class MetadataService {
+      @Public()
       getInfo(input: { id: string }) {
         return {
           id: input.id,
@@ -473,6 +479,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
         };
       }
 
+      @Public()
       deprecatedMethod(input: { value: string }) {
         return input.value;
       }
@@ -544,6 +551,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('math@1.0.0')
     @Contract(MathContract)
     class MathService {
+      @Public()
       divide(input: { dividend: number; divisor: number }) {
         return input.dividend / input.divisor;
       }
@@ -566,10 +574,12 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('string@1.0.0')
     @Contract(StringContract)
     class StringService {
+      @Public()
       concat(input: { strings: string[] }) {
         return input.strings.join('');
       }
 
+      @Public()
       reverse(input: string) {
         return input.split('').reverse().join('');
       }
@@ -595,11 +605,13 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     class DataService {
       private storage = new Map<string, any>();
 
+      @Public()
       store(input: { key: string; value: any }) {
         this.storage.set(input.key, input.value);
         return true;
       }
 
+      @Public()
       retrieve(key: string) {
         return this.storage.get(key) ?? null;
       }
@@ -725,6 +737,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('tracked@1.0.0')
     @Contract(TrackedContract)
     class TrackedService {
+      @Public()
       process(input: { value: number }) {
         middlewareLog.push('method-execution');
         return {
@@ -806,6 +819,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     @Service('perf@1.0.0')
     @Contract(PerfContract)
     class PerfService {
+      @Public()
       echo(input: { message: string }) {
         return input.message;
       }
@@ -988,6 +1002,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       @Service('config@1.0.0')
       @Contract(ConfigContract)
       class ConfigService {
+        @Public()
         configure(input: any) {
           return {
             configured: true,
@@ -1061,6 +1076,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       @Service('order@1.0.0')
       @Contract(NestedContract)
       class OrderService {
+        @Public()
         processOrder(input: any) {
           const total = input.order.items.reduce((sum: number, item: any) => sum + item.quantity * item.price, 0);
 
@@ -1163,6 +1179,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       @Service('event@1.0.0')
       @Contract(UnionContract)
       class EventService {
+        @Public()
         handleEvent(input: any) {
           return {
             handled: true,

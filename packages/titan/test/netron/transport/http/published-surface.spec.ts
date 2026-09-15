@@ -38,6 +38,7 @@ const getWorkerSafePort = () => nextTestPort();
 
 const EchoContract = contract({
   byContract: { input: z.object({ v: z.number() }), output: z.number() },
+  declaredAndContracted: { input: z.object({ v: z.number() }), output: z.number() },
 });
 
 @Service('surface@1.0.0')
@@ -48,7 +49,13 @@ class SurfaceService {
     return 'declared';
   }
 
+  /** Named by the contract and NOT annotated: schemas, no exposure. */
   byContract(input: { v: number }): number {
+    return input.v * 2;
+  }
+
+  @Public()
+  declaredAndContracted(input: { v: number }): number {
     return input.v * 2;
   }
 
@@ -96,10 +103,30 @@ describe('the HTTP published surface', () => {
     expect(r.data).toBe('declared');
   });
 
-  it('exposes a method a @Contract declares, even without @Public', async () => {
+  it('does NOT expose a method a @Contract names but @Public does not', async () => {
+    // It used to. `publishedMethodNames` unioned the contract's keys into the
+    // published surface, `meta.methods[name]` was then `{}` for a method with
+    // no annotation, and `enforceMethodAuthorization` returns immediately when
+    // a method declares no `auth` — so writing a schema for a method put it on
+    // the wire, behind the public gateway, with nothing to authenticate
+    // against. Adding input validation must not widen a surface.
+    //
+    // `RemotePeer.isPublishedMember` reads the prototype annotation and knows
+    // nothing about contracts, so this method already answered "not found" on
+    // WS, TCP and Unix. The two doors agree again.
     const r = await invoke('byContract', { v: 21 });
-    expect(r.success).toBe(true);
-    expect(r.data).toBe(42);
+    expect(r.success).toBe(false);
+    expect(r.error!.message).toMatch(/not found/i);
+  });
+
+  it('and a method that is BOTH annotated and contracted is exposed AND validated', async () => {
+    // Non-vacuity for the assertion above: a contract still does its job on a
+    // method the service actually publishes.
+    const ok = await invoke('declaredAndContracted', { v: 21 });
+    expect(ok.success).toBe(true);
+    expect(ok.data).toBe(42);
+    const bad = await invoke('declaredAndContracted', { v: 'not a number' });
+    expect(bad.success, 'the contract must still refuse what it declares invalid').toBe(false);
   });
 
   it('does NOT expose a private helper', async () => {

@@ -59,7 +59,7 @@ export interface MeshLink {
    * Given the failure, the cache can be dropped and the next attempt reads
    * the node's current secret.
    */
-  onRejected?: (() => void) | undefined;
+  onRejected?: ((reason?: string) => void) | undefined;
   /** Releases whatever was opened to make `url` work. */
   close?: (() => Promise<void>) | undefined;
 }
@@ -178,10 +178,13 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
     const ssh = await sshTargetFor(target).catch(() => null);
 
     const token = ssh ? await tokenFor(key, ssh) : undefined;
-    const onRejected = () => {
+    const onRejected = (reason?: string) => {
       secrets.delete(key);
       logger.warn(
-        { host: target.host },
+        // The node's own words for the refusal. Without them this line names
+        // a conclusion and withholds the evidence for it, and the next
+        // question — WHY did it refuse — has nowhere to go.
+        { host: target.host, reason: reason ?? 'no reason given' },
         'Node refused the master credential — its signing secret will be read again on the next attempt',
       );
     };

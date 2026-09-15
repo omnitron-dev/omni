@@ -454,3 +454,69 @@ describe('what a starting slave says about replication', () => {
     expect(describeSlaveSync(undefined)).not.toMatch(/undefined/);
   });
 });
+
+describe('a reconnect gives back what the last attempt held', () => {
+  /** A dialer that hands out a distinct, closeable link each time. */
+  function countingDialer() {
+    const opened: number[] = [];
+    const closed: number[] = [];
+    let n = 0;
+    return {
+      opened,
+      closed,
+      dial: async () => {
+        const id = ++n;
+        opened.push(id);
+        return {
+          url: `tcp://127.0.0.1:${50_000 + id}`,
+          via: 'ssh-tunnel' as const,
+          close: async () => { closed.push(id); },
+        };
+      },
+    };
+  }
+
+  async function connector(dial: () => Promise<any>) {
+    const { SlaveConnector } = await import('../../src/cluster/slave-connector.js');
+    return new SlaveConnector(logger, undefined, null, { dial });
+  }
+
+  it('closes the previous link before dialling again', async () => {
+    const d = countingDialer();
+    const c = await connector(d.dial);
+
+    // `connectSlave` fails after the dial (nothing is listening on the URL),
+    // which is the path a node on a poor link takes over and over.
+    await (c as unknown as { connectSlave(key: string, conn: unknown): Promise<void> })
+      .connectSlave('h:9700', { config: { host: 'h', port: 9700 }, status: 'disconnected', link: null, reconnectAttempt: 0, reconnectTimer: null });
+
+    expect(d.opened).toEqual([1]);
+    // Every dial that does not end in a live connection must give its link
+    // back, or the tunnel outlives the attempt that made it.
+    expect(d.closed).toEqual([1]);
+
+    await c.dispose();
+  });
+
+  it('never holds more than one link for a node across attempts', async () => {
+    const d = countingDialer();
+    const c = await connector(d.dial);
+    const conn: any = { config: { host: 'h', port: 9700 }, status: 'disconnected', link: null, reconnectAttempt: 0, reconnectTimer: null };
+    const connect = (c as unknown as { connectSlave(key: string, conn: unknown): Promise<void> }).connectSlave.bind(c);
+
+    for (let i = 0; i < 3; i += 1) {
+      conn.status = 'disconnected';
+      await connect('h:9700', conn);
+    }
+
+    // Three attempts, three links, three closes. A node that flaps is
+    // exactly the node that reconnects, so a leak here grows fastest where
+    // it hurts most — and ends at sshd's session limit, with the master
+    // locked out of the machine it deploys to.
+    expect(d.opened).toHaveLength(3);
+    expect(d.closed).toHaveLength(3);
+    expect(conn.link).toBeNull();
+
+    await c.dispose();
+  });
+});

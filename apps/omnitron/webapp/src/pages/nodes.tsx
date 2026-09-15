@@ -5,7 +5,7 @@
  * Uptime bars: vertical 4px segments, green→red by uptime %, two rows.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -429,6 +429,55 @@ function UptimeStrip<T extends Record<string, any>>({
 // Omnitron dot state
 // =============================================================================
 
+/**
+ * How a node's version compares with the rest of the fleet.
+ *
+ * Until recently every omnitron called itself `0.2.0` — the registry's copy
+ * and a build from this morning alike — so a fleet view had nothing to
+ * compare and the question "which of my nodes are behind" had no answer on
+ * the page whose job is to answer it. A locally built omnitron now carries
+ * `+local.<sha>.<stamp>`, which makes two builds different strings.
+ *
+ * The newest is decided by that stamp, not by semver: build metadata is
+ * ignored in semver precedence, so `0.2.0+local.a.202609150345` and
+ * `0.2.0+local.b.202608010000` compare EQUAL to any version library. Reading
+ * them as equal is what would make a stale node look current.
+ *
+ * A node running a published version has no stamp, and the honest answer for
+ * it is "different", not "older" — nothing on the page knows when `0.2.0`
+ * was built.
+ */
+type VersionStanding = 'current' | 'behind' | 'differs' | 'unknown';
+
+export function buildStampOf(version: string | undefined): string | null {
+  const m = /\+local\.[0-9a-zA-Z]+\.(\d{12})$/.exec(version ?? '');
+  return m?.[1] ?? null;
+}
+
+export function versionStanding(version: string | undefined, newest: string | undefined): VersionStanding {
+  if (!version || !newest) return 'unknown';
+  if (version === newest) return 'current';
+  const mine = buildStampOf(version);
+  const theirs = buildStampOf(newest);
+  // Two local builds: the stamps order them.
+  if (mine && theirs) return mine < theirs ? 'behind' : 'current';
+  // One of them is a published version, and nothing here knows its age.
+  return 'differs';
+}
+
+/** The newest version anything in the fleet reports, by build stamp. */
+export function newestVersion(versions: readonly (string | undefined)[]): string | undefined {
+  let best: string | undefined;
+  let bestStamp = '';
+  for (const v of versions) {
+    if (!v) continue;
+    const stamp = buildStampOf(v);
+    if (!stamp) { best ??= v; continue; }
+    if (stamp > bestStamp) { bestStamp = stamp; best = v; }
+  }
+  return best;
+}
+
 function getOmnitronDotState(status: INodeStatus | null, isLocal: boolean): { state: DotState; tooltip: string } {
   if (!status) return { state: 'unchecked', tooltip: 'Not checked' };
   if (isLocal) {
@@ -463,7 +512,7 @@ const SEG_GAP = 4;
 const SEG_HEIGHT = 10;
 
 function NodeCard({
-  node, onEdit, onRemove, onCheckSsh, checking, uptimeData,
+  node, onEdit, onRemove, onCheckSsh, checking, uptimeData, newest,
 }: {
   node: INodeWithStatus;
   onEdit: (n: INodeWithStatus) => void;
@@ -471,6 +520,8 @@ function NodeCard({
   onCheckSsh: (id: string) => void;
   checking: boolean;
   uptimeData: UptimeBucket[];
+  /** The newest version anything in this fleet reports. */
+  newest: string | undefined;
 }) {
   const { status } = node;
   // PING/OMNITRON dots reflect periodic worker checks — NOT the SSH button state
@@ -587,6 +638,9 @@ function NodeCard({
 
         {/* Details */}
         <Stack spacing={0.5}>
+          {status?.omnitronVersion && (
+            <VersionRow version={status.omnitronVersion} standing={versionStanding(status.omnitronVersion, newest)} />
+          )}
           <DetailRow label="Runtime" value={node.runtime} />
           <DetailRow label="Daemon Port" value={String(node.daemonPort)} />
           {!node.isLocal && <DetailRow label="SSH User" value={node.sshUser} />}
@@ -622,6 +676,43 @@ function NodeCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The version a node runs, and whether it is the newest the fleet has.
+ *
+ * Shown as a row rather than only in the dot's tooltip, because "which of my
+ * nodes are behind" is a question about the fleet and a tooltip answers it
+ * one hover at a time.
+ *
+ * A local build's version is long — `0.2.0+local.<12 chars>.<12 digits>` — so
+ * the row shows the base and the short commit, with the whole string on
+ * hover. The commit is what identifies the build to a person; the stamp is
+ * what orders them, and it is in the tooltip where it can be read exactly.
+ */
+function VersionRow({ version, standing }: { version: string; standing: VersionStanding }) {
+  const [base, local] = version.split('+');
+  const commit = local?.split('.')[1];
+  const shown = commit ? `${base} · ${commit.slice(0, 7)}` : base!;
+
+  const mark =
+    standing === 'behind' ? { text: 'behind', color: 'warning.main' as const }
+    : standing === 'differs' ? { text: 'differs', color: 'info.main' as const }
+    : null;
+
+  return (
+    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 11 }}>Version</Typography>
+      <Tooltip arrow title={version}>
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+          {mark && (
+            <Typography variant="caption" sx={{ fontSize: 10, color: mark.color }}>{mark.text}</Typography>
+          )}
+          <Typography variant="caption" noWrap sx={{ fontSize: 11, maxWidth: 190 }}>{shown}</Typography>
+        </Stack>
+      </Tooltip>
+    </Stack>
   );
 }
 
@@ -1036,6 +1127,13 @@ export default function NodesPage() {
       .catch(() => { /* the defaults above are the fallback */ });
   }, []);
 
+  // Computed over the whole list rather than per card: "behind" is a
+  // statement about the fleet, and a card cannot make it alone.
+  const newestInFleet = useMemo(
+    () => newestVersion(nodeList.map((n) => n.status?.omnitronVersion)),
+    [nodeList],
+  );
+
   const snackbar = useSnackbar();
 
   const handleCheckSsh = useCallback(async (id: string) => {
@@ -1201,7 +1299,7 @@ export default function NodesPage() {
             <Grid key={node.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <NodeCard node={node} onEdit={handleOpenEdit} onRemove={setConfirmRemoveId}
                 onCheckSsh={handleCheckSsh} checking={checkingId === node.id}
-                uptimeData={uptimeBars[node.id] ?? []} />
+                uptimeData={uptimeBars[node.id] ?? []} newest={newestInFleet} />
             </Grid>
           ))}
         </Grid>

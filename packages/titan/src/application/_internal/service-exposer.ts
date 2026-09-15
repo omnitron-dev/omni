@@ -68,9 +68,11 @@ export class ServiceExposer {
     // was lost (the first exposure stands), and nothing was gained by saying
     // so twelve times.
     const seenClasses = new Set<Constructor<unknown>>();
-    for (const [, reg] of this.container.iterateRegistrationsFlat()) {
+    for (const [token, reg] of this.container.iterateRegistrationsFlat()) {
       try {
-        const serviceClass = extractServiceClass(reg.provider);
+        // The TOKEN is the fallback, and it is what a factory-provided service
+        // has instead of a class. See `serviceClassFromToken`.
+        const serviceClass = extractServiceClass(reg.provider) ?? serviceClassFromToken(token);
         if (!serviceClass) continue;
         if (seenClasses.has(serviceClass)) continue;
         seenClasses.add(serviceClass);
@@ -175,5 +177,34 @@ function extractServiceClass(provider: unknown): Constructor<unknown> | null {
   if ('useValue' in provider) {
     return (provider as UseValue).useValue?.constructor ?? null;
   }
+  // `useFactory`, `useToken`, `useExisting`: there is no class here to read,
+  // and resolving every factory just to look would defeat the two-pass design
+  // above. The token carries it — see `serviceClassFromToken`.
   return null;
+}
+
+/**
+ * The service class a registration is filed UNDER, when its provider has none.
+ *
+ * A `useFactory` provider is a function; nothing about it names the class it
+ * builds, so `extractServiceClass` returns null and the registration was
+ * skipped. That silently took every factory-provided `@Service` off the wire.
+ *
+ * Observed on a live `main`: `HealthModule.forRootAsync` registers
+ * `HealthRpcService` with `useFactory` (the synchronous `forRoot` uses
+ * `useValue`, which was handled), so `Health@1.0.0`, `HealthService` and
+ * `Health` all answered 404 while the module's database and Redis indicators
+ * ran on a timer for nobody. The app owning orders, escrow and delivery had no
+ * readiness answer, and its HTTP `/health` is titan's LIVENESS probe, which is
+ * alive by construction.
+ *
+ * Modules register such providers under the class itself — `providers.push([
+ * HealthRpcService, { useFactory: … }])` — so the token IS the class, with the
+ * decorator's metadata on it, and no resolution is needed to find it. Only
+ * consulted when the provider yields nothing, so an explicit
+ * `{ provide: Foo, useClass: Bar }` still exposes `Bar`.
+ */
+function serviceClassFromToken(token: unknown): Constructor<unknown> | null {
+  if (typeof token !== 'function') return null;
+  return Reflect.getMetadata('netron:service', token) ? (token as Constructor<unknown>) : null;
 }

@@ -38,6 +38,7 @@ import {
   createVolume,
   containerSpecHash,
 } from './container-runtime.js';
+import { summariseProvisioning, describeProvisioning } from './provisioning-outcome.js';
 import {
   OMNITRON_PG_PORT,
   OMNITRON_PG_USER,
@@ -76,6 +77,8 @@ export function restartBackoffMs(failures: number): number {
 
 export class InfrastructureService {
   private readonly desiredContainers: ResolvedContainer[] = [];
+  /** What the most recent reconcile did to each service. */
+  private readonly lastActions = new Map<string, string>();
   private readonly omnitronPgContainer: ResolvedContainer;
   private usingGlobalOmnitronPg = false;
   private healthTimer: NodeJS.Timeout | null = null;
@@ -279,11 +282,55 @@ export class InfrastructureService {
     });
     this.phantomJanitor.start();
 
-    this.state.ready = true;
+    // Readiness is measured, not announced.
+    //
+    // These two lines were `ready = true` and "Infrastructure provisioned
+    // and healthy", unconditionally — and every service reconciles inside a
+    // `Promise.all` whose per-service catch records `exited` and continues.
+    // So a run where every container failed ended exactly like a run where
+    // all of them came up, and the gate below this waits on a flag that
+    // could not say no. See `summariseProvisioning`.
+    const outcome = summariseProvisioning(this.desiredContainers, this.state.services);
+    this.state.ready = outcome.ready;
     this.state.lastReconciled = new Date().toISOString();
-    this.logger.info('Infrastructure provisioned and healthy');
+
+    if (outcome.ready) {
+      this.logger.info(describeProvisioning(outcome));
+    } else {
+      this.logger.error(
+        {
+          missing: outcome.missing.map((s) => s.name),
+          failed: outcome.failed.map((s) => ({ name: s.name, status: s.status, error: s.error })),
+          running: outcome.running.length,
+        },
+        describeProvisioning(outcome),
+      );
+    }
 
     return this.state;
+  }
+
+  /**
+   * What this service was asked to provide.
+   *
+   * Exposed because a caller cannot tell "present and fine" from "never
+   * attempted" by reading `state.services` alone: the second leaves no entry,
+   * and an absent entry is indistinguishable from an absent problem.
+   */
+  getDesiredServices(): ReadonlyArray<{ name: string; image?: string | undefined }> {
+    return this.desiredContainers.map((c) => ({ name: c.name, image: c.image }));
+  }
+
+  /**
+   * Services whose socket is new since this reconcile began.
+   *
+   * `noop` is the only action that leaves an existing connection usable.
+   * Everything else means anything already connected is holding a dead pool.
+   */
+  getRestartedServices(): string[] {
+    return [...this.lastActions.entries()]
+      .filter(([, action]) => action === 'create' || action === 'start' || action === 'recreate')
+      .map(([name]) => name);
   }
 
   /**
@@ -440,6 +487,13 @@ export class InfrastructureService {
     const actual = await getContainerState(desired.name);
 
     const action = this.computeAction(desired, actual);
+    // A container that was created, started or recreated is listening on a
+    // NEW socket. Applications already running hold pools pointing at the
+    // old one, and a titan liveness probe does not notice — the app answers
+    // `/health` 200 while every request it serves fails with "Connection
+    // terminated unexpectedly". Whoever asked for this reconcile is the only
+    // one in a position to restart them, so it has to be told.
+    this.lastActions.set(desired.name, action.type);
 
     switch (action.type) {
       case 'noop':

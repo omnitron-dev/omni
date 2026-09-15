@@ -317,12 +317,7 @@ export class SlaveConnector {
       // Pull buffered sync data from slave immediately
       void this.pullSyncData(key, conn);
 
-      // Update fleet DB
-      try {
-        await this.fleetService?.heartbeat(key);
-      } catch {
-        // Non-critical — fleet DB may not have this node yet
-      }
+      await this.recordFleetHeartbeat(conn);
 
       // Monitor for disconnection
       netron.on('peer:disconnected', () => {
@@ -370,6 +365,35 @@ export class SlaveConnector {
 
     conn.peer = null;
     conn.status = 'disconnected';
+  }
+
+  /**
+   * Tell the fleet table this node answered, if it is a node the fleet knows.
+   *
+   * `heartbeat(nodeId)` is `UPDATE nodes SET lastHeartbeat=… WHERE id=$1`
+   * and `nodes.id` is a `uuid`. Both call sites passed `${host}:${port}` —
+   * the connector's own map key — so every heartbeat since this class was
+   * written raised `invalid input syntax for type uuid` into a bare `catch`
+   * that discarded it. A write that cannot succeed, in a silence that cannot
+   * report it.
+   *
+   * Called only with the master's registry id, and only when there is one: a
+   * node that reached this connector through a stack has no fleet row, and
+   * an UPDATE matching nothing is not an error, so it would go on being
+   * silent for a second reason. The debug line is what distinguishes the two
+   * states for whoever next asks why `lastHeartbeat` is stale.
+   */
+  private async recordFleetHeartbeat(conn: SlaveConnection): Promise<void> {
+    const nodeId = conn.config.nodeId;
+    if (!this.fleetService || !nodeId) return;
+    try {
+      await this.fleetService.heartbeat(nodeId);
+    } catch (err) {
+      this.logger.debug(
+        { host: conn.config.host, nodeId, error: (err as Error).message },
+        'Fleet heartbeat not recorded — this node has no row in the fleet table',
+      );
+    }
   }
 
   /** Give back whatever was opened to make this connection possible. */
@@ -433,12 +457,7 @@ export class SlaveConnector {
 
         conn.lastHeartbeat = Date.now();
 
-        // Update fleet DB
-        try {
-          await this.fleetService?.heartbeat(key);
-        } catch {
-          // Non-critical
-        }
+        await this.recordFleetHeartbeat(conn);
       } catch (err) {
         this.logger.warn(
           { host: conn.config.host, port: conn.config.port, error: (err as Error).message },

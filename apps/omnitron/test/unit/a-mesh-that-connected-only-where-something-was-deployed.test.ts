@@ -385,3 +385,72 @@ describe('what the console is told about the mesh', () => {
     await expect(service.getMeshStatus()).resolves.toMatchObject([{ nodeId: 'n1', inMesh: false }]);
   });
 });
+
+describe('the fleet table is told which node answered', () => {
+  async function connectorWith(fleet: { heartbeat: (id: string) => Promise<void> } | undefined) {
+    const { SlaveConnector } = await import('../../src/cluster/slave-connector.js');
+    return new SlaveConnector(logger, fleet as never, null);
+  }
+
+  const beat = (c: unknown, config: Record<string, unknown>) =>
+    (c as unknown as { recordFleetHeartbeat(conn: unknown): Promise<void> })
+      .recordFleetHeartbeat({ config });
+
+  it('passes the registry id, not the connector map key', async () => {
+    const seen: string[] = [];
+    const c = await connectorWith({ heartbeat: async (id) => { seen.push(id); } });
+
+    await beat(c, { host: '10.0.0.7', port: 9700, nodeId: '16f3dd5a-2727-49e5-90a2-d762b57073f6' });
+
+    // `nodes.id` is a `uuid`. Both call sites passed `${host}:${port}`, which
+    // Postgres answers with `invalid input syntax for type uuid` — into a
+    // bare catch that discarded it, so every heartbeat since this class was
+    // written was a write that could not succeed and could not report it.
+    expect(seen).toEqual(['16f3dd5a-2727-49e5-90a2-d762b57073f6']);
+    expect(seen[0]).not.toContain(':');
+  });
+
+  it('does not write at all for a node the fleet cannot know', async () => {
+    let called = 0;
+    const c = await connectorWith({ heartbeat: async () => { called += 1; } });
+
+    // A node that reached the connector through a stack has no fleet row, and
+    // an UPDATE matching nothing is not an error — it would be silent for a
+    // second reason.
+    await beat(c, { host: '10.0.0.7', port: 9700 });
+
+    expect(called).toBe(0);
+  });
+
+  it('survives a fleet database that refuses', async () => {
+    const c = await connectorWith({ heartbeat: async () => { throw new Error('database is down'); } });
+
+    await expect(beat(c, { host: '10.0.0.7', port: 9700, nodeId: 'n1' })).resolves.toBeUndefined();
+  });
+
+  it('does nothing when there is no fleet service', async () => {
+    const c = await connectorWith(undefined);
+    await expect(beat(c, { host: '10.0.0.7', port: 9700, nodeId: 'n1' })).resolves.toBeUndefined();
+  });
+});
+
+describe('what a starting slave says about replication', () => {
+  it('does not claim it dials the master', async () => {
+    const { describeSlaveSync } = await import('../../src/commands/up.js');
+
+    const said = describeSlaveSync({ host: '192.0.2.10', port: 9700 });
+
+    // `Sync: slave → master at …` pointed the arrow the wrong way. The master
+    // opens the connection and pulls; a slave dials nothing.
+    expect(said).not.toMatch(/slave\s*→\s*master/);
+    expect(said).toMatch(/192\.0\.2\.10:9700/);
+    expect(said).toMatch(/pulls/);
+  });
+
+  it('says what it is doing when no master address was configured', async () => {
+    const { describeSlaveSync } = await import('../../src/commands/up.js');
+
+    expect(describeSlaveSync(undefined)).toMatch(/buffering locally/);
+    expect(describeSlaveSync(undefined)).not.toMatch(/undefined/);
+  });
+});

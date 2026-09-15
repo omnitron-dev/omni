@@ -332,6 +332,26 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
 // Foreground (--foreground)
 // =============================================================================
 
+/**
+ * What a slave should say about replication when it starts.
+ *
+ * This printed `Sync: slave → master at <host>:<port>`, and replication is
+ * master-PULL: the master opens the connection, drains this node's buffer
+ * and acknowledges what it holds. A slave dials nothing. The address is
+ * real — `master-address.ts` resolves it carefully at provisioning time and
+ * refuses rather than guess — but it is the address the unbuilt push path
+ * would use, and printing it behind an arrow pointing the wrong way sends an
+ * operator to check a connection this node never opens.
+ *
+ * It is the one thing that reads `master` at all, which is worth knowing
+ * before anyone deletes the resolver for being unused.
+ */
+export function describeSlaveSync(master: { host: string; port: number } | undefined): string {
+  return master
+    ? `Sync: buffering locally; the master at ${master.host}:${master.port} connects here and pulls.`
+    : 'Sync: buffering locally until a master connects and pulls.';
+}
+
 async function startForeground(
   config: import('../config/types.js').IEcosystemConfig,
   options: UpCommandOptions | undefined,
@@ -350,7 +370,7 @@ async function startForeground(
   }
 
   if (dc.role === 'slave') {
-    log.info(`Sync: slave → master at ${dc.master?.host}:${dc.master?.port}`);
+    log.info(describeSlaveSync(dc.master));
   }
 
   log.info('Press Ctrl+C to stop.\n');

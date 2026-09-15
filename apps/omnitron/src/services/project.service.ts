@@ -1375,7 +1375,7 @@ export class ProjectService extends EventEmitter {
           node,
           (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
           declaredServices,
-          { project: projectName, stack: stackName },
+          { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
         );
         if (!ready) {
           // Not fatal: a node whose infrastructure is incomplete can still
@@ -1431,7 +1431,11 @@ export class ProjectService extends EventEmitter {
     node: { host: string; port?: number | undefined; label?: string | undefined },
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     services?: Record<string, import('../infrastructure/types.js').IServiceRequirement> | undefined,
-    owner?: { project: string; stack: string } | undefined,
+    owner?: {
+      project: string;
+      stack: string;
+      overrides?: Record<string, import('../infrastructure/types.js').IServiceOverride> | undefined;
+    } | undefined,
   ): Promise<boolean> {
     const host = node.host;
     const port = node.port ?? 9700;

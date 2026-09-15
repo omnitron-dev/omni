@@ -585,9 +585,22 @@ export function resolveOmnitronNginx(options?: {
 export function resolveInfrastructure(
   _config: InfrastructureConfig,
   normalizedServices?: Record<string, IServiceRequirement>,
+  /**
+   * Stack overrides — `disabled`, `external`, per-service docker changes.
+   *
+   * This did not take them, and `resolveAppInfrastructure` was called
+   * without them, so `serviceOverrides` was honoured for services an
+   * APPLICATION declares and read by nothing for the ones a stack declares.
+   * An operator writing `tiles: { disabled: true }` got tiles.
+   *
+   * Measured on the test server: a stack that disabled the geocoder and the
+   * tile server provisioned both — a geocoding database that can reach tens
+   * of gigabytes, on a host chosen for a payment system.
+   */
+  overrides?: Record<string, IServiceOverride>,
 ): ResolvedContainer[] {
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
     return [];
   }
-  return resolveAppInfrastructure(normalizedServices);
+  return resolveAppInfrastructure(normalizedServices, overrides);
 }

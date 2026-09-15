@@ -118,9 +118,16 @@ export class InfrastructureService {
     private readonly config: InfrastructureConfig,
     normalizedServices?: Record<string, import('./types.js').IServiceRequirement>,
     private readonly presetRegistry?: import('./presets/registry.js').PresetRegistry,
+    /**
+     * Stack overrides. A service marked `disabled` here is not provisioned,
+     * and one pointed at an `external` address is not provisioned either —
+     * there is nothing to create, and the address reaches the application
+     * through its environment instead.
+     */
+    serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
   ) {
     this.normalizedServices = normalizedServices ?? {};
-    this.desiredContainers = resolveInfrastructure(config, normalizedServices);
+    this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
     this.omnitronPgContainer = resolveOmnitronPg();
   }
 

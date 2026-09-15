@@ -817,7 +817,23 @@ export class OmnitronDaemon {
 
     // Infrastructure RPC service (reports infra state — slave has no infra)
     const { InfrastructureRpcService: InfraRpc } = await import('../services/infrastructure.rpc-service.js');
-    const infraRpcService = new InfraRpc(() => this.infraService);
+    const infraRpcService = new InfraRpc(
+      () => this.infraService,
+      // Only a node hosts a stack's infrastructure on demand. A master
+      // provisions its own from its own config at boot, and handing it a
+      // second one over RPC would give one machine two reconcilers over one
+      // set of containers.
+      isSlave
+        ? (infraConfig) => {
+            const service = new InfrastructureService(
+              loggerModule.logger.child({ component: 'infra' }),
+              infraConfig,
+            );
+            this.infraService = service;
+            return service;
+          }
+        : undefined,
+    );
     await this.app.netron.peer.exposeService(infraRpcService);
 
     // Project + Stack management RPC service
@@ -2442,7 +2458,25 @@ export class OmnitronDaemon {
       } catch { /* non-critical */ }
 
       if (this.infraService) {
-        try { await this.infraService.teardown(); } catch { /* best-effort */ }
+        // A node's infrastructure outlives its daemon.
+        //
+        // `teardown()` is `docker rm`, not `docker stop`, and this task runs
+        // on every shutdown — so on a node, restarting the daemon would
+        // remove the stack's Postgres, Redis and MinIO. `omnitron fleet
+        // upgrade` restarts every node's daemon, which would have made a
+        // routine upgrade take the test environment down with it.
+        //
+        // The daemon is the supervisor, not the owner of the data plane's
+        // lifetime. Locally it still tears down — `omnitron down` there means
+        // "I am done for the day" — and on either, `omnitron infra down` is
+        // the command that removes containers on purpose.
+        if (this.dc.role === 'slave') {
+          // Said on the way out, because the absence of a teardown is
+          // otherwise indistinguishable from a teardown that failed.
+          console.info('[omnitron] leaving this node\'s infrastructure running — the daemon does not own its lifetime');
+        } else {
+          try { await this.infraService.teardown(); } catch { /* best-effort */ }
+        }
         this.infraService = null;
       }
     }, ShutdownPriority.VeryLow);

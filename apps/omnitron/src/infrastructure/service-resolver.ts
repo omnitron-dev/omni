@@ -167,6 +167,39 @@ function stackLabels(): Record<string, string> {
  * busybox wget and GNU wget disagree about flags but agree about these:
  * `-q` quiet, `-O -` to stdout, `-T` timeout.
  */
+/**
+ * Which port an HTTP health check should knock on.
+ *
+ * The probe was `http://localhost<path>` — port 80, always. The gateway
+ * listens on 8080, so the check connected to nothing:
+ *
+ *     wget: can't connect to remote host: Connection refused
+ *
+ * on a container that was serving correctly on its own port, through an
+ * onion address that answered 200. Every service whose port is not 80 had
+ * an unanswerable health check, and an unanswerable check is a permanent
+ * negative — `provisionStack` reported the stack not ready because of it.
+ *
+ * A check may name its port, as the jsonrpc one already does. Otherwise the
+ * service's own: `http` by convention, then whatever single port it
+ * declares — a service with one port cannot mean another.
+ */
+function healthPort(
+  check: NonNullable<IServiceRequirement['healthCheck']>,
+  ports?: Record<string, number>,
+): number {
+  const named = (check as { port?: string }).port;
+  if (named && ports?.[named]) return ports[named]!;
+  if (ports?.['http']) return ports['http'];
+
+  const declared = Object.values(ports ?? {});
+  if (declared.length === 1) return declared[0]!;
+
+  // Several ports and no way to choose: 80 is the convention, and saying so
+  // here is better than an arbitrary pick that happens to work once.
+  return 80;
+}
+
 function httpProbe(url: string): string {
   return (
     `curl -sf --max-time 5 ${url} >/dev/null 2>&1 ` +
@@ -326,7 +359,7 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
       };
     case 'http':
       return {
-        test: ['CMD-SHELL', httpProbe(`http://localhost${check.target}`)],
+        test: ['CMD-SHELL', httpProbe(`http://localhost:${healthPort(check, ports)}${check.target}`)],
         interval: everyDefault(check.interval),
         timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,

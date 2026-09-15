@@ -54,7 +54,7 @@
     "build": "tsup && tsc -p tsconfig.json --emitDeclarationOnly",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "dev": "tsup --watch",
-    "test": "vitest",
+    "test": "vitest run",
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:ui": "vitest --ui",

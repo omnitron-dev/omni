@@ -18,6 +18,7 @@
 import { log, table, prism } from '@xec-sh/kit';
 import { loadEcosystemConfig } from '../config/loader.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
 import {
   listManagedContainers,
   getContainerLogs,
@@ -52,10 +53,50 @@ export async function infraUpCommand(): Promise<void> {
   const infra = new InfrastructureService(cliLogger, config.infrastructure);
   const state = await infra.provision();
 
-  log.info('\nInfrastructure ready:');
-  for (const [name, svc] of Object.entries(state.services)) {
-    const icon = svc.status === 'running' ? prism.green('✓') : prism.red('✗');
-    log.info(`  ${icon} ${name} (${svc.image})`);
+  // The heading asserted the outcome before looking at it.
+  //
+  // `Infrastructure ready:` was printed unconditionally, and then whatever
+  // `state.services` held was listed beneath it. An empty object printed the
+  // heading and nothing else — and a list of problems that is empty because
+  // nothing was examined looks exactly like one that is empty because there
+  // are none. Observed three times in one shift, while the two containers
+  // the stack needs were absent from `docker ps -a` altogether.
+  const outcome = summariseProvisioning(infra.getDesiredServices(), state.services);
+
+  log.info(`\n${outcome.ready ? 'Infrastructure ready:' : 'Infrastructure is NOT ready:'}`);
+
+  for (const svc of outcome.running) {
+    log.info(`  ${prism.green('✓')} ${svc.name} (${svc.image ?? 'unknown image'})`);
+  }
+  for (const svc of outcome.failed) {
+    log.info(`  ${prism.red('✗')} ${svc.name} (${svc.image ?? 'unknown image'}) — ${svc.status}${svc.error ? `: ${svc.error}` : ''}`);
+  }
+  for (const svc of outcome.missing) {
+    // Named as absent rather than omitted. This is the state that cost an
+    // afternoon: a container that is not there produces no row, no error and
+    // no complaint, so the reader concludes the problem is theirs.
+    log.info(`  ${prism.red('✗')} ${svc.name} — MISSING, nothing was provisioned for it`);
+  }
+
+  if (outcome.empty) {
+    log.warn('Nothing is declared in this config, so nothing was provisioned. Check that you are in the right project directory.');
+  }
+
+  const restarted = infra.getRestartedServices();
+  if (restarted.length > 0) {
+    // A new container is a new socket. Applications already running hold
+    // pools pointing at the old one and go on answering `/health` 200 —
+    // that probe asks titan whether the process is alive, not whether its
+    // database is — while every request they serve fails with "Connection
+    // terminated unexpectedly". Nothing else in the system says this.
+    log.warn(
+      `Restarted: ${restarted.join(', ')}. Applications already connected to these are holding dead pools — ` +
+        'restart them (`omnitron restart <app>`), or they will keep reporting healthy and failing every request.',
+    );
+  }
+
+  if (!outcome.ready) {
+    process.exitCode = 1;
   }
 }
 

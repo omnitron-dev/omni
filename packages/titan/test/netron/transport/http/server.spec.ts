@@ -498,10 +498,11 @@ describe('HttpServer (Legacy Tests)', () => {
       server = new HttpServer({
         port: testPort,
         host: 'localhost',
-        cors: {
-          origin: '*',
-          credentials: true,
-        },
+        // Credentials need a real allow-list; `'*'` with them is refused at
+        // construction, because the preflight used to reflect the caller's own
+        // origin beside `Allow-Credentials: true` — the pairing a browser
+        // rejects as a wildcard and accepts when reflected.
+        cors: { origin: '*' },
       });
       await server.listen();
     });
@@ -517,7 +518,7 @@ describe('HttpServer (Legacy Tests)', () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://example.com');
-      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
     });
 
     it('should add CORS headers to responses', async () => {

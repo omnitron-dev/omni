@@ -46,10 +46,17 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     /**
      * This node's secret store.
      *
+     * A GETTER, resolved per call. Captured once at boot, a resolution that
+     * failed during startup — a container not yet ready, a token registered
+     * later — left credential generation off for the life of the daemon,
+     * and nothing said so: the absence looks exactly like a daemon that
+     * hosts no infrastructure. `getInfra` above is a getter for the same
+     * reason.
+     *
      * Absent on a daemon that hosts no stack infrastructure, in which case
      * nothing is generated — there is nothing to generate it for.
      */
-    private readonly vault?: import('../infrastructure/service-credentials.js').CredentialStore,
+    private readonly getVault?: () => import('../infrastructure/service-credentials.js').CredentialStore | undefined,
     /**
      * Where this service says what only it knows.
      *
@@ -178,11 +185,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // what the first one stored — a Postgres data directory keeps the
     // password it was initialised with, and a fresh one each time produces
     // a database that rejects its own application.
-    const config = this.vault
+    const vault = this.getVault?.();
+    if (!vault) {
+      // Said, because silence here is indistinguishable from a deployment
+      // that needed no credentials at all.
+      this.logger?.error(
+        { project: data.project, stack: data.stack },
+        'No secret store on this node — services will be created with their preset default credentials',
+      );
+    }
+    const config = vault
       ? await withGeneratedCredentials(data.config, {
           project: data.project ?? 'omnitron',
           stack: data.stack ?? 'default',
-          vault: this.vault,
+          vault,
           // The volume is what says whether this service already holds state
           // initialised with another password.
           hasExistingState: async (service) => {

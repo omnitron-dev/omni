@@ -844,7 +844,18 @@ export class OmnitronDaemon {
       // here and read back on every later provision, which is what makes a
       // generated password usable: a data directory keeps the one it was
       // initialised with.
-      isSlave ? await container.resolveAsync(SECRETS_SERVICE_TOKEN).catch(() => undefined) as never : undefined,
+      // Resolved per call, not captured here: a resolution that fails during
+      // startup would otherwise leave credential generation off for the life
+      // of this daemon, and the absence reads as "this node needs none".
+      isSlave
+        ? () => {
+            try {
+              return container.resolve(SECRETS_SERVICE_TOKEN) as never;
+            } catch {
+              return undefined;
+            }
+          }
+        : undefined,
       // The logger, because the one thing this service says on its own — that
       // a deployment is running on a default credential — is said at error
       // level and reaches nobody without it.

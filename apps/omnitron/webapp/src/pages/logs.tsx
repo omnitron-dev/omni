@@ -26,7 +26,7 @@ import { alpha, keyframes } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
 import { Alert, Breadcrumbs, Skeleton } from '@omnitron-dev/prism';
-import { logs, daemon, fleet } from 'src/netron/client';
+import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
 import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 
@@ -131,15 +131,21 @@ function parseLabelInput(input: string): Record<string, string> | undefined {
 interface LogRowProps {
   log: LogEntryRow;
   isNew?: boolean;
+  /** Node uuid → the name an operator gave it. */
+  nodeNames?: Record<string, string>;
 }
 
-function LogRow({ log, isNew }: LogRowProps) {
+function LogRow({ log, isNew, nodeNames }: LogRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   const levelColor = LEVEL_COLORS[log.level] ?? '#6b7280';
   const rowBg = LEVEL_ROW_BG[log.level] ?? 'transparent';
 
-  const hasDetail = log.labels || log.traceId || log.spanId || log.metadata;
+  // `nodeId` counts as detail. A line the master collected itself has none;
+  // one pulled from a node carries the node that produced it, and until this
+  // there was nowhere in the viewer that said so — every machine's lines
+  // interleaved under the same four columns.
+  const hasDetail = log.labels || log.traceId || log.spanId || log.metadata || log.nodeId;
 
   return (
     <>
@@ -255,6 +261,13 @@ function LogRow({ log, isNew }: LogRowProps) {
               lineHeight: 1.7,
             }}
           >
+            {log.nodeId && (
+              <span>
+                <span style={{ color: '#7c8493' }}>node:    </span>
+                <span style={{ color: '#58a6ff' }}>{nodeNames?.[log.nodeId] ?? log.nodeId}</span>
+                {'\n'}
+              </span>
+            )}
             {log.traceId && (
               <span>
                 <span style={{ color: '#7c8493' }}>traceId: </span>
@@ -306,6 +319,11 @@ export default function LogsPage() {
   const [app, setApp] = useState(daemonMode ? 'omnitron' : '');
   const [nodeFilter, setNodeFilter] = useState(''); // cluster node filter
   const [nodeNames, setNodeNames] = useState<Array<{ id: string; hostname: string }>>([]);
+  /** The same list the Node dropdown shows, keyed for the row detail. */
+  const nodeNameById = useMemo(
+    () => Object.fromEntries(nodeNames.map((n) => [n.id, n.hostname])),
+    [nodeNames],
+  );
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -388,15 +406,32 @@ export default function LogsPage() {
   }, [filterApps]);
 
   // ---- Fetch cluster nodes ----
+  //
+  // From the NODE REGISTRY, not the fleet table.
+  //
+  // This listed `fleet.listNodes()`, and that table holds one row — the
+  // master's own; every remote machine lives in the node registry instead.
+  // So the dropdown could only ever offer the node you are already looking
+  // at. Worse, the two registries mint their ids separately, and a
+  // replicated log row carries the REGISTRY id (that is what the master
+  // stamps when it pulls), so a fleet id selected here would have matched no
+  // row even if the table had held one: an empty result, on a filter that
+  // looks like it worked.
   useEffect(() => {
     (async () => {
       try {
-        const nodes = await fleet.listNodes();
-        if (Array.isArray(nodes) && nodes.length > 0) {
-          setNodeNames(nodes.map((n: any) => ({ id: n.id, hostname: n.hostname })));
+        const list = await nodesRpc.listNodes();
+        // Remote nodes only. The master's own lines are written with no
+        // `nodeId` at all — the column is stamped when a batch is PULLED —
+        // so an entry for this machine would be a filter that returns
+        // nothing, which is worse than one that is absent. Its lines are in
+        // the unfiltered view, which is the default.
+        const remote = Array.isArray(list) ? list.filter((n: { isLocal: boolean }) => !n.isLocal) : [];
+        if (remote.length > 0) {
+          setNodeNames(remote.map((n: { id: string; name: string }) => ({ id: n.id, hostname: n.name })));
         }
       } catch {
-        /* fleet not available — single node mode */
+        /* node registry not available — single node mode */
       }
     })();
   }, []);
@@ -1226,7 +1261,7 @@ export default function LogsPage() {
 
               {/* Log rows — newest at bottom for live, newest at top for paginated */}
               {logRows.map((log) => (
-                <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} />
+                <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} nodeNames={nodeNameById} />
               ))}
             </>
           )}

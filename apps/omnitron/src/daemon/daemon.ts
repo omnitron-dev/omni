@@ -831,6 +831,10 @@ export class OmnitronDaemon {
               declaredServices,
               presetRegistry,
               serviceOverrides,
+              // A node keeps its own state in SQLite. Provisioning a
+              // control-plane Postgres for it gives the host a database
+              // nobody queries, on default credentials.
+              false,
             );
             this.infraService = service;
             return service;

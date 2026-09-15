@@ -244,3 +244,37 @@ describe('what runs inside the containers', () => {
     expect(errors).toEqual([]);
   });
 });
+
+describe('a database the node never reads', () => {
+  it('is not provisioned on a node', async () => {
+    const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
+    const silent: any = {
+      info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
+      child: () => silent,
+    };
+
+    // A node's daemon keeps its own state in SQLite — `slave.db` — and reads
+    // a control-plane Postgres never. Creating one anyway gave every
+    // provisioned node a database nobody queries, on default credentials,
+    // and until published ports were bound to loopback it answered on
+    // 0.0.0.0:5480 on a host whose firewall allows only SSH.
+    const node = new InfrastructureService(silent, {}, {}, undefined, {}, false);
+    const master = new InfrastructureService(silent, {}, {}, undefined, {}, true);
+
+    expect((node as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(false);
+    // A master's own state IS there: projects, nodes, metrics, logs.
+    expect((master as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(true);
+  });
+
+  it('defaults to provisioning one, because a master is the common case', async () => {
+    const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
+    const silent: any = {
+      info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
+      child: () => silent,
+    };
+
+    const service = new InfrastructureService(silent, {});
+
+    expect((service as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(true);
+  });
+});

@@ -125,6 +125,14 @@ export class InfrastructureService {
      * through its environment instead.
      */
     serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
+    /**
+     * Whether this daemon stores its own state in Postgres.
+     *
+     * True for a master, which is where projects, nodes, metrics and logs
+     * live. False for a node: its daemon keeps that in SQLite and reads a
+     * Postgres never.
+     */
+    private readonly needsControlPlaneDatabase = true,
   ) {
     this.normalizedServices = normalizedServices ?? {};
     this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
@@ -194,7 +202,17 @@ export class InfrastructureService {
     const isGlobalPgRunning = globalOmnitronPg?.status === 'running';
     const isStackPgSameAsGlobal = stackPgName === 'omnitron-pg';
 
-    if (isGlobalPgRunning && !isStackPgSameAsGlobal) {
+    if (!this.needsControlPlaneDatabase) {
+      // A node's daemon keeps its own state in SQLite — `SlaveStorageService`,
+      // `~/.omnitron/data/slave.db` — and reads this database never. Creating
+      // it anyway gave every provisioned node a Postgres nobody queries, on
+      // default credentials, and until published ports were bound to
+      // loopback it was reachable from the internet: measured answering on
+      // 0.0.0.0:5480 on a host whose firewall allows only SSH.
+      //
+      // The control plane's database belongs to the control plane.
+      this.logger.debug('This daemon keeps its own state in SQLite — not provisioning a control-plane database');
+    } else if (isGlobalPgRunning && !isStackPgSameAsGlobal) {
       // Global omnitron-pg already owns port 5480 — reuse it and skip stack-prefixed container.
       this.usingGlobalOmnitronPg = true;
       this.logger.info(

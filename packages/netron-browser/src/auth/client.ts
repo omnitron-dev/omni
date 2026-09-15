@@ -166,7 +166,23 @@ export class AuthenticationClient {
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    return this.state.authenticated && !!this.state.context;
+    // `state.authenticated` alone. The extra `&& !!this.state.context` made
+    // this predicate contradict `setToken`, which sets `authenticated: true`
+    // with the context OPTIONAL — so a client holding a perfectly usable
+    // bearer token answered "not authenticated", and a client restored from
+    // storage by token answered the same after a reload.
+    //
+    // It is not academic: `WebSocketClient` attaches auth headers only when
+    // this returns true, so the contradiction decided whether a real request
+    // carried its credential. `getAuthHeaders` meanwhile reads the token
+    // directly, so the two disagreed about the same client.
+    //
+    // Nothing reaches `authenticated: true` without a credential behind it:
+    // `setAuth` returns early unless `result.context` is present, `setToken`
+    // returns early on a falsy token, and `clearAuth` is what puts it back to
+    // false. A client that knows who it is but holds no token — cookie mode —
+    // is authenticated, and now says so.
+    return this.state.authenticated;
   }
 
   /**
@@ -205,7 +221,22 @@ export class AuthenticationClient {
       return;
     }
 
-    const token = result.context.token?.type === 'bearer' ? this.extractTokenValue(result) : undefined;
+    // Extract unconditionally. This used to run only when
+    // `result.context.token?.type === 'bearer'` — and `context.token` is a
+    // DESCRIPTION of the credential (type, expiry, issuer, audience), never
+    // the credential. So storing the token depended on the server having
+    // bothered to describe it, while `extractTokenValue` accepts three shapes
+    // none of which implies that description: `metadata.accessToken` (the
+    // canonical envelope, per NB-7 below), `metadata.token`, and
+    // `context.metadata.token`. A server sending the canonical envelope
+    // without a `context.token` descriptor had its bearer token dropped —
+    // which is verbatim the failure NB-7 was written to fix, reintroduced one
+    // line above the fix.
+    //
+    // The extractor already answers "there is no token here" by returning
+    // undefined, cookie mode included, which is the only condition worth
+    // testing.
+    const token = this.extractTokenValue(result);
     const refreshToken = result.metadata?.refreshToken as string | undefined;
 
     // Create or update session metadata

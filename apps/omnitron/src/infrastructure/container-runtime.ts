@@ -259,6 +259,34 @@ export function portArg(p: { host: number; container: number; bindHost?: string 
 }
 
 /**
+ * Docker state left over from a container that is gone.
+ *
+ * An orphaned libnetwork endpoint, or a `Created` husk holding the name.
+ * Both are scrubbed and the run retried.
+ */
+export function isStaleContainerState(message: string): boolean {
+  return /endpoint with name .* already exists|is already in use by container/i.test(message);
+}
+
+/**
+ * A port whose previous holder has not let go yet.
+ *
+ * `docker rm` returns before the kernel releases the bind its docker-proxy
+ * held, so removing a container and immediately recreating it races that
+ * release. Measured on a node recreating postgres, redis and minio at once:
+ * all three failed this way, each left in `Created`, and `docker start` by
+ * hand a second later worked — which is what makes it a race rather than a
+ * conflict, and a retry the right answer rather than a louder error.
+ *
+ * Narrow on purpose. A missing image, a bad flag, or a port genuinely held
+ * by something else is permanent, and retrying it turns one clear error into
+ * several identical ones separated by delays.
+ */
+export function isPortNotYetReleased(message: string): boolean {
+  return /port is already allocated|failed to set up container networking/i.test(message);
+}
+
+/**
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer): Promise<string> {
@@ -374,17 +402,51 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   //      port, so clients get ECONNREFUSED while inspect says "running".
   //   2. "Conflict. The container name X is already in use" — a leftover
   //      Created-state container from a previously failed run.
-  // On either, scrub the stale state and retry the run exactly once.
+  //   3. "Bind for 127.0.0.1:5432 failed: port is already allocated" — the
+  //      docker-proxy of a container `docker rm` has already returned for
+  //      has not released its bind yet. A reconciler that removes and
+  //      immediately recreates races that release. Measured on a node
+  //      recreating three services at once: all three failed this way and
+  //      were left in `Created`, and `docker start` by hand a second later
+  //      worked — which is what makes it a race rather than a conflict.
+  //
+  // The first two are scrubbed; the third only needs a moment. Both are
+  // retried, with a short wait, up to three times.
+  //
+  // Deliberately narrow. A missing image, a bad flag, or a port genuinely
+  // held by something else is permanent, and retrying it turns one clear
+  // error into several identical ones separated by delays.
   const runDocker = () => execFileAsync('docker', args.slice(1), { encoding: 'utf-8', timeout: 60_000 });
-  let stdout: string;
-  try {
-    ({ stdout } = await runDocker());
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!/endpoint with name .* already exists|is already in use by container/i.test(msg)) throw err;
-    await scrubStaleContainerState(config.name, config.network);
-    ({ stdout } = await runDocker());
+
+  let stdout: string | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      ({ stdout } = await runDocker());
+      lastError = undefined;
+      break;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+
+      if (isStaleContainerState(msg)) {
+        await scrubStaleContainerState(config.name, config.network);
+        continue;
+      }
+
+      if (isPortNotYetReleased(msg)) {
+        // The failed run leaves the container in `Created` holding the name,
+        // so the next attempt would hit the name conflict instead of the
+        // port. Remove it, then wait for the bind to go.
+        await removeContainer(config.name).catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+        continue;
+      }
+
+      throw err;
+    }
   }
+  if (lastError || stdout === undefined) throw lastError ?? new Error(`docker run produced no container id for ${config.name}`);
 
   // Post-create guard: a container can report "running" yet have its declared
   // host ports UNpublished when it silently reused an orphaned endpoint

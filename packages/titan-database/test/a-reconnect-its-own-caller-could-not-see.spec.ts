@@ -247,3 +247,90 @@ describe('the health check loop recovers what is down', () => {
     ).toBe(false);
   });
 });
+
+/**
+ * The same shape, one field over: the circuit breaker was read BEFORE the
+ * connection it protects.
+ *
+ *     const breaker = this.circuitBreakers.get(name);
+ *     const db = await this.getConnection(name);      // may reconnect…
+ *     if (breaker) return breaker.execute(() => fn(db));
+ *
+ * `getConnection` reconnects a connection that is down, and `createConnection`
+ * installs a NEW `CircuitBreaker` at the same key. So the call ran on the
+ * object the reconnect had just replaced: every failure counted there was
+ * invisible to the breaker everyone else consults, and a breaker left open
+ * refused a call the fresh connection would have served.
+ *
+ * Found by sweeping for the shape the `getConnection` bug had — a reference
+ * taken from a registry and used across an `await` that can replace the entry.
+ * Fifteen candidates across the packages, and this was the only other one.
+ */
+describe('the circuit breaker belongs to the connection that ends up serving', () => {
+  let manager: DatabaseManager | undefined;
+
+  afterEach(async () => {
+    await manager?.closeAll().catch(() => {});
+    manager = undefined;
+  });
+
+  async function managerOnFile(name: string): Promise<DatabaseManager> {
+    const created = new DatabaseManager(
+      { connection: { dialect: 'sqlite', connection: join(TMP, `${name}.sqlite`) } },
+      silentLogger() as never,
+    );
+    await created.init();
+    manager = created;
+    return created;
+  }
+
+  const breakers = (db: DatabaseManager) =>
+    (db as unknown as { circuitBreakers: Map<string, { execute(f: () => unknown): unknown }> }).circuitBreakers;
+
+  it('a call that triggers a reconnect does not run on the replaced breaker', async () => {
+    const db = await managerOnFile('breaker-replaced');
+    const before = breakers(db).get('default')!;
+    let ranOnOld = false;
+    const original = before.execute.bind(before);
+    before.execute = (f: () => unknown) => {
+      ranOnOld = true;
+      return original(f);
+    };
+
+    // What a failed health check leaves behind.
+    (db as unknown as { connections: Map<string, { connected: boolean }> })
+      .connections.get('default')!.connected = false;
+
+    await db.withCircuitBreaker('default', async () => 'ok');
+
+    expect(breakers(db).get('default'), 'the reconnect installs a new one').not.toBe(before);
+    expect(ranOnOld, 'the call must run on the breaker that is current').toBe(false);
+  });
+
+  it('and an ordinary call still runs on the one breaker there is', async () => {
+    // Non-vacuity: the assertion above must not pass because the breaker is
+    // never used at all.
+    const db = await managerOnFile('breaker-ordinary');
+    const breaker = breakers(db).get('default')!;
+    let ran = false;
+    const original = breaker.execute.bind(breaker);
+    breaker.execute = (f: () => unknown) => {
+      ran = true;
+      return original(f);
+    };
+
+    await expect(db.withCircuitBreaker('default', async () => 'ok')).resolves.toBe('ok');
+    expect(ran).toBe(true);
+  });
+
+  it('closing a connection takes its breaker with it', async () => {
+    const db = await managerOnFile('breaker-closed');
+    expect(breakers(db).has('default')).toBe(true);
+
+    await db.close('default');
+
+    expect(breakers(db).has('default'), 'it answered for a connection that no longer existed').toBe(
+      false,
+    );
+  });
+});

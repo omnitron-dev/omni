@@ -11,6 +11,7 @@ import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES } from '../shared/rol
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
+import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 import {
@@ -42,6 +43,13 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       registry: import('../infrastructure/presets/registry.js').PresetRegistry,
       overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
     ) => InfrastructureService,
+    /**
+     * This node's secret store.
+     *
+     * Absent on a daemon that hosts no stack infrastructure, in which case
+     * nothing is generated — there is nothing to generate it for.
+     */
+    private readonly vault?: import('../infrastructure/service-credentials.js').CredentialStore,
   ) {}
 
   /**
@@ -144,12 +152,36 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // hooks that create what is inside those containers — the databases and
     // the buckets. Two registries would be two answers to what a preset is.
     const registry = createDefaultRegistry();
-    const fromStack = normalizeInfraConfig(data.config, registry);
+
+    // Credentials before expansion.
+    //
+    // Presets ship `minioadmin/minioadmin` and `postgres/postgres` so they
+    // work before anyone configures anything — right on a laptop behind
+    // loopback, and nothing turned it into anything else, so a stack
+    // deployed to a public host ran its object store and its database on
+    // the passwords printed in this repository.
+    //
+    // Generated here, on the node, because the vault belongs to the daemon
+    // that creates the container: a master generating them would put a
+    // password on the wire to solve a problem the node does not have. And
+    // written to the vault on first use, so the SECOND provision reads back
+    // what the first one stored — a Postgres data directory keeps the
+    // password it was initialised with, and a fresh one each time produces
+    // a database that rejects its own application.
+    const config = this.vault
+      ? await withGeneratedCredentials(data.config, {
+          project: data.project ?? 'omnitron',
+          stack: data.stack ?? 'default',
+          vault: this.vault,
+        })
+      : data.config;
+
+    const fromStack = normalizeInfraConfig(config, registry);
 
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const service = this.getInfra() ?? this.hostInfra(data.config, declared, registry, data.overrides ?? {});
+    const service = this.getInfra() ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.

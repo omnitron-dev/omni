@@ -836,6 +836,11 @@ export class OmnitronDaemon {
             return service;
           }
         : undefined,
+      // The node's own vault. Generated service credentials are written
+      // here and read back on every later provision, which is what makes a
+      // generated password usable: a data directory keeps the one it was
+      // initialised with.
+      isSlave ? await container.resolveAsync(SECRETS_SERVICE_TOKEN).catch(() => undefined) as never : undefined,
     );
     await this.app.netron.peer.exposeService(infraRpcService);
 

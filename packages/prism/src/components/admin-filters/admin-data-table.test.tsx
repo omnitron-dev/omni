@@ -139,6 +139,51 @@ describe('AdminDataTable — empty versus unable', () => {
 
     expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });
+
+  it('lets the host name the failure, in both states', () => {
+    // `loadError` is a reason the caller has already translated; the two
+    // sentences AROUND it were English literals in this file. That was
+    // invisible while one consumer passed `loadError` at all — and the moment
+    // four Russian screens did, they would have grown an English heading.
+    const labels = { empty: 'Не удалось загрузить данные', partial: 'Часть данных не загрузилась' };
+
+    const { unmount } = render(
+      <AdminDataTable
+        {...paging}
+        data={[]}
+        columns={columns}
+        emptyMessage="No orders yet"
+        loadError="backend unreachable"
+        loadErrorLabels={labels}
+      />
+    );
+    expect(screen.getByText(labels.empty)).toBeInTheDocument();
+    expect(screen.queryByText('Could not load this data')).not.toBeInTheDocument();
+    // The caller's own reason still shows beneath it.
+    expect(screen.getByText('backend unreachable')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <AdminDataTable
+        {...paging}
+        total={1}
+        data={[{ name: 'row' }]}
+        columns={columns}
+        loadError="one source"
+        loadErrorLabels={labels}
+      />
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(labels.partial);
+    expect(screen.queryByText('Some of this data could not be loaded')).not.toBeInTheDocument();
+  });
+
+  it('still says something when the host names nothing', () => {
+    // The control: the prop is optional, and every existing consumer omits
+    // it. Defaulting to silence would be worse than defaulting to English.
+    render(<AdminDataTable {...paging} data={[]} columns={columns} loadError="down" />);
+
+    expect(screen.getByText('Could not load this data')).toBeInTheDocument();
+  });
 });
 
 describe('AdminDataTable', () => {

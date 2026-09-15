@@ -126,6 +126,7 @@ export class LocalPeer extends AbstractPeer {
           metaWithContract.contract ||
           (Reflect.getMetadata('validation:contract', instance.constructor) as Record<string, unknown> | undefined) ||
           constructor.contract;
+        this.warnUnpublishedContractMethods(meta.name, def, contract);
         server.registerService?.(meta.name, def, contract);
       }
     }
@@ -551,6 +552,38 @@ export class LocalPeer extends AbstractPeer {
    * @param {any} result - The raw result to process.
    * @returns {any} The processed result, which may be transformed based on its type.
    */
+  /**
+   * A contract entry that names a method the service does not publish.
+   *
+   * `@Contract` declares a method's schemas; `@Public` declares who may reach
+   * it. They used to be conflated on one transport: the HTTP server unioned a
+   * contract's keys into its published surface, so naming a method in a
+   * contract put it on the wire — and with no annotation there is no `auth`
+   * for `enforceMethodAuthorization` to enforce, which made it an anonymous
+   * endpoint. `RemotePeer` never agreed, so the same method answered on HTTP
+   * and was "not found" on WS, TCP and Unix.
+   *
+   * The union is gone. What remains is the author's mistake, which is worth
+   * saying out loud: they wrote a schema for something no caller can reach,
+   * either because the name is misspelled or because the `@Public` is
+   * missing. Both are silent otherwise.
+   */
+  private warnUnpublishedContractMethods(serviceName: string, def: Definition, contract: unknown): void {
+    if (!contract || typeof contract !== 'object') return;
+    const declaration = (contract as { definition?: unknown }).definition;
+    const named =
+      declaration && typeof declaration === 'object'
+        ? Object.keys(declaration as Record<string, unknown>)
+        : Object.keys(contract as Record<string, unknown>);
+    const published = new Set(Object.keys(def.meta.methods ?? {}));
+    const orphans = named.filter((name) => !published.has(name));
+    if (orphans.length === 0) return;
+    this.logger.warn(
+      { service: serviceName, methods: orphans },
+      'Contract declares methods the service does not publish — add @Public to expose them, or remove the entries',
+    );
+  }
+
   private processResult(result: any) {
     if (isServiceDefinition(result)) {
       return this.queryInterfaceByDefId(result.id, result);

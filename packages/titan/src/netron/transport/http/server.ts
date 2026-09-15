@@ -581,11 +581,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * The methods a service actually publishes.
    *
-   * Two things count as an explicit declaration and nothing else does:
-   * a `@Public` annotation (which is what `meta.methods` is built from —
-   * decorators/core.ts skips every other member) and an entry in a
-   * `@Contract`, which names the method along with its input/output
-   * schemas.
+   * One thing counts as an explicit declaration: a `@Public` annotation,
+   * which is what `meta.methods` is built from — decorators/core.ts skips
+   * every other member.
+   *
+   * A `@Contract` entry does NOT. It used to, and that made declaring
+   * validation for a method enough to publish it: `publishedMethodNames`
+   * unioned the contract's keys in, `definition.meta.methods[name]` was then
+   * `{}` for a method with no annotation, and `enforceMethodAuthorization`
+   * returns immediately when a method declares no `auth` — so the method went
+   * on the wire, behind the public gateway, with nothing to authenticate
+   * against. Adding input validation is the last act that should widen a
+   * surface, and it is exactly the act a careful author performs.
+   *
+   * `RemotePeer` never agreed with it either: `isPublishedMember` reads the
+   * prototype annotation and knows nothing about contracts, so a
+   * contract-only method answered on HTTP and "not found" on WS, TCP and
+   * Unix — the fourth time this file has had one door fixed and another left
+   * on the old rule. A contract now supplies a method's schemas and says
+   * nothing about who may reach it; `LocalPeer` logs an entry that names a
+   * method the service does not publish, because silence is how the previous
+   * three lived.
    *
    * Everything outside that set is an implementation detail. This path
    * used to union the declared surface with every prototype method whose
@@ -604,22 +620,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * the one that sits behind a public gateway — was left on the old
    * rule.
    */
-  private publishedMethodNames(
-    meta: { methods?: Record<string, unknown>; contract?: unknown },
-    contract?: unknown,
-  ): Set<string> {
-    const names = new Set(Object.keys(meta.methods ?? {}));
-    const contractObj = (contract ?? meta.contract) as
-      | { definition?: Record<string, unknown>; [key: string]: unknown }
-      | undefined;
-    if (contractObj && typeof contractObj === 'object') {
-      const declared =
-        contractObj.definition && typeof contractObj.definition === 'object'
-          ? Object.keys(contractObj.definition)
-          : Object.keys(contractObj);
-      for (const name of declared) names.add(name);
-    }
-    return names;
+  private publishedMethodNames(meta: { methods?: Record<string, unknown> }): Set<string> {
+    return new Set(Object.keys(meta.methods ?? {}));
   }
 
   /**
@@ -656,7 +658,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     };
 
     // Only what the service declares — see `publishedMethodNames`.
-    const allMethodNames = this.publishedMethodNames(definition.meta as never, contract);
+    const allMethodNames = this.publishedMethodNames(definition.meta as never);
 
     for (const methodName of allMethodNames) {
       let methodContract: MethodContract | undefined;

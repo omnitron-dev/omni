@@ -40,7 +40,7 @@
  *     `'titan:inject:container'` as a literal and `@Lazy` reads it as
  *     `DECORATOR_METADATA.CONTAINER`. Constant maps are now resolved too.
  *
- * That took the "written alone" list from 18 to 3, and the three are answered:
+ * That took the "written alone" list from 18 to 4, and the four are answered:
  *
  *   - `METHOD_RATE_LIMIT_METADATA_KEY` — deliberate. `@RateLimit` enforces by
  *     wrapping the descriptor; the key exists so introspection can SEE a
@@ -51,6 +51,19 @@
  *     carries the same kind of note.
  *   - `'logger'` — written, in the source, "to set metadata that tests expect".
  *     The decorator's real work is its returned metadata and its hooks.
+ *   - `'health-check'` — kept deliberately. `@HealthCheck` used to write ONLY
+ *     this key, on the prototype, while the worker runtime looked for a
+ *     `healthCheck` field per method; the two never met and every worker
+ *     answered healthy. The decorator now writes the field the runtime reads
+ *     and keeps this key beside it, because it is part of the shape an
+ *     existing reader may rely on. Its own comment says so.
+ *
+ * It read 3 until the shared comment stripper landed: the old per-scanner
+ * regex collapsed each block comment to one space, shrinking this file by 7 154
+ * bytes and pulling a write 55 lines and one decorator away into the
+ * ±1200-character window below. The bucket a key lands in is a proximity
+ * heuristic, and a heuristic measured on stripped text moves when the
+ * stripping does — which is why the stripper preserves line structure.
  *
  * The 28 in the second list are notes written beside a key something does read
  * — `@Repository` writes its table name next to the key the framework consumes.
@@ -61,6 +74,7 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './lib/strip-comments.mjs';
 
 const REPO = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const ROOTS = [join(REPO, 'apps'), join(REPO, 'packages')];
@@ -76,7 +90,19 @@ const walk = (d, out = []) => {
   return out;
 };
 
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p);
+/**
+ * Comments removed by a walker, not a pair of regexes.
+ *
+ * This file carried its own copy of the regex form, as six other scanners
+ * did. A regex cannot tell a comment from the same characters inside a
+ * string, and it deletes everything between them: measured across
+ * `apps/omnitron/src`, 6 502 bytes of real code in 6 of 234 files, 5 238 of
+ * them in one whose template literals hold build commands. A scanner reading
+ * that output sees source with holes in it and reports what it cannot see as
+ * absent — and nothing goes red, because a clean scan is what everyone hopes
+ * for.
+ */
+const strip = (s) => stripComments(s);
 
 const files = ROOTS.flatMap((r) => walk(r));
 const sources = new Map(files.map((f) => [f, strip(readFileSync(f, 'utf8'))]));

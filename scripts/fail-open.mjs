@@ -52,6 +52,7 @@
 
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { stripComments } from './lib/strip-comments.mjs';
 
 const DECISION = /\b(require[A-Z]\w*|assert[A-Z]\w*|verify\w*|validate\w*|check\w*|canAccess|hasPermission|isAllowed|authorize\w*|authenticate\w*|ensure[A-Z]\w*|guard\w*|signatureIs\w*|timingSafeEqual|compare|decrypt|getForWrite|getForRead)\s*\(/;
 /** Names that are checks by shape but not by consequence. */
@@ -64,11 +65,18 @@ const BENIGN = /\b(validateEnv|checkHealth|healthCheck|checkConnection|validateC
 const REFUSES = /\b(throw|return\s+(false|null|undefined)|reject|deny|forbid|process\.exit|sendErrorResponse)\b/;
 const RETHROWS = /\bthrow\b/;
 
-function stripComments(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + ' '.repeat(m.length - p.length));
-}
+/**
+ * Comments removed by a walker, not a pair of regexes.
+ *
+ * This file carried its own copy of the regex form, as six other scanners
+ * did. A regex cannot tell a comment from the same characters inside a
+ * string, and it deletes everything between them: measured across
+ * `apps/omnitron/src`, 6 502 bytes of real code in 6 of 234 files, 5 238 of
+ * them in one whose template literals hold build commands. A scanner reading
+ * that output sees source with holes in it and reports what it cannot see as
+ * absent — and nothing goes red, because a clean scan is what everyone hopes
+ * for.
+ */
 
 /** Match the block that starts at `open` (an index pointing at '{'). */
 function blockAt(src, open) {

@@ -16,6 +16,41 @@ import type { SchedulerRegistry } from './scheduler.registry.js';
 import type { IJobMetadata, IScheduledJob, ISchedulerConfig } from './scheduler.interfaces.js';
 
 /**
+ * Which class does a registration describe?
+ *
+ * This scan used to read the PROVIDER only, and only two of its shapes — a
+ * bare class and `useClass`. A task registered `useValue`, or built by a
+ * `useFactory` because its construction needs other services, therefore
+ * carried `@Cron` that was never scheduled. That is an absence which reports
+ * nothing: no error, no log, just work that does not happen.
+ *
+ * The token names the class whenever a module files a provider under the class
+ * itself — `providers.push([SomeTask, { useFactory: … }])` — which is the
+ * usual shape, and reading it resolves nothing. A factory under a SYMBOLIC
+ * token stays invisible, knowingly: nothing there names a class without
+ * resolving it, and discovery that resolves in order to look is discovery that
+ * depends on resolution order.
+ *
+ * The canonical version of this rule now lives in titan, as
+ * `nexus/registration-class.ts`, shared with Netron's auto-exposure scan,
+ * which had the same blind spot and produced a `@Service` that was built,
+ * held, and unreachable. This copy exists only because titan-scheduler
+ * compiles against titan's PUBLISHED types, which do not carry the new export
+ * until that package is rebuilt; replacing this with the import is a one-line
+ * follow-up once it is.
+ */
+function classOfRegistration(token: unknown, provider: unknown): any {
+  if (provider) {
+    if (typeof provider === 'function') return provider;
+    if (typeof provider === 'object') {
+      if ('useClass' in provider) return (provider as { useClass?: any }).useClass ?? null;
+      if ('useValue' in provider) return (provider as { useValue?: any }).useValue?.constructor ?? null;
+    }
+  }
+  return typeof token === 'function' ? token : null;
+}
+
+/**
  * Discovers scheduled jobs in the application
  */
 @Injectable()
@@ -194,74 +229,6 @@ export class SchedulerDiscovery {
   }
 
   /**
-   * Get all providers from container that have scheduled job metadata.
-   * Scans container registrations for classes with @Cron/@Interval/@Timeout decorators
-   * and resolves them eagerly so their scheduled methods can be discovered.
-   */
-  private getAllProviders(): any[] {
-    const providers: any[] = [];
-    if (!this.container) return providers;
-
-    // Access container's internal registrations map
-    type ProviderRegistration = { provider?: unknown };
-    type ContainerWithRegistrations = {
-      registrations?: Map<unknown, ProviderRegistration | ProviderRegistration[]>;
-      resolveAsync?: (token: unknown) => Promise<unknown>;
-      resolve?: (token: unknown) => unknown;
-      has?: (token: unknown) => boolean;
-    };
-
-    const containerInternal = this.container as unknown as ContainerWithRegistrations;
-    const registrations = containerInternal.registrations;
-
-    if (!registrations || !(registrations instanceof Map)) {
-      return providers;
-    }
-
-    // Collect classes that have scheduled jobs — we'll resolve them async in discover()
-    for (const [token, registration] of registrations.entries()) {
-      try {
-        const regs = Array.isArray(registration) ? registration : [registration];
-
-        for (const reg of regs) {
-          const provider = reg.provider;
-          if (!provider) continue;
-
-          let targetClass: any = null;
-
-          if (typeof provider === 'function') {
-            targetClass = provider;
-          } else if (typeof provider === 'object' && 'useClass' in provider) {
-            targetClass = (provider as { useClass?: any }).useClass;
-          }
-
-          if (!targetClass) continue;
-
-          // Check if this class has any scheduled job decorators
-          const scheduledJobs = getScheduledJobs(targetClass);
-          if (scheduledJobs.length === 0) continue;
-
-          // Resolve the instance from the container
-          try {
-            if (containerInternal.has?.(token)) {
-              const instance = containerInternal.resolve?.(token);
-              if (instance) {
-                providers.push(instance);
-              }
-            }
-          } catch {
-            // Failed to resolve — may have async dependencies, handled in discoverAsync
-          }
-        }
-      } catch {
-        // Skip invalid registrations
-      }
-    }
-
-    return providers;
-  }
-
-  /**
    * Resolve all providers with @Cron/@Interval/@Timeout decorators from the container.
    * Uses async resolution to support providers with async dependencies (DB, Redis, etc.).
    */
@@ -293,17 +260,7 @@ export class SchedulerDiscovery {
         const regs = Array.isArray(registration) ? registration : [registration];
 
         for (const reg of regs) {
-          const provider = reg.provider;
-          if (!provider) continue;
-
-          let targetClass: any = null;
-
-          if (typeof provider === 'function') {
-            targetClass = provider;
-          } else if (typeof provider === 'object' && 'useClass' in provider) {
-            targetClass = (provider as { useClass?: any }).useClass;
-          }
-
+          const targetClass = classOfRegistration(token, reg.provider);
           if (!targetClass) continue;
 
           const scheduledJobs = getScheduledJobs(targetClass);

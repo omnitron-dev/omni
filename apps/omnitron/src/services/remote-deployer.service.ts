@@ -59,6 +59,7 @@ import {
   planProvisioning,
   describePlan,
 } from './remote-provisioner.js';
+import { installSteps, activateSteps, pruneSteps } from './bundle-builder.js';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -539,14 +540,158 @@ export class RemoteDeployer {
     while (Date.now() < deadline) {
       try {
         const answer = await this.sshExec(target, 'omnitron ping', 15_000);
-        if (answer) return { ok: true, detail: answer.split('\n').pop()!.trim() };
-        last = 'the ping printed nothing';
+        // "It printed something" is not "it is running". `omnitron ping`
+        // used to exit 0 while printing that the daemon is not running —
+        // fixed, but a node runs whatever version it has, and this code
+        // upgrades nodes from older ones. The answer is read, not assumed.
+        if (/daemon is running/i.test(answer)) {
+          return { ok: true, detail: answer.split('\n').filter(Boolean).pop()!.trim() };
+        }
+        last = answer.split('\n').filter(Boolean).pop()?.trim() || 'the ping printed nothing';
       } catch (err) {
         last = (err as Error).message;
       }
       await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_MS));
     }
     return { ok: false, detail: last };
+  }
+
+  /**
+   * Install a locally built omnitron on a node, beside whatever it is
+   * running.
+   *
+   * The counterpart to installing from the registry, and the only channel
+   * that can put THIS tree on a node: the published package is whatever was
+   * last released, which on 2026-09-14 was five months and 224 commits
+   * behind, under the same version number.
+   *
+   * Nothing is made live here. The archive is transferred, unpacked into its
+   * own version directory, installed, and run — and `activate` is a separate
+   * call, so a caller that stops after this has spent disk and changed
+   * nothing about what the node is serving.
+   */
+  async installBundle(
+    target: DeployTarget,
+    archivePath: string,
+    version: string,
+    prefix = '/opt/omnitron',
+  ): Promise<boolean> {
+    const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
+    const layout = { prefix, version };
+    // Under the prefix, not `/tmp`: a bundle is tens of megabytes and `/tmp`
+    // is a tmpfs on many hosts, where a large transfer competes with memory.
+    const remoteArchive = `${prefix}/releases/${version}.tar.gz`;
+
+    try {
+      this.emitProgress(nodeKey, '*', 'pending', 0, 'Connecting via SSH...');
+      await this.verifySSH(target);
+
+      this.emitProgress(nodeKey, '*', 'transferring', 10, `Transferring ${version}...`);
+      await this.sshExec(target, `mkdir -p ${shellEscape(`${prefix}/releases`)}`);
+      await this.scpTransfer(target, archivePath, remoteArchive);
+
+      let progress = 30;
+      for (const step of installSteps(layout, remoteArchive)) {
+        this.emitProgress(nodeKey, '*', 'extracting', progress, step.what);
+        const output = await this.sshExec(target, step.command, step.timeoutMs);
+        if (step.what.includes('runs')) {
+          // The version the node reports has to be the version we shipped.
+          // A mismatch means the archive, the directory and the manifest
+          // disagree — and the one thing a fleet upgrade cannot tolerate is
+          // a node that reports a version it is not running.
+          const reported = output.trim().split('\n').pop()?.trim();
+          if (reported !== version) {
+            throw new Error(
+              `The installed copy reports ${JSON.stringify(reported)}, not ${JSON.stringify(version)}.`,
+            );
+          }
+        }
+        progress += 20;
+      }
+
+      this.emitProgress(nodeKey, '*', 'success', 100, `${version} installed (not yet current)`);
+      this.logger.info({ host: target.host, version, prefix }, 'Bundle installed beside the running version');
+      return true;
+    } catch (err) {
+      const message = (err as Error).message;
+      this.emitProgress(nodeKey, '*', 'failed', 0, message);
+      this.logger.error({ host: target.host, version, error: message }, 'Bundle install failed');
+      return false;
+    }
+  }
+
+  /**
+   * Make an installed version the one the node runs, and restart into it.
+   *
+   * Separate from `installBundle` for the reason the layout exists: this is
+   * the only step that changes what runs.
+   */
+  async activateBundle(
+    target: DeployTarget,
+    version: string,
+    prefix = '/opt/omnitron',
+    keepVersions = 3,
+  ): Promise<boolean> {
+    const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
+    const layout = { prefix, version };
+
+    try {
+      for (const step of activateSteps(layout)) {
+        this.emitProgress(nodeKey, '*', 'restarting', 40, step.what);
+        await this.sshExec(target, step.command, step.timeoutMs);
+      }
+
+      this.emitProgress(nodeKey, '*', 'restarting', 60, 'Restarting the daemon into the new version');
+      // By absolute path into `current`, not by name. A bare `omnitron` is
+      // whatever the node's PATH resolves — which, until the step above ran,
+      // was a different installation entirely. Naming the copy we just
+      // activated is the difference between restarting the new version and
+      // restarting whatever was there.
+      const cli = shellEscape(`${prefix}/current/dist/cli/omnitron.js`);
+      await this.sshExec(target, `${cli} down 2>/dev/null; ${cli} up --no-infra`, 180_000).catch((err) => {
+        this.logger.warn(
+          { host: target.host, error: (err as Error).message },
+          'Restart command did not return cleanly — verifying anyway',
+        );
+      });
+
+      this.emitProgress(nodeKey, '*', 'verifying', 80, 'Verifying the daemon answers');
+      const started = await this.awaitDaemon(target, 120_000);
+      if (!started.ok) {
+        // Reported, and NOT rolled back automatically. A daemon that will not
+        // start is a decision for whoever is watching: the previous version
+        // is still on disk and one `ln -sfn` away, and guessing that a
+        // rollback is wanted can be as wrong as guessing it is not.
+        this.logger.error(
+          { host: target.host, version, detail: started.detail },
+          'The new version did not answer — the previous one is still installed',
+        );
+        this.emitProgress(
+          nodeKey, '*', 'failed', 80,
+          `${version} did not answer: ${started.detail}. Roll back with ` +
+            `\`ln -sfn ${prefix}/versions/<previous> ${prefix}/current\` and restart.`,
+        );
+        return false;
+      }
+
+      // Only once the new version is serving. Pruning before this could
+      // remove the version a rollback needs.
+      for (const step of pruneSteps(layout, keepVersions)) {
+        await this.sshExec(target, step.command, step.timeoutMs).catch((err) => {
+          // Retention failing is not the upgrade failing.
+          this.logger.warn({ host: target.host, error: (err as Error).message }, 'Version retention failed');
+        });
+      }
+
+      this.emitProgress(nodeKey, '*', 'success', 100, `Running ${version} — ${started.detail}`);
+      this.logger.info({ host: target.host, version, daemon: started.detail }, 'Node upgraded');
+      return true;
+    } catch (err) {
+      const message = (err as Error).message;
+      this.emitProgress(nodeKey, '*', 'failed', 0, message);
+      this.logger.error({ host: target.host, version, error: message }, 'Activation failed');
+      return false;
+    }
   }
 
   private async verifySSH(target: DeployTarget): Promise<void> {

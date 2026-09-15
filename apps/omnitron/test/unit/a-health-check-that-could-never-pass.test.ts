@@ -89,3 +89,22 @@ describe('which port the probe knocks on', () => {
     expect(probeWith('/health', { a: 1234, b: 5678 })).toContain('http://localhost:80/health');
   });
 });
+
+describe('a preset checking a config it does not own', () => {
+  it('does not assert that a particular route exists', async () => {
+    const { createDefaultRegistry } = await import('../../src/infrastructure/presets/index.js');
+
+    const gateway = createDefaultRegistry().get('openresty');
+
+    // The check asked for `/nginx-health`, an endpoint a reverse proxy's
+    // config may or may not define — and the config is the operator's,
+    // mounted from their repository. The one omnitron was pointed at has no
+    // such location, so the check could never pass: a gateway reported
+    // unhealthy for hours while serving an onion address that answered 200.
+    expect(gateway?.defaultHealthCheck?.target).not.toContain('nginx-health');
+    // What it can assert is that the server it started accepts connections
+    // on the port it declares.
+    expect(gateway?.defaultHealthCheck?.type).toBe('command');
+    expect(gateway?.defaultHealthCheck?.target).toContain('80');
+  });
+});

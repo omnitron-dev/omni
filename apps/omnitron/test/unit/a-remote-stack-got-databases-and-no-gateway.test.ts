@@ -86,3 +86,46 @@ describe('a node names its containers the way a local stack would', () => {
     expect(getContainerPrefix()).toBe('daos-test');
   });
 });
+
+describe('a service a stack turned off', () => {
+  it('is not provisioned', async () => {
+    const { resolveInfrastructure } = await import('../../src/infrastructure/service-resolver.js');
+
+    const services = {
+      redis: { ports: { main: 6379 }, env: {}, docker: { image: 'redis:7-alpine' } },
+      tiles: { ports: { http: 8081 }, env: {}, docker: { image: 'tiles:1' } },
+    } as never;
+
+    const containers = resolveInfrastructure({}, services, { tiles: { disabled: true } });
+
+    // `serviceOverrides` was honoured for services an APPLICATION declares
+    // and read by nothing for the ones a stack declares — an operator
+    // writing `tiles: { disabled: true }` got tiles. Measured on the test
+    // server: a stack that disabled the geocoder and the tile server
+    // provisioned both, and a geocoding database can reach tens of
+    // gigabytes.
+    expect(containers.map((c) => c.name.split('-').pop())).toEqual(['redis']);
+  });
+
+  it('is not provisioned when it points at something that already exists', async () => {
+    const { resolveInfrastructure } = await import('../../src/infrastructure/service-resolver.js');
+
+    const services = { monero: { ports: { rpc: 28082 }, env: {}, docker: { image: 'monero:1' } } } as never;
+
+    const containers = resolveInfrastructure({}, services, {
+      monero: { external: { host: '192.168.100.2', ports: { rpc: 28082 } } },
+    });
+
+    // There is nothing to create; the address reaches the application
+    // through its environment instead.
+    expect(containers).toEqual([]);
+  });
+
+  it('provisions everything when nothing is overridden', async () => {
+    const { resolveInfrastructure } = await import('../../src/infrastructure/service-resolver.js');
+
+    const services = { redis: { ports: { main: 6379 }, env: {}, docker: { image: 'redis:7-alpine' } } } as never;
+
+    expect(resolveInfrastructure({}, services).length).toBe(1);
+  });
+});

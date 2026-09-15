@@ -40,6 +40,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       config: InfrastructureConfig,
       services: Record<string, IServiceRequirement>,
       registry: import('../infrastructure/presets/registry.js').PresetRegistry,
+      overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
     ) => InfrastructureService,
   ) {}
 
@@ -98,6 +99,12 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      */
     project?: string | undefined;
     stack?: string | undefined;
+    /**
+     * The stack's service overrides — `disabled`, `external`, per-service
+     * docker changes. Sent, because a node that does not receive them
+     * provisions what the operator asked it not to.
+     */
+    overrides?: Record<string, import('../infrastructure/types.js').IServiceOverride> | undefined;
   }): Promise<{
     ready: boolean;
     detail: string;
@@ -142,7 +149,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const service = this.getInfra() ?? this.hostInfra(data.config, declared, registry);
+    const service = this.getInfra() ?? this.hostInfra(data.config, declared, registry, data.overrides ?? {});
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.

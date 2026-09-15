@@ -94,11 +94,42 @@ export async function localAddressToward(
  *                 our addresses can reach it, never as the answer itself
  * @throws Error naming the setting to add, when nothing can answer
  */
+/**
+ * Where a slave should dial, or why there is nowhere.
+ *
+ * `host: null` is an answer, not a failure. Replication is master-PULL: the
+ * master opens the connection to each node — over SSH when the node's daemon
+ * port is closed — drains its buffer and acknowledges. A slave dials nothing,
+ * and the address it is given is read by one log line at startup.
+ *
+ * This used to THROW for a master on loopback, from a time when the push
+ * path was assumed to be the one that would exist. It made a workable
+ * deployment impossible: a workstation behind NAT, which is where remote
+ * stacks are started from, cannot be dialled by anything and does not need
+ * to be. Measured while deploying a stack to the test server:
+ *
+ *     Refusing to provision 37.27.130.185: this daemon listens on 127.0.0.1
+ *
+ * — from a master that was, at that moment, connected to that very node and
+ * pulling its metrics.
+ *
+ * The refusals it used to make are still the right thing to SAY. A master
+ * that could be dialled but is about to hand out an address that does not
+ * reach it is a misconfiguration, and `reason` carries it so the caller can
+ * report it once rather than discovering it as an empty console days later.
+ */
+export interface MasterAddress {
+  host: string | null;
+  source: 'advertiseHost' | 'bindHost' | 'route' | 'unreachable';
+  /** Present when `host` is null: why no address would have worked. */
+  reason?: string;
+}
+
 export async function resolveMasterHost(
   sources: MasterAddressSources,
   node: { host: string; sshPort?: number | undefined },
   probe: (host: string, port: number) => Promise<string | null> = localAddressToward,
-): Promise<{ host: string; source: 'advertiseHost' | 'bindHost' | 'route' }> {
+): Promise<MasterAddress> {
   const advertised = sources.advertiseHost?.trim();
   if (advertised && !isWildcardHost(advertised)) {
     return { host: advertised, source: 'advertiseHost' };
@@ -112,10 +143,14 @@ export async function resolveMasterHost(
   // A master bound to loopback cannot be reached by any slave, so discovering
   // a route to the node would produce an address that is real and useless.
   if (bind === '127.0.0.1' || bind === 'localhost' || bind === '::1') {
-    throw new Error(
-      `Refusing to provision ${node.host}: this daemon listens on ${bind}, which no remote node can reach. ` +
-        `Bind it to a routable interface (daemon.host) and set daemon.advertiseHost to the address slaves should dial.`,
-    );
+    return {
+      host: null,
+      source: 'unreachable',
+      reason:
+        `this daemon listens on ${bind}, so no node can dial it. The mesh connects the other way — ` +
+        'this master opens the connection and pulls. Set `daemon.host` and `daemon.advertiseHost` ' +
+        'only if something needs to dial in.',
+    };
   }
 
   const routed = await probe(node.host, node.sshPort ?? 22);
@@ -130,19 +165,24 @@ export async function resolveMasterHost(
     // parses, starts, and dials an address that does not exist from where it
     // stands. The failure would arrive as an empty console, days later.
     if (isPrivateAddress(routed) && !isPrivateAddress(node.host)) {
-      throw new Error(
-        `Refusing to provision ${node.host}: the route to it leaves this master at ${routed}, ` +
-          `which is a private address and unreachable from a public host. ` +
-          `Set daemon.advertiseHost to the address ${node.host} can dial to reach this daemon.`,
-      );
+      return {
+        host: null,
+        source: 'unreachable',
+        reason:
+          `the route to ${node.host} leaves this master at ${routed}, a private address a public host cannot reach. ` +
+          'The mesh connects the other way, so nothing is blocked; set `daemon.advertiseHost` if something needs to dial in.',
+      };
     }
     return { host: routed, source: 'route' };
   }
 
-  throw new Error(
-    `Refusing to provision ${node.host}: cannot determine the address slaves should use to reach this master. ` +
-      `Set daemon.advertiseHost to the address this daemon is reachable at from ${node.host}.`,
-  );
+  return {
+    host: null,
+    source: 'unreachable',
+    reason:
+      `no route from this master to ${node.host} answered, so there is no address to hand it. ` +
+      'The mesh connects the other way, so this does not stop the deployment.',
+  };
 }
 
 /**

@@ -72,20 +72,37 @@ describe('resolving the address a slave will dial', () => {
     expect(probe).toHaveBeenCalledWith('203.0.113.7', 22);
   });
 
-  it('refuses when the master listens only on loopback', async () => {
+  it('answers "nowhere" when the master listens only on loopback', async () => {
     // Discovering a route here would produce an address that is real and
     // useless: no remote node can reach 127.0.0.1.
-    await expect(
-      resolveMasterHost({ bindHost: '127.0.0.1' }, node, async () => '127.0.0.1'),
-    ).rejects.toThrow(/no remote node can reach|advertiseHost/);
+    //
+    // This used to THROW, and that was right while replication was assumed
+    // to be push. It is pull: the master opens the connection to each node,
+    // over SSH when the node's daemon port is closed, and drains its buffer.
+    // A master behind NAT — which is where remote stacks are started from —
+    // cannot be dialled and does not need to be. Measured while deploying to
+    // the test server: "Refusing to provision 37.27.130.185: this daemon
+    // listens on 127.0.0.1", from a master that was connected to that node
+    // and pulling its metrics as it said so.
+    const resolved = await resolveMasterHost({ bindHost: '127.0.0.1' }, node, async () => '127.0.0.1');
+
+    expect(resolved.host).toBeNull();
+    expect(resolved.source).toBe('unreachable');
+    // The refusal was still the right thing to SAY. It is a reason now, for
+    // the caller to report once, rather than a stop.
+    expect(resolved.reason).toMatch(/no node can dial it/i);
+    expect(resolved.reason).toMatch(/pulls/i);
   });
 
-  it('refuses when nothing can answer, and names the setting', async () => {
-    // The alternative is provisioning a fleet of slaves pointed somewhere
-    // wrong and finding out from an empty console.
-    await expect(
-      resolveMasterHost({ bindHost: '0.0.0.0' }, node, async () => null),
-    ).rejects.toThrow(/daemon\.advertiseHost/);
+  it('answers "nowhere" when no route can answer', async () => {
+    // The alternative is NOT provisioning a fleet of slaves pointed
+    // somewhere wrong — that is what returning a guess would be. It is
+    // provisioning them with no address at all, which is honest and is what
+    // a pulled-from node needs.
+    const resolved = await resolveMasterHost({ bindHost: '0.0.0.0' }, node, async () => null);
+
+    expect(resolved.host).toBeNull();
+    expect(resolved.reason).toMatch(/no route/i);
   });
 
   it('treats a wildcard advertiseHost as no answer at all', async () => {
@@ -100,7 +117,7 @@ describe('resolving the address a slave will dial', () => {
     expect(resolved).toEqual({ host: '192.0.2.10', source: 'bindHost' });
   });
 
-  it('refuses a private master address for a public node', async () => {
+  it('answers "nowhere" for a private master address and a public node', async () => {
     // Measured while building this: the route from this workstation to the
     // test host at 37.27.130.185 leaves from 10.8.1.1 — a VPN address behind
     // NAT. Writing it into the slave's config produces a file that looks
@@ -108,9 +125,30 @@ describe('resolving the address a slave will dial', () => {
     // from where the slave stands. Route discovery answers "which of my
     // addresses reaches you"; it cannot answer "which of my addresses can you
     // reach", and when ours is private and yours is not, the answer is none.
-    await expect(
-      resolveMasterHost({ bindHost: '0.0.0.0' }, { host: '37.27.130.185', sshPort: 22 }, async () => '10.8.1.1'),
-    ).rejects.toThrow(/private address|advertiseHost/);
+    const resolved = await resolveMasterHost(
+      { bindHost: '0.0.0.0' },
+      { host: '37.27.130.185', sshPort: 22 },
+      async () => '10.8.1.1',
+    );
+
+    // The distinction the reason has to keep: the address is real, and it is
+    // unreachable from where the node stands. Writing it in would produce a
+    // config that parses and dials nothing, and the failure would arrive as
+    // an empty console days later.
+    expect(resolved.host).toBeNull();
+    expect(resolved.reason).toContain('10.8.1.1');
+    expect(resolved.reason).toMatch(/private address a public host cannot reach/i);
+  });
+
+  it('never hands a node an address, rather than a wrong one', async () => {
+    // Every path that cannot answer returns null. A guess here is the
+    // failure this file is named after: a slave pointed at itself, which
+    // starts, parses, retries forever and reports nothing.
+    for (const probe of [async () => null, async () => '10.8.1.1', async () => '127.0.0.1']) {
+      const resolved = await resolveMasterHost({ bindHost: '127.0.0.1' }, node, probe);
+      expect(resolved.host).toBeNull();
+      expect(resolved.reason).toBeTruthy();
+    }
   });
 
   it('allows a private master address for a node on the same network', async () => {

@@ -150,6 +150,30 @@ const METRICS_POLL_MS = 10_000;
 // second was never wired to the poll, which passes `intervalMs: 10_000`
 // literally. Both were read by nothing.
 
+/**
+ * What to call a chart line, once more than one machine reports.
+ *
+ * Every series here was named `s.app`, and a fleet runs the SAME app names on
+ * every node — `omnitron` itself on all of them. Replicated samples arrive
+ * carrying a `node` label, and the storage groups by it, so two machines
+ * produce two series. Named by app alone they are two lines with one name:
+ * the legend cannot separate them and the shape reads as one app flapping
+ * between two values.
+ *
+ * The master's own readings keep the bare app name. A remote node's are
+ * suffixed with the node, resolved to the name an operator gave it — a uuid
+ * in a legend identifies nothing to a person.
+ */
+export function seriesLabel(
+  series: { app: string; labels?: Record<string, string> | undefined },
+  nodeNames: Record<string, string>,
+): string {
+  const app = series.app.includes('/') ? series.app.split('/').pop()! : series.app;
+  const node = series.labels?.['node'];
+  if (!node) return app;
+  return `${app} · ${nodeNames[node] ?? node}`;
+}
+
 export default function MetricsPage() {
   const { namespacePrefix } = useStackContext();
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
@@ -169,6 +193,33 @@ export default function MetricsPage() {
    * renders from it, so writing it must not schedule a render.
    */
   const lastIngestion = useRef<{ total: number; at: number } | null>(null);
+
+  /**
+   * Node uuid → the name an operator gave it.
+   *
+   * A ref, because it is read while building chart series and must not put
+   * the whole page through a render when a node is renamed. Empty until the
+   * first answer, and `seriesLabel` falls back to the uuid — which is ugly
+   * and true, where the app name alone would be neither.
+   */
+  const nodeNamesRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { nodes } = await import('src/netron/client');
+        const list = await nodes.listNodes();
+        if (!cancelled) {
+          nodeNamesRef.current = Object.fromEntries(list.map((n: { id: string; name: string }) => [n.id, n.name]));
+        }
+      } catch {
+        // Charts stay readable without it: a series keeps the uuid, which
+        // still separates two machines from each other.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -236,24 +287,22 @@ export default function MetricsPage() {
       }
 
       if (cpuData.length > 0) {
-        // Filter series by stack context and strip namespace prefix from labels
+        // Filter series by stack context. The display name is `seriesLabel`'s
+        // job and only its job — stripping the namespace here as well meant
+        // two places deciding what a line is called, and only one of them
+        // knew about nodes.
         const filterSeries = (data: any[]) =>
-          data
-            .filter((s: any) => !namespacePrefix || s.app.startsWith(namespacePrefix) || !s.app.includes('/'))
-            .map((s: any) => ({
-              ...s,
-              app: s.app.includes('/') ? s.app.split('/').pop() : s.app,
-            }));
+          data.filter((s: any) => !namespacePrefix || s.app.startsWith(namespacePrefix) || !s.app.includes('/'));
 
         const filteredCpu = filterSeries(cpuData);
         const filteredMem = filterSeries(memData);
 
         setCpuSeries(filteredCpu.map((s: any) => ({
-          name: s.app,
+          name: seriesLabel(s, nodeNamesRef.current),
           data: s.points.map((p: any) => ({ x: new Date(p.timestamp).getTime(), y: Number(p.value.toFixed(1)) })),
         })));
         setMemSeries(filteredMem.map((s: any) => ({
-          name: s.app,
+          name: seriesLabel(s, nodeNamesRef.current),
           data: s.points.map((p: any) => ({ x: new Date(p.timestamp).getTime(), y: Math.round(p.value / (1024 * 1024)) })),
         })));
       } else {

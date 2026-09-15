@@ -93,6 +93,20 @@ export function startMesh(options: {
     const at = joined.get(id);
     if (!at) return;
     joined.delete(id);
+
+    // One connection per ADDRESS, and the registry can hold two rows for one
+    // machine — it does here, which is how a single node once drew two
+    // health checks an hour apart on the same socket. The connector is keyed
+    // on host:port, so removing the second row would disconnect the
+    // connection the first row still needs, and nothing would re-add it:
+    // the remaining node would sit in the mesh's own map, joined, with no
+    // connection behind it.
+    const stillWanted = [...joined.values()].some((other) => other.host === at.host && other.port === at.port);
+    if (stillWanted) {
+      logger.debug({ host: at.host, port: at.port }, 'Node removed, but another registry entry still points at this address');
+      return;
+    }
+
     void connector.removeSlave(at.host, at.port).catch(() => undefined);
   };
 

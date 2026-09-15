@@ -123,6 +123,24 @@ describe('the mesh follows the node registry', () => {
     expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
   });
 
+  it('keeps the connection when another registry row still points at it', () => {
+    // The registry holds two rows for one machine here — that is how a
+    // single node once drew two health checks an hour on the same socket.
+    // The connector is keyed on host:port, so removing one row must not
+    // disconnect the other's connection: nothing would re-add it, and the
+    // survivor would sit in the map, joined, with nothing behind it.
+    const reg = registry([node({ id: 'a' }), node({ id: 'b' })]);
+    const c = connector();
+    startMesh({ registry: reg as never, connector: c, logger });
+
+    reg.emit('node:removed', 'b');
+    expect(c.removed).toEqual([]);
+
+    // ...and the last one out does disconnect it.
+    reg.emit('node:removed', 'a');
+    expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
+  });
+
   it('follows an edited address', () => {
     const reg = registry([node()]);
     const c = connector();
@@ -255,6 +273,33 @@ describe('reaching a node', () => {
     // that does not change.
     expect(ssh).toHaveBeenCalledTimes(1);
     expect(ssh.mock.calls[0]![1]).toBe(READ_DAEMON_SECRET);
+
+    server.close();
+  });
+
+  it('reads a node secret again after the node refuses it', async () => {
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as net.AddressInfo).port;
+
+    const ssh = vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
+    const dial = createMeshDialer({
+      logger, execution: { ssh, tunnel: vi.fn() } as never, subject: 'mesh:test',
+      sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
+    });
+
+    const first = await dial({ host: '127.0.0.1', port });
+    expect(ssh).toHaveBeenCalledTimes(1);
+
+    // A daemon's secret does not change — until the node is reinstalled,
+    // which writes a new one. Without this the master presents the old one
+    // on every reconnect for as long as it runs, and the node refuses every
+    // time; a rejected credential and an unreachable node fail at the same
+    // place, so the retry loop cannot tell them apart.
+    first.onRejected?.();
+    await dial({ host: '127.0.0.1', port });
+
+    expect(ssh).toHaveBeenCalledTimes(2);
 
     server.close();
   });

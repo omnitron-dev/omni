@@ -517,7 +517,14 @@ export class SlaveConnector {
         // so anything that went wrong from here on lost the data on both
         // sides while this loop logged the failure at debug level.
         const result = await this.syncService.receiveBatch(batch);
-        const delivered = [...(result.acceptedIds ?? []), ...(result.duplicateIds ?? [])];
+        // Discards are released too: the master has said it can never store
+        // them, so holding them parks the buffer behind an entry that will
+        // be refused identically forever. Each one was logged at ERROR.
+        const delivered = [
+          ...(result.acceptedIds ?? []),
+          ...(result.duplicateIds ?? []),
+          ...(result.discardedIds ?? []),
+        ];
         if (delivered.length > 0) await syncProxy.ackDrained({ ids: delivered });
         totalPulled += delivered.length;
 

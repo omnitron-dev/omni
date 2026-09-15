@@ -155,6 +155,7 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
         health: mapInspectHealth(info.State?.Health?.Status),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
+        service: info.Config?.Labels?.['omnitron.service'],
         ...(failure && { error: failure }),
       });
     }
@@ -257,6 +258,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
+        service: info.Config?.Labels?.['omnitron.service'],
         networkAttached,
         ...(failure && { error: failure }),
       };

@@ -153,7 +153,19 @@ export class SlaveStorageService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         category TEXT NOT NULL,
         payload TEXT NOT NULL,
-        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        -- ISO-8601 UTC, not datetime('now').
+        --
+        -- datetime('now') writes "2026-09-15 06:01:37": UTC, stating so
+        -- nowhere. This column is replicated to the master and inserted into
+        -- a timestamptz, where Postgres resolves an offset-less timestamp
+        -- in the session's TimeZone — so the value only survives while that
+        -- happens to be UTC. It also disagreed with syncedAt in the same
+        -- row, which a bound Date writes in ISO form.
+        --
+        -- CREATE TABLE IF NOT EXISTS leaves an existing table's default
+        -- alone, so this fixes new slaves only; toIsoUtc at the wire
+        -- boundary is what repairs the ones already running.
+        createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         syncedAt TEXT
       )
     `.execute(this.db);

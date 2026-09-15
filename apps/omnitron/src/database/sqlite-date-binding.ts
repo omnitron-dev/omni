@@ -117,3 +117,57 @@ export function withDateBinding<T extends { prepare(sql: string): unknown }>(dat
 
   return database;
 }
+
+/**
+ * Read a stored timestamp back as ISO-8601 UTC.
+ *
+ * The binding above is only half of this boundary. SQLite has no date type,
+ * so a column holds whatever spelling wrote it — and on a slave that is two
+ * spellings in one table:
+ *
+ *     createdAt   2026-09-15 06:01:37          ← DEFAULT (datetime('now'))
+ *     syncedAt    2026-09-15T06:01:37.123Z     ← a bound Date, through serialiseDates
+ *
+ * `datetime('now')` is UTC and says so nowhere. The slave ships `createdAt`
+ * to the master exactly as stored, and the master inserts it into a
+ * `timestamptz` column — where Postgres resolves a timestamp with no offset
+ * in the session's TimeZone. That is UTC on the image we run, so today the
+ * value survives the trip. Measured on omnitron-pg 2026-09-15:
+ *
+ *     SET TimeZone='Europe/Moscow';
+ *     SELECT '2026-09-15T06:01:37.000Z'::timestamptz - '2026-09-15 06:01:37'::timestamptz;
+ *     → 03:00:00
+ *
+ * Every replicated metric, log line, alert and span moves by that much, and
+ * nothing in omnitron pins the master's TimeZone. A timestamp crossing a
+ * machine boundary must carry its zone; this is the last point on the slave
+ * that can put it back.
+ *
+ * A value that cannot be read as a time is returned unchanged rather than
+ * replaced by a plausible one — a wrong timestamp is worse than an obviously
+ * broken one, because only the second gets looked at.
+ */
+const NAIVE_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/;
+
+export function toIsoUtc(value: unknown): string {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? String(value) : value.toISOString();
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+
+  const text = String(value ?? '').trim();
+
+  // No offset in the text: SQLite's own `datetime('now')` shape, which is
+  // UTC. Said explicitly, because `new Date('2026-09-15 06:01:37')` reads it
+  // as LOCAL time — the same three-hour error, moved into this process.
+  const naive = NAIVE_TIMESTAMP.exec(text);
+  if (naive) {
+    const parsed = new Date(`${naive[1]}T${naive[2]}Z`);
+    return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
+}

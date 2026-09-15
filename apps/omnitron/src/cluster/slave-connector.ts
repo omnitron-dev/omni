@@ -291,8 +291,15 @@ export class SlaveConnector {
         if (typeof runTask !== 'function') {
           throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
         }
-        const auth = await runTask.call(peer, 'authenticate', { token: link.token });
+        const auth = await runTask.call(peer, 'authenticate', { token: link.token }).catch((err: unknown) => {
+          // A refusal and a broken connection arrive at the same place. Both
+          // reach the catch below, but only one of them is answered by
+          // reading the node's secret again.
+          link.onRejected?.();
+          throw err;
+        });
         if (!auth?.success) {
+          link.onRejected?.();
           throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
         }
       }

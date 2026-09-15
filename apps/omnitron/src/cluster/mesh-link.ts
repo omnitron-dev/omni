@@ -46,6 +46,20 @@ export interface MeshLink {
   token?: string | undefined;
   /** How the master got there, for the operator reading a node card. */
   via: 'direct' | 'ssh-tunnel';
+  /**
+   * Called when the node refuses this credential.
+   *
+   * A daemon's signing secret is read once and kept, because it does not
+   * change — until the node is reinstalled, which writes a new one. The
+   * master would then present the old secret on every reconnect, for as
+   * long as it runs, and the node would refuse every time. Nothing in the
+   * retry loop can notice that: a rejected credential and an unreachable
+   * node fail at the same place.
+   *
+   * Given the failure, the cache can be dropped and the next attempt reads
+   * the node's current secret.
+   */
+  onRejected?: (() => void) | undefined;
   /** Releases whatever was opened to make `url` work. */
   close?: (() => Promise<void>) | undefined;
 }
@@ -164,9 +178,16 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
     const ssh = await sshTargetFor(target).catch(() => null);
 
     const token = ssh ? await tokenFor(key, ssh) : undefined;
+    const onRejected = () => {
+      secrets.delete(key);
+      logger.warn(
+        { host: target.host },
+        'Node refused the master credential — its signing secret will be read again on the next attempt',
+      );
+    };
 
     if (await probeTcp(target.host, target.port, probeTimeout)) {
-      return { url: `tcp://${target.host}:${target.port}`, token, via: 'direct' };
+      return { url: `tcp://${target.host}:${target.port}`, token, via: 'direct', onRejected };
     }
 
     if (!ssh) {
@@ -188,6 +209,7 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
       token,
       via: 'ssh-tunnel',
       close: tunnel.close,
+      onRejected,
     };
   };
 

@@ -48,6 +48,10 @@ export * from './uid.js';
  * @since 0.1.0
  */
 export * from './types.js';
+// The option type for `TransportOptions.cors`. A caller writing an origin
+// allow-list needs to name it, and `@omnitron-dev/titan/netron` is where
+// transport options are already reached from.
+export type { CorsOptions } from './transport/http/middleware/types.js';
 
 /**
  * Utility functions for common operations.

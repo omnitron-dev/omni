@@ -6,6 +6,9 @@
 
 // Export types
 export * from './types.js';
+// `TransportOptions.cors` is `boolean | CorsOptions`, so the type a caller
+// needs to write that option has to travel with it.
+export type { CorsOptions } from './http/middleware/types.js';
 
 // Export base classes
 export { BaseTransport, BaseConnection, BaseServer } from './base-transport.js';

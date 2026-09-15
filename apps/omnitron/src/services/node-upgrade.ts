@@ -34,8 +34,23 @@ export interface UpgradeCandidate {
   readonly currentVersion: string | null;
   /** False for the machine this daemon is: it is upgraded by rebuilding. */
   readonly isLocal: boolean;
-  /** Whether the daemon answered at all when last checked. */
-  readonly reachable: boolean;
+  /**
+   * Whether SSH worked at the last check — `null` when that check made no
+   * SSH attempt.
+   *
+   * SSH, not the daemon. An upgrade travels over SSH; the fleet port is a
+   * different channel, and gating on it refuses precisely the nodes most
+   * worth upgrading.
+   *
+   * Measured 2026-09-15, the first `fleet upgrade --dry-run` against the real
+   * fleet: both nodes refused as "did not answer its last health check".
+   * Correct about the data and wrong about the question — the node had been
+   * up eight hours on a version I had shipped, and was listening on
+   * `127.0.0.1:9700` because of a bind defect fixed AFTER that build. So the
+   * one machine that needed the new code was the one the rule would not send
+   * it to, and the reason was a channel the upgrade does not use.
+   */
+  readonly sshReachable: boolean | null;
 }
 
 export type UpgradeDecision =
@@ -111,12 +126,16 @@ function decideFor(node: UpgradeCandidate, targetVersion: string): UpgradeDecisi
   if (node.currentVersion === targetVersion) {
     return { action: 'skip', because: `already running ${targetVersion}` };
   }
-  if (!node.reachable) {
+  if (node.sshReachable === false) {
     // Not a refusal of the whole run — one unreachable node should not stop
-    // an operator upgrading the rest — but not something to attempt either:
-    // the transfer would spend its whole timeout discovering what the health
-    // check already knows.
-    return { action: 'refuse', because: 'the node did not answer its last health check' };
+    // an operator upgrading the rest — but not worth attempting either: the
+    // transfer would spend its timeout learning what the last SSH attempt
+    // already found.
+    //
+    // `null` is deliberately not this. It means the last check made no SSH
+    // attempt, which is what the daemon's own fallback check does, and
+    // "nobody tried" is not "it refused".
+    return { action: 'refuse', because: 'SSH was refused at the last check' };
   }
   return { action: 'upgrade', from: node.currentVersion };
 }

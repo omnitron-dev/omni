@@ -26,7 +26,7 @@ const node = (over: Partial<UpgradeCandidate> & { name: string }): UpgradeCandid
   nodeId: `id-${over.name}`,
   currentVersion: '0.2.0+local.old.202609010000',
   isLocal: false,
-  reachable: true,
+  sshReachable: true,
   ...over,
 });
 
@@ -73,14 +73,36 @@ describe('deciding what to do with each node', () => {
     expect(plan.steps[0]!.decision).toMatchObject({ action: 'skip', because: 'this is the local daemon' });
   });
 
-  it('refuses an unreachable node without stopping the rest', () => {
-    // Attempting it would spend the whole transfer timeout discovering what
-    // the health check already knows — but one unreachable machine must not
-    // prevent upgrading the others.
-    const plan = planUpgrade([node({ name: 'down', reachable: false }), node({ name: 'up' })], TARGET);
+  it('refuses a node whose SSH was refused, without stopping the rest', () => {
+    // Attempting it would spend the transfer's timeout learning what the last
+    // SSH attempt already found — but one such machine must not prevent
+    // upgrading the others.
+    const plan = planUpgrade([node({ name: 'down', sshReachable: false }), node({ name: 'up' })], TARGET);
 
     expect(plan.steps[0]!.decision).toMatchObject({ action: 'refuse' });
     expect(plan.toUpgrade.map((n) => n.name)).toEqual(['up']);
+  });
+
+  it('upgrades a node whose DAEMON is unreachable', () => {
+    // The defect the first real dry run found. An upgrade travels over SSH;
+    // the fleet port is a different channel. Both nodes were refused as
+    // "did not answer its last health check" — true of the Netron probe, and
+    // the wrong question. One of them had been up eight hours on a version I
+    // had shipped, listening on 127.0.0.1 because of a bind defect fixed
+    // AFTER that build: the one machine that needed the new code was the one
+    // the rule would not send it to.
+    const plan = planUpgrade([node({ name: 'edge-1', sshReachable: true })], TARGET);
+
+    expect(plan.toUpgrade.map((n) => n.name)).toEqual(['edge-1']);
+  });
+
+  it('attempts a node whose last check did not try SSH', () => {
+    // `null` is "nobody tried" — which is what the daemon's own fallback
+    // check does — and that is not a refusal. Treating it as one would make
+    // every node unupgradeable whenever the health-monitor worker is down.
+    const plan = planUpgrade([node({ name: 'unknown', sshReachable: null })], TARGET);
+
+    expect(plan.toUpgrade.map((n) => n.name)).toEqual(['unknown']);
   });
 
   it('upgrades a node whose version is unknown', () => {
@@ -192,7 +214,7 @@ describe('running the plan', () => {
     // it. Only the second is a reason to stop.
     const r = runner();
     const report = await runUpgrade(
-      planUpgrade([node({ name: 'down', reachable: false }), node({ name: 'up' })], TARGET), r,
+      planUpgrade([node({ name: 'down', sshReachable: false }), node({ name: 'up' })], TARGET), r,
     );
 
     expect(r.calls).toEqual(['install:up', 'activate:up']);

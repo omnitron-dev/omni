@@ -7,6 +7,7 @@
 
 import type { IServicePreset, IPresetServiceConfig } from './types.js';
 import type { IServiceRequirement, IDockerServiceConfig } from '../types.js';
+import { renderTorrc, authorizedClientFiles, type TorHiddenService } from './torrc.js';
 
 export class PresetRegistry {
   private readonly presets = new Map<string, IServicePreset>();
@@ -63,15 +64,27 @@ export class PresetRegistry {
       dockerEnv['MINIO_ROOT_USER'] = mergedSecrets['accessKey'] ?? 'minioadmin';
       dockerEnv['MINIO_ROOT_PASSWORD'] = mergedSecrets['secretKey'] ?? 'minioadmin';
     } else if (preset.name === 'tor') {
-      // Tor preset reads its hidden-service map from a single JSON env var —
-      // simpler than parametrising arbitrary numbers of HiddenServiceDir/Port
-      // pairs through individual variables. The torrc generator (see
-      // tor.ts ENTRYPOINT_SHELL) iterates over this list with `jq`.
-      const torCfg = (config.config ?? {}) as { hiddenServices?: unknown[]; extraTorrc?: string[] };
-      const hsArr = Array.isArray(torCfg.hiddenServices) ? torCfg.hiddenServices : [];
-      dockerEnv['OMNITRON_TOR_HIDDEN_SERVICES_JSON'] = JSON.stringify(hsArr);
-      if (Array.isArray(torCfg.extraTorrc) && torCfg.extraTorrc.length > 0) {
-        dockerEnv['OMNITRON_TOR_EXTRA_TORRC'] = torCfg.extraTorrc.join('\n');
+      // The finished torrc, rendered here.
+      //
+      // It used to travel as a JSON list that a `jq` loop inside the
+      // container turned into torrc stanzas. That put the one file which
+      // decides whether a service is anonymous behind a shell script nobody
+      // could read without starting a container and nothing could test — and
+      // a hardening line dropped by a quoting mistake looks exactly like one
+      // that was never written.
+      const torCfg = (config.config ?? {}) as {
+        hiddenServices?: TorHiddenService[];
+        extraTorrc?: string[];
+      };
+      const services = Array.isArray(torCfg.hiddenServices) ? torCfg.hiddenServices : [];
+      dockerEnv['OMNITRON_TORRC'] = renderTorrc({ services, extra: torCfg.extraTorrc });
+
+      // Client-authorization keys go to files tor reads out of each service
+      // directory, not into the torrc. A key that never reaches
+      // `authorized_clients/` is a restriction that silently does not exist.
+      const authFiles = authorizedClientFiles(services);
+      if (authFiles.length > 0) {
+        dockerEnv['OMNITRON_TOR_CLIENT_AUTH_JSON'] = JSON.stringify(authFiles);
       }
     }
     if (config.docker?.environment) {

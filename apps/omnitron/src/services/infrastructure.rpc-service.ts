@@ -85,6 +85,19 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * override merging, on the side with less information.
      */
     services?: Record<string, IServiceRequirement> | undefined;
+    /**
+     * Which stack this is, so the node names its containers the way a local
+     * deployment of the same stack would.
+     *
+     * Without it a node prefixes everything `omnitron-`, which is fine for
+     * one stack and a collision for two: the second stack's Postgres would
+     * find the first one's container already running under the name it
+     * wants, and reconcile it towards its own spec. It also makes the names
+     * unpredictable from the master's side, and a hidden service that has to
+     * name the gateway container cannot guess.
+     */
+    project?: string | undefined;
+    stack?: string | undefined;
   }): Promise<{
     ready: boolean;
     detail: string;
@@ -112,6 +125,12 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Measured: a node asked to provision `postgres, redis, minio` answered
     // "Infrastructure: nothing is declared, so nothing was provisioned" —
     // which was true of what it had been given and false of what was asked.
+    if (data.project && data.stack) {
+      const { setContainerPrefix, setStackLabels } = await import('../infrastructure/service-resolver.js');
+      setContainerPrefix(data.project, data.stack);
+      setStackLabels(data.project, data.stack);
+    }
+
     const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
     const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
     // One registry, used to expand the config AND to run the post-provision

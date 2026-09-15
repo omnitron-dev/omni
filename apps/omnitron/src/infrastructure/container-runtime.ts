@@ -32,13 +32,34 @@ export function containerSpecHash(config: ResolvedContainer): string {
   const normalized = JSON.stringify({
     image: config.image,
     env: sortedEnv,
-    ports: [...config.ports].sort((a, b) => a.host - b.host || a.container - b.container),
+    // `bindHost` is part of what a port IS. Without it, changing a container
+    // from every-interface to loopback leaves the hash identical and the
+    // container published exactly as before.
+    ports: [...config.ports]
+      .map((p) => ({ h: p.host, c: p.container, b: p.bindHost ?? null }))
+      .sort((a, b) => a.h - b.h || a.c - b.c),
     volumes: [...config.volumes]
       .map((v) => ({ s: v.source, t: v.target, ro: !!v.readonly }))
       .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0)),
     command: config.command ?? null,
     entrypoint: config.entrypoint ?? null,
     extraHosts: [...(config.extraHosts ?? [])].sort(),
+    // A health check is baked into the container at creation: docker reads
+    // `HEALTHCHECK` once and never again. Leaving it out of the hash means a
+    // corrected check never reaches anything already running — the fix lands
+    // in the code, the reconciler sees no difference, and the container goes
+    // on answering the old question forever.
+    //
+    // Measured: the gateway's probe was corrected from `curl` (absent from
+    // its image) to one that also tries wget, the node was reprovisioned,
+    // and the container kept the curl-only check and kept reporting
+    // unhealthy.
+    healthCheck: config.healthCheck ?? null,
+    // The network a container is on is not a detail of how it runs but of
+    // what it can reach. A service moved between networks and not recreated
+    // is on the old one, and its name resolves for nobody.
+    network: config.network ?? null,
+    restart: config.restart,
   });
   return createHash('sha1').update(normalized).digest('hex').slice(0, 16);
 }

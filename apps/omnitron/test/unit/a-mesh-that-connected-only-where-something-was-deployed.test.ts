@@ -640,3 +640,45 @@ describe('a reconnect gives back what the last attempt held', () => {
     await c.dispose();
   });
 });
+
+describe('waiting for a node to join', () => {
+  async function connector() {
+    const { SlaveConnector } = await import('../../src/cluster/slave-connector.js');
+    return new SlaveConnector(logger, undefined, null, { dial: async () => { throw new Error('nothing listens'); } });
+  }
+
+  it('answers true once the connection is established', async () => {
+    const c = await connector();
+    const conns = (c as unknown as { connections: Map<string, { status: string }> }).connections;
+    conns.set('h:9700', { status: 'connecting' } as never);
+
+    const waiting = c.waitUntilConnected('h', 9700, 5_000);
+    setTimeout(() => conns.set('h:9700', { status: 'connected' } as never), 300);
+
+    await expect(waiting).resolves.toBe(true);
+    await c.dispose();
+  });
+
+  it('answers immediately for a node that is already connected', async () => {
+    const c = await connector();
+    (c as unknown as { connections: Map<string, { status: string }> }).connections.set('h:9700', { status: 'connected' } as never);
+
+    // Polling rather than an event, because the connection may already be
+    // established when this is called — a subscriber would wait for a
+    // transition that has already happened, which is the same race wearing a
+    // different hat.
+    const started = Date.now();
+    await expect(c.waitUntilConnected('h', 9700, 5_000)).resolves.toBe(true);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    await c.dispose();
+  });
+
+  it('gives up rather than hanging, for a node that never joins', async () => {
+    const c = await connector();
+
+    // The caller deploys applications after this. Waiting forever would make
+    // an unreachable node stop a deployment to every other node behind it.
+    await expect(c.waitUntilConnected('h', 9700, 600)).resolves.toBe(false);
+    await c.dispose();
+  });
+});

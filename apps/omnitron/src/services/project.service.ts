@@ -47,11 +47,11 @@ import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
-import { RemoteDeployer, stackNodeToDeployTarget } from './remote-deployer.service.js';
+import { RemoteDeployer, stackNodeToDeployTarget, withNodeCredentials, type DeployTarget } from './remote-deployer.service.js';
 import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
-import { ExecutionService } from '../execution/execution.service.js';
+import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
 
 
 
@@ -130,6 +130,28 @@ export class ProjectService extends EventEmitter {
    */
   setSlaveConnector(connector: SlaveConnector): void {
     this.slaveConnector = connector;
+  }
+
+  /**
+   * How to reach a host the node registry knows about.
+   *
+   * A stack says which host; the registry says how to reach it — the user,
+   * the port, and the credential, which is in the daemon's vault because a
+   * config file in a repository is not where those go. Wired by the daemon,
+   * which is the side that has both.
+   */
+  setNodeCredentialResolver(resolve: (host: string) => Promise<SSHTarget | null>): void {
+    this.resolveNodeCredentials = resolve;
+  }
+
+  private resolveNodeCredentials: ((host: string) => Promise<SSHTarget | null>) | null = null;
+
+  /** A deploy target for a stack node, with the registry filling the gaps. */
+  private async targetForStackNode(node: import('../config/types.js').IStackNode): Promise<DeployTarget> {
+    const declared = stackNodeToDeployTarget(node);
+    if (!this.resolveNodeCredentials) return declared;
+    const registered = await this.resolveNodeCredentials(node.host).catch(() => null);
+    return withNodeCredentials(declared, registered);
   }
 
   /**
@@ -1271,7 +1293,7 @@ export class ProjectService extends EventEmitter {
       const unsubProvision = this.deployer.onProgress((progress) => {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
-      const target = stackNodeToDeployTarget(node);
+      const target = await this.targetForStackNode(node);
       const master = await resolveMasterHost(
         { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
         target,
@@ -1385,6 +1407,17 @@ export class ProjectService extends EventEmitter {
 
     await connector.addSlave({ host, port, label: node.label });
 
+    // `addSlave` starts the connection and returns; invoking straight after
+    // races it. Measured: "Slave 37.27.130.185:9700 not connected", against
+    // a node the master connected to successfully two seconds later.
+    if (!(await connector.waitUntilConnected(host, port, 60_000))) {
+      this.logger.error(
+        { node: `${host}:${port}` },
+        'This node did not join the mesh within a minute — its infrastructure cannot be brought up from here',
+      );
+      return false;
+    }
+
     try {
       const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
         { config: infrastructure, services },
@@ -1454,7 +1487,7 @@ export class ProjectService extends EventEmitter {
       const unsubProvision = this.deployer.onProgress((progress) => {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
-      const target = stackNodeToDeployTarget(node);
+      const target = await this.targetForStackNode(node);
       const master = await resolveMasterHost(
         { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
         target,
@@ -1473,7 +1506,7 @@ export class ProjectService extends EventEmitter {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
       const results = await this.deployer.deployToStack(
-        appNodes.map(stackNodeToDeployTarget), artifacts, projectName, { concurrency: 5 },
+        await Promise.all(appNodes.map((n) => this.targetForStackNode(n))), artifacts, projectName, { concurrency: 5 },
       );
       unsubDeploy();
       const successful = results.filter((r) => r.status === 'success').length;

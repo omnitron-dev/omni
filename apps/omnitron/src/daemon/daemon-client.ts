@@ -50,6 +50,50 @@ const CLI_REQUEST_TIMEOUT = 60_000;
 const REACHABILITY_TIMEOUT = 5_000;
 
 /**
+ * How long a connection to the daemon's socket may take to complete.
+ *
+ * `netron.connect` had none, and a unix socket whose listener exists but
+ * whose event loop is starved accepts the connection and never finishes the
+ * handshake. So the connect does not fail — it waits, for ever.
+ *
+ * `isReachable` looked bounded and was not: it races a 5-second timer against
+ * `ping()`, which bounds how long IT waits, while `daemonPing` awaits
+ * `client.ping()` directly. Measured 2026-09-15 with the development daemon
+ * starved by unrelated load at a load average of 107:
+ *
+ *     $ time omnitron ping
+ *     (no output at all)
+ *     0.97s user  0.65s system  1% cpu  2:00.10 total
+ *
+ * Two minutes of nothing, at one percent CPU — waiting, not working — and
+ * killed by the shell's own timeout rather than reporting anything. Every
+ * command in the CLI goes through this method.
+ *
+ * Longer than the reachability check, because this bounds a real operation
+ * rather than a probe: a loaded host can take seconds to schedule the
+ * daemon's accept.
+ */
+const CONNECT_TIMEOUT = 15_000;
+
+/**
+ * Reject a promise that has not settled in time.
+ *
+ * The underlying work is not cancelled — nothing here can cancel a socket
+ * handshake — so the flag it would have set is left alone by the caller. The
+ * point is that the CALLER stops waiting and can say what happened.
+ */
+function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    timer.unref?.();
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+/**
  * Why a daemon did not answer.
  *
  * Three different situations, three different things for an operator to do,
@@ -159,11 +203,15 @@ export class DaemonClient implements IDaemonService {
       return;
     }
 
-    this.connecting = (async () => {
-      this.peer = (await this.netron.connect(`unix://${this.socketPath}`, false)) as RemotePeer;
-      this.proxy = await this.peer.queryInterface<IDaemonService>(DAEMON_SERVICE_ID);
-      this.connected = true;
-    })().finally(() => {
+    this.connecting = withDeadline(
+      (async () => {
+        this.peer = (await this.netron.connect(`unix://${this.socketPath}`, false)) as RemotePeer;
+        this.proxy = await this.peer.queryInterface<IDaemonService>(DAEMON_SERVICE_ID);
+        this.connected = true;
+      })(),
+      CONNECT_TIMEOUT,
+      `the daemon did not complete a connection within ${CONNECT_TIMEOUT / 1000}s`,
+    ).finally(() => {
       this.connecting = null;
     });
 
@@ -428,7 +476,20 @@ export class DaemonClient implements IDaemonService {
       // true, which is exactly false in the case that needs it most: a
       // connect that never completed still holds an open socket, and skipping
       // the teardown leaves it open with nothing pointing at it.
-      await this.netron.stop();
+      //
+      // Bounded for the same reason the settle above is. `netron.stop()`
+      // closes transports and waits for them; a half-open socket to a daemon
+      // whose event loop is starved has no other end to answer, and the wait
+      // does not end. Measured 2026-09-15 at a load average of 107: with the
+      // connect bounded, `omnitron ping` printed its diagnosis and then did
+      // not exit — the command had said everything it had to say and still
+      // could not return. A teardown is best-effort by nature: the process is
+      // leaving, and the OS closes what it held.
+      await withDeadline(
+        this.netron.stop(),
+        DISCONNECT_SETTLE_TIMEOUT,
+        'the transport did not close in time',
+      ).catch(() => undefined);
       this.connected = false;
       this.peer = null;
       this.proxy = null;

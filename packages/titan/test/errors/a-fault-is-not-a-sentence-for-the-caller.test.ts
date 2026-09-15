@@ -110,3 +110,44 @@ describe('and what was written for the caller still reaches them', () => {
     expect(err.message).toBe('Your link has expired');
   });
 });
+
+describe('and a fault carries no code or details either', () => {
+  it('a system error does not ship its code as a business errorCode', () => {
+    // Measured on a live stand: `{ message: 'An internal server error
+    // occurred', details: { errorCode: 'ECONNREFUSED' } }`. The message was
+    // masked and the code was not, which is half a redaction — and
+    // `details.errorCode` is the field clients are told to branch on, so a
+    // system code there invites a client to handle a server's plumbing.
+    const err = toTitanError(
+      Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:6379'), {
+        code: 'ECONNREFUSED',
+        errno: -61,
+        syscall: 'connect',
+      }),
+    );
+
+    expect(err.message).toBe(MASKED);
+    expect(err.details?.['errorCode'], 'the plumbing is not the caller’s to branch on').toBeUndefined();
+    expect(err.cause, 'and the log still has all of it').toBeDefined();
+  });
+
+  it('a fault does not ship whatever was hanging off it as details', () => {
+    const fault = Object.assign(new TypeError('boom'), {
+      details: { query: 'SELECT * FROM users WHERE id = $1', params: ['019f25eb'] },
+    });
+    expect(toTitanError(fault).details).toEqual({});
+  });
+
+  it('but a declared error keeps both', () => {
+    // Non-vacuity: the masking must not have swallowed the business path.
+    const declared = Object.assign(new Error('Captcha is required'), {
+      statusCode: 400,
+      code: 'CAPTCHA_REQUIRED',
+      details: { field: 'captchaToken' },
+    });
+    const err = toTitanError(declared);
+    expect(err.message).toBe('Captcha is required');
+    expect(err.details?.['errorCode']).toBe('CAPTCHA_REQUIRED');
+    expect(err.details?.['field']).toBe('captchaToken');
+  });
+});

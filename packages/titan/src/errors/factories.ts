@@ -572,8 +572,19 @@ export function toTitanError(error: unknown): TitanError {
 
     // Preserve the business error code (e.g., "SESSION_EXPIRED", "TOKEN_EXPIRED")
     // so the transport layer can forward it to clients for precise error handling.
-    const businessCode = (error as any).code as string | undefined;
-    const details = (error as any).details ?? {};
+    //
+    // A FAULT's `code` is not one of those. Masking the message and then
+    // shipping `errorCode: 'ECONNREFUSED'` in `details` is half a redaction —
+    // measured on a live stand, exactly that reached a client:
+    //
+    //   { message: 'An internal server error occurred',
+    //     details: { errorCode: 'ECONNREFUSED' } }
+    //
+    // and `details.errorCode` is the field clients are told to branch on, so a
+    // system code there invites a client to handle a server's plumbing. The
+    // masked case carries no code at all; `cause` still has everything.
+    const businessCode = internalFault ? undefined : ((error as any).code as string | undefined);
+    const details = internalFault ? {} : ((error as any).details ?? {});
 
     return new TitanError({
       code: httpCode,

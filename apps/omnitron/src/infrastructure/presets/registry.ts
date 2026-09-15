@@ -49,8 +49,41 @@ export class PresetRegistry {
       }
     }
 
-    // Merge ports
-    const mergedPorts = { ...preset.defaultPorts, ...config.ports };
+    // A preset's port is the CONTAINER's; a configured port is the host's.
+    //
+    // These were merged as one, so writing `ports: { http: 8080 }` for the
+    // openresty gateway declared that its nginx listens on 8080. It listens
+    // on 80 — that is a fact about the image, not something a config can
+    // change — so the container published 8080→8080 while the server was on
+    // 80, and every connection to it was refused. Measured on the gateway,
+    // where the health check reported unhealthy for a container that was
+    // serving an onion address correctly through a different path.
+    //
+    // The same distinction is right for the others and was accidentally
+    // harmless there: nobody changes the port Postgres listens on by editing
+    // a stack config, they change the one it is published at. `9000` for
+    // MinIO means "reach it at 9000", not "rebuild MinIO to listen
+    // elsewhere".
+    //
+    // So: the container port comes from the preset, and anything the config
+    // names becomes a host mapping — unless the preset never declared that
+    // port, in which case the config is describing a container port the
+    // preset does not know about, and it is one.
+    const containerPorts: Record<string, number> = { ...preset.defaultPorts };
+    const hostMappings: Record<string, number> = { ...config.docker?.portMappings };
+
+    for (const [name, port] of Object.entries(config.ports ?? {})) {
+      if (preset.defaultPorts[name] !== undefined) {
+        // The preset knows this port: the config is naming where to publish
+        // it. An explicit `portMappings` entry still wins — it says the same
+        // thing more precisely.
+        if (hostMappings[name] === undefined) hostMappings[name] = port;
+      } else {
+        containerPorts[name] = port;
+      }
+    }
+
+    const mergedPorts = containerPorts;
 
     // Build Docker config: inject resolved secrets into environment
     const dockerEnv: Record<string, string> = { ...preset.defaultDocker.environment };
@@ -102,6 +135,9 @@ export class PresetRegistry {
       ...(built ? { command: built } : {}),
       ...config.docker,
       environment: dockerEnv,
+      // Where each port is published, after the config's ports were read as
+      // host mappings rather than container ones.
+      ...(Object.keys(hostMappings).length > 0 ? { portMappings: hostMappings } : {}),
     };
 
     // Build health check — customize user secret (e.g., pg_isready -U <user>)

@@ -12,7 +12,12 @@ export const gatewayOpenrestyPreset: IServicePreset = {
   name: 'openresty',
   type: 'gateway',
   defaultImage: 'openresty/openresty:alpine',
-  defaultPorts: { http: 8080 },
+  // 80 — the port nginx listens on inside this image. It is a fact about
+  // the image, not something a stack config can change; a config naming
+  // `http` is saying where to PUBLISH it. Declared as 8080 here, the
+  // container published 8080→8080 while the server was on 80, and every
+  // connection was refused.
+  defaultPorts: { http: 80 },
   defaultSecrets: {},
 
   defaultHealthCheck: {

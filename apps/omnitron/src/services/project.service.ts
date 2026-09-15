@@ -55,6 +55,29 @@ import { ExecutionService, type SSHTarget } from '../execution/execution.service
 
 
 
+/**
+ * The infrastructure a stack actually gets: the ecosystem's, plus its own.
+ *
+ * Shallow for the top-level keys — a stack that declares `postgres` replaces
+ * the ecosystem's — and merged for `services`, because those are named
+ * things and a stack adding one must not remove the rest.
+ */
+export function mergeInfrastructure(
+  ecosystemConfig: { infrastructure?: InfrastructureConfig | undefined },
+  stackConfig: { infrastructure?: Partial<InfrastructureConfig> | undefined },
+): InfrastructureConfig | undefined {
+  if (!stackConfig.infrastructure && !ecosystemConfig.infrastructure) return undefined;
+
+  return {
+    ...ecosystemConfig.infrastructure,
+    ...stackConfig.infrastructure,
+    services: {
+      ...ecosystemConfig.infrastructure?.services,
+      ...stackConfig.infrastructure?.services,
+    },
+  } as InfrastructureConfig;
+}
+
 // =============================================================================
 // Config Registry — holds loaded configs per project
 // =============================================================================
@@ -1041,18 +1064,7 @@ export class ProjectService extends EventEmitter {
     //    Auto-detect core services (postgres, redis, minio) from app requirements,
     //    then merge with explicit infrastructure config (gateway, custom services).
     // Merge stack-level + ecosystem-level infrastructure (stack overrides ecosystem, but both contribute)
-    let effectiveInfra: InfrastructureConfig | undefined;
-    if (stackConfig.infrastructure || ecosystemConfig.infrastructure) {
-      effectiveInfra = {
-        ...ecosystemConfig.infrastructure,
-        ...stackConfig.infrastructure,
-        // Deep-merge services maps from both levels
-        services: {
-          ...ecosystemConfig.infrastructure?.services,
-          ...stackConfig.infrastructure?.services,
-        },
-      };
-    }
+    let effectiveInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
 
     if (project) {
       try {
@@ -1352,12 +1364,18 @@ export class ProjectService extends EventEmitter {
       //    against a database that is not there yet spends its startup
       //    budget retrying, and a supervisor's deadline turns that into a
       //    crash loop over a condition that would have resolved.
-      if (stackConfig.infrastructure || declaredServices) {
+      // The same infrastructure a local stack would get: the ecosystem's
+      // services — gateway, Tor, tiles — plus whatever this stack declares.
+      // Sending only the stack's own block is why a remote deployment had
+      // databases and no gateway, and no onion address to reach it by.
+      const nodeInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
+      if (nodeInfra || Object.keys(declaredServices).length > 0) {
         const ready = await this.provisionNodeInfrastructure(
           connector,
           node,
-          (stackConfig.infrastructure ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
+          (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
           declaredServices,
+          { project: projectName, stack: stackName },
         );
         if (!ready) {
           // Not fatal: a node whose infrastructure is incomplete can still
@@ -1413,6 +1431,7 @@ export class ProjectService extends EventEmitter {
     node: { host: string; port?: number | undefined; label?: string | undefined },
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     services?: Record<string, import('../infrastructure/types.js').IServiceRequirement> | undefined,
+    owner?: { project: string; stack: string } | undefined,
   ): Promise<boolean> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -1432,7 +1451,7 @@ export class ProjectService extends EventEmitter {
 
     try {
       const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
-        { config: infrastructure, services },
+        { config: infrastructure, services, ...(owner ?? {}) },
       ])) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 
       this.logger.info(

@@ -84,86 +84,47 @@ export interface ITorPresetConfig {
  */
 const ENTRYPOINT_SHELL = `set -eu
 
-# Install tor + jq. The Alpine tor package automatically creates a
-# 'tor' system user (uid 100, gid 101). Idempotent across restarts.
-apk add --no-cache tor jq >/dev/null 2>&1 || apk add tor jq >/dev/null 2>&1
+# Tor, from the distribution. The version this pins to is measured, not
+# assumed: \`docker run --rm alpine:3.21 sh -c 'apk add tor && tor --version'\`
+# answers 0.4.9.12, against 0.4.9.11 on 3.20. Onion-service anonymity
+# improves with the release — 0.4.7 added the layer-2/3 guards that blunt
+# guard discovery, 0.4.8 the PoW defences this config turns on — so the base
+# image is part of the security posture and not a detail.
+apk add --no-cache tor >/dev/null 2>&1 || apk add tor >/dev/null 2>&1
 
-# Build torrc from the env-passed JSON config.
-TORRC=/etc/tor/torrc
 mkdir -p /etc/tor /var/lib/tor
-cat > "$TORRC" <<'TORRC_EOF'
-# ============================================================
-# Hidden-service-only Tor configuration (omnitron preset)
-# ============================================================
-# Process identity — tor drops privileges to this user after binding.
-User tor
 
-# Lockdown: no client/relay/exit functionality, only HSes.
-SocksPort 0
-ClientOnly 0
-ORPort 0
-DirPort 0
-ExitRelay 0
-ExitPolicy reject *:*
-ExitPolicy reject6 *:*
-BridgeRelay 0
+# The torrc arrives finished. Nothing here assembles it, so there is no
+# quoting in the path between what omnitron decided and what tor reads.
+printf '%s\\n' "$OMNITRON_TORRC" > /etc/tor/torrc
 
-# Operational hardening
-DataDirectory /var/lib/tor
-RunAsDaemon 0
-HardwareAccel 1
-DisableDebuggerAttachment 1
-SafeLogging 1
-LogTimeGranularity 1000
-Log notice stdout
-
-# IPv4 only by default — IPv6 onion service traffic still works
-ClientUseIPv6 0
-ClientPreferIPv6ORPort 0
-
-# Avoid filesystem races on shared volumes
-AvoidDiskWrites 1
-TORRC_EOF
-
-# Append per-hidden-service stanzas. Each gets:
-#   - HiddenServiceVersion 3 (Ed25519, 56-char .onion)
-#   - HiddenServiceEnableIntroDoSDefense (DoS mitigation at intro layer)
-#   - HiddenServicePoWDefensesEnabled    (PoW puzzles for clients)
-echo "$OMNITRON_TOR_HIDDEN_SERVICES_JSON" | jq -c '.[]' | while IFS= read -r svc; do
-  name=$(printf '%s' "$svc" | jq -r .name)
-  vport=$(printf '%s' "$svc" | jq -r .virtualPort)
-  target=$(printf '%s' "$svc" | jq -r .target)
-  {
-    echo
-    echo "# --- Hidden service: $name ---"
-    echo "HiddenServiceDir /var/lib/tor/$name"
-    echo "HiddenServiceVersion 3"
-    echo "HiddenServiceEnableIntroDoSDefense 1"
-    echo "HiddenServicePoWDefensesEnabled 1"
-    echo "HiddenServicePort $vport $target"
-  } >> "$TORRC"
-done
-
-# Append any user-provided raw torrc lines.
-if [ -n "\${OMNITRON_TOR_EXTRA_TORRC:-}" ]; then
-  printf '\\n# --- User-provided torrc additions ---\\n%s\\n' "$OMNITRON_TOR_EXTRA_TORRC" >> "$TORRC"
+# Client-authorization keys, when the service uses them. Each goes to
+# <HiddenServiceDir>/authorized_clients/, which tor reads at startup.
+if [ -n "\${OMNITRON_TOR_CLIENT_AUTH_JSON:-}" ]; then
+  apk add --no-cache jq >/dev/null 2>&1 || true
+  printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -c '.[]' | while IFS= read -r f; do
+    path=$(printf '%s' "$f" | jq -r .path)
+    mkdir -p "$(dirname "$path")"
+    printf '%s' "$f" | jq -r .content > "$path"
+    chmod 600 "$path"
+  done
 fi
 
-# Hidden service directories must be owned by the tor user with mode 0700,
-# otherwise tor refuses to start. Re-apply on every boot in case the volume
-# was created externally with different permissions.
+# Key material must be tor's and nobody else's; tor refuses to start on a
+# directory it does not own at 0700, which is the check working.
 chown -R tor:tor /var/lib/tor 2>/dev/null || true
 chmod 700 /var/lib/tor
 
-# Run tor as root and let it drop privileges via the 'User tor' directive.
-# This avoids needing su-exec/gosu, which aren't in alpine by default.
-exec tor -f "$TORRC"
+# Run as root and let tor drop to the \`User tor\` in the config: Alpine has
+# neither su-exec nor gosu by default, and adding one to drop privileges a
+# second time buys nothing.
+exec tor -f /etc/tor/torrc
 `;
 
 export const torPreset: IServicePreset = {
   name: 'tor',
   type: 'gateway',
-  defaultImage: 'alpine:3.20',
+  defaultImage: 'alpine:3.21',
   // No host-side ports: hidden services are reachable only via the Tor
   // network. Exposing 9050 etc. would defeat the entire point.
   defaultPorts: {},
@@ -191,7 +152,8 @@ export const torPreset: IServicePreset = {
     // server, omnitron-nginx published port) on every platform.
     extraHosts: ['host.docker.internal:host-gateway'],
     environment: {
-      // Default torrc has tor user; keep umask tight on key files.
+      // Key files are created by tor itself; a tight umask is what keeps
+      // them 0600 rather than whatever the image's default would give.
       UMASK: '077',
     },
   },

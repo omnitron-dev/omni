@@ -191,6 +191,39 @@ export class SlaveConnector {
   }
 
   /**
+   * Wait until a node is connected, or until the budget runs out.
+   *
+   * `addSlave` starts the connection and returns — deliberately, because the
+   * mesh adds every registered node at startup and must not block on the
+   * slowest one. A caller that immediately invokes something on that node
+   * therefore raced its own connection:
+   *
+   *     Could not bring up this node's infrastructure:
+   *       Slave 37.27.130.185:9700 not connected
+   *
+   * measured while deploying a stack to a node the master connected to
+   * successfully two seconds later.
+   *
+   * Polling rather than an event, because the connection may already be
+   * established when this is called — a subscriber would then wait for a
+   * transition that has already happened, which is the same race wearing a
+   * different hat.
+   */
+  async waitUntilConnected(host: string, port: number, timeoutMs = 60_000): Promise<boolean> {
+    const key = `${host}:${port}`;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (this.disposed) return false;
+      const conn = this.connections.get(key);
+      if (conn?.status === 'connected') return true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    return this.connections.get(key)?.status === 'connected';
+  }
+
+  /**
    * Remove and disconnect from a slave node.
    */
   async removeSlave(host: string, port: number): Promise<void> {

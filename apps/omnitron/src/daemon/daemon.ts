@@ -990,6 +990,15 @@ export class OmnitronDaemon {
         // So the console can answer "is this node replicating", which is a
         // different question from "can this master reach it".
         nodeManagerRpcService.setSlaveConnector(connector);
+
+        // A stack names a host; the registry holds the credential for it.
+        // Wired here because this is the side that has both — ProjectService
+        // reads config files, the node registry keeps its secrets in the
+        // daemon's vault.
+        projectService.setNodeCredentialResolver(async (host) => {
+          const node = nodeManager.listNodes().find((n) => n.host === host && !n.isLocal);
+          return node ? nodeManager.nodeToSshTarget(node) : null;
+        });
         this.meshHandle = startMesh({ registry: nodeManager, connector, logger: meshLogger });
       } catch (err) {
         // A master with no mesh still supervises its own apps, so this does

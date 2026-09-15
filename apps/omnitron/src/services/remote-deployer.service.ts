@@ -164,6 +164,40 @@ export function stackNodeToDeployTarget(node: IStackNode): DeployTarget {
   return target;
 }
 
+/**
+ * Fill a stack node's connection details from the node registry.
+ *
+ * A stack says WHICH host an app runs on; the node registry says HOW to
+ * reach it — the user, the port, and the key or password, which are held
+ * encrypted in the daemon's vault because they are credentials and a config
+ * file in a repository is not where those go.
+ *
+ * Nothing joined the two. `stackNodeToDeployTarget` read only the stack's
+ * own `ssh` block, so deploying to a machine that the console had already
+ * registered, provisioned and been connected to failed at the first
+ * connection:
+ *
+ *     Invalid SSH options: Either privateKey or password must be provided
+ *
+ * — for a node the same daemon was, at that moment, holding an SSH tunnel to.
+ *
+ * The stack's explicit values win where it has them: an operator who wrote
+ * `ssh.user` in the stack config meant it, and a registry entry is the
+ * default, not an override. Everything the stack leaves out comes from the
+ * registry.
+ */
+export function withNodeCredentials(target: DeployTarget, registered: SSHTarget | null): DeployTarget {
+  if (!registered) return target;
+
+  const merged: DeployTarget = { ...target };
+  if (merged.sshPort == null && registered.port != null) merged.sshPort = registered.port;
+  if (!merged.username && registered.username) merged.username = registered.username;
+  if (!merged.privateKey && registered.privateKey) merged.privateKey = registered.privateKey;
+  if (!merged.passphrase && registered.passphrase) merged.passphrase = registered.passphrase;
+  if (!merged.password && registered.password) merged.password = registered.password;
+  return merged;
+}
+
 /** What a provisioning run may do to a host. */
 export interface ProvisionOptions {
   /**

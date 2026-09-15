@@ -30,17 +30,62 @@
  * which is why the comparisons this fixes are correct once the bind works.
  */
 
-/** Replace every `Date` in a parameter list with its ISO form. */
-export function serialiseDates(parameters: readonly unknown[]): readonly unknown[] {
+/**
+ * Replace every `Date` in a statement's arguments with its ISO form.
+ *
+ * better-sqlite3 accepts bindings two ways — `stmt.all(a, b)` and
+ * `stmt.all([a, b])` — and Kysely's SQLite driver uses the SECOND:
+ *
+ *     rows: stmt.all(parameters)
+ *     const { changes } = stmt.run(parameters)
+ *
+ * So this is handed ONE argument which is the array of bindings, and a
+ * version that looked only at the top level found no Date and changed
+ * nothing.
+ *
+ * That is exactly what happened. The first fix converted the spread form,
+ * its test called it the spread way, both were green, and the failure it was
+ * written for went on every thirty seconds on a real node — visible only
+ * because the node was watched after the version shipped:
+ *
+ *     05:53:02  Sync buffer retention pass failed
+ *     05:53:32  Sync buffer retention pass failed   ← on the FIXED build
+ *
+ * A test that calls the code differently from its only caller tests a
+ * different thing.
+ */
+export function serialiseDates(args: readonly unknown[]): readonly unknown[] {
   let changed = false;
-  const out = parameters.map((value) => {
+
+  const convert = (value: unknown): unknown => {
     if (value instanceof Date) {
       changed = true;
       return value.toISOString();
     }
+    // One level of nesting, because that is the shape a driver passes: an
+    // array OF bindings. Deeper is not a thing SQLite binds, and walking
+    // arbitrary structures would convert Dates inside a JSON column's value,
+    // which the caller serialised deliberately.
+    if (Array.isArray(value)) {
+      let innerChanged = false;
+      const inner = value.map((v) => {
+        if (v instanceof Date) {
+          innerChanged = true;
+          return v.toISOString();
+        }
+        return v;
+      });
+      if (innerChanged) {
+        changed = true;
+        return inner;
+      }
+      return value;
+    }
     return value;
-  });
-  return changed ? out : parameters;
+  };
+
+  const out = args.map(convert);
+  return changed ? out : args;
 }
 
 /**

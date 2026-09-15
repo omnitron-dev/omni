@@ -107,6 +107,17 @@ describe('the total counts the rows it returned', () => {
     expect(result.total).toBe(result.entries.length);
   });
 
+  it('returns the node on every row, so a viewer can say which machine spoke', async () => {
+    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+
+    const result = await collector.queryLogs({});
+
+    // Without this the log viewer interleaves every machine's lines under
+    // one set of columns with nothing to tell them apart — the same failure
+    // as two chart series sharing a name.
+    expect(result.entries.map((e) => e.nodeId).sort()).toEqual(['edge-7', 'edge-7', 'edge-8']);
+  });
+
   it('counts through a node filter', async () => {
     const collector = new LogCollectorService(sqliteDb(), undefined as never);
 

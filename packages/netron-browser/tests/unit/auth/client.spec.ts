@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AuthenticationClient } from '../../src/auth/client.js';
-import { MemoryTokenStorage } from '../../src/auth/storage.js';
-import type { AuthResult, AuthContext } from '../../src/auth/types.js';
+import { AuthenticationClient } from '../../../src/auth/client.js';
+import { MemoryTokenStorage } from '../../../src/auth/storage.js';
+import type { AuthResult, AuthContext } from '../../../src/auth/types.js';
 
 describe('AuthenticationClient', () => {
   let client: AuthenticationClient;

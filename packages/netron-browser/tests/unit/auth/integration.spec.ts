@@ -3,11 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { AuthenticationClient } from '../../src/auth/client.js';
-import { MemoryTokenStorage } from '../../src/auth/storage.js';
-import { HttpClient } from '../../src/client/http-client.js';
-import { WebSocketClient } from '../../src/client/ws-client.js';
-import type { AuthContext } from '../../src/auth/types.js';
+import { AuthenticationClient } from '../../../src/auth/client.js';
+import { MemoryTokenStorage } from '../../../src/auth/storage.js';
+import { HttpClient } from '../../../src/client/http-client.js';
+import { WebSocketClient } from '../../../src/client/ws-client.js';
+import type { AuthContext } from '../../../src/auth/types.js';
 
 describe('Authentication Integration', () => {
   let authClient: AuthenticationClient;

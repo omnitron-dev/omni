@@ -7,6 +7,7 @@
  */
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
+import { describeError } from './utils/describe-error.js';
 import { Pool, Client as PgClient, types as pgTypes } from 'pg';
 
 /**
@@ -413,7 +414,7 @@ export class DatabaseManager implements IDatabaseManager {
     this.healthCheckFailures.set(name, failures);
 
     this.logger.warn(
-      { connection: name, failures, maxFailures: this.maxHealthCheckFailures, error: error.message },
+      { connection: name, failures, maxFailures: this.maxHealthCheckFailures, error: describeError(error) },
       'Connection health check failed'
     );
 
@@ -473,9 +474,9 @@ export class DatabaseManager implements IDatabaseManager {
 
       return result.healthy
         ? { healthy: true, latency }
-        : { healthy: false, latency, error: result.error.message };
+        : { healthy: false, latency, error: describeError(result.error) };
     } catch (error) {
-      return { healthy: false, error: (error as Error).message };
+      return { healthy: false, error: describeError(error) };
     }
   }
 
@@ -497,7 +498,7 @@ export class DatabaseManager implements IDatabaseManager {
       status.set(name, {
         connected: info.connected,
         consecutiveFailures: this.healthCheckFailures.get(name) || 0,
-        lastError: info.lastError?.message,
+        lastError: info.lastError ? describeError(info.lastError) : undefined,
         poolMetrics: this.collectPoolMetrics(info),
       });
     }
@@ -656,7 +657,7 @@ export class DatabaseManager implements IDatabaseManager {
         // re-deriving it from a message.
         throw new TitanError({
           code: ErrorCode.SERVICE_UNAVAILABLE,
-          message: `Connection health check failed: ${health.error.message}`,
+          message: `Connection health check failed: ${describeError(health.error)}`,
           details: {
             permanent: isPermanentConnectionError(health.error),
             driverCode: (health.error as { code?: string }).code,
@@ -697,7 +698,7 @@ export class DatabaseManager implements IDatabaseManager {
       info.lastError = error as Error;
       this.connections.set(name, info);
 
-      const errorMessage = ERROR_MESSAGES.CONNECTION_FAILED(name, (error as Error).message);
+      const errorMessage = ERROR_MESSAGES.CONNECTION_FAILED(name, describeError(error));
       this.logger.error({ name, error }, errorMessage);
 
       // Emit error event
@@ -1184,7 +1185,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError?.message || 'Unknown error');
+      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Unknown error');
     }
 
     // Return executor (with plugins) if available, otherwise raw instance
@@ -1226,7 +1227,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError?.message || 'Unknown error');
+      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Unknown error');
     }
 
     // If specific plugins provided, create new executor
@@ -1305,7 +1306,7 @@ export class DatabaseManager implements IDatabaseManager {
       throw Errors.notFound('Database connection', name);
     }
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError?.message || 'Connection is not established');
+      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Connection is not established');
     }
     return (info.executor ?? info.instance) as object;
   }
@@ -1317,7 +1318,7 @@ export class DatabaseManager implements IDatabaseManager {
       throw Errors.notFound('Database connection', name);
     }
     if (!info.connected) {
-      throw Errors.unavailable(name, info.lastError?.message || 'Connection is not established');
+      throw Errors.unavailable(name, info.lastError ? describeError(info.lastError) : 'Connection is not established');
     }
     return info.instance;
   }

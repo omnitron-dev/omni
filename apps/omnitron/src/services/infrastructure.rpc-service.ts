@@ -9,7 +9,7 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
-import type { InfrastructureConfig } from '../infrastructure/types.js';
+import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
@@ -36,7 +36,10 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * refused by name rather than silently doing nothing, which is the
      * difference between "this node does not do that" and "it worked".
      */
-    private readonly hostInfra?: (config: InfrastructureConfig) => InfrastructureService,
+    private readonly hostInfra?: (
+      config: InfrastructureConfig,
+      services: Record<string, IServiceRequirement>,
+    ) => InfrastructureService,
   ) {}
 
   /**
@@ -64,7 +67,19 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * config leaves the containers alone and returns the same report.
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async provisionStack(data: { config: InfrastructureConfig }): Promise<{
+  async provisionStack(data: {
+    config: InfrastructureConfig;
+    /**
+     * What the stack's APPLICATIONS declare they need — a chain daemon, a
+     * cache, anything an app names in `omnitron.infrastructure`.
+     *
+     * Sent by the master rather than read here: the node does not have the
+     * application definitions when it is asked, and parsing them again on
+     * this side would be a second implementation of variant selection and
+     * override merging, on the side with less information.
+     */
+    services?: Record<string, IServiceRequirement> | undefined;
+  }): Promise<{
     ready: boolean;
     detail: string;
     running: string[];
@@ -81,18 +96,94 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Reused when this node already has one: reconciliation is idempotent,
     // and building a second service would give the node two janitors and
     // two health monitors over one set of containers.
-    const service = this.getInfra() ?? this.hostInfra(data.config);
+    const declared = data.services ?? {};
+    const service = this.getInfra() ?? this.hostInfra(data.config, declared);
+
+    // Containers the applications declare, resolved the same way the master
+    // resolves them for a local stack.
+    if (Object.keys(declared).length > 0) {
+      const { resolveAppInfrastructure } = await import('../infrastructure/service-resolver.js');
+      const containers = resolveAppInfrastructure(declared);
+      if (containers.length > 0) service.addAppContainers(containers);
+    }
 
     const state = await service.provision();
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
+    // Services that are not containers.
+    //
+    // Some things should not be. A chain daemon on a server is a system
+    // service with a data directory measured in hundreds of gigabytes, a
+    // package the distribution updates, and a lifetime longer than any
+    // deployment — and the declaration has always been able to say so. It
+    // is the same `provisionStack` call because it is the same question:
+    // bring this node to what the stack declares.
+    const hosted = await this.reconcileHostServices(declared);
+
     return {
-      ready: outcome.ready,
-      detail: describeProvisioning(outcome),
-      running: outcome.running.map((s) => s.name),
-      failed: outcome.failed.map((s) => ({ name: s.name, status: String(s.status), error: s.error ?? null })),
+      ready: outcome.ready && hosted.refusals.length === 0,
+      detail: hosted.refusals.length > 0
+        ? `${describeProvisioning(outcome)}; host services: ${hosted.refusals.join(' ')}`
+        : describeProvisioning(outcome),
+      running: [...outcome.running.map((s) => s.name), ...hosted.settled],
+      failed: [
+        ...outcome.failed.map((s) => ({ name: s.name, status: String(s.status), error: s.error ?? null })),
+        ...hosted.failed,
+      ],
       missing: outcome.missing.map((s) => s.name),
     };
+  }
+
+  /**
+   * Bring every declared host service to what the stack says it should be.
+   *
+   * Driven from the SAME normalized requirements the container path uses, so
+   * one declaration describes one service and the operator's choice of which
+   * block to fill in is what decides how it runs.
+   */
+  private async reconcileHostServices(declared: Record<string, IServiceRequirement>): Promise<{
+    settled: string[];
+    failed: Array<{ name: string; status: string; error: string | null }>;
+    refusals: string[];
+  }> {
+    const { selectBareMetal, planBareMetal, isSettled } = await import('../infrastructure/bare-metal-plan.js');
+    const { observeBareMetal, applyBareMetal, localHost } = await import('../infrastructure/bare-metal-runner.js');
+    const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
+
+    const settled: string[] = [];
+    const failed: Array<{ name: string; status: string; error: string | null }> = [];
+    const refusals: string[] = [];
+
+    const host = localHost();
+    const logger = createNullLogger();
+
+    for (const [name, requirement] of Object.entries(declared)) {
+      const spec = selectBareMetal(name, requirement as never);
+      if (!spec) continue;
+
+      const observed = await observeBareMetal(spec, host);
+      const plan = planBareMetal(spec, observed);
+
+      if (plan.refusals.length > 0) {
+        refusals.push(...plan.refusals);
+        failed.push({ name, status: 'refused', error: plan.refusals[0] ?? null });
+        continue;
+      }
+
+      if (isSettled(plan)) {
+        settled.push(name);
+        continue;
+      }
+
+      const result = await applyBareMetal(plan.actions, host, logger, name);
+      if (result.failed) {
+        failed.push({ name, status: 'failed', error: result.failed.error });
+      } else {
+        settled.push(name);
+      }
+    }
+
+    return { settled, failed, refusals };
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

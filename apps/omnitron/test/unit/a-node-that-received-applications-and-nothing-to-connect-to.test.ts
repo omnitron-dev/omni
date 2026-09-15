@@ -49,7 +49,7 @@ describe('asking a node to host a stack s infrastructure', () => {
 
     const report = await service.provisionStack({ config: CONFIG });
 
-    expect(host).toHaveBeenCalledWith(CONFIG);
+    expect(host).toHaveBeenCalledWith(CONFIG, {});
     expect(report.ready).toBe(true);
     expect(report.running.sort()).toEqual(['pg', 'redis']);
     expect(report.missing).toEqual([]);
@@ -98,5 +98,29 @@ describe('asking a node to host a stack s infrastructure', () => {
     const service = new InfrastructureRpcService(() => null, (() => fakeInfra({}, [])) as never);
 
     await expect(service.provisionStack({} as never)).rejects.toThrow(/requires an .?infrastructure/i);
+  });
+});
+
+describe('what the applications in a stack declare', () => {
+  it('reaches the node, because the node cannot know it', async () => {
+    const infra = fakeInfra({ pg: up('pg') }, [{ name: 'pg' }]);
+    (infra as any).addAppContainers = vi.fn();
+    const host = vi.fn(() => infra);
+    const service = new InfrastructureRpcService(() => null, host as never);
+
+    const declared = { bitcoin: { ports: { rpc: 8332 }, docker: { image: 'bitcoin:1' } } } as never;
+    await service.provisionStack({ config: CONFIG, services: declared });
+
+    // The node does not have the application definitions when it is asked,
+    // and reading them again on that side would be a second implementation
+    // of variant selection and override merging.
+    expect(host).toHaveBeenCalledWith(CONFIG, declared);
+  });
+
+  it('is optional — a stack may declare nothing of its own', async () => {
+    const infra = fakeInfra({ pg: up('pg') }, [{ name: 'pg' }]);
+    const service = new InfrastructureRpcService(() => null, (() => infra) as never);
+
+    await expect(service.provisionStack({ config: CONFIG })).resolves.toMatchObject({ ready: true });
   });
 });

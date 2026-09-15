@@ -139,8 +139,11 @@ export function resolveServiceRequirement(
   // Deep-merge: base → networkMode variant → stack override
   let docker: IDockerServiceConfig = { ...baseDocker };
 
-  if (requirement.networkMode && baseDocker.variants?.[requirement.networkMode]) {
-    docker = deepMergeDocker(docker, baseDocker.variants[requirement.networkMode]!);
+  // The stack's answer first: an application declares the network that is
+  // right on a laptop, and a stack is the scope that knows when it is not.
+  const networkMode = override?.networkMode ?? requirement.networkMode;
+  if (networkMode && baseDocker.variants?.[networkMode]) {
+    docker = deepMergeDocker(docker, baseDocker.variants[networkMode]!);
   }
 
   if (override?.docker) {

@@ -468,6 +468,22 @@ export interface IServiceOverride {
   /** Override bare-metal config. */
   bareMetal?: Partial<IBareMetalServiceConfig>;
 
+  /**
+   * Which network this service runs on IN THIS STACK.
+   *
+   * `networkMode` selects the variant of both the docker and bare-metal
+   * blocks, and it was declared by the application and fixed there — so an
+   * app that declares `regtest`, which is the right answer on a laptop, ran
+   * regtest everywhere. A stack is exactly the scope that knows otherwise:
+   * the same declaration is a throwaway chain in `dev` and a real one on a
+   * server, and nothing else in the config can express the difference.
+   *
+   * It is a deliberate thing to write. A stack pointed at mainnet says so in
+   * one place an operator reads before deploying, rather than in a variant
+   * buried in an application's defaults.
+   */
+  networkMode?: string;
+
   /** Disable this service in this stack. */
   disabled?: boolean;
 }

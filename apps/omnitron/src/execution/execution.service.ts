@@ -101,6 +101,44 @@ export function describeXecError(error: unknown): string {
 // Service
 // =============================================================================
 
+/**
+ * One SSH connection config, with a budget a control plane can meet.
+ *
+ * ssh2's `readyTimeout` defaults to 20 seconds, and a handshake is
+ * arithmetic performed in JavaScript — on the same event loop the daemon
+ * uses to supervise processes and reconcile containers. Twenty seconds is a
+ * generous budget for an idle process and a tight one for a busy daemon.
+ *
+ * Measured: `omnitron fleet upgrade` from a daemon that was starting six
+ * applications failed with `Timed out while waiting for handshake`, against
+ * a node whose load average was 0.02, which accepted a connection from the
+ * CLI seconds later, and whose sshd logged no refusal. The node was idle;
+ * the handshake never got the CPU.
+ *
+ * The keepalives are for the other end of the same problem: a tunnel the
+ * mesh holds open for hours across a link that drops idle connections. Four
+ * missed probes at fifteen seconds is a minute of silence before the socket
+ * is called dead, which is longer than any pause the event loop has been
+ * measured to take.
+ *
+ * Written once because it was written three times: `ssh`, `tunnel` and
+ * `uploadFile` each built this object, and a change to any of them would
+ * have reached one of the three.
+ */
+function sshConfig(target: SSHTarget): Record<string, unknown> {
+  return {
+    host: target.host,
+    port: target.port ?? 22,
+    username: target.username ?? 'root',
+    ...(target.privateKey && { privateKey: target.privateKey }),
+    ...(target.passphrase && { passphrase: target.passphrase }),
+    ...(target.password && { password: target.password }),
+    readyTimeout: 60_000,
+    keepaliveInterval: 15_000,
+    keepaliveCountMax: 4,
+  };
+}
+
 export class ExecutionService {
   private engine: any = null;
   private initialized = false;
@@ -229,14 +267,7 @@ export class ExecutionService {
     const engine = await this.getEngine();
     if (!engine) throw new Error('SSH tunnelling needs the xec engine, which is not available');
 
-    const ssh = engine.ssh({
-      host: target.host,
-      port: target.port ?? 22,
-      username: target.username ?? 'root',
-      ...(target.privateKey && { privateKey: target.privateKey }),
-      ...(target.passphrase && { passphrase: target.passphrase }),
-      ...(target.password && { password: target.password }),
-    });
+    const ssh = engine.ssh(sshConfig(target));
 
     if (typeof ssh.tunnel !== 'function') {
       throw new Error('The installed @xec-sh/core has no SSH tunnel support');
@@ -274,14 +305,7 @@ export class ExecutionService {
 
     if (engine) {
       try {
-        const ssh = engine.ssh({
-          host: target.host,
-          port: target.port ?? 22,
-          username: target.username ?? 'root',
-          ...(target.privateKey && { privateKey: target.privateKey }),
-          ...(target.passphrase && { passphrase: target.passphrase }),
-          ...(target.password && { password: target.password }),
-        });
+        const ssh = engine.ssh(sshConfig(target));
         // Use raw template literal to avoid options interpolation into command
         let proc = ssh.raw([command] as any);
         if (options?.timeout) proc = proc.timeout(options.timeout);
@@ -331,14 +355,7 @@ export class ExecutionService {
         'Cannot transfer files: the execution engine is unavailable, and the fallback cannot use stored credentials.',
       );
     }
-    const ssh = engine.ssh({
-      host: target.host,
-      port: target.port ?? 22,
-      username: target.username ?? 'root',
-      ...(target.privateKey && { privateKey: target.privateKey }),
-      ...(target.passphrase && { passphrase: target.passphrase }),
-      ...(target.password && { password: target.password }),
-    });
+    const ssh = engine.ssh(sshConfig(target));
     await ssh.uploadFile(localPath, remotePath);
   }
 

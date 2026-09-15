@@ -298,3 +298,70 @@ describe('a node row that holds a plaintext secret', () => {
     expect(targets.find((t) => t.id === 'leaky')?.sshPassphrase).toBe('Mer-Ka-Bah#789!');
   });
 });
+
+describe('one row per daemon', () => {
+  it('refuses a second row for an address already registered', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    await service.addNode({ name: 'daos-test', host: '10.0.0.1', daemonPort: 9700 });
+
+    // Measured on a machine registered twice: the health monitor checked it
+    // on both rows — 120 connections an hour to one socket — `fleet upgrade`
+    // transferred and installed the bundle to it twice, and the mesh holds
+    // one connection per ADDRESS, so exactly one of the two rows ever
+    // receives the node's data while the other reads "not joined" forever.
+    await expect(service.addNode({ name: 'acme-deploy-test', host: '10.0.0.1', daemonPort: 9700 }))
+      .rejects.toThrow(/already registered as "daos-test"/);
+  });
+
+  it('names the row that holds the address, so the operator can find it', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    await service.addNode({ name: 'edge-7', host: '10.0.0.1' });
+
+    await expect(service.addNode({ name: 'edge-7-again', host: '10.0.0.1' }))
+      .rejects.toThrow(/edit that node/i);
+  });
+
+  it('allows a second daemon on the same machine', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    await service.addNode({ name: 'first', host: '10.0.0.1', daemonPort: 9700 });
+
+    // Two daemons on one machine are two ports, and two rows for them are
+    // two real things to manage.
+    const second = await service.addNode({ name: 'second', host: '10.0.0.1', daemonPort: 9800 });
+    expect(second.daemonPort).toBe(9800);
+  });
+
+  it('refuses an edit that moves a node onto another s address', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    await service.addNode({ name: 'first', host: '10.0.0.1', daemonPort: 9700 });
+    const second = await service.addNode({ name: 'second', host: '10.0.0.2', daemonPort: 9700 });
+
+    // Correcting one node's host to the address another already holds is
+    // exactly how a duplicate gets made.
+    await expect(service.updateNode(second.id, { host: '10.0.0.1' })).rejects.toThrow(/already registered/);
+  });
+
+  it('lets a node keep its own address through an unrelated edit', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    const node = await service.addNode({ name: 'first', host: '10.0.0.1', daemonPort: 9700 });
+
+    const renamed = await service.updateNode(node.id, { name: 'renamed' });
+    expect(renamed.name).toBe('renamed');
+    expect(renamed.host).toBe('10.0.0.1');
+  });
+
+  it('refuses before it writes a secret', async () => {
+    const store = makeStore();
+    const secrets = makeSecrets();
+    const service = new NodeManagerService(silentLogger, store, secrets);
+    await service.addNode({ name: 'first', host: '10.0.0.1' });
+
+    await expect(
+      service.addNode({ name: 'second', host: '10.0.0.1', sshAuthMethod: 'password', sshPassword: 'hunter2' }),
+    ).rejects.toThrow(/already registered/);
+
+    // A refused write must leave nothing behind — a password stored against
+    // an id no row carries is a secret nothing can ever delete.
+    expect([...secrets.values.values()]).not.toContain('hunter2');
+  });
+});

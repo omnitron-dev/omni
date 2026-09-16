@@ -120,3 +120,31 @@ describe('the other two cases', () => {
     expect(d.action).toBe('skip');
   });
 });
+
+describe('a name and its volume are one decision', () => {
+  it('moves the data volume with the container name', async () => {
+    // `resolveOmnitronPg` derives BOTH from the container prefix. Overriding
+    // only the name produced a container called `omnitron-pg` mounting
+    // `daos-dev-pg-data` — the global identity on a stack-scoped volume,
+    // with the matching `omnitron-pg-data` left dangling, 1.1 GB and six
+    // months of history, where `docker volume prune -af` would take it
+    // without a word.
+    const { resolveOmnitronPg, setContainerPrefix } = await import('../../src/infrastructure/service-resolver.js');
+
+    setContainerPrefix('daos', 'dev');
+    const prefixed = resolveOmnitronPg();
+    expect(prefixed.name).toBe('daos-dev-pg');
+    expect(prefixed.volumes.find((v) => v.target === '/var/lib/postgresql/data')?.source).toBe('daos-dev-pg-data');
+
+    // The rename this fix performs, spelled out: whatever the reconcile calls
+    // the container, its data volume carries the same name.
+    const renamed = {
+      ...prefixed,
+      name: 'omnitron-pg',
+      volumes: prefixed.volumes.map((v) =>
+        v.target === '/var/lib/postgresql/data' ? { ...v, source: 'omnitron-pg-data' } : v,
+      ),
+    };
+    expect(renamed.volumes.find((v) => v.target === '/var/lib/postgresql/data')?.source).toBe(`${renamed.name}-data`);
+  });
+});

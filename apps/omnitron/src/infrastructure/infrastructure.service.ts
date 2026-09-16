@@ -275,7 +275,20 @@ export class InfrastructureService {
       // service — under the name the container actually has. Its data lives
       // in the `omnitron-pg-data` volume and outlives the container it is
       // recreated into.
-      await this.reconcileService({ ...this.omnitronPgContainer, name: decision.reconcileName });
+      // Name AND volume, not one of them. `resolveOmnitronPg` derives both
+      // from the container prefix, so overriding only the name produced a
+      // container called `omnitron-pg` mounting `daos-dev-pg-data` — the
+      // global identity on a stack-scoped volume, and the stack's own
+      // `omnitron-pg-data` left dangling where a `docker volume prune` would
+      // take it silently. The two names are one decision and must move
+      // together.
+      const reconciled = { ...this.omnitronPgContainer, name: decision.reconcileName };
+      if (decision.reconcileName !== this.omnitronPgContainer.name) {
+        reconciled.volumes = this.omnitronPgContainer.volumes.map((v) =>
+          v.target === '/var/lib/postgresql/data' ? { ...v, source: `${decision.reconcileName}-data` } : v,
+        );
+      }
+      await this.reconcileService(reconciled);
     } else {
       try {
         await this.provisionOmnitronDatabase();

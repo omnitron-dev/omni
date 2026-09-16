@@ -249,7 +249,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // deployment — and the declaration has always been able to say so. It
     // is the same `provisionStack` call because it is the same question:
     // bring this node to what the stack declares.
-    const hosted = await this.reconcileHostServices(declared);
+    const hosted = await this.reconcileHostServices(declared, data.overrides ?? {});
 
     return {
       ready: outcome.ready && hosted.refusals.length === 0,
@@ -272,7 +272,10 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * one declaration describes one service and the operator's choice of which
    * block to fill in is what decides how it runs.
    */
-  private async reconcileHostServices(declared: Record<string, IServiceRequirement>): Promise<{
+  private async reconcileHostServices(
+    declared: Record<string, IServiceRequirement>,
+    overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
+  ): Promise<{
     settled: string[];
     failed: Array<{ name: string; status: string; error: string | null }>;
     refusals: string[];
@@ -289,7 +292,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const logger = createNullLogger();
 
     for (const [name, requirement] of Object.entries(declared)) {
-      const spec = selectBareMetal(name, requirement as never);
+      // The stack's override, which `selectBareMetal` has always taken and
+      // no caller has ever passed.
+      //
+      // `networkMode` is the one that matters, and its own docblock says why:
+      // an application declares `regtest` because that is right on a laptop,
+      // and the stack is the scope that knows when it is not. Without the
+      // override the bare-metal path read the application's answer
+      // everywhere, so a stack declaring `mainnet` selected the variant that
+      // carries the verified download, the hardened unit and the mainnet
+      // config — and got the base declaration instead, which names a systemd
+      // unit and supplies no template to create it. That refuses, correctly
+      // and confusingly: the declaration the operator wrote was never the one
+      // being planned.
+      const spec = selectBareMetal(name, requirement as never, overrides[name] as never);
       if (!spec) continue;
 
       const observed = await observeBareMetal(spec, host);

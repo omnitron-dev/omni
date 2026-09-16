@@ -317,3 +317,49 @@ describe('a unit the host does not have', () => {
     expect(plan.refusals[0]).toContain('${dataDir}');
   });
 });
+
+// =============================================================================
+// A declaration the stack says belongs to somebody else
+// =============================================================================
+
+describe('a service the stack declares external', () => {
+  it('is not planned for this host at all', async () => {
+    const { selectBareMetal } = await import('../../src/infrastructure/bare-metal-plan.js');
+
+    // The test node already runs a Bitcoin Core configured for this project —
+    // pruned, Tor-only, RPC on the private network — with 139 GB of chain.
+    // The declaration says how to build one, and the stack says there is
+    // already one to talk to. Planning it anyway installs a SECOND mainnet
+    // node beside the first: a fresh initial block download over Tor, and
+    // another copy of the chain on the same disk.
+    //
+    // The declaration is not wrong and is not deleted. Another stack, on a
+    // host with no daemon, is exactly what it is for.
+    const chosen = selectBareMetal(
+      'bitcoin',
+      {
+        networkMode: 'regtest',
+        bareMetal: {
+          systemdUnit: 'bitcoind',
+          dataDir: '/var/lib/bitcoind',
+          variants: { mainnet: { dataDir: '/var/lib/bitcoind' } },
+        },
+      },
+      { networkMode: 'mainnet', external: { host: '192.168.100.2', ports: { rpc: 8332 } } },
+    );
+
+    expect(chosen).toBeNull();
+  });
+
+  it('is still planned when the stack says nothing about it', async () => {
+    const { selectBareMetal } = await import('../../src/infrastructure/bare-metal-plan.js');
+
+    const chosen = selectBareMetal(
+      'bitcoin',
+      { networkMode: 'mainnet', bareMetal: { systemdUnit: 'bitcoind', dataDir: '/var/lib/bitcoind' } },
+      { networkMode: 'mainnet' },
+    );
+
+    expect(chosen?.systemdUnit).toBe('bitcoind');
+  });
+});

@@ -75,6 +75,48 @@ export function restartBackoffMs(failures: number): number {
 // so the container spec below and every client that connects to it are
 // derived from the same values (see the import above).
 
+/**
+ * What to do about the control plane's own database.
+ *
+ * Three cases that look alike and are not:
+ *
+ *   - a node's daemon keeps its state in SQLite and needs no database at all;
+ *   - one is running, so it gets the same reconcile — and so the same
+ *     `containerSpecHash` drift check — as every app service;
+ *   - nothing is running, so provision.
+ *
+ * The middle case is the one that was missing. "Already running" was read as
+ * "configured as declared", and the database was adopted exactly as it stood.
+ * Measured: `omnitron-pg`, created before published ports were bound to
+ * loopback, survived on 0.0.0.0:5480 through the fix that reached all eleven
+ * other managed containers, and still answered `nc -vz <lan-address> 5480`
+ * from another machine months later, while `daos-dev-postgres` beside it in
+ * `docker ps` was correctly on 127.0.0.1.
+ *
+ * `reconcileName` is the subtlety. The control-plane database is ONE
+ * container per host — it owns port 5480 — but each daemon resolves a name
+ * carrying its own project prefix, so a daemon on the `daos/dev` stack
+ * computes `daos-dev-pg` while the container that exists is `omnitron-pg`.
+ * Reconciling the running container against a spec under the OTHER name
+ * creates a second one and collides on the port; the first version of this
+ * did exactly that and corrected nothing. The name to reconcile is therefore
+ * the name of the container that is actually there, and the spec is
+ * everything else. `containerSpecHash` does not cover the name, so the drift
+ * comparison is unaffected either way.
+ *
+ * A differing name is not evidence of another owner: only omnitron creates
+ * this container, and it carries omnitron's own `omnitron.internal` label.
+ */
+export function decideControlPlaneDatabase(input: {
+  needsControlPlaneDatabase: boolean;
+  running: { name?: string; status?: string; specHash?: string | undefined } | null;
+  desiredName: string;
+}): { action: 'skip' | 'provision' } | { action: 'reconcile'; reconcileName: string } {
+  if (!input.needsControlPlaneDatabase) return { action: 'skip' };
+  if (input.running?.status !== 'running') return { action: 'provision' };
+  return { action: 'reconcile', reconcileName: input.running.name ?? input.desiredName };
+}
+
 export class InfrastructureService {
   private readonly desiredContainers: ResolvedContainer[] = [];
   /** What the most recent reconcile did to each service. */
@@ -198,11 +240,13 @@ export class InfrastructureService {
     //    The stack-prefixed container (e.g. omni-dev-pg) shares the same port,
     //    so we must not create/start it when the global one is active.
     const globalOmnitronPg = await getContainerState('omnitron-pg');
-    const stackPgName = this.omnitronPgContainer.name;
-    const isGlobalPgRunning = globalOmnitronPg?.status === 'running';
-    const isStackPgSameAsGlobal = stackPgName === 'omnitron-pg';
+    const decision = decideControlPlaneDatabase({
+      needsControlPlaneDatabase: this.needsControlPlaneDatabase,
+      running: globalOmnitronPg,
+      desiredName: this.omnitronPgContainer.name,
+    });
 
-    if (!this.needsControlPlaneDatabase) {
+    if (decision.action === 'skip') {
       // A node's daemon keeps its own state in SQLite — `SlaveStorageService`,
       // `~/.omnitron/data/slave.db` — and reads this database never. Creating
       // it anyway gave every provisioned node a Postgres nobody queries, on
@@ -212,24 +256,26 @@ export class InfrastructureService {
       //
       // The control plane's database belongs to the control plane.
       this.logger.debug('This daemon keeps its own state in SQLite — not provisioning a control-plane database');
-    } else if (isGlobalPgRunning && !isStackPgSameAsGlobal) {
-      // Global omnitron-pg already owns port 5480 — reuse it and skip stack-prefixed container.
+    } else if (decision.action === 'reconcile') {
       this.usingGlobalOmnitronPg = true;
-      this.logger.info(
-        { global: 'omnitron-pg', stackPg: stackPgName },
-        'Using existing omnitron-pg (already running) — skipping stack-prefixed PG'
-      );
-      // Remove stale stack-prefixed container if it exists (leftover from a previous attempt)
-      const stalePg = await getContainerState(stackPgName);
-      if (stalePg) {
-        try {
-          await removeContainer(stackPgName);
-          this.logger.info({ service: stackPgName }, 'Removed stale stack-prefixed PG container');
-        } catch { /* already gone */ }
+
+      // A stack-prefixed leftover cannot run beside the global one — they
+      // share port 5480 — so it goes before anything else touches that port.
+      if (this.omnitronPgContainer.name !== decision.reconcileName) {
+        const stalePg = await getContainerState(this.omnitronPgContainer.name);
+        if (stalePg) {
+          try {
+            await removeContainer(this.omnitronPgContainer.name);
+            this.logger.info({ service: this.omnitronPgContainer.name }, 'Removed stale stack-prefixed PG container');
+          } catch { /* already gone */ }
+        }
       }
-    } else if (isGlobalPgRunning) {
-      this.usingGlobalOmnitronPg = true;
-      this.logger.info('Using existing omnitron-pg (already running)');
+
+      // The same reconcile, and so the same drift check, as every app
+      // service — under the name the container actually has. Its data lives
+      // in the `omnitron-pg-data` volume and outlives the container it is
+      // recreated into.
+      await this.reconcileService({ ...this.omnitronPgContainer, name: decision.reconcileName });
     } else {
       try {
         await this.provisionOmnitronDatabase();

@@ -271,14 +271,29 @@ export async function getContainerState(name: string): Promise<ContainerState | 
 /**
  * One `-p` value.
  *
- * `9800:80` publishes on every interface — Docker's default, and the reason
- * the console's nginx was reachable from the network while the daemon it
- * proxies binds to 127.0.0.1. A `bindHost` prefixes the address, so a
- * service can be published to loopback only. Absent still means Docker's
- * default, because not every managed container wants loopback.
+ * `9800:80` publishes on every INTERFACE — Docker's default, and Docker's
+ * iptables rules are inserted ahead of the host firewall's, so such a port is
+ * reachable from the network no matter what `ufw status` says.
+ *
+ * An omission therefore used to mean the widest possible answer. This is the
+ * single place a published port becomes a docker argument, and it now reads an
+ * absent `bindHost` as loopback: a container that must be reachable says so,
+ * with `bindHost: '0.0.0.0'`, in a line someone can see in a diff.
+ *
+ * `applyManagedDefaults` fills the same field in the resolver, and should —
+ * that is what puts the binding into `containerSpecHash`, so changing it
+ * recreates the container instead of leaving the old one published. But a
+ * default that every resolver must remember is a default that one of them
+ * will not: `resolveGateway` was the one return of four that did not call it,
+ * and the gateway is the container that faces outward. Measured on the dev
+ * stand: `daos-dev-gateway` published on 0.0.0.0:80 while the other ten
+ * managed containers were all on 127.0.0.1, and a browser on the LAN could
+ * sign in. Defence in depth, because the resolver-side default is the one
+ * that can be forgotten and this one cannot.
  */
 export function portArg(p: { host: number; container: number; bindHost?: string }): string {
-  return p.bindHost ? `${p.bindHost}:${p.host}:${p.container}` : `${p.host}:${p.container}`;
+  const bindHost = p.bindHost ?? '127.0.0.1';
+  return `${bindHost}:${p.host}:${p.container}`;
 }
 
 /**

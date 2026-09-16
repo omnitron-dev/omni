@@ -63,13 +63,22 @@ describe('the -p value itself', () => {
     expect(portArg({ host: 9800, container: 80, bindHost: '0.0.0.0' })).toBe('0.0.0.0:9800:80');
   });
 
-  it('omits the address when there is none, as Docker does', async () => {
-    // Not every managed container wants loopback — a database reached from
-    // another host, say. Absent means "Docker's default", and that has to
-    // stay expressible rather than becoming loopback by accident.
+  it('reads an absent address as loopback, not as every interface', async () => {
+    // This assertion is the reverse of what it was. It used to read: absent
+    // means "Docker's default", and that has to stay expressible rather than
+    // becoming loopback by accident.
+    //
+    // What that reasoning missed is which way the omission fails. Docker's
+    // default is every interface AND its iptables rules precede the host
+    // firewall's, so "expressible by omission" meant the widest possible
+    // exposure was the thing you got by not writing anything down. A
+    // container that must be reachable can still say so — `bindHost:
+    // '0.0.0.0'`, one line, visible in a diff. Nothing became inexpressible;
+    // what changed is which answer you have to ask for.
     const { portArg } = await import('../../src/infrastructure/container-runtime.js');
 
-    expect(portArg({ host: 5432, container: 5432 })).toBe('5432:5432');
+    expect(portArg({ host: 5432, container: 5432 })).toBe('127.0.0.1:5432:5432');
+    expect(portArg({ host: 5432, container: 5432, bindHost: '0.0.0.0' })).toBe('0.0.0.0:5432:5432');
   });
 });
 
@@ -131,8 +140,52 @@ describe('a published port binds to loopback unless asked otherwise', () => {
     const { portArg } = await import('../../src/infrastructure/container-runtime.js');
 
     expect(portArg({ host: 5480, container: 5432, bindHost: '127.0.0.1' })).toBe('127.0.0.1:5480:5432');
-    // Without one, docker publishes on every interface — which is the
-    // behaviour this default exists to stop.
-    expect(portArg({ host: 5480, container: 5432 })).toBe('5480:5432');
+    // This line used to assert `'5480:5432'`, under a comment saying that
+    // publishing on every interface "is the behaviour this default exists to
+    // stop". It described the danger and pinned it in the same breath — the
+    // default was only ever as good as every caller's memory, and one caller
+    // forgot.
+    expect(portArg({ host: 5480, container: 5432 })).toBe('127.0.0.1:5480:5432');
+  });
+});
+
+// =============================================================================
+// The resolver that forgot
+// =============================================================================
+
+describe('the gateway is bound like everything else', () => {
+  it('publishes the API gateway on loopback', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+
+    const spec = resolveGateway(
+      { port: 8080 } as never,
+      { host: 'localhost', port: 6379, db: 0 } as never,
+      '/tmp/project',
+    );
+
+    // Three of the four container resolvers called `applyManagedDefaults`.
+    // This one returned its object bare, and it is the container that faces
+    // outward. Measured on the dev stand: `daos-dev-gateway` published on
+    // 0.0.0.0:80 while the other ten managed containers were all on
+    // 127.0.0.1, and a browser elsewhere on the LAN could sign in.
+    expect(spec.ports?.every((p) => p.bindHost === '127.0.0.1')).toBe(true);
+  });
+
+  it('puts the binding where the spec hash can see it', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+    const { containerSpecHash } = await import('../../src/infrastructure/container-runtime.js');
+
+    const loopback = resolveGateway(
+      { port: 8080 } as never,
+      { host: 'localhost', port: 6379, db: 0 } as never,
+      '/tmp/project',
+    );
+    const exposed = { ...loopback, ports: loopback.ports?.map((p) => ({ ...p, bindHost: '0.0.0.0' })) };
+
+    // `portArg` alone would bind correctly and leave the hash unchanged, so
+    // a container already published on every interface would keep running.
+    // The binding has to be IN the spec for the daemon to notice and
+    // recreate it.
+    expect(containerSpecHash(loopback as never)).not.toBe(containerSpecHash(exposed as never));
   });
 });

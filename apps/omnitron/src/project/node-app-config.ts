@@ -20,6 +20,16 @@
 
 import type { IEcosystemAppEntry } from '../config/types.js';
 
+/**
+ * The stack a node runs its deployed apps under.
+ *
+ * One name, used by the renderer and by whoever starts them, so the two
+ * cannot drift into naming different stacks — which reads as
+ * `Stack 'x' not found` and sends the reader to the config rather than to the
+ * two places that disagree.
+ */
+export const NODE_STACK = 'deployed';
+
 /** Where one app's artifact was unpacked on the node. */
 export interface NodeArtifact {
   app: string;
@@ -111,7 +121,27 @@ export function renderNodeAppConfig(input: NodeConfigInput): string {
     '// Paths point into this node\'s artifact directory. They are absolute',
     '// because a node has no project to resolve them against.',
     '',
-    `export default ${JSON.stringify({ name: input.project, apps }, null, 2)};`,
+    `export default ${JSON.stringify(
+      {
+        name: input.project,
+        apps,
+        // A stack, because `startStack` is how a project's apps are started
+        // and it refuses a name it cannot find: `Stack 'x' not found in
+        // project 'daos'`. Registering the project alone left the node with
+        // six definitions it had read and no instruction to run any of them —
+        // `omnitron status` answered `appsTotal: 0` while
+        // `/opt/omnitron/projects/daos/omnitron.config.mjs` listed all six.
+        //
+        // `local`, because from the node's point of view that is what these
+        // are: it supervises them itself. The stack that sent them is remote
+        // from the master's side and this machine's own from here.
+        stacks: {
+          [NODE_STACK]: { type: 'local', apps: apps.map((a) => a['name'] as string) },
+        },
+      },
+      null,
+      2,
+    )};`,
     '',
   ].join('\n');
 }

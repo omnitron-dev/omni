@@ -120,3 +120,30 @@ describe('the file the node reads', () => {
     expect(renderNodeAppConfig({ ...base, artifacts: [] })).toMatch(/\(none deployed\)/);
   });
 });
+
+describe('the config carries a stack, because that is what starts apps', () => {
+  it('declares one containing exactly the deployed apps', async () => {
+    const { NODE_STACK } = await import('../../src/project/node-app-config.js');
+    const rendered = renderNodeAppConfig(base);
+    const parsed = JSON.parse(rendered.slice(rendered.indexOf('{'), rendered.lastIndexOf('}') + 1));
+
+    // Registering a project does not start it: measured on the node,
+    // `appsTotal: 0` with all six apps listed in the config it had just been
+    // given. `startStack` refuses a name it cannot find, so the name has to
+    // exist in the file.
+    expect(parsed.stacks[NODE_STACK]).toBeDefined();
+    expect(parsed.stacks[NODE_STACK].type).toBe('local');
+    expect(parsed.stacks[NODE_STACK].apps).toEqual(['main', 'geo']);
+  });
+
+  it('lists in the stack only what it listed as apps', async () => {
+    // Two lists that must agree. A stack naming an app the config does not
+    // define fails at start with a name the reader will look for in the
+    // wrong place.
+    const { NODE_STACK } = await import('../../src/project/node-app-config.js');
+    const rendered = renderNodeAppConfig({ ...base, artifacts: [{ app: 'geo', version: '1' }] });
+    const parsed = JSON.parse(rendered.slice(rendered.indexOf('{'), rendered.lastIndexOf('}') + 1));
+
+    expect(parsed.stacks[NODE_STACK].apps).toEqual(parsed.apps.map((a: { name: string }) => a.name));
+  });
+});

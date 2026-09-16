@@ -547,7 +547,22 @@ export class RemoteDeployer {
         target,
         `cat > ${shellEscape(`${dir}/omnitron.config.mjs`)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
       );
-      const out = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
+      const added = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
+
+      // Registering the project is not starting it. The node reads the
+      // definitions and waits: measured, `omnitron status` answered
+      // `appsTotal: 0` with all six apps listed in the file it had just been
+      // given, and `omnitron restart main` still said `Unknown app: main`.
+      //
+      // `startStack` is how a project's apps are started, which is why the
+      // generated config carries a stack for them to be in.
+      const { NODE_STACK } = await import('../project/node-app-config.js');
+      const out = await this.sshExec(
+        target,
+        `omnitron stack start ${shellEscape(project)} ${shellEscape(NODE_STACK)} 2>&1`,
+        300_000,
+      );
+      void added;
 
       this.logger.info(
         { host: target.host, project, dir, apps: landed.map((l) => l.app), detail: out.trim().slice(0, 200) },

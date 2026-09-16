@@ -1376,6 +1376,7 @@ export class ProjectService extends EventEmitter {
           (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
           declaredServices,
           { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
+          project?.path,
         );
         if (!ready) {
           // Not fatal: a node whose infrastructure is incomplete can still
@@ -1426,6 +1427,62 @@ export class ProjectService extends EventEmitter {
    * uses afterwards, so the node is joined by the time its applications
    * start rather than at the next heartbeat.
    */
+/**
+   * The config files the stack's services need, read from this master.
+   *
+   * Only services whose declaration names a `configDir`, which today is the
+   * gateway. A service with no such directory sends nothing, so this costs
+   * nothing for the stacks that do not need it.
+   */
+  private async readStackConfigFiles(
+    infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
+    projectRoot: string,
+  ): Promise<import('../infrastructure/config-payload.js').ConfigPayload> {
+    const { readConfigDirectory } = await import('../infrastructure/config-payload.js');
+    const fsp = await import('node:fs/promises');
+    const payload: import('../infrastructure/config-payload.js').ConfigPayload = {};
+
+    const candidates: Array<[string, string]> = [];
+    const gateway = (infrastructure as { gateway?: { configDir?: string } }).gateway;
+    if (gateway?.configDir) candidates.push(['gateway', gateway.configDir]);
+    for (const [name, svc] of Object.entries(
+      (infrastructure as { services?: Record<string, { config?: { configDir?: string } }> }).services ?? {},
+    )) {
+      const dir = svc?.config?.configDir;
+      if (dir) candidates.push([name, dir]);
+    }
+
+    for (const [name, configDir] of candidates) {
+      const abs = configDir.startsWith('/')
+        ? configDir
+        : `${projectRoot.replace(/\/$/, '')}/${configDir.replace(/^\.\//, '')}`;
+      try {
+        const { files, skipped } = await readConfigDirectory(abs, {
+          readdir: (d) => fsp.readdir(d, { withFileTypes: true }),
+          readFile: (f) => fsp.readFile(f, 'utf-8'),
+          stat: (f) => fsp.stat(f),
+        });
+        if (files.length > 0) payload[name] = files;
+        if (skipped.length > 0) {
+          // Said out loud: a file left behind changes what the service does,
+          // and silence here would make the node's behaviour unexplainable
+          // from the master.
+          this.logger.warn({ service: name, dir: abs, skipped }, 'Some files were not sent to the node');
+        }
+      } catch (err) {
+        // Not fatal. A stack whose gateway config is missing still gets its
+        // databases, and the gateway fails visibly rather than the whole
+        // provisioning stopping before anything was done.
+        this.logger.error(
+          { service: name, dir: abs, error: (err as Error).message },
+          'Could not read this service\'s config directory — the node will run it unconfigured',
+        );
+      }
+    }
+
+    return payload;
+  }
+
   private async provisionNodeInfrastructure(
     connector: SlaveConnector,
     node: { host: string; port?: number | undefined; label?: string | undefined },
@@ -1436,6 +1493,18 @@ export class ProjectService extends EventEmitter {
       stack: string;
       overrides?: Record<string, import('../infrastructure/types.js').IServiceOverride> | undefined;
     } | undefined,
+    /**
+     * This project's root on the MASTER, for reading the config files a
+     * service needs on the node.
+     *
+     * The gateway is configured by files — an nginx template, an entrypoint,
+     * Lua modules — and `resolveGateway` mounts them from this path. A node
+     * has no copy of the project, so on a node those mounts do not exist and
+     * the container comes up as bare openresty: measured on the test server,
+     * an empty `Mounts` array, a null entrypoint, zero UPSTREAM variables,
+     * and an onion serving `Welcome to OpenResty!` over Tor.
+     */
+    projectRoot?: string | undefined,
   ): Promise<boolean> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -1454,8 +1523,10 @@ export class ProjectService extends EventEmitter {
     }
 
     try {
+      const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot) : {};
+
       const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
-        { config: infrastructure, services, ...(owner ?? {}) },
+        { config: infrastructure, services, ...(owner ?? {}), configFiles },
       ])) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 
       this.logger.info(

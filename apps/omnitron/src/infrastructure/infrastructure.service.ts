@@ -118,7 +118,7 @@ export function decideControlPlaneDatabase(input: {
 }
 
 export class InfrastructureService {
-  private readonly desiredContainers: ResolvedContainer[] = [];
+  private desiredContainers: ResolvedContainer[] = [];
   /** What the most recent reconcile did to each service. */
   private readonly lastActions = new Map<string, string>();
   private readonly omnitronPgContainer: ResolvedContainer;
@@ -166,7 +166,7 @@ export class InfrastructureService {
      * there is nothing to create, and the address reaches the application
      * through its environment instead.
      */
-    serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
+    private readonly serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
     /**
      * Whether this daemon stores its own state in Postgres.
      *
@@ -539,6 +539,38 @@ export class InfrastructureService {
    * own restart-policy in the mix) occasional duplicate containers.
    */
   private readonly reconciling = new Set<string>();
+
+  /**
+   * Where this node keeps each service's config files, once a master sent them.
+   *
+   * The gateway is not an ordinary preset container — it needs four bind
+   * mounts, an entrypoint and fifteen upstream variables, and `resolveGateway`
+   * is the only thing that produces them. The constructor resolved everything
+   * through the generic preset path, because at construction time this node
+   * had no files and no local path to mount from.
+   *
+   * So this RE-RESOLVES rather than patching the volumes of a container built
+   * without them. A spec assembled by the wrong resolver is missing more than
+   * paths, and rewriting one field of it would produce a container that looks
+   * configured and is not — which is the failure that was already shipping,
+   * one level down.
+   *
+   * Called before `provision()`, so the recreation the changed spec hash
+   * implies happens on the first pass rather than the second.
+   */
+  setConfigRoots(
+    roots: Map<string, string>,
+    redis: { host: string; port: number; db: number; password?: string },
+  ): void {
+    if (roots.size === 0) return;
+    this.desiredContainers = resolveInfrastructure(
+      this.config,
+      this.normalizedServices,
+      this.serviceOverrides,
+      roots,
+      { redis },
+    );
+  }
 
   private async reconcileService(desired: ResolvedContainer): Promise<void> {
     // T#58: per-name lock around the whole inspect→decide→act loop.

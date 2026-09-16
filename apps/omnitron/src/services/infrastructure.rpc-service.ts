@@ -66,7 +66,17 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * turns a safety mechanism into a silent one. It was absent, and the
      * mechanism worked and said nothing.
      */
-    private readonly logger?: { error(obj: object, msg?: string, ...args: any[]): void } | undefined,
+    /**
+     * Narrowed to what this service actually says. It was `error` alone, when
+     * the only thing it reported was a deployment running on a default
+     * credential; writing a node's config files is worth an `info` and a
+     * partial payload a `warn`.
+     */
+    private readonly logger?: {
+      error(obj: object, msg?: string, ...args: any[]): void;
+      warn?(obj: object, msg?: string, ...args: any[]): void;
+      info?(obj: object, msg?: string, ...args: any[]): void;
+    } | undefined,
   ) {}
 
   /**
@@ -130,6 +140,19 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * provisions what the operator asked it not to.
      */
     overrides?: Record<string, import('../infrastructure/types.js').IServiceOverride> | undefined;
+    /**
+     * Config files the services need, keyed by service name.
+     *
+     * A gateway is configured by files, and the resolver mounts them from the
+     * MASTER's project root — a path this node does not have. Without them the
+     * container comes up as bare openresty: measured on the test server, an
+     * empty `Mounts` array, a null entrypoint, zero UPSTREAM variables, and an
+     * onion answering `Welcome to OpenResty!` over Tor.
+     *
+     * Validated here rather than trusted: the sender is another daemon, and an
+     * older or tampered one is exactly the case a receiving check exists for.
+     */
+    configFiles?: import('../infrastructure/config-payload.js').ConfigPayload | undefined;
   }): Promise<{
     ready: boolean;
     detail: string;
@@ -238,6 +261,25 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       if (containers.length > 0) service.addAppContainers(containers);
     }
 
+    // Write what the master sent, and point this node's containers at its own
+    // copies. Before `provision()`, because a container created against a
+    // path that does not exist yet mounts an empty directory and then has to
+    // be recreated to pick the files up.
+    const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
+    if (configRoots.size > 0) {
+      // The gateway proxies through Redis for maintenance state, and its
+      // resolver needs to know where that is. On a node it is the same Redis
+      // this stack just provisioned, reached over the docker host bridge —
+      // the address the gateway's own container will use, not this daemon's.
+      const redisCfg = (config as { redis?: { port?: number; db?: number; password?: string } }).redis;
+      service.setConfigRoots(configRoots, {
+        host: 'host.docker.internal',
+        port: redisCfg?.port ?? 6379,
+        db: (redisCfg?.db ?? 0) + 1,
+        ...(redisCfg?.password ? { password: redisCfg.password } : {}),
+      });
+    }
+
     const state = await service.provision();
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
@@ -272,6 +314,64 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * one declaration describes one service and the operator's choice of which
    * block to fill in is what decides how it runs.
    */
+/**
+   * Write the master's config files under this node's own root.
+   *
+   * Returns service name → the directory its files landed in, so the
+   * resolver can mount paths that exist HERE instead of paths that exist on
+   * the machine that sent them.
+   */
+  private async writeStackConfigs(
+    payload: import('../infrastructure/config-payload.js').ConfigPayload | undefined,
+    project: string | undefined,
+    stack: string | undefined,
+  ): Promise<Map<string, string>> {
+    const roots = new Map<string, string>();
+    if (!payload || Object.keys(payload).length === 0) return roots;
+
+    const { validatePayload, nodeConfigRoot, writeConfigFiles } = await import('../infrastructure/config-payload.js');
+    const problems = validatePayload(payload);
+    if (problems.length > 0) {
+      // Refused whole, not partially: a gateway that starts with four of its
+      // six files serves something, and what it serves is nobody's intention.
+      this.logger?.error({ problems }, 'Refusing the config files this master sent');
+      return roots;
+    }
+
+    const fsp = await import('node:fs/promises');
+    const { homeDir } = await import('../shared/env-config.js');
+    const { localHost } = await import('../infrastructure/bare-metal-runner.js');
+    const host = localHost();
+
+    for (const [service, files] of Object.entries(payload)) {
+      const root = nodeConfigRoot(homeDir(), project ?? 'omnitron', stack ?? 'default', service);
+      try {
+        await writeConfigFiles(
+          root,
+          files,
+          host,
+          (path) => fsp.rm(path, { force: true }),
+          async (dir) => {
+            try {
+              const found = await fsp.readdir(dir, { recursive: true, withFileTypes: true });
+              return found.filter((e) => e.isFile()).map((e) => `${e.parentPath ?? dir}/${e.name}`.replace(`${dir}/`, ''));
+            } catch {
+              return [];
+            }
+          },
+        );
+        roots.set(service, root);
+        this.logger?.info?.({ service, root, files: files.length }, 'Wrote the config files this service needs');
+      } catch (err) {
+        this.logger?.error(
+          { service, root, error: (err as Error).message },
+          'Could not write this service\'s config files — it will run unconfigured',
+        );
+      }
+    }
+    return roots;
+  }
+
   private async reconcileHostServices(
     declared: Record<string, IServiceRequirement>,
     overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,

@@ -153,6 +153,15 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * older or tampered one is exactly the case a receiving check exists for.
      */
     configFiles?: import('../infrastructure/config-payload.js').ConfigPayload | undefined;
+    /**
+     * Where each service's static content already is ON THIS NODE, by service
+     * name — delivered by SSH before this call, because a build is 32 MB and
+     * an RPC argument is the wrong shape for that.
+     *
+     * A path, not content: this node checks that it exists and mounts it, and
+     * refuses one that is not under the directory this daemon owns.
+     */
+    staticRoots?: Record<string, string> | undefined;
   }): Promise<{
     ready: boolean;
     detail: string;
@@ -266,13 +275,14 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // path that does not exist yet mounts an empty directory and then has to
     // be recreated to pick the files up.
     const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
+    const staticRoots = await this.acceptStaticRoots(data.staticRoots);
     if (configRoots.size > 0) {
       // The gateway proxies through Redis for maintenance state, and its
       // resolver needs to know where that is. On a node it is the same Redis
       // this stack just provisioned, reached over the docker host bridge —
       // the address the gateway's own container will use, not this daemon's.
       const redisCfg = (config as { redis?: { port?: number; db?: number; password?: string } }).redis;
-      service.setConfigRoots(configRoots, {
+      service.setConfigRoots(configRoots, staticRoots, {
         host: 'host.docker.internal',
         port: redisCfg?.port ?? 6379,
         db: (redisCfg?.db ?? 0) + 1,
@@ -321,6 +331,39 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * resolver can mount paths that exist HERE instead of paths that exist on
    * the machine that sent them.
    */
+/**
+   * Accept the static directories a master says it delivered.
+   *
+   * Two checks, and neither is a formality. The path arrives over RPC from
+   * another daemon, so it is confined to the directory this node keeps such
+   * things in — a mount source is a path with root's reach, and `/etc` is a
+   * directory too. And it must EXIST: a mount of a missing path creates an
+   * empty directory and the gateway then serves nothing from it, which looks
+   * exactly like a gateway serving a broken build.
+   */
+  private async acceptStaticRoots(roots: Record<string, string> | undefined): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (!roots) return out;
+
+    const fsp = await import('node:fs/promises');
+    const ALLOWED_PREFIX = '/opt/omnitron/stack-static/';
+
+    for (const [service, dir] of Object.entries(roots)) {
+      if (typeof dir !== 'string' || !dir.startsWith(ALLOWED_PREFIX) || dir.includes('..')) {
+        this.logger?.error({ service, dir }, `Refusing a static path outside ${ALLOWED_PREFIX}`);
+        continue;
+      }
+      const stat = await fsp.stat(dir).catch(() => null);
+      if (!stat?.isDirectory()) {
+        this.logger?.error({ service, dir }, 'The master named a static directory this node does not have');
+        continue;
+      }
+      out.set(service, dir);
+      this.logger?.info?.({ service, dir }, 'Serving this service’s static content from the node');
+    }
+    return out;
+  }
+
   private async writeStackConfigs(
     payload: import('../infrastructure/config-payload.js').ConfigPayload | undefined,
     project: string | undefined,

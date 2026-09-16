@@ -814,6 +814,63 @@ export class RemoteDeployer {
    * discarded the only sentence that said so, and the caller reported
    * `Deployment successful`.
    */
+/**
+   * Ship a built frontend to a node and say where it landed.
+   *
+   * The gateway's config travels inside the provisioning RPC — six files, 65
+   * KB. A frontend build is 32 MB, and an RPC argument is the wrong shape for
+   * that: it is held whole in memory on both sides and blocks the call it
+   * rides on. So it goes the way artifacts already go — tar over SSH, extract
+   * on the far side — which is the mechanism this class exists for.
+   *
+   * Idempotent by content: the archive's hash names the directory, so a build
+   * that has not changed is transferred once and every later provisioning pass
+   * finds it already there. A build that HAS changed lands beside the old one
+   * and the gateway's spec hash changes with the path, which is what makes the
+   * container pick it up.
+   */
+  async uploadStaticBundle(
+    target: DeployTarget,
+    localDir: string,
+    remoteRoot: string,
+  ): Promise<{ remoteDir: string; bytes: number }> {
+    const { createHash } = await import('node:crypto');
+    const fsp = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const stat = await fsp.stat(localDir).catch(() => null);
+    if (!stat?.isDirectory()) throw new Error(`No such directory to serve: ${localDir}`);
+
+    const staging = await fsp.mkdtemp(path.join(os.tmpdir(), 'omnitron-static-'));
+    const archive = path.join(staging, 'static.tar.gz');
+    try {
+      // `-C` so the archive holds the directory's CONTENTS, not a path from
+      // this machine: the node mounts what is inside, and a leading
+      // `apps/portal/dist/` would put every file one level too deep.
+      await this.execution.exec(`tar -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`);
+      const bytes = (await fsp.stat(archive)).size;
+      const digest = createHash('sha256').update(await fsp.readFile(archive)).digest('hex').slice(0, 16);
+
+      const remoteDir = `${remoteRoot}/${digest}`;
+      const remoteFile = `${remoteDir}.tar.gz`;
+
+      // Already there: the same build was sent before. Transferring it again
+      // costs 32 MB over a link that may be an SSH tunnel, for no change.
+      const exists = await this.sshExec(target, `test -d ${shellEscape(remoteDir)} && echo yes || echo no`).catch(() => 'no');
+      if (exists.trim() === 'yes') return { remoteDir, bytes: 0 };
+
+      await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
+      await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
+      await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+
+      this.logger.info({ host: target.host, remoteDir, bytes }, 'Static bundle delivered to the node');
+      return { remoteDir, bytes };
+    } finally {
+      await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
   private async signalRemoteDaemon(target: DeployTarget, appName: string): Promise<{ ok: boolean; detail: string }> {
     try {
       // No `2>/dev/null`, no `|| true`: the failure IS the information.

@@ -530,6 +530,16 @@ export function resolveGateway(
   // Use join via string concatenation (ESM-safe, avoids sync require)
   const absConfigDir = projectRoot.endsWith('/') ? projectRoot + configDir : projectRoot + '/' + configDir;
 
+  // The frontend, if this stack serves one. Absolute already means "a path on
+  // the machine that will run this", which is how a node names its own copy;
+  // a relative path is resolved against the project, like the config is.
+  const staticDir = config.staticDir;
+  const absStaticDir = !staticDir
+    ? null
+    : staticDir.startsWith('/')
+      ? staticDir
+      : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
+
   // Default upstream host — host.docker.internal for Docker, overridable for bare-metal/cluster
   const upstreamHost = 'host.docker.internal';
 
@@ -571,6 +581,10 @@ export function resolveGateway(
       { source: `${absConfigDir}/lua`, target: '/etc/nginx/lua', readonly: true },
       // Maintenance mode HTML page
       { source: `${absConfigDir}/maintenance.html`, target: '/etc/nginx/html/maintenance.html', readonly: true },
+      // The built frontend, when the stack declares one. `/var/www/portal` is
+      // the path nginx.conf serves `/` from whenever `PORTAL_DEV_UPSTREAM` is
+      // unset, which is every deployment that has no Vite beside it.
+      ...(absStaticDir ? [{ source: absStaticDir, target: '/var/www/portal', readonly: true }] : []),
     ],
     entrypoint: ['/bin/sh', '/docker-entrypoint.sh'],
     healthCheck: {
@@ -702,7 +716,12 @@ export function resolveInfrastructure(
    * `Welcome to OpenResty!`.
    */
   configRoots?: Map<string, string>,
-  gatewayContext?: { redis: { host: string; port: number; db: number; password?: string }; port?: number },
+  gatewayContext?: {
+    redis: { host: string; port: number; db: number; password?: string };
+    port?: number;
+    /** Where each service's static content lives on THIS machine. */
+    staticRoots?: Map<string, string>;
+  },
 ): ResolvedContainer[] {
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
     return [];
@@ -719,7 +738,15 @@ export function resolveInfrastructure(
   const containers = resolveAppInfrastructure(rest, overrides);
   containers.push(
     resolveGateway(
-      { port: gatewayHostPort(normalizedServices['gateway'] as never, undefined), configDir: '.' },
+      {
+        port: gatewayHostPort(normalizedServices['gateway'] as never, undefined),
+        configDir: '.',
+        // Absolute: a node names its own copy, not a path relative to a
+        // project it does not have.
+        ...(gatewayContext.staticRoots?.get('gateway')
+          ? { staticDir: gatewayContext.staticRoots.get('gateway')! }
+          : {}),
+      },
       gatewayContext.redis,
       gatewayRoot,
     ),

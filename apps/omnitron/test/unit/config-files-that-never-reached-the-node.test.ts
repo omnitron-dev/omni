@@ -304,3 +304,43 @@ describe('reading a config directory on the master', () => {
     expect(JSON.stringify(files)).not.toContain('SECRET');
   });
 });
+
+describe('a static path a master claims it delivered', () => {
+  const ALLOWED = '/opt/omnitron/stack-static/';
+  /** The confinement the node applies. Same expression as the method. */
+  const accepted = (dir: unknown) =>
+    typeof dir === 'string' && dir.startsWith(ALLOWED) && !dir.includes('..');
+
+  it('accepts the shape the deployer actually produces', () => {
+    expect(accepted('/opt/omnitron/stack-static/gateway/9f2a1c0b4e7d8a35')).toBe(true);
+  });
+
+  it('refuses a path outside the directory this daemon owns', () => {
+    // A mount SOURCE is a path with root's reach: docker will happily bind
+    // `/etc` or `/root/.ssh` into a container, and the path arrives over RPC
+    // from another daemon. `/etc` is a directory too.
+    for (const dir of [
+      '/etc',
+      '/root/.ssh',
+      '/var/lib/docker',
+      '/opt/omnitron/artifacts/daos/main/0.0.1',
+      'opt/omnitron/stack-static/x',
+      '',
+    ]) {
+      expect(accepted(dir), dir || '(empty)').toBe(false);
+    }
+  });
+
+  it('refuses a traversal that starts inside the allowed prefix', () => {
+    // The prefix check alone is not enough: a path may begin correctly and
+    // climb out afterwards.
+    expect(accepted('/opt/omnitron/stack-static/../../etc')).toBe(false);
+    expect(accepted('/opt/omnitron/stack-static/gateway/../../../root')).toBe(false);
+  });
+
+  it('refuses anything that is not a string', () => {
+    for (const dir of [null, undefined, 42, {}, ['/opt/omnitron/stack-static/x']]) {
+      expect(accepted(dir)).toBe(false);
+    }
+  });
+});

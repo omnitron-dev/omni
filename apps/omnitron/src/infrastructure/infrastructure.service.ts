@@ -573,6 +573,7 @@ export class InfrastructureService {
    */
   setConfigRoots(
     roots: Map<string, string>,
+    staticRoots: Map<string, string>,
     redis: { host: string; port: number; db: number; password?: string },
   ): void {
     if (roots.size === 0) return;
@@ -581,7 +582,7 @@ export class InfrastructureService {
       this.normalizedServices,
       this.serviceOverrides,
       roots,
-      { redis },
+      { redis, staticRoots },
     );
   }
 

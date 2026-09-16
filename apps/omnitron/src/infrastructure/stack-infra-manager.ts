@@ -179,9 +179,12 @@ export class StackInfrastructureManager {
       const gwConfigDir = (gatewayInServices?._presetConfig?.['configDir'] as string)
         ?? legacyGateway?.configDir
         ?? 'infra/nginx';
+      // The frontend this gateway serves at `/`, when the stack declares one.
+      const gwStaticDir = (gatewayInServices?._presetConfig?.['staticDir'] as string)
+        ?? (legacyGateway as { staticDir?: string } | undefined)?.staticDir;
 
       const gatewayContainer = resolveGateway(
-        { port: gwPort, configDir: gwConfigDir, redisDb: gatewayRedisDb },
+        { port: gwPort, configDir: gwConfigDir, redisDb: gatewayRedisDb, ...(gwStaticDir ? { staticDir: gwStaticDir } : {}) },
         redisConfig,
         projectRoot,
       );

@@ -94,7 +94,7 @@ import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig,
-  IMeshNodeStatus, INodeIndicators,
+  IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats,
 } from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
@@ -102,7 +102,7 @@ import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './m
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
 import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
 
-export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators } from './nodes.js';
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats } from './nodes.js';
 
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
@@ -505,6 +505,19 @@ export interface IOmnitronNodesService {
    * service on any node. This joins the two.
    */
   getNodeIndicators(data: { nodeId: string }): Promise<INodeIndicators>;
+  /**
+   * Whether the node's data is MOVING, asked over the mesh.
+   *
+   * `OmnitronSync.getSyncStatus` has answered this since it was written — its
+   * docblock says "for webapp monitoring" — and the console never knew the
+   * service existed.
+   */
+  getNodeSyncStatus(data: { nodeId: string }): Promise<INodeSyncStatus>;
+  /**
+   * The node's telemetry relay, asked over the mesh — including the only
+   * counter in the fleet that reports LOSS.
+   */
+  getNodeRelayStats(data: { nodeId: string }): Promise<INodeRelayStats>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;

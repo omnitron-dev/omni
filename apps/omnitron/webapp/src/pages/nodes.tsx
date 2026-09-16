@@ -36,7 +36,7 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // `omnitronRole?: string` where the daemon says `'master' | 'slave'`, so a
 // role it can never send would have type-checked here.
 import type {
-  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators,
+  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats,
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, firstReason, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -701,6 +701,115 @@ function NodeIndicators({ data }: { data: INodeIndicators | null }) {
 }
 
 /**
+ * Whether the node's data is MOVING.
+ *
+ * Every other reading here answers "can we reach it". A node can be green on
+ * all of them and deliver nothing: 47,407 entries buffered on one node, none
+ * delivered, over eleven hours, while the page showed it healthy. Membership
+ * in the mesh and movement through it are different questions.
+ *
+ * `pendingItems` climbing while `lastSyncAt` stands still is the whole
+ * diagnosis, and `OmnitronSync.getSyncStatus` has answered it since it was
+ * written — its own docblock says "for webapp monitoring", and this console
+ * never knew the service existed.
+ */
+function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
+  if (!data) {
+    return <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>Not read.</Typography>;
+  }
+  if (!data.reachable || !data.sync) {
+    return (
+      <Stack direction="row" spacing={1} sx={{ py: 1, alignItems: 'baseline' }}>
+        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+          {data.error ?? 'no reason given'}
+        </Typography>
+      </Stack>
+    );
+  }
+
+  const s = data.sync;
+  const stalled = s.pendingItems > 0 && !s.connected;
+  return (
+    <Box sx={{ py: 0.5 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
+        <Chip
+          size="small"
+          label={s.connected ? 'delivering' : s.pendingItems > 0 ? 'holding' : 'idle'}
+          color={stalled ? 'warning' : s.connected ? 'success' : 'default'}
+          sx={{ height: 20, fontSize: 11 }}
+        />
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {/* A count with no age is half the answer: a buffer of 40,000 that
+              drained a second ago is healthy, and one of 12 that has not moved
+              since yesterday is not. */}
+          {s.pendingItems} pending · {Math.round(s.bufferSize / 1024)} KB · last delivery{' '}
+          {s.lastSyncAt ? formatAge(new Date(s.lastSyncAt).toISOString()) : 'never'}
+        </Typography>
+        {s.failedAttempts > 0 && (
+          <Chip size="small" color="error" label={`${s.failedAttempts} failed attempts`} sx={{ height: 18, fontSize: 10 }} />
+        )}
+      </Stack>
+      {s.lastError && (
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', color: 'error.main', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-word' }}
+        >
+          {s.lastError}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/**
+ * The telemetry relay, and the one counter in the fleet that reports LOSS.
+ *
+ * `NodeSyncStatus` above is the log/metric replication; this is the other
+ * pipe. `totalDropped` is what the relay's buffer threw away because it was
+ * full — a number that only ever goes up, and which nothing has ever
+ * displayed, so a gap in a chart is discovered from the chart.
+ *
+ * `OmnitronTelemetry.getRelayStats` has answered this since it was written;
+ * the file's own header says "Webapp → Leader telemetry stats (relay
+ * health)", and the console never called it.
+ */
+function NodeRelay({ data }: { data: INodeRelayStats | null }) {
+  if (!data || !data.reachable || !data.relay) return null;
+
+  const r = data.relay as {
+    buffer?: { size?: number; totalPushed?: number; totalDropped?: number; totalFlushed?: number };
+    wal?: { size?: number } | null;
+    totalSent?: number;
+    totalFailed?: number;
+    totalReceived?: number;
+    transportConnected?: boolean;
+  };
+  const dropped = r.buffer?.totalDropped ?? 0;
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ py: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Typography variant="caption" sx={{ minWidth: 96, color: 'text.secondary' }}>telemetry</Typography>
+      <Chip
+        size="small"
+        label={r.transportConnected ? 'transport up' : 'transport down'}
+        color={r.transportConnected ? 'success' : 'default'}
+        variant={r.transportConnected ? 'filled' : 'outlined'}
+        sx={{ height: 18, fontSize: 10 }}
+      />
+      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        {r.buffer?.size ?? 0} buffered · {r.totalSent ?? 0} sent · {r.totalFailed ?? 0} failed
+      </Typography>
+      {dropped > 0 && (
+        // Loud, and only when it has happened: a zero here is the normal case
+        // and a chip that is always present stops being read.
+        <Chip size="small" color="error" label={`${dropped} DROPPED`} sx={{ height: 18, fontSize: 10 }} />
+      )}
+    </Stack>
+  );
+}
+
+/**
  * Everything the daemon already knows about why a node is unwell.
  *
  * Each check records three layers with their own error string — whether the
@@ -718,6 +827,8 @@ function NodeDiagnosisDialog({
 }) {
   const [history, setHistory] = useState<HealthCheckRow[]>([]);
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
+  const [sync, setSync] = useState<INodeSyncStatus | null>(null);
+  const [relay, setRelay] = useState<INodeRelayStats | null>(null);
   const [limit, setLimit] = useState<number>(50);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -732,11 +843,15 @@ function NodeDiagnosisDialog({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind] = await Promise.allSettled([
+      const [rows, ind, syn, rel] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
+        nodesRpc.getNodeSyncStatus({ nodeId }),
+        nodesRpc.getNodeRelayStats({ nodeId }),
       ]);
       setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
+      setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : null);
+      setRelay(rel.status === 'fulfilled' ? (rel.value as INodeRelayStats) : null);
       if (rows.status === 'rejected') throw rows.reason;
       setHistory(rows.value as HealthCheckRow[]);
     } catch (err) {
@@ -829,6 +944,12 @@ function NodeDiagnosisDialog({
           Indicators, from the node&apos;s own titan-health
         </Typography>
         <NodeIndicators data={indicators} />
+
+        <Divider sx={{ my: 2 }} />
+
+        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Replication</Typography>
+        <NodeSyncStatus data={sync} />
+        <NodeRelay data={relay} />
 
         <Divider sx={{ my: 2 }} />
 

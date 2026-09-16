@@ -968,6 +968,19 @@ export class OmnitronDaemon {
         nodeManagerRpcService.setRemoteDeployer(new RemoteDeployer(deployLogger, new ExecutionService(deployLogger)));
       }
       this.nodeManagerRpcService = nodeManagerRpcService;
+
+      // The local node's own answers, for the three readers that ask every
+      // node about itself. A daemon has no mesh connection to itself, so
+      // `askNode` needs a local source for each.
+      //
+      // On the INSTANCE, after it is assigned, and not on `this.…?.` from
+      // wherever each dependency happens to be constructed: `setSyncService`
+      // was first written next to `new SyncService(...)`, ninety lines above
+      // this assignment and inside the same function, where `?.` swallowed it
+      // silently and the local node would have reported "not wired" forever.
+      // An optional call is only safe where the object is known to exist.
+      nodeManagerRpcService.setSyncService(this.syncService);
+
       await this.app.netron.peer.exposeService(nodeManagerRpcService);
 
       // The mesh: every registered node, connected and replicating.
@@ -1057,6 +1070,9 @@ export class OmnitronDaemon {
       const { TelemetryRpcService: TelemetryRpc } = await import('../services/telemetry.rpc-service.js');
       const telemetryRelay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
       const telemetryRpcService = new TelemetryRpc(telemetryRelay);
+      // The console asks every node for its relay, and a daemon has no mesh
+      // connection to itself, so the local node's answer comes from here.
+      this.nodeManagerRpcService?.setTelemetryRelay(telemetryRelay);
       await this.app.netron.peer.exposeService(telemetryRpcService);
 
       // Fleet management RPC service

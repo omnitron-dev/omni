@@ -27,7 +27,8 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats } from '../shared/dto/nodes.js';
+import type { ISyncStatus } from '../shared/dto/project.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
 
@@ -67,6 +68,10 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
 
   private titanHealth: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null = null;
+
+  private syncService: { getStatus(): Promise<ISyncStatus> } | null = null;
+
+  private telemetryRelay: { stats(): unknown } | null = null;
 
   constructor(private readonly nodeManager: NodeManagerService) {}
 
@@ -263,6 +268,58 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     this.titanHealth = service;
   }
 
+  /** This daemon's own replication state, for the local node. */
+  setSyncService(service: { getStatus(): Promise<ISyncStatus> } | null): void {
+    this.syncService = service;
+  }
+
+  /** This daemon's own telemetry relay, for the local node. */
+  setTelemetryRelay(relay: { stats(): unknown } | null): void {
+    this.telemetryRelay = relay;
+  }
+
+/**
+   * Ask a service ON the node, wherever the node is.
+   *
+   * The console's own clients are bound to the daemon it is connected to, so
+   * every question about a node used to be answerable only about the local
+   * one. `SlaveConnector.invokeOnSlave` has always been able to reach any
+   * service on any node over the mesh and had exactly one caller; this is the
+   * seam the node readers share, so adding the next one is a method name
+   * rather than another copy of the plumbing.
+   *
+   * `ok: false` carries the REASON and never a verdict. A node outside the
+   * mesh has not answered; saying "unhealthy" or "not replicating" about
+   * silence sends an operator to repair the wrong thing.
+   */
+  private async askNode<T>(
+    nodeId: string,
+    service: string,
+    method: string,
+    args: unknown[],
+    local: (() => Promise<T>) | null,
+  ): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+    const node = this.nodeManager.getNode(nodeId);
+    if (!node) return { ok: false, error: 'No such node' };
+
+    if (node.isLocal) {
+      if (!local) return { ok: false, error: `${service} is not wired on this daemon` };
+      try {
+        return { ok: true, value: await local() };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    }
+
+    if (!this.slaveConnector) return { ok: false, error: 'This daemon has no mesh connector' };
+    try {
+      const value = (await this.slaveConnector.invokeOnSlave(node.host, node.daemonPort, service, method, args)) as T;
+      return { ok: true, value };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
   /**
    * What the node's OWN titan-health says about it.
    *
@@ -285,41 +342,74 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeIndicators(data: { nodeId: string }): Promise<INodeIndicators> {
-    const node = this.nodeManager.getNode(data.nodeId);
-    if (!node) return { nodeId: data.nodeId, reachable: false, error: 'No such node', status: null, indicators: {} };
-
-    if (node.isLocal) {
-      if (!this.titanHealth) {
-        return { nodeId: node.id, reachable: false, error: 'titan-health is not running on this daemon', status: null, indicators: {} };
-      }
-      try {
-        const report = await this.titanHealth.check();
-        return { nodeId: node.id, reachable: true, error: null, status: report.status, indicators: report.indicators };
-      } catch (err) {
-        return { nodeId: node.id, reachable: false, error: (err as Error).message, status: null, indicators: {} };
-      }
-    }
-
-    if (!this.slaveConnector) {
-      return { nodeId: node.id, reachable: false, error: 'This daemon has no mesh connector', status: null, indicators: {} };
-    }
-
-    try {
-      const report = (await this.slaveConnector.invokeOnSlave(
-        node.host,
-        node.daemonPort,
-        'Health@1.0.0',
-        'check',
-        [],
-      )) as { status: string; indicators: Record<string, unknown> };
-      return { nodeId: node.id, reachable: true, error: null, status: report?.status ?? null, indicators: report?.indicators ?? {} };
-    } catch (err) {
-      // The common reasons are worth reading as themselves: a node outside the
-      // mesh has never been asked, which is a different thing from a node that
-      // was asked and is unwell.
-      return { nodeId: node.id, reachable: false, error: (err as Error).message, status: null, indicators: {} };
-    }
+    const r = await this.askNode<{ status: string; indicators: Record<string, unknown> }>(
+      data.nodeId,
+      'Health@1.0.0',
+      'check',
+      [],
+      this.titanHealth ? () => this.titanHealth!.check() : null,
+    );
+    return r.ok
+      ? { nodeId: data.nodeId, reachable: true, error: null, status: r.value?.status ?? null, indicators: r.value?.indicators ?? {} }
+      : { nodeId: data.nodeId, reachable: false, error: r.error, status: null, indicators: {} };
   }
+
+  /**
+   * Whether the node's data is actually MOVING.
+   *
+   * Every other reading on the node page answers "can we reach it". A node can
+   * be green on all of them and replicate nothing — and for every registered
+   * node that no stack had been deployed onto, that is exactly what happened:
+   * 47,407 entries buffered on one, none delivered, over eleven hours, while
+   * the page showed it healthy.
+   *
+   * `OmnitronSync.getSyncStatus` has answered this since it was written; its
+   * own docblock says "for webapp monitoring" and the console has never known
+   * the service exists. `pendingItems` climbing with `lastSyncAt` standing
+   * still is the whole diagnosis, and it was one call away the entire time.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeSyncStatus(data: { nodeId: string }): Promise<INodeSyncStatus> {
+    const r = await this.askNode<ISyncStatus>(
+      data.nodeId,
+      'OmnitronSync',
+      'getSyncStatus',
+      [],
+      this.syncService ? () => this.syncService!.getStatus() : null,
+    );
+    return r.ok
+      ? { nodeId: data.nodeId, reachable: true, error: null, sync: r.value }
+      : { nodeId: data.nodeId, reachable: false, error: r.error, sync: null };
+  }
+
+/**
+   * The node's telemetry relay: what it buffered, sent, failed and DROPPED.
+   *
+   * `getNodeSyncStatus` answers whether the log/metric replication is moving.
+   * This answers the other pipe — the telemetry relay — and it carries the one
+   * counter in the fleet that reports LOSS. `totalDropped` is what the buffer
+   * threw away because it was full, and a number that only ever goes up while
+   * nobody looks is how a gap in the metrics is discovered months later from
+   * the chart rather than from the daemon that made it.
+   *
+   * `OmnitronTelemetry.getRelayStats` has answered this since it was written —
+   * the file's own header says "Webapp → Leader telemetry stats (relay
+   * health)" — and the console has never called it.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeRelayStats(data: { nodeId: string }): Promise<INodeRelayStats> {
+    const r = await this.askNode<Record<string, unknown>>(
+      data.nodeId,
+      'OmnitronTelemetry',
+      'getRelayStats',
+      [],
+      this.telemetryRelay ? () => Promise.resolve(this.telemetryRelay!.stats() as Record<string, unknown>) : null,
+    );
+    return r.ok
+      ? { nodeId: data.nodeId, reachable: true, error: null, relay: r.value ?? null }
+      : { nodeId: data.nodeId, reachable: false, error: r.error, relay: null };
+  }
+
 
   /**
    * Whether each node is replicating, and how it is being reached.

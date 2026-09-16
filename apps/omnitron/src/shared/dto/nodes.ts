@@ -185,3 +185,39 @@ export interface INodeIndicators {
   /** Indicator name → its result, as titan-health reports it. */
   indicators: Record<string, unknown>;
 }
+
+/**
+ * Whether a node's data is reaching this master.
+ *
+ * Reachability and membership are different questions, and so are membership
+ * and MOVEMENT. A node can answer every ping, sit in the mesh authenticated,
+ * and still have delivered nothing — `pendingItems` climbing while
+ * `lastSyncAt` stands still is the whole diagnosis.
+ *
+ * `reachable: false` means the node was not asked, and carries why. It is not
+ * "not replicating".
+ */
+export interface INodeSyncStatus {
+  nodeId: string;
+  reachable: boolean;
+  error: string | null;
+  sync: import('./project.js').ISyncStatus | null;
+}
+
+/**
+ * A node's telemetry relay, as it reports itself.
+ *
+ * The companion to `INodeSyncStatus`: that one is the log/metric replication,
+ * this one the telemetry relay. It carries the only counter in the fleet that
+ * reports LOSS — `relay.buffer.totalDropped`, entries the buffer threw away
+ * because it was full. A gap in a chart is otherwise discovered from the chart.
+ *
+ * `reachable: false` means the node was not asked, and carries why.
+ */
+export interface INodeRelayStats {
+  nodeId: string;
+  reachable: boolean;
+  error: string | null;
+  /** As `TelemetryRelayService.stats()` returns it; shape owned by that package. */
+  relay: Record<string, unknown> | null;
+}

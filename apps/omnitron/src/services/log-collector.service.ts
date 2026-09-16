@@ -57,6 +57,14 @@ const FLUSH_INTERVAL_MS = 1_000;
  */
 const RETENTION_INTERVAL_MS = 60 * 60 * 1_000;
 
+/**
+ * How long to wait before the FIRST retention pass.
+ *
+ * Long enough for migrations to have created the table. See
+ * `setRetentionDays` for what firing at zero produced.
+ */
+const RETENTION_FIRST_PASS_DELAY_MS = 60_000;
+
 /** Cadence while a backlog is still draining — see `scheduleRetention`. */
 const RETENTION_BACKLOG_INTERVAL_MS = 60 * 1_000;
 const FLUSH_THRESHOLD = 100;
@@ -173,7 +181,18 @@ export class LogCollectorService extends EventEmitter {
       this.logger?.info?.({ days }, 'Log table retention disabled');
       return;
     }
-    this.scheduleRetention(0);
+    // Not zero. A pass fired the instant the collector is configured races
+    // the migrations that create the table it reads: measured on a daemon
+    // start, `Log retention pass failed — relation "logs" does not exist`,
+    // once, at 03:27:03. Harmless in itself — the next pass an hour later
+    // succeeds — but it is an error-level line about a subsystem that is
+    // fine, and an error nobody can act on is one they learn to scroll past.
+    //
+    // The first pass has nothing urgent to do anyway: rows become eligible
+    // for deletion by ageing past the window, so a minute's delay costs
+    // nothing and a backlog is still drained at the faster cadence once the
+    // first pass sees one.
+    this.scheduleRetention(RETENTION_FIRST_PASS_DELAY_MS);
   }
 
   /**

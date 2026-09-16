@@ -101,3 +101,38 @@ describe('batchesPerPass', () => {
     expect(batchesPerPass({ cutoff: NOW, batchSize: 10_000, maxThisPass: 0 })).toBe(1);
   });
 });
+
+describe('the first pass waits for the table to exist', () => {
+  it('does not schedule the first retention pass at zero', async () => {
+    // Measured on a daemon start: `Log retention pass failed — relation
+    // "logs" does not exist`, once, at 03:27:03. `setRetentionDays` is called
+    // while the daemon is wiring services, and the migrations that create the
+    // table have not necessarily run.
+    //
+    // Harmless in outcome — the next pass an hour later succeeds — and that
+    // is exactly what makes it worth fixing: an error-level line about a
+    // subsystem that is fine teaches whoever reads the log to scroll past
+    // error-level lines.
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('../../src/services/log-collector.service.ts', import.meta.url), 'utf8'),
+    );
+
+    expect(src, 'the first pass must not fire at zero').not.toMatch(/this\.scheduleRetention\(0\)/);
+    expect(src).toMatch(/this\.scheduleRetention\(RETENTION_FIRST_PASS_DELAY_MS\)/);
+
+    // And the delay has to be long enough to be worth having: a second would
+    // lose the same race.
+    const delay = Number(/RETENTION_FIRST_PASS_DELAY_MS = ([\d_]+)/.exec(src)?.[1]?.replace(/_/g, ''));
+    expect(delay).toBeGreaterThanOrEqual(30_000);
+  });
+
+  it('still drains a backlog at the faster cadence', async () => {
+    // The delay must not become a reason a backlog takes a day: the first
+    // pass is late, and every pass after it is scheduled by its own result.
+    const { planRetention } = await import('../../src/services/log-retention.js');
+    const plan = planRetention(7);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.maxThisPass).toBeGreaterThan(0);
+  });
+});

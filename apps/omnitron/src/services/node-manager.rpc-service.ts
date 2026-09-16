@@ -148,6 +148,21 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return this.nodeManager.checkNodeStatus(data.id);
   }
 
+  /**
+   * Check every node, returning each one's STATUS.
+   *
+   * Two methods run the same round. This one answers `INodeStatus[]` — the
+   * three reachability layers with their errors — and `triggerNodeCheck({})`
+   * answers `INodeHealthSummary[]`, which adds `consecutiveFailures` and
+   * `lastSeenOnline` and drops the per-layer detail. Neither is redundant and
+   * neither had a production caller: the console now uses both, one for the
+   * diagnosis panel and one for "has it been down since Tuesday or did it
+   * blink once".
+   *
+   * Which to call is decided by which of those two answers you need, and
+   * saying so here is cheaper than the next reader discovering the difference
+   * after choosing the wrong one.
+   */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async checkAllNodes(): Promise<INodeStatus[]> {
     const summaries = await this.callWorker((w) => w.triggerCheck(), 'triggerCheck');

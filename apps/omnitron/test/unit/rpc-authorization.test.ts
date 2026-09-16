@@ -28,14 +28,29 @@ import { fileURLToPath } from 'node:url';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SERVICES = path.resolve(here, '../../src/services');
+const SRC = path.resolve(here, '../../src');
 
-/** RPC service modules — the files carrying `@Service` and `@Public`. */
+/**
+ * RPC service modules — the files carrying `@Service` and `@Public`.
+ *
+ * Walked from `src`, not listed from `src/services`. The flat read missed two
+ * of the twenty-one, and they were not minor ones: `cluster.rpc-service.ts`,
+ * where `stepDown` — deposing the cluster leader — carried a bare `@Public()`
+ * and so no auth at all, and `daemon.rpc-service.ts`, the most privileged
+ * surface there is. A check that reads one directory answers only about that
+ * directory, and every assertion below is of the form "this appears nowhere",
+ * which an incomplete corpus passes.
+ */
 function rpcServiceFiles(): string[] {
-  return fs
-    .readdirSync(SERVICES)
-    .filter((f) => f.endsWith('.rpc-service.ts'))
-    .map((f) => path.join(SERVICES, f));
+  const out: string[] = [];
+  (function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.rpc-service.ts')) out.push(full);
+    }
+  })(SRC);
+  return out.sort();
 }
 
 describe('RPC authorization metadata', () => {
@@ -43,6 +58,10 @@ describe('RPC authorization metadata', () => {
 
   it('found the services it is supposed to check', () => {
     expect(files.length, 'rpc-service modules').toBeGreaterThan(10);
+    // The two that a flat read of `src/services` cannot see. Named, so the
+    // walk cannot quietly become a listing again.
+    expect(files.some((f) => f.endsWith('cluster.rpc-service.ts')), 'cluster service in scope').toBe(true);
+    expect(files.some((f) => f.endsWith('daemon.rpc-service.ts')), 'daemon service in scope').toBe(true);
   });
 
   it('reads the roles back through the key the transport uses', async () => {

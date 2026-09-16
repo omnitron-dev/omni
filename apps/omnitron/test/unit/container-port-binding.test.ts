@@ -189,3 +189,69 @@ describe('the gateway is bound like everything else', () => {
     expect(containerSpecHash(loopback as never)).not.toBe(containerSpecHash(exposed as never));
   });
 });
+
+// =============================================================================
+// Where a gateway is published is not where it listens
+// =============================================================================
+
+describe('the preset separates the container port from the host mapping', () => {
+  it('reads a config port as a host mapping, leaving the container port alone', async () => {
+    const { createDefaultRegistry } = await import('../../src/infrastructure/presets/index.js');
+
+    const expanded = createDefaultRegistry().expand('gateway', { preset: 'openresty', ports: { http: 8080 } } as never);
+
+    // openresty listens on 80 because that is what the image does; 8080 is
+    // where the stack wants it reachable. Reading `ports.http` as "the host
+    // port" takes the first for the second, and publishes the gateway on 80.
+    expect(expanded.ports?.['http']).toBe(80);
+    expect(expanded.docker?.portMappings?.['http']).toBe(8080);
+  });
+
+  it('treats a port the preset does not know as a container port', async () => {
+    const { createDefaultRegistry } = await import('../../src/infrastructure/presets/index.js');
+
+    const expanded = createDefaultRegistry().expand('gateway', { preset: 'openresty', ports: { metrics: 9145 } } as never);
+
+    // Nothing to map it onto: the config is naming a port the image listens
+    // on, not where to publish one the preset already declared.
+    expect(expanded.ports?.['metrics']).toBe(9145);
+    expect(expanded.docker?.portMappings?.['metrics']).toBeUndefined();
+  });
+});
+
+describe('the gateway is published where the stack asked', () => {
+  it('reads the host mapping, not the container port', async () => {
+    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+    const { createDefaultRegistry } = await import('../../src/infrastructure/presets/index.js');
+
+    // The real expansion, not a hand-built shape: this is the exact object
+    // the manager receives, and the point of the defect was that its two
+    // port fields answer two different questions.
+    const expanded = createDefaultRegistry().expand('gateway', { preset: 'openresty', ports: { http: 8080 } } as never);
+
+    expect(gatewayHostPort(expanded as never, undefined)).toBe(8080);
+  });
+
+  it('falls back to the container port when nothing maps it', async () => {
+    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+
+    // A port the preset never declared IS a container port, and publishing it
+    // on the same number is the same answer `resolveServiceRequirement` gives.
+    expect(gatewayHostPort({ ports: { http: 9999 } }, undefined)).toBe(9999);
+  });
+
+  it('still honours the legacy field, and its own default', async () => {
+    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+
+    expect(gatewayHostPort(undefined, { port: 7000 })).toBe(7000);
+    expect(gatewayHostPort(undefined, undefined)).toBe(8080);
+  });
+
+  it('prefers an explicit mapping over a config port', async () => {
+    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+
+    // `portMappings` says the same thing more precisely, and the preset
+    // expansion already lets it win. This must not undo that.
+    expect(gatewayHostPort({ ports: { http: 80 }, docker: { portMappings: { http: 8081 } } }, { port: 7000 })).toBe(8081);
+  });
+});

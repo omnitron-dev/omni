@@ -60,6 +60,54 @@ export interface BuildOptions {
  * and fails at the first import — which is the least useful moment to learn
  * it.
  */
+/**
+ * Where `pnpm` is, for a process that did not inherit a shell's PATH.
+ *
+ * The daemon is started by launchd, whose PATH is
+ * `…/node/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin`
+ * — and pnpm's own installer puts the binary in `~/Library/pnpm`, which is on
+ * none of those. So every artifact build failed with ENOENT, `buildAll`
+ * swallowed it into `console.error`, and the caller logged
+ * `Artifacts built for deployment` over an empty list.
+ *
+ * Resolved once per process and remembered: the answer cannot change while
+ * the daemon runs, and the search is a handful of `stat` calls.
+ *
+ * Returns `pnpm` unchanged when nothing is found, so the failure is an ENOENT
+ * naming the command rather than a path this invented.
+ */
+let pnpmPath: string | null = null;
+function resolvePnpm(): string {
+  if (pnpmPath) return pnpmPath;
+
+  const home = process.env['HOME'] ?? '';
+  const candidates = [
+    // The two pnpm installs itself into, in the order it prefers.
+    process.env['PNPM_HOME'] ? `${process.env['PNPM_HOME']}/pnpm` : null,
+    home ? `${home}/Library/pnpm/pnpm` : null,
+    home ? `${home}/.local/share/pnpm/pnpm` : null,
+    '/opt/homebrew/bin/pnpm',
+    '/usr/local/bin/pnpm',
+  ].filter((c): c is string => c !== null);
+
+  for (const candidate of candidates) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      pnpmPath = candidate;
+      return candidate;
+    } catch {
+      // Not here; try the next.
+    }
+  }
+  return 'pnpm';
+}
+
+/** The resolver, for a test that must run on the machine it is about. */
+export function resolvePnpmForTests(): string {
+  pnpmPath = null;
+  return resolvePnpm();
+}
+
 export class ArtifactWithoutDependencies extends Error {
   constructor(
     readonly app: string,
@@ -128,18 +176,36 @@ export class ArtifactBuilder {
   /**
    * Build all apps in the project.
    */
-  async buildAll(entries: IEcosystemAppEntry[], options?: BuildOptions): Promise<ArtifactInfo[]> {
-    const results: ArtifactInfo[] = [];
+  /**
+   * Build every app, and say which ones did not build.
+   *
+   * This caught each failure and wrote it to `console.error` — which in a
+   * daemon goes nowhere anyone reads — then returned the apps that worked.
+   * With all six failing, the caller received `[]` and logged
+   * `Artifacts built for deployment`, and the deployment proceeded to ship
+   * nothing to a node that then had nothing to run.
+   *
+   * The failures come back with the successes now. A caller that wants to
+   * continue past them still can; a caller that reports success cannot do it
+   * without looking.
+   */
+  async buildAll(
+    entries: IEcosystemAppEntry[],
+    options?: BuildOptions,
+  ): Promise<{ built: ArtifactInfo[]; failed: Array<{ app: string; error: string }> }> {
+    const built: ArtifactInfo[] = [];
+    const failed: Array<{ app: string; error: string }> = [];
+
     for (const entry of entries) {
       if (entry.enabled === false) continue;
       try {
-        const info = await this.buildApp(entry, options);
-        results.push(info);
+        built.push(await this.buildApp(entry, options));
       } catch (err) {
-        console.error(`Failed to build ${entry.name}: ${(err as Error).message}`);
+        failed.push({ app: entry.name, error: (err as Error).message });
       }
     }
-    return results;
+
+    return { built, failed };
   }
 
   /**
@@ -223,7 +289,7 @@ export class ArtifactBuilder {
 
   private async runBuild(appDir: string, appName: string): Promise<void> {
     try {
-      await exec('pnpm', ['build'], { cwd: appDir, timeout: 120_000 });
+      await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 120_000 });
     } catch (err: any) {
       throw new Error(`Build failed for ${appName}: ${err.stderr?.slice(0, 200) ?? err.message}`, { cause: err });
     }
@@ -268,7 +334,7 @@ export class ArtifactBuilder {
 
     try {
       await exec(
-        'pnpm',
+        resolvePnpm(),
         ['deploy', '--filter', pkgName, '--prod', '--legacy', deployDir],
         { cwd: this.projectRoot, timeout: 600_000 },
       );

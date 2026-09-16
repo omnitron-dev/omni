@@ -56,7 +56,10 @@ describe('the artifact carries what the app needs to run', () => {
   it('is built by pnpm deploy, which resolves workspace dependencies', () => {
     // `pnpm deploy` is the built-in answer to exactly this question, and
     // using it means no bundling decisions of our own to get wrong.
-    expect(builder).toMatch(/pnpm['"]?,\s*\n?\s*\[['"]deploy['"]/);
+    // `resolvePnpm()`, not the literal `'pnpm'`: the daemon's PATH does not
+    // contain pnpm's install directory, and the bare name resolved to ENOENT
+    // for every app. Asserting the literal here would pin the defect.
+    expect(builder).toMatch(/resolvePnpm\(\),\s*\n?\s*\[['"]deploy['"]/);
     expect(builder).toContain("'--prod'");
     // pnpm 10 otherwise demands `inject-workspace-packages`, which is a
     // workspace-wide setting and not this command's to change.

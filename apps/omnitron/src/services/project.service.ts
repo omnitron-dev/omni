@@ -1291,7 +1291,16 @@ export class ProjectService extends EventEmitter {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
         const builder = new ArtifactBuilder(project.path);
-        artifacts = await builder.buildAll(appEntries);
+        const outcome = await builder.buildAll(appEntries);
+        artifacts = outcome.built;
+        if (outcome.failed.length > 0) {
+          // Said at error level and per app: a stack whose artifacts did not
+          // build deploys nothing, and the reason is in the builder's hands
+          // and nowhere else.
+          for (const f of outcome.failed) {
+            this.logger.error({ app: f.app, stack: stackName, error: f.error }, 'Artifact build failed');
+          }
+        }
         this.logger.info(
           { artifacts: artifacts.map((a) => `${a.app}@${a.version}`), stack: stackName },
           'Artifacts built for deployment'
@@ -1653,7 +1662,11 @@ export class ProjectService extends EventEmitter {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
         const builder = new ArtifactBuilder(project.path);
-        artifacts = await builder.buildAll(appEntries);
+        const outcome = await builder.buildAll(appEntries);
+        artifacts = outcome.built;
+        for (const f of outcome.failed) {
+          this.logger.error({ app: f.app, error: f.error }, 'Artifact build failed');
+        }
       } catch (err) {
         this.logger.error({ error: (err as Error).message }, 'Artifact build failed');
       }

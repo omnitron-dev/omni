@@ -275,6 +275,17 @@ export class RemoteDeployer {
     target: DeployTarget,
     artifact: ArtifactInfo,
     project: string,
+    options?: {
+      /**
+       * Whether to start the app once its artifact is in place.
+       *
+       * False for a stack deployment, which installs everything, writes the
+       * app definitions, and only then starts — because a node cannot start
+       * an app it has no definition for, and the definitions are written from
+       * the set of artifacts that landed.
+       */
+      startAfterInstall?: boolean;
+    },
   ): Promise<DeployResult> {
     const startTime = Date.now();
     const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
@@ -335,7 +346,18 @@ export class RemoteDeployer {
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }
 
-      // 6. Signal remote daemon to restart the app
+      // 6. Installed. Starting is a SEPARATE phase, and the order matters:
+      // a node cannot start an app it has no definition for, and the
+      // definitions are written once all the artifacts have landed. Starting
+      // here made the two mutually exclusive — the restart failed with
+      // `Unknown app`, the result was marked failed, and the registration,
+      // which only writes apps whose deployment succeeded, wrote nothing.
+      if (options?.startAfterInstall === false) {
+        const duration = Date.now() - startTime;
+        this.emitProgress(nodeKey, artifact.app, 'success', 75, 'Installed');
+        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'success', duration };
+      }
+
       this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');
       const started = await this.signalRemoteDaemon(target, artifact.app);
 
@@ -424,7 +446,11 @@ export class RemoteDeployer {
     const executing = new Set<Promise<void>>();
     for (const task of tasks) {
       const promise = (async () => {
-        const result = await this.deployToNode(task.target, task.artifact, project);
+        // Install only when the definitions are coming: the app cannot be
+        // started before the node knows it exists.
+        const result = await this.deployToNode(task.target, task.artifact, project, {
+          startAfterInstall: !options?.apps?.length,
+        });
         results.push(result);
       })();
 
@@ -444,10 +470,40 @@ export class RemoteDeployer {
     // `results` knows and the artifact list does not.
     if (options?.apps?.length) {
       for (const target of targets) {
+        // The SAME key `deployToNode` builds — `host:daemonPort`. Comparing
+        // against the SSH port here matched nothing, so the registration and
+        // the start phase would both have run over an empty list and reported
+        // nothing wrong.
+        const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
         const landed = results
-          .filter((r) => r.node === `${target.host}:${target.sshPort ?? 22}` && r.status === 'success')
+          .filter((r) => r.node === nodeKey && r.status === 'success')
           .map((r) => ({ app: r.app, version: r.version }));
         await this.registerNodeApps(target, project, options.apps, landed);
+
+        // Now that the node knows what these apps are, start them. Their
+        // result is upgraded in place, so a caller reading `results` sees
+        // running apps rather than installed files.
+        for (const entry of landed) {
+          const result = results.find((r) => r.app === entry.app && r.node === nodeKey);
+          if (!result) continue;
+
+          const started = await this.signalRemoteDaemon(target, entry.app);
+          const health = started.ok ? await this.verifyHealth(target, entry.app) : { online: false, detail: started.detail };
+          if (health.online) {
+            this.emitProgress(result.node, entry.app, 'success', 100, 'Running');
+            continue;
+          }
+
+          // Installed and not running is a failure, and it is the state this
+          // fleet reported as success for as long as it has existed.
+          result.status = 'failed';
+          result.error = `artifact installed, app not running: ${started.ok ? health.detail : started.detail}`;
+          this.emitProgress(result.node, entry.app, 'failed', 90, result.error);
+          this.logger.error(
+            { node: result.node, app: entry.app, version: entry.version, detail: result.error },
+            'Artifact installed, but the app is not running on the node',
+          );
+        }
       }
     }
 

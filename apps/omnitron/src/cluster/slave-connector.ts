@@ -128,6 +128,20 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
  */
 const SLAVE_REQUEST_TIMEOUT = 10 * 60_000;
 
+/**
+ * Whether an error means the connection is gone rather than the call failed.
+ *
+ * A remote method that threw is a result; a socket that closed is not. Only
+ * the second is worth reconnecting for, and confusing them turns a genuine
+ * remote failure into a retry loop against a node that will refuse it again.
+ */
+export function isConnectionGone(err: unknown): boolean {
+  const message = (err as Error)?.message ?? String(err);
+  return /socket closed|not connected|ECONNRESET|EPIPE|connection closed|socket is not open|Peer .* disconnected/i.test(
+    message,
+  );
+}
+
 export class SlaveConnector {
   private readonly connections = new Map<string, SlaveConnection>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -298,7 +312,56 @@ export class SlaveConnector {
   /**
    * Invoke an RPC method on a specific slave.
    */
-  async invokeOnSlave(host: string, port: number, service: string, method: string, args: unknown[]): Promise<unknown> {
+  async invokeOnSlave(
+    host: string,
+    port: number,
+    service: string,
+    method: string,
+    args: unknown[],
+    options?: {
+      /**
+       * Reconnect and try once more when the call dies with a closed socket.
+       *
+       * `status: 'connected'` is a cached belief, refreshed by the heartbeat.
+       * Between a node's daemon exiting and the next heartbeat noticing, the
+       * connection object still says connected and the socket is dead — and
+       * the only way to find out is to use it.
+       *
+       * That window is not rare, it is the NORMAL case for the one caller
+       * that matters: the deployer restarts a node's daemon, waits for it to
+       * answer, and the very next step provisions its infrastructure over a
+       * mesh connection established to the process that just exited.
+       * Measured three times in a row on the test node — `Slave node
+       * provisioned` at 14:01:29, `Socket closed during RPC` in the same
+       * second, and a stack that never got its containers.
+       *
+       * Opt-in per call rather than blanket, because a retry is only safe
+       * for an operation that can be applied twice. `provisionStack` is a
+       * reconciler and can; a call that transfers or increments cannot, and
+       * must keep failing loudly instead.
+       */
+      retryOnDisconnect?: boolean;
+    },
+  ): Promise<unknown> {
+    try {
+      return await this.callOnSlave(host, port, service, method, args);
+    } catch (err) {
+      if (!options?.retryOnDisconnect || !isConnectionGone(err)) throw err;
+
+      this.logger.info(
+        { host, port, service, method, error: (err as Error).message },
+        'The mesh connection was already gone — reconnecting and trying once more',
+      );
+      await this.removeSlave(host, port);
+      await this.addSlave({ host, port });
+      if (!(await this.waitUntilConnected(host, port, 60_000))) {
+        throw new Error(`Slave ${host}:${port} did not come back after its connection dropped`);
+      }
+      return await this.callOnSlave(host, port, service, method, args);
+    }
+  }
+
+  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[]): Promise<unknown> {
     const key = `${host}:${port}`;
     const conn = this.connections.get(key);
     if (!conn?.peer) throw new Error(`Slave ${key} not connected`);

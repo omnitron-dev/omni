@@ -221,7 +221,7 @@ describe('the preset separates the container port from the host mapping', () => 
 
 describe('the gateway is published where the stack asked', () => {
   it('reads the host mapping, not the container port', async () => {
-    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+    const { gatewayHostPort } = await import('../../src/infrastructure/service-resolver.js');
     const { createDefaultRegistry } = await import('../../src/infrastructure/presets/index.js');
 
     // The real expansion, not a hand-built shape: this is the exact object
@@ -233,7 +233,7 @@ describe('the gateway is published where the stack asked', () => {
   });
 
   it('falls back to the container port when nothing maps it', async () => {
-    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+    const { gatewayHostPort } = await import('../../src/infrastructure/service-resolver.js');
 
     // A port the preset never declared IS a container port, and publishing it
     // on the same number is the same answer `resolveServiceRequirement` gives.
@@ -241,14 +241,14 @@ describe('the gateway is published where the stack asked', () => {
   });
 
   it('still honours the legacy field, and its own default', async () => {
-    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+    const { gatewayHostPort } = await import('../../src/infrastructure/service-resolver.js');
 
     expect(gatewayHostPort(undefined, { port: 7000 })).toBe(7000);
     expect(gatewayHostPort(undefined, undefined)).toBe(8080);
   });
 
   it('prefers an explicit mapping over a config port', async () => {
-    const { gatewayHostPort } = await import('../../src/infrastructure/stack-infra-manager.js');
+    const { gatewayHostPort } = await import('../../src/infrastructure/service-resolver.js');
 
     // `portMappings` says the same thing more precisely, and the preset
     // expansion already lets it win. This must not undo that.

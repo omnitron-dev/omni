@@ -41,6 +41,36 @@ export function getContainerPrefix(): string {
   return CONTAINER_PREFIX;
 }
 
+
+/**
+ * Where to PUBLISH the gateway, which is not where it listens.
+ *
+ * After preset expansion `ports` holds CONTAINER ports — openresty's
+ * `defaultPorts.http` is 80, because that is what the image listens on — and
+ * a port named in the config becomes a HOST mapping under
+ * `docker.portMappings`. Reading `ports.http` takes the first for the second,
+ * so a stack asking for 8080 gets a gateway published on 80.
+ *
+ * Measured on the dev stand: `omnitron.config.ts` declares
+ * `gateway.ports.http = 8080` and its own comment says ":8080" three times,
+ * while `daos-dev-gateway` published `80/tcp -> 0.0.0.0:80`. The consequence
+ * is quiet rather than loud — a browser arriving on :80 sends
+ * `Origin: http://localhost` with no port, which is not in the gateway's
+ * allow-list, so the portal cannot call the API through it at all. The portal
+ * is reachable on 7080, so nothing complained.
+ *
+ * `resolveServiceRequirement` has read it correctly all along:
+ * `host: docker.portMappings?.[name] ?? containerPort`. Same expression here,
+ * because it is the same question — and a port the preset does not declare
+ * really is a container port, which is why the fallback is not a mistake.
+ */
+export function gatewayHostPort(
+  service: { ports?: Record<string, number> | undefined; docker?: { portMappings?: Record<string, number> | undefined } | undefined } | undefined,
+  legacy: { port?: number | undefined } | undefined,
+): number {
+  return service?.docker?.portMappings?.['http'] ?? service?.ports?.['http'] ?? legacy?.port ?? 8080;
+}
+
 function containerName(service: string): string {
   return `${CONTAINER_PREFIX}-${service}`;
 }
@@ -656,9 +686,43 @@ export function resolveInfrastructure(
    * of gigabytes, on a host chosen for a payment system.
    */
   overrides?: Record<string, IServiceOverride>,
+  /**
+   * Where a service's config files live on THIS machine, by service name.
+   *
+   * The gateway is not an ordinary preset container: it needs four bind
+   * mounts, an entrypoint and fifteen upstream variables, and `resolveGateway`
+   * is the only thing that produces them. On a master they come from the
+   * project root; on a node there is no project, so the files are sent over
+   * and written locally, and this names where.
+   *
+   * Without it a node built its gateway through the generic preset path —
+   * whose own `defaultDocker` comment says "Volumes and entrypoint configured
+   * by resolveGateway" — and got bare openresty: an empty `Mounts` array, a
+   * null entrypoint, zero UPSTREAM variables, and an onion serving
+   * `Welcome to OpenResty!`.
+   */
+  configRoots?: Map<string, string>,
+  gatewayContext?: { redis: { host: string; port: number; db: number; password?: string }; port?: number },
 ): ResolvedContainer[] {
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
     return [];
   }
-  return resolveAppInfrastructure(normalizedServices, overrides);
+
+  const gatewayRoot = configRoots?.get('gateway');
+  if (!gatewayRoot || !normalizedServices['gateway'] || !gatewayContext) {
+    return resolveAppInfrastructure(normalizedServices, overrides);
+  }
+
+  // One resolver for the gateway, wherever it runs. The rest go through the
+  // generic path, which is right for them.
+  const { gateway: _gateway, ...rest } = normalizedServices;
+  const containers = resolveAppInfrastructure(rest, overrides);
+  containers.push(
+    resolveGateway(
+      { port: gatewayHostPort(normalizedServices['gateway'] as never, undefined), configDir: '.' },
+      gatewayContext.redis,
+      gatewayRoot,
+    ),
+  );
+  return containers;
 }

@@ -23,7 +23,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { InfrastructureConfig } from './types.js';
 import type { IStackConfig, IStackSettings } from '../config/types.js';
 import { InfrastructureService } from './infrastructure.service.js';
-import { setContainerPrefix, setStackLabels } from './service-resolver.js';
+import { setContainerPrefix, setStackLabels, gatewayHostPort } from './service-resolver.js';
 
 // =============================================================================
 // Default port offsets per stack index
@@ -41,35 +41,6 @@ const REDIS_DB_RANGE_SIZE = 5;
 // =============================================================================
 // Manager
 // =============================================================================
-
-/**
- * Where to PUBLISH the gateway, which is not where it listens.
- *
- * After preset expansion `ports` holds CONTAINER ports — openresty's
- * `defaultPorts.http` is 80, because that is what the image listens on — and
- * a port named in the config becomes a HOST mapping under
- * `docker.portMappings`. Reading `ports.http` takes the first for the second,
- * so a stack asking for 8080 gets a gateway published on 80.
- *
- * Measured on the dev stand: `omnitron.config.ts` declares
- * `gateway.ports.http = 8080` and its own comment says ":8080" three times,
- * while `daos-dev-gateway` published `80/tcp -> 0.0.0.0:80`. The consequence
- * is quiet rather than loud — a browser arriving on :80 sends
- * `Origin: http://localhost` with no port, which is not in the gateway's
- * allow-list, so the portal cannot call the API through it at all. The portal
- * is reachable on 7080, so nothing complained.
- *
- * `resolveServiceRequirement` has read it correctly all along:
- * `host: docker.portMappings?.[name] ?? containerPort`. Same expression here,
- * because it is the same question — and a port the preset does not declare
- * really is a container port, which is why the fallback is not a mistake.
- */
-export function gatewayHostPort(
-  service: { ports?: Record<string, number> | undefined; docker?: { portMappings?: Record<string, number> | undefined } | undefined } | undefined,
-  legacy: { port?: number | undefined } | undefined,
-): number {
-  return service?.docker?.portMappings?.['http'] ?? service?.ports?.['http'] ?? legacy?.port ?? 8080;
-}
 
 export class StackInfrastructureManager {
   /** Active infrastructure services keyed by `${project}/${stack}` */

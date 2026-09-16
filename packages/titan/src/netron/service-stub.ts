@@ -145,7 +145,12 @@ export class ServiceStub {
    */
   async call(method: string, args: any[], callerPeer?: any) {
     const processedArgs = this.processArgs(args);
-    let result = this.instance[method](...processedArgs);
+    let result: any;
+    try {
+      result = this.instance[method](...processedArgs);
+    } catch (error) {
+      throw this.reclassifyBadCall(method, processedArgs, error);
+    }
 
     // Check if result is an AsyncGenerator before awaiting Promise
     if (isAsyncGenerator(result)) {
@@ -183,7 +188,11 @@ export class ServiceStub {
     }
 
     if (result instanceof Promise) {
-      result = await result;
+      try {
+        result = await result;
+      } catch (error) {
+        throw this.reclassifyBadCall(method, processedArgs, error);
+      }
     }
     return this.processResult(result, callerPeer);
   }
@@ -266,6 +275,52 @@ export class ServiceStub {
    * @returns {any[]} Processed arguments
    * @private
    */
+  /**
+   * A call that arrived with too few arguments is the CALLER's error, not a
+   * server fault — say so, instead of letting it read as one.
+   *
+   * A missing argument arrives as `undefined` and the method throws on first
+   * use — `Cannot read properties of undefined (reading 'mediaIds')` — which
+   * `toTitanError` masks into a 500 "An unexpected error occurred". The client
+   * then cannot tell "I called it wrong" from "the server is broken";
+   * monitoring counts a typo as an incident; and any retry policy keyed on
+   * 5xx re-sends a call that can never succeed.
+   *
+   * Measured on the dev stand 2026-09-16 by calling seven methods with the
+   * last argument left off: three answered 500 with that sentence
+   * (`EventService.sendMessage`, `Commerce.createShop`, `ObjectService.list`)
+   * and none answered 4xx. It is the correction `toTitanError` already makes
+   * for a malformed VALUE — "a payload the caller got wrong is a 400, not a
+   * 500" — extended to a missing one.
+   *
+   * ## Why this runs AFTER the call rather than before it
+   *
+   * `Function.length` counts parameters up to the first with a default or a
+   * rest element, so a method declaring a TypeScript optional (`c?: string`)
+   * still counts it. Refusing up front on that number would reject a caller
+   * who legitimately omitted an optional — and `MethodInfo.arguments` carries
+   * an index and a type but no optionality, so there is nothing to consult.
+   *
+   * Running afterwards needs no such judgement: a method that could work
+   * without the argument HAS ALREADY WORKED and never reaches here. Only a
+   * call that both arrived short and then failed on a type error is
+   * reclassified, and every other error is passed through untouched.
+   */
+  private reclassifyBadCall(method: string, args: any[], error: unknown): unknown {
+    const fn = this.instance[method];
+    if (typeof fn !== 'function' || args.length >= fn.length) return error;
+    // Only a type error, and only one about reaching into something absent.
+    // A `TypeError` from inside the method's own logic is its business.
+    if (!(error instanceof TypeError)) return error;
+    if (!/undefined|null/.test(error.message)) return error;
+
+    return Errors.badRequest(
+      `${this.definition.meta.name}.${method} was called with ${args.length} argument(s) ` +
+        `and declares ${fn.length}; the missing one arrived as undefined and failed inside the method.`,
+      { cause: error }
+    );
+  }
+
   private processArgs(args: any[]) {
     return args.map((arg: any) => this.processValue(arg));
   }

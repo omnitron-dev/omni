@@ -298,8 +298,18 @@ export function selectBareMetal(
   override?: {
     bareMetal?: Record<string, unknown> | undefined;
     networkMode?: string | undefined;
+    external?: unknown;
   },
 ): BareMetalSpec | null {
+  // A service the stack declares EXTERNAL is not this node's to install. It
+  // names an address and credentials for something already running — a chain
+  // daemon whose data directory is measured in hundreds of gigabytes and
+  // whose lifetime is longer than any deployment here. Installing a second
+  // one beside it is the opposite of what the declaration asked for, and the
+  // declaration that describes how to install it is still the right thing to
+  // keep: another stack, on another host, uses it.
+  if (override?.external) return null;
+
   const base = requirement.bareMetal as
     | (Omit<BareMetalSpec, 'name'> & { configTemplate?: string; bindAddress?: string; variants?: Record<string, Record<string, unknown>> })
     | undefined;

@@ -7,6 +7,12 @@
  * - Cluster state queries
  * - Step-down commands
  *
+ * `stepDown` and `isLeader` used to carry a bare `@Public()`, which
+ * configures no auth at all — `enforceMethodAuthorization` returns early on a
+ * method with no auth config, so both were open to anyone who could reach the
+ * transport. They are now closed; the two below are the ones that remain open
+ * on purpose.
+ *
  * OPEN: `requestVote` and `leaderHeartbeat` are still unauthenticated.
  *
  * Peers call them over plain HTTP with no credential of any kind, because no
@@ -25,7 +31,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 
-import { VIEWER_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
 import type {
   LeaderElection,
   VoteRequest,
@@ -73,8 +79,23 @@ export class ClusterRpcService {
   /**
    * Force the current leader to step down.
    * Triggers a new election. Used by `omnitron cluster step-down`.
+   *
+   * A bare `@Public()` configures no auth at all, and
+   * `enforceMethodAuthorization` returns early on a method with no auth
+   * config — "nothing to enforce". So this sat open to anyone who could reach
+   * the transport, two lines below a READ of the same cluster state that is
+   * closed to viewer roles, and one method away from the two that are
+   * anonymous deliberately and say so in the file header. The header
+   * discusses `requestVote` and `leaderHeartbeat` at length and does not
+   * mention this one: it was not a decision, it was an omission in the shape
+   * of one.
+   *
+   * Deposing a leader is an operation, and the control plane performs it on
+   * its own behalf during a rolling restart — hence the same list the other
+   * master-to-node calls use rather than OPERATOR_ROLES, which a
+   * `service_role` token is not a member of.
    */
-  @Public()
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async stepDown(): Promise<{ success: boolean; message: string }> {
     if (!this.election.isLeader) {
       return { success: false, message: 'This node is not the leader' };
@@ -87,7 +108,9 @@ export class ClusterRpcService {
   /**
    * Check if this node is the current leader.
    */
-  @Public()
+  // Reading who the leader is, closed like the state query beside it: the
+  // node ids and terms it returns are the same reconnaissance.
+  @Public({ auth: { roles: VIEWER_ROLES } })
   async isLeader(): Promise<{ leader: boolean; nodeId: string; term: number }> {
     const state = this.election.getClusterState();
     return {

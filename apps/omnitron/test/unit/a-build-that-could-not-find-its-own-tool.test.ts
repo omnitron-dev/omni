@@ -107,3 +107,42 @@ describe('a build that failed is not a build that produced nothing', () => {
     spy.mockRestore();
   });
 });
+
+describe('a build with nothing to do is not a build', () => {
+  it('removes the record that says the output is current', async () => {
+    // A `composite: true` project keeps `tsconfig.tsbuildinfo` beside its
+    // config, and tsc trusts it: unchanged inputs mean no emit, exit zero.
+    // The usual script is `rm -rf dist && tsc` — which removes the OUTPUT and
+    // leaves the record claiming it exists.
+    //
+    // Measured in daos/apps/messaging: `pnpm build` exits zero with `dist` at
+    // zero files; deleting `tsconfig.tsbuildinfo` first gives sixteen. The
+    // caller then reported `No dist/ directory found for messaging. Build
+    // failed?` — and the question mark was right, because it had not.
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('../../src/project/artifact-builder.ts', import.meta.url), 'utf8'),
+    );
+    const { stripComments } = await import('../../../../scripts/lib/strip-comments.mjs');
+    const code = stripComments(src);
+
+    expect(code).toContain('tsconfig.tsbuildinfo');
+    expect(code).toMatch(/rmSync\(path\.join\(appDir, stale\)/);
+  });
+
+  it('does it before the build, not after', async () => {
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('../../src/project/artifact-builder.ts', import.meta.url), 'utf8'),
+    );
+    const { stripComments } = await import('../../../../scripts/lib/strip-comments.mjs');
+    const code = stripComments(src);
+
+    // Order is the whole of it: removing the record after tsc has already
+    // decided there was nothing to do changes nothing about this build, and
+    // makes the NEXT one work — which is the kind of fix that looks like a
+    // flaky build rather than a fixed one.
+    const removal = code.indexOf('tsconfig.tsbuildinfo');
+    const build = code.indexOf("['build']", removal - 2000 > 0 ? removal - 2000 : 0);
+    expect(removal).toBeGreaterThan(0);
+    expect(removal).toBeLessThan(code.indexOf("exec(resolvePnpm(), ['build']"));
+  });
+});

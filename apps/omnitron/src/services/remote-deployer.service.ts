@@ -564,6 +564,20 @@ export class RemoteDeployer {
       );
       void added;
 
+      // The node's CLI prints its refusals and exits zero — `omnitron project
+      // add` answered `No omnitron.config.ts found at …` and this logged
+      // `The node now knows what to run` over it, twice, while the node knew
+      // nothing. An exit code that does not carry the outcome means the
+      // OUTPUT is the outcome.
+      const refused = /\bno .*found\b|\bfailed\b|\berror\b|not found|cannot/i.test(`${added}\n${out}`);
+      if (refused) {
+        this.logger.error(
+          { host: target.host, project, dir, detail: `${added}\n${out}`.trim().slice(0, 300) },
+          'The node refused the apps it was given — its artifacts are installed and it will run none of them',
+        );
+        return;
+      }
+
       this.logger.info(
         { host: target.host, project, dir, apps: landed.map((l) => l.app), detail: out.trim().slice(0, 200) },
         'The node now knows what to run',

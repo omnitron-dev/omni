@@ -25,6 +25,7 @@ import { createRequire } from 'node:module';
 import { expandPath } from '../shared/paths.js';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import { CONFIG_FILE_NAMES } from '../config/loader.js';
 
 // CJS-style require for the open() factory's lazy DaemonStateStore
 // load. The module shape is ESM but we need a synchronous import
@@ -34,6 +35,29 @@ const requireCjs = createRequire(import.meta.url);
 const PROJECTS_DIR = expandPath('~/.omnitron/projects');
 const LEGACY_REGISTRY_FILE = path.join(PROJECTS_DIR, 'registry.json');
 const ENABLED_STACKS_KV_KEY = (name: string) => `project:${name}:enabled-stacks`;
+
+/**
+ * The config file a project directory must have, whichever spelling.
+ *
+ * The registry accepted `omnitron.config.ts` and nothing else, while the
+ * LOADER has always read `.ts`, `.js` and `.mjs` — so a project the daemon can
+ * run could not be registered, and the message named the one extension it
+ * wanted as though the others did not exist.
+ *
+ * Found on a deployed node, where the generated config is `.mjs` precisely
+ * because a node should not need a TypeScript loader to know what to start:
+ * `No omnitron.config.ts found at /opt/omnitron/projects/daos`, in a directory
+ * whose `omnitron.config.mjs` was sitting right there.
+ *
+ * One list, imported from the loader, so the two cannot disagree again.
+ */
+function findProjectConfig(dir: string): string | null {
+  for (const name of CONFIG_FILE_NAMES) {
+    const candidate = path.join(dir, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 export class ProjectRegistry {
   /**
@@ -89,9 +113,8 @@ export class ProjectRegistry {
   add(name: string, projectPath: string): ISeedProject {
     const absPath = path.resolve(projectPath);
 
-    const configPath = path.join(absPath, 'omnitron.config.ts');
-    if (!fs.existsSync(configPath)) {
-      throw new Error(`No omnitron.config.ts found at ${absPath}`);
+    if (!findProjectConfig(absPath)) {
+      throw new Error(`No ${CONFIG_FILE_NAMES.join(' / ')} found at ${absPath}`);
     }
 
     if (this.projects.has(name)) {
@@ -130,9 +153,8 @@ export class ProjectRegistry {
     if (!project) throw new Error(`Project '${name}' not found`);
 
     const absPath = path.resolve(newPath);
-    const configPath = path.join(absPath, 'omnitron.config.ts');
-    if (!fs.existsSync(configPath)) {
-      throw new Error(`No omnitron.config.ts found at ${absPath}`);
+    if (!findProjectConfig(absPath)) {
+      throw new Error(`No ${CONFIG_FILE_NAMES.join(' / ')} found at ${absPath}`);
     }
 
     // Derive new registry name from directory basename

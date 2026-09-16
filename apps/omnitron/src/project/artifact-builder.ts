@@ -287,9 +287,37 @@ export class ArtifactBuilder {
     }
   }
 
+  /**
+   * Build the app, and make sure the build has something to do.
+   *
+   * A `composite: true` project keeps `tsconfig.tsbuildinfo` beside its
+   * config, and tsc trusts it: if the inputs have not changed since that file
+   * was written, it emits nothing and exits zero. The usual `build` script is
+   * `rm -rf dist && tsc`, which removes the OUTPUT and leaves the record
+   * saying the output is current.
+   *
+   * So the build succeeds, `dist/` stays empty, and the next step fails with
+   * `No dist/ directory found for messaging. Build failed?` — a question mark
+   * that turns out to be the right punctuation, because the build did not
+   * fail. Measured: `pnpm build` in that app exits zero with `dist` at zero
+   * files; deleting `tsconfig.tsbuildinfo` first gives sixteen.
+   *
+   * Removed here rather than in each app's script: an artifact build is a
+   * from-scratch build by definition — nothing about the machine that ran the
+   * last one is evidence about this one — and fixing it per app means fixing
+   * it again for every app added later.
+   */
   private async runBuild(appDir: string, appName: string): Promise<void> {
+    for (const stale of ['tsconfig.tsbuildinfo', '.tsbuildinfo']) {
+      try {
+        fs.rmSync(path.join(appDir, stale), { force: true });
+      } catch {
+        // Not there, or not ours to remove: the build below is what reports.
+      }
+    }
+
     try {
-      await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 120_000 });
+      await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 300_000 });
     } catch (err: any) {
       throw new Error(`Build failed for ${appName}: ${err.stderr?.slice(0, 200) ?? err.message}`, { cause: err });
     }

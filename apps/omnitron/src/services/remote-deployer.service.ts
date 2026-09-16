@@ -311,13 +311,34 @@ export class RemoteDeployer {
 
       // 6. Signal remote daemon to restart the app
       this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');
-      await this.signalRemoteDaemon(target, artifact.app);
+      const started = await this.signalRemoteDaemon(target, artifact.app);
 
       // 7. Verify health
       this.emitProgress(nodeKey, artifact.app, 'verifying', 90, 'Verifying health...');
-      await this.verifyHealth(target, artifact.app);
+      const health = await this.verifyHealth(target, artifact.app);
 
       const duration = Date.now() - startTime;
+
+      // An artifact on disk is not a running application. Reporting success
+      // for the transfer alone is what let a fleet show six deployed apps and
+      // run none of them.
+      if (!started.ok || !health.online) {
+        const why = !started.ok ? started.detail : health.detail;
+        this.emitProgress(nodeKey, artifact.app, 'failed', 90, `artifact installed, app not running: ${why}`);
+        this.logger.error(
+          { node: nodeKey, app: artifact.app, version: artifact.version, duration, detail: why },
+          'Artifact installed, but the app is not running on the node',
+        );
+        return {
+          node: nodeKey,
+          app: artifact.app,
+          version: artifact.version,
+          status: 'failed',
+          duration,
+          error: `artifact installed, app not running: ${why}`,
+        };
+      }
+
       this.emitProgress(nodeKey, artifact.app, 'success', 100, `Deployed in ${Math.round(duration / 1000)}s`);
 
       this.logger.info(
@@ -771,28 +792,85 @@ export class RemoteDeployer {
     await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
   }
 
-  private async signalRemoteDaemon(target: DeployTarget, appName: string): Promise<void> {
+  /**
+   * Ask the node's daemon to run the app whose artifact just landed.
+   *
+   * This was `omnitron restart <app> 2>/dev/null || true`, and the `|| true`
+   * was hiding the whole of the remote deployment's last mile.
+   *
+   * Measured on the test node, running the command by hand:
+   *
+   *     omnitron restart main  →  Failed: Unknown app: main
+   *
+   * The node's daemon has no app definitions — its own log says `No projects
+   * registered`, and `omnitron status --json` answers `appsTotal: 0` — because
+   * nothing in this deployment ever tells it about the apps. Artifacts land
+   * at `/opt/omnitron/artifacts/<project>/<app>/<version>/` complete with
+   * `config`, `dist` and `package.json`, and a project is "a directory with
+   * omnitron.config.ts", which an artifact is not.
+   *
+   * That gap is not closed here — it is a design question about how a node
+   * learns what to run. What is closed here is its INVISIBILITY: the shell
+   * discarded the only sentence that said so, and the caller reported
+   * `Deployment successful`.
+   */
+  private async signalRemoteDaemon(target: DeployTarget, appName: string): Promise<{ ok: boolean; detail: string }> {
     try {
-      // Try RPC restart via omnitron CLI on remote
-      await this.sshExec(target, `omnitron restart ${shellEscape(appName)} 2>/dev/null || true`);
-    } catch {
-      // Non-critical — daemon may not be running
-      this.logger.debug({ host: target.host, app: appName }, 'Remote daemon restart signal failed');
+      // No `2>/dev/null`, no `|| true`: the failure IS the information.
+      const out = await this.sshExec(target, `omnitron restart ${shellEscape(appName)} 2>&1`);
+      const failed = /unknown app|failed|not found|no such/i.test(out);
+      if (failed) {
+        this.logger.error(
+          { host: target.host, app: appName, detail: out.trim().slice(0, 300) },
+          'The node refused to start this app — its artifact is installed and its daemon does not know the app',
+        );
+        return { ok: false, detail: out.trim().slice(0, 300) };
+      }
+      return { ok: true, detail: out.trim().slice(0, 200) };
+    } catch (err) {
+      const detail = (err as Error).message;
+      this.logger.error({ host: target.host, app: appName, error: detail }, 'Could not reach the node to start this app');
+      return { ok: false, detail };
     }
   }
 
-  private async verifyHealth(target: DeployTarget, appName: string): Promise<void> {
-    // Simple health check: ping remote daemon and check app status
+  /**
+   * Whether the app is actually running on the node.
+   *
+   * This returned `void` on every path — a match, a mismatch, a parse failure,
+   * an unreachable node — under a comment reading "Health check is
+   * best-effort". A verification that cannot fail is not a verification, and
+   * it is worse than none: its presence in the sequence is what persuades a
+   * reader that the deployment was checked.
+   */
+  private async verifyHealth(target: DeployTarget, appName: string): Promise<{ online: boolean; detail: string }> {
+    let status: string;
     try {
-      const status = await this.sshExec(target, `omnitron status --json 2>/dev/null || echo "{}"`, 15_000);
-      const parsed = JSON.parse(status);
-      if (parsed?.apps) {
-        const app = (parsed.apps as any[]).find((a: any) => a.name === appName);
-        if (app?.status === 'online') return;
-      }
-    } catch {
-      // Health check is best-effort
+      status = await this.sshExec(target, `omnitron status --json 2>&1`, 15_000);
+    } catch (err) {
+      return { online: false, detail: `could not read the node's status: ${(err as Error).message}` };
     }
+
+    let parsed: { data?: { apps?: Array<{ name?: string; status?: string }>; appsTotal?: number } };
+    try {
+      parsed = JSON.parse(status);
+    } catch {
+      // A node that answers something other than JSON is a node whose CLI is
+      // not the one this expects — worth saying, not worth guessing about.
+      return { online: false, detail: `the node's status was not JSON: ${status.trim().slice(0, 120)}` };
+    }
+
+    const apps = parsed?.data?.apps ?? [];
+    const app = apps.find((a) => a.name === appName);
+    if (!app) {
+      return {
+        online: false,
+        detail: `the node is running ${apps.length} app(s) and none of them is '${appName}'`,
+      };
+    }
+    return app.status === 'online'
+      ? { online: true, detail: 'online' }
+      : { online: false, detail: `the node reports it as '${app.status ?? 'unknown'}'` };
   }
 
   // ===========================================================================

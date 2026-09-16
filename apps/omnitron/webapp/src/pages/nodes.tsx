@@ -31,6 +31,14 @@ import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
+// One contract, imported. These four were local copies of types the daemon
+// already publishes, and they had drifted: this file declared
+// `omnitronRole?: string` where the daemon says `'master' | 'slave'`, so a
+// role it can never send would have type-checked here.
+import type {
+  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators,
+} from '@omnitron-dev/omnitron/dto/services';
+import { verdictOf, firstReason, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
@@ -39,6 +47,7 @@ import {
   DeleteIcon,
   RefreshIcon,
   ChipIcon,
+  EyeIcon,
 } from 'src/assets/icons';
 /**
  * Fallbacks for the bar's shape, used until the daemon answers.
@@ -100,55 +109,6 @@ function isStale(iso: string | undefined): boolean {
 // Types
 // =============================================================================
 
-interface INode {
-  id: string;
-  name: string;
-  host: string;
-  sshPort: number;
-  sshUser: string;
-  sshAuthMethod: 'password' | 'key';
-  sshPrivateKey?: string;
-  hasPassphrase?: boolean;
-  hasPassword?: boolean;
-  runtime: 'node' | 'bun';
-  daemonPort: number;
-  tags: string[];
-  isLocal: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface INodeStatus {
-  nodeId: string;
-  pingReachable: boolean;
-  pingLatencyMs: number | null;
-  pingError?: string;
-  /** `null` when the check made no SSH attempt — see the daemon's DTO. */
-  sshConnected: boolean | null;
-  sshLatencyMs: number | null;
-  sshError?: string;
-  omnitronConnected: boolean;
-  omnitronVersion?: string;
-  omnitronPid?: number;
-  omnitronUptime?: number;
-  omnitronRole?: string;
-  omnitronError?: string;
-  os?: { platform: string; arch: string; hostname: string; release: string };
-  checkedAt: string;
-}
-
-interface INodeWithStatus extends INode { status: INodeStatus | null }
-
-/** Mirrors the daemon's `IMeshNodeStatus`; see `getMeshStatus`. */
-interface IMeshNodeStatus {
-  nodeId: string;
-  inMesh: boolean;
-  status: 'disconnected' | 'connecting' | 'connected' | 'error';
-  via: 'direct' | 'ssh-tunnel' | null;
-  authenticated: boolean;
-  lastHeartbeat: number | null;
-  lastError: string | null;
-}
 interface SshKeyInfo { name: string; path: string; type: string }
 
 /** The operator-tunable half of how the fleet is checked. */
@@ -522,13 +482,407 @@ const SEG_WIDTH = 6;
 const SEG_GAP = 4;
 const SEG_HEIGHT = 10;
 
+// =============================================================================
+// Why a node is down, not just that it was
+// =============================================================================
+
+/** The most history the daemon will return in one call. */
+const MAX_HISTORY = 500;
+const HISTORY_CHOICES = [50, 200, MAX_HISTORY] as const;
+
+/** One check row, as the daemon records it. */
+interface HealthCheckRow {
+  nodeId: string;
+  checkedAt: string;
+  checkDurationMs: number;
+  pingReachable: boolean;
+  pingLatencyMs: number | null;
+  pingError: string | null;
+  sshConnected: boolean;
+  sshLatencyMs: number | null;
+  sshError: string | null;
+  omnitronConnected: boolean;
+  omnitronVersion: string | null;
+  omnitronPid: number | null;
+  omnitronUptime: number | null;
+  omnitronRole: string | null;
+  omnitronError: string | null;
+  os: { platform: string; arch: string; hostname: string; release: string } | null;
+}
+
+const VERDICT_TONE: Record<LayerVerdict, 'success' | 'error' | 'default'> = {
+  ok: 'success',
+  failed: 'error',
+  unmeasured: 'default',
+};
+
+const VERDICT_WORD: Record<LayerVerdict, string> = {
+  ok: 'reachable',
+  failed: 'failed',
+  unmeasured: 'not measured',
+};
+
+/**
+ * One layer of the diagnosis, with its reason as CONTENT.
+ *
+ * Every field rendered here was already recorded on every check and already
+ * reached this page — inside a `tooltip`. So the cause of an outage was
+ * available by hovering one indicator on one card, one node at a time, and
+ * nowhere else. A reason you have to hunt for is a reason most people do not
+ * read.
+ */
+function DiagnosisLayer({
+  label, verdict, latencyMs, error, detail,
+}: {
+  label: string;
+  verdict: LayerVerdict;
+  latencyMs?: number | null;
+  error?: string | null;
+  detail?: string;
+}) {
+  return (
+    <Box sx={{ py: 1 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 96 }}>{label}</Typography>
+        <Chip
+          size="small"
+          label={VERDICT_WORD[verdict]}
+          color={VERDICT_TONE[verdict]}
+          variant={verdict === 'unmeasured' ? 'outlined' : 'filled'}
+          sx={{ height: 20, fontSize: 11 }}
+        />
+        {latencyMs != null && (
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>{latencyMs}ms</Typography>
+        )}
+        {detail && (
+          <Typography variant="caption" noWrap sx={{ color: 'text.secondary' }}>{detail}</Typography>
+        )}
+      </Stack>
+      {error && (
+        <Typography
+          variant="caption"
+          component="pre"
+          sx={{
+            mt: 0.5, ml: '104px', p: 1, borderRadius: 1,
+            bgcolor: (t) => alpha(t.palette.error.main, 0.08),
+            color: 'error.main',
+            fontFamily: 'monospace', fontSize: 11,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}
+        >
+          {error}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/** A history row: when, what each layer said, and the first reason given. */
+function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean }) {
+  const ping = verdictOf(row.pingReachable, row.pingError);
+  const ssh = verdictOf(row.sshConnected, row.sshError);
+  const omn = verdictOf(row.omnitronConnected, row.omnitronError);
+  const reason = firstReason(row);
+  const layers: Array<[string, LayerVerdict]> = isLocal
+    ? [['OMNITRON', omn]]
+    : [['PING', ping], ['SSH', ssh], ['OMNITRON', omn]];
+
+  return (
+    <Box sx={{ py: 0.75, borderBottom: (t) => `1px solid ${t.palette.divider}` }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', minWidth: 148, color: 'text.secondary' }}>
+          {new Date(row.checkedAt).toLocaleString()}
+        </Typography>
+        {layers.map(([name, v]) => (
+          <Chip
+            key={name}
+            size="small"
+            label={name}
+            color={VERDICT_TONE[v]}
+            variant={v === 'unmeasured' ? 'outlined' : 'filled'}
+            sx={{ height: 18, fontSize: 10 }}
+          />
+        ))}
+        <Typography variant="caption" sx={{ color: 'text.disabled', ml: 'auto !important' }}>
+          {row.checkDurationMs}ms
+        </Typography>
+      </Stack>
+      {reason && (
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block', mt: 0.25, ml: '156px',
+            color: 'error.main', fontFamily: 'monospace', fontSize: 11,
+            wordBreak: 'break-word',
+          }}
+        >
+          {reason}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/**
+ * What the node's own titan-health says.
+ *
+ * Every omnitron daemon runs `TitanHealthModule` and answers `Health@1.0.0`
+ * with titan's built-in indicators — memory, event loop, disk, database,
+ * redis — plus the two omnitron registers, docker and the apps it supervises.
+ * Every remote node has had all of it since it was provisioned, and this
+ * console never asked: its `health` client is bound to `daemonClient.daemon`,
+ * so it only ever spoke to the daemon it was connected to.
+ *
+ * `reachable: false` is rendered as NOT ASKED, with the reason, and never as
+ * a verdict. A node outside the mesh has reported nothing; saying "unhealthy"
+ * about silence is how an operator ends up restarting a node that was fine.
+ */
+function NodeIndicators({ data }: { data: INodeIndicators | null }) {
+  if (!data) {
+    return (
+      <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
+        Not read.
+      </Typography>
+    );
+  }
+
+  if (!data.reachable) {
+    return (
+      <Stack direction="row" spacing={1} sx={{ py: 1, alignItems: 'baseline' }}>
+        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+          {data.error ?? 'no reason given'}
+        </Typography>
+      </Stack>
+    );
+  }
+
+  const entries = Object.entries(data.indicators ?? {}) as Array<[string, { status?: string; message?: string; details?: Record<string, unknown> }]>;
+  if (entries.length === 0) {
+    return (
+      <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
+        The node answered and registered no indicators.
+      </Typography>
+    );
+  }
+
+  const tone = (st: string | undefined) =>
+    st === 'healthy' ? 'success' : st === 'degraded' ? 'warning' : st === 'unhealthy' ? 'error' : 'default';
+
+  return (
+    <Box sx={{ py: 0.5 }}>
+      {data.status && (
+        <Chip
+          size="small"
+          label={`overall: ${data.status}`}
+          color={tone(data.status) as 'success' | 'warning' | 'error' | 'default'}
+          sx={{ height: 20, fontSize: 11, mb: 1 }}
+        />
+      )}
+      {entries.map(([name, ind]) => (
+        <Stack key={name} direction="row" spacing={1} sx={{ py: 0.4, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <Typography variant="body2" sx={{ minWidth: 120, fontWeight: 500 }}>{name}</Typography>
+          <Chip
+            size="small"
+            label={ind?.status ?? 'unknown'}
+            color={tone(ind?.status) as 'success' | 'warning' | 'error' | 'default'}
+            variant={ind?.status ? 'filled' : 'outlined'}
+            sx={{ height: 18, fontSize: 10 }}
+          />
+          {ind?.message && (
+            <Typography variant="caption" sx={{ color: ind.status === 'healthy' ? 'text.secondary' : 'error.main' }}>
+              {ind.message}
+            </Typography>
+          )}
+        </Stack>
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Everything the daemon already knows about why a node is unwell.
+ *
+ * Each check records three layers with their own error string — whether the
+ * box answers, whether SSH lets you in, whether the daemon replies — and they
+ * are three different problems with three different remedies. `getCheckHistory`
+ * returned all of it and had no caller anywhere in this console; the uptime
+ * bar showed THAT a node was down and never why.
+ */
+function NodeDiagnosisDialog({
+  open, onClose, node,
+}: {
+  open: boolean;
+  onClose: () => void;
+  node: INodeWithStatus | null;
+}) {
+  const [history, setHistory] = useState<HealthCheckRow[]>([]);
+  const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
+  const [limit, setLimit] = useState<number>(50);
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
+
+  const load = useCallback(async (nodeId: string, n: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Two independent answers, so one failing must not blank the other: the
+      // history comes from this master's database and the indicators from the
+      // node itself, and a node that cannot be reached still has a history
+      // worth reading — that history is how you find out when it stopped.
+      const [rows, ind] = await Promise.allSettled([
+        nodesRpc.getCheckHistory({ nodeId, limit: n }),
+        nodesRpc.getNodeIndicators({ nodeId }),
+      ]);
+      setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
+      if (rows.status === 'rejected') throw rows.reason;
+      setHistory(rows.value as HealthCheckRow[]);
+    } catch (err) {
+      // An empty list and a failed read are different answers, and a reader
+      // who cannot tell them apart concludes the node has never been checked.
+      setError(err instanceof Error ? err.message : String(err));
+      setHistory([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && node) void load(node.id, limit);
+  }, [open, node, limit, load]);
+
+  const recheck = useCallback(async () => {
+    if (!node) return;
+    setChecking(true);
+    try {
+      await nodesRpc.triggerNodeCheck({ nodeId: node.id });
+      await load(node.id, limit);
+      snackbar.success('Check complete');
+    } catch (err) {
+      snackbar.error(err instanceof Error ? err.message : 'Check failed');
+    } finally {
+      setChecking(false);
+    }
+  }, [node, limit, load, snackbar]);
+
+  if (!node) return null;
+  const s = node.status;
+  const isLocal = node.isLocal;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Box component="span">Diagnostics — {node.name}</Box>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {isLocal ? 'this daemon' : `${node.host}:${node.daemonPort}`}
+          </Typography>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Last check</Typography>
+        {s ? (
+          <Box sx={{ mb: 2 }}>
+            {!isLocal && (
+              <>
+                <DiagnosisLayer
+                  label="PING"
+                  verdict={verdictOf(s.pingReachable, s.pingError)}
+                  latencyMs={s.pingLatencyMs}
+                  error={s.pingError ?? null}
+                />
+                <DiagnosisLayer
+                  label="SSH"
+                  verdict={verdictOf(s.sshConnected, s.sshError)}
+                  latencyMs={s.sshLatencyMs}
+                  error={s.sshError ?? null}
+                  detail={s.sshConnected == null && !s.sshError ? 'this check reaches the node over Netron' : undefined}
+                />
+              </>
+            )}
+            <DiagnosisLayer
+              label="OMNITRON"
+              verdict={verdictOf(s.omnitronConnected, s.omnitronError)}
+              error={s.omnitronError ?? null}
+              detail={s.omnitronConnected
+                ? [s.omnitronVersion && `v${s.omnitronVersion}`, s.omnitronPid && `pid ${s.omnitronPid}`,
+                   s.omnitronUptime != null && s.omnitronUptime > 0 && `up ${formatUptime(s.omnitronUptime)}`]
+                  .filter(Boolean).join(' · ')
+                : undefined}
+            />
+            <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.disabled' }}>
+              {s.checkedAt ? `Taken ${new Date(s.checkedAt).toLocaleString()}` : 'Never checked'}
+            </Typography>
+          </Box>
+        ) : (
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            This node has never been checked.
+          </Typography>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        <Typography variant="overline" sx={{ color: 'text.secondary' }}>
+          Indicators, from the node&apos;s own titan-health
+        </Typography>
+        <NodeIndicators data={indicators} />
+
+        <Divider sx={{ my: 2 }} />
+
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+          <Typography variant="overline" sx={{ color: 'text.secondary' }}>History</Typography>
+          <FormControl size="small" sx={{ ml: 'auto !important', minWidth: 120 }}>
+            <Select
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+              sx={{ height: 30, fontSize: 12 }}
+            >
+              {HISTORY_CHOICES.map((n) => (
+                <MenuItem key={n} value={n} sx={{ fontSize: 12 }}>last {n} checks</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Stack>
+
+        {error && <FormAlert onClose={() => setError(null)}>{error}</FormAlert>}
+
+        {loading && history.length === 0 ? (
+          <Skeleton height={120} />
+        ) : history.length === 0 && !error ? (
+          <Typography variant="body2" sx={{ py: 2, color: 'text.secondary' }}>
+            No checks recorded. History is kept by the daemon that runs the health worker.
+          </Typography>
+        ) : (
+          <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+            {history.map((row) => (
+              <HistoryRow key={`${row.nodeId}-${row.checkedAt}`} row={row} isLocal={isLocal} />
+            ))}
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={recheck} disabled={checking} startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}>
+          {checking ? 'Checking…' : 'Check now'}
+        </Button>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function NodeCard({
-  node, onEdit, onRemove, onCheckSsh, checking, uptimeData, newest, mesh,
+  node, onEdit, onRemove, onCheckSsh, onDiagnose, checking, uptimeData, newest, mesh,
 }: {
   node: INodeWithStatus;
   onEdit: (n: INodeWithStatus) => void;
   onRemove: (id: string) => void;
   onCheckSsh: (id: string) => void;
+  onDiagnose: (n: INodeWithStatus) => void;
   checking: boolean;
   uptimeData: UptimeBucket[];
   /** The newest version anything in this fleet reports. */
@@ -598,6 +952,14 @@ function NodeCard({
                 </span>
               </Tooltip>
             )}
+            {/* Available for the local node too: a daemon can be unwell on the
+                machine you are standing on, and the reason is recorded the
+                same way. */}
+            <Tooltip title="Diagnostics">
+              <IconButton size="small" onClick={() => onDiagnose(node)}>
+                <EyeIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
             {!node.isLocal && (
               <>
                 <Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(node)}><SettingsIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
@@ -1106,6 +1468,7 @@ export default function NodesPage() {
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editNode, setEditNode] = useState<INodeWithStatus | null>(null);
+  const [diagnoseNode, setDiagnoseNode] = useState<INodeWithStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uptimeBars, setUptimeBars] = useState<Record<string, UptimeBucket[]>>({});
@@ -1423,12 +1786,18 @@ export default function NodesPage() {
           {sorted.map((node) => (
             <Grid key={node.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <NodeCard node={node} onEdit={handleOpenEdit} onRemove={setConfirmRemoveId}
-                onCheckSsh={handleCheckSsh} checking={checkingId === node.id}
+                onCheckSsh={handleCheckSsh} onDiagnose={setDiagnoseNode} checking={checkingId === node.id}
                 uptimeData={uptimeBars[node.id] ?? []} newest={newestInFleet} mesh={mesh[node.id]} />
             </Grid>
           ))}
         </Grid>
       )}
+
+      <NodeDiagnosisDialog
+        open={!!diagnoseNode}
+        onClose={() => setDiagnoseNode(null)}
+        node={diagnoseNode ? (nodeList.find((n) => n.id === diagnoseNode.id) ?? diagnoseNode) : null}
+      />
 
       <Dialog open={!!confirmRemoveId} onClose={closeRemoveDialog} maxWidth="xs" fullWidth>
         <DialogTitle>Remove Node</DialogTitle>

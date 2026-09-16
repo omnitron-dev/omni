@@ -164,3 +164,24 @@ export interface IMeshNodeStatus {
   lastHeartbeat: number | null;
   lastError: string | null;
 }
+
+/**
+ * What a node's own titan-health reports about it.
+ *
+ * `reachable` is about the QUESTION, not the answer: false means the node was
+ * not asked — it is outside the mesh, or the call failed — and carries the
+ * reason. A node that could not be asked has reported nothing, and nothing is
+ * not a verdict. Rendering it as `unhealthy` is the same mistake as reading an
+ * unmeasured SSH layer as a refusal, which this console has made once already.
+ */
+export interface INodeIndicators {
+  nodeId: string;
+  /** Whether the node answered at all. */
+  reachable: boolean;
+  /** Why it did not, when it did not. */
+  error: string | null;
+  /** The node's overall verdict — `null` when it was not asked. */
+  status: string | null;
+  /** Indicator name → its result, as titan-health reports it. */
+  indicators: Record<string, unknown>;
+}

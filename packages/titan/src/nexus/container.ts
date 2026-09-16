@@ -550,17 +550,97 @@ export class Container implements IContainer {
     const provider = registration.provider;
     if (!provider || !('useClass' in provider) || !provider.useClass) return;
     const ctor = provider.useClass as Constructor;
+
+    // Order first, because it is the check that can be certain.
+    this.validateInjectOrder(registration, ctor);
+
     const required = ctor.length;
     if (dependencies.length >= required) return;
     const tokenName = getTokenName(registration.token);
     const depNames = this.describeDependencies(registration.dependencies);
-     
+
     console.warn(
       `[Nexus] DI arity mismatch for ${tokenName} → ${ctor.name}: ` +
         `constructor declares ${required} parameters but inject array supplied ${dependencies.length}. ` +
         `Resolved deps (in order): [${depNames.join(', ') || 'none'}]. ` +
         `If parameter ${dependencies.length} is required, the module's inject:[...] is missing a token. ` +
         `If it is @Optional or TS-optional (?:), this warning is benign.`
+    );
+  }
+
+  /**
+   * The positional half of the same problem, and the half a count cannot see.
+   *
+   * `inject: [...]` on a `useClass` provider WINS over the parameter
+   * decorators — `RegistrationService` reads the array when it is present and
+   * only falls back to the decorators when it is absent. The array is
+   * positional and typed `any[]`, so inserting a token in the middle shifts
+   * every parameter after it and each one silently receives its neighbour's
+   * dependency. The arity check above cannot see that: the length is right.
+   *
+   * But the class usually states the same thing twice. A parameter carrying
+   * `@Inject(SOME_TOKEN)` is an author's declaration of what belongs in that
+   * slot, and the array is another. When both exist and disagree, one of them
+   * is wrong — that is not a heuristic, it is two declarations of one fact
+   * contradicting each other, so it THROWS rather than warns.
+   *
+   * Deliberately narrow, because the rule has to be exactly right to justify
+   * a hard failure:
+   *
+   *   - only slots where the class actually carries a plain `@Inject(token)`
+   *     are compared. A slot with no decorator says nothing and is skipped.
+   *   - a longer array is not an error. A module may append a token purely to
+   *     force that provider to be constructed (an event handler that
+   *     registers itself in its constructor, say) — the extra entries sit
+   *     past the constructor's parameters and hurt nothing.
+   *   - richer decorators (`@InjectAll`, `@InjectConfig`, conditionals) are
+   *     skipped: they describe a resolution, not a token to compare.
+   */
+  private validateInjectOrder(registration: Registration, ctor: Constructor): void {
+    const provider = registration.provider;
+    if (!provider || !('inject' in provider) || !provider.inject) return;
+    const declared = provider.inject as readonly unknown[];
+
+    let plan: ReturnType<typeof buildInjectionPlan>;
+    try {
+      plan = buildInjectionPlan(ctor);
+    } catch {
+      // A class whose metadata cannot be read tells us nothing; the arity
+      // check still applies.
+      return;
+    }
+    const params = plan.constructorParams;
+    if (params.length === 0) return;
+
+    const mismatches: string[] = [];
+    for (let i = 0; i < Math.min(params.length, declared.length, ctor.length); i++) {
+      const param = params[i];
+      if (!param || param.kind !== 'token') continue;
+
+      const fromArray = declared[i];
+      const arrayToken =
+        typeof fromArray === 'object' && fromArray !== null && 'token' in (fromArray as Record<string, unknown>)
+          ? (fromArray as { token: unknown }).token
+          : fromArray;
+
+      if (arrayToken === param.token) continue;
+
+      mismatches.push(
+        `  parameter ${i}: the class asks for ${getTokenName(param.token as never)}, ` +
+          `the module's inject[${i}] supplies ${getTokenName(arrayToken as never)}`
+      );
+    }
+
+    if (mismatches.length === 0) return;
+
+    const tokenName = getTokenName(registration.token);
+    throw Errors.badRequest(
+      `[Nexus] inject[] disagrees with the constructor of ${tokenName} → ${ctor.name}:\n` +
+        mismatches.join('\n') +
+        `\nThe array wins at runtime, so each of those parameters receives the wrong dependency — ` +
+        `usually surfacing much later as "Cannot read properties of undefined". ` +
+        `Fix the module's inject:[...] to match the constructor, or drop it and let the ` +
+        `@Inject decorators speak for themselves.`
     );
   }
 

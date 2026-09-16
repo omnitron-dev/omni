@@ -41,6 +41,25 @@ export interface PersistedNotification {
 /** Resolves target user IDs from a notification event */
 export interface INotificationTargetResolver {
   resolveUsers(event: NotificationEvent): Promise<string[]>;
+
+  /**
+   * Optional: yield the audience in batches instead of all at once.
+   *
+   * `resolveUsers` returns an array, and for a targeted notification that is
+   * the whole story — one user, or a handful named by the caller. A BROADCAST
+   * is a different shape wearing the same signature: the audience is every
+   * active account, so the array, the records built from it, the insert and
+   * the signal are all the size of the platform. Three of those are bounded
+   * by chunking downstream (the worker does that below whichever method is
+   * implemented); the array itself can only be bounded here, by the
+   * implementation that knows how to page its own user table.
+   *
+   * `batchSize` is what the worker will chunk by anyway — an implementation
+   * that yields larger batches is not wrong, only less useful.
+   *
+   * Implementations that omit this keep working unchanged.
+   */
+  resolveUserBatches?(event: NotificationEvent, batchSize: number): AsyncIterable<string[]>;
 }
 
 /** Persists notification records to database */

@@ -39,6 +39,17 @@ const DEFAULT_STREAM_PATTERN = 'notify.*';
 const DEFAULT_GROUP_NAME = 'notification-workers';
 
 /**
+ * How many recipients one insert, one signal and one record array may cover.
+ *
+ * Five hundred rows is a comfortable statement for Postgres — a record binds
+ * around twenty parameters, so a batch sits near ten thousand of the 65 535
+ * the wire protocol allows — and a comfortable payload for a fan-out signal.
+ * A broadcast to a hundred thousand accounts becomes two hundred statements
+ * instead of one that cannot be sent.
+ */
+const FANOUT_BATCH_SIZE = 500;
+
+/**
  * `XINFO CONSUMERS` answers as a flat `[key, value, key, value, …]` array on
  * ioredis and as an object on some clients. One shape in, one shape out.
  */
@@ -414,14 +425,67 @@ export class NotificationWorkerService {
    * 4. Signal real-time clients via app-provided INotificationRealtimeSignaler
    */
   private async processEvent(event: NotificationEvent): Promise<void> {
-    // 1. Resolve target users
-    const userIds = await this.targetResolver.resolveUsers(event);
+    // 1. Resolve target users, in batches.
+    //
+    // Every step below is the size of the audience: the record array, the
+    // insert, and the real-time signal. A broadcast's audience is every
+    // active account, so one event used to mean one array of N ids, N
+    // records in memory, ONE insert of N rows and one signal over N
+    // channels. Postgres also binds a parameter per value, and a bulk
+    // insert of a few tens of thousands of rows is past the 65 535 the
+    // protocol allows: the fan-out did not degrade, it failed.
+    //
+    // A resolver that can page its own user table says so by implementing
+    // `resolveUserBatches`; one that cannot still returns an array, and the
+    // chunking below bounds everything except that array.
+    let total = 0;
+    let persistedCount = 0;
 
-    if (userIds.length === 0) {
+    // No emptiness guard here on purpose: `audienceBatches` yields slices,
+    // and a slice is never empty. A guard on a condition that cannot occur
+    // reads as caution and is a branch nothing can test.
+    for await (const batch of this.audienceBatches(event)) {
+      total += batch.length;
+      persistedCount += await this.deliverBatch(event, batch);
+    }
+
+    if (total === 0) {
       this.logger.debug({ channel: event.channel, type: event.type }, 'No target users resolved, skipping');
       return;
     }
 
+    this.logger.debug(
+      { channel: event.channel, type: event.type, userCount: total, persistedCount },
+      'Notification records persisted'
+    );
+  }
+
+  /**
+   * The audience, in pieces of at most `FANOUT_BATCH_SIZE`.
+   *
+   * Prefers the resolver's own paging when it has any; otherwise takes the
+   * one array it can produce and cuts it up. The second case still holds the
+   * whole audience in memory once — that is the resolver's to fix — but the
+   * writes and the signals downstream are bounded either way.
+   */
+  private async *audienceBatches(event: NotificationEvent): AsyncGenerator<string[]> {
+    if (this.targetResolver.resolveUserBatches) {
+      for await (const batch of this.targetResolver.resolveUserBatches(event, FANOUT_BATCH_SIZE)) {
+        for (let i = 0; i < batch.length; i += FANOUT_BATCH_SIZE) {
+          yield batch.slice(i, i + FANOUT_BATCH_SIZE);
+        }
+      }
+      return;
+    }
+
+    const userIds = await this.targetResolver.resolveUsers(event);
+    for (let i = 0; i < userIds.length; i += FANOUT_BATCH_SIZE) {
+      yield userIds.slice(i, i + FANOUT_BATCH_SIZE);
+    }
+  }
+
+  /** Build, persist and signal one batch. Returns how many rows were written. */
+  private async deliverBatch(event: NotificationEvent, userIds: string[]): Promise<number> {
     // 2. Build notification records
     const now = new Date();
     const records: NotificationRecord[] = userIds.map((userId) => ({
@@ -452,11 +516,6 @@ export class NotificationWorkerService {
     // 3. Persist to DB
     const persisted = await this.persister.persistBatch(records);
 
-    this.logger.debug(
-      { channel: event.channel, type: event.type, userCount: userIds.length, persistedCount: persisted.length },
-      'Notification records persisted'
-    );
-
     // 4. Signal real-time clients
     //
     // The event travels with the signal: the row is already written, so this
@@ -467,6 +526,8 @@ export class NotificationWorkerService {
     } else {
       await this.signaler.signalBatch(userIds, event);
     }
+
+    return persisted.length;
   }
 
   // ---------------------------------------------------------------------------

@@ -503,7 +503,7 @@ export function resolveGateway(
   // Default upstream host — host.docker.internal for Docker, overridable for bare-metal/cluster
   const upstreamHost = 'host.docker.internal';
 
-  return {
+  return applyManagedDefaults({
     name: containerName('gateway'),
     image,
     ports: [{ host: port, container: 80 }],
@@ -558,7 +558,7 @@ export function resolveGateway(
     restart: 'unless-stopped',
     extraHosts: ['host.docker.internal:host-gateway'],
     resources: config.resources,
-  };
+  });
 }
 
 // =============================================================================

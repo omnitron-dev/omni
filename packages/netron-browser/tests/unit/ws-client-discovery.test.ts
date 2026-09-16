@@ -60,7 +60,13 @@ class MockServer {
 
   /** Send the JSON handshake the real server emits before binary packets. */
   handshake(): string {
-    return JSON.stringify({ id: 'mock-server', type: 'server-id' });
+    // `type: 'id'` — what titan's `netron.ts` actually sends. This said
+    // 'server-id', so the client never recognised the frame, never answered
+    // `client-id`, and `handshakeComplete` stayed false for the life of every
+    // test here. The file's own docblock claims this double answers "the same
+    // shape the real server does"; it is the one frame where it did not, and
+    // it is the frame that decides whether a connection can carry a request.
+    return JSON.stringify({ id: 'mock-server', type: 'id' });
   }
 
   /**
@@ -130,6 +136,11 @@ class MockServer {
 }
 
 let activeServer: MockServer | null = null;
+/** Delays the server's id frame, so a test can look at the window between
+ *  "socket open" and "server knows who we are". */
+let handshakeDelayMs = 0;
+/** The socket the last client opened, for asserting the client's reply. */
+let lastSocket: MockWebSocket | null = null;
 
 class MockWebSocket extends EventTarget {
   static CONNECTING = 0;
@@ -146,15 +157,19 @@ class MockWebSocket extends EventTarget {
   constructor(url: string) {
     super();
     this.url = url;
+    lastSocket = this;
     queueMicrotask(() => {
       this.readyState = MockWebSocket.OPEN;
       this.dispatchEvent(new Event('open'));
       // Simulate the server sending its identity right after the socket opens.
+      // The real one sends it on a 10ms timer, and registers its binary packet
+      // handler only once we answer — so this gap is not decoration.
       const server = activeServer;
-      if (server) {
-        const payload = server.handshake();
-        this.dispatchEvent(new MessageEvent('message', { data: payload }));
-      }
+      if (!server) return;
+      const emit = () =>
+        this.dispatchEvent(new MessageEvent('message', { data: server.handshake() }));
+      if (handshakeDelayMs > 0) setTimeout(emit, handshakeDelayMs);
+      else emit();
     });
   }
 
@@ -216,10 +231,45 @@ function makeClient(opts: ConstructorParameters<typeof WebSocketClient>[0]): Web
 describe('WebSocketClient — transparent service discovery', () => {
   beforeEach(() => {
     activeServer = null;
+    handshakeDelayMs = 0;
+    lastSocket = null;
   });
 
   afterEach(() => {
     activeServer = null;
+    handshakeDelayMs = 0;
+  });
+
+  it('connect() waits for the handshake, not merely for the socket to open', async () => {
+    // titan's `netron.ts` registers the peer's BINARY PACKET HANDLER inside the
+    // listener for our `client-id` reply — `peer.init()` runs there. So until
+    // the handshake completes there is nothing on the far side listening for
+    // packets, and a request sent into that window waits out its full timeout
+    // for an answer nobody is in a position to send.
+    //
+    // `connect()` used to resolve in the socket's `open` listener, one exchange
+    // early. Five integration suites did the obvious thing — await connect,
+    // then invoke — and timed out; the one suite that passed had
+    // `await new Promise((r) => setTimeout(r, 100))` after connect, commented
+    // "wait for the connection to stabilize".
+    activeServer = new MockServer({ defineService: () => null });
+    handshakeDelayMs = 40;
+
+    const client = makeClient({ timeout: 2000 });
+    let resolved = false;
+    const connecting = client.connect().then(() => {
+      resolved = true;
+    });
+
+    await new Promise((r) => setTimeout(r, 15));
+    expect(resolved, 'connect() resolved before the server knew who we were').toBe(false);
+
+    await connecting;
+    expect(resolved).toBe(true);
+    // And the reply the server is waiting for actually went out.
+    expect(lastSocket?.receivedClientHandshakes).toHaveLength(1);
+
+    await client.disconnect();
   });
 
   it('is off by default — sends the bare service name as the wire defId', async () => {

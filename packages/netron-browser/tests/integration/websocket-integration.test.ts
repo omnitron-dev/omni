@@ -96,8 +96,30 @@ async function createMockServer(options: MockServerOptions = {}): Promise<MockSe
     ws.binaryType = 'arraybuffer';
     clients.add(ws);
 
+    // The Netron handshake, which this double did not perform.
+    //
+    // A real server (titan `netron.ts`) sends `{type:'id'}` on connect and
+    // registers its BINARY PACKET HANDLER only after the client answers
+    // `{type:'client-id'}` — `peer.init()` runs inside that reply's listener.
+    // So before the handshake there is nothing listening for packets at all.
+    // This double answered TYPE_CALL from the first frame, which no real
+    // server can do, and that is what made the client's habit of resolving
+    // `connect()` on `open` look harmless for as long as it did.
+    ws.send(JSON.stringify({ type: 'id', id: `mock-server-${port}` }));
+
     ws.on('message', (data: RawData) => {
       try {
+        // The handshake reply is a TEXT frame; everything else is MessagePack.
+        // Decoding it as a packet is what produced "Mock server error decoding
+        // packet" in the console and nothing else.
+        if (typeof data === 'string' || (data instanceof Buffer && data[0] === 0x7b /* '{' */)) {
+          const text = typeof data === 'string' ? data : data.toString();
+          try {
+            if ((JSON.parse(text) as { type?: string }).type === 'client-id') return;
+          } catch {
+            // Not the handshake — fall through to packet decoding.
+          }
+        }
         // Convert RawData to Uint8Array for decoding
         let binaryData: Uint8Array;
         if (data instanceof ArrayBuffer) {

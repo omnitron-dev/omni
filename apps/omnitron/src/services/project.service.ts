@@ -1434,6 +1434,61 @@ export class ProjectService extends EventEmitter {
    * gateway. A service with no such directory sends nothing, so this costs
    * nothing for the stacks that do not need it.
    */
+/**
+   * Deliver each service's static content to the node, and report where.
+   *
+   * Only services that declare a `staticDir`, which today is the gateway
+   * serving the portal. A stack that declares none sends nothing and this
+   * costs nothing.
+   *
+   * A failure is reported and not thrown: a node whose databases came up and
+   * whose frontend did not is a node worth looking at, and stopping the whole
+   * provisioning over a frontend leaves less working, not more.
+   */
+  private async shipStackStatics(
+    infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
+    projectRoot: string,
+    node: import('../config/types.js').IStackNode,
+  ): Promise<Record<string, string>> {
+    // Both spellings, like the config reader beside it: a stack may declare
+    // the gateway as a preset service or through the legacy top-level block,
+    // and reading only one is how `serviceOverrides` was honoured for half
+    // the services in this codebase once already.
+    const legacy = (infrastructure as { gateway?: { staticDir?: string } }).gateway;
+    const preset = (infrastructure as { services?: Record<string, { config?: { staticDir?: string } }> })
+      .services?.['gateway'];
+    const staticDir = preset?.config?.staticDir ?? legacy?.staticDir;
+    if (!staticDir) return {};
+
+    const abs = staticDir.startsWith('/')
+      ? staticDir
+      : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
+
+    try {
+      // The same target the deployer uses for artifacts — with the node's SSH
+      // user and credential. Passing a bare `{ host }` is how the first
+      // attempt failed: `Failed to connect to 37.27.130.185`, an error about
+      // credentials that were sitting in the registry all along.
+      const target = await this.targetForStackNode(node);
+      const { remoteDir, bytes } = await this.deployer.uploadStaticBundle(
+        target,
+        abs,
+        '/opt/omnitron/stack-static/gateway',
+      );
+      this.logger.info(
+        { node: node.host, service: 'gateway', from: abs, remoteDir, bytes },
+        bytes === 0 ? 'The node already has this build' : 'Frontend delivered to the node',
+      );
+      return { gateway: remoteDir };
+    } catch (err) {
+      this.logger.error(
+        { node: node.host, service: 'gateway', dir: abs, error: (err as Error).message },
+        'Could not deliver the frontend — the gateway will serve nothing at /',
+      );
+      return {};
+    }
+  }
+
   private async readStackConfigFiles(
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     projectRoot: string,
@@ -1485,7 +1540,7 @@ export class ProjectService extends EventEmitter {
 
   private async provisionNodeInfrastructure(
     connector: SlaveConnector,
-    node: { host: string; port?: number | undefined; label?: string | undefined },
+    node: import('../config/types.js').IStackNode,
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     services?: Record<string, import('../infrastructure/types.js').IServiceRequirement> | undefined,
     owner?: {
@@ -1525,6 +1580,14 @@ export class ProjectService extends EventEmitter {
     try {
       const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot) : {};
 
+      // The frontend the gateway serves, if this stack declares one. It goes
+      // by SSH rather than inside the call: 32 MB is the wrong size for an
+      // RPC argument, which is held whole on both sides and blocks the call
+      // it rides on. Config files are 65 KB and ride along; a build does not.
+      const staticRoots = projectRoot
+        ? await this.shipStackStatics(infrastructure, projectRoot, node)
+        : {};
+
       // Retry once if the connection turns out to be gone: the deployer just
       // restarted this node's daemon, so the mesh connection the master holds
       // was established to the process that exited. `provisionStack` is a
@@ -1534,7 +1597,7 @@ export class ProjectService extends EventEmitter {
         port,
         'OmnitronInfra',
         'provisionStack',
-        [{ config: infrastructure, services, ...(owner ?? {}), configFiles }],
+        [{ config: infrastructure, services, ...(owner ?? {}), configFiles, staticRoots }],
         { retryOnDisconnect: true },
       )) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 

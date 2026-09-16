@@ -87,6 +87,23 @@ export interface GatewayServiceConfig {
   port?: number; // Default: 8080
   /** Path to gateway config directory (relative to project root), containing nginx.conf, lua/, maintenance.html */
   configDir?: string; // Default: 'infra/nginx'
+  /**
+   * A built frontend for the gateway to serve at `/`, relative to the project
+   * root — `apps/portal/dist`.
+   *
+   * The gateway's nginx.conf serves `/` two ways: with `PORTAL_DEV_UPSTREAM`
+   * set it reverse-proxies to a Vite dev server, and without it serves a
+   * static build from `/var/www/portal`. On a laptop the first applies. On a
+   * node there is no Vite, so the second does — and nothing put anything at
+   * that path: measured on the test server, a gateway with four mounts, none
+   * of them the portal, answering the onion with 504 because the directory it
+   * serves from does not exist.
+   *
+   * Declared rather than assumed, because which build a stack serves is the
+   * stack's decision — a test node and a production node may serve different
+   * ones, and neither is guessable from the gateway's own config.
+   */
+  staticDir?: string;
   /** Redis DB index for gateway state — auto-allocated by omnitron (set internally, NOT in user config) */
   redisDb?: number;
   /** Auto-generated from app transport definitions if not specified */

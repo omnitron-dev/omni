@@ -255,3 +255,64 @@ describe('the gateway is published where the stack asked', () => {
     expect(gatewayHostPort({ ports: { http: 80 }, docker: { portMappings: { http: 8081 } } }, { port: 7000 })).toBe(8081);
   });
 });
+
+describe('the frontend the gateway serves', () => {
+  const redis = { host: 'h', port: 6379, db: 1 };
+
+  it('is not mounted when the stack declares none', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+
+    const spec = resolveGateway({ port: 8080 } as never, redis as never, '/proj');
+
+    // A stack with no frontend must not acquire an empty mount: docker
+    // creates the missing source as a directory, and the gateway would then
+    // serve an empty one — indistinguishable from a broken build.
+    expect(spec.volumes.some((v) => v.target === '/var/www/portal')).toBe(false);
+  });
+
+  it('mounts a declared build at the path nginx serves from', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+
+    const spec = resolveGateway(
+      { port: 8080, staticDir: 'apps/portal/dist' } as never,
+      redis as never,
+      '/proj',
+    );
+
+    // `/var/www/portal` is not a choice made here — it is where the stack's
+    // own nginx.conf serves `/` from whenever PORTAL_DEV_UPSTREAM is unset,
+    // which is every deployment with no Vite beside it.
+    const mount = spec.volumes.find((v) => v.target === '/var/www/portal');
+    expect(mount?.source).toBe('/proj/apps/portal/dist');
+    expect(mount?.readonly).toBe(true);
+  });
+
+  it('takes an absolute path as the node’s own copy', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+
+    // A node names a path on itself. Resolving it against a project root it
+    // does not have would produce a path that exists nowhere.
+    const spec = resolveGateway(
+      { port: 8080, staticDir: '/opt/omnitron/stack-static/gateway/abc123' } as never,
+      redis as never,
+      '/proj',
+    );
+
+    expect(spec.volumes.find((v) => v.target === '/var/www/portal')?.source).toBe(
+      '/opt/omnitron/stack-static/gateway/abc123',
+    );
+  });
+
+  it('changes the spec hash, so a new build recreates the container', async () => {
+    const { resolveGateway } = await import('../../src/infrastructure/service-resolver.js');
+    const { containerSpecHash } = await import('../../src/infrastructure/container-runtime.js');
+
+    // The directory is named by the build's content hash, so a changed build
+    // is a changed path. If that did not reach the spec hash, the node would
+    // hold the new files on disk and keep the old ones mounted.
+    const a = resolveGateway({ port: 8080, staticDir: '/opt/omnitron/stack-static/gateway/aaa' } as never, redis as never, '/p');
+    const b = resolveGateway({ port: 8080, staticDir: '/opt/omnitron/stack-static/gateway/bbb' } as never, redis as never, '/p');
+
+    expect(containerSpecHash(a)).not.toBe(containerSpecHash(b));
+  });
+});

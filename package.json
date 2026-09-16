@@ -14,6 +14,7 @@
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint --fix \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
     "lint:print": "eslint --print-config eslint.config.mjs > eslint-show-config.json",
     "fm:check": "prettier --check \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "check:scans": "node scripts/run-checks.mjs",
     "fm:fix": "prettier --write \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
     "fix:all": "pnpm lint:fix && pnpm fm:fix",
     "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",

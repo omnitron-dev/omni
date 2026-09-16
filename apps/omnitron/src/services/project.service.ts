@@ -1395,7 +1395,12 @@ export class ProjectService extends EventEmitter {
         const unsubDeploy = this.deployer.onProgress((progress) => {
           this.emit('stack:deploy_progress', projectName, stackName, progress);
         });
-        const results = await this.deployer.deployToStack([target], artifacts, projectName);
+        // The definitions travel with the artifacts. A node that receives
+        // one without the other has files it cannot run, and says so only if
+        // someone asks it directly.
+        const results = await this.deployer.deployToStack([target], artifacts, projectName, {
+          apps: appEntries,
+        });
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');
         if (failed.length > 0) {
@@ -1684,7 +1689,12 @@ export class ProjectService extends EventEmitter {
         this.emit('stack:deploy_progress', projectName, stackName, progress);
       });
       const results = await this.deployer.deployToStack(
-        await Promise.all(appNodes.map((n) => this.targetForStackNode(n))), artifacts, projectName, { concurrency: 5 },
+        await Promise.all(appNodes.map((n) => this.targetForStackNode(n))),
+        artifacts,
+        projectName,
+        // Same on the cluster path: artifacts without definitions are files a
+        // node cannot run.
+        { concurrency: 5, apps: appEntries },
       );
       unsubDeploy();
       const successful = results.filter((r) => r.status === 'success').length;

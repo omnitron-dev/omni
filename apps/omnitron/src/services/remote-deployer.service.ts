@@ -394,7 +394,18 @@ export class RemoteDeployer {
     targets: DeployTarget[],
     artifacts: ArtifactInfo[],
     project: string,
-    options?: { concurrency?: number },
+    options?: {
+      concurrency?: number;
+      /**
+       * The app definitions these artifacts belong to.
+       *
+       * Without them a node receives artifacts and never learns what to do
+       * with them: its daemon says `No projects registered` and
+       * `omnitron restart main` answers `Unknown app: main`. Optional so the
+       * existing callers keep working, and every one of them should pass it.
+       */
+      apps?: readonly import('../config/types.js').IEcosystemAppEntry[];
+    },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
     const results: DeployResult[] = [];
@@ -426,7 +437,72 @@ export class RemoteDeployer {
     }
 
     await Promise.all(executing);
+
+    // Tell each node what it now has. After the transfers, because a config
+    // naming an artifact that has not landed yet is a config the node will
+    // fail on — and only for the apps that actually arrived, which is what
+    // `results` knows and the artifact list does not.
+    if (options?.apps?.length) {
+      for (const target of targets) {
+        const landed = results
+          .filter((r) => r.node === `${target.host}:${target.sshPort ?? 22}` && r.status === 'success')
+          .map((r) => ({ app: r.app, version: r.version }));
+        await this.registerNodeApps(target, project, options.apps, landed);
+      }
+    }
+
     return results;
+  }
+
+  /**
+   * Give a node the config that tells it what to run.
+   *
+   * Written, then registered. Registering a path with no config in it leaves
+   * the daemon with a project it cannot read, which reports as a broken
+   * project rather than a missing file.
+   *
+   * Reported and not thrown: artifacts that transferred are on the node
+   * either way, and failing the whole deployment over the registration would
+   * discard a transfer that succeeded. The operator needs to know the apps
+   * are not runnable, which is what the error says.
+   */
+  private async registerNodeApps(
+    target: DeployTarget,
+    project: string,
+    apps: readonly import('../config/types.js').IEcosystemAppEntry[],
+    landed: ReadonlyArray<{ app: string; version: string }>,
+  ): Promise<void> {
+    if (landed.length === 0) {
+      this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
+      return;
+    }
+
+    const { renderNodeAppConfig } = await import('../project/node-app-config.js');
+    const dir = `/opt/omnitron/projects/${assertRemotePathSegment('project name', project)}`;
+    const body = renderNodeAppConfig({ project, artifactRoot: '/opt/omnitron/artifacts', apps, artifacts: landed });
+
+    try {
+      await this.sshExec(target, `mkdir -p ${shellEscape(dir)}`);
+      // Through a here-document: the config carries braces, quotes and
+      // newlines, and a single-quoted argument would need every quote in it
+      // escaped by hand — which is how a generated file acquires a syntax
+      // error nobody can see in the source that generated it.
+      await this.sshExec(
+        target,
+        `cat > ${shellEscape(`${dir}/omnitron.config.mjs`)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
+      );
+      const out = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
+
+      this.logger.info(
+        { host: target.host, project, dir, apps: landed.map((l) => l.app), detail: out.trim().slice(0, 200) },
+        'The node now knows what to run',
+      );
+    } catch (err) {
+      this.logger.error(
+        { host: target.host, project, dir, error: (err as Error).message },
+        'Could not tell the node what to run — its artifacts are installed and its daemon does not know the apps',
+      );
+    }
   }
 
   /**

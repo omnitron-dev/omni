@@ -27,7 +27,7 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig, IMeshNodeStatus } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators } from '../shared/dto/nodes.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
 
@@ -65,6 +65,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   private remoteDeployer: import('./remote-deployer.service.js').RemoteDeployer | null = null;
 
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
+
+  private titanHealth: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null = null;
 
   constructor(private readonly nodeManager: NodeManagerService) {}
 
@@ -249,6 +251,74 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   /** The daemon's mesh connector, so the console can be told what it sees. */
   setSlaveConnector(connector: import('../cluster/slave-connector.js').SlaveConnector | null): void {
     this.slaveConnector = connector;
+  }
+
+  /**
+   * This daemon's own titan-health, for the local node's indicators.
+   *
+   * A remote node is asked over the mesh; the local one cannot be, because a
+   * daemon has no mesh connection to itself.
+   */
+  setTitanHealth(service: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null): void {
+    this.titanHealth = service;
+  }
+
+  /**
+   * What the node's OWN titan-health says about it.
+   *
+   * Every omnitron daemon runs `TitanHealthModule` and answers `Health@1.0.0`,
+   * with titan's built-in indicators — memory, event loop, disk, database,
+   * redis — plus the two this daemon registers: docker and the apps it
+   * supervises. The remote nodes have had all of it since they were
+   * provisioned, and nothing ever asked them: the console's `health` client is
+   * bound to `daemonClient.daemon`, so it only ever spoke to the daemon it was
+   * connected to.
+   *
+   * There is no new mechanism here. `SlaveConnector.invokeOnSlave` already
+   * calls any service on any node over the mesh — it had exactly one caller,
+   * `OmnitronInfra.provisionStack` — and `Health@1.0.0` is already answering
+   * on the other side.
+   *
+   * `reachable: false` with a reason is NOT `unhealthy`. A node that cannot be
+   * asked has not reported anything, and rendering silence as a verdict is the
+   * same mistake as reading an unmeasured SSH layer as a refusal.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeIndicators(data: { nodeId: string }): Promise<INodeIndicators> {
+    const node = this.nodeManager.getNode(data.nodeId);
+    if (!node) return { nodeId: data.nodeId, reachable: false, error: 'No such node', status: null, indicators: {} };
+
+    if (node.isLocal) {
+      if (!this.titanHealth) {
+        return { nodeId: node.id, reachable: false, error: 'titan-health is not running on this daemon', status: null, indicators: {} };
+      }
+      try {
+        const report = await this.titanHealth.check();
+        return { nodeId: node.id, reachable: true, error: null, status: report.status, indicators: report.indicators };
+      } catch (err) {
+        return { nodeId: node.id, reachable: false, error: (err as Error).message, status: null, indicators: {} };
+      }
+    }
+
+    if (!this.slaveConnector) {
+      return { nodeId: node.id, reachable: false, error: 'This daemon has no mesh connector', status: null, indicators: {} };
+    }
+
+    try {
+      const report = (await this.slaveConnector.invokeOnSlave(
+        node.host,
+        node.daemonPort,
+        'Health@1.0.0',
+        'check',
+        [],
+      )) as { status: string; indicators: Record<string, unknown> };
+      return { nodeId: node.id, reachable: true, error: null, status: report?.status ?? null, indicators: report?.indicators ?? {} };
+    } catch (err) {
+      // The common reasons are worth reading as themselves: a node outside the
+      // mesh has never been asked, which is a different thing from a node that
+      // was asked and is unwell.
+      return { nodeId: node.id, reachable: false, error: (err as Error).message, status: null, indicators: {} };
+    }
   }
 
   /**

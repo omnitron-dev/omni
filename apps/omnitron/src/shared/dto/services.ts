@@ -94,7 +94,7 @@ import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig,
-  IMeshNodeStatus,
+  IMeshNodeStatus, INodeIndicators,
 } from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
@@ -102,7 +102,7 @@ import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './m
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
 import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
 
-export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig } from './nodes.js';
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators } from './nodes.js';
 
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
@@ -497,6 +497,14 @@ export interface IOmnitronNodesService {
    * it". A node can pass every reachability check and deliver nothing.
    */
   getMeshStatus(): Promise<IMeshNodeStatus[]>;
+  /**
+   * The node's OWN titan-health report, asked over the mesh.
+   *
+   * Not a second health mechanism: every omnitron daemon already answers
+   * `Health@1.0.0`, and `SlaveConnector.invokeOnSlave` already reaches any
+   * service on any node. This joins the two.
+   */
+  getNodeIndicators(data: { nodeId: string }): Promise<INodeIndicators>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;

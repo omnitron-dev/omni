@@ -1456,6 +1456,12 @@ export class OmnitronDaemon {
 
       // Managed apps health indicator
       titanHealth.registerIndicator(new AppHealthIndicator(orchestrator));
+
+      // The console asks every node for its own indicators, and a daemon has
+      // no mesh connection to itself — so the local node's answer comes from
+      // here. Registered beside the indicators rather than in the wiring
+      // above, because this is the object that has just been given them.
+      this.nodeManagerRpcService?.setTitanHealth(titanHealth);
     } catch {
       // Health module may not be available — non-critical
     }

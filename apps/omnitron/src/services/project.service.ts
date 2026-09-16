@@ -1525,9 +1525,18 @@ export class ProjectService extends EventEmitter {
     try {
       const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot) : {};
 
-      const report = (await connector.invokeOnSlave(host, port, 'OmnitronInfra', 'provisionStack', [
-        { config: infrastructure, services, ...(owner ?? {}), configFiles },
-      ])) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
+      // Retry once if the connection turns out to be gone: the deployer just
+      // restarted this node's daemon, so the mesh connection the master holds
+      // was established to the process that exited. `provisionStack` is a
+      // reconciler, so applying it twice is applying it once.
+      const report = (await connector.invokeOnSlave(
+        host,
+        port,
+        'OmnitronInfra',
+        'provisionStack',
+        [{ config: infrastructure, services, ...(owner ?? {}), configFiles }],
+        { retryOnDisconnect: true },
+      )) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 
       this.logger.info(
         {

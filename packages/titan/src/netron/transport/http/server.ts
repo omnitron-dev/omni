@@ -148,6 +148,41 @@ export function resolveMaxBodyBytes(options: unknown): number {
     : DEFAULT_MAX_BODY_BYTES;
 }
 
+/**
+ * The error a `TitanError` was built from, flattened for a log line.
+ *
+ * Walks the `cause` chain — a driver error wrapped by a repository helper
+ * wrapped by `toTitanError` is three deep — and stops at a depth that cannot
+ * loop on a self-referencing cause. Returns nothing when there is no cause,
+ * so the field simply does not appear rather than appearing empty.
+ */
+export function causeFields(error: { cause?: unknown }): Record<string, unknown> {
+  const chain: string[] = [];
+  let current: unknown = error.cause;
+  const seen = new Set<unknown>();
+  let deepest: Error | undefined;
+
+  for (let depth = 0; depth < 5 && current instanceof Error && !seen.has(current); depth++) {
+    seen.add(current);
+    // `AggregateError.message` is the empty string with the real reasons in
+    // `.errors` — a shape this repository has already been bitten by, where
+    // 29 099 log lines named no cause at all.
+    const aggregate = (current as { errors?: unknown[] }).errors;
+    const text = Array.isArray(aggregate)
+      ? aggregate.map((e) => (e instanceof Error ? e.message : String(e))).join('; ')
+      : current.message;
+    chain.push(`${current.name}: ${text}`);
+    deepest = current;
+    current = (current as { cause?: unknown }).cause;
+  }
+
+  if (chain.length === 0) return {};
+  return {
+    cause: chain.join(' ← '),
+    ...(deepest?.stack && { causeStack: deepest.stack }),
+  };
+}
+
 export class HttpServer extends EventEmitter implements ITransportServer {
   readonly connections = new Map<string, ITransportConnection>();
 
@@ -1468,6 +1503,32 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           // Include stack on 5xx for post-incident triage. Pino's
           // serializer truncates safely at the default level.
           ...(httpError.status >= 500 && titanError.stack && { stack: titanError.stack }),
+          // And the CAUSE, which is the only part that says what happened.
+          //
+          // `toTitanError` deliberately masks a driver or programming fault
+          // behind a generic sentence — "An unexpected error occurred", "A
+          // database error occurred" — so the wire does not carry schema
+          // names, file paths or internal fields. It says three separate
+          // times that this is safe because "the full error still travels as
+          // `cause`, so server-side logs lose nothing".
+          //
+          // Server-side logs lost everything. This line took
+          // `titanError.stack`, which is the stack of the WRAPPER: every 5xx
+          // in the log read
+          //
+          //     error: An unexpected error occurred
+          //     stack: TitanError: An unexpected error occurred
+          //         at toTitanError (…/errors/factories.js:257)
+          //         at HttpServer.handleInvocationRequest (…)
+          //
+          // — the masked sentence, then the masking function, and nothing
+          // about the fault. Measured on the dev stand 2026-09-16 against a
+          // `sendMessage` that answered 500: the log named the service, the
+          // method and the duration, and could not say why.
+          //
+          // The masking is right and stays. What changes is that the thing
+          // it promised to keep is now actually written down.
+          ...(httpError.status >= 500 && causeFields(titanError)),
         };
         if (httpError.status >= 500) {
           this.netronPeer.logger.error(logFields, 'Netron error');

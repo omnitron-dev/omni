@@ -305,9 +305,35 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting artifact...');
       await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(`${artifact.app}-${artifact.version}.tar.gz`)}`);
 
-      // 5. Install production dependencies
-      this.emitProgress(nodeKey, artifact.app, 'extracting', 65, 'Installing dependencies...');
-      await this.sshExec(target, `cd ${shellEscape(remotePath)} && npm install --production --ignore-scripts 2>/dev/null || true`);
+      // 5. The dependencies travel WITH the artifact.
+      //
+      // This ran `npm install --production --ignore-scripts 2>/dev/null ||
+      // true` on the node. It could never have worked: the apps' package.json
+      // files name workspace dependencies, and running that install by hand
+      // on the test node answers
+      //
+      //     npm error code EUNSUPPORTEDPROTOCOL
+      //     npm error Unsupported URL Type "workspace:": workspace:*
+      //
+      // — a pnpm protocol npm does not implement. The `|| true` meant nobody
+      // found out: the artifact arrived with `dist/` and no `node_modules/`,
+      // and the app could not have started even once its definition existed.
+      //
+      // `ArtifactBuilder` now packs a `pnpm deploy` tree, so what lands is
+      // already complete. Verifying that is cheap and worth doing here rather
+      // than discovering it at the app's first import.
+      this.emitProgress(nodeKey, artifact.app, 'extracting', 65, 'Checking dependencies...');
+      const deps = await this.sshExec(
+        target,
+        `test -d ${shellEscape(`${remotePath}/node_modules`)} && echo present || echo missing`,
+      ).catch(() => 'missing');
+      if (deps.trim() !== 'present') {
+        const duration = Date.now() - startTime;
+        const detail = 'the artifact carries no node_modules, so the app cannot start on this node';
+        this.emitProgress(nodeKey, artifact.app, 'failed', 65, detail);
+        this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
+        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
+      }
 
       // 6. Signal remote daemon to restart the app
       this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');

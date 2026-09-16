@@ -116,7 +116,11 @@ describe('a socket that opens and dies does not count as a connection', () => {
 
   it('the delay grows across repeated instant failures', async () => {
     const { client, reconnects } = build();
-    void client.connect();
+    // `connect()` rejects when the socket dies before the Netron handshake —
+    // which is the whole subject of this file, so the rejection is expected
+    // and deliberately dropped. `void` alone attaches no handler and the
+    // rejection surfaces as an unhandled error at the end of the run.
+    void client.connect().catch(() => {});
 
     for (let i = 0; i < 4; i++) await cycle(0, reconnects);
 
@@ -134,7 +138,7 @@ describe('a socket that opens and dies does not count as a connection', () => {
 
   it('and a session that lasted starts the next backoff over', async () => {
     const { client, reconnects } = build();
-    void client.connect();
+    void client.connect().catch(() => {}); // expected to reject — see above
 
     await cycle(0, reconnects);
     await cycle(0, reconnects);
@@ -148,7 +152,7 @@ describe('a socket that opens and dies does not count as a connection', () => {
 
   it('a connection still reports zero attempts while it is up', async () => {
     const { client, reconnects } = build();
-    void client.connect();
+    void client.connect().catch(() => {}); // expected to reject — see above
 
     await cycle(0, reconnects);
     await vi.advanceTimersByTimeAsync(1);

@@ -7,7 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createTitanServer, TitanServerFixture } from '../fixtures/titan-server.js';
 import { WebSocketClient } from '../../src/client/ws-client.js';
 import { Packet } from '../../src/packet/packet.js';
-import { serializer } from '../../src/packet/serializer.js';
+import { serializer, setSerializerErrorOptions } from '../../src/packet/serializer.js';
 import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 import { TitanError, ErrorCode } from '../../src/errors/index.js';
 import { Reference } from '../../src/core/reference.js';
@@ -280,10 +280,25 @@ describe('Custom Type Serialization', () => {
       // Capture stack
       const originalStack = error.stack;
 
-      const encoded = serializer.encode(error);
-      const decoded = serializer.decode(SmartBuffer.wrap(encoded));
+      // NB-1 is a SECURITY policy, not an oversight: stacks are omitted by
+      // default because the browser encodes errors toward the server too
+      // (rejected stream callbacks, client-thrown errors on a duplex stream),
+      // and a browser stack leaks bundle paths, source structure and
+      // dependency shape into the server's logs. Both halves are asserted
+      // here — the default that protects, and the opt-in that dev tooling
+      // needs — because a test that only checked the second would read as
+      // permission to carry stacks always.
+      const omitted = serializer.decode(SmartBuffer.wrap(serializer.encode(error)));
+      expect(omitted.stack).not.toBe(originalStack);
 
-      expect(decoded.stack).toBe(originalStack);
+      setSerializerErrorOptions({ includeStackTraces: true });
+      try {
+        const encoded = serializer.encode(error);
+        const decoded = serializer.decode(SmartBuffer.wrap(encoded));
+        expect(decoded.stack).toBe(originalStack);
+      } finally {
+        setSerializerErrorOptions({ includeStackTraces: false });
+      }
     });
 
     it('should handle all error codes', () => {

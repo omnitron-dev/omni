@@ -172,6 +172,19 @@ export class WebSocketClient extends EventEmitter {
   private disconnectedAt?: number;
   private taskHandlers = new Map<string, TaskHandler>();
   private handshakeComplete = false;
+
+  /**
+   * Settles the promise of a `connect()` that is waiting for the Netron
+   * handshake. Set for the window between "socket opened" and "server knows
+   * who we are"; `handleMessage` calls it when the handshake lands.
+   */
+  private connectSettle?: (error?: Error) => void;
+
+  /**
+   * The in-flight `connect()`, so a second caller awaits the first rather
+   * than returning into the same window it is there to close.
+   */
+  private connecting?: Promise<void>;
   /** Server's Netron instance ID, received during handshake */
   public serverId: string | null = null;
   private clientId: string;
@@ -205,8 +218,12 @@ export class WebSocketClient extends EventEmitter {
    * Connect to WebSocket server
    */
   async connect(): Promise<void> {
-    // Guard against concurrent connect calls (e.g. visibility + online + auto-reconnect racing)
+    // Guard against concurrent connect calls (e.g. visibility + online + auto-reconnect racing).
+    // Returning bare `undefined` here made the second caller believe the
+    // connection was ready while the first was still mid-handshake — the same
+    // window this method now exists to close. Await the one in flight.
     if (this.ws && (this.ws.readyState === 0 /* CONNECTING */ || this.ws.readyState === 1) /* OPEN */) {
+      if (this.connecting) await this.connecting;
       return;
     }
 
@@ -216,7 +233,7 @@ export class WebSocketClient extends EventEmitter {
       this.reconnectTimeout = undefined;
     }
 
-    await new Promise<void>((resolve, reject) => {
+    this.connecting = new Promise<void>((resolve, reject) => {
       try {
         this.isManualDisconnect = false;
         this.handshakeComplete = false;
@@ -265,6 +282,21 @@ export class WebSocketClient extends EventEmitter {
         const ws = this.ws!; // Capture ws in local variable to avoid null checks
 
         let isResolved = false;
+        let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
+        const settle = (error?: Error) => {
+          if (isResolved) return;
+          isResolved = true;
+          if (handshakeTimer !== undefined) clearTimeout(handshakeTimer);
+          this.connectSettle = undefined;
+          if (error) reject(error);
+          else resolve();
+        };
+        this.connectSettle = settle;
+        // Bounded, because a server that never sends its id frame would
+        // otherwise leave this promise pending for the life of the tab.
+        handshakeTimer = setTimeout(() => {
+          settle(new ConnectionError(`Netron handshake did not complete within ${this.timeout}ms`));
+        }, this.timeout);
 
         // Handle connection open
         ws.addEventListener('open', () => {
@@ -285,8 +317,23 @@ export class WebSocketClient extends EventEmitter {
           // still answers 0 while connected, which is its documented
           // contract.
           this.emit('connect');
-          isResolved = true;
-          resolve();
+          // NOT resolved here. The comment above says it for the reconnect
+          // counter — "a socket that opens is not yet a connection that
+          // works" — and it is just as true of this promise. Netron's
+          // handshake is a SEPARATE exchange after the upgrade: the server
+          // sends `{type:'id'}` and only once we answer `{type:'client-id'}`
+          // does it know which peer this socket belongs to. A request sent in
+          // that window reaches a server with nowhere to send the reply, and
+          // the caller waits out its full timeout for an answer that is not
+          // coming.
+          //
+          // It was reachable by doing the obvious thing: `await connect()`
+          // then `invoke(...)`. The only integration suite that passed was
+          // the one whose author had written
+          // `await new Promise((r) => setTimeout(r, 100))` after connect,
+          // commented "wait for the connection to stabilize" — a sleep
+          // standing in for the event that actually says so. Five suites did
+          // the obvious thing instead and timed out.
         });
 
         // Handle incoming messages
@@ -299,16 +346,16 @@ export class WebSocketClient extends EventEmitter {
           const error = new ConnectionError('WebSocket error');
           this.state = 'failed' as ConnectionState;
           this.emit('error', error);
-          // Only reject if we haven't connected yet
-          if (!isResolved) {
-            isResolved = true;
-            reject(error);
-          }
+          settle(error);
         });
 
         // Handle close
         ws.addEventListener('close', (event: CloseEvent) => {
           this.disconnectedAt = Date.now();
+          // A socket that closes before the handshake has to end the connect
+          // too. Previously `close` settled nothing, which was harmless only
+          // because `open` had already resolved.
+          settle(new ConnectionError('Connection closed before the Netron handshake completed'));
 
           // Reject all pending requests
           for (const pending of this.pendingRequests.values()) {
@@ -339,9 +386,15 @@ export class WebSocketClient extends EventEmitter {
         });
       } catch (error) {
         this.state = 'failed' as ConnectionState;
-        reject(error);
+        reject(error instanceof Error ? error : new ConnectionError(String(error)));
       }
     });
+
+    try {
+      await this.connecting;
+    } finally {
+      this.connecting = undefined;
+    }
   }
 
   /**
@@ -370,6 +423,9 @@ export class WebSocketClient extends EventEmitter {
               this.serverId = msg.id;
               this.ws?.send(JSON.stringify({ type: 'client-id', id: this.clientId }));
               this.handshakeComplete = true;
+              // THIS is when the connection can carry a request, so this is
+              // when `connect()` resolves.
+              this.connectSettle?.();
               return;
             }
           } catch {

@@ -36,9 +36,9 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // `omnitronRole?: string` where the daemon says `'master' | 'slave'`, so a
 // role it can never send would have type-checked here.
 import type {
-  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats,
+  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
 } from '@omnitron-dev/omnitron/dto/services';
-import { verdictOf, firstReason, type LayerVerdict } from 'src/utils/node-diagnosis';
+import { verdictOf, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
@@ -759,6 +759,33 @@ function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
         </Typography>
       )}
     </Box>
+  );
+}
+
+/**
+ * Whether the fleet agrees on who leads it.
+ *
+ * The only reading here that is meaningless per node. One node naming a leader
+ * is unremarkable; two naming DIFFERENT leaders, or sitting in different
+ * terms, is a split brain — every node individually healthy and the fleet not.
+ * Shown once at the top rather than on each card, because a disagreement has
+ * no single card to live on.
+ *
+ * Silent when the fleet agrees, and silent when fewer than two nodes could be
+ * asked: one answer cannot disagree with anything, and drawing "consistent"
+ * from a sample of one is how a check gets believed for the wrong reason.
+ */
+function ClusterAgreement({ states }: { states: Record<string, INodeClusterState> }) {
+  const d = clusterDisagreement(Object.values(states) as never);
+  if (d.kind === 'none') return null;
+
+  return (
+    <FormAlert severity="warning">
+      {d.kind === 'leaders'
+        ? `${d.answered} nodes name ${d.groups.length} different leaders: ` +
+          d.groups.map(([l, ids]) => `${l} (${ids.length})`).join(', ')
+        : `${d.answered} nodes are in ${d.terms.length} different election terms: ${d.terms.join(', ')}`}
+    </FormAlert>
   );
 }
 
@@ -1610,6 +1637,7 @@ export default function NodesPage() {
   nodeListRef.current = nodeList;
 
   const [mesh, setMesh] = useState<Record<string, IMeshNodeStatus>>({});
+  const [clusterStates, setClusterStates] = useState<Record<string, INodeClusterState>>({});
 
   const fetchNodes = useCallback(async () => {
     try {
@@ -1637,6 +1665,28 @@ export default function NodesPage() {
       // is replicating, and showing "not joined" because the daemon was busy
       // reports an outage this page invented.
     }
+  }, []);
+
+  /**
+   * Each node's view of who leads the fleet.
+   *
+   * One call per node, because the question is asked OF the node — a master
+   * that answered for everyone would be reporting its own opinion several
+   * times, which is exactly the disagreement this is meant to detect.
+   *
+   * `allSettled`, and only the answers that came back are merged: a node that
+   * could not be asked must not read as a node that named nobody, or every
+   * unreachable node would manufacture a split brain.
+   */
+  const fetchClusterStates = useCallback(async (nodes: INodeWithStatus[]) => {
+    const settled = await Promise.allSettled(
+      nodes.map((n) => nodesRpc.getNodeClusterState({ nodeId: n.id })),
+    );
+    const next: Record<string, INodeClusterState> = {};
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value) next[r.value.nodeId] = r.value as INodeClusterState;
+    }
+    if (Object.keys(next).length > 0) setClusterStates(next);
   }, []);
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
@@ -1690,6 +1740,12 @@ export default function NodesPage() {
   // a credential expires, a reconnect succeeds — and none of those produce
   // the events that refresh the list.
   usePollingEffect(() => void fetchMesh(), { intervalMs: 15_000 });
+
+  // Who each node thinks leads the fleet. Slower than the mesh tick: an
+  // election settles in seconds and a disagreement that outlives a minute is
+  // the one worth showing, so a faster poll would only add N calls per node
+  // for a question whose answer rarely changes.
+  usePollingEffect(() => void fetchClusterStates(nodeListRef.current), { intervalMs: 60_000 });
 
   // A check round finished, or a node changed state: read the new list now
   // rather than at the next tick.
@@ -1874,6 +1930,8 @@ export default function NodesPage() {
           </Stack>
         }
       />
+
+      <ClusterAgreement states={clusterStates} />
 
       {listError && (
         <FormAlert severity="warning" onClose={() => setListError(null)}>

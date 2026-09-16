@@ -27,7 +27,7 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState } from '../shared/dto/nodes.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
@@ -72,6 +72,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   private syncService: { getStatus(): Promise<ISyncStatus> } | null = null;
 
   private telemetryRelay: { stats(): unknown } | null = null;
+
+  private leaderElection: { getClusterState(): unknown } | null = null;
 
   constructor(private readonly nodeManager: NodeManagerService) {}
 
@@ -278,6 +280,11 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     this.telemetryRelay = relay;
   }
 
+  /** This daemon's own election state, for the local node. */
+  setLeaderElection(election: { getClusterState(): unknown } | null): void {
+    this.leaderElection = election;
+  }
+
 /**
    * Ask a service ON the node, wherever the node is.
    *
@@ -408,6 +415,32 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return r.ok
       ? { nodeId: data.nodeId, reachable: true, error: null, relay: r.value ?? null }
       : { nodeId: data.nodeId, reachable: false, error: r.error, relay: null };
+  }
+
+
+/**
+   * Which node each node thinks is the leader.
+   *
+   * The fourth reader through `askNode`, and the one that is only meaningful
+   * ACROSS nodes: a single node's answer is unremarkable, and two nodes naming
+   * different leaders, or sitting in different terms, is a split brain — the
+   * state in which every node is individually healthy and the fleet is not.
+   * Nothing in the console could see it, because `OmnitronCluster` is one of
+   * the services its client does not know, and `getClusterState`'s own
+   * docblock says it is "used by CLI and webapp dashboard".
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeClusterState(data: { nodeId: string }): Promise<INodeClusterState> {
+    const r = await this.askNode<Record<string, unknown>>(
+      data.nodeId,
+      'OmnitronCluster',
+      'getClusterState',
+      [],
+      this.leaderElection ? () => Promise.resolve(this.leaderElection!.getClusterState() as Record<string, unknown>) : null,
+    );
+    return r.ok
+      ? { nodeId: data.nodeId, reachable: true, error: null, cluster: r.value ?? null }
+      : { nodeId: data.nodeId, reachable: false, error: r.error, cluster: null };
   }
 
 

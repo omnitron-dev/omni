@@ -856,6 +856,7 @@ function NodeDiagnosisDialog({
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
   const [sync, setSync] = useState<INodeSyncStatus | null>(null);
   const [relay, setRelay] = useState<INodeRelayStats | null>(null);
+  const [summary, setSummary] = useState<{ status: string; lastSeenOnline: string | null; consecutiveFailures: number } | null>(null);
   const [limit, setLimit] = useState<number>(50);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -870,15 +871,26 @@ function NodeDiagnosisDialog({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind, syn, rel] = await Promise.allSettled([
+      const [rows, ind, syn, rel, sums] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
         nodesRpc.getNodeSyncStatus({ nodeId }),
         nodesRpc.getNodeRelayStats({ nodeId }),
+        nodesRpc.getNodeHealthSummaries(),
       ]);
       setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
       setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : null);
       setRelay(rel.status === 'fulfilled' ? (rel.value as INodeRelayStats) : null);
+      // `consecutiveFailures` and `lastSeenOnline` live only here: a node that
+      // blinked once and a node that has been down since Tuesday look the same
+      // in every other reading on this page, and they are not the same
+      // problem. The worker keeps this; nothing displayed it.
+      setSummary(
+        sums.status === 'fulfilled'
+          ? ((sums.value as Array<{ nodeId: string; status: string; lastSeenOnline: string | null; consecutiveFailures: number }>)
+              .find((x) => x.nodeId === nodeId) ?? null)
+          : null,
+      );
       if (rows.status === 'rejected') throw rows.reason;
       setHistory(rows.value as HealthCheckRow[]);
     } catch (err) {
@@ -926,6 +938,23 @@ function NodeDiagnosisDialog({
 
       <DialogContent dividers>
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Last check</Typography>
+        {summary && (summary.consecutiveFailures > 0 || summary.lastSeenOnline) && (
+          <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            {summary.consecutiveFailures > 0 && (
+              <Chip
+                size="small"
+                color={summary.consecutiveFailures > 3 ? 'error' : 'warning'}
+                label={`${summary.consecutiveFailures} consecutive failures`}
+                sx={{ height: 20, fontSize: 11 }}
+              />
+            )}
+            {summary.lastSeenOnline && (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                last seen online {formatAge(summary.lastSeenOnline)}
+              </Typography>
+            )}
+          </Stack>
+        )}
         {s ? (
           <Box sx={{ mb: 2 }}>
             {!isLocal && (

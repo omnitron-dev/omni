@@ -76,3 +76,53 @@ export function isMeasured(check: CheckLayers): boolean {
     verdictOf(check.omnitronConnected, check.omnitronError) !== 'unmeasured'
   );
 }
+
+/** One node's view of the fleet's leadership, as the daemon returns it. */
+export interface ClusterView {
+  nodeId: string;
+  reachable: boolean;
+  cluster: { leaderId?: string | null; term?: number } | null;
+}
+
+export type Disagreement =
+  | { kind: 'none' }
+  | { kind: 'leaders'; answered: number; groups: Array<[string, string[]]> }
+  | { kind: 'terms'; answered: number; terms: number[] };
+
+/**
+ * Whether the fleet agrees on who leads it.
+ *
+ * The only reading in this console that is meaningless per node. One node
+ * naming a leader is unremarkable; two naming DIFFERENT leaders, or sitting in
+ * different election terms, is a split brain — every node individually healthy
+ * and the fleet not.
+ *
+ * Two silences, both deliberate:
+ *
+ *   - fewer than two answers is `none`. One answer cannot disagree with
+ *     anything, and reading "consistent" off a sample of one is how a check
+ *     gets believed for the wrong reason.
+ *   - a node that could not be asked is not counted. Treating an unreachable
+ *     node as one that named nobody would manufacture a disagreement out of
+ *     an outage, which is the opposite of the job.
+ *
+ * Leaders are reported before terms: a term difference during an election is
+ * normal and brief, while two live leaders is the thing to act on.
+ */
+export function clusterDisagreement(views: readonly ClusterView[]): Disagreement {
+  const answered = views.filter((v) => v.reachable && v.cluster);
+  if (answered.length < 2) return { kind: 'none' };
+
+  const leaders = new Map<string, string[]>();
+  const terms = new Set<number>();
+  for (const v of answered) {
+    const leader = v.cluster!.leaderId ?? '(none)';
+    if (!leaders.has(leader)) leaders.set(leader, []);
+    leaders.get(leader)!.push(v.nodeId);
+    if (typeof v.cluster!.term === 'number') terms.add(v.cluster!.term);
+  }
+
+  if (leaders.size > 1) return { kind: 'leaders', answered: answered.length, groups: [...leaders] };
+  if (terms.size > 1) return { kind: 'terms', answered: answered.length, terms: [...terms].sort((a, b) => a - b) };
+  return { kind: 'none' };
+}

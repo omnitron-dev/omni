@@ -1126,6 +1126,8 @@ export class OmnitronDaemon {
       );
 
       const clusterRpcService = new ClusterRpc(this.leaderElection);
+      // The local node's own election state, for the cross-node reader.
+      this.nodeManagerRpcService?.setLeaderElection(this.leaderElection);
       await this.app.netron.peer.exposeService(clusterRpcService);
     }
   }

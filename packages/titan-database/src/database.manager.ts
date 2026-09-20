@@ -8,7 +8,79 @@
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
 import { describeError } from './utils/describe-error.js';
-import { Pool, Client as PgClient, types as pgTypes } from 'pg';
+
+/**
+ * The three drivers, loaded when a connection actually asks for one.
+ *
+ * All three are declared `peerDependenciesMeta: { optional: true }` — the
+ * package's own statement that you install the one your database needs. All
+ * three were then imported at the top of this module, so importing
+ * `@omnitron-dev/titan-database` at all required every one of them present.
+ * The optionality was a declaration nothing honoured.
+ *
+ * Found where it had to hurt: a Postgres-only application, installed cleanly
+ * on a node for the first time, with `npm install --omit=dev` resolving
+ * exactly what the manifests declare rather than whatever a shared pnpm store
+ * happened to have lying around:
+ *
+ *     Cannot find package 'mysql2' imported from
+ *     .../node_modules/@omnitron-dev/titan-database/dist/database.manager.js
+ *
+ * Two of six apps died on it, and `better-sqlite3` — a native module that
+ * compiles on install — was one resolution away from being the next.
+ *
+ * `import type` above is erased at compile time, so the types still describe
+ * the pools exactly; only the loading moved. Each loader names the package to
+ * install, because `ERR_MODULE_NOT_FOUND` deep inside a dependency is a
+ * sentence about a file path and not about what the reader should do.
+ */
+import type { Pool, PoolConfig } from 'pg';
+import type * as mysql from 'mysql2';
+import type BetterSqlite3Types from 'better-sqlite3';
+
+type Database = BetterSqlite3Types.Database;
+
+type PgModule = typeof import('pg');
+type MysqlModule = typeof import('mysql2');
+type SqliteModule = { default: typeof BetterSqlite3Types };
+
+async function loadDriver<T>(name: string, dialect: string, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    throw new Error(
+      `The '${dialect}' dialect needs the '${name}' package, which is not installed. ` +
+        `It is an optional peer dependency of @omnitron-dev/titan-database: install the driver ` +
+        `for the database this application uses. (${(err as Error).message})`,
+    );
+  }
+}
+
+/** A pg Pool, by the counters this reads off it rather than by identity. */
+function isPgPool(pool: unknown): pool is Pool {
+  const p = pool as Partial<Pool> | null;
+  return (
+    !!p && typeof p.totalCount === 'number' && typeof p.idleCount === 'number' && typeof p.waitingCount === 'number'
+  );
+}
+
+let pgModule: Promise<PgModule> | null = null;
+function loadPg(): Promise<PgModule> {
+  pgModule ??= loadDriver('pg', 'postgres', () => import('pg'));
+  return pgModule;
+}
+
+let mysqlModule: Promise<MysqlModule> | null = null;
+function loadMysql(): Promise<MysqlModule> {
+  mysqlModule ??= loadDriver('mysql2', 'mysql', () => import('mysql2'));
+  return mysqlModule;
+}
+
+let sqliteModule: Promise<SqliteModule> | null = null;
+function loadSqlite(): Promise<SqliteModule> {
+  sqliteModule ??= loadDriver('better-sqlite3', 'sqlite', () => import('better-sqlite3') as Promise<SqliteModule>);
+  return sqliteModule;
+}
 
 /**
  * Drop-in pg.Client subclass that attaches a defensive `'error'` listener
@@ -24,16 +96,23 @@ import { Pool, Client as PgClient, types as pgTypes } from 'pg';
  * job is to guarantee the client always has *some* subscriber, closing
  * the race entirely. This is the most fundamental possible fix — every
  * Pool client is wrapped before any I/O.
+ *
+ * A function rather than a `class` declaration, because `extends PgClient`
+ * needs `pg` at module load and that is exactly what this file no longer
+ * does. Built once and remembered.
  */
-export class ResilientPgClient extends PgClient {
-  constructor(config?: ConstructorParameters<typeof PgClient>[0]) {
-    super(config as ConstructorParameters<typeof PgClient>[0]);
-    this.on('error', () => { /* re-emitted via pool.on('error') once Pool attaches its own listener */ });
-  }
+let resilientClient: PgModule['Client'] | null = null;
+export async function resilientPgClient(): Promise<PgModule['Client']> {
+  if (resilientClient) return resilientClient;
+  const { Client: PgClient } = await loadPg();
+  resilientClient = class ResilientPgClient extends PgClient {
+    constructor(config?: ConstructorParameters<typeof PgClient>[0]) {
+      super(config as ConstructorParameters<typeof PgClient>[0]);
+      this.on('error', () => { /* re-emitted via pool.on('error') once Pool attaches its own listener */ });
+    }
+  };
+  return resilientClient;
 }
-import * as mysql from 'mysql2';
-import BetterSqlite3 from 'better-sqlite3';
-type Database = BetterSqlite3.Database;
 import { sqliteDateSerializerPlugin } from './plugins/sqlite-date-serializer.plugin.js';
 import {
   createExecutor,
@@ -784,6 +863,9 @@ export class DatabaseManager implements IDatabaseManager {
 
     switch (config.dialect) {
       case 'postgres': {
+        const { Pool, types: pgTypes } = await loadPg();
+        const ResilientPgClient = await resilientPgClient();
+
         // Create a clean config object without ssl=false
         const pgConfig = { ...connectionConfig } as Record<string, unknown>;
         if (pgConfig['ssl'] === false) {
@@ -936,6 +1018,8 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'mysql': {
+        const mysql = await loadMysql();
+
         // Create a clean config object without ssl=false
         const mysqlConfig = { ...connectionConfig } as Record<string, unknown>;
         if (mysqlConfig['ssl'] === false) {
@@ -1042,6 +1126,7 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'sqlite': {
+        const { default: BetterSqlite3 } = await loadSqlite();
         const database = new BetterSqlite3(connectionConfig.database || ':memory:', {
           // Enable verbose mode for debugging if requested
           verbose: config.debug ? (msg: unknown) => this.logger.debug({ msg }, 'SQLite verbose') : undefined,
@@ -1698,7 +1783,14 @@ export class DatabaseManager implements IDatabaseManager {
     let activeConnections = m.activeConnections;
     let waitingClients = m.waitingClients;
 
-    if (info.pool && info.config.dialect === 'postgres' && info.pool instanceof Pool) {
+    // Structural, not `instanceof Pool`. Two reasons, and the second is why
+    // it changed: `pg` is loaded lazily now and a value import here would
+    // undo that; and `instanceof` is false across two copies of `pg` in one
+    // tree, which npm's layout can produce — so the real pool of a real
+    // Postgres connection would report no statistics at all, silently. The
+    // dialect is already known from the config; the counters are what is
+    // being read.
+    if (info.pool && info.config.dialect === 'postgres' && isPgPool(info.pool)) {
       const pgPool = info.pool;
       totalConnections = pgPool.totalCount;
       idleConnections = pgPool.idleCount;

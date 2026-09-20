@@ -110,7 +110,13 @@ export async function createOmnitronPool(
 ): Promise<Pool> {
   const config = resolveOmnitronPgConfig();
   const pg = await import('pg');
-  const { ResilientPgClient } = await import('@omnitron-dev/titan-database');
+  // A function now, not a class: `titan-database` declares pg, mysql2 and
+  // better-sqlite3 as OPTIONAL peer dependencies and used to import all three
+  // at module load, so importing it at all required every one of them — which
+  // is how two apps on the test node died on a missing `mysql2` they have no
+  // use for. Building the subclass needs pg, so it is built on request.
+  const { resilientPgClient } = await import('@omnitron-dev/titan-database');
+  const ResilientPgClient = await resilientPgClient();
 
   const pool = new pg.default.Pool({
     host: config.host,

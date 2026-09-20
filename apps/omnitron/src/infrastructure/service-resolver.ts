@@ -76,6 +76,38 @@ function containerName(service: string): string {
 }
 
 /**
+ * How one managed container reaches another.
+ *
+ * Every container omnitron provisions joins the stack's named network, and
+ * the network exists so they can address each other by name — the comment on
+ * `networkName` below says exactly that. The gateway did not: it was given
+ * `host.docker.internal` and the HOST-published port, and went out to the
+ * host and back.
+ *
+ * That works on a developer's Mac, where `host.docker.internal` reaches the
+ * host's loopback. It cannot work on a Linux node, where `host-gateway`
+ * resolves to the docker0 bridge address and omnitron publishes every managed
+ * port on `127.0.0.1` — deliberately, so a container is not reachable from
+ * the LAN. Measured on the test node: the gateway sat on 172.19.0.2, redis on
+ * 172.19.0.4 of the same network, and every request the gateway served spent
+ * 200ms on `lua tcp socket connect timed out, upstream: 172.17.0.1:6379`
+ * before failing open. The hardening that bound the ports closed this path,
+ * and the only evidence was a warning nobody was reading.
+ *
+ * The port is the CONTAINER port for the same reason the host is a container
+ * name: a stack whose redis is published on 6380 still listens on 6379
+ * inside. Host and port are one decision and are answered here together,
+ * because answering half of it is how a correct name ends up on the wrong
+ * port.
+ */
+export function containerEndpoint(service: string, containerPort: number): { host: string; port: number } {
+  return { host: containerName(service), port: containerPort };
+}
+
+/** Redis, as a container on the stack network sees it. */
+export const REDIS_CONTAINER_PORT = 6379;
+
+/**
  * Convention-derived managed network name.
  *
  * Every container provisioned by omnitron lives on a named bridge network
@@ -548,8 +580,15 @@ export function resolveGateway(
     image,
     ports: [{ host: port, container: 80 }],
     environment: {
-      // Redis for maintenance mode + future PoW/rate-limit state
-      REDIS_HOST: 'host.docker.internal',
+      // Redis for maintenance mode + future PoW/rate-limit state.
+      //
+      // `redisConfig.host`, not a literal: this took the host as a parameter
+      // alongside the port, the db and the password, and then ignored that
+      // one field. Three of the four came from the caller and the fourth was
+      // hard-coded to the developer's machine, which is why nothing in the
+      // signature hinted that the gateway could not reach its Redis anywhere
+      // else.
+      REDIS_HOST: redisConfig.host,
       REDIS_PORT: String(redisConfig.port),
       REDIS_DB: String(redisDb),
       ...(redisConfig.password ? { REDIS_PASSWORD: redisConfig.password } : {}),

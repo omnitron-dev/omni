@@ -132,6 +132,14 @@ export class ProjectService extends EventEmitter {
     daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     private readonly fleetService?: FleetService,
     private readonly syncService?: SyncService,
+    /**
+     * The vault, for the secrets a stack's service overrides name.
+     *
+     * Optional so the two existing construction sites and the tests keep
+     * working; the master's factory passes it, and without it the
+     * references travel unresolved and say so.
+     */
+    private readonly secrets?: import('./secrets.service.js').SecretsService,
   ) {
     super();
     // T-7 — registry persistence routed through DaemonStateStore
@@ -1642,11 +1650,36 @@ export class ProjectService extends EventEmitter {
       // app and not the one the apps were failing for. An empty map is not a
       // map of nothing declared; it is a map nobody filled.
       const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
+
+      // The stack's answers about services it does not provision.
+      //
+      // `serviceOverrides` is where a stack says that bitcoin and monero are
+      // not containers here — they are daemons already running on the node,
+      // on mainnet, at an address only this stack knows. It was left out of
+      // the config this resolver was given, so a deployed app was configured
+      // with the defaults its own declaration carries. Measured on the test
+      // node, whose chains run at 192.168.100.2 with mainnet credentials:
+      //
+      //     BITCOIN_RPC_URL  http://localhost:18443   (regtest)
+      //     MONERO_DAEMON_URL  http://localhost:38081 (stagenet)
+      //     MONERO_RPC_PASS  omni_stagenet_dev_password
+      //
+      // — three facts about a laptop, written into the configuration of a
+      // server, in the one subsystem where being wrong costs money.
+      const serviceOverrides = await this.resolveOverrideSecrets(
+        projectName,
+        stackConfig.serviceOverrides,
+      );
+
       const resolved = resolveStack(
         { ...ecosystemConfig, infrastructure },
         projectName,
         NODE_STACK,
-        { type: 'local', apps: appEntries.map((a) => a.name) },
+        {
+          type: 'local',
+          apps: appEntries.map((a) => a.name),
+          ...(serviceOverrides ? { serviceOverrides } : {}),
+        },
         definitions,
         undefined,
       );
@@ -1668,6 +1701,56 @@ export class ProjectService extends EventEmitter {
       );
       return {};
     }
+  }
+
+  /**
+   * A stack's service overrides with their secret references resolved.
+   *
+   * An override names its credentials rather than carrying them:
+   *
+   *     "secrets": { "rpc_password": { "secret": "monero.mainnet.rpc_password" } }
+   *
+   * `resolveSecretRefs` has existed for that since it was written and had no
+   * caller at all, so the synchronous resolver downstream turned every one of
+   * these into the literal string `<secret:monero.mainnet.rpc_password>` and
+   * handed it to the application as a password.
+   *
+   * A key the vault does not hold resolves to an empty string, which an
+   * application reports as an authentication failure against a credential it
+   * was never given. That is worth a line naming the key.
+   */
+  private async resolveOverrideSecrets(
+    projectName: string,
+    overrides: IStackConfig['serviceOverrides'],
+  ): Promise<IStackConfig['serviceOverrides']> {
+    if (!overrides || Object.keys(overrides).length === 0) return overrides;
+    if (!this.secrets) {
+      this.logger.warn(
+        { project: projectName, services: Object.keys(overrides) },
+        'No secrets store here — service overrides keep their references, and an app given one as a password cannot authenticate',
+      );
+      return overrides;
+    }
+
+    const missing: string[] = [];
+    const { resolveSecretRefs } = await import('../project/config-resolver.js');
+    const resolved = await resolveSecretRefs(
+      overrides as unknown as Record<string, unknown>,
+      async (key) => {
+        const value = await this.secrets!.get(key);
+        if (value === null) missing.push(key);
+        return value;
+      },
+    );
+
+    if (missing.length > 0) {
+      this.logger.error(
+        { project: projectName, missing },
+        'These secrets are named by the stack and absent from the vault — the apps will be given an empty credential',
+      );
+    }
+
+    return resolved as unknown as IStackConfig['serviceOverrides'];
   }
 
   /**

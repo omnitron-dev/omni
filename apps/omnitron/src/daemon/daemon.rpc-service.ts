@@ -34,7 +34,7 @@ import type { IEcosystemConfig } from '../config/types.js';
 import { CLI_VERSION, DAEMON_SERVICE_ID } from '../config/defaults.js';
 import { loadEcosystemConfig } from '../config/loader.js';
 import type { OmnitronDaemon } from './daemon.js';
-import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
+import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
 
 @Service({ name: DAEMON_SERVICE_ID })
 export class DaemonRpcService implements IDaemonService {
@@ -255,19 +255,19 @@ export class DaemonRpcService implements IDaemonService {
   // Information (Viewer: admin + operator + viewer)
   // ============================================================================
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async list(): Promise<ProcessInfoDto[]> {
     return this.orchestrator.list();
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getApp(data: { name: string }): Promise<ProcessInfoDto> {
     const info = this.orchestrator.getApp(data.name);
     if (!info) throw Errors.notFound('App', data.name);
     return info;
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async status(): Promise<DaemonStatusDto> {
     const apps = this.orchestrator.list();
     const totalCpu = apps.reduce((sum, a) => sum + a.cpu, 0);
@@ -287,7 +287,7 @@ export class DaemonRpcService implements IDaemonService {
   // Monitoring (Viewer: admin + operator + viewer)
   // ============================================================================
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getMetrics(data: { name?: string }): Promise<AggregatedMetricsDto> {
     const raw = await this.orchestrator.getMetrics(data.name);
     const apps: AggregatedMetricsDto['apps'] = {};
@@ -308,7 +308,7 @@ export class DaemonRpcService implements IDaemonService {
     return { timestamp: Date.now(), apps, totals: { cpu: totalCpu, memory: totalMemory } };
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getHealth(_data: { name?: string }): Promise<AggregatedHealthDto> {
     const result = await this.titanHealth.check();
 
@@ -330,7 +330,7 @@ export class DaemonRpcService implements IDaemonService {
     };
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getLogs(data: { name?: string; lines?: number }): Promise<LogEntryDto[]> {
     return this.logManager.getLogs(data.name, data.lines);
   }
@@ -400,7 +400,7 @@ export class DaemonRpcService implements IDaemonService {
    * Returns null if the app isn't running or doesn't expose
    * `getDependencyGraph` (legacy bootstraps).
    */
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getDependencyGraph(data: { name: string }): Promise<{
     nodes: Array<{ id: string; label?: string; type?: string }>;
     edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
@@ -408,7 +408,7 @@ export class DaemonRpcService implements IDaemonService {
     return this.orchestrator.getDependencyGraph(data.name);
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async inspect(data: { name: string }): Promise<AppDiagnosticsDto> {
     const handle = this.orchestrator.getHandle(data.name);
     if (!handle) throw Errors.notFound('App', data.name);
@@ -557,7 +557,7 @@ export class DaemonRpcService implements IDaemonService {
     }
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async getEnv(data: { name: string }): Promise<Record<string, string>> {
     const handle = this.orchestrator.getHandle(data.name);
     if (!handle) throw Errors.notFound('App', data.name);
@@ -580,7 +580,7 @@ export class DaemonRpcService implements IDaemonService {
     return { success: true };
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
     return this.daemon.getWatchStatus();
   }

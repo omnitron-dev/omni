@@ -5,6 +5,7 @@
  */
 
 import type { IRestartPolicy, IBackoffOptions } from '@omnitron-dev/titan-pm';
+import type { CorsOptions } from '@omnitron-dev/titan/netron';
 
 // ============================================================================
 // App Definition (per-app declarative config)
@@ -533,7 +534,13 @@ export interface IProcessTopologyEntry {
 export interface IHttpTransportConfig {
   port: number;
   host?: string;
-  cors?: boolean;
+  /**
+   * `true` reflects whatever `Origin` arrived; an object restricts it. Widened
+   * from `boolean` so a deployment can pass the allow-list it already has —
+   * the transport has taken `boolean | CorsOptions` since 46af7aba, and this
+   * type was the narrower of the two saying different things about one field.
+   */
+  cors?: boolean | CorsOptions;
   requestTimeout?: number;
   keepAliveTimeout?: number;
   headersTimeout?: number;

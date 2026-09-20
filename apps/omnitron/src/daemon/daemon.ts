@@ -1399,6 +1399,7 @@ export class OmnitronDaemon {
     // what the inputs MEANT. It lives in `decideOrphans`, where it can be
     // pinned in a test rather than discovered on a host.
     const decision = decideOrphans({
+      isSlave: this.dc?.role === 'slave',
       managed: managed.map((c) => ({
         name: c.name,
         status: c.status,

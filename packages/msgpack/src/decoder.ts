@@ -496,7 +496,33 @@ export default class Decoder {
       }
       totalConsumed += this.lastBytesConsumed;
 
-      result[key] = value;
+      // `result[key] = value` is an assignment, and three keys are not
+      // ordinary property names when you assign them.
+      //
+      // Measured 2026-09-20: a sender that puts `__proto__` in a map replaces
+      // the DECODED OBJECT'S PROTOTYPE. The probe encoded
+      // `{ __proto__: { polluted: 'yes', isAdmin: true }, ok: 1 }` and the
+      // decoded value answered `got.isAdmin === true` while `Object.keys(got)`
+      // was `['ok']` — so any `if (data.isAdmin)` sees it and every log line
+      // that prints the keys or JSON.stringifies the object does not.
+      // `constructor` behaves the same way: `got.constructor.name` came back
+      // 'hijacked'.
+      //
+      // The value is KEPT, as an own property. Dropping it would lose data a
+      // legitimate payload may carry — a user's JSON object is allowed a field
+      // called "constructor" — and rejecting the frame would turn a data shape
+      // into a protocol error. `defineProperty` stores exactly what arrived
+      // and changes nothing about the object it arrived in.
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        Object.defineProperty(result, key, {
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      } else {
+        result[key] = value;
+      }
     }
 
     this.lastBytesConsumed = headerLength + totalConsumed;

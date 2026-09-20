@@ -384,6 +384,28 @@ export class ArtifactBuilder {
     // tsc to decide there is nothing to do. See `clearBuildInfo`.
     clearBuildInfo(appDir);
 
+    // And the output itself, because `tsc` only writes — it never removes.
+    //
+    // A deleted source leaves its compiled file in `dist` forever, and
+    // anything that reads that directory as a SET rather than by name keeps
+    // reading it. Measured on `@daos/paysys`: 34 migrations in `src`, 40 in
+    // `dist`, and the artifact ran `002_add_financial_indexes` — a migration
+    // whose source had been replaced by `002_deposit_worker_columns` — which
+    // failed on `column "sender_asset_id" does not exist` and stopped the
+    // app from starting. A removed migration kept being applied.
+    //
+    // Done here rather than in each app's build script for the same reason
+    // the build record is: an artifact build is a from-scratch build by
+    // definition, nothing about the last one is evidence about this one, and
+    // fixing it per app means fixing it again for every app added later.
+    // Clearing the record above is what makes this safe — `rm -rf dist`
+    // alone leaves tsc believing the output it just deleted is current.
+    try {
+      fs.rmSync(path.join(appDir, 'dist'), { recursive: true, force: true });
+    } catch {
+      // Not there, or not ours: the build below is what reports.
+    }
+
     try {
       await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 300_000 });
     } catch (err: any) {

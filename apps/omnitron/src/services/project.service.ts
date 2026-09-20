@@ -48,6 +48,7 @@ import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
 import { staleBuild } from './bundle-builder.js';
+import { NODE_STACK } from '../project/node-app-config.js';
 import { overlayCredentials } from '../infrastructure/node-credentials.js';
 import {
   RemoteDeployer,
@@ -1506,6 +1507,27 @@ export class ProjectService extends EventEmitter {
         nodeCredentials,
       );
 
+      // Resolved as a LOCAL stack, because from the node's side these
+      // services are: containers on that machine, ports on its loopback. The
+      // remote branch of `resolveStackAddresses` answers with the node's
+      // public host, which is the master's way of reaching it and not the
+      // app's — and omnitron publishes every managed port on 127.0.0.1, so
+      // that address reaches nothing from inside the node.
+      //
+      // Per app, and NOT as an `infrastructure` block in the node's config.
+      // Writing one was the first attempt and it was worse than the problem:
+      // a stack with an infrastructure block is a stack the node PROVISIONS,
+      // so the node autostarted its own `deployed` stack, built a second
+      // complete set of containers under `daos-deployed-*` on empty volumes,
+      // and swept the master's `daos-test-*` as orphans. An address is not an
+      // instruction to build what it points at.
+      const appEnv = this.resolveNodeAppEnv(
+        ecosystemConfig,
+        projectName,
+        appEntries,
+        deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
+      );
+
       // 3. Deploy app artifacts via SSH
       if (artifacts.length > 0) {
         const unsubDeploy = this.deployer.onProgress((progress) => {
@@ -1516,7 +1538,7 @@ export class ProjectService extends EventEmitter {
         // someone asks it directly.
         const results = await this.deployer.deployToStack([target], artifacts, projectName, {
           apps: appEntries,
-          infrastructure: deployedInfra,
+          appEnv,
         });
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');
@@ -1567,6 +1589,56 @@ export class ProjectService extends EventEmitter {
    * whose frontend did not is a node worth looking at, and stopping the whole
    * provisioning over a frontend leaves less working, not more.
    */
+  /**
+   * What each deployed app should connect to, once it is on the node.
+   *
+   * The same `resolveStack` + `resolvedConfigToEnv` pair a local stack uses,
+   * fed the infrastructure the node actually provisioned — so there is one
+   * implementation of "what is DATABASE_URL" rather than a second one written
+   * for nodes, which would drift from the first the first time either
+   * changed.
+   *
+   * `type: 'local'` is not a pretence: the apps run as host processes on the
+   * node, beside containers whose ports are published on that node's
+   * loopback. Local is what they are from where they stand.
+   */
+  private resolveNodeAppEnv(
+    ecosystemConfig: IEcosystemConfig,
+    projectName: string,
+    appEntries: readonly IEcosystemAppEntry[],
+    infrastructure: import('../infrastructure/types.js').InfrastructureConfig | undefined,
+  ): Record<string, Record<string, string>> {
+    if (!infrastructure) return {};
+    try {
+      const definitions = new Map<string, import('../config/types.js').IAppDefinition>();
+      const resolved = resolveStack(
+        { ...ecosystemConfig, infrastructure },
+        projectName,
+        NODE_STACK,
+        { type: 'local', apps: appEntries.map((a) => a.name) },
+        definitions,
+        undefined,
+      );
+
+      const out: Record<string, Record<string, string>> = {};
+      for (const entry of appEntries) {
+        const appConfig = resolved.appConfigs.get(entry.name);
+        if (!appConfig) continue;
+        out[entry.name] = resolvedConfigToEnv(appConfig, entry.name, NODE_STACK);
+      }
+      return out;
+    } catch (err) {
+      // Not fatal, and loud: the apps would start with whatever their own
+      // definitions carry, which is how they came to be started with
+      // `postgres:postgres` in the first place.
+      this.logger.error(
+        { project: projectName, error: (err as Error).message },
+        'Could not resolve what the deployed apps connect to — they will start with their declared env only',
+      );
+      return {};
+    }
+  }
+
   /**
    * The credentials the NODE resolved, read back from the node.
    *

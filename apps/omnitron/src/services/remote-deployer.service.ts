@@ -583,14 +583,14 @@ export class RemoteDeployer {
        */
       apps?: readonly import('../config/types.js').IEcosystemAppEntry[];
       /**
-       * The infrastructure those apps connect to, as this stack resolved it.
+       * What each app connects to, resolved by this master for this node.
        *
-       * Carried into the node's generated config, because that is the only
-       * thing `resolveStackAddresses` reads when it builds `DATABASE_URL`
-       * and friends — and its fallback for a missing block is the literal
-       * `postgres`, not an error. See `NodeConfigInput.infrastructure`.
+       * Per app rather than as an infrastructure block: a block is a stack
+       * the node PROVISIONS, and writing one made the node build a second
+       * complete set of containers beside the master's and sweep the
+       * master's away. See `NodeConfigInput.appEnv`.
        */
-      infrastructure?: Record<string, unknown> | undefined;
+      appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
     },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
@@ -642,7 +642,7 @@ export class RemoteDeployer {
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
           .map((r) => ({ app: r.app, version: r.version }));
-        await this.registerNodeApps(target, project, options.apps, landed, options.infrastructure);
+        await this.registerNodeApps(target, project, options.apps, landed, options.appEnv);
 
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
@@ -691,7 +691,7 @@ export class RemoteDeployer {
     project: string,
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
     landed: ReadonlyArray<{ app: string; version: string }>,
-    infrastructure?: Record<string, unknown> | undefined,
+    appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
   ): Promise<void> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
@@ -705,7 +705,7 @@ export class RemoteDeployer {
       artifactRoot: '/opt/omnitron/artifacts',
       apps,
       artifacts: landed,
-      infrastructure,
+      appEnv,
     });
 
     try {

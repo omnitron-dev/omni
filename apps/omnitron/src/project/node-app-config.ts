@@ -44,29 +44,35 @@ export interface NodeConfigInput {
   /** Which apps actually have an artifact there, and at which version. */
   artifacts: readonly NodeArtifact[];
   /**
-   * The infrastructure these apps connect to, as resolved for this node.
+   * What each app connects to, resolved by the master, keyed by app name.
    *
-   * Without it the config names what to run and not what to run it against,
-   * and `resolveStackAddresses` — which builds `DATABASE_URL`, `REDIS_URL`
-   * and the S3 variables — reads `config.infrastructure` and finds nothing.
-   * Its fallback chain ends in a literal:
+   * `DATABASE_URL`, `REDIS_URL`, the S3 variables — the same map
+   * `resolvedConfigToEnv` builds for a local stack, because from the node's
+   * side these services ARE local: they are containers on that machine with
+   * their ports published on its loopback.
+   *
+   * Without it the config named what to run and not what to run it against.
+   * `resolveStackAddresses` reads `config.infrastructure`, found nothing, and
+   * its fallback chain ends in a literal:
    *
    *     const defaultPgPassword =
    *       infra?.postgres?.password ?? getEnv().POSTGRES_PASSWORD ?? 'postgres';
    *
-   * So every app on the node was handed
-   * `postgres://postgres:postgres@localhost:5432/<db>` while the container
-   * omnitron had just provisioned carried a 43-character generated secret.
-   * Measured, six apps at once:
-   *
-   *     Database connection default failed after 5 retries:
-   *     password authentication failed for user "postgres" (28P01)
-   *
-   * On a laptop the same fallback is CORRECT — a local stack with no declared
-   * password really does use `postgres` — which is why nothing caught it
+   * — so six apps were handed `postgres://postgres:postgres@localhost:5432/…`
+   * against a container holding a 43-character generated secret, and every
+   * one died with `password authentication failed for user "postgres"`. On a
+   * laptop that same fallback is CORRECT, which is why nothing caught it
    * until a stack with generated credentials ran somewhere else.
+   *
+   * **Per app, and NOT as an `infrastructure` block.** Writing one was the
+   * first attempt and it was worse than the problem: a stack with an
+   * `infrastructure` block is a stack the node PROVISIONS, so the node
+   * autostarted its own `deployed` stack, created a second complete set of
+   * containers under `daos-deployed-*` with empty volumes, and swept the
+   * master's `daos-test-*` as orphans. An address is not an instruction to
+   * build what it points at, and the two must not be said with one sentence.
    */
-  infrastructure?: Record<string, unknown> | undefined;
+  appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
 }
 
 /**
@@ -109,6 +115,15 @@ export function selectNodeApps(input: NodeConfigInput): Array<Record<string, unk
     entry['bootstrap'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}/dist/bootstrap.js`;
     entry['cwd'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}`;
 
+    // The addresses and credentials this app connects with, merged OVER its
+    // declared env: the master resolved them against what it actually
+    // provisioned on this node, and a value the app's own definition carries
+    // was written without knowing which machine it would land on.
+    const resolved = input.appEnv?.[app.name];
+    if (resolved && Object.keys(resolved).length > 0) {
+      entry['env'] = { ...((app.env as Record<string, string> | undefined) ?? {}), ...resolved };
+    }
+
     // A dependency the node does not have would block this app forever: the
     // supervisor waits for something that is never going to start. Keeping
     // only the dependencies that are present turns "never starts" into
@@ -145,19 +160,15 @@ export function renderNodeAppConfig(input: NodeConfigInput): string {
     '// Paths point into this node\'s artifact directory. They are absolute',
     '// because a node has no project to resolve them against.',
     '//',
-    '// CONTAINS CREDENTIALS. The infrastructure block carries the generated',
-    '// passwords these apps connect with, so this file is written 0600 and',
-    '// owned by the daemon user.',
+    '// CONTAINS CREDENTIALS. Each app carries the generated passwords it',
+    '// connects with, so this file is written 0600 and owned by the daemon',
+    '// user.',
     '',
     `export default ${JSON.stringify(
       {
         name: input.project,
         apps,
-        // What the apps connect to. `resolveStackAddresses` reads this and
-        // nothing else; omitting it does not mean "use no database", it
-        // means "use the literal defaults", which is a different and much
-        // quieter kind of wrong. See `infrastructure` on the input type.
-        ...(input.infrastructure ? { infrastructure: input.infrastructure } : {}),
+
         // A stack, because `startStack` is how a project's apps are started
         // and it refuses a name it cannot find: `Stack 'x' not found in
         // project 'daos'`. Registering the project alone left the node with

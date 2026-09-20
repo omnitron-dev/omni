@@ -13,7 +13,8 @@ import MenuItem from '@mui/material/MenuItem';
 
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { AdminDataTable, Alert, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
-import { deploy } from 'src/netron/client';
+import { deploy, project } from 'src/netron/client';
+import { DeployProgressList } from 'src/components/deploy-progress';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -27,6 +28,7 @@ import { settledPair } from 'src/utils/settled-pair';
 // `Deployment` with a `duration` field the server has never sent — duration
 // is derived from startedAt/completedAt, which the record does carry.
 type Deployment = import('@omnitron-dev/omnitron/dto/services').DeploymentRecord;
+type DeployProgressRecord = import('@omnitron-dev/omnitron/dto/services').DeployProgressRecord;
 
 /** Elapsed ms for a finished deployment; null while it is still running. */
 function deploymentDuration(dep: Deployment): number | null {
@@ -171,6 +173,16 @@ export default function DeploymentsPage() {
     { intervalMs: 15_000 }
   );
 
+  // Faster than the history, and on its own poll: this is the only reading
+  // that changes DURING a deployment, and fifteen seconds is a long time to
+  // watch a bar that is not moving when the question is whether anything is
+  // happening at all. Its own resource, so a daemon that cannot answer it
+  // does not blank the table beside it.
+  const { data: progress } = usePolledResource<DeployProgressRecord[]>(
+    () => project.getDeployProgress(),
+    { intervalMs: 3_000 }
+  );
+
   // A failed button press is a different thing from a stale poll.
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -307,6 +319,13 @@ export default function DeploymentsPage() {
           {actionError}
         </Alert>
       )}
+      {/*
+        Above the history, because it is the only thing on this page that is
+        about right now. The history answers "what happened"; this answers
+        "is anything happening", which is the question an operator has while
+        a deployment is in flight and the one this page could not answer.
+      */}
+      <DeployProgressList records={progress ?? []} />
       {/*
         prism's AdminDataTable, which owns the distinction this page used to
         make with a local `TableEmptyRow` plus an Alert above the table: no

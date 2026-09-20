@@ -13,6 +13,7 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { ProjectService } from './project.service.js';
+import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
   IProjectInfo,
   IStackInfo,
@@ -36,6 +37,17 @@ export class ProjectRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getProject(data: { name: string }): Promise<IProjectInfo> {
     return this.projectService.getProject(data.name);
+  }
+
+  /**
+   * Live per-app deployment progress, newest first.
+   *
+   * Viewer, because it says what the daemon is doing and nothing about how
+   * to reach anything — the same tier as `getStackStatus`.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getDeployProgress(): Promise<DeployProgressRecord[]> {
+    return this.projectService.getDeployProgress();
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

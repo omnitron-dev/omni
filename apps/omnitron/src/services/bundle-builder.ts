@@ -348,6 +348,14 @@ export async function archiveBundle(bundleDir: string, archivePath: string): Pro
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   await exec('tar', ['-czf', resolved, '-C', path.resolve(bundleDir), '.'], {
     maxBuffer: 16 * 1024 * 1024,
+    // `COPYFILE_DISABLE=1`, because macOS `tar` writes an AppleDouble
+    // sidecar — `._index.html`, `._dist`, 163 bytes each — for every file
+    // carrying an extended attribute. Measured on the test node: they are in
+    // every artifact and in the gateway's web root, where `/._index.html` is
+    // a 163-byte binary the server will happily hand to anyone who asks.
+    // They are this machine's metadata about its own filesystem and they
+    // mean nothing on the far side.
+    env: { ...process.env, COPYFILE_DISABLE: '1' },
   });
   return resolved;
 }

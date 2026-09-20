@@ -1521,9 +1521,10 @@ export class ProjectService extends EventEmitter {
       // complete set of containers under `daos-deployed-*` on empty volumes,
       // and swept the master's `daos-test-*` as orphans. An address is not an
       // instruction to build what it points at.
-      const appEnv = this.resolveNodeAppEnv(
+      const appEnv = await this.resolveNodeAppEnv(
         ecosystemConfig,
         projectName,
+        stackConfig,
         appEntries,
         deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
       );
@@ -1602,15 +1603,25 @@ export class ProjectService extends EventEmitter {
    * node, beside containers whose ports are published on that node's
    * loopback. Local is what they are from where they stand.
    */
-  private resolveNodeAppEnv(
+  private async resolveNodeAppEnv(
     ecosystemConfig: IEcosystemConfig,
     projectName: string,
+    stackConfig: IStackConfig,
     appEntries: readonly IEcosystemAppEntry[],
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig | undefined,
-  ): Record<string, Record<string, string>> {
+  ): Promise<Record<string, Record<string, string>>> {
     if (!infrastructure) return {};
     try {
-      const definitions = new Map<string, import('../config/types.js').IAppDefinition>();
+      // The app DEFINITIONS, not an empty map. `resolveStack` reads each
+      // app's `omnitron.infrastructure` to learn which database it wants,
+      // which redis index, which bucket — and without them it produces an
+      // app config with no `database` at all, so `resolvedConfigToEnv` emits
+      // `APP_NAME`, `STACK_NAME` and `JWT_SECRET` and no `DATABASE_URL`.
+      //
+      // Measured: the node's config carried five environment variables per
+      // app and not the one the apps were failing for. An empty map is not a
+      // map of nothing declared; it is a map nobody filled.
+      const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
       const resolved = resolveStack(
         { ...ecosystemConfig, infrastructure },
         projectName,

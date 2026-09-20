@@ -61,6 +61,7 @@ import {
 } from './remote-provisioner.js';
 import { installSteps, activateSteps, pruneSteps } from './bundle-builder.js';
 import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
+import { readNodeHealth } from '../project/node-app-health.js';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -544,7 +545,7 @@ export class RemoteDeployer {
 
       // 7. Verify health
       this.emitProgress(nodeKey, artifact.app, 'verifying', 90, 'Verifying health...');
-      const health = await this.verifyHealth(target, artifact.app);
+      const health = await this.verifyHealth(target, artifact.app, project);
 
       const duration = Date.now() - startTime;
 
@@ -687,7 +688,9 @@ export class RemoteDeployer {
           if (!result) continue;
 
           const started = await this.signalRemoteDaemon(target, entry.app);
-          const health = started.ok ? await this.verifyHealth(target, entry.app) : { online: false, detail: started.detail };
+          const health = started.ok
+            ? await this.verifyHealth(target, entry.app, project)
+            : { online: false, detail: started.detail };
           if (health.online) {
             this.emitProgress(result.node, entry.app, 'success', 100, 'Running');
             continue;
@@ -1475,8 +1478,14 @@ export class RemoteDeployer {
    * best-effort". A verification that cannot fail is not a verification, and
    * it is worse than none: its presence in the sequence is what persuades a
    * reader that the deployment was checked.
+   *
+   * The reading itself is in `readNodeHealth`, where the test can reach it.
    */
-  private async verifyHealth(target: DeployTarget, appName: string): Promise<{ online: boolean; detail: string }> {
+  private async verifyHealth(
+    target: DeployTarget,
+    appName: string,
+    project: string,
+  ): Promise<{ online: boolean; detail: string }> {
     let status: string;
     try {
       status = await this.sshExec(target, `omnitron status --json 2>&1`, 15_000);
@@ -1484,26 +1493,7 @@ export class RemoteDeployer {
       return { online: false, detail: `could not read the node's status: ${(err as Error).message}` };
     }
 
-    let parsed: { data?: { apps?: Array<{ name?: string; status?: string }>; appsTotal?: number } };
-    try {
-      parsed = JSON.parse(status);
-    } catch {
-      // A node that answers something other than JSON is a node whose CLI is
-      // not the one this expects — worth saying, not worth guessing about.
-      return { online: false, detail: `the node's status was not JSON: ${status.trim().slice(0, 120)}` };
-    }
-
-    const apps = parsed?.data?.apps ?? [];
-    const app = apps.find((a) => a.name === appName);
-    if (!app) {
-      return {
-        online: false,
-        detail: `the node is running ${apps.length} app(s) and none of them is '${appName}'`,
-      };
-    }
-    return app.status === 'online'
-      ? { online: true, detail: 'online' }
-      : { online: false, detail: `the node reports it as '${app.status ?? 'unknown'}'` };
+    return readNodeHealth(status, appName, project);
   }
 
   // ===========================================================================

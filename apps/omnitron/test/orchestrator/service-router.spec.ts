@@ -213,91 +213,104 @@ describe('ServiceRouter', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 4. cleanupProcess removes all services for that process
+  // 4. releaseAll gives back everything this router registered
+  //
+  // This section asserted `cleanupProcess(processName)`, which `20ae24e5`
+  // removed, and its own docblock says why: one child of a pool crashing does
+  // not mean the service is gone — the other workers still serve it — so
+  // per-process granularity would have deregistered a service that still
+  // works. The router is built fresh per app launch and torn down whole, so
+  // the unit that is released is the router.
+  //
+  // The tests were left behind by that commit and by `377d84e6` below, which
+  // is how three of them sat red pinning behaviour that had been deliberately
+  // replaced.
   // -----------------------------------------------------------------------
-  describe('cleanupProcess', () => {
-    it('removes all services registered under the given process name', async () => {
-      await router.exposePoolService(
-        'multi-proc',
-        'ServiceA',
-        '1.0.0',
-        pool as any,
-        ['methodA'],
-      );
-
-      await router.exposePoolService(
-        'multi-proc',
-        'ServiceB',
-        '1.0.0',
-        pool as any,
-        ['methodB'],
-      );
-
-      // A service under a different process should survive
-      await router.exposePoolService(
-        'other-proc',
-        'ServiceC',
-        '1.0.0',
-        pool as any,
-        ['methodC'],
-      );
-
+  describe('releaseAll', () => {
+    it('gives back every name it registered', async () => {
+      for (const [proc, name] of [['multi-proc', 'ServiceA'], ['multi-proc', 'ServiceB'], ['other-proc', 'ServiceC']]) {
+        await router.exposePoolService(proc!, name!, '1.0.0', pool as any, ['run']);
+      }
       expect(router.getServiceNames()).toHaveLength(3);
 
-      await router.cleanupProcess('multi-proc');
+      await router.releaseAll();
 
-      expect(router.getServiceNames()).toEqual(['ServiceC@1.0.0']);
-      expect(netron.services.has('ServiceA@1.0.0')).toBe(false);
-      expect(netron.services.has('ServiceB@1.0.0')).toBe(false);
-      expect(netron.services.has('ServiceC@1.0.0')).toBe(true);
+      expect(router.getServiceNames()).toEqual([]);
+      for (const name of ['ServiceA@1.0.0', 'ServiceB@1.0.0', 'ServiceC@1.0.0']) {
+        expect(netron.services.has(name)).toBe(false);
+      }
     });
 
-    it('is a no-op when no services match the process name', async () => {
-      await router.exposePoolService(
-        'proc-x',
-        'SvcX',
-        '1.0.0',
-        pool as any,
-        ['run'],
-      );
+    it('is a no-op on a router that registered nothing', async () => {
+      await expect(router.releaseAll()).resolves.toBeUndefined();
+      expect(router.getServiceNames()).toEqual([]);
+    });
 
-      await router.cleanupProcess('proc-y');
+    it('keeps going when one name is already gone from the daemon', async () => {
+      // Best-effort by design: a name that has already gone is the outcome
+      // this wanted, and one failure must not stop an app from being stopped
+      // with its other registrations still advertised.
+      await router.exposePoolService('proc-a', 'Alpha', '1.0.0', pool as any, ['run']);
+      await router.exposePoolService('proc-b', 'Beta', '1.0.0', pool as any, ['run']);
 
-      expect(router.getServiceNames()).toEqual(['SvcX@1.0.0']);
+      const real = netron.peer.unexposeService;
+      let first = true;
+      netron.peer.unexposeService = vi.fn(async (name: string) => {
+        if (first) {
+          first = false;
+          throw new Error('Service not found');
+        }
+        return real(name);
+      });
+
+      await router.releaseAll();
+
+      expect(router.getServiceNames()).toEqual([]);
     });
   });
 
   // -----------------------------------------------------------------------
-  // 5. Duplicate service name returns early (no error)
+  // 5. A second registration of a name TAKES OVER — it does not return early
+  //
+  // Returning early is what this asserted, and `377d84e6` replaced it with
+  // the opposite for a measured reason: `launchTopology` builds a fresh
+  // ServiceRouter on every launch, so after a restart the map is empty while
+  // the daemon still holds the previous registration, bound to a pool whose
+  // workers are gone. Skipping the re-registration kept the DEAD one, and
+  // every call through the name failed `Socket closed during RPC` for the
+  // life of the daemon — pricing's OHLCV aggregation stopped for forty
+  // minutes across three restarts and did not recover.
   // -----------------------------------------------------------------------
-  describe('duplicate registration', () => {
-    it('returns early without error when exposing the same service twice', async () => {
-      await router.exposePoolService(
-        'proc-dup',
-        'DupService',
-        '1.0.0',
-        pool as any,
-        ['run'],
-      );
+  describe('re-registration', () => {
+    it('replaces the existing registration rather than skipping', async () => {
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run']);
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run', 'extra']);
 
-      // Second call with the same qualified name
-      await router.exposePoolService(
-        'proc-dup',
-        'DupService',
-        '1.0.0',
-        pool as any,
-        ['run', 'extra'],
-      );
-
-      // exposeService should only have been called once
-      expect(netron.peer.exposeService).toHaveBeenCalledTimes(1);
-      // Warn log emitted on duplicate
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.objectContaining({ qualifiedName: 'DupService@1.0.0' }),
-        expect.stringContaining('already registered'),
-      );
-      // Still exactly one service
+      // Twice: the point is that the SECOND pool is the one now serving.
+      expect(netron.peer.exposeService).toHaveBeenCalledTimes(2);
       expect(router.getServiceNames()).toEqual(['DupService@1.0.0']);
+    });
+
+    it('unexposes the old name before exposing the new one', async () => {
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run']);
+      const before = (netron.peer.unexposeService as ReturnType<typeof vi.fn>).mock.calls.length;
+
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run']);
+
+      expect((netron.peer.unexposeService as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
+    });
+
+    it('says so, with whether this router knew about the name', async () => {
+      // `knownToThisRouter: false` is the restart case — the daemon held a
+      // registration this router never made. Worth distinguishing in the log,
+      // because the two arrive by different routes.
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run']);
+      await router.exposePoolService('proc-dup', 'DupService', '1.0.0', pool as any, ['run']);
+
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ qualifiedName: 'DupService@1.0.0', knownToThisRouter: true }),
+        expect.stringContaining('Replaced an existing registration'),
+      );
     });
   });
 

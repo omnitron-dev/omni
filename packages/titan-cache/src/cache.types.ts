@@ -277,6 +277,21 @@ export interface ICacheModuleOptions {
   /** Background refresh enabled */
   /** NOT IMPLEMENTED — nothing reads this. */
   backgroundRefresh?: boolean;
+  /**
+   * Record which L2 keys carry which tag, so `invalidateByTags` reaches the
+   * L2 copy as well as the L1 one. Off by default, and until now there was no
+   * way to turn it on: `MultiTierCacheOptions` has carried the flag all along
+   * and `CacheService.createMultiTierCache` did not pass it, so every cache
+   * built through the module flushed tags out of this process and left the
+   * shared row in Redis for the next read to promote back.
+   *
+   * What it buys, and what it does not: the index is a `Map` in THIS process,
+   * capped and swept, so a flush reaches the shared copy of what this process
+   * cached. It cannot know about an entry another process wrote, and a
+   * restart starts it empty while Redis keeps the rows. A guarantee that has
+   * to hold across processes needs the index in Redis.
+   */
+  trackL2Tags?: boolean;
 }
 
 /**

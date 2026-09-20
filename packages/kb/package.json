@@ -52,7 +52,7 @@
     "specs/content"
   ],
   "scripts": {
-    "build": "rm -rf dist node_modules/.tmp && NODE_OPTIONS='--max-old-space-size=16384' tsc -p ./tsconfig.json && tsc -p ./tsconfig.extract.json",
+    "build": "NODE_OPTIONS='--max-old-space-size=16384' ../../scripts/build-package.sh -p ./tsconfig.json && tsc -p ./tsconfig.extract.json",
     "test": "vitest run",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p ./tsconfig.json --noEmit && tsc -p ./tsconfig.extract.json --noEmit",

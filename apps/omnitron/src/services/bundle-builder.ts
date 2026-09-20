@@ -206,6 +206,73 @@ function cacheDir(): string {
   return packCacheDir;
 }
 
+/**
+ * Whether a package's shipped `dist` is older than its sources.
+ *
+ * Only asked of packages that actually ship one — a package whose manifest
+ * points at `src` is consumed as TypeScript by whatever transpiles it, and
+ * has no `dist` to be stale. `publishConfig` is consulted because that is
+ * what `pnpm pack` applies, so the question is about the file the TARBALL
+ * will name, not the one this working tree uses.
+ *
+ * Returns a sentence naming the newest source file, or null when there is
+ * nothing to say — the message is the useful part, since "rebuild it" is
+ * only actionable once you know which package and why.
+ */
+export function staleDist(packageDir: string): string | null {
+  let manifest: { main?: string; exports?: unknown; publishConfig?: { main?: string; exports?: unknown } };
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const effective = JSON.stringify({
+    main: manifest.publishConfig?.main ?? manifest.main,
+    exports: manifest.publishConfig?.exports ?? manifest.exports,
+  });
+  if (!effective.includes('dist/')) return null;
+
+  const dist = path.join(packageDir, 'dist');
+  if (!fs.existsSync(dist)) return 'there is no dist at all';
+
+  const newest = (dir: string, filter: (name: string) => boolean): { file: string; mtime: number } | null => {
+    let best: { file: string; mtime: number } | null = null;
+    const walk = (d: string): void => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(d, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const full = path.join(d, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === '.git') continue;
+          walk(full);
+          continue;
+        }
+        if (!filter(entry.name)) continue;
+        const mtime = fs.statSync(full).mtimeMs;
+        if (!best || mtime > best.mtime) best = { file: full, mtime };
+      }
+    };
+    walk(dir);
+    return best;
+  };
+
+  const src = path.join(packageDir, 'src');
+  if (!fs.existsSync(src)) return null;
+  // Tests are not shipped and their timestamps are not evidence about `dist`.
+  const newestSource = newest(src, (n) => n.endsWith('.ts') && !/\.(spec|test)\.ts$/.test(n));
+  const newestBuilt = newest(dist, (n) => n.endsWith('.js'));
+  if (!newestSource) return null;
+  if (!newestBuilt) return 'dist holds no compiled JavaScript';
+  if (newestSource.mtime <= newestBuilt.mtime) return null;
+
+  return `${path.relative(packageDir, newestSource.file)} is newer than anything in dist`;
+}
+
 /** Where a workspace package lives, as recorded by `readWorkspace`. */
 function directoryOf(manifest: PackageManifest): string {
   const dir = (manifest as PackageManifest & { __dir?: string }).__dir;
@@ -266,6 +333,50 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       const to = path.join(staging, rel);
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.cpSync(from, to, { recursive: true });
+    }
+
+    // A package that ships `dist` must have a `dist` that is not older than
+    // its sources.
+    //
+    // `pnpm pack` packs what is on disk. Six daos packages declare
+    // `publishConfig.main = dist/…` — because a tarball cannot ship
+    // TypeScript and expect `node` to read it — and NOTHING in the workspace
+    // imported that `dist`, so it had been drifting since whenever it was
+    // last built by hand. Measured the first time one shipped:
+    //
+    //     The requested module '@daos/titan-kit' does not provide an export
+    //     named 'DEFAULT_PAGE_SIZE'
+    //
+    // — a constant that had been in `src` for months and in `dist` never.
+    // Worse than a missing package, because it looks like an API mistake in
+    // the code that imports it.
+    //
+    // Built rather than refused: the deployment already builds the app it is
+    // deploying, and a dependency of that app is the same question. A build
+    // that fails still stops the artifact.
+    for (const vendored of plan.vendored) {
+      const dir = directoryOf(workspace.get(vendored.name)!);
+      const stale = staleDist(dir);
+      if (!stale) continue;
+      options.logger?.info(`rebuilding ${vendored.name} — ${stale}`);
+      try {
+        await exec(resolvePnpm(), ['--dir', dir, 'run', 'build'], {
+          cwd: workspaceRoot,
+          maxBuffer: 16 * 1024 * 1024,
+        });
+      } catch (err) {
+        throw new Error(
+          `${vendored.name} ships 'dist' and its 'dist' is out of date (${stale}), and rebuilding it failed: ` +
+            `${(err as Error).message.slice(0, 300)}`,
+        );
+      }
+      const still = staleDist(dir);
+      if (still) {
+        throw new Error(
+          `${vendored.name} ships 'dist' and its 'dist' is still out of date after a build (${still}). ` +
+            `Packing it would put months-old compiled code on a node under a current version number.`,
+        );
+      }
     }
 
     // Every workspace package, packed where npm can install it from.

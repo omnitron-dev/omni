@@ -379,7 +379,23 @@ export class ArtifactBuilder {
     try {
       await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 300_000 });
     } catch (err: any) {
-      throw new Error(`Build failed for ${appName}: ${err.stderr?.slice(0, 200) ?? err.message}`, { cause: err });
+      // Everything the child said, in the order a reader wants it. `stderr`
+      // alone produced `Build failed for paysys: ` — an empty string, because
+      // `tsc` writes its diagnostics to STDOUT and `pnpm` writes the exit
+      // code to stderr only when it feels like it. A build that failed for a
+      // reason nobody can read is a build nobody can fix: the reason was
+      // `'"@omnitron-dev/titan-database"' has no exported member named
+      // 'ResilientPgClient'`, and it sat in `stdout` while the error said
+      // nothing at all.
+      const said = [err.stdout, err.stderr]
+        .map((s: unknown) => (typeof s === 'string' ? s.trim() : ''))
+        .filter(Boolean)
+        .join('\n')
+        .slice(-1500);
+      const how = err.code !== undefined ? ` (exit ${err.code})` : err.signal ? ` (killed by ${err.signal})` : '';
+      throw new Error(`Build failed for ${appName}${how}: ${said || err.message || 'the build said nothing'}`, {
+        cause: err,
+      });
     }
   }
 

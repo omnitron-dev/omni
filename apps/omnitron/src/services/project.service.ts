@@ -1333,6 +1333,17 @@ export class ProjectService extends EventEmitter {
           'Failed to build artifacts — deploying without rebuild'
         );
       }
+    } else {
+      // `if (project)` with nothing on the other side meant a name the
+      // registry does not know produced NO log line at all: no build, no
+      // error, an empty artifact list, and step 3 below skipped by
+      // `if (artifacts.length > 0)`. The deployment then opened the mesh,
+      // told the node to start what it already had, and reported success —
+      // a stack "deployed" without a single byte leaving this machine.
+      this.logger.error(
+        { project: projectName, stack: stackName, known: this.registry.list().map((p) => p.name) },
+        'This project is not in the registry, so nothing was built and nothing will be deployed',
+      );
     }
 
     // Resolve master address (from the SLAVE's perspective — what it dials)

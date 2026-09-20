@@ -149,6 +149,10 @@ function makeNodeManager(overrides: Record<string, any> = {}) {
     reportWorkerUnavailable: vi.fn(),
     reportProblem: vi.fn(),
     removeNode: vi.fn(async () => {}),
+    // The registry row, read before it is deleted: an audit entry for a
+    // removal that names only a uuid is a row nobody can read afterwards,
+    // because the name it would have needed went with the row.
+    getNode: vi.fn(() => ({ id: 'node-1', name: 'node-1', host: '10.0.0.1' })),
     ...overrides,
   } as any;
 }

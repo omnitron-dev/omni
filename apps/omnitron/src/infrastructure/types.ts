@@ -206,6 +206,18 @@ export interface ContainerState {
    * whose prefix happens to match the guess.
    */
   service?: string | undefined;
+  /**
+   * Which deployment this container belongs to, from the `omnitron.project`
+   * and `omnitron.stack` labels.
+   *
+   * Written by `stackLabels()` at creation and therefore the container's own
+   * account of itself — as against the NAME, which only happens to start
+   * with the same words. A sweep that decides what to remove has to read
+   * this, because a daemon's idea of which stacks exist can be empty for
+   * reasons that have nothing to do with the container.
+   */
+  project?: string | undefined;
+  stack?: string | undefined;
   /** False when a 'running' container is detached from all networks (OrbStack/dockerd restart artifact). */
   networkAttached?: boolean | undefined;
 }

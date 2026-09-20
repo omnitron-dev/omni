@@ -1350,6 +1350,7 @@ export class OmnitronDaemon {
   ): Promise<void> {
     const { listManagedContainers, stopContainer, removeContainer } =
       await import('../infrastructure/container-runtime.js');
+    const { decideOrphans } = await import('../infrastructure/orphan-containers.js');
 
     const managed = await listManagedContainers();
     if (managed.length === 0) return;
@@ -1393,27 +1394,34 @@ export class OmnitronDaemon {
       }
     }
 
-    // An incomplete picture must not authorise removal. Not knowing what is
-    // expected is not the same as knowing nothing is — the same distinction
-    // the process janitor had to learn about a parent being foreign rather
-    // than dead. Leaving a real orphan running costs an idle container; the
-    // other way costs the platform.
-    if (!expectationsComplete) {
+    // Whether anything may be removed is one decision with several ways of
+    // being wrong, and every way it has been wrong so far was a mistake about
+    // what the inputs MEANT. It lives in `decideOrphans`, where it can be
+    // pinned in a test rather than discovered on a host.
+    const decision = decideOrphans({
+      managed: managed.map((c) => ({
+        name: c.name,
+        status: c.status,
+        project: c.project,
+        stack: c.stack,
+      })),
+      projects: projects.map((p) => p.name),
+      expectedPrefixes: [...expectedPrefixes],
+      expectationsComplete,
+      internalNames: [...internalNames],
+    });
+
+    if (decision.action === 'skip') {
       logger.warn(
-        { managed: managed.length, expectedPrefixes: expectedPrefixes.size },
-        'Orphan reconciliation skipped — the set of expected stacks is incomplete',
+        { managed: managed.length, expectedPrefixes: expectedPrefixes.size, because: decision.because },
+        'Orphan reconciliation skipped',
       );
       return;
     }
 
     let orphanCount = 0;
-    for (const container of managed) {
-      // Always keep internal omnitron containers
-      if (internalNames.has(container.name)) continue;
-      // Keep containers that match a known project/stack prefix
-      if ([...expectedPrefixes].some((prefix) => container.name.startsWith(prefix))) continue;
-
-      // This container is an orphan — stop and remove it
+    for (const name of decision.containers) {
+      const container = managed.find((c) => c.name === name)!;
       logger.info(
         { container: container.name, status: container.status },
         'Removing orphan container (not part of any registered stack)',

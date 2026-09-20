@@ -562,18 +562,35 @@ describe('MultiTierCache', () => {
       cache = new MultiTierCache({
         l1: { maxSize: 100 },
         writeStrategy: 'through',
+        // Without this the L2 row survives the flush and the next `get`
+        // promotes it back, so a test reading through the cache measures the
+        // promotion rather than the invalidation. That default is the subject
+        // of `a-tag-flush-that-left-the-shared-copy.spec.ts`.
+        trackL2Tags: true,
       });
     });
 
     it('should invalidate L1 entries by tags', async () => {
-      await cache.set('user:1', 'data1');
-
-      const l1 = cache.getL1();
-      await l1.set('user:2', 'data2', { tags: ['users'] });
+      // Was: set the tagged entry on `getL1()` directly — never through the
+      // multi-tier write path, so no L2 copy existed — and assert
+      // `toBeGreaterThanOrEqual(0)`, which every possible outcome satisfies.
+      // The L2 half of this went uncovered until it was found on a live
+      // permission cache; `a-tag-flush-that-left-the-shared-copy.spec.ts`
+      // owns that half now.
+      await cache.set('user:1', 'data1', { tags: ['users'] });
+      await cache.set('user:2', 'data2', { tags: ['users'] });
+      await cache.set('user:3', 'data3', { tags: ['admins'] });
 
       const invalidated = await cache.invalidateByTags(['users']);
 
-      expect(invalidated).toBeGreaterThanOrEqual(0);
+      // `l1Count + l2Count`, so a key held in both tiers counts TWICE. Two
+      // entries, four removals. Asserted as what it is rather than as what
+      // the name suggests — a caller reading it as «how many entries went»
+      // is wrong by the number of tiers the key lived in.
+      expect(invalidated).toBe(4);
+      expect(await cache.get('user:1')).toBeUndefined();
+      expect(await cache.get('user:2')).toBeUndefined();
+      expect(await cache.get('user:3')).toBe('data3');
     });
   });
 

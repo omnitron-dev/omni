@@ -333,6 +333,12 @@ export class CacheService implements ICacheService {
       autoPromote: true,
       promotionThreshold: 3,
       enableStats: options.enableStats,
+      // Was not forwarded. `MultiTierCache` reads `options.trackL2Tags ??
+      // false`, so every cache built here had L2 tag tracking off with no way
+      // to ask for it, and `invalidateByTags` dropped the L1 entry while the
+      // L2 row stayed — to be promoted back on the next read. See
+      // `test/a-tag-flush-that-left-the-shared-copy.spec.ts`.
+      trackL2Tags: options.trackL2Tags,
     };
 
     return new MultiTierCache<T>(multiTierOptions) as ICache<T>;

@@ -439,8 +439,24 @@ export class RemoteDeployer {
       // has, so the set stays right as the daemon's closure changes rather
       // than being a list here that drifts from it.
       //
-      // `@omnitron-dev/omnitron` is the daemon itself — it is not inside its
-      // own node_modules — so it is linked separately, to the install root.
+      // `@omnitron-dev/omnitron` is deliberately NOT one of them, and this is
+      // the second time that lesson has been paid for. The daemon IS that
+      // package, so it is not inside its own `node_modules`, and linking to
+      // the install root instead gives node a directory whose package.json
+      // carries `name`, `version`, `type` and `dependencies` and NO `main`
+      // and NO `exports` — `bundleRootManifest` writes an install manifest,
+      // not a library manifest. Resolution then falls back to `index.js`,
+      // which is not there:
+      //
+      //     Cannot find package
+      //     '.../node_modules/@omnitron-dev/omnitron/index.js'
+      //
+      // — the exact error this whole line of work started from. The vendored
+      // copy that `pnpm pack` produces from `apps/omnitron` has the real
+      // manifest, so it is left alone. Its identity is not shared across the
+      // process boundary the way titan's is: `defineSystem` returns data that
+      // the daemon's bootstrap reads, not a class anything does `instanceof`
+      // against.
       //
       // `rm -rf` before each `ln -sfn`: linking onto an existing DIRECTORY
       // puts the link INSIDE it, leaving a directory with no package.json
@@ -453,8 +469,7 @@ export class RemoteDeployer {
           `mkdir -p "$APP"; ` +
           `for p in ${shellEscape(daemonRoot)}/node_modules/@omnitron-dev/*; do ` +
           `[ -e "$p" ] || continue; n=$(basename "$p"); ` +
-          `rm -rf "$APP/$n"; ln -sfn "$p" "$APP/$n"; done; ` +
-          `rm -rf "$APP/omnitron"; ln -sfn ${shellEscape(daemonRoot)} "$APP/omnitron"`,
+          `rm -rf "$APP/$n"; ln -sfn "$p" "$APP/$n"; done`,
       );
 
       // The install either produced a tree that resolves or it did not, and
@@ -472,12 +487,15 @@ export class RemoteDeployer {
       const resolved = await this.sshExec(
         target,
         `cd ${shellEscape(remotePath)} && node -e ${shellEscape(
-          "require('module').createRequire(process.cwd()+'/package.json').resolve('@omnitron-dev/omnitron')",
+          "const r=require('module').createRequire(process.cwd()+'/package.json');" +
+            "r.resolve('@omnitron-dev/omnitron');r.resolve('@omnitron-dev/titan')",
         )} >/dev/null 2>&1 && echo resolves || echo broken`,
       ).catch(() => 'broken');
       if (resolved.trim() !== 'resolves') {
         const duration = Date.now() - startTime;
-        const detail = 'the installed tree cannot resolve @omnitron-dev/omnitron, so the app will fail at its first import';
+        const detail =
+          'the installed tree cannot resolve @omnitron-dev/omnitron or @omnitron-dev/titan, ' +
+          'so the app will fail at its first import';
         this.emitProgress(nodeKey, artifact.app, 'failed', 70, detail);
         this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };

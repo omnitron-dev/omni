@@ -25,6 +25,7 @@ import { promisify } from 'node:util';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { isVendorableRange, type PackageManifest } from '../services/local-bundle.js';
 import { resolvePnpm, resolvePnpmForTests } from '../shared/pnpm.js';
+import { clearBuildInfo } from '../services/bundle-builder.js';
 
 export { resolvePnpmForTests };
 
@@ -376,13 +377,12 @@ export class ArtifactBuilder {
    * it again for every app added later.
    */
   private async runBuild(appDir: string, appName: string): Promise<void> {
-    for (const stale of ['tsconfig.tsbuildinfo', '.tsbuildinfo']) {
-      try {
-        fs.rmSync(path.join(appDir, stale), { force: true });
-      } catch {
-        // Not there, or not ours to remove: the build below is what reports.
-      }
-    }
+    // Two spellings were removed here and the workspace uses four: a
+    // `tsconfig.build.json` points `tsBuildInfoFile` at
+    // `node_modules/.tmp/`, and `tsc` also leaves one inside `dist`. Missing
+    // one is missing all of them, because any surviving record is enough for
+    // tsc to decide there is nothing to do. See `clearBuildInfo`.
+    clearBuildInfo(appDir);
 
     try {
       await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 300_000 });

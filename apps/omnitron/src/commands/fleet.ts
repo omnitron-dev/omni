@@ -260,6 +260,10 @@ export async function fleetUpgradeCommand(
       // SSH, not the daemon: that is the channel an upgrade travels over. A
       // node whose daemon is unreachable is often exactly the one to upgrade.
       sshReachable: n.status?.sshConnected ?? null,
+      // The machine, for telling two names for one apart — see `address`
+      // on UpgradeCandidate. Two registry rows pointing at one box had the
+      // bundle installed on it twice, concurrently.
+      address: `${n.host}:${n.sshPort}`,
     }));
 
     // Built before the plan is printed, because the plan names the version

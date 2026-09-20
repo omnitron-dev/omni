@@ -51,6 +51,21 @@ export interface UpgradeCandidate {
    * it to, and the reason was a channel the upgrade does not use.
    */
   readonly sshReachable: boolean | null;
+  /**
+   * The machine, as `host:port`, for telling two names for one apart.
+   *
+   * A registry holds names, and nothing stops two of them pointing at the
+   * same box. Measured: `daos-test` and `acme-deploy-test`, both
+   * `37.27.130.185:22`, listed by `fleet upgrade` as two targets — so one
+   * host received the bundle twice, and the second install ran while the
+   * first was still switching `current` and restarting the daemon underneath
+   * it. Two installs racing on one machine is not a slower upgrade; it is an
+   * upgrade whose outcome nobody can predict.
+   *
+   * Optional so a caller that cannot say keeps working: an unknown address
+   * is not evidence that two nodes are the same machine.
+   */
+  readonly address?: string | undefined;
 }
 
 export type UpgradeDecision =
@@ -60,7 +75,8 @@ export type UpgradeDecision =
 
 export interface PlannedUpgrade {
   readonly node: UpgradeCandidate;
-  readonly decision: UpgradeDecision;
+  /** Not readonly: the deduplication pass below revises it. */
+  decision: UpgradeDecision;
 }
 
 export interface UpgradePlan {
@@ -92,6 +108,28 @@ export function planUpgrade(
       continue;
     }
     steps.push({ node, decision: decideFor(node, targetVersion) });
+  }
+
+  // One machine, one upgrade — whatever it is called.
+  //
+  // The first name to reach a given address keeps the upgrade; the others
+  // are skipped with the name that has it, so the operator sees the
+  // duplicate rather than wondering why a node they asked for did nothing.
+  const claimed = new Map<string, string>();
+  for (const step of steps) {
+    if (step.decision.action !== 'upgrade') continue;
+    const address = step.node.address;
+    if (!address) continue;
+
+    const owner = claimed.get(address);
+    if (owner === undefined) {
+      claimed.set(address, step.node.name);
+      continue;
+    }
+    step.decision = {
+      action: 'skip',
+      because: `the same machine as '${owner}' (${address}) — upgrading it once`,
+    };
   }
 
   if (wanted) {

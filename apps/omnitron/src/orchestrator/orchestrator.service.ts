@@ -1140,6 +1140,10 @@ export class OrchestratorService extends EventEmitter {
    *   - bare short name (`payments`) → returns the canonical key whose
    *     last `/`-segment matches, IF AND ONLY IF the match is unique.
    *
+   * A qualified name that matches no handle exactly resolves to nothing: it
+   * names a deployment this daemon does not have, and the nearest app with
+   * the same last segment is a different one.
+   *
    * Returns `undefined` for no match. Throws on ambiguity (multiple
    * stacks expose the same short name) so the caller can surface a
    * clear error to the operator instead of operating on the wrong
@@ -1147,6 +1151,19 @@ export class OrchestratorService extends EventEmitter {
    */
   resolveAppName(rawName: string): string | undefined {
     if (this.handles.has(rawName)) return rawName;
+
+    // A qualified name is an ADDRESS, and the only handle that satisfies it
+    // is the one with that address. Falling through to the short-name match
+    // answered a question about one deployment with another's data:
+    //
+    //     omnitron logs daos/deployed/main   →  daos/dev/main
+    //
+    // — the node's app asked for, this laptop's app printed, with nothing
+    // said. `startApp` already refuses this for the same reason ("a
+    // PROJECT-QUALIFIED name with no live handle is not this daemon's to
+    // start"); the resolver every other caller goes through did not.
+    if (rawName.includes('/')) return undefined;
+
     const effective = effectiveAppName(rawName);
     const matches: string[] = [];
     for (const key of this.handles.keys()) {

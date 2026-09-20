@@ -48,6 +48,22 @@ describe('OrchestratorService.resolveAppName', () => {
     expect(orch.resolveAppName('storage')).toBe('omni/dev/storage');
   });
 
+  it('does not answer a qualified name with a different deployment', () => {
+    // Measured: `omnitron logs daos/deployed/main` printed `daos/dev/main`
+    // — the node's app asked for, this laptop's app shown, with nothing
+    // said. A qualified name is an address; the only handle that satisfies
+    // it is the one with that address.
+    const orch = build({
+      'daos/dev/main': { entry: { name: 'daos/dev/main' } },
+    });
+
+    expect(orch.resolveAppName('daos/deployed/main')).toBeUndefined();
+    expect(orch.resolveAppName('other/dev/main')).toBeUndefined();
+    // The exact one still resolves, and the bare one still finds it.
+    expect(orch.resolveAppName('daos/dev/main')).toBe('daos/dev/main');
+    expect(orch.resolveAppName('main')).toBe('daos/dev/main');
+  });
+
   it('returns undefined when no handle matches', () => {
     const orch = build({ 'omni/dev/main': { entry: { name: 'omni/dev/main' } } });
     expect(orch.resolveAppName('unknown')).toBeUndefined();

@@ -21,7 +21,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
     "test": "vitest run",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"

@@ -66,7 +66,7 @@
     "src"
   ],
   "scripts": {
-    "build": "rm -rf dist node_modules/.tmp && tsc -p tsconfig.json",
+    "build": "../../scripts/build-package.sh -p tsconfig.json",
     "build:titan": "rm -rf dist/titan && NODE_OPTIONS='--max-old-space-size=8192' tsc -p tsconfig.titan.json",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src --max-warnings=0",

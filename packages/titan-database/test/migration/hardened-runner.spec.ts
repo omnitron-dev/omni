@@ -340,3 +340,127 @@ describe('HardenedMigrationRunner — advisory lock', () => {
     expect(acquireCalls).toBe(0);
   });
 });
+
+/**
+ * A row nothing matches again.
+ *
+ * Measured on a deployed node: `@daos/storage` shipped `001_initial_schema`,
+ * and its database recorded `001_initial` — an older compiled copy of the
+ * same migration under its pre-rename name, applied from a stale `dist`
+ * three minutes earlier. Every run after that ended:
+ *
+ *     ✗ 001_initial_schema: relation "buckets" already exists
+ *
+ * Nine of the ten tables existed, the tenth did not, and nothing an operator
+ * could read connected the two names. A retry cannot help — nothing about a
+ * retry changes the bookkeeping — so the only way out is to know, and the
+ * runner is the one party that holds both halves.
+ *
+ * Reported, not refused: squashing a migration history is a normal thing to
+ * do, and a database that has outlived a squash is not broken.
+ */
+describe('HardenedMigrationRunner — a record with no file', () => {
+  /** The same table under the name the database already recorded. */
+  const renamed: HardenedMigration = {
+    name: '001_create_widgets_renamed',
+    up: m1.up,
+    down: m1.down,
+  };
+
+  const capture = () => {
+    const warn: string[] = [];
+    const error: string[] = [];
+    return {
+      warn,
+      error,
+      logger: { info: () => {}, warn: (s: string) => warn.push(s), error: (s: string) => error.push(s) },
+    };
+  };
+
+  let db: Kysely<AnyDB>;
+  beforeEach(async () => {
+    db = makeDb();
+    // The state the node was in: applied and recorded under the old name.
+    await new HardenedMigrationRunner(db, [m1], { dialect: 'other' }).up();
+  });
+
+  it('names the orphan before anything runs', async () => {
+    const log = capture();
+    const runner = new HardenedMigrationRunner(db, [renamed], {
+      dialect: 'other',
+      logger: log.logger,
+    });
+
+    await expect(runner.up()).rejects.toThrow(/already exists/i);
+
+    const said = log.warn.find((w) => w.includes('001_create_widgets'));
+    expect(said, 'the orphan is named in a warning').toBeTruthy();
+    expect(said).toMatch(/not in this build/);
+  });
+
+  it('explains the collision at the point it happens', async () => {
+    const log = capture();
+    const runner = new HardenedMigrationRunner(db, [renamed], {
+      dialect: 'other',
+      logger: log.logger,
+    });
+
+    await expect(runner.up()).rejects.toThrow();
+
+    // The raw failure, and then the half the database cannot know.
+    expect(log.error.some((e) => /already exists/i.test(e))).toBe(true);
+    const explained = log.error.find((e) => e.includes('this build does not ship'));
+    expect(explained, 'the failure is explained').toBeTruthy();
+    expect(explained).toContain('001_create_widgets');
+    expect(explained).toMatch(/retry will fail identically/);
+  });
+
+  it('still throws the database\'s own error', async () => {
+    // The exit code and the stack belong to the database. The explanation is
+    // added beside them, never instead of them.
+    const runner = new HardenedMigrationRunner(db, [renamed], { dialect: 'other' });
+    await expect(runner.up()).rejects.toThrow(/widgets/);
+  });
+
+  it('says nothing when every recorded migration is shipped', async () => {
+    const log = capture();
+    const runner = new HardenedMigrationRunner(db, [m1, m2], {
+      dialect: 'other',
+      logger: log.logger,
+    });
+
+    const r = await runner.up();
+
+    expect(r.executed).toEqual(['002_widget_color']);
+    expect(log.warn.filter((w) => w.includes('not in this build'))).toEqual([]);
+  });
+
+  it('does not blame the orphan for an unrelated failure', async () => {
+    // A migration that fails for its own reasons must not be reported as a
+    // naming collision — an explanation that fits everything explains
+    // nothing, and this one sends the operator at the bookkeeping.
+    const log = capture();
+    const boom: HardenedMigration = {
+      name: '002_boom',
+      up: async () => {
+        throw new Error('constraint check failed on row 4');
+      },
+    };
+    const runner = new HardenedMigrationRunner(db, [boom], {
+      dialect: 'other',
+      logger: log.logger,
+    });
+
+    await expect(runner.up()).rejects.toThrow(/row 4/);
+
+    expect(log.warn.some((w) => w.includes('not in this build'))).toBe(true);
+    expect(log.error.some((e) => e.includes('this build does not ship'))).toBe(false);
+  });
+
+  it('reports the orphan in status(), as it always did', async () => {
+    const status = await new HardenedMigrationRunner(db, [renamed], { dialect: 'other' }).status();
+
+    expect(status.missingFiles).toEqual(['001_create_widgets']);
+    expect(status.pending).toEqual(['001_create_widgets_renamed']);
+  });
+});

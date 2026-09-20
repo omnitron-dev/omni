@@ -132,6 +132,15 @@ export class MigrationChecksumError extends Error {
 
 const DEFAULT_LOCK_KEY = 0xda05_da05;
 const CHECKSUMS_TABLE = 'migration_checksums';
+
+/**
+ * A failure that says the thing is already there.
+ *
+ * Postgres: `relation "buckets" already exists`. SQLite: `table widgets
+ * already exists`. Both are the shape one migration leaves for another that
+ * creates the same objects under a different name.
+ */
+const ALREADY_EXISTS = /already exists/i;
 const NOOP_LOGGER: HardenedLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
 interface NormalizedOptions {
@@ -235,6 +244,31 @@ export class HardenedMigrationRunner<DB = unknown> {
     return missing.map((m) => m.name);
   }
 
+  /**
+   * Names this database records as applied that the current build does not
+   * ship.
+   *
+   * A rename or a deletion leaves a row nothing will match again. On its own
+   * that is harmless bookkeeping — squashing a history is a normal thing to
+   * do. Paired with a pending migration that creates what the orphan already
+   * created, it is the entire explanation of an error that mentions neither.
+   *
+   * Measured on a deployed node, where `@daos/storage` shipped
+   * `001_initial_schema` and the database recorded `001_initial` — an older
+   * compiled copy of the same migration under its pre-rename name, applied
+   * from a stale `dist` minutes earlier:
+   *
+   *     ✗ 001_initial_schema: relation "buckets" already exists
+   *
+   * Nine tables existed, the tenth did not, and the only thing anybody could
+   * read said the schema was ahead of the migration. Every retry failed the
+   * same way, because nothing about a retry changes the bookkeeping.
+   */
+  private async orphanRecords(): Promise<string[]> {
+    const shipped = new Set(this.migrations.map((m) => m.name));
+    return (await this.getExecutedNames()).filter((n) => !shipped.has(n));
+  }
+
   async verifyChecksums(): Promise<HardenedStatus['drift']> {
     if (!this.opts.enforceChecksums) return [];
     const recorded = await this.getRecordedChecksums();
@@ -336,6 +370,19 @@ export class HardenedMigrationRunner<DB = unknown> {
         );
       }
 
+      // Said before anything runs, so it is above the failure rather than
+      // buried under a stack trace — and said even when nothing collides,
+      // because bookkeeping that names a migration nobody ships is worth
+      // one line either way.
+      const orphans = await this.orphanRecords();
+      if (orphans.length > 0) {
+        this.opts.logger.warn(
+          `${orphans.length} migration(s) recorded in this database are not in this build: ${orphans.join(', ')}. ` +
+            `A renamed or deleted migration leaves a row nothing matches again; if a pending migration now fails ` +
+            `because the objects it creates already exist, this is why.`,
+        );
+      }
+
       const executed = new Set(await this.getExecutedNames());
       const result: HardenedUpResult = { executed: [], skipped: [], failed: [] };
 
@@ -352,6 +399,16 @@ export class HardenedMigrationRunner<DB = unknown> {
         } catch (err) {
           result.failed.push(m.name);
           this.opts.logger.error(`✗ ${m.name}: ${(err as Error).message}`);
+          if (orphans.length > 0 && ALREADY_EXISTS.test((err as Error).message)) {
+            // The original error still propagates — the exit code and the
+            // stack belong to the database. This only says the part the
+            // database cannot know.
+            this.opts.logger.error(
+              `${m.name} failed on something that already exists, and this database records ` +
+                `${orphans.join(', ')}, which this build does not ship. The objects were almost certainly ` +
+                `created under the old name, so a retry will fail identically: reconcile the bookkeeping first.`,
+            );
+          }
           throw err;
         }
       }
@@ -402,12 +459,11 @@ export class HardenedMigrationRunner<DB = unknown> {
     const executedNames = await this.getExecutedNames();
     const recorded = await this.getRecordedChecksums();
     const exSet = new Set(executedNames);
-    const fileSet = new Set(this.migrations.map((m) => m.name));
     return {
       executed: executedNames.map((name) => ({ name, checksum: recorded.get(name) ?? null })),
       pending: this.migrations.filter((m) => !exSet.has(m.name)).map((m) => m.name),
       drift: await this.verifyChecksums(),
-      missingFiles: executedNames.filter((n) => !fileSet.has(n)),
+      missingFiles: await this.orphanRecords(),
     };
   }
 

@@ -6,7 +6,10 @@
  * is not symmetric, which the guard's own comment says: "Leaving a real
  * orphan running costs an idle container; the other way costs the platform."
  *
- * It has cost the platform twice.
+ * It has cost the platform three times, and the third is the one that
+ * matters: no reasoning about names or labels can reach the right answer on
+ * a node, because its master's containers are labelled for a stack the node
+ * does not have and never will. The rule is about WHO, not about what.
  *
  * **2026-09-12** — `listStacks` reads a cache the per-project load populates,
  * and the sweep ran before that load. Ten RUNNING containers went in fourteen
@@ -65,6 +68,7 @@ describe('a node has no projects of its own, and that is not an answer', () => {
     // empty `projects` left `expectationsComplete` true and every container
     // unaccounted for.
     const d = decideOrphans({
+      isSlave: false,
       managed: THE_STACK,
       projects: [],
       expectedPrefixes: [],
@@ -82,6 +86,7 @@ describe('a node has no projects of its own, and that is not an answer', () => {
     // container looks unexpected. Belt beside the `expectationsComplete`
     // brace, because that flag depends on a loop finding something to say.
     const d = decideOrphans({
+      isSlave: false,
       managed: THE_STACK,
       projects: ['daos'],
       expectedPrefixes: [],
@@ -96,6 +101,7 @@ describe('a node has no projects of its own, and that is not an answer', () => {
 
   it('still honours the flag it was given', () => {
     const d = decideOrphans({
+      isSlave: false,
       managed: THE_STACK,
       projects: ['daos'],
       expectedPrefixes: ['other-dev-'],
@@ -115,6 +121,7 @@ describe('a container labelled for a project this daemon does not have', () => {
     // `acme/dev`. The node knows `acme` and not `daos`. Removing the daos
     // containers would be deciding a question this daemon was not asked.
     const d = decideOrphans({
+      isSlave: false,
       managed: [
         container('acme-dev-postgres', { project: 'acme', stack: 'dev' }),
         container('daos-test-tor', { project: 'daos', stack: 'test' }),
@@ -132,6 +139,7 @@ describe('a container labelled for a project this daemon does not have', () => {
     // The case the sweep exists for: a stack deleted from the config, its
     // containers still running. This is the only shape that may be removed.
     const d = decideOrphans({
+      isSlave: false,
       managed: [
         container('acme-dev-postgres', { project: 'acme', stack: 'dev' }),
         container('acme-old-postgres', { project: 'acme', stack: 'old' }),
@@ -150,6 +158,7 @@ describe('a container labelled for a project this daemon does not have', () => {
     // project label. It is judged by name, as it always was — the label check
     // narrows what may be removed and must not widen it.
     const d = decideOrphans({
+      isSlave: false,
       managed: [container('acme-gone-redis')],
       projects: ['acme'],
       expectedPrefixes: ['acme-dev-'],
@@ -164,6 +173,7 @@ describe('a container labelled for a project this daemon does not have', () => {
 describe('what is never touched', () => {
   it('keeps omnitron\'s own containers', () => {
     const d = decideOrphans({
+      isSlave: false,
       managed: [container('omnitron-pg'), container('omnitron-nginx')],
       projects: ['acme'],
       expectedPrefixes: ['acme-dev-'],
@@ -176,6 +186,7 @@ describe('what is never touched', () => {
 
   it('keeps everything matching an expected prefix', () => {
     const d = decideOrphans({
+      isSlave: false,
       managed: THE_STACK,
       projects: ['daos'],
       expectedPrefixes: ['daos-test-'],
@@ -190,6 +201,7 @@ describe('what is never touched', () => {
 
   it('says so when there is nothing managed at all', () => {
     const d = decideOrphans({
+      isSlave: false,
       managed: [],
       projects: [],
       expectedPrefixes: [],
@@ -198,5 +210,64 @@ describe('what is never touched', () => {
     });
 
     expect(d.action).toBe('skip');
+  });
+});
+
+describe('a node does not sweep its master\'s host', () => {
+  /**
+   * The third time, and the one that no reasoning about names or labels can
+   * reach. After the master wrote the node a project config, the node HAD a
+   * project — so the empty-list guard passed, expectations were complete, and
+   * prefixes resolved. The master's containers are labelled with a project
+   * the node now knows (`daos`) and a stack it does not (`test`), so every
+   * rule said "orphan" and meant "somebody else's":
+   *
+   *     Removing orphan container (not part of any registered stack)  daos-test-redis
+   *     Removing orphan container (not part of any registered stack)  daos-test-postgres
+   *     Removing orphan container (not part of any registered stack)  daos-test-tor
+   *
+   * A slave does not own the inventory of its host. It is TOLD what to
+   * provision, under the master's own names, and sweeping is a daemon
+   * deleting what it was asked to run on the grounds that nobody asked it.
+   */
+  it('removes nothing, however complete its own picture looks', () => {
+    const d = decideOrphans({
+      isSlave: true,
+      managed: THE_STACK,
+      projects: ['daos'],
+      expectedPrefixes: ['daos-deployed-'],
+      expectationsComplete: true,
+      internalNames: ['omnitron-pg'],
+    });
+
+    expect(d.action).toBe('skip');
+    if (d.action !== 'skip') return;
+    expect(d.because).toMatch(/node under a master/);
+  });
+
+  it('is asked before anything else, so no later rule can overrule it', () => {
+    const d = decideOrphans({
+      isSlave: true,
+      managed: [container('acme-old-postgres', { project: 'acme', stack: 'old' })],
+      projects: ['acme'],
+      expectedPrefixes: ['acme-dev-'],
+      expectationsComplete: true,
+      internalNames: [],
+    });
+
+    expect(d.action).toBe('skip');
+  });
+
+  it('still lets a master sweep its own host', () => {
+    const d = decideOrphans({
+      isSlave: false,
+      managed: [container('acme-old-postgres', { project: 'acme', stack: 'old' })],
+      projects: ['acme'],
+      expectedPrefixes: ['acme-dev-'],
+      expectationsComplete: true,
+      internalNames: [],
+    });
+
+    expect(d).toEqual({ action: 'remove', containers: ['acme-old-postgres'] });
   });
 });

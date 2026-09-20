@@ -53,6 +53,23 @@ export interface SweepCandidate {
 }
 
 export interface SweepInput {
+  /**
+   * Whether this daemon is a node under a master (`daemon.role === 'slave'`).
+   *
+   * A slave does not own the container inventory of its host — its master
+   * does. It is TOLD what to provision, through `provisionStack`, under the
+   * master's own project and stack names, and its own registry knows only the
+   * apps it was given. So a slave sweeping is a daemon deleting what it was
+   * asked to run, on the grounds that nobody asked it to run it.
+   *
+   * Measured twice on the same node. Once with no projects at all, and once
+   * after it HAD one — the generated `deployed` stack — which is worse,
+   * because the guard for the first case cannot see the second: the master's
+   * containers are labelled with a project the node now knows (`daos`) and a
+   * stack it does not (`test`), so every rule about labels and prefixes says
+   * "orphan" and means "somebody else's".
+   */
+  readonly isSlave: boolean;
   readonly managed: readonly SweepCandidate[];
   /** Projects this daemon has in its own registry. */
   readonly projects: readonly string[];
@@ -81,6 +98,17 @@ export type SweepDecision =
 export function decideOrphans(input: SweepInput): SweepDecision {
   if (input.managed.length === 0) {
     return { action: 'skip', because: 'nothing is managed on this host' };
+  }
+
+  // The first question, before any reasoning about names or labels, because
+  // no amount of that reasoning can reach the right answer on a node: its
+  // master's containers are labelled for a stack the node does not have and
+  // never will.
+  if (input.isSlave) {
+    return {
+      action: 'skip',
+      because: 'this daemon is a node under a master, which owns what runs on this host',
+    };
   }
 
   // A daemon with no projects of its own knows nothing about what should be

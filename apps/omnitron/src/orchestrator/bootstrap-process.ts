@@ -148,6 +148,82 @@ function reportStage(stage: string, detail?: string): void {
 }
 
 /**
+ * A topology proxy for a service that was not there yet.
+ *
+ * When the first `queryInterface` fails, this process used to register a
+ * proxy that THROWS on every call for the life of the process — so a service
+ * that appeared a second later was never seen. For a pool that is rare: pools
+ * register in step 1, before any consumer starts. For a sibling child it is
+ * the normal case, because provider and consumer are children of one
+ * supervisor and the provider can only be asked for its services after they
+ * have all started.
+ *
+ * Measured on priceverse: `CollectorWorker` registered on the daemon 7
+ * seconds after the server process asked for it, and the server's health
+ * check answered
+ *
+ *     Topology service 'CollectorWorker' unavailable: Service 'CollectorWorker' not found
+ *
+ * to every call for the rest of that process's life — while the same service,
+ * queried from a fresh client, answered `6 exchanges, 6 connected`.
+ *
+ * So: ask again on use. Once the query succeeds, hand over to the
+ * reconnecting proxy, which is what keeps it alive afterwards. A call made
+ * while it is still absent raises the same sentence as before, naming the
+ * service and the reason it could not be had THIS time — not the one from
+ * start-up.
+ *
+ * @internal exported for tests
+ */
+export function createDeferredTopologyProxy(
+  netron: { connect(url: string): Promise<{ queryInterface(name: string): Promise<unknown> }> },
+  serviceName: string,
+  daemonSocketUrl: string,
+): unknown {
+  let live: Record<string, unknown> | null = null;
+  let resolving: Promise<void> | null = null;
+
+  const resolve = async (): Promise<void> => {
+    resolving ??= (async () => {
+      try {
+        const peer = await netron.connect(daemonSocketUrl);
+        const handle = await peer.queryInterface(serviceName);
+        live = createReconnectingTopologyProxy(
+          netron,
+          serviceName,
+          daemonSocketUrl,
+          handle,
+        ) as Record<string, unknown>;
+      } finally {
+        resolving = null;
+      }
+    })();
+    return resolving;
+  };
+
+  return new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        if (typeof prop === 'symbol' || prop === 'then') return undefined;
+        return async (...args: unknown[]) => {
+          if (!live) {
+            try {
+              await resolve();
+            } catch (err) {
+              throw new Error(
+                `Topology service '${serviceName}' unavailable: ${(err as Error).message}`,
+              );
+            }
+          }
+          return (live![prop as string] as (...a: unknown[]) => Promise<unknown>)(...args);
+        };
+      },
+    },
+  );
+}
+
+/**
  * A topology proxy that survives losing its connection.
  *
  * The interface `queryInterface` returns is bound to one socket. When that
@@ -638,16 +714,19 @@ class BootstrapProcess {
         });
         process.stderr.write(entry + '\n');
 
-        // Register an error-throwing proxy so callers get a clear error at call-time
-        // instead of a cryptic "token not found" DI error.
-        const errorProxy = new Proxy({}, {
-          get: (_target, prop) => {
-            if (typeof prop === 'symbol' || prop === 'then') return undefined;
-            return () => { throw new Error(`Topology service '${serviceName}' unavailable: ${(err as Error).message}`); };
-          },
-        });
+        // Register a proxy that asks AGAIN on use, rather than one that
+        // throws for the life of the process. A sibling child registers its
+        // services only after every child has started, so "not found" here is
+        // the ordinary case, not a verdict — see
+        // `createDeferredTopologyProxy`.
         const token = createToken(`${TOPOLOGY_TOKEN_PREFIX}${serviceName}`);
-        this.app!.container.register(token, { useValue: errorProxy } as any);
+        this.app!.container.register(token, {
+          useValue: createDeferredTopologyProxy(
+            this.app!.netron as never,
+            serviceName,
+            daemonSocketUrl,
+          ),
+        } as any);
       }
     }
   }

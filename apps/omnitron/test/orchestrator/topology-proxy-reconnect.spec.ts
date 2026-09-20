@@ -15,7 +15,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 
-import { createReconnectingTopologyProxy } from '../../src/orchestrator/bootstrap-process.js';
+import {
+  createReconnectingTopologyProxy,
+  createDeferredTopologyProxy,
+} from '../../src/orchestrator/bootstrap-process.js';
 
 const proxyFor = (netron: unknown, serviceName: string, url: string, initial: unknown) =>
   createReconnectingTopologyProxy(netron as never, serviceName, url, initial);
@@ -164,5 +167,92 @@ describe('topology proxy reconnection', () => {
     // aggregation interval so a genuine hang still surfaces on the next tick.
     expect(ms).toBeGreaterThan(5_000);
     expect(ms).toBeLessThan(5 * 60_000);
+  });
+});
+/**
+ * And a proxy for a service that was not there YET.
+ *
+ * When the first `queryInterface` failed, the child registered a proxy that
+ * throws on every call for the life of the process — so a service that
+ * appeared a second later was never seen. For a pool that is rare: pools
+ * register before any consumer starts. For a sibling child it is the normal
+ * case, because provider and consumer are children of one supervisor and the
+ * provider can only be asked for its services after they have all started.
+ *
+ * Measured on priceverse: `CollectorWorker` registered on the daemon seven
+ * seconds after the server process asked for it, and the server's health
+ * check answered
+ *
+ *     Topology service 'CollectorWorker' unavailable: Service 'CollectorWorker' not found
+ *
+ * to every call for the rest of that process's life — while the same service,
+ * queried from a fresh client, answered `6 exchanges, 6 connected`.
+ */
+describe('a topology service that was not there yet', () => {
+  it('asks again on use, and answers once it is there', async () => {
+    const live = { getAllStats: vi.fn().mockResolvedValue([{ exchange: 'binance', connected: true }]) };
+    const queryInterface = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Service 'CollectorWorker' not found"))
+      .mockResolvedValue(live);
+    const netron = { connect: vi.fn().mockResolvedValue({ queryInterface }) };
+
+    const proxy = createDeferredTopologyProxy(
+      netron as never,
+      'CollectorWorker',
+      'unix:///tmp/d.sock',
+    ) as { getAllStats(): Promise<unknown> };
+
+    // First call: still absent, and the reason is the one from THIS attempt.
+    await expect(proxy.getAllStats()).rejects.toThrow(/CollectorWorker' unavailable.*not found/);
+
+    // Second: it has registered in the meantime.
+    await expect(proxy.getAllStats()).resolves.toEqual([{ exchange: 'binance', connected: true }]);
+    expect(queryInterface).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks once, not once per call, after it succeeds', async () => {
+    const live = { getAllStats: vi.fn().mockResolvedValue([]) };
+    const queryInterface = vi.fn().mockResolvedValue(live);
+    const netron = { connect: vi.fn().mockResolvedValue({ queryInterface }) };
+
+    const proxy = createDeferredTopologyProxy(netron as never, 'CollectorWorker', 'unix:///tmp/d.sock') as {
+      getAllStats(): Promise<unknown>;
+    };
+
+    await proxy.getAllStats();
+    await proxy.getAllStats();
+    await proxy.getAllStats();
+
+    expect(queryInterface).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps reconnecting once it has a handle', async () => {
+    // What it hands over to is the reconnecting proxy, so a socket lost
+    // later is still recovered — the two halves compose.
+    const dead = { getAllStats: vi.fn().mockRejectedValueOnce(closedError()).mockResolvedValue(['after']) };
+    const queryInterface = vi.fn().mockResolvedValue(dead);
+    const netron = { connect: vi.fn().mockResolvedValue({ queryInterface }) };
+
+    const proxy = createDeferredTopologyProxy(netron as never, 'CollectorWorker', 'unix:///tmp/d.sock') as {
+      getAllStats(): Promise<unknown>;
+    };
+
+    await expect(proxy.getAllStats()).resolves.toEqual(['after']);
+    // One query to resolve it, one to re-query after the closed socket.
+    expect(queryInterface).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not hold a failed attempt against the next one', async () => {
+    const queryInterface = vi.fn().mockRejectedValue(new Error('daemon is down'));
+    const netron = { connect: vi.fn().mockResolvedValue({ queryInterface }) };
+
+    const proxy = createDeferredTopologyProxy(netron as never, 'CollectorWorker', 'unix:///tmp/d.sock') as {
+      getAllStats(): Promise<unknown>;
+    };
+
+    await expect(proxy.getAllStats()).rejects.toThrow(/daemon is down/);
+    await expect(proxy.getAllStats()).rejects.toThrow(/daemon is down/);
+    expect(queryInterface).toHaveBeenCalledTimes(2);
   });
 });

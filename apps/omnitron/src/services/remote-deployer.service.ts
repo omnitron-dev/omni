@@ -60,6 +60,7 @@ import {
   describePlan,
 } from './remote-provisioner.js';
 import { installSteps, activateSteps, pruneSteps } from './bundle-builder.js';
+import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -616,6 +617,8 @@ export class RemoteDeployer {
        * master's away. See `NodeConfigInput.appEnv`.
        */
       appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
+      /** The stack these apps belong to — names the docker network to open from. */
+      stack?: string | undefined;
     },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
@@ -672,6 +675,10 @@ export class RemoteDeployer {
         // Schema before the apps that read it.
         await this.migrateNodeApps(target, project, landed, options.appEnv);
 
+        // And the path from the gateway to them, which is the one crossing
+        // no configuration can open by itself. See `gateway-reachability`.
+        if (options.stack) await this.openGatewayPath(target, project, options.stack);
+
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
         // running apps rather than installed files.
@@ -714,6 +721,69 @@ export class RemoteDeployer {
    * discard a transfer that succeeded. The operator needs to know the apps
    * are not runnable, which is what the error says.
    */
+  /**
+   * Let the gateway reach the applications it proxies to.
+   *
+   * The gateway is a container and the apps are host processes, so every
+   * `/api/*` request crosses out of docker and into the host's INPUT chain.
+   * On a hardened host that chain drops it, and the gateway answers a
+   * correct, unhelpful `503` three seconds later while the upstream it could
+   * not reach is listening and healthy on the same machine.
+   *
+   * Measured on the test node with everything else already right: apps on
+   * `0.0.0.0:3001-3007`, answering `404` to the host itself, timing out from
+   * the gateway, `ufw` active with `22/tcp` its only rule and INPUT policy
+   * DROP.
+   *
+   * Derived, not configured: the subnet comes from the network the gateway
+   * is actually on, so a stack cannot be given a rule for the wrong one, and
+   * a subnet that is not a private range is refused outright rather than
+   * turned into a firewall rule nobody can explain.
+   *
+   * Never fatal. A host whose firewall cannot be read is a host that gets a
+   * message; stopping a deployment over it would trade a visible 503 for an
+   * invisible one.
+   */
+  private async openGatewayPath(target: DeployTarget, project: string, stack: string): Promise<void> {
+    const network = `${project}-${stack}_default`;
+    try {
+      const subnet = (
+        await this.sshExec(
+          target,
+          `docker network inspect ${shellEscape(network)} --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || true`,
+        )
+      ).trim();
+      if (!subnet) return;
+
+      const rule = reachabilityRule(subnet, project, stack);
+      if (!rule) {
+        this.logger.warn(
+          { node: target.host, network, subnet },
+          'Refusing to open a path from this subnet — it is not a private range',
+        );
+        return;
+      }
+
+      const outcome = (await this.sshExec(target, reachabilityCommand(rule))).trim();
+      if (outcome === 'allowed') {
+        this.logger.info(
+          { node: target.host, subnet: rule.subnet, ports: `${rule.fromPort}-${rule.toPort}` },
+          'Opened the gateway’s path to the applications on this host',
+        );
+      } else if (outcome === 'failed') {
+        this.logger.error(
+          { node: target.host, subnet: rule.subnet },
+          'Could not open the gateway’s path — every /api/* request will answer 503 while the apps are healthy',
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        { node: target.host, network, error: (err as Error).message.slice(0, 200) },
+        'Could not check the gateway’s path to the applications',
+      );
+    }
+  }
+
   /**
    * Run each app's migrations, on the node, against the node's database.
    *

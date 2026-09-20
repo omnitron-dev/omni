@@ -187,6 +187,30 @@ export interface INodeIndicators {
 }
 
 /**
+ * One question put to a node's own daemon, over the mesh.
+ *
+ * The fleet commands dial `host:9700` and ask `OmnitronDaemon` directly. A
+ * node whose daemon port is not open to this master — which is the normal
+ * state of a hardened server, and the reason the mesh tunnels over SSH —
+ * answers nothing, so `fleet status` listed a machine running six apps as
+ * `offline  0 apps`, and `fleet health` and `fleet metrics` had nothing to
+ * print either.
+ *
+ * `reachable: false` carries the reason and never a verdict: a node that
+ * could not be asked has not reported anything, and rendering silence as
+ * `offline` sends an operator to look at the wrong machine.
+ */
+export interface INodeDaemonAnswer<T> {
+  nodeId: string;
+  /** Whether the node's daemon answered at all. */
+  reachable: boolean;
+  /** Why it did not, when it did not. */
+  error: string | null;
+  /** What it said — `null` when it was not asked or did not answer. */
+  answer: T | null;
+}
+
+/**
  * Whether a node's data is reaching this master.
  *
  * Reachability and membership are different questions, and so are membership

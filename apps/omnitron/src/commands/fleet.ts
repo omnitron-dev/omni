@@ -12,7 +12,8 @@ import {
   type KnownMachine,
   type NodeLike,
 } from '../infrastructure/known-machines.js';
-import { createRemoteDaemonClient, createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient } from '../daemon/daemon-client.js';
+import { MeshAsker, askMachine } from './fleet-asking.js';
 import { formatStatus, formatMemory } from '../shared/format.js';
 import { spinner } from './spinner.js';
 
@@ -77,21 +78,24 @@ export async function fleetStatusCommand(): Promise<void> {
     registry.add({ alias: m.name, host: m.host, port: m.port, tags: [...m.tags], status, lastSeen: Date.now() });
   };
 
+  const mesh = new MeshAsker();
   for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
-    const client = createRemoteDaemonClient(server.host, server.port);
-    try {
-      const d = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const status = await d.status();
-      remember(server, 'online');
+    const answer = await askMachine<import('../shared/dto/services.js').DaemonStatusDto>(server, 'status', mesh);
 
+    if (answer.value) {
+      remember(server, 'online');
       results.push({
         alias: server.alias,
         host: `${server.host}:${server.port}`,
-        status: formatStatus('online'),
-        apps: status.apps.length,
-        cpu: `${status.totalCpu.toFixed(1)}%`,
-        memory: formatMemory(status.totalMemory),
+        // How it was reached, because a node answering only through the mesh
+        // is a node whose fleet port is shut — worth knowing before someone
+        // debugs a port that was never meant to be open.
+        status: `${formatStatus('online')}${answer.via === 'mesh' ? ' (mesh)' : ''}`,
+        apps: answer.value.apps.length,
+        cpu: `${answer.value.totalCpu.toFixed(1)}%`,
+        memory: formatMemory(answer.value.totalMemory),
       });
-    } catch {
+    } else {
       remember(server, 'offline');
       results.push({
         alias: server.alias,
@@ -102,8 +106,8 @@ export async function fleetStatusCommand(): Promise<void> {
         memory: '-',
       });
     }
-    await client.disconnect();
   }
+  await mesh.close();
 
   table({
     width: 'auto',
@@ -129,32 +133,41 @@ export async function fleetHealthCommand(): Promise<void> {
     return;
   }
 
+  const mesh = new MeshAsker();
   for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
-    const client = createRemoteDaemonClient(server.host, server.port);
-    try {
-      const dh = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const health = await dh.getHealth({});
-      const statusIcon =
-        health.overall === 'healthy'
-          ? prism.green('ok')
-          : health.overall === 'degraded'
-            ? prism.yellow('degraded')
-            : prism.red('unhealthy');
-      log.info(`${statusIcon} ${server.alias} (${server.host}:${server.port}) — ${health.overall}`);
+    const answer = await askMachine<import('../shared/dto/services.js').AggregatedHealthDto>(server, 'health', mesh);
 
-      for (const [appName, appHealth] of Object.entries(health.apps)) {
-        const appStatus =
-          appHealth.status === 'healthy'
-            ? prism.green('ok')
-            : appHealth.status === 'degraded'
-              ? prism.yellow('warn')
-              : prism.red('fail');
-        log.info(`  ${appStatus} ${appName}: ${appHealth.status}`);
-      }
-    } catch {
-      log.error(`${prism.red('fail')} ${server.alias} (${server.host}:${server.port}) — unreachable`);
+    if (!answer.value) {
+      // The reason, not just the verdict: "unreachable" was printed for a
+      // node that answers, over a port that was never open to this master.
+      log.error(
+        `${prism.red('fail')} ${server.alias} (${server.host}:${server.port}) — unreachable: ${answer.error ?? 'no answer'}`,
+      );
+      continue;
     }
-    await client.disconnect();
+
+    const health = answer.value;
+    const statusIcon =
+      health.overall === 'healthy'
+        ? prism.green('ok')
+        : health.overall === 'degraded'
+          ? prism.yellow('degraded')
+          : prism.red('unhealthy');
+    log.info(
+      `${statusIcon} ${server.alias} (${server.host}:${server.port})${answer.via === 'mesh' ? ' (mesh)' : ''} — ${health.overall}`,
+    );
+
+    for (const [appName, appHealth] of Object.entries(health.apps)) {
+      const appStatus =
+        appHealth.status === 'healthy'
+          ? prism.green('ok')
+          : appHealth.status === 'degraded'
+            ? prism.yellow('warn')
+            : prism.red('fail');
+      log.info(`  ${appStatus} ${appName}: ${appHealth.status}`);
+    }
   }
+  await mesh.close();
 }
 
 export async function fleetMetricsCommand(): Promise<void> {
@@ -171,38 +184,41 @@ export async function fleetMetricsCommand(): Promise<void> {
   let totalMemory = 0;
   let totalApps = 0;
 
+  const mesh = new MeshAsker();
   for (const server of servers.map((m) => ({ ...m, alias: m.name }))) {
-    const client = createRemoteDaemonClient(server.host, server.port);
-    try {
-      const dm = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const metrics = await dm.getMetrics({});
-      totalCpu += metrics.totals.cpu;
-      totalMemory += metrics.totals.memory;
+    const answer = await askMachine<import('../shared/dto/services.js').AggregatedMetricsDto>(server, 'metrics', mesh);
 
-      log.info(`\n${prism.bold(server.alias)} (${server.host}:${server.port})`);
-
-      const data = Object.entries(metrics.apps).map(([name, m]) => {
-        totalApps++;
-        return {
-          app: name,
-          cpu: m ? `${m.cpu.toFixed(1)}%` : '-',
-          memory: m ? formatMemory(m.memory) : '-',
-        };
-      });
-
-      table({
-        width: 'auto',
-        data,
-        columns: [
-          { key: 'app', header: 'APP' },
-          { key: 'cpu', header: 'CPU', align: 'right' },
-          { key: 'memory', header: 'MEMORY', align: 'right' },
-        ],
-      });
-    } catch {
-      log.error(`${server.alias} — unreachable`);
+    if (!answer.value) {
+      log.error(`${server.alias} — unreachable: ${answer.error ?? 'no answer'}`);
+      continue;
     }
-    await client.disconnect();
+
+    const metrics = answer.value;
+    totalCpu += metrics.totals.cpu;
+    totalMemory += metrics.totals.memory;
+
+    log.info(`\n${prism.bold(server.alias)} (${server.host}:${server.port})${answer.via === 'mesh' ? ' (mesh)' : ''}`);
+
+    const data = Object.entries(metrics.apps).map(([name, m]) => {
+      totalApps++;
+      return {
+        app: name,
+        cpu: m ? `${m.cpu.toFixed(1)}%` : '-',
+        memory: m ? formatMemory(m.memory) : '-',
+      };
+    });
+
+    table({
+      width: 'auto',
+      data,
+      columns: [
+        { key: 'app', header: 'APP' },
+        { key: 'cpu', header: 'CPU', align: 'right' },
+        { key: 'memory', header: 'MEMORY', align: 'right' },
+      ],
+    });
   }
+  await mesh.close();
 
   log.info(`\nFleet totals: ${totalApps} apps | CPU: ${totalCpu.toFixed(1)}% | Memory: ${formatMemory(totalMemory)}`);
 }

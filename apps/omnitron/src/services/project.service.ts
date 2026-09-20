@@ -2486,27 +2486,43 @@ export class ProjectService extends EventEmitter {
 
     if (answered === 0) return info;
 
+    const apps = info.apps.map((app) => {
+      const running = reported.get(app.name);
+      if (!running) return app;
+      return {
+        ...app,
+        handleKey: running.name,
+        status: running.status,
+        pid: running.pid,
+        instances: running.instances,
+        uptime: running.uptime,
+        restarts: running.restarts,
+        cpu: running.cpu,
+        memory: running.memory,
+        port: running.port ?? null,
+      };
+    });
+
+    // The stack's own status is this master's memory of having started it,
+    // and a daemon restart forgets it — so a stack whose six applications
+    // are running on a node read `stopped` a minute after an upgrade. The
+    // apps are the fact here too.
+    const online = apps.filter((a) => a.status === 'online').length;
+    const status: StackStatus =
+      online === apps.length && apps.length > 0
+        ? 'running'
+        : online > 0
+          ? 'degraded'
+          : info.status;
+
     return {
       ...info,
+      status,
       infrastructure: remoteInfra ?? info.infrastructure,
-      apps: info.apps.map((app) => {
-        const running = reported.get(app.name);
-        if (!running) return app;
-        return {
-          ...app,
-          handleKey: running.name,
-          status: running.status,
-          pid: running.pid,
-          instances: running.instances,
-          uptime: running.uptime,
-          restarts: running.restarts,
-          cpu: running.cpu,
-          memory: running.memory,
-          port: running.port ?? null,
-        };
-      }),
+      apps,
     };
   }
+
 
   /**
    * One node's infrastructure, named the way the stack names it.

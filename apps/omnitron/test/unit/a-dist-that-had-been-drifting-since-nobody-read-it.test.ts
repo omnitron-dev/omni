@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { staleDist } from '../../src/services/bundle-builder.js';
+import { staleDist, staleBuild } from '../../src/services/bundle-builder.js';
 
 let dir: string;
 
@@ -151,5 +151,65 @@ describe('it refuses to guess', () => {
     write('dist/index.js', 'export const a = 1;', 0);
 
     expect(staleDist(dir)).toBeNull();
+  });
+});
+
+describe('a built frontend is the same question without a manifest', () => {
+  /**
+   * The gateway serves `apps/portal/dist` and the deployment shipped it
+   * exactly as it found it. Measured on the test stack: the `index.html` on
+   * the node was built on 2026-09-10 and **1 152 source files were newer than
+   * it** — so the "test portal", the thing the whole deployment exists to put
+   * in front of someone, was ten days behind the tree it was supposedly
+   * testing, and nothing said so because nothing looked.
+   */
+  it('counts what is behind, because one file and a thousand are different news', () => {
+    write('src/app.tsx', 'export const App = 1;', 0);
+    write('src/config.ts', 'export const c = 1;', 0);
+    write('src/old.ts', 'export const o = 1;', 900);
+    write('dist/index.html', '<!doctype html>', 500);
+
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toMatch(/2 source files newer/);
+  });
+
+  it('names the most recent one', () => {
+    write('src/app.tsx', 'export const App = 1;', 10);
+    write('src/late.tsx', 'export const L = 1;', 0);
+    write('dist/index.html', '<!doctype html>', 500);
+
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toContain('late.tsx');
+  });
+
+  it('accepts a build made after its sources', () => {
+    write('src/app.tsx', 'export const App = 1;', 500);
+    write('dist/index.html', '<!doctype html>', 0);
+    write('dist/assets/index-abc.js', 'console.log(1)', 0);
+
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBeNull();
+  });
+
+  it('reports a build that is not there, and one that is empty', () => {
+    write('src/app.tsx', 'export const App = 1;', 0);
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBe('there is no build at all');
+
+    fs.mkdirSync(path.join(dir, 'dist'), { recursive: true });
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBe('the build directory is empty');
+  });
+
+  it('does not count a test file, and does count a stylesheet', () => {
+    // A frontend's sources are not only TypeScript: a changed stylesheet or
+    // an added SVG is a changed build. A changed test is not.
+    write('src/app.tsx', 'export const App = 1;', 500);
+    write('dist/index.html', '<!doctype html>', 200);
+    write('src/app.test.tsx', 'it("x", () => {});', 0);
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBeNull();
+
+    write('src/theme.css', 'body { color: red }', 0);
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toMatch(/theme\.css/);
+  });
+
+  it('says nothing when there are no sources to compare', () => {
+    write('dist/index.html', '<!doctype html>', 0);
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBeNull();
   });
 });

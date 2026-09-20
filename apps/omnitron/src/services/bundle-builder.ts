@@ -207,6 +207,92 @@ function cacheDir(): string {
 }
 
 /**
+ * The most recently modified file under a directory, by a filter.
+ *
+ * `node_modules` and `.git` are skipped: neither says anything about whether
+ * this project's own output is current, and walking them turns a handful of
+ * `stat` calls into tens of thousands.
+ */
+function newestFile(dir: string, filter: (name: string) => boolean): { file: string; mtime: number } | null {
+  let best: { file: string; mtime: number } | null = null;
+  const walk = (d: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        walk(full);
+        continue;
+      }
+      if (!filter(entry.name)) continue;
+      const mtime = fs.statSync(full).mtimeMs;
+      if (!best || mtime > best.mtime) best = { file: full, mtime };
+    }
+  };
+  walk(dir);
+  return best;
+}
+
+/**
+ * Whether a built frontend is older than the sources it was built from.
+ *
+ * The gateway serves `apps/portal/dist` and the deployment ships it exactly
+ * as it finds it. Measured on the test stack: the `index.html` on the node
+ * was built on 2026-09-10 and **879 source files were newer than it** — so
+ * the "test portal", the thing the whole deployment exists to put in front of
+ * someone, was ten days behind the tree it was supposedly testing. Nothing
+ * said so, because nothing looked.
+ *
+ * Same reasoning as `staleDist` and a different shape: a frontend has no
+ * manifest pointing at its output, so the caller names both directories.
+ */
+export function staleBuild(srcDir: string, buildDir: string): string | null {
+  if (!fs.existsSync(buildDir)) return 'there is no build at all';
+  if (!fs.existsSync(srcDir)) return null;
+
+  const isSource = (n: string): boolean =>
+    /\.(ts|tsx|js|jsx|css|scss|html|json|svg|png|jpg|webp)$/.test(n) && !/\.(spec|test)\.[jt]sx?$/.test(n);
+
+  const newestSource = newestFile(srcDir, isSource);
+  const newestBuilt = newestFile(buildDir, () => true);
+  if (!newestSource) return null;
+  if (!newestBuilt) return 'the build directory is empty';
+  if (newestSource.mtime <= newestBuilt.mtime) return null;
+
+  const count = countNewerThan(srcDir, isSource, newestBuilt.mtime);
+  return `${count} source file${count === 1 ? '' : 's'} newer than the build, the most recent being ${path.relative(srcDir, newestSource.file)}`;
+}
+
+/** How many files under `dir` are newer than `mtime` — for a message worth reading. */
+function countNewerThan(dir: string, filter: (name: string) => boolean, mtime: number): number {
+  let n = 0;
+  const walk = (d: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        walk(full);
+        continue;
+      }
+      if (filter(entry.name) && fs.statSync(full).mtimeMs > mtime) n += 1;
+    }
+  };
+  walk(dir);
+  return n;
+}
+
+/**
  * Whether a package's shipped `dist` is older than its sources.
  *
  * Only asked of packages that actually ship one — a package whose manifest
@@ -236,36 +322,11 @@ export function staleDist(packageDir: string): string | null {
   const dist = path.join(packageDir, 'dist');
   if (!fs.existsSync(dist)) return 'there is no dist at all';
 
-  const newest = (dir: string, filter: (name: string) => boolean): { file: string; mtime: number } | null => {
-    let best: { file: string; mtime: number } | null = null;
-    const walk = (d: string): void => {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(d, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        const full = path.join(d, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name === 'node_modules' || entry.name === '.git') continue;
-          walk(full);
-          continue;
-        }
-        if (!filter(entry.name)) continue;
-        const mtime = fs.statSync(full).mtimeMs;
-        if (!best || mtime > best.mtime) best = { file: full, mtime };
-      }
-    };
-    walk(dir);
-    return best;
-  };
-
   const src = path.join(packageDir, 'src');
   if (!fs.existsSync(src)) return null;
   // Tests are not shipped and their timestamps are not evidence about `dist`.
-  const newestSource = newest(src, (n) => n.endsWith('.ts') && !/\.(spec|test)\.ts$/.test(n));
-  const newestBuilt = newest(dist, (n) => n.endsWith('.js'));
+  const newestSource = newestFile(src, (n) => n.endsWith('.ts') && !/\.(spec|test)\.ts$/.test(n));
+  const newestBuilt = newestFile(dist, (n) => n.endsWith('.js'));
   if (!newestSource) return null;
   if (!newestBuilt) return 'dist holds no compiled JavaScript';
   if (newestSource.mtime <= newestBuilt.mtime) return null;

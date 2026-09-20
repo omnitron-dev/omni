@@ -194,6 +194,50 @@ describe('a remote stack is read from the machines it runs on', () => {
     expect(out.apps[0]!.handleKey).toBe('daos/deployed/main');
   });
 
+  it('calls the stack running when its node runs every app', async () => {
+    // The stack's own status is this master's memory of having started it,
+    // and a daemon restart forgets it: measured a minute after an upgrade,
+    // `Status: ○ stopped` above `Apps (6/6 online)` in one report.
+    const svc = service(async (_h, _p, service_) =>
+      service_ === 'OmnitronInfra'
+        ? null
+        : nodeStatus([
+            { name: 'daos/deployed/main', status: 'online' },
+            { name: 'daos/deployed/geo', status: 'online' },
+            { name: 'daos/deployed/paysys', status: 'online' },
+          ]),
+    );
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as { status: string };
+
+    expect(out.status).toBe('running');
+  });
+
+  it('calls it degraded when some of them are not', async () => {
+    const svc = service(async (_h, _p, service_) =>
+      service_ === 'OmnitronInfra'
+        ? null
+        : nodeStatus([
+            { name: 'daos/deployed/main', status: 'online' },
+            { name: 'daos/deployed/geo', status: 'errored' },
+          ]),
+    );
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as { status: string };
+
+    expect(out.status).toBe('degraded');
+  });
+
+  it('leaves the status alone when the node runs none of them', async () => {
+    // A stack nobody has started reads `stopped`, and that is right.
+    const svc = service(async () => nodeStatus([]));
+    const stopped = { ...(info('remote') as unknown as Record<string, unknown>), status: 'stopped' } as never;
+
+    const out = (await svc.withRemoteAppStatuses('daos', stopped)) as unknown as { status: string };
+
+    expect(out.status).toBe('stopped');
+  });
+
   it('leaves an app the node does not report', async () => {
     // The node answered; this app is genuinely not among what it runs.
     const svc = service(async () => nodeStatus([{ name: 'daos/deployed/main', status: 'online' }]));

@@ -2530,11 +2530,30 @@ export class ProjectService extends EventEmitter {
         'getState',
         [],
       )) as import('../infrastructure/types.js').InfrastructureState | null;
-      if (!state?.services) return null;
 
       const prefix = `${projectName}-${stackName}-`;
       const services: IStackInfraStatus['services'] = {};
-      for (const [containerName, svc] of Object.entries(state.services)) {
+
+      // A node's infra state is IN MEMORY. After its daemon restarts it
+      // answers `null` until a master provisions the stack again, while the
+      // containers keep running — so the stack read "not provisioned" about
+      // six healthy containers. The containers are the fact; the state is a
+      // cache of it.
+      const entries: Array<[string, import('../infrastructure/types.js').ContainerState]> = state?.services
+        ? Object.entries(state.services)
+        : ((await this.slaveConnector.invokeOnSlave(
+            node.host,
+            node.port ?? 9700,
+            'OmnitronInfra',
+            'listContainers',
+            [],
+          )) as import('../infrastructure/types.js').ContainerState[] ?? [])
+            .filter((c) => c.name.startsWith(prefix))
+            .map((c) => [c.name, c]);
+
+      if (entries.length === 0) return null;
+
+      for (const [containerName, svc] of entries) {
         const name = containerName.startsWith(prefix) ? containerName.slice(prefix.length) : containerName;
         services[name] = {
           status: svc.status === 'running' ? 'running' : svc.error ? 'error' : 'stopped',
@@ -2542,7 +2561,11 @@ export class ProjectService extends EventEmitter {
           port: svc.ports ? Object.values(svc.ports)[0] ?? null : null,
         };
       }
-      return { ready: state.ready, services };
+
+      // Without the node's own verdict, "ready" is what the containers say:
+      // every one of them running.
+      const ready = state?.ready ?? Object.values(services).every((svc) => svc.status === 'running');
+      return { ready, services };
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, node: node.host, error: (err as Error).message },

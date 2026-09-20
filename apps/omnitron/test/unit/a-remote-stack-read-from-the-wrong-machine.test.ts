@@ -115,6 +115,49 @@ describe('a remote stack\'s infrastructure is on its nodes too', () => {
     expect(out.infrastructure.services['postgres']!.containerName).toBe('daos-test-postgres');
   });
 
+  it('reads the containers when the node\'s state is gone', async () => {
+    // A node's infra state is in memory: after its daemon restarts it
+    // answers `null` until a master provisions the stack again, while the
+    // containers keep running. Measured on the test node minutes after an
+    // upgrade — "Infrastructure: not provisioned" beside six healthy
+    // containers serving the portal over Tor.
+    const svc = service(async (_h, _p, service_, method) => {
+      if (service_ !== 'OmnitronInfra') return nodeStatus([]);
+      if (method === 'getState') return null;
+      return [
+        { name: 'daos-test-postgres', status: 'running', ports: { '5432': 5432 } },
+        { name: 'daos-test-redis', status: 'running', ports: {} },
+        { name: 'other-stack-thing', status: 'running', ports: {} },
+      ];
+    });
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as {
+      infrastructure: { ready: boolean; services: Record<string, unknown> };
+    };
+
+    // This stack's containers only — the node may run others.
+    expect(Object.keys(out.infrastructure.services).sort()).toEqual(['postgres', 'redis']);
+    expect(out.infrastructure.ready).toBe(true);
+  });
+
+  it('is not ready when one of those containers is not running', async () => {
+    const svc = service(async (_h, _p, service_, method) => {
+      if (service_ !== 'OmnitronInfra') return nodeStatus([]);
+      if (method === 'getState') return null;
+      return [
+        { name: 'daos-test-postgres', status: 'running', ports: {} },
+        { name: 'daos-test-tor', status: 'exited', ports: {} },
+      ];
+    });
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as {
+      infrastructure: { ready: boolean; services: Record<string, { status: string }> };
+    };
+
+    expect(out.infrastructure.ready).toBe(false);
+    expect(out.infrastructure.services['tor']!.status).toBe('stopped');
+  });
+
   it('keeps this master\'s view when the node cannot say', async () => {
     const svc = service(async (_h, _p, service_) => {
       if (service_ === 'OmnitronInfra') throw new Error('no route');
@@ -189,18 +232,30 @@ describe('a remote stack is read from the machines it runs on', () => {
     expect(asked).toBe(0);
   });
 
-  it('asks the node for its daemon status, and nothing else', async () => {
+  it('asks the node two questions, and a third only when it has to', async () => {
     const calls: string[] = [];
-    const svc = service(async (host, port, service_, method) => {
+    const answering = async (host: string, port: number, service_: string, method: string) => {
       calls.push(`${host}:${port} ${service_}.${method}`);
-      return nodeStatus([]);
-    });
+      return service_ === 'OmnitronInfra' ? nodeInfra() : nodeStatus([]);
+    };
 
-    await svc.withRemoteAppStatuses('daos', info('remote'));
+    await service(answering).withRemoteAppStatuses('daos', info('remote'));
 
+    // The state answered, so the containers are not listed as well.
     expect(calls).toEqual([
       '37.27.130.185:9700 OmnitronDaemon.status',
       '37.27.130.185:9700 OmnitronInfra.getState',
     ]);
+
+    calls.length = 0;
+    const emptyState = async (host: string, port: number, service_: string, method: string) => {
+      calls.push(`${host}:${port} ${service_}.${method}`);
+      if (service_ !== 'OmnitronInfra') return nodeStatus([]);
+      return method === 'getState' ? null : [];
+    };
+
+    await service(emptyState).withRemoteAppStatuses('daos', info('remote'));
+
+    expect(calls[2]).toBe('37.27.130.185:9700 OmnitronInfra.listContainers');
   });
 });

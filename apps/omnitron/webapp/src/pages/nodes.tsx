@@ -37,6 +37,7 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // role it can never send would have type-checked here.
 import type {
   INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
+  INodeDaemonAnswer, DaemonStatusDto,
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -637,6 +638,89 @@ function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean })
  * a verdict. A node outside the mesh has reported nothing; saying "unhealthy"
  * about silence is how an operator ends up restarting a node that was fine.
  */
+/**
+ * What the node is actually running.
+ *
+ * Every other reading on this page answers "can we reach it" or "is it
+ * well". None of them said what was ON it — so a node with six applications
+ * deployed, migrated and started looked exactly like a node with none, and
+ * the only way to find out was to open an SSH session.
+ *
+ * Asked over the mesh, like the indicators beside it: the node answers
+ * `OmnitronDaemon.status` about itself, and `reachable: false` carries the
+ * reason rather than an empty list, because "we could not ask" and "it runs
+ * nothing" are not the same sentence.
+ */
+function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null }) {
+  if (!data) {
+    return (
+      <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
+        Not read.
+      </Typography>
+    );
+  }
+
+  if (!data.reachable || !data.answer) {
+    return (
+      <Stack direction="row" spacing={1} sx={{ py: 1, alignItems: 'baseline' }}>
+        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+          {data.error ?? 'no reason given'}
+        </Typography>
+      </Stack>
+    );
+  }
+
+  const status = data.answer;
+  if (status.apps.length === 0) {
+    return (
+      <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
+        The node answered and is running no applications.
+      </Typography>
+    );
+  }
+
+  const tone = (st: string) =>
+    st === 'online' ? 'success' : st === 'starting' ? 'warning' : st === 'stopped' ? 'default' : 'error';
+
+  return (
+    <Box sx={{ py: 0.5 }}>
+      <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+        {status.apps.length} app(s) · {status.totalCpu.toFixed(1)}% CPU ·{' '}
+        {(status.totalMemory / 1024 / 1024).toFixed(0)} MB
+      </Typography>
+      {status.apps.map((app) => (
+        <Stack
+          key={app.name}
+          direction="row"
+          spacing={1}
+          sx={{ py: 0.5, alignItems: 'baseline', flexWrap: 'wrap' }}
+        >
+          <Chip
+            size="small"
+            label={app.status}
+            color={tone(app.status) as 'success' | 'warning' | 'error' | 'default'}
+            sx={{ height: 20, fontSize: 11 }}
+          />
+          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+            {app.name}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+            {[
+              app.pid ? `pid ${app.pid}` : null,
+              app.port ? `:${app.port}` : null,
+              app.uptime > 0 ? `up ${formatUptime(app.uptime)}` : null,
+              app.restarts > 0 ? `${app.restarts} restarts` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </Typography>
+        </Stack>
+      ))}
+    </Box>
+  );
+}
+
 function NodeIndicators({ data }: { data: INodeIndicators | null }) {
   if (!data) {
     return (
@@ -858,6 +942,7 @@ function NodeDiagnosisDialog({
   const [relay, setRelay] = useState<INodeRelayStats | null>(null);
   const [summary, setSummary] = useState<{ status: string; lastSeenOnline: string | null; consecutiveFailures: number } | null>(null);
   const [limit, setLimit] = useState<number>(50);
+  const [apps, setApps] = useState<INodeDaemonAnswer<DaemonStatusDto> | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -871,13 +956,15 @@ function NodeDiagnosisDialog({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind, syn, rel, sums] = await Promise.allSettled([
+      const [rows, ind, syn, rel, sums, running] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
         nodesRpc.getNodeSyncStatus({ nodeId }),
         nodesRpc.getNodeRelayStats({ nodeId }),
         nodesRpc.getNodeHealthSummaries(),
+        nodesRpc.getNodeDaemonStatus({ nodeId }),
       ]);
+      setApps(running.status === 'fulfilled' ? (running.value as INodeDaemonAnswer<DaemonStatusDto>) : null);
       setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
       setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : null);
       setRelay(rel.status === 'fulfilled' ? (rel.value as INodeRelayStats) : null);
@@ -1000,6 +1087,13 @@ function NodeDiagnosisDialog({
           Indicators, from the node&apos;s own titan-health
         </Typography>
         <NodeIndicators data={indicators} />
+
+        <Divider sx={{ my: 2 }} />
+
+        <Typography variant="overline" sx={{ color: 'text.secondary' }}>
+          Running on this node
+        </Typography>
+        <NodeApps data={apps} />
 
         <Divider sx={{ my: 2 }} />
 

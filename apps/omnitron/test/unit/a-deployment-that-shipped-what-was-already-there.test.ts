@@ -34,6 +34,7 @@ import {
   bundleChecksum,
   packedCachePath,
   isBuildRecord,
+  withoutBuildVersion,
   withoutNodeModules,
   BUNDLE_METADATA_FILE,
 } from '../../src/services/bundle-builder.js';
@@ -398,5 +399,74 @@ describe('what makes a bundle new', () => {
     expect(loop.indexOf('packedCachePath(')).toBeLessThan(loop.indexOf("'pack'"));
 
     expect(builder).toMatch(/skip: isBuildRecord/);
+  });
+});
+
+/**
+ * And still the node was sent six new artifacts after ten quiet minutes.
+ *
+ * Every file of two bundles agreed — the app's `dist` rebuilds byte for byte,
+ * the nineteen vendored tarballs now come from the cache above, `config` had
+ * not been touched since 11 September — and the checksums differed anyway.
+ * The last clock was in the bundle's own name:
+ *
+ *     "version": "0.2.0+local.5aa71c5b1a2c.202609201755"
+ *     "version": "0.2.0+local.5aa71c5b1a2c.202609201805"
+ *
+ * `localVersion` stamps the minute of the build into the root manifest, which
+ * is how a node can say which of two builds of one commit it runs. It is a
+ * name the build gives itself, and it is the one thing in the bundle that
+ * cannot be the same twice. Two bundles are the same artifact when the files
+ * that would run are the same; what the build called itself is not one of
+ * them, and the deployment compares them without it.
+ */
+describe('the name a build gives itself', () => {
+  const bundleOf = (manifest: Record<string, unknown>, extra?: Record<string, string>): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-version-'));
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
+    for (const [rel, body] of Object.entries(extra ?? {})) {
+      const full = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, body);
+    }
+    return dir;
+  };
+  const rules = { skip: isBuildRecord, rewrite: withoutBuildVersion };
+  const root = { name: '@daos/priceverse', private: true, type: 'module', dependencies: { tar: '6.2.0' } };
+
+  it('is not what decides whether the node needs the bytes', async () => {
+    const a = bundleOf({ ...root, version: '0.2.0+local.5aa71c5b1a2c.202609201755' });
+    const b = bundleOf({ ...root, version: '0.2.0+local.5aa71c5b1a2c.202609201805' });
+
+    expect(await bundleChecksum(a, rules)).toBe(await bundleChecksum(b, rules));
+    expect(await bundleChecksum(a)).not.toBe(await bundleChecksum(b));
+  });
+
+  it('does not hide a dependency that moved', async () => {
+    const a = bundleOf({ ...root, version: '1.0.0', dependencies: { tar: '6.2.0' } });
+    const b = bundleOf({ ...root, version: '1.0.0', dependencies: { tar: '7.0.0' } });
+
+    expect(await bundleChecksum(a, rules)).not.toBe(await bundleChecksum(b, rules));
+  });
+
+  it('applies to the bundle\'s own manifest and to nothing below it', async () => {
+    const a = bundleOf({ ...root, version: '1.0.0' }, { 'vendor/pkg/package.json': '{"version":"1.0.0"}' });
+    const b = bundleOf({ ...root, version: '1.0.0' }, { 'vendor/pkg/package.json': '{"version":"2.0.0"}' });
+
+    expect(await bundleChecksum(a, rules)).not.toBe(await bundleChecksum(b, rules));
+  });
+
+  it('hashes a manifest it cannot read as the bytes it is', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-version-'));
+    fs.writeFileSync(path.join(dir, 'package.json'), '{ this is not json');
+
+    await expect(bundleChecksum(dir, rules)).resolves.toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('is left out by the artifact builder, with the build record', () => {
+    const builder = stripComments(fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'));
+
+    expect(builder).toMatch(/skip: isBuildRecord/);
+    expect(builder).toMatch(/rewrite: withoutBuildVersion/);
   });
 });

@@ -468,8 +468,15 @@ export class ArtifactBuilder {
   private async createTarball(appDir: string, outputPath: string, appName: string): Promise<string> {
     const os = await import('node:os');
     const fsp = await import('node:fs/promises');
-    const { buildBundle, archiveBundle, bundleChecksum, isBuildRecord, findWorkspaceRoot, linkedWorkspaceRoots } =
-      await import('../services/bundle-builder.js');
+    const {
+      buildBundle,
+      archiveBundle,
+      bundleChecksum,
+      isBuildRecord,
+      withoutBuildVersion,
+      findWorkspaceRoot,
+      linkedWorkspaceRoots,
+    } = await import('../services/bundle-builder.js');
 
     const manifest = this.manifestOf(appDir);
     const pkgName = manifest?.name ?? appName;
@@ -500,7 +507,7 @@ export class ArtifactBuilder {
       // Before packing: what the node compares against is these files, not
       // the container they travel in — and not the note the bundle carries
       // about when it was made, which is new on every build by definition.
-      const checksum = await bundleChecksum(bundleDir, { skip: isBuildRecord });
+      const checksum = await bundleChecksum(bundleDir, { skip: isBuildRecord, rewrite: withoutBuildVersion });
       await archiveBundle(bundleDir, outputPath);
       return checksum;
     } catch (err) {

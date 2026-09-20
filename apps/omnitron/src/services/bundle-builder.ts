@@ -605,6 +605,36 @@ export const BUNDLE_METADATA_FILE = 'BUNDLE.json';
 export const isBuildRecord = (relativePath: string): boolean => relativePath === BUNDLE_METADATA_FILE;
 
 /**
+ * The name a build gave itself, which is not part of what it built.
+ *
+ * `localVersion` stamps the minute of the build into the bundle's root
+ * manifest — `0.2.0+local.<sha>.202609201755` — so that a node can say which
+ * of two builds of one commit it is running. It is also the one thing in a
+ * bundle that cannot be the same twice, and comparing bundles with it in
+ * hand says "different" about two builds of an untouched tree. Everything
+ * else in that manifest decides what gets installed and is compared.
+ *
+ * Only the bundle's own manifest: a `package.json` below it belongs to a
+ * package that travels, and its version is that package's.
+ */
+export const withoutBuildVersion = {
+  appliesTo: (relativePath: string): boolean => relativePath === 'package.json',
+  to: (bytes: Buffer): Buffer => {
+    let manifest: Record<string, unknown>;
+    try {
+      manifest = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
+    } catch {
+      // Not a manifest this understands. Hashed as the bytes it is, which is
+      // the conservative answer: a bundle nobody can read is not a bundle
+      // anybody should call unchanged.
+      return bytes;
+    }
+    delete manifest['version'];
+    return Buffer.from(JSON.stringify(manifest));
+  },
+};
+
+/**
  * Installed dependencies, which are not sources and are not packed.
  *
  * Matched on the whole last segment: `node_modules_shim.ts` is a source file.
@@ -632,7 +662,11 @@ export const withoutNodeModules = (relativePath: string): boolean =>
  */
 export async function bundleChecksum(
   bundleDir: string,
-  options?: { readonly skip?: (relativePath: string) => boolean },
+  options?: {
+    readonly skip?: (relativePath: string) => boolean;
+    /** A file to hash as something other than its bytes — see `withoutBuildVersion`. */
+    readonly rewrite?: { appliesTo(relativePath: string): boolean; to(bytes: Buffer): Buffer };
+  },
 ): Promise<string> {
   const { createHash } = await import('node:crypto');
   const root = path.resolve(bundleDir);
@@ -670,7 +704,17 @@ export async function bundleChecksum(
       continue;
     }
 
-    hash.update(`F\0${rel}\0${stat.mode & 0o111 ? 'x' : '-'}\0${stat.size}\0`);
+    const mode = stat.mode & 0o111 ? 'x' : '-';
+    if (options?.rewrite?.appliesTo(rel)) {
+      // Framed by the length of what is hashed, not of what is on disk: the
+      // original size would put back the difference the rewrite took out.
+      const bytes = options.rewrite.to(fs.readFileSync(full));
+      hash.update(`F\0${rel}\0${mode}\0${bytes.length}\0`);
+      hash.update(bytes);
+      continue;
+    }
+
+    hash.update(`F\0${rel}\0${mode}\0${stat.size}\0`);
     await new Promise<void>((resolve, reject) => {
       const stream = fs.createReadStream(full);
       stream.on('data', (chunk) => hash.update(chunk as Buffer));

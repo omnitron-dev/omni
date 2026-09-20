@@ -1290,7 +1290,9 @@ export class ProjectService extends EventEmitter {
     if (project) {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
-        const builder = new ArtifactBuilder(project.path);
+        const builder = new ArtifactBuilder(project.path, undefined, {
+          info: (msg) => this.logger.info({ project: project.name }, msg),
+        });
         const outcome = await builder.buildAll(appEntries);
         artifacts = outcome.built;
         if (outcome.failed.length > 0) {
@@ -1661,7 +1663,9 @@ export class ProjectService extends EventEmitter {
     if (project) {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
-        const builder = new ArtifactBuilder(project.path);
+        const builder = new ArtifactBuilder(project.path, undefined, {
+          info: (msg) => this.logger.info({ project: project.name }, msg),
+        });
         const outcome = await builder.buildAll(appEntries);
         artifacts = outcome.built;
         for (const f of outcome.failed) {

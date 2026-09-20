@@ -90,6 +90,43 @@ export function isWorkspaceRange(range: string): boolean {
   return typeof range === 'string' && range.startsWith('workspace:');
 }
 
+/**
+ * `link:../packages/titan`, `link:/abs/path/to/titan`.
+ *
+ * pnpm's `link:` means "symlink this directory, do not copy it and do not
+ * install its dependencies". That is the right answer while the directory is
+ * on the same machine, and the only possible answer while it is not is that
+ * nothing resolves.
+ */
+export function isLinkRange(range: string): boolean {
+  return typeof range === 'string' && range.startsWith('link:');
+}
+
+/**
+ * A dependency that has to travel as a tarball, because no registry has it.
+ *
+ * Both spellings name a directory on the developer's machine, and both
+ * produce a symlink in an installed tree. The difference — a `workspace:`
+ * range names a package of THIS repository, a `link:` range names a path,
+ * usually a sibling checkout — matters to pnpm and not at all here: a
+ * directory cannot be shipped by reference to a machine that does not have it.
+ *
+ * Measured, and the reason this predicate exists: an artifact built for the
+ * test node carried twenty-three symlinks of the form
+ *
+ *     node_modules/@omnitron-dev/titan
+ *       -> ../../../../../../../../../../Users/taaliman/projects/.../packages/titan
+ *
+ * — ten `..` segments, which climb past `/` and land in a home directory that
+ * exists on exactly one computer. `ls` showed every entry present; `ls
+ * <entry>/` answered `No such file or directory`. Every app on the node failed
+ * at its first import, and the builder's own check — `existsSync(node_modules)`
+ * — could not see it, because a dangling symlink is an entry that exists.
+ */
+export function isVendorableRange(range: string): boolean {
+  return isWorkspaceRange(range) || isLinkRange(range);
+}
+
 /** A tarball name that is a safe file name and identifies the package. */
 export function tarballNameFor(name: string, version: string): string {
   // `@omnitron-dev/titan-pm` → `omnitron-dev-titan-pm-0.2.0.tgz`, which is
@@ -177,12 +214,13 @@ export const VENDOR_DIR = 'vendor';
  * read in a test. The root's direct workspace dependencies are given as
  * `file:` too: an `overrides` entry redirects a resolution, and a
  * `workspace:*` range has no resolution to redirect — npm rejects it before
- * overrides are consulted.
+ * overrides are consulted. The same is true of `link:`, which npm reads as a
+ * path it is supposed to symlink; on the target that path is not there.
  */
 export function bundleRootManifest(plan: BundlePlan, version: string): Record<string, unknown> {
   const dependencies: Record<string, string> = {};
   for (const [name, range] of Object.entries(plan.root.dependencies ?? {})) {
-    dependencies[name] = isWorkspaceRange(range) ? (plan.overrides[name] ?? range) : range;
+    dependencies[name] = isVendorableRange(range) ? (plan.overrides[name] ?? range) : range;
   }
 
   return {
@@ -199,7 +237,7 @@ function workspaceDepsOf(manifest: PackageManifest): string[] {
   const out: string[] = [];
   for (const group of [manifest.dependencies, manifest.optionalDependencies]) {
     for (const [name, range] of Object.entries(group ?? {})) {
-      if (isWorkspaceRange(range)) out.push(name);
+      if (isVendorableRange(range)) out.push(name);
     }
   }
   return out;

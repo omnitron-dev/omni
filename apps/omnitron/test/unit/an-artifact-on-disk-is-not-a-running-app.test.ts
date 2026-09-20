@@ -31,7 +31,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { readNodeHealth, nodeAppName } from '../../src/project/node-app-health.js';
+import { readNodeHealth, readNodeStatus, nodeAppName } from '../../src/project/node-app-health.js';
 
 /** The status shape the node's CLI actually returns — measured, not assumed. */
 const nodeStatus = (apps: Array<{ name: string; status: string }>) =>
@@ -172,5 +172,70 @@ describe('a node names an app the way a node names apps', () => {
     // The renderer writes the config the node loads, and this reads what the
     // node answers. Two spellings of the same name is the whole defect.
     expect(nodeAppName('daos', 'main')).toBe('daos/deployed/main');
+  });
+});
+
+/**
+ * The same envelope, read by the fleet.
+ *
+ * `checkRemoteOmnitron` runs this very command over SSH and read `info.pid`
+ * — the top level, where nothing is. So a node whose daemon had been up for
+ * days, answering it, was listed `○ offline` in `omnitron node list` and in
+ * the console, with `omnitron status reported no running daemon` behind it.
+ * Measured on the test node while it reported `appsOnline: 6` and every port
+ * listening.
+ */
+describe('a daemon that answers is a daemon that is up', () => {
+  const answer = JSON.stringify({
+    ok: true,
+    data: { version: '0.2.0+local.717933365a79', pid: 426053, uptime: 216097, appsTotal: 6, apps: [] },
+  });
+
+  it('reads the daemon through the envelope', () => {
+    const s = readNodeStatus(answer)!;
+
+    expect(s.pid).toBe(426053);
+    expect(s.version).toBe('0.2.0+local.717933365a79');
+    expect(s.uptime).toBe(216097);
+  });
+
+  it('reads the envelope and nothing but the envelope', () => {
+    // A top-level `pid` is not a node's answer in any version that has
+    // shipped. Accepting one would make any JSON object with the right field
+    // names read as a healthy daemon — which is how the flat form was read
+    // as health in the app check beside this one.
+    const s = readNodeStatus(JSON.stringify({ version: '0.1.0', pid: 7, uptime: 1 }))!;
+
+    expect(s.pid).toBeUndefined();
+    expect(s.version).toBeUndefined();
+  });
+
+  it('reports no daemon for an answer that names none', () => {
+    for (const raw of ['{}', '{"ok":true,"data":{}}', 'null']) {
+      expect(readNodeStatus(raw)?.pid, raw).toBeUndefined();
+    }
+  });
+
+  it('tells a non-JSON answer from an empty one', () => {
+    // `omnitron: command not found` is a node without omnitron, which is a
+    // different state from a node whose daemon is stopped.
+    expect(readNodeStatus('omnitron: command not found')).toBeNull();
+    expect(readNodeStatus('{}')).not.toBeNull();
+  });
+
+  it('keeps a role only when it is one', () => {
+    expect(readNodeStatus(JSON.stringify({ data: { pid: 1, role: 'slave' } }))!.role).toBe('slave');
+    expect(readNodeStatus(JSON.stringify({ data: { pid: 1, role: 'banana' } }))!.role).toBeUndefined();
+  });
+
+  it('gives the apps to whoever asks for them, from the same read', () => {
+    // One parse, one envelope, two readers — the split is what let the two
+    // disagree about where the answer lives.
+    const s = readNodeStatus(
+      JSON.stringify({ ok: true, data: { pid: 1, apps: [{ name: 'daos/deployed/main', status: 'online' }] } }),
+    )!;
+
+    expect(s.apps).toHaveLength(1);
+    expect(s.apps[0]!.name).toBe('daos/deployed/main');
   });
 });

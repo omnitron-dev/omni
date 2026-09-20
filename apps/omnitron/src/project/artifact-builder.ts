@@ -23,6 +23,10 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { IEcosystemAppEntry } from '../config/types.js';
+import { isVendorableRange, type PackageManifest } from '../services/local-bundle.js';
+import { resolvePnpm, resolvePnpmForTests } from '../shared/pnpm.js';
+
+export { resolvePnpmForTests };
 
 const exec = promisify(execFile);
 
@@ -60,54 +64,6 @@ export interface BuildOptions {
  * and fails at the first import — which is the least useful moment to learn
  * it.
  */
-/**
- * Where `pnpm` is, for a process that did not inherit a shell's PATH.
- *
- * The daemon is started by launchd, whose PATH is
- * `…/node/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin`
- * — and pnpm's own installer puts the binary in `~/Library/pnpm`, which is on
- * none of those. So every artifact build failed with ENOENT, `buildAll`
- * swallowed it into `console.error`, and the caller logged
- * `Artifacts built for deployment` over an empty list.
- *
- * Resolved once per process and remembered: the answer cannot change while
- * the daemon runs, and the search is a handful of `stat` calls.
- *
- * Returns `pnpm` unchanged when nothing is found, so the failure is an ENOENT
- * naming the command rather than a path this invented.
- */
-let pnpmPath: string | null = null;
-function resolvePnpm(): string {
-  if (pnpmPath) return pnpmPath;
-
-  const home = process.env['HOME'] ?? '';
-  const candidates = [
-    // The two pnpm installs itself into, in the order it prefers.
-    process.env['PNPM_HOME'] ? `${process.env['PNPM_HOME']}/pnpm` : null,
-    home ? `${home}/Library/pnpm/pnpm` : null,
-    home ? `${home}/.local/share/pnpm/pnpm` : null,
-    '/opt/homebrew/bin/pnpm',
-    '/usr/local/bin/pnpm',
-  ].filter((c): c is string => c !== null);
-
-  for (const candidate of candidates) {
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      pnpmPath = candidate;
-      return candidate;
-    } catch {
-      // Not here; try the next.
-    }
-  }
-  return 'pnpm';
-}
-
-/** The resolver, for a test that must run on the machine it is about. */
-export function resolvePnpmForTests(): string {
-  pnpmPath = null;
-  return resolvePnpm();
-}
-
 export class ArtifactWithoutDependencies extends Error {
   constructor(
     readonly app: string,
@@ -116,19 +72,118 @@ export class ArtifactWithoutDependencies extends Error {
   ) {
     super(
       `The artifact for '${app}' carries no dependencies and will not start on a node: ${reason}. ` +
-        `Its package.json uses pnpm's workspace protocol, which npm cannot resolve, so installing them ` +
-        `on the far side is not an option either.`,
+        `Its package.json names them with pnpm's workspace protocol and with \`link:\` paths, neither of ` +
+        `which npm can resolve on the far side — they have to be packed here or they do not travel.`,
     );
     this.name = 'ArtifactWithoutDependencies';
+  }
+}
+
+/**
+ * Refuse an artifact that only works on the machine that built it.
+ *
+ * Three ways a build can produce one, all of them silent, all of them cheap
+ * to rule out here and expensive to find on a node:
+ *
+ *   - a symlink that resolves outside the artifact. This is what shipped for
+ *     weeks: `ls` listed every `@omnitron-dev/*` entry and `ls <entry>/`
+ *     answered `No such file or directory`, because the target was ten `..`
+ *     segments up, in a home directory the node does not have.
+ *   - a dependency range that still names a directory. `workspace:*` and
+ *     `link:…` are instructions to symlink, and `npm` on the node either
+ *     refuses them outright or makes another link to nothing.
+ *   - an override pointing at a tarball that was not packed. Then the install
+ *     succeeds, resolves the package from the REGISTRY, and the node runs a
+ *     published version of code this bundle exists to replace.
+ *
+ * Thrown rather than logged: an artifact is a file, and a file that is wrong
+ * in these ways is indistinguishable from a good one until something imports
+ * it.
+ */
+export function assertNothingEscapes(bundleDir: string): void {
+  const root = fs.realpathSync(bundleDir);
+  const escaping: string[] = [];
+
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        let target: string;
+        try {
+          target = fs.realpathSync(full);
+        } catch {
+          // A link that resolves to nothing at all — dangling here and
+          // dangling there.
+          escaping.push(`${path.relative(root, full)} -> ${fs.readlinkSync(full)} (broken)`);
+          continue;
+        }
+        if (target !== root && !target.startsWith(root + path.sep)) {
+          escaping.push(`${path.relative(root, full)} -> ${target}`);
+        }
+        continue;
+      }
+      if (entry.isDirectory()) walk(full);
+    }
+  };
+  walk(root);
+
+  const manifestPath = path.join(root, 'package.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+    dependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
+  };
+
+  const unresolved: string[] = [];
+  const missingTarballs: string[] = [];
+  for (const [group, entries] of Object.entries({
+    dependencies: manifest.dependencies ?? {},
+    overrides: manifest.overrides ?? {},
+  })) {
+    for (const [name, range] of Object.entries(entries)) {
+      if (isVendorableRange(range)) {
+        unresolved.push(`${group}.${name} = ${range}`);
+        continue;
+      }
+      if (!range.startsWith('file:')) continue;
+      const rel = range.slice('file:'.length).replace(/^\.\//, '');
+      if (!fs.existsSync(path.join(root, rel))) missingTarballs.push(`${group}.${name} -> ${rel}`);
+    }
+  }
+
+  const problems = [
+    ...escaping.map((e) => `symlink leaves the artifact: ${e}`),
+    ...unresolved.map((u) => `dependency still names a directory: ${u}`),
+    ...missingTarballs.map((m) => `override points at a tarball that was not packed: ${m}`),
+  ];
+  if (problems.length > 0) {
+    throw new Error(`This artifact would not run anywhere but here:\n  ${problems.join('\n  ')}`);
   }
 }
 
 export class ArtifactBuilder {
   private readonly outputDir: string;
 
+  /**
+   * Tarballs packed during the current `buildAll`.
+   *
+   * Set for the duration of that call and cleared after it, so two
+   * deployments never share one — see `packCache` in `BuildBundleOptions`.
+   */
+  private packCache: Map<string, string> | null = null;
+
   constructor(
     private readonly projectRoot: string,
-    outputDir?: string
+    outputDir?: string,
+    /**
+     * Where to report progress.
+     *
+     * Packing twenty-one packages is the longest phase of a deployment and
+     * it wrote nothing anywhere: the daemon log went quiet for minutes
+     * between `Starting remote stack` and the first transfer, which reads
+     * exactly like a hang. An operator watching the console had no way to
+     * tell the two apart.
+     */
+    private readonly logger?: { info(msg: string): void } | undefined,
   ) {
     this.outputDir = outputDir ?? path.join(projectRoot, '.omnitron', 'artifacts');
     fs.mkdirSync(this.outputDir, { recursive: true });
@@ -196,13 +251,18 @@ export class ArtifactBuilder {
     const built: ArtifactInfo[] = [];
     const failed: Array<{ app: string; error: string }> = [];
 
-    for (const entry of entries) {
-      if (entry.enabled === false) continue;
-      try {
-        built.push(await this.buildApp(entry, options));
-      } catch (err) {
-        failed.push({ app: entry.name, error: (err as Error).message });
+    this.packCache = new Map();
+    try {
+      for (const entry of entries) {
+        if (entry.enabled === false) continue;
+        try {
+          built.push(await this.buildApp(entry, options));
+        } catch (err) {
+          failed.push({ app: entry.name, error: (err as Error).message });
+        }
       }
+    } finally {
+      this.packCache = null;
     }
 
     return { built, failed };
@@ -326,69 +386,92 @@ export class ArtifactBuilder {
   /**
    * Package an app so it can RUN where it lands.
    *
-   * This packed `dist/`, `package.json` and `config/`. The header above says
-   * the artifact contains `node_modules/ (production deps only)`; it never
-   * did, and the deploy step's `npm install --production 2>/dev/null || true`
-   * was supposed to make up the difference on the node.
+   * Two earlier shapes of this, and why neither worked:
    *
-   * It cannot. Measured on the test node, running that install by hand:
+   * It first packed `dist/`, `package.json` and `config/`, with the header
+   * above promising `node_modules/ (production deps only)`. The difference
+   * was to be made up on the node by
+   * `npm install --production --ignore-scripts 2>/dev/null || true`, which
+   * could not work even once — the manifests use pnpm's `workspace:`
+   * protocol and npm answers `EUNSUPPORTEDPROTOCOL` — and the `|| true` meant
+   * nobody found out.
    *
-   *     npm error code EUNSUPPORTEDPROTOCOL
-   *     npm error Unsupported URL Type "workspace:": workspace:*
+   * It then used `pnpm deploy --prod --legacy`, whose whole purpose is to
+   * write a tree that stands on its own. It does, for dependencies that come
+   * from a registry or from this repository. It cannot for the ones declared
+   * `link:/Users/…/omni/packages/titan` — a `link:` is an instruction to
+   * symlink a directory, and pnpm carried it out faithfully: twenty-three
+   * symlinks per artifact, each climbing ten `..` segments past `/` into a
+   * home directory that exists on one machine. The guard here was
+   * `existsSync(node_modules)`, and a directory full of dangling symlinks
+   * exists.
    *
-   * The app's package.json names 31 dependencies and several are
-   * `workspace:*` — a pnpm protocol npm does not implement and never will.
-   * So the dependencies could not be installed on any node, ever, and the
-   * `|| true` meant nobody found out: `/opt/omnitron/artifacts/daos/main/0.0.1`
-   * has `dist/` and no `node_modules/`, and the app cannot start.
+   * `--legacy` was itself the warning. Without it pnpm 10 refuses and asks
+   * for `inject-workspace-packages`, which is the setting that makes a deploy
+   * self-contained; the flag silenced the refusal and produced the tree the
+   * refusal was about.
    *
-   * `pnpm deploy` is the built-in answer to exactly this: it resolves
-   * workspace dependencies into a real `node_modules` and writes a directory
-   * that stands on its own. `--legacy` because pnpm 10 otherwise requires
-   * `inject-workspace-packages`, which is a workspace-wide setting and not
-   * this command's to change.
-   *
-   * Falling back is deliberate and narrow: if `pnpm deploy` is unavailable the
-   * old contents are packed and the caller is TOLD the artifact carries no
-   * dependencies, rather than shipping the same silent half-artifact under a
-   * name that implies otherwise.
+   * So the artifact is built the way the daemon's own bundle is built, by the
+   * same functions: every dependency that names a directory — `workspace:` or
+   * `link:` — is packed with `pnpm pack` into `vendor/`, the manifest is
+   * rewritten to install those tarballs, and `npm install` runs ON THE NODE.
+   * That is also the only way the platform-specific packages come out right:
+   * this machine has `@esbuild/darwin-arm64` and the node needs
+   * `@esbuild/linux-x64`, and the only computer that knows which is which is
+   * the one being installed on.
    */
   private async createTarball(appDir: string, outputPath: string, appName: string): Promise<void> {
     const os = await import('node:os');
     const fsp = await import('node:fs/promises');
-    const pkgName = this.packageNameOf(appDir) ?? appName;
+    const { buildBundle, archiveBundle, findWorkspaceRoot, linkedWorkspaceRoots } = await import(
+      '../services/bundle-builder.js'
+    );
+
+    const manifest = this.manifestOf(appDir);
+    const pkgName = manifest?.name ?? appName;
     const staging = await fsp.mkdtemp(path.join(os.tmpdir(), 'omnitron-artifact-'));
-    const deployDir = path.join(staging, 'app');
+    const bundleDir = path.join(staging, 'bundle');
 
     try {
-      await exec(
-        resolvePnpm(),
-        ['deploy', '--filter', pkgName, '--prod', '--legacy', deployDir],
-        { cwd: this.projectRoot, timeout: 600_000 },
-      );
-
-      if (!fs.existsSync(path.join(deployDir, 'node_modules'))) {
-        throw new Error('pnpm deploy produced no node_modules');
+      // The app's own repository, which is not necessarily omnitron's: this
+      // builder runs inside the daemon and builds somebody else's project.
+      const appWorkspace = findWorkspaceRoot(appDir);
+      if (!appWorkspace) {
+        throw new Error(`${appDir} is not inside a pnpm workspace — nothing declares what its packages are.`);
       }
 
-      // `-C deployDir .` so the archive holds the directory's CONTENTS: the
-      // node extracts into the artifact directory the deployer already made,
-      // and a leading `app/` would put everything one level too deep.
-      await exec('tar', ['-czf', outputPath, '-C', deployDir, '.'], { timeout: 300_000 });
+      await buildBundle({
+        workspaceRoot: appWorkspace,
+        rootPackage: pkgName,
+        outDir: bundleDir,
+        // What an app ships. `webapp/dist` is the daemon's console and has no
+        // meaning here; `config/` does, because an app reads it at startup.
+        include: ['dist', 'config', 'README.md'],
+        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+        ...(this.packCache ? { packCache: this.packCache } : {}),
+        ...(this.logger ? { logger: { info: (m: string) => this.logger!.info(`${appName}: ${m}`) } } : {}),
+      });
+
+      assertNothingEscapes(bundleDir);
+      await archiveBundle(bundleDir, outputPath);
     } catch (err) {
       const includes = ['dist', 'package.json'];
       if (fs.existsSync(path.join(appDir, 'config'))) includes.push('config');
-      await exec('tar', ['-czf', outputPath, '-C', appDir, ...includes], { timeout: 60_000 });
+      await exec('tar', ['-czf', outputPath, '-C', appDir, ...includes], {
+        timeout: 60_000,
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      });
       throw new ArtifactWithoutDependencies(appName, (err as Error).message, outputPath);
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
-  /** The workspace package name `pnpm --filter` needs, from the app's own manifest. */
-  private packageNameOf(appDir: string): string | null {
+  /** The app's own manifest — its name, and the ranges that say what must travel. */
+  private manifestOf(appDir: string): PackageManifest | null {
     try {
-      return JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf-8')).name ?? null;
+      const parsed = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf-8')) as PackageManifest;
+      return parsed.name ? parsed : null;
     } catch {
       return null;
     }

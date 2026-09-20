@@ -225,7 +225,23 @@ const SLAVE_START_TIMEOUT_MS = 120_000;
 /** How often it is asked, while it is starting. */
 const DAEMON_POLL_MS = 3_000;
 
-export type DeployStatus = 'pending' | 'transferring' | 'extracting' | 'restarting' | 'verifying' | 'success' | 'failed';
+/**
+ * What a deployment is doing, for a console watching it.
+ *
+ * `installing` is its own value because it is the longest phase by a wide
+ * margin — `npm install` on the node takes minutes where the transfer takes
+ * seconds — and reporting it as `extracting` leaves an operator watching a
+ * message that stopped being true.
+ */
+export type DeployStatus =
+  | 'pending'
+  | 'transferring'
+  | 'extracting'
+  | 'installing'
+  | 'restarting'
+  | 'verifying'
+  | 'success'
+  | 'failed';
 
 export interface DeployResult {
   node: string;
@@ -312,36 +328,92 @@ export class RemoteDeployer {
       const remoteFile = `${remotePath}/${artifact.app}-${artifact.version}.tar.gz`;
       await this.scpTransfer(target, artifact.path, remoteFile);
 
-      // 4. Extract on remote
+      // 4. Extract on remote, into an empty directory.
+      //
+      // `tar -xzf` over whatever was there before leaves everything the new
+      // archive does not name — and what was there before is a `node_modules`
+      // of a different SHAPE. The first deployment after this builder changed
+      // put an npm manifest beside a pnpm tree and `npm install` answered
+      //
+      //     npm error Cannot read properties of null (reading 'edgesOut')
+      //
+      // which is npm walking a dependency graph through symlinks it did not
+      // create. The same reasoning as `installSteps`, which removes the
+      // version directory before unpacking for exactly this: an install
+      // reconciling against a tree from another tool is not this version.
+      //
+      // Everything except the archive just uploaded, and only inside the
+      // artifact's own version directory — every segment of which was checked
+      // by `assertRemotePathSegment` above.
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting artifact...');
-      await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(`${artifact.app}-${artifact.version}.tar.gz`)}`);
-
-      // 5. The dependencies travel WITH the artifact.
-      //
-      // This ran `npm install --production --ignore-scripts 2>/dev/null ||
-      // true` on the node. It could never have worked: the apps' package.json
-      // files name workspace dependencies, and running that install by hand
-      // on the test node answers
-      //
-      //     npm error code EUNSUPPORTEDPROTOCOL
-      //     npm error Unsupported URL Type "workspace:": workspace:*
-      //
-      // — a pnpm protocol npm does not implement. The `|| true` meant nobody
-      // found out: the artifact arrived with `dist/` and no `node_modules/`,
-      // and the app could not have started even once its definition existed.
-      //
-      // `ArtifactBuilder` now packs a `pnpm deploy` tree, so what lands is
-      // already complete. Verifying that is cheap and worth doing here rather
-      // than discovering it at the app's first import.
-      this.emitProgress(nodeKey, artifact.app, 'extracting', 65, 'Checking dependencies...');
-      const deps = await this.sshExec(
+      const archiveName = `${artifact.app}-${artifact.version}.tar.gz`;
+      await this.sshExec(
         target,
-        `test -d ${shellEscape(`${remotePath}/node_modules`)} && echo present || echo missing`,
-      ).catch(() => 'missing');
-      if (deps.trim() !== 'present') {
+        `cd ${shellEscape(remotePath)} && ` +
+          `find . -mindepth 1 -maxdepth 1 ! -name ${shellEscape(archiveName)} -exec rm -rf {} + && ` +
+          `tar -xzf ${shellEscape(archiveName)}`,
+      );
+
+      // 5. Install the dependencies ON THE NODE.
+      //
+      // Three shapes of this step, and the two that were wrong are worth
+      // keeping written down because each looked finished.
+      //
+      // It first ran `npm install --production --ignore-scripts 2>/dev/null
+      // || true`. That could not work even once — the manifests use pnpm's
+      // `workspace:` protocol, npm answers `EUNSUPPORTEDPROTOCOL` — and the
+      // `|| true` meant nobody found out.
+      //
+      // It then trusted the artifact to arrive complete, from `pnpm deploy`,
+      // and checked `test -d node_modules`. The artifact was NOT complete:
+      // every `@omnitron-dev/*` package was a symlink into a home directory
+      // on the master, twenty-three of them, and a directory of dangling
+      // symlinks passes `test -d`. A symlink to `/opt/omnitron/current`
+      // patched the one the first import happened to name; the other
+      // twenty-two were waiting behind it.
+      //
+      // Now the artifact carries `vendor/*.tgz` and a manifest that installs
+      // them, exactly like the daemon's own bundle, and the install runs
+      // here. That is not a cost to be minimised — it is the only step that
+      // happens on a machine that knows it is Linux, which is what decides
+      // between `@esbuild/darwin-arm64` and `@esbuild/linux-x64`.
+      this.emitProgress(nodeKey, artifact.app, 'installing', 60, 'Installing dependencies on the node...');
+      try {
+        await this.sshExec(
+          target,
+          `cd ${shellEscape(remotePath)} && npm install --omit=dev --no-audit --no-fund`,
+          900_000,
+        );
+      } catch (err) {
         const duration = Date.now() - startTime;
-        const detail = 'the artifact carries no node_modules, so the app cannot start on this node';
-        this.emitProgress(nodeKey, artifact.app, 'failed', 65, detail);
+        const detail = `dependency install failed on the node: ${(err as Error).message.slice(0, 400)}`;
+        this.emitProgress(nodeKey, artifact.app, 'failed', 60, detail);
+        this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
+        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
+      }
+
+      // The install either produced a tree that resolves or it did not, and
+      // `test -d node_modules` cannot tell those apart — it was true for the
+      // whole time nothing worked. Asking node to RESOLVE the package the
+      // app imports first is the smallest question with a real answer.
+      //
+      // The package, not a file inside it: my first version of this resolved
+      // `@omnitron-dev/omnitron/package.json` and a correct install answered
+      // `ERR_PACKAGE_PATH_NOT_EXPORTED`, because a package with an `exports`
+      // map publishes what it lists and nothing else. A probe that fails on
+      // a healthy tree is worse than none — it would have failed every
+      // deployment from here on, for the one reason that is not a fault.
+      this.emitProgress(nodeKey, artifact.app, 'extracting', 70, 'Checking dependencies...');
+      const resolved = await this.sshExec(
+        target,
+        `cd ${shellEscape(remotePath)} && node -e ${shellEscape(
+          "require('module').createRequire(process.cwd()+'/package.json').resolve('@omnitron-dev/omnitron')",
+        )} >/dev/null 2>&1 && echo resolves || echo broken`,
+      ).catch(() => 'broken');
+      if (resolved.trim() !== 'resolves') {
+        const duration = Date.now() - startTime;
+        const detail = 'the installed tree cannot resolve @omnitron-dev/omnitron, so the app will fail at its first import';
+        this.emitProgress(nodeKey, artifact.app, 'failed', 70, detail);
         this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }

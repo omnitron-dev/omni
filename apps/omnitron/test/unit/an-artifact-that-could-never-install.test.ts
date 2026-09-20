@@ -53,17 +53,27 @@ const deployer = source('../../src/services/remote-deployer.service.ts');
 const builderProse = readFileSync(join(here, '../../src/project/artifact-builder.ts'), 'utf8');
 
 describe('the artifact carries what the app needs to run', () => {
-  it('is built by pnpm deploy, which resolves workspace dependencies', () => {
-    // `pnpm deploy` is the built-in answer to exactly this question, and
-    // using it means no bundling decisions of our own to get wrong.
-    // `resolvePnpm()`, not the literal `'pnpm'`: the daemon's PATH does not
-    // contain pnpm's install directory, and the bare name resolved to ENOENT
-    // for every app. Asserting the literal here would pin the defect.
-    expect(builder).toMatch(/resolvePnpm\(\),\s*\n?\s*\[['"]deploy['"]/);
-    expect(builder).toContain("'--prod'");
-    // pnpm 10 otherwise demands `inject-workspace-packages`, which is a
-    // workspace-wide setting and not this command's to change.
-    expect(builder).toContain("'--legacy'");
+  it('is built the way the daemon\'s own bundle is', () => {
+    // `pnpm deploy --prod --legacy` was what this asserted, and it was the
+    // wrong instrument for one class of dependency: a `link:` range names a
+    // directory outside the workspace, `pnpm deploy` reproduces it as a
+    // symlink, and twenty-three of those per artifact pointed into a home
+    // directory the node does not have. `--legacy` was the warning — without
+    // it pnpm 10 refuses and asks for the setting that makes a deploy
+    // self-contained.
+    //
+    // `buildBundle` packs each such dependency instead, which is what the
+    // daemon's own bundle has always done, so there is one mechanism and not
+    // two opinions about it.
+    expect(builder).toContain('buildBundle');
+    expect(builder).toContain('linkedWorkspaceRoots');
+    expect(builder).not.toContain("'--legacy'");
+  });
+
+  it('refuses an artifact that only runs where it was built', () => {
+    // The guard the old shape lacked entirely. `existsSync(node_modules)` was
+    // true for the whole time nothing worked.
+    expect(builder).toContain('assertNothingEscapes');
   });
 
   it('refuses to call a dependency-less tree an artifact', () => {
@@ -74,11 +84,12 @@ describe('the artifact carries what the app needs to run', () => {
   });
 
   it('names the reason in a way the reader can act on', () => {
-    // "Build failed" sends someone to the compiler. The workspace protocol is
-    // the actual obstacle and installing on the far side is not a workaround,
-    // so the message says both.
+    // "Build failed" sends someone to the compiler. The two spellings that
+    // cannot travel are the actual obstacle, and the message names both —
+    // `link:` was the one it left out while it was the one that mattered.
     expect(builderProse).toMatch(/workspace protocol/i);
-    expect(builderProse).toMatch(/npm cannot resolve/i);
+    expect(builderProse).toMatch(/link:/);
+    expect(builderProse).toMatch(/packed here or they do not travel/i);
   });
 });
 
@@ -93,11 +104,27 @@ describe('the deploy step no longer pretends to install them', () => {
     expect(deployer).not.toMatch(/2>\/dev\/null \|\| true/);
   });
 
-  it('fails the deployment when the dependencies are not there', () => {
-    // Checked on the node rather than assumed from the build: an artifact
-    // built elsewhere, or an older one already on disk, is exactly the case
-    // where the assumption is wrong.
-    expect(deployer).toMatch(/node_modules.*present.*missing|test -d.*node_modules/s);
-    expect(deployer).toMatch(/carries no node_modules/);
+  it('installs them on the node, where the platform is known', () => {
+    // The install has to happen somewhere, and the node is the only machine
+    // that knows it is Linux — which is what decides between
+    // `@esbuild/darwin-arm64` and `@esbuild/linux-x64`.
+    expect(deployer).toMatch(/npm install --omit=dev/);
+  });
+
+  it('fails the deployment when the installed tree does not resolve', () => {
+    // `test -d node_modules` was the old check and it could not fail: a
+    // directory of dangling symlinks is a directory. Asking node to resolve
+    // the package the app imports first is a question with a real answer.
+    expect(deployer).not.toMatch(/test -d.*node_modules.*present/);
+    expect(deployer).toMatch(/createRequire/);
+    expect(deployer).toMatch(/cannot resolve @omnitron-dev\/omnitron/);
+  });
+
+  it('asks for the package, not for a file inside it', () => {
+    // A package with an `exports` map publishes what it lists. Resolving
+    // `@omnitron-dev/omnitron/package.json` answers
+    // `ERR_PACKAGE_PATH_NOT_EXPORTED` on a perfectly good install — a probe
+    // that fails for the one reason that is not a fault.
+    expect(deployer).not.toMatch(/resolve\('@omnitron-dev\/omnitron\/package\.json'\)/);
   });
 });

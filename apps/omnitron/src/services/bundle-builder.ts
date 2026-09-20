@@ -20,13 +20,17 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { resolvePnpm } from '../shared/pnpm.js';
+
 import {
   planBundle,
   bundleRootManifest,
+  isLinkRange,
   localVersion,
   VENDOR_DIR,
   type BundlePlan,
@@ -58,6 +62,26 @@ export interface BuildBundleOptions {
   readonly outDir: string;
   /** Files and directories to copy from the package, relative to it. */
   readonly include?: readonly string[];
+  /**
+   * Tarballs already packed in this run, by `<name>@<version>`.
+   *
+   * Six apps of one stack vendor the same nineteen omnitron packages, and
+   * packing each of them six times is five sixths of the longest phase of a
+   * deployment — measured at roughly a minute per app, for a tree that
+   * cannot have changed between the first app and the last. Scoped to one
+   * `buildAll` rather than to the process: a daemon runs for weeks and a
+   * cache that outlives the deployment would ship yesterday's package under
+   * today's version.
+   */
+  readonly packCache?: Map<string, string>;
+  /**
+   * Further workspace roots whose packages may be vendored.
+   *
+   * Left out, the packages this one can reach are its own repository's. An
+   * app that depends on a sibling checkout through `link:` needs that
+   * checkout's root here, or the plan refuses it as missing.
+   */
+  readonly additionalWorkspaceRoots?: readonly string[];
   readonly logger?: { info(msg: string): void } | undefined;
 }
 
@@ -100,6 +124,48 @@ export function findWorkspaceRoot(from: string): string | null {
  * directory nobody had written down. Paths that cross a process boundary are
  * absolute.
  */
+/**
+ * Read several workspace roots into one map.
+ *
+ * An app can depend on packages of another checkout — daos declares every
+ * omni package as `link:/Users/…/omni/packages/<name>` — and a planner given
+ * only the app's own workspace refuses those as missing, which is true of
+ * that workspace and useless about the artifact.
+ *
+ * Earlier roots win a name collision: the first root is the one whose package
+ * is being built, and a package it defines is the one it meant.
+ */
+export function readWorkspaces(roots: readonly string[]): Workspace {
+  const merged = new Map<string, PackageManifest>();
+  for (const root of roots) {
+    for (const [name, manifest] of readWorkspace(root)) {
+      if (!merged.has(name)) merged.set(name, manifest);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Every workspace root a manifest's `link:` ranges point into.
+ *
+ * The path is right there in the range, and the root above it is marked by
+ * `pnpm-workspace.yaml` — the same marker `findWorkspaceRoot` uses, because
+ * it is the same question asked from the other end. Deriving it beats a
+ * configured path that has to be kept in step with the manifest.
+ */
+export function linkedWorkspaceRoots(manifest: PackageManifest): string[] {
+  const roots: string[] = [];
+  for (const group of [manifest.dependencies, manifest.optionalDependencies]) {
+    for (const range of Object.values(group ?? {})) {
+      if (!isLinkRange(range)) continue;
+      const target = range.slice('link:'.length);
+      const root = findWorkspaceRoot(target);
+      if (root && !roots.includes(root)) roots.push(root);
+    }
+  }
+  return roots;
+}
+
 export function readWorkspace(workspaceRootInput: string): Workspace {
   const workspaceRoot = path.resolve(workspaceRootInput);
   const found = new Map<string, PackageManifest>();
@@ -122,6 +188,22 @@ export function readWorkspace(workspaceRootInput: string): Workspace {
     }
   }
   return found;
+}
+
+/**
+ * Where packed tarballs are kept for the rest of a run.
+ *
+ * One directory per process, under the system temp dir. It is not cleaned up
+ * here: the cache is handed in by the caller and lives exactly as long as the
+ * caller keeps the map, and a directory of tarballs in `TMPDIR` is what the
+ * operating system already knows how to reclaim.
+ */
+let packCacheDir: string | null = null;
+function cacheDir(): string {
+  if (!packCacheDir) {
+    packCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-pack-'));
+  }
+  return packCacheDir;
 }
 
 /** Where a workspace package lives, as recorded by `readWorkspace`. */
@@ -160,7 +242,7 @@ export async function describeTree(cwd: string): Promise<{ commit: string; dirty
  */
 export async function buildBundle(options: BuildBundleOptions): Promise<BuildBundleResult> {
   const workspaceRoot = path.resolve(options.workspaceRoot);
-  const workspace = readWorkspace(workspaceRoot);
+  const workspace = readWorkspaces([workspaceRoot, ...(options.additionalWorkspaceRoots ?? [])]);
   const plan = planBundle(options.rootPackage, workspace);
   if (plan.refusal) throw new Error(plan.refusal);
 
@@ -188,13 +270,24 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
 
     // Every workspace package, packed where npm can install it from.
     for (const vendored of plan.vendored) {
+      const produced = path.join(staging, VENDOR_DIR, vendored.tarball);
+      const cacheKey = `${vendored.name}@${vendored.version}`;
+      const cached = options.packCache?.get(cacheKey);
+      if (cached && fs.existsSync(cached)) {
+        fs.copyFileSync(cached, produced);
+        continue;
+      }
+
       const dir = directoryOf(workspace.get(vendored.name)!);
       options.logger?.info(`packing ${vendored.name}@${vendored.version}`);
-      await exec('pnpm', ['--dir', dir, 'pack', '--pack-destination', path.join(staging, VENDOR_DIR)], {
+      // `resolvePnpm()`, not `'pnpm'`: launchd's PATH does not include the
+      // directory pnpm installs itself into, so a bare name is an ENOENT for
+      // every build the daemon runs and for none that a developer runs by
+      // hand. See `shared/pnpm.ts`.
+      await exec(resolvePnpm(), ['--dir', dir, 'pack', '--pack-destination', path.join(staging, VENDOR_DIR)], {
         cwd: workspaceRoot,
         maxBuffer: 16 * 1024 * 1024,
       });
-      const produced = path.join(staging, VENDOR_DIR, vendored.tarball);
       if (!fs.existsSync(produced)) {
         // `pnpm pack` names the file from the manifest, and the planner named
         // it the same way — a mismatch here means one of them changed, and
@@ -203,6 +296,16 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
           `Packing ${vendored.name} produced no ${vendored.tarball}. ` +
             `The bundle's overrides would point at a file that does not exist.`,
         );
+      }
+
+      // Kept where the next bundle can copy it from. The staging directory
+      // this one is in is removed at the end, so the cache holds a copy of
+      // its own rather than a path that is about to stop existing.
+      if (options.packCache) {
+        const keep = path.join(cacheDir(), vendored.tarball);
+        fs.mkdirSync(path.dirname(keep), { recursive: true });
+        fs.copyFileSync(produced, keep);
+        options.packCache.set(cacheKey, keep);
       }
     }
 

@@ -10,6 +10,7 @@
 
 import { log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { IOmnitronSecretsService } from '../shared/dto/services.js';
 
 /**
  * Decide whether to fall back to direct file access, and say so when the
@@ -42,7 +43,7 @@ export async function secretSetCommand(key: string, value: string): Promise<void
   try {
     reachable = await client.isReachable();
     if (reachable) {
-      await invokeSecretsRpc(client, 'set', { key, value });
+      await (await secretsRpc(client)).set({ key, value });
       log.success(`Secret '${key}' set`);
       await client.disconnect();
       return;
@@ -65,7 +66,7 @@ export async function secretGetCommand(key: string): Promise<void> {
   try {
     reachable = await client.isReachable();
     if (reachable) {
-      const result = await invokeSecretsRpc(client, 'get', { key });
+      const result = await (await secretsRpc(client)).get({ key });
       if (result.value !== null) {
         // Output raw value to stdout for scripting compatibility
         process.stdout.write(result.value + '\n');
@@ -97,7 +98,7 @@ export async function secretListCommand(): Promise<void> {
   try {
     reachable = await client.isReachable();
     if (reachable) {
-      const result = await invokeSecretsRpc(client, 'list');
+      const result = await (await secretsRpc(client)).list();
       printKeys(result.keys);
       await client.disconnect();
       return;
@@ -120,7 +121,7 @@ export async function secretDeleteCommand(key: string): Promise<void> {
   try {
     reachable = await client.isReachable();
     if (reachable) {
-      const result = await invokeSecretsRpc(client, 'delete', { key });
+      const result = await (await secretsRpc(client)).delete({ key });
       if (result.existed) {
         log.success(`Secret '${key}' deleted`);
       } else {
@@ -159,21 +160,25 @@ function printKeys(keys: string[]): void {
   }
 }
 
-async function invokeSecretsRpc(client: any, method: string, data?: any): Promise<any> {
-  await client['ensureConnected']();
-  const netron = client['netron'];
-  const peers = netron.getPeers ? netron.getPeers() : [];
-  for (const peer of peers) {
-    try {
-      const svc = await peer.queryInterface('OmnitronSecrets');
-      if (svc && typeof svc[method] === 'function') {
-        return data ? await svc[method](data) : await svc[method]();
-      }
-    } catch {
-      continue;
-    }
-  }
-  throw new Error('OmnitronSecrets service not found');
+/**
+ * The daemon's secrets service.
+ *
+ * Through `client.service()`, the way every other command reaches a service.
+ * This used to reach into the client's privates — `client['netron']`,
+ * `getPeers()` — walk the peers itself and swallow every error with
+ * `continue`, so a lookup that failed for any reason at all ended as
+ *
+ *     Daemon is running but its secrets RPC failed: OmnitronSecrets service not found
+ *
+ * on a daemon that exposes `OmnitronSecrets` unconditionally at startup.
+ * Every write then went through the file fallback, which the warning beside
+ * it says can disagree with what the console and the MCP tools see — and six
+ * writes made that way in one sequence landed as none.
+ */
+async function secretsRpc(
+  client: ReturnType<typeof createDaemonClient>,
+): Promise<IOmnitronSecretsService> {
+  return client.service<IOmnitronSecretsService>('OmnitronSecrets');
 }
 
 async function createDirectService(): Promise<import('../services/secrets.service.js').SecretsService> {

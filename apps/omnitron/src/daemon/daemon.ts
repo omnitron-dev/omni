@@ -988,7 +988,22 @@ export class OmnitronDaemon {
         const { RemoteDeployer } = await import('../services/remote-deployer.service.js');
         const { ExecutionService } = await import('../execution/execution.service.js');
         const deployLogger = loggerModule.logger.child({ component: 'deploy' });
-        nodeManagerRpcService.setRemoteDeployer(new RemoteDeployer(deployLogger, new ExecutionService(deployLogger)));
+        const remoteDeployer = new RemoteDeployer(deployLogger, new ExecutionService(deployLogger));
+        nodeManagerRpcService.setRemoteDeployer(remoteDeployer);
+
+        // Upgrading a node from the console: the same build the CLI makes,
+        // made here, then the same two calls. Without this the console could
+        // see every node and update none of them.
+        const { NodeUpgradeService } = await import('../services/node-upgrade.service.js');
+        nodeManagerRpcService.setUpgradeService(
+          new NodeUpgradeService(
+            loggerModule.logger.child({ component: 'node-upgrade' }),
+            { getNode: (id: string) => nodeManager.getNode(id) },
+            (id: string) => nodeManager.nodeToDeployTarget(id) as never,
+            () => remoteDeployer as never,
+            audit,
+          ),
+        );
       }
       this.nodeManagerRpcService = nodeManagerRpcService;
 

@@ -566,6 +566,14 @@ export interface IOmnitronNodesService {
   getNodeDaemonStatus(data: { nodeId: string }): Promise<INodeDaemonAnswer<DaemonStatusDto>>;
   getNodeDaemonHealth(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedHealthDto>>;
   getNodeDaemonMetrics(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedMetricsDto>>;
+  /**
+   * Upgrade a node's omnitron to the one this daemon is built from — the
+   * same thing `fleet upgrade` does, startable from the console.
+   *
+   * Started and polled: a build is minutes.
+   */
+  upgradeNode(data: { nodeId: string }): Promise<{ started: boolean; reason?: string }>;
+  getUpgradeProgress(): Promise<import('../../services/node-upgrade.service.js').NodeUpgradeProgress[]>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;

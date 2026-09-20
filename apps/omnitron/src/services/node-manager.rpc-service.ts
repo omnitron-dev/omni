@@ -66,6 +66,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private remoteDeployer: import('./remote-deployer.service.js').RemoteDeployer | null = null;
 
+  private upgrades: import('./node-upgrade.service.js').NodeUpgradeService | null = null;
+
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
 
   private titanHealth: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null = null;
@@ -301,6 +303,43 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       details: { version: data.version, activated, keepVersions: data.keepVersions ?? 3 },
     });
     return activated;
+  }
+
+  /**
+   * Upgrade a node's omnitron to the one this daemon is built from.
+   *
+   * `fleet upgrade` does the same thing from a terminal, and the console
+   * could not do it at all: the two methods above take an archive path on
+   * THIS filesystem, and only the CLI knew how to produce one. The service
+   * behind this builds it, then calls exactly those two.
+   *
+   * Started and polled, not awaited: a build is minutes, and an RPC that
+   * takes minutes is one that times out somewhere in the middle.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async upgradeNode(data: { nodeId: string }): Promise<{ started: boolean; reason?: string }> {
+    if (!this.upgrades) {
+      return { started: false, reason: 'Node upgrades are not configured on this daemon.' };
+    }
+    const outcome = await this.upgrades.start(data.nodeId);
+    await this.audit?.record({
+      action: outcome.started ? 'node.upgrade.start' : 'node.upgrade.refused',
+      resourceType: 'node',
+      resourceId: data.nodeId,
+      ...(outcome.reason ? { details: { reason: outcome.reason } } : {}),
+    });
+    return outcome;
+  }
+
+  /** Where each node's upgrade got to. Newest state per node. */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getUpgradeProgress(): Promise<import('./node-upgrade.service.js').NodeUpgradeProgress[]> {
+    return this.upgrades?.listProgress() ?? [];
+  }
+
+  /** Wired by the daemon at startup, on a master. */
+  setUpgradeService(service: import('./node-upgrade.service.js').NodeUpgradeService | null): void {
+    this.upgrades = service;
   }
 
   /**

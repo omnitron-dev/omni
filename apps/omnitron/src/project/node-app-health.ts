@@ -1,0 +1,82 @@
+/**
+ * Reading a node's answer about one app.
+ *
+ * `omnitron status --json` on a node answers with the apps that node runs,
+ * and a node names an app the way every omnitron does: qualified by the
+ * project and stack it belongs to. A deployment asks about `main`; the node
+ * answers `daos/deployed/main`.
+ *
+ * Compared as equal strings, those never match, so a deployment that had
+ * just put six apps on a node and started all six reported six failures:
+ *
+ *     Artifact installed, but the app is not running on the node
+ *     — the node is running 6 app(s) and none of them is 'main'
+ *
+ * measured against a node that answered `appsTotal: 6, appsOnline: 6` with
+ * every port listening. A verification that cannot pass is the same defect as
+ * one that cannot fail, one sign flipped: the first time it says "failed"
+ * about a healthy deployment is the last time anybody reads it.
+ *
+ * Extracted from the deployer so the assertion about this reading runs
+ * against the reading itself. The test that pinned it held its own copy of
+ * the logic, which agreed with the original and would have gone on agreeing
+ * with it after the original was wrong.
+ */
+
+import { NODE_STACK } from './node-app-config.js';
+
+export interface NodeHealth {
+  readonly online: boolean;
+  /** Why, in the words the operator will read in the log. */
+  readonly detail: string;
+}
+
+/** What a node calls an app that was deployed to it. */
+export function nodeAppName(project: string, app: string): string {
+  return `${project}/${NODE_STACK}/${app}`;
+}
+
+/** How many names to print before the rest become a count. */
+const NAMES_SHOWN = 6;
+
+/**
+ * Whether the node says this app is online.
+ *
+ * `project` is required rather than optional: every caller has it, and an
+ * optional one would be omitted exactly where the qualified name matters.
+ */
+export function readNodeHealth(raw: string, appName: string, project: string): NodeHealth {
+  let parsed: { data?: { apps?: Array<{ name?: string; status?: string }> } };
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    // A node that answers something other than JSON is a node whose CLI is
+    // not the one this expects — worth saying, not worth guessing about.
+    return { online: false, detail: `the node's status was not JSON: ${raw.trim().slice(0, 120)}` };
+  }
+
+  const apps = parsed?.data?.apps ?? [];
+  const qualified = nodeAppName(project, appName);
+
+  // The qualified name first, because it is the one a node answers with, and
+  // the bare name after it, because a node that was given a bare definition
+  // answers bare. Nothing else: an app of the same name under another
+  // project is another app, and reporting it as this one is precisely the
+  // false pass this file exists to prevent.
+  const app = apps.find((a) => a.name === qualified) ?? apps.find((a) => a.name === appName);
+  if (!app) {
+    const names = apps.map((a) => a.name ?? '(unnamed)');
+    const shown = names.slice(0, NAMES_SHOWN).join(', ');
+    const rest = names.length > NAMES_SHOWN ? `, and ${names.length - NAMES_SHOWN} more` : '';
+    return {
+      online: false,
+      detail:
+        `the node is running ${apps.length} app(s) and none of them is '${qualified}'` +
+        (names.length > 0 ? ` — it is running ${shown}${rest}` : ''),
+    };
+  }
+
+  return app.status === 'online'
+    ? { online: true, detail: 'online' }
+    : { online: false, detail: `the node reports it as '${app.status ?? 'unknown'}'` };
+}

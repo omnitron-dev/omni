@@ -31,35 +31,30 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { readNodeHealth, nodeAppName } from '../../src/project/node-app-health.js';
+
 /** The status shape the node's CLI actually returns — measured, not assumed. */
 const nodeStatus = (apps: Array<{ name: string; status: string }>) =>
   JSON.stringify({ ok: true, data: { version: '0.2.0', pid: 1, uptime: 1, appsTotal: apps.length, apps } });
 
 /**
- * The reading `verifyHealth` performs, extracted so it can be tested without
- * an SSH session. Kept identical in shape to the method.
+ * The reading `verifyHealth` performs.
+ *
+ * It used to be a copy of that method's body, living here — which agreed
+ * with the original, and would have gone on agreeing with it after the
+ * original became wrong. It did: the deployer started asking a node about
+ * `daos/deployed/main` while this file went on proving that `main` matched
+ * `main`. Now both call the same function.
  */
-function readHealth(raw: string, appName: string): { online: boolean; detail: string } {
-  let parsed: { data?: { apps?: Array<{ name?: string; status?: string }> } };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { online: false, detail: `the node's status was not JSON: ${raw.trim().slice(0, 120)}` };
-  }
-  const apps = parsed?.data?.apps ?? [];
-  const app = apps.find((a) => a.name === appName);
-  if (!app) return { online: false, detail: `the node is running ${apps.length} app(s) and none of them is '${appName}'` };
-  return app.status === 'online'
-    ? { online: true, detail: 'online' }
-    : { online: false, detail: `the node reports it as '${app.status ?? 'unknown'}'` };
-}
+const readHealth = (raw: string, appName: string, project = 'daos') =>
+  readNodeHealth(raw, appName, project);
 
 describe('the node running nothing is not a healthy deployment', () => {
   it('is not online when the node runs no apps at all', () => {
     // The exact answer the test node gave: appsTotal 0, apps [].
     const r = readHealth(nodeStatus([]), 'main');
     expect(r.online).toBe(false);
-    expect(r.detail).toContain("none of them is 'main'");
+    expect(r.detail).toContain("none of them is 'daos/deployed/main'");
   });
 
   it('is not online when the node runs OTHER apps', () => {
@@ -110,5 +105,72 @@ describe('what counts as the node refusing to start an app', () => {
   it('does not call a successful restart a refusal', () => {
     expect(refused('Restarting main...\nmain restarted (pid 4711)')).toBe(false);
     expect(refused('main — online (PID: 1234)')).toBe(false);
+  });
+});
+
+/**
+ * A node names an app by its project and stack; a deployment asks by the
+ * app's own name. Compared as equal strings those never match, and the run
+ * that put six apps on a node and started all six reported six failures:
+ *
+ *     the node is running 6 app(s) and none of them is 'main'
+ *
+ * against `appsTotal: 6, appsOnline: 6` and every port listening. A check
+ * that cannot pass is the same defect as one that cannot fail, one sign
+ * flipped — and the louder one, because the first failure it reports about a
+ * healthy deployment is the last one anybody reads.
+ */
+describe('a node names an app the way a node names apps', () => {
+  it('recognises the qualified name the node answers with', () => {
+    const r = readHealth(nodeStatus([{ name: 'daos/deployed/main', status: 'online' }]), 'main');
+    expect(r.online).toBe(true);
+  });
+
+  it('still recognises a bare name', () => {
+    // A node given bare definitions answers bare, and both spellings are
+    // reachable from the same master.
+    expect(readHealth(nodeStatus([{ name: 'main', status: 'online' }]), 'main').online).toBe(true);
+  });
+
+  it('reads the status of the qualified app, not merely its presence', () => {
+    const r = readHealth(nodeStatus([{ name: 'daos/deployed/main', status: 'errored' }]), 'main');
+    expect(r.online).toBe(false);
+    expect(r.detail).toContain("'errored'");
+  });
+
+  it('does not accept the same app name under another project', () => {
+    // `acme/deployed/main` is a different application on the same machine.
+    // Calling it healthy is exactly the false pass this file exists to stop.
+    const r = readHealth(nodeStatus([{ name: 'acme/deployed/main', status: 'online' }]), 'main');
+    expect(r.online).toBe(false);
+  });
+
+  it('names what the node IS running, so a mismatch is visible', () => {
+    // The old sentence gave a count and nothing else, which is how a naming
+    // mismatch stayed unread through six deployments.
+    const r = readHealth(
+      nodeStatus([
+        { name: 'daos/deployed/geo', status: 'online' },
+        { name: 'daos/deployed/storage', status: 'online' },
+      ]),
+      'main',
+    );
+    expect(r.online).toBe(false);
+    expect(r.detail).toContain('daos/deployed/geo');
+    expect(r.detail).toContain('daos/deployed/storage');
+  });
+
+  it('keeps the sentence readable when the node runs many', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ name: `daos/deployed/a${i}`, status: 'online' }));
+    const r = readHealth(nodeStatus(many), 'main');
+
+    expect(r.detail).toContain('6 more');
+    expect(r.detail.length).toBeLessThan(400);
+  });
+
+  it('spells the qualified name one way', () => {
+    // The renderer writes the config the node loads, and this reads what the
+    // node answers. Two spellings of the same name is the whole defect.
+    expect(nodeAppName('daos', 'main')).toBe('daos/deployed/main');
   });
 });

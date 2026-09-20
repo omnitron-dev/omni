@@ -566,6 +566,71 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
  * `dist/cli/omnitron.js`, the symlinks, the install — would be wrong by one
  * segment.
  */
+/**
+ * What a bundle IS, independent of when it was packed.
+ *
+ * The archive cannot answer this. `tar -czf` writes the compression time
+ * into the gzip header and every file's own mtime into its entry, and a
+ * bundle is assembled into a fresh staging tree on each build, so two packs
+ * of byte-identical sources are two different files. A deployment that asks
+ * "does the node already have this?" by comparing archive hashes is asking
+ * what time it is.
+ *
+ * So the identity is read from the tree that will travel: every path under
+ * it, sorted, each with the bytes at that path, whether it may be executed,
+ * and — for a symlink — where it points, which is read rather than followed.
+ * Nothing here is a property of this machine or this minute.
+ *
+ * Framed with NULs and lengths so that no rearrangement of names and bodies
+ * can produce the same stream as a different tree.
+ */
+export async function bundleChecksum(bundleDir: string): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  const root = path.resolve(bundleDir);
+
+  const paths: string[] = [];
+  const walk = (dir: string): void => {
+    // Deliberately unguarded: a directory this cannot read is a bundle this
+    // cannot identify, and a hash over the part that happened to be readable
+    // would be a confident answer to a question nobody asked.
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      paths.push(path.relative(root, full).split(path.sep).join('/'));
+      // `isDirectory()` is lstat's answer, so a symlink to a directory is a
+      // link here and is never descended into.
+      if (entry.isDirectory()) walk(full);
+    }
+  };
+  walk(root);
+  paths.sort();
+
+  const hash = createHash('sha256');
+  for (const rel of paths) {
+    const full = path.join(root, rel);
+    const stat = fs.lstatSync(full);
+
+    if (stat.isSymbolicLink()) {
+      const target = fs.readlinkSync(full);
+      hash.update(`L\0${rel}\0${target.length}\0${target}\0`);
+      continue;
+    }
+    if (stat.isDirectory()) {
+      hash.update(`D\0${rel}\0`);
+      continue;
+    }
+
+    hash.update(`F\0${rel}\0${stat.mode & 0o111 ? 'x' : '-'}\0${stat.size}\0`);
+    await new Promise<void>((resolve, reject) => {
+      const stream = fs.createReadStream(full);
+      stream.on('data', (chunk) => hash.update(chunk as Buffer));
+      stream.on('end', () => resolve());
+      stream.on('error', reject);
+    });
+  }
+
+  return hash.digest('hex');
+}
+
 export async function archiveBundle(bundleDir: string, archivePath: string): Promise<string> {
   const resolved = path.resolve(archivePath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });

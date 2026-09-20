@@ -1,0 +1,105 @@
+name: CI
+
+# This repository had no workflows directory at all: no typecheck, no lint,
+# no tests, and none of the standing checks ran anywhere but on a developer's
+# machine, on purpose, when they remembered. `scripts/run-checks.mjs` was
+# written to be a gate and had no gate to stand in.
+#
+# Both jobs here were measured green before being committed, on the tree at
+# `44e1bb47`, rather than written and hoped for:
+#
+#   pnpm -r run typecheck   27 packages, exit 0
+#   pnpm check:scans        11 gates, 1 worklist, 1 excluded, exit 0, ~15s
+#
+# The sibling repository runs the same two jobs plus unit, integration and
+# security suites. See the note on `test` at the bottom for why that layer is
+# not here yet and what it needs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Fast-fail layer. Every package declares `typecheck`, so `-r` covers
+  # the whole workspace without a list here that would drift from it.
+  #
+  # `lint` is deliberately not in this job: the repository's own script
+  # carries `NODE_OPTIONS=--max-old-space-size=8192` because eslint over
+  # this tree has run out of memory at the default, and a 4 GB OOM on a
+  # hosted runner is a red pipeline that says nothing about the code.
+  # It belongs here once the lint run is bounded; adding it untested
+  # would be the thing this file exists to stop.
+  # -------------------------------------------------------------------
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck (all packages + apps)
+        run: pnpm -r run typecheck
+
+  # -------------------------------------------------------------------
+  # Standing checks — the scanners in `scripts/`.
+  #
+  # Safe to gate on, measured rather than assumed: `run-checks.mjs` exits
+  # non-zero for a failing GATE only. A worklist is a standing backlog,
+  # counted and printed, never red — so this job does not go permanently
+  # amber and teach everyone to ignore it. A manifest naming a file that
+  # no longer exists exits 2 rather than skipping silently, because
+  # otherwise a rename removes a check without a word.
+  #
+  # No scanner imports a workspace package, so this installs without
+  # building them.
+  # -------------------------------------------------------------------
+  scans:
+    name: Standing checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Standing checks (gates must pass; worklists are printed)
+        run: pnpm check:scans
+
+  # -------------------------------------------------------------------
+  # Not here yet: tests.
+  #
+  # `pnpm test` is `turbo test`, and `pnpm test:ci` wraps it in
+  # `docker compose -f docker-compose.test.yml up -d --wait`. Several
+  # suites need that stand — Postgres, Redis and the rest — and several
+  # more are slow enough to need their own job rather than a tail on
+  # this one: `apps/omnitron` alone is 1 720 tests and about seven
+  # minutes locally.
+  #
+  # It is left out rather than guessed at because a test job that has
+  # never been observed passing on a hosted runner is a red pipeline on
+  # its first push, and a red pipeline nobody can fix is how a team
+  # learns to merge past CI. The next step is to split it: the packages
+  # whose suites need nothing external in one job, the stand-dependent
+  # ones behind the compose file in another.
+  # -------------------------------------------------------------------

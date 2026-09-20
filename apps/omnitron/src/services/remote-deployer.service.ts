@@ -414,6 +414,49 @@ export class RemoteDeployer {
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }
 
+      // 5a. One physical copy of every package the daemon shares with the app.
+      //
+      // A supervised app does not run alone in its process: omnitron's own
+      // `bootstrap-process.js` is the entry point, and the app's modules are
+      // loaded into it. Titan keeps identities at module scope — the
+      // `Container` class among them — so two physical installations of
+      // `@omnitron-dev/titan` in one process means `@Inject(Container)`
+      // resolves against a class that is not the one the daemon registered,
+      // and the failure reads `Dependency 'Container' not found`.
+      //
+      // `bootstrap-process.ts` checks for exactly this and refuses to start,
+      // which is how a freshly installed artifact answered:
+      //
+      //     Titan package identity mismatch detected between omnitron daemon
+      //     and app 'geo'. Daemon resolves @omnitron-dev/titan from
+      //     /opt/omnitron/versions/…; App resolves … from /opt/omnitron/
+      //     artifacts/daos/geo/0.0.1/node_modules/@omnitron-dev/titan
+      //
+      // That is the correct refusal, and the answer is not to install less:
+      // the vendored copies are what let `npm install` resolve a coherent
+      // tree in the first place. They are replaced afterwards by links to
+      // the daemon's own, computed ON THE NODE from what the daemon actually
+      // has, so the set stays right as the daemon's closure changes rather
+      // than being a list here that drifts from it.
+      //
+      // `@omnitron-dev/omnitron` is the daemon itself — it is not inside its
+      // own node_modules — so it is linked separately, to the install root.
+      //
+      // `rm -rf` before each `ln -sfn`: linking onto an existing DIRECTORY
+      // puts the link INSIDE it, leaving a directory with no package.json
+      // that node reports as a missing `index.js` — a message about a file
+      // that was never the problem.
+      const daemonRoot = '/opt/omnitron/current';
+      await this.sshExec(
+        target,
+        `set -e; APP=${shellEscape(`${remotePath}/node_modules/@omnitron-dev`)}; ` +
+          `mkdir -p "$APP"; ` +
+          `for p in ${shellEscape(daemonRoot)}/node_modules/@omnitron-dev/*; do ` +
+          `[ -e "$p" ] || continue; n=$(basename "$p"); ` +
+          `rm -rf "$APP/$n"; ln -sfn "$p" "$APP/$n"; done; ` +
+          `rm -rf "$APP/omnitron"; ln -sfn ${shellEscape(daemonRoot)} "$APP/omnitron"`,
+      );
+
       // The install either produced a tree that resolves or it did not, and
       // `test -d node_modules` cannot tell those apart — it was true for the
       // whole time nothing worked. Asking node to RESOLVE the package the

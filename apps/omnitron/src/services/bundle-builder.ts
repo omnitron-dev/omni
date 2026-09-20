@@ -207,6 +207,53 @@ function cacheDir(): string {
 }
 
 /**
+ * Remove every incremental-build record a package keeps.
+ *
+ * `tsc` trusts `tsBuildInfoFile`: if the inputs have not changed since that
+ * record was written, it emits nothing and exits zero. The record is written
+ * by whatever machine last built, and a `build` script of `rm -rf dist && tsc`
+ * removes the OUTPUT while leaving the record saying the output is current —
+ * so the build succeeds and `dist` stays exactly as stale as it was.
+ *
+ * Measured on `@daos/bitcoin-rpc`: `src/errors.ts` dated 2026-09-16,
+ * `dist/errors.js` dated 2026-09-10, and `pnpm build` leaving it at
+ * 2026-09-10. Six days of source changes that the build refused to emit,
+ * silently, with a zero exit code — which is why the staleness guard above
+ * has to re-check AFTER building rather than trusting the build.
+ *
+ * Every spelling, because the path is a per-package choice: the root, `dist`,
+ * and `node_modules/.tmp`, which is where a `tsconfig.build.json` in this
+ * workspace tends to put it.
+ */
+export function clearBuildInfo(packageDir: string): void {
+  const candidates = [
+    'tsconfig.tsbuildinfo',
+    '.tsbuildinfo',
+    'tsconfig.build.tsbuildinfo',
+    'dist/tsconfig.tsbuildinfo',
+    'dist/.tsbuildinfo',
+    'dist/tsconfig.build.tsbuildinfo',
+  ];
+  for (const rel of candidates) {
+    try {
+      fs.rmSync(path.join(packageDir, rel), { force: true });
+    } catch {
+      // Not there, or not ours to remove: the build is what reports.
+    }
+  }
+
+  // `node_modules/.tmp` is a directory of them, one per tsconfig.
+  const tmp = path.join(packageDir, 'node_modules', '.tmp');
+  try {
+    for (const name of fs.readdirSync(tmp)) {
+      if (name.endsWith('.tsbuildinfo')) fs.rmSync(path.join(tmp, name), { force: true });
+    }
+  } catch {
+    // No such directory is the common case.
+  }
+}
+
+/**
  * The most recently modified file under a directory, by a filter.
  *
  * `node_modules` and `.git` are skipped: neither says anything about whether
@@ -420,6 +467,10 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       const stale = staleDist(dir);
       if (!stale) continue;
       options.logger?.info(`rebuilding ${vendored.name} — ${stale}`);
+      // Without this the build exits zero and changes nothing: see
+      // `clearBuildInfo`. It is what made this guard's own rebuild useless
+      // on the first package that needed it.
+      clearBuildInfo(dir);
       try {
         await exec(resolvePnpm(), ['--dir', dir, 'run', 'build'], {
           cwd: workspaceRoot,

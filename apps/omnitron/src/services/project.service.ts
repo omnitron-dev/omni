@@ -519,7 +519,53 @@ export class ProjectService extends EventEmitter {
     return this.toStackInfo(projectName, stackName, stackConfig);
   }
 
+  /**
+   * Stack starts in flight, by `project/stack`.
+   *
+   * `stackStates` records `starting`, and it is written AFTER the config is
+   * loaded and the short-circuits above have run — so two callers that arrive
+   * together both see no state and both proceed. Measured on the test stack:
+   * the daemon's own `startProjectStacks` on boot and an operator's
+   * `omnitron stack start daos test` landed within twenty seconds of each
+   * other, and ran the whole remote deployment TWICE, concurrently.
+   *
+   * That is not merely wasteful. The artifact build rebuilds shared packages
+   * whose `build` script is `rm -rf dist && tsc`, so one pass emptied
+   * `@omnitron-dev/titan-database/dist` while the other compiled `@daos/main`
+   * against it:
+   *
+   *     src/modules/rbac/rls-schema.ts(53,41): error TS2307: Cannot find
+   *     module '@omnitron-dev/titan-database/rls'
+   *
+   * — an error about a subpath that exists, reported against a build that is
+   * correct, which sends the reader to the wrong package entirely. Building
+   * the same app by hand a minute later exits zero.
+   *
+   * A second caller gets the FIRST call's promise rather than a refusal:
+   * asking for a stack that is already being started should end when it has
+   * been started, which is what the caller meant.
+   */
+  private readonly startsInFlight = new Map<string, Promise<IStackInfo>>();
+
   async startStack(projectName: string, stackName: string): Promise<IStackInfo> {
+    const inFlightKey = `${projectName}/${stackName}`;
+    const running = this.startsInFlight.get(inFlightKey);
+    if (running) {
+      this.logger.info(
+        { project: projectName, stack: stackName },
+        'This stack is already being started — joining the run in progress',
+      );
+      return running;
+    }
+
+    const started = this.startStackOnce(projectName, stackName).finally(() => {
+      this.startsInFlight.delete(inFlightKey);
+    });
+    this.startsInFlight.set(inFlightKey, started);
+    return started;
+  }
+
+  private async startStackOnce(projectName: string, stackName: string): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];

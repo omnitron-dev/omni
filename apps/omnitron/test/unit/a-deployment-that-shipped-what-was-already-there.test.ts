@@ -22,6 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +30,7 @@ import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+import { bundleChecksum } from '../../src/services/bundle-builder.js';
 import {
   decideRedeploy,
   artifactChanged,
@@ -192,5 +194,105 @@ describe('the deployment wires both halves', () => {
     const body = deployer.slice(at, deployer.indexOf('\n  /**', at + 2000));
 
     expect(body).toMatch(/return \{ changed: true \}/);
+  });
+});
+
+/**
+ * The skip above can only ever fire if two builds of the same sources agree
+ * on what they built — and they did not.
+ *
+ * `ArtifactBuilder` hashed the `.tar.gz` it had just written. A gzip member
+ * carries the compression time in its header, four bytes at offset 4, and
+ * `tar -czf` fills them in from the clock. Measured here on one unchanged
+ * directory, packed twice two seconds apart:
+ *
+ *   1ef749846e6b164034aad3ad65d2c4e337b0dd33aba0343c2221a14345665529
+ *   5457d4ab06ed91e82f3c865b7d36e51785397b8cef59f32101e8171f6eee9e6f
+ *   header: 1f8b 0800 7016 b06a   vs   1f8b 0800 7216 b06a
+ *
+ * The tar entries carry their own mtimes besides, and a bundle is copied
+ * into a fresh staging tree on every build, so every file in it is new.
+ * An artifact's sha256 was therefore a different number each time it was
+ * computed, `artifactChanged` answered `true` forever, and the deployment
+ * that "stops shipping what the node already has" shipped everything, every
+ * time — a feature that cannot fire is the same as one that is not there.
+ *
+ * So the identity is taken from the bundle, before it is packed: the files
+ * that will travel, their paths, and nothing about this machine or this
+ * minute.
+ */
+describe('an artifact is identified by what it ships, not when it was packed', () => {
+  const tree = (files: Record<string, string>): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-bundle-id-'));
+    for (const [rel, body] of Object.entries(files)) {
+      const full = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, body);
+    }
+    return dir;
+  };
+
+  const sample = { 'package.json': '{"name":"app"}', 'dist/index.js': 'run()\n', 'config/default.json': '{}' };
+
+  it('gives two copies of the same files the same name', async () => {
+    const a = tree(sample);
+    const b = tree(sample);
+    // A year apart, which is what a rebuild does to every file in a staging
+    // tree it has just created.
+    const old = new Date('2020-01-01T00:00:00Z');
+    for (const rel of Object.keys(sample)) fs.utimesSync(path.join(b, rel), old, old);
+
+    expect(await bundleChecksum(a)).toBe(await bundleChecksum(b));
+  });
+
+  it('is a sha256, so it can be recorded and compared as one', async () => {
+    expect(await bundleChecksum(tree(sample))).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('changes when one byte of one file changes', async () => {
+    const before = await bundleChecksum(tree(sample));
+    const after = await bundleChecksum(tree({ ...sample, 'dist/index.js': 'run() \n' }));
+
+    expect(after).not.toBe(before);
+  });
+
+  it('changes when a file moves, though every byte is still there', async () => {
+    const before = await bundleChecksum(tree(sample));
+    const after = await bundleChecksum(
+      tree({ 'package.json': sample['package.json'], 'dist/main.js': sample['dist/index.js'], 'config/default.json': '{}' }),
+    );
+
+    expect(after).not.toBe(before);
+  });
+
+  it('changes when a file that was not executable becomes executable', async () => {
+    const dir = tree({ ...sample, 'dist/entry.sh': '#!/bin/sh\n' });
+    const before = await bundleChecksum(dir);
+    fs.chmodSync(path.join(dir, 'dist/entry.sh'), 0o755);
+
+    expect(await bundleChecksum(dir)).not.toBe(before);
+  });
+
+  it('reads a symlink as where it points, and does not follow it out of the bundle', async () => {
+    const dir = tree(sample);
+    fs.symlinkSync('/etc/passwd', path.join(dir, 'dist/link'));
+    const before = await bundleChecksum(dir);
+
+    fs.unlinkSync(path.join(dir, 'dist/link'));
+    fs.symlinkSync('/etc/hosts', path.join(dir, 'dist/link'));
+
+    expect(await bundleChecksum(dir)).not.toBe(before);
+  });
+
+  it('is what the artifact carries', () => {
+    // The wiring: whatever `buildApp` reports as the artifact's checksum has
+    // to be this number, or the skip is comparing something else again.
+    const builder = stripComments(
+      fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'),
+    );
+
+    expect(builder).toMatch(/const checksum = await this\.createTarball\(/);
+    expect(builder).toMatch(/bundleChecksum/);
+    expect(builder).not.toMatch(/computeChecksum\(artifactPath\)/);
   });
 });

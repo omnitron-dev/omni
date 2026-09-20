@@ -220,11 +220,10 @@ export class ArtifactBuilder {
       throw new Error(`No dist/ directory found for ${entry.name}. Build failed?`);
     }
 
-    // 3. Create tarball: dist + package.json + config
-    await this.createTarball(appDir, artifactPath, entry.name);
-
-    // 4. Compute checksum
-    const checksum = await this.computeChecksum(artifactPath);
+    // 3. Create tarball: dist + package.json + config, and take the
+    //    artifact's identity from the bundle rather than from the archive —
+    //    see `bundleChecksum`.
+    const checksum = await this.createTarball(appDir, artifactPath, entry.name);
     const stat = fs.statSync(artifactPath);
 
     return {
@@ -466,10 +465,10 @@ export class ArtifactBuilder {
    * `@esbuild/linux-x64`, and the only computer that knows which is which is
    * the one being installed on.
    */
-  private async createTarball(appDir: string, outputPath: string, appName: string): Promise<void> {
+  private async createTarball(appDir: string, outputPath: string, appName: string): Promise<string> {
     const os = await import('node:os');
     const fsp = await import('node:fs/promises');
-    const { buildBundle, archiveBundle, findWorkspaceRoot, linkedWorkspaceRoots } = await import(
+    const { buildBundle, archiveBundle, bundleChecksum, findWorkspaceRoot, linkedWorkspaceRoots } = await import(
       '../services/bundle-builder.js'
     );
 
@@ -499,7 +498,11 @@ export class ArtifactBuilder {
       });
 
       assertNothingEscapes(bundleDir);
+      // Before packing: what the node compares against is these files, not
+      // the container they travel in.
+      const checksum = await bundleChecksum(bundleDir);
       await archiveBundle(bundleDir, outputPath);
+      return checksum;
     } catch (err) {
       const includes = ['dist', 'package.json'];
       if (fs.existsSync(path.join(appDir, 'config'))) includes.push('config');
@@ -521,16 +524,5 @@ export class ArtifactBuilder {
     } catch {
       return null;
     }
-  }
-
-  private async computeChecksum(filePath: string): Promise<string> {
-    const crypto = await import('node:crypto');
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-    return new Promise((resolve, reject) => {
-      stream.on('data', (chunk: Buffer) => hash.update(chunk));
-      stream.on('end', () => resolve(hash.digest('hex')));
-      stream.on('error', reject);
-    });
   }
 }

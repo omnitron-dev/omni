@@ -47,6 +47,7 @@ import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
+import { staleBuild } from './bundle-builder.js';
 import {
   RemoteDeployer,
   stackNodeToDeployTarget,
@@ -1512,6 +1513,36 @@ export class ProjectService extends EventEmitter {
       : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
 
     try {
+      // Build it if it is behind, for the same reason a vendored package is
+      // built if its `dist` is behind: "deploy" has to mean "deploy what is
+      // in the tree". Measured on the test stack before this existed — the
+      // `index.html` the gateway was serving had been built ten days and 879
+      // source files earlier, so the test portal was not a test of anything
+      // in the working tree, and nothing said so because nothing looked.
+      //
+      // Best-effort: a frontend that will not build is still worth shipping
+      // as it stands, beside an error that says which it is. Refusing would
+      // block a deployment whose BACKENDS are what changed.
+      const stale = staleBuild(`${path.dirname(abs)}/src`, abs);
+      if (stale) {
+        this.logger.info({ dir: abs, stale }, 'The built frontend is behind its sources — rebuilding');
+        try {
+          const { resolvePnpm } = await import('../shared/pnpm.js');
+          const { execFile } = await import('node:child_process');
+          const { promisify } = await import('node:util');
+          await promisify(execFile)(resolvePnpm(), ['run', 'build'], {
+            cwd: path.dirname(abs),
+            timeout: 900_000,
+            maxBuffer: 16 * 1024 * 1024,
+          });
+        } catch (err) {
+          this.logger.error(
+            { dir: abs, error: (err as Error).message.slice(0, 300) },
+            'Could not rebuild the frontend — shipping the build that is there',
+          );
+        }
+      }
+
       // The same target the deployer uses for artifacts — with the node's SSH
       // user and credential. Passing a bare `{ host }` is how the first
       // attempt failed: `Failed to connect to 37.27.130.185`, an error about

@@ -156,6 +156,8 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         service: info.Config?.Labels?.['omnitron.service'],
+        project: info.Config?.Labels?.['omnitron.project'],
+        stack: info.Config?.Labels?.['omnitron.stack'],
         ...(failure && { error: failure }),
       });
     }

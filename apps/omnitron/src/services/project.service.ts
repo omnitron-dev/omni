@@ -2452,6 +2452,7 @@ export class ProjectService extends EventEmitter {
     if (nodes.length === 0 || !this.slaveConnector) return info;
 
     const reported = new Map<string, import('../config/types.js').ProcessInfoDto>();
+    let remoteInfra: IStackInfraStatus | null = null;
     let answered = 0;
     for (const node of nodes) {
       try {
@@ -2463,6 +2464,12 @@ export class ProjectService extends EventEmitter {
           [],
         )) as import('../config/types.js').DaemonStatusDto;
         answered += 1;
+
+        // The containers are on the node too — `infraManager.getInstance`
+        // answers about THIS machine, where a remote stack has none, so the
+        // stack read "Infrastructure: not provisioned" beside a node running
+        // postgres, redis, minio, the gateway and tor.
+        remoteInfra ??= await this.remoteInfraStatus(projectName, info.name, node);
         for (const app of status?.apps ?? []) {
           // The node names them `<project>/deployed/<app>`; the stack knows
           // them by the app's own name.
@@ -2481,6 +2488,7 @@ export class ProjectService extends EventEmitter {
 
     return {
       ...info,
+      infrastructure: remoteInfra ?? info.infrastructure,
       apps: info.apps.map((app) => {
         const running = reported.get(app.name);
         if (!running) return app;
@@ -2498,6 +2506,50 @@ export class ProjectService extends EventEmitter {
         };
       }),
     };
+  }
+
+  /**
+   * One node's infrastructure, named the way the stack names it.
+   *
+   * The node's container names carry ITS prefix (`daos-test-postgres`), and
+   * a reader wants the service — `postgres` — so the same stripping the
+   * local path does is done here. `null` when the node cannot answer or has
+   * no infrastructure of its own, which leaves the master's view in place.
+   */
+  private async remoteInfraStatus(
+    projectName: string,
+    stackName: string,
+    node: import('../config/types.js').IStackNode,
+  ): Promise<IStackInfraStatus | null> {
+    if (!this.slaveConnector) return null;
+    try {
+      const state = (await this.slaveConnector.invokeOnSlave(
+        node.host,
+        node.port ?? 9700,
+        'OmnitronInfra',
+        'getState',
+        [],
+      )) as import('../infrastructure/types.js').InfrastructureState | null;
+      if (!state?.services) return null;
+
+      const prefix = `${projectName}-${stackName}-`;
+      const services: IStackInfraStatus['services'] = {};
+      for (const [containerName, svc] of Object.entries(state.services)) {
+        const name = containerName.startsWith(prefix) ? containerName.slice(prefix.length) : containerName;
+        services[name] = {
+          status: svc.status === 'running' ? 'running' : svc.error ? 'error' : 'stopped',
+          containerName: svc.name,
+          port: svc.ports ? Object.values(svc.ports)[0] ?? null : null,
+        };
+      }
+      return { ready: state.ready, services };
+    } catch (err) {
+      this.logger.warn(
+        { project: projectName, stack: stackName, node: node.host, error: (err as Error).message },
+        'Could not ask this node about its infrastructure — the stack shows this master\'s view',
+      );
+      return null;
+    }
   }
 
   private toStackInfo(projectName: string, stackName: string, config: IStackConfig): IStackInfo {

@@ -90,6 +90,45 @@ function service(invoke: (host: string, port: number, svc: string, method: strin
   return svc;
 }
 
+/** What the node answers about its containers. */
+const nodeInfra = () => ({
+  ready: true,
+  services: {
+    'daos-test-postgres': { name: 'daos-test-postgres', status: 'running', ports: { '5432': 5432 } },
+    'daos-test-tor': { name: 'daos-test-tor', status: 'running', ports: {} },
+  },
+});
+
+describe('a remote stack\'s infrastructure is on its nodes too', () => {
+  it('reads the containers from the node', async () => {
+    const svc = service(async (_h, _p, service_, method) =>
+      service_ === 'OmnitronInfra' && method === 'getState' ? nodeInfra() : nodeStatus([]),
+    );
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as {
+      infrastructure: { ready: boolean; services: Record<string, { containerName: string; status: string }> };
+    };
+
+    expect(out.infrastructure.ready).toBe(true);
+    // Named as the stack names them, not as the node prefixes them.
+    expect(Object.keys(out.infrastructure.services).sort()).toEqual(['postgres', 'tor']);
+    expect(out.infrastructure.services['postgres']!.containerName).toBe('daos-test-postgres');
+  });
+
+  it('keeps this master\'s view when the node cannot say', async () => {
+    const svc = service(async (_h, _p, service_) => {
+      if (service_ === 'OmnitronInfra') throw new Error('no route');
+      return nodeStatus([]);
+    });
+
+    const out = (await svc.withRemoteAppStatuses('daos', info('remote'))) as unknown as {
+      infrastructure: { ready: boolean };
+    };
+
+    expect(out.infrastructure.ready).toBe(true);
+  });
+});
+
 describe('a remote stack is read from the machines it runs on', () => {
   it('takes each app\'s status from the node', async () => {
     const svc = service(async () =>
@@ -159,6 +198,9 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     await svc.withRemoteAppStatuses('daos', info('remote'));
 
-    expect(calls).toEqual(['37.27.130.185:9700 OmnitronDaemon.status']);
+    expect(calls).toEqual([
+      '37.27.130.185:9700 OmnitronDaemon.status',
+      '37.27.130.185:9700 OmnitronInfra.getState',
+    ]);
   });
 });

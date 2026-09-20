@@ -104,6 +104,9 @@ import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.re
 
 export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer } from './nodes.js';
 
+/** Where a node's upgrade got to — see `NodeUpgradeService`. */
+export type { NodeUpgradeProgress, UpgradePhase } from '../../services/node-upgrade.service.js';
+
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';

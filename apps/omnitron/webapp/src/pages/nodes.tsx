@@ -26,6 +26,7 @@ import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Divider from '@mui/material/Divider';
+import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
 import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
@@ -37,13 +38,14 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // role it can never send would have type-checked here.
 import type {
   INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
-  INodeDaemonAnswer, DaemonStatusDto,
+  INodeDaemonAnswer, DaemonStatusDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
   NodesIcon,
+  DeployIcon,
   SettingsIcon,
   DeleteIcon,
   RefreshIcon,
@@ -721,6 +723,47 @@ function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null })
   );
 }
 
+/**
+ * Where an upgrade got to.
+ *
+ * The daemon builds the bundle and ships it, which takes minutes; this
+ * dialog is the only place that work is visible, so it shows the phase, how
+ * far along it is, and — once the build has named one — the version being
+ * installed.
+ */
+function NodeUpgrade({ data }: { data: INodeUpgradeProgress }) {
+  const tone =
+    data.phase === 'done'
+      ? 'success'
+      : data.phase === 'failed' || data.phase === 'refused'
+        ? 'error'
+        : 'warning';
+  const running = data.phase !== 'done' && data.phase !== 'failed' && data.phase !== 'refused';
+
+  return (
+    <Box sx={{ py: 0.5 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Chip
+          size="small"
+          label={data.phase}
+          color={tone as 'success' | 'warning' | 'error'}
+          sx={{ height: 20, fontSize: 11 }}
+        />
+        <Typography variant="body2">{data.message}</Typography>
+      </Stack>
+      {data.version && (
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary', fontFamily: 'monospace' }}>
+          {data.version}
+        </Typography>
+      )}
+      {running && <LinearProgress variant="determinate" value={data.percent} sx={{ mt: 1, height: 4, borderRadius: 2 }} />}
+      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.disabled' }}>
+        {new Date(data.at).toLocaleString()}
+      </Typography>
+    </Box>
+  );
+}
+
 function NodeIndicators({ data }: { data: INodeIndicators | null }) {
   if (!data) {
     return (
@@ -943,6 +986,8 @@ function NodeDiagnosisDialog({
   const [summary, setSummary] = useState<{ status: string; lastSeenOnline: string | null; consecutiveFailures: number } | null>(null);
   const [limit, setLimit] = useState<number>(50);
   const [apps, setApps] = useState<INodeDaemonAnswer<DaemonStatusDto> | null>(null);
+  const [upgrade, setUpgrade] = useState<INodeUpgradeProgress | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -956,15 +1001,21 @@ function NodeDiagnosisDialog({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind, syn, rel, sums, running] = await Promise.allSettled([
+      const [rows, ind, syn, rel, sums, running, upgrades] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
         nodesRpc.getNodeSyncStatus({ nodeId }),
         nodesRpc.getNodeRelayStats({ nodeId }),
         nodesRpc.getNodeHealthSummaries(),
         nodesRpc.getNodeDaemonStatus({ nodeId }),
+        nodesRpc.getUpgradeProgress(),
       ]);
       setApps(running.status === 'fulfilled' ? (running.value as INodeDaemonAnswer<DaemonStatusDto>) : null);
+      setUpgrade(
+        upgrades.status === 'fulfilled'
+          ? ((upgrades.value as INodeUpgradeProgress[]).find((u) => u.nodeId === nodeId) ?? null)
+          : null,
+      );
       setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
       setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : null);
       setRelay(rel.status === 'fulfilled' ? (rel.value as INodeRelayStats) : null);
@@ -993,6 +1044,43 @@ function NodeDiagnosisDialog({
   useEffect(() => {
     if (open && node) void load(node.id, limit);
   }, [open, node, limit, load]);
+
+  // While an upgrade is running, this dialog is the only place it is
+  // visible. Five seconds is slow enough not to matter and fast enough that
+  // a phase change does not look like a hang.
+  const upgradeRunning =
+    upgrade !== null && upgrade.phase !== 'done' && upgrade.phase !== 'failed' && upgrade.phase !== 'refused';
+  usePollingEffect(
+    () => {
+      if (open && node) void load(node.id, limit);
+    },
+    { intervalMs: 5_000, enabled: open && upgradeRunning },
+  );
+
+  /**
+   * Start an upgrade and keep polling while it runs.
+   *
+   * The daemon builds the bundle, so this returns as soon as the work is
+   * under way — a build is minutes — and the dialog's own refresh shows
+   * where it got to.
+   */
+  const startUpgrade = useCallback(async () => {
+    if (!node) return;
+    setUpgrading(true);
+    try {
+      const outcome = await nodesRpc.upgradeNode({ nodeId: node.id });
+      if (!outcome.started) {
+        snackbar.warning(outcome.reason ?? 'The daemon refused to start an upgrade');
+        return;
+      }
+      snackbar.info('Building a bundle — this takes a few minutes');
+      await load(node.id, limit);
+    } catch (err) {
+      snackbar.error(err instanceof Error ? err.message : 'Could not start the upgrade');
+    } finally {
+      setUpgrading(false);
+    }
+  }, [node, limit, load, snackbar]);
 
   const recheck = useCallback(async () => {
     if (!node) return;
@@ -1133,12 +1221,30 @@ function NodeDiagnosisDialog({
             ))}
           </Box>
         )}
+        {upgrade && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="overline" sx={{ color: 'text.secondary' }}>
+              Omnitron upgrade
+            </Typography>
+            <NodeUpgrade data={upgrade} />
+          </>
+        )}
       </DialogContent>
 
       <DialogActions>
         <Button onClick={recheck} disabled={checking} startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}>
           {checking ? 'Checking…' : 'Check now'}
         </Button>
+        {!isLocal && (
+          <Button
+            onClick={startUpgrade}
+            disabled={upgrading || upgradeRunning}
+            startIcon={<DeployIcon sx={{ fontSize: 16 }} />}
+          >
+            {upgradeRunning ? 'Upgrading…' : 'Upgrade omnitron'}
+          </Button>
+        )}
         <Box sx={{ flexGrow: 1 }} />
         <Button onClick={onClose}>Close</Button>
       </DialogActions>

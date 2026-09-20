@@ -48,6 +48,7 @@ import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
 import { staleBuild } from './bundle-builder.js';
+import { overlayCredentials } from '../infrastructure/node-credentials.js';
 import {
   RemoteDeployer,
   stackNodeToDeployTarget,
@@ -1479,6 +1480,32 @@ export class ProjectService extends EventEmitter {
         }
       }
 
+      // 2b. Ask the node what it actually provisioned.
+      //
+      // The credentials are generated ON THE NODE — `provisionStack` runs
+      // `withGeneratedCredentials` against the node's own vault — so the
+      // master's copy of the stack's infrastructure carries whatever was
+      // DECLARED, which for a stack that declares none is nothing at all.
+      // Writing that into the node's config left `resolveStackAddresses`
+      // with no `infrastructure` block, and its fallback chain ends in a
+      // literal:
+      //
+      //     infra?.postgres?.password ?? getEnv().POSTGRES_PASSWORD ?? 'postgres'
+      //
+      // Six apps were handed `postgres://postgres:postgres@localhost:5432/…`
+      // against a container holding a 43-character generated secret, and
+      // every one of them died with `password authentication failed for user
+      // "postgres" (28P01)` after five retries.
+      //
+      // Only the secrets are taken from the node: ports, database names and
+      // the rest stay as this stack declared them, because those are the
+      // master's to decide and the node merely carried them out.
+      const nodeCredentials = await this.readNodeCredentials(connector, node);
+      const deployedInfra = overlayCredentials(
+        nodeInfra as Record<string, unknown> | undefined,
+        nodeCredentials,
+      );
+
       // 3. Deploy app artifacts via SSH
       if (artifacts.length > 0) {
         const unsubDeploy = this.deployer.onProgress((progress) => {
@@ -1489,6 +1516,7 @@ export class ProjectService extends EventEmitter {
         // someone asks it directly.
         const results = await this.deployer.deployToStack([target], artifacts, projectName, {
           apps: appEntries,
+          infrastructure: deployedInfra,
         });
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');
@@ -1539,6 +1567,43 @@ export class ProjectService extends EventEmitter {
    * whose frontend did not is a node worth looking at, and stopping the whole
    * provisioning over a frontend leaves less working, not more.
    */
+  /**
+   * The credentials the NODE resolved, read back from the node.
+   *
+   * `getConnectionInfo` answers from the config `provisionStack` stored after
+   * running `withGeneratedCredentials` against the node's vault, so it is the
+   * only account of these secrets that is true on the machine the apps will
+   * run on.
+   *
+   * Best-effort per service: a node that cannot answer for `minio` should
+   * still get correct database credentials, and a missing answer leaves that
+   * service exactly as the stack declared it.
+   */
+  private async readNodeCredentials(
+    connector: SlaveConnector,
+    node: import('../config/types.js').IStackNode,
+  ): Promise<Record<string, Record<string, unknown>>> {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const service of ['postgres', 'redis', 'minio']) {
+      try {
+        const info = (await connector.invokeOnSlave(
+          node.host,
+          node.port ?? 9700,
+          'OmnitronInfra',
+          'getConnectionInfo',
+          [{ service }],
+        )) as Record<string, unknown> | null;
+        if (info) out[service] = info;
+      } catch (err) {
+        this.logger.warn(
+          { node: node.host, service, error: (err as Error).message },
+          'Could not read this service\'s credentials from the node — its apps will use whatever the stack declared',
+        );
+      }
+    }
+    return out;
+  }
+
   private async shipStackStatics(
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     projectRoot: string,

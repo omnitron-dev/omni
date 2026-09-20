@@ -19,7 +19,17 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
+
 import { NodeUpgradeService } from '../../src/services/node-upgrade.service.js';
+import { ownBundleStaging } from '../../src/services/bundle-builder.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const logger: any = {
   info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {},
@@ -148,5 +158,63 @@ describe('the trail it leaves', () => {
     }
 
     expect(recorded).toEqual([]);
+  });
+});
+
+/**
+ * Two ways to upgrade a node, two copies of the build.
+ *
+ * `omnitron fleet upgrade` from a terminal and the console's button through
+ * the daemon do the same first thing — build omnitron from this working tree
+ * and pack it — and each wrote it out: the same package name, the same
+ * `os.tmpdir()` staging path spelled twice, the same `buildBundle` and
+ * `archiveBundle` pair. The copies had already drifted. The daemon removes
+ * its staging tree in a `finally` because "the staging tree is hundreds of
+ * megabytes; leaving it behind fills /tmp one upgrade at a time"; the CLI
+ * left both the tree and the tarball behind on every run, including every
+ * `--dry-run` that shipped nothing.
+ *
+ * One function builds it now, and the label is the only thing the two
+ * callers still choose for themselves — so that a console upgrade of one
+ * node and a fleet upgrade from a terminal cannot stage into each other's
+ * directory.
+ */
+describe('one bundle of omnitron itself, two callers', () => {
+  it('stages each caller somewhere of its own', () => {
+    const fleet = ownBundleStaging('4212');
+    const console1 = ownBundleStaging('4212-16f3dd5a');
+    const console2 = ownBundleStaging('4212-126457d0');
+
+    expect(new Set([fleet, console1, console2]).size).toBe(3);
+    expect(ownBundleStaging('4212')).toBe(fleet);
+  });
+
+  it('stages under the temporary directory, not the working one', () => {
+    expect(ownBundleStaging('4212').startsWith(os.tmpdir())).toBe(true);
+    expect(path.basename(ownBundleStaging('4212'))).toContain('4212');
+  });
+
+  it('is what both callers use', () => {
+    const cli = stripComments(fs.readFileSync(path.join(here, '../../src/commands/fleet.ts'), 'utf8'));
+    const service = stripComments(
+      fs.readFileSync(path.join(here, '../../src/services/node-upgrade.service.js'.replace('.js', '.ts')), 'utf8'),
+    );
+
+    for (const [what, source] of [['the CLI', cli], ['the daemon', service]] as const) {
+      expect(source, what).toMatch(/buildOwnBundle\(/);
+      // Neither spells out what omnitron's own package is called, nor where
+      // a bundle is staged: that is one answer, in one place.
+      expect(source, what).not.toMatch(/'@omnitron-dev\/omnitron'/);
+      expect(source, what).not.toMatch(/omnitron-bundle-/);
+    }
+  });
+
+  it('is cleaned up by both, including the run that shipped nothing', () => {
+    const cli = stripComments(fs.readFileSync(path.join(here, '../../src/commands/fleet.ts'), 'utf8'));
+    const service = stripComments(fs.readFileSync(path.join(here, '../../src/services/node-upgrade.service.ts'), 'utf8'));
+
+    // In a `finally`, because a dry run returns early and a failure throws.
+    expect(cli).toMatch(/finally\s*\{[^}]*cleanup\(\)/s);
+    expect(service).toMatch(/finally\s*\{[^}]*cleanup\(\)/s);
   });
 });

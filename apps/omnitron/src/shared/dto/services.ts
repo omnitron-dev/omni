@@ -257,10 +257,34 @@ export type {
   IProjectRequirements,
 };
 
+/**
+ * One app's current state in a deployment, as the daemon last saw it.
+ *
+ * A remote deployment has phases that take minutes each — transferring the
+ * artifact, installing its dependencies on the node, starting it, verifying
+ * it — and every one of them was published to an event handler and to nobody
+ * else. The console polls, so an event with nowhere to wait is an event the
+ * console never sees: a quarter-hour deployment showed one row reading
+ * `deploying` from start to finish, including the message naming the step
+ * that failed.
+ */
+export interface DeployProgressRecord {
+  /** `host:port` of the node. */
+  node: string;
+  app: string;
+  status: 'pending' | 'transferring' | 'extracting' | 'installing' | 'restarting' | 'verifying' | 'success' | 'failed';
+  /** 0–100. */
+  progress: number;
+  message: string;
+  /** ISO 8601. */
+  at: string;
+}
+
 export interface IProjectRpcService {
   // --- Projects (Viewer) ---
   listProjects(): Promise<IProjectInfo[]>;
   getProject(data: { name: string }): Promise<IProjectInfo>;
+  getDeployProgress(): Promise<DeployProgressRecord[]>;
   scanRequirements(data: { project: string }): Promise<IProjectRequirements>;
 
   // --- Projects (Admin) ---

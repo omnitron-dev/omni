@@ -47,7 +47,13 @@ import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
-import { RemoteDeployer, stackNodeToDeployTarget, withNodeCredentials, type DeployTarget } from './remote-deployer.service.js';
+import {
+  RemoteDeployer,
+  stackNodeToDeployTarget,
+  withNodeCredentials,
+  type DeployTarget,
+  type DeployProgressRecord,
+} from './remote-deployer.service.js';
 import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
@@ -203,6 +209,20 @@ export class ProjectService extends EventEmitter {
   autoDetectProject(cwd?: string): IProjectInfo | null {
     const detected = this.registry.autoDetect(cwd);
     return detected ? this.toProjectInfo(detected) : null;
+  }
+
+  /**
+   * What each app on each node is doing, for a console that polls.
+   *
+   * A stack deployment publishes progress as it goes — transferring,
+   * installing, the message naming the step that failed — and the console
+   * polls. Without somewhere for an event to wait, those two never met: a
+   * deployment that takes a quarter of an hour showed one row reading
+   * `deploying` from the first second to the last, and every event that said
+   * WHERE it was reached a handler that re-emitted it to nobody.
+   */
+  getDeployProgress(): DeployProgressRecord[] {
+    return this.deployer.getProgress();
   }
 
   listProjects(): IProjectInfo[] {

@@ -260,6 +260,12 @@ export interface DeployProgress {
   message: string;
 }
 
+/** A progress event with the time it happened, for a console that polls. */
+export interface DeployProgressRecord extends DeployProgress {
+  /** ISO 8601. */
+  at: string;
+}
+
 // =============================================================================
 // RemoteDeployer
 // =============================================================================
@@ -267,6 +273,22 @@ export interface DeployProgress {
 export class RemoteDeployer {
   /** Active deployment progress handlers */
   private readonly progressHandlers: Array<(progress: DeployProgress) => void> = [];
+
+  /**
+   * The last thing that happened to each app on each node.
+   *
+   * A deployment publishes progress as it goes and the console polls; without
+   * somewhere for an event to WAIT, those two never meet, and a deployment
+   * that takes a quarter of an hour showed the operator one row that said
+   * `deploying` from beginning to end. Everything that said WHERE it was —
+   * transferring, installing, the message naming the failing step — reached a
+   * handler that re-emitted it to nobody.
+   *
+   * Keyed by node and app, so this is bounded by the fleet rather than by how
+   * often anyone deploys, and the entry for an app is always its current
+   * state rather than a scroll an operator has to read to the end of.
+   */
+  private readonly lastProgress = new Map<string, DeployProgressRecord>();
 
   constructor(
     private readonly logger: ILogger,
@@ -1107,7 +1129,14 @@ export class RemoteDeployer {
       // `-C` so the archive holds the directory's CONTENTS, not a path from
       // this machine: the node mounts what is inside, and a leading
       // `apps/portal/dist/` would put every file one level too deep.
-      await this.execution.exec(`tar -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`);
+      // `COPYFILE_DISABLE=1`: macOS `tar` writes an AppleDouble sidecar for
+      // every file with an extended attribute, and this archive is unpacked
+      // straight into the gateway's web root. Measured there:
+      // `._index.html`, `._assets`, `._docs-static` — 163 bytes each, served
+      // to anyone who asks for them.
+      await this.execution.exec(
+        `COPYFILE_DISABLE=1 tar -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`,
+      );
       const bytes = (await fsp.stat(archive)).size;
       const digest = createHash('sha256').update(await fsp.readFile(archive)).digest('hex').slice(0, 16);
 
@@ -1195,6 +1224,7 @@ export class RemoteDeployer {
 
   private emitProgress(node: string, app: string, status: DeployStatus, progress: number, message: string): void {
     const event: DeployProgress = { node, app, status, progress, message };
+    this.lastProgress.set(`${node}\u0000${app}`, { ...event, at: new Date().toISOString() });
     for (const handler of this.progressHandlers) {
       try {
         handler(event);
@@ -1202,5 +1232,16 @@ export class RemoteDeployer {
         // Handler failure must not break deployment
       }
     }
+  }
+
+  /**
+   * What each app on each node is doing, newest first.
+   *
+   * For a console that polls. Returned as a list rather than the map so a
+   * caller cannot hold a reference that keeps changing underneath it while
+   * it renders.
+   */
+  getProgress(): DeployProgressRecord[] {
+    return [...this.lastProgress.values()].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   }
 }

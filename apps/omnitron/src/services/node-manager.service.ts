@@ -326,7 +326,21 @@ export class NodeManagerService extends EventEmitter {
     // to the address another already holds is exactly how a duplicate gets
     // made. Checked before any secret is written, so a refused edit leaves
     // nothing behind.
-    this.assertAddressIsFree(updated.host, updated.daemonPort, id);
+    //
+    // Only when the edit MOVES the row. A registry that already holds two
+    // rows for one daemon — made before this rule existed — refused every
+    // edit to either of them, including the one that would have repaired it:
+    //
+    //     omnitron node update <id> --ssh-auth password
+    //     37.27.130.185:9700 is already registered as "acme-deploy-test"
+    //
+    // The guard exists to stop a duplicate being CREATED. Refusing an edit
+    // that changes neither the host nor the port cannot prevent one, and it
+    // leaves an operator with a registry they can neither use nor mend.
+    const addressChanged = updated.host !== node.host || updated.daemonPort !== node.daemonPort;
+    if (addressChanged) {
+      this.assertAddressIsFree(updated.host, updated.daemonPort, id);
+    }
 
     // Update encrypted secrets — await to ensure they're persisted before connectivity check
     if (sshPassphrase !== undefined) {

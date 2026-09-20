@@ -833,6 +833,7 @@ node
   .option('--ssh-user <user>', 'SSH user', 'root')
   .option('--ssh-auth <method>', 'Auth method: password|key', 'key')
   .option('--ssh-key <path>', 'Path to SSH private key')
+  .option('--ssh-secret-stdin', 'Read the SSH password (or key passphrase) from stdin')
   .option('--runtime <runtime>', 'Runtime: node|bun', 'node')
   .option('--daemon-port <port>', 'Omnitron daemon port', '9700')
   .option('--tags <tags>', 'Comma-separated tags')
@@ -848,6 +849,7 @@ node
       runtime: opts.runtime,
       daemonPort: parseInt(opts.daemonPort, 10),
       tags: opts.tags?.split(',').map((t: string) => t.trim()) ?? [],
+      secretFromStdin: Boolean(opts.sshSecretStdin),
     });
   });
 
@@ -860,6 +862,7 @@ node
   .option('--ssh-user <user>', 'SSH user')
   .option('--ssh-auth <method>', 'Auth method: password|key')
   .option('--ssh-key <path>', 'Path to SSH private key')
+  .option('--ssh-secret-stdin', 'Read the SSH password (or key passphrase) from stdin')
   .option('--runtime <runtime>', 'Runtime: node|bun')
   .option('--daemon-port <port>', 'Omnitron daemon port')
   .option('--tags <tags>', 'Comma-separated tags')
@@ -875,6 +878,7 @@ node
     if (opts.runtime) input['runtime'] = opts.runtime;
     if (opts.daemonPort) input['daemonPort'] = parseInt(opts.daemonPort, 10);
     if (opts.tags) input['tags'] = opts.tags.split(',').map((t: string) => t.trim());
+    if (opts.sshSecretStdin) input['secretFromStdin'] = true;
     await nodeUpdateCommand(id, input as any);
   });
 

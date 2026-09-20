@@ -98,6 +98,27 @@ export async function nodeListCommand(): Promise<void> {
   }
 }
 
+/**
+ * Read an SSH secret from stdin.
+ *
+ * A node can be declared `--ssh-auth password` and there was no way to give
+ * it one: this command handled neither a password nor a key passphrase, so
+ * the row said `password` and carried none. Measured on this console — the
+ * health monitor reported the node down, `fleet upgrade` could not reach it,
+ * and the registry looked correct.
+ *
+ * From stdin rather than a flag, because an argument is visible to every
+ * process on the machine for as long as the command runs, and this one is a
+ * root password.
+ */
+export async function readSecretFromStdin(what: string): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  const value = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
+  if (!value) throw new Error(`No ${what} on stdin — pipe it in, e.g. \`printf %s "$PW" | omnitron node …\``);
+  return value;
+}
+
 export async function nodeAddCommand(options: {
   name: string;
   host: string;
@@ -108,6 +129,8 @@ export async function nodeAddCommand(options: {
   runtime?: 'node' | 'bun';
   daemonPort?: number;
   tags?: string[];
+  /** Read the SSH password (or key passphrase) from stdin. */
+  secretFromStdin?: boolean;
 }): Promise<void> {
   const client = createDaemonClient();
   if (!(await requireDaemon(client))) {
@@ -116,8 +139,16 @@ export async function nodeAddCommand(options: {
   }
 
   try {
+    const { secretFromStdin, ...input } = options;
+    const payload: Record<string, unknown> = { ...input };
+    if (secretFromStdin) {
+      const field = options.sshAuthMethod === 'password' ? 'sshPassword' : 'sshPassphrase';
+      payload[field] = await readSecretFromStdin(
+        options.sshAuthMethod === 'password' ? 'password' : 'key passphrase',
+      );
+    }
     const nodes = await client.service<any>('OmnitronNodes');
-    const node = await nodes.addNode(options);
+    const node = await nodes.addNode(payload);
     log.success(`Node "${node.name}" added (${node.host}, id: ${node.id.slice(0, 8)})`);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
@@ -136,6 +167,8 @@ export async function nodeUpdateCommand(id: string, options: {
   runtime?: 'node' | 'bun';
   daemonPort?: number;
   tags?: string[];
+  /** Read the SSH password (or key passphrase) from stdin. */
+  secretFromStdin?: boolean;
 }): Promise<void> {
   const client = createDaemonClient();
   if (!(await requireDaemon(client))) {
@@ -144,8 +177,18 @@ export async function nodeUpdateCommand(id: string, options: {
   }
 
   try {
+    const { secretFromStdin, ...input } = options;
+    const payload: Record<string, unknown> = { id, ...input };
+    if (secretFromStdin) {
+      // Whichever this row now authenticates with. Switching to `password`
+      // and sending a passphrase would store a secret nothing reads.
+      const field = options.sshAuthMethod === 'key' ? 'sshPassphrase' : 'sshPassword';
+      payload[field] = await readSecretFromStdin(
+        options.sshAuthMethod === 'key' ? 'key passphrase' : 'password',
+      );
+    }
     const nodes = await client.service<any>('OmnitronNodes');
-    const node = await nodes.updateNode({ id, ...options });
+    const node = await nodes.updateNode(payload);
     log.success(`Node "${node.name}" updated`);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);

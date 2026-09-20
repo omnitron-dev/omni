@@ -92,11 +92,15 @@ describe('the schema arrives before the apps that read it', () => {
 
   it('keeps the URL out of the process listing', () => {
     // A password on a command line is readable by every process on the host.
-    // It goes in the environment of that one command.
+    // Every value goes in the environment of that one command, through one
+    // assignment list that escapes each of them.
     const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 2200);
+    const body = deployer.slice(at, at + 3000);
 
-    expect(body).toMatch(/DATABASE_URL=\$\{shellEscape\(databaseUrl\)\}/);
+    expect(body).toMatch(/DATABASE_URL: databaseUrl/);
+    expect(body).toMatch(/\$\{k\}=\$\{shellEscape\(v\)\}/);
+    // Not interpolated into the command itself.
+    expect(body).not.toMatch(/node \$\{shellEscape\(script\)\}.*databaseUrl/);
   });
 
   it('reports a failure and lets the deployment continue', () => {
@@ -117,5 +121,50 @@ describe('the schema arrives before the apps that read it', () => {
     expect(body).toMatch(/assertRemotePathSegment\('project name', project\)/);
     expect(body).toMatch(/assertRemotePathSegment\('app name', entry\.app\)/);
     expect(body).toMatch(/assertRemotePathSegment\('version', entry\.version\)/);
+  });
+});
+
+describe('the migrator is given the environment it actually reads', () => {
+  /**
+   * The step ran for all six apps and every one failed:
+   *
+   *     Migration failed: password authentication failed for user "postgres"
+   *
+   * — against a password that was correct. `apps/paysys/src/database/migrate.ts`
+   * declares `envPrefix: 'PAYSYS__DATABASE'` and builds its connection from
+   * `PAYSYS__DATABASE__HOST` / `__PORT` / `__USER` / `__PASSWORD` /
+   * `__DATABASE`. Given only `DATABASE_URL` it never read the value it was
+   * sent and fell back to its own defaults.
+   *
+   * `ProjectService` passes both spellings, with the comment "App-specific
+   * env vars (various naming conventions)". This was the second caller, and
+   * a convention nobody wrote down costs exactly this much when one appears.
+   */
+  it('passes the app-prefixed variables as well as the URL', () => {
+    const at = deployer.indexOf('private async migrateNodeApps(');
+    const body = deployer.slice(at, at + 3000);
+
+    expect(body).toMatch(/__DATABASE__HOST/);
+    expect(body).toMatch(/__DATABASE__PORT/);
+    expect(body).toMatch(/__DATABASE__USER/);
+    expect(body).toMatch(/__DATABASE__PASSWORD/);
+    expect(body).toMatch(/__DATABASE__DATABASE/);
+    expect(body).toMatch(/DATABASE_URL: databaseUrl/);
+  });
+
+  it('derives them from the one URL, so the two cannot disagree', () => {
+    const at = deployer.indexOf('private async migrateNodeApps(');
+    const body = deployer.slice(at, at + 3000);
+
+    expect(body).toMatch(/parseDatabaseUrl\(databaseUrl\)/);
+  });
+
+  it('keeps every value in the environment, never on the command line', () => {
+    const at = deployer.indexOf('private async migrateNodeApps(');
+    const body = deployer.slice(at, at + 3000);
+
+    // One assignment list, every value shell-escaped, nothing appended to
+    // the command itself.
+    expect(body).toMatch(/\$\{k\}=\$\{shellEscape\(v\)\}/);
   });
 });

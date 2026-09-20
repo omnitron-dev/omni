@@ -63,15 +63,14 @@ export interface BuildBundleOptions {
   /** Files and directories to copy from the package, relative to it. */
   readonly include?: readonly string[];
   /**
-   * Tarballs already packed in this run, by `<name>@<version>`.
+   * What each workspace package's sources hashed to in this run, by directory.
    *
    * Six apps of one stack vendor the same nineteen omnitron packages, and
-   * packing each of them six times is five sixths of the longest phase of a
-   * deployment — measured at roughly a minute per app, for a tree that
-   * cannot have changed between the first app and the last. Scoped to one
-   * `buildAll` rather than to the process: a daemon runs for weeks and a
-   * cache that outlives the deployment would ship yesterday's package under
-   * today's version.
+   * hashing each of them six times is six times the work for a tree that
+   * cannot have changed between the first app and the last. Only the reading
+   * is memoised here; the packed tarballs are kept by content in
+   * `packedCachePath`, which is what makes a package that did not change
+   * contribute the identical file to the next bundle.
    */
   readonly packCache?: Map<string, string>;
   /**
@@ -198,12 +197,25 @@ export function readWorkspace(workspaceRootInput: string): Workspace {
  * caller keeps the map, and a directory of tarballs in `TMPDIR` is what the
  * operating system already knows how to reclaim.
  */
-let packCacheDir: string | null = null;
 function cacheDir(): string {
-  if (!packCacheDir) {
-    packCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-pack-'));
-  }
-  return packCacheDir;
+  const dir = path.join(os.tmpdir(), 'omnitron-pack-cache');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * Where a packed workspace package is kept, named by what is in it.
+ *
+ * The version is in the name because two versions of one package are two
+ * packages; the content hash is in it because during development a version
+ * stands still for weeks while the code under it moves, and a cache keyed on
+ * the version alone would hand a deployment last week's package under this
+ * week's number. Nothing has to be invalidated: a package that changed has a
+ * different name here and is packed.
+ */
+export function packedCachePath(cacheRoot: string, name: string, version: string, contentHash: string): string {
+  const flat = name.replace(/^@/, '').replace(/\//g, '-');
+  return path.join(cacheRoot, `${flat}-${version}-${contentHash.slice(0, 16)}.tgz`);
 }
 
 /**
@@ -494,14 +506,26 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
     // Every workspace package, packed where npm can install it from.
     for (const vendored of plan.vendored) {
       const produced = path.join(staging, VENDOR_DIR, vendored.tarball);
-      const cacheKey = `${vendored.name}@${vendored.version}`;
-      const cached = options.packCache?.get(cacheKey);
-      if (cached && fs.existsSync(cached)) {
-        fs.copyFileSync(cached, produced);
+      const dir = directoryOf(workspace.get(vendored.name)!);
+
+      // What is in the package decides whether it is packed again — never
+      // when it was last packed. `pnpm pack` resolves `workspace:*` to the
+      // concrete version and rebuilds that object in the order it resolved
+      // them, so packing one unchanged package twice produced two tarballs
+      // differing in the ORDER of `peerDependencies` and nothing else. Every
+      // bundle was therefore a new bundle, and a deployment that skips what
+      // the node already has could never skip anything.
+      let contentHash = options.packCache?.get(dir);
+      if (!contentHash) {
+        contentHash = await bundleChecksum(dir, { skip: withoutNodeModules });
+        options.packCache?.set(dir, contentHash);
+      }
+      const kept = packedCachePath(cacheDir(), vendored.name, vendored.version, contentHash);
+      if (fs.existsSync(kept)) {
+        fs.copyFileSync(kept, produced);
         continue;
       }
 
-      const dir = directoryOf(workspace.get(vendored.name)!);
       options.logger?.info(`packing ${vendored.name}@${vendored.version}`);
       // `resolvePnpm()`, not `'pnpm'`: launchd's PATH does not include the
       // directory pnpm installs itself into, so a bare name is an ENOENT for
@@ -521,15 +545,15 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         );
       }
 
-      // Kept where the next bundle can copy it from. The staging directory
-      // this one is in is removed at the end, so the cache holds a copy of
-      // its own rather than a path that is about to stop existing.
-      if (options.packCache) {
-        const keep = path.join(cacheDir(), vendored.tarball);
-        fs.mkdirSync(path.dirname(keep), { recursive: true });
-        fs.copyFileSync(produced, keep);
-        options.packCache.set(cacheKey, keep);
-      }
+      // Kept where the next bundle can copy it from — this build's, and any
+      // later one that finds the package in the same state. The staging
+      // directory this file is in is removed at the end, so the cache holds a
+      // copy of its own rather than a path that is about to stop existing.
+      // Written aside and renamed, because another build may be reading this
+      // name while this one writes it and half a tarball is not a tarball.
+      const staged = `${kept}.${process.pid}.part`;
+      fs.copyFileSync(produced, staged);
+      fs.renameSync(staged, kept);
     }
 
     fs.writeFileSync(
@@ -544,7 +568,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       builtAt: new Date().toISOString(),
       vendored: plan.vendored.map((v) => `${v.name}@${v.version}`),
     };
-    fs.writeFileSync(path.join(staging, 'BUNDLE.json'), JSON.stringify(metadata, null, 2) + '\n');
+    fs.writeFileSync(path.join(staging, BUNDLE_METADATA_FILE), JSON.stringify(metadata, null, 2) + '\n');
 
     fs.rmSync(outDir, { recursive: true, force: true });
     fs.renameSync(staging, outDir);
@@ -566,6 +590,28 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
  * `dist/cli/omnitron.js`, the symlinks, the install — would be wrong by one
  * segment.
  */
+/** The file a bundle carries about its own making. */
+export const BUNDLE_METADATA_FILE = 'BUNDLE.json';
+
+/**
+ * The record of the packing, which is not part of what was packed.
+ *
+ * It carries `builtAt` and a version stamped from the clock, so a bundle
+ * that includes it in its identity is a different bundle every time it is
+ * built. What it says about the commit and the vendored packages is a
+ * statement about the build, and the files those produced are hashed on
+ * their own account.
+ */
+export const isBuildRecord = (relativePath: string): boolean => relativePath === BUNDLE_METADATA_FILE;
+
+/**
+ * Installed dependencies, which are not sources and are not packed.
+ *
+ * Matched on the whole last segment: `node_modules_shim.ts` is a source file.
+ */
+export const withoutNodeModules = (relativePath: string): boolean =>
+  relativePath === 'node_modules' || relativePath.endsWith('/node_modules');
+
 /**
  * What a bundle IS, independent of when it was packed.
  *
@@ -584,7 +630,10 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
  * Framed with NULs and lengths so that no rearrangement of names and bodies
  * can produce the same stream as a different tree.
  */
-export async function bundleChecksum(bundleDir: string): Promise<string> {
+export async function bundleChecksum(
+  bundleDir: string,
+  options?: { readonly skip?: (relativePath: string) => boolean },
+): Promise<string> {
   const { createHash } = await import('node:crypto');
   const root = path.resolve(bundleDir);
 
@@ -595,7 +644,9 @@ export async function bundleChecksum(bundleDir: string): Promise<string> {
     // would be a confident answer to a question nobody asked.
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      paths.push(path.relative(root, full).split(path.sep).join('/'));
+      const rel = path.relative(root, full).split(path.sep).join('/');
+      if (options?.skip?.(rel)) continue;
+      paths.push(rel);
       // `isDirectory()` is lstat's answer, so a symlink to a directory is a
       // link here and is never descended into.
       if (entry.isDirectory()) walk(full);

@@ -350,6 +350,46 @@ describe('one row per daemon', () => {
     expect(renamed.host).toBe('10.0.0.1');
   });
 
+  it('can still mend a registry that was duplicated before the rule existed', async () => {
+    // Two rows for one daemon, made before this guard. Measured on this
+    // console: `omnitron node update <id> --ssh-auth password` — an edit
+    // that moves nothing — was refused with `37.27.130.185:9700 is already
+    // registered as "acme-deploy-test"`, so the row whose SSH key no longer
+    // authenticates could not be given the password that would fix it.
+    //
+    // The guard exists to stop a duplicate being CREATED. An edit that
+    // changes neither host nor port cannot create one, and refusing it
+    // leaves an operator with a registry they can neither use nor mend.
+    const store = makeStore();
+    const service = new NodeManagerService(silentLogger, store, makeSecrets());
+    const first = await service.addNode({ name: 'daos-test', host: '10.0.0.1', daemonPort: 9700 });
+    // The state that predates the rule, written straight into the store.
+    store.rows.set('legacy', {
+      id: 'legacy',
+      name: 'acme-deploy-test',
+      host: '10.0.0.1',
+      port: 9700,
+      role: 'slave',
+      status: 'unknown',
+      metadata: JSON.stringify({ id: 'legacy', name: 'acme-deploy-test', host: '10.0.0.1', daemonPort: 9700, sshPort: 22, sshUser: 'root', sshAuthMethod: 'password', runtime: 'node', tags: [], isLocal: false, createdAt: '', updatedAt: '' }),
+    });
+    const reloaded = new NodeManagerService(silentLogger, store, makeSecrets());
+
+    const mended = await reloaded.updateNode(first.id, { sshAuthMethod: 'password' });
+
+    expect(mended.sshAuthMethod).toBe('password');
+    expect(mended.host).toBe('10.0.0.1');
+    expect(mended.daemonPort).toBe(9700);
+  });
+
+  it('still refuses to move a row onto an address held twice', async () => {
+    const service = new NodeManagerService(silentLogger, makeStore());
+    await service.addNode({ name: 'first', host: '10.0.0.1', daemonPort: 9700 });
+    const other = await service.addNode({ name: 'other', host: '10.0.0.9', daemonPort: 9700 });
+
+    await expect(service.updateNode(other.id, { host: '10.0.0.1' })).rejects.toThrow(/already registered/);
+  });
+
   it('refuses before it writes a secret', async () => {
     const store = makeStore();
     const secrets = makeSecrets();

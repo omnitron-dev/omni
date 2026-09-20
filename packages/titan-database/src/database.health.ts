@@ -5,7 +5,7 @@
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { sql } from 'kysely';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { DatabaseManager } from './database.manager.js';
@@ -82,12 +82,18 @@ export class DatabaseHealthIndicator {
     if (!pool) return undefined;
 
     try {
-      if (pool instanceof Pool) {
+      // Structural, like the mysql branch below it. `instanceof Pool` needed
+      // `pg` at module load — which is what made a Postgres-only application
+      // unable to import this package without `mysql2` and `better-sqlite3`
+      // installed beside it — and it is also false across two copies of `pg`
+      // in one tree, so a real pool would report nothing and say nothing.
+      const pg = pool as Partial<Pool>;
+      if (typeof pg.totalCount === 'number' && typeof pg.idleCount === 'number') {
         return {
-          total: pool.totalCount,
-          active: pool.totalCount - pool.idleCount,
-          idle: pool.idleCount,
-          waiting: pool.waitingCount,
+          total: pg.totalCount,
+          active: pg.totalCount - pg.idleCount,
+          idle: pg.idleCount,
+          waiting: pg.waitingCount ?? 0,
         };
       }
 

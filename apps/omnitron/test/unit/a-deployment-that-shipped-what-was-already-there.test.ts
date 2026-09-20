@@ -30,7 +30,13 @@ import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-import { bundleChecksum } from '../../src/services/bundle-builder.js';
+import {
+  bundleChecksum,
+  packedCachePath,
+  isBuildRecord,
+  withoutNodeModules,
+  BUNDLE_METADATA_FILE,
+} from '../../src/services/bundle-builder.js';
 import {
   decideRedeploy,
   artifactChanged,
@@ -294,5 +300,103 @@ describe('an artifact is identified by what it ships, not when it was packed', (
     expect(builder).toMatch(/const checksum = await this\.createTarball\(/);
     expect(builder).toMatch(/bundleChecksum/);
     expect(builder).not.toMatch(/computeChecksum\(artifactPath\)/);
+  });
+});
+
+/**
+ * Two builds of one unchanged app, and the bundles still disagreed.
+ *
+ * With the archive's timestamp out of the way, `priceverse` was bundled
+ * twice, fourteen seconds apart, from a tree nobody touched in between.
+ * Four files of several thousand differed:
+ *
+ *   BUNDLE.json                           builtAt, 17:49:29 vs 17:49:43
+ *   vendor/omnitron-dev-omnitron-0.2.0.tgz
+ *   vendor/omnitron-dev-titan-0.2.0.tgz
+ *   vendor/omnitron-dev-titan-ratelimit-0.2.0.tgz
+ *
+ * The tarballs hold identical files with one exception, reproduced outside
+ * omnitron by packing one package twice:
+ *
+ *   pnpm pack →  peerDependencies: @omnitron-dev/titan, @omnitron-dev/titan-redis
+ *   pnpm pack →  peerDependencies: @omnitron-dev/titan-redis, @omnitron-dev/titan
+ *
+ * `pnpm` rewrites `workspace:*` to the concrete version and rebuilds that
+ * object in whatever order it resolved them. Same versions, same code, a
+ * different file — so the vendored tarball, and with it the bundle, was new
+ * on every build no matter what the sources did.
+ *
+ * Neither is a difference in what would run, and neither is answered by
+ * hashing harder. `BUNDLE.json` is the record of the packing, not part of
+ * what is packed, and it is left out of the identity. A workspace package is
+ * packed once per state of its sources and kept, so an unchanged package
+ * contributes the identical tarball to the next bundle instead of a freshly
+ * shuffled one — which also stops every deployment re-packing every package
+ * it depends on.
+ */
+describe('what makes a bundle new', () => {
+  const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-skip-'));
+
+  it('leaves the build record out of the identity', async () => {
+    const a = tmp();
+    const b = tmp();
+    for (const dir of [a, b]) fs.writeFileSync(path.join(dir, 'index.js'), 'run()\n');
+    fs.writeFileSync(path.join(a, BUNDLE_METADATA_FILE), '{"builtAt":"2026-09-20T17:49:29.432Z"}');
+    fs.writeFileSync(path.join(b, BUNDLE_METADATA_FILE), '{"builtAt":"2026-09-20T17:49:43.603Z"}');
+
+    expect(await bundleChecksum(a, { skip: isBuildRecord })).toBe(await bundleChecksum(b, { skip: isBuildRecord }));
+    // And without the rule, the same two bundles are two artifacts.
+    expect(await bundleChecksum(a)).not.toBe(await bundleChecksum(b));
+  });
+
+  it('does not descend into a directory the caller skips', async () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'index.js'), 'run()\n');
+    const before = await bundleChecksum(dir, { skip: withoutNodeModules });
+
+    fs.mkdirSync(path.join(dir, 'node_modules', 'left-pad'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'node_modules', 'left-pad', 'index.js'), 'module.exports=1\n');
+
+    expect(await bundleChecksum(dir, { skip: withoutNodeModules })).toBe(before);
+  });
+
+  it('skips a nested node_modules too, and nothing that merely contains the name', async () => {
+    expect(withoutNodeModules('node_modules')).toBe(true);
+    expect(withoutNodeModules('packages/titan/node_modules')).toBe(true);
+    expect(withoutNodeModules('src/node_modules_shim.ts')).toBe(false);
+    expect(withoutNodeModules('src/vendor/node_modules.md')).toBe(false);
+  });
+
+  it('names a packed package by what is in it', () => {
+    const one = packedCachePath('/cache', '@omnitron-dev/titan', '0.2.0', 'a'.repeat(64));
+    const same = packedCachePath('/cache', '@omnitron-dev/titan', '0.2.0', 'a'.repeat(64));
+    const moved = packedCachePath('/cache', '@omnitron-dev/titan', '0.2.0', 'b'.repeat(64));
+
+    expect(same).toBe(one);
+    expect(moved).not.toBe(one);
+    // A scope is part of the name and not part of the path.
+    expect(path.dirname(one)).toBe('/cache');
+    expect(path.basename(one)).not.toContain('/');
+    expect(one).toMatch(/\.tgz$/);
+  });
+
+  it('packs a package again when its version moves under the same sources', () => {
+    const before = packedCachePath('/cache', '@omnitron-dev/titan', '0.2.0', 'a'.repeat(64));
+    const after = packedCachePath('/cache', '@omnitron-dev/titan', '0.2.1', 'a'.repeat(64));
+
+    expect(after).not.toBe(before);
+  });
+
+  it('is what the bundle builder and the artifact builder use', () => {
+    const bundle = stripComments(fs.readFileSync(path.join(here, '../../src/services/bundle-builder.ts'), 'utf8'));
+    const builder = stripComments(fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'));
+
+    // The cache is consulted before `pnpm pack` runs, and filled after.
+    const at = bundle.indexOf('for (const vendored of plan.vendored) {', bundle.indexOf('Every workspace package'));
+    const loop = bundle.slice(at, bundle.indexOf('\n    fs.writeFileSync(', at));
+    expect(loop).toMatch(/packedCachePath\(/);
+    expect(loop.indexOf('packedCachePath(')).toBeLessThan(loop.indexOf("'pack'"));
+
+    expect(builder).toMatch(/skip: isBuildRecord/);
   });
 });

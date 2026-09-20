@@ -81,12 +81,22 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async listStacks(data: { project: string }): Promise<IStackInfo[]> {
-    return this.projectService.listStacks(data.project);
+    // A remote stack's apps run on its nodes, and `listStacks` reads this
+    // daemon's own handles — so every one of them came back `stopped`. The
+    // nodes are asked here, where the call can be awaited.
+    return Promise.all(
+      this.projectService
+        .listStacks(data.project)
+        .map((info) => this.projectService.withRemoteAppStatuses(data.project, info)),
+    );
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getStack(data: { project: string; stack: string }): Promise<IStackInfo> {
-    return this.projectService.getStack(data.project, data.stack);
+    return this.projectService.withRemoteAppStatuses(
+      data.project,
+      this.projectService.getStack(data.project, data.stack),
+    );
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
@@ -121,7 +131,12 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string }): Promise<IStackInfo> {
-    return this.projectService.startStack(data.project, data.stack);
+    // The report an operator acts on, and a script exits on: `only 0/6 apps
+    // came online` about six that were running.
+    return this.projectService.withRemoteAppStatuses(
+      data.project,
+      await this.projectService.startStack(data.project, data.stack),
+    );
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

@@ -61,7 +61,16 @@ import {
 } from './remote-provisioner.js';
 import { installSteps, activateSteps, pruneSteps } from './bundle-builder.js';
 import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
-import { readNodeHealth } from '../project/node-app-health.js';
+import { readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
+import {
+  decideRedeploy,
+  artifactChanged,
+  readChecksumCommand,
+  parseRecordedChecksum,
+  ARTIFACT_CHECKSUM_FILE,
+  NODE_CONFIG_HASH_FILE,
+} from './redeploy-decision.js';
+import crypto from 'node:crypto';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
 function shellEscape(s: string): string {
@@ -252,6 +261,14 @@ export interface DeployResult {
   status: DeployStatus;
   duration: number;
   error?: string;
+  /**
+   * The node already had this exact artifact, so nothing was transferred.
+   *
+   * Reported rather than inferred from a duration: the caller decides
+   * whether to restart the app, and "the files are the same" is half of
+   * that decision.
+   */
+  unchanged?: boolean;
 }
 
 export interface DeployProgress {
@@ -350,6 +367,13 @@ export class RemoteDeployer {
        * the set of artifacts that landed.
        */
       startAfterInstall?: boolean;
+      /**
+       * Transfer even when the node records the same artifact.
+       *
+       * For an operator with reason to doubt the record — a half-finished
+       * install, a file edited on the node by hand.
+       */
+      force?: boolean;
     },
   ): Promise<DeployResult> {
     const startTime = Date.now();
@@ -371,6 +395,39 @@ export class RemoteDeployer {
         `/${assertRemotePathSegment('app name', artifact.app)}` +
         `/${assertRemotePathSegment('version', artifact.version)}`;
       await this.sshExec(target, `mkdir -p ${shellEscape(remotePath)}`);
+
+      // 2a. What the node already has.
+      //
+      // A master's boot-time autostart deploys every remote stack again, so
+      // the same artifact was rebuilt, transferred, unpacked, `npm
+      // install`ed and its app restarted on every master restart — four
+      // times in one afternoon here, twenty-four application restarts on a
+      // node whose files were identical each time.
+      //
+      // The comparison is the artifact's own sha256 against the one the node
+      // recorded when it installed what it has. `options.force` deploys
+      // anyway, for an operator who has reason to doubt the record.
+      if (options?.force !== true) {
+        const recorded = parseRecordedChecksum(
+          await this.sshExec(target, readChecksumCommand(shellEscape(remotePath))),
+        );
+        if (artifactChanged(recorded, artifact.checksum) === false) {
+          const duration = Date.now() - startTime;
+          this.emitProgress(nodeKey, artifact.app, 'success', 75, 'Already installed — unchanged');
+          this.logger.info(
+            { node: nodeKey, app: artifact.app, version: artifact.version, sha: recorded!.slice(0, 12) },
+            'The node already has this artifact — not transferring it again',
+          );
+          return {
+            node: nodeKey,
+            app: artifact.app,
+            version: artifact.version,
+            status: 'success',
+            duration,
+            unchanged: true,
+          };
+        }
+      }
 
       // 3. Transfer artifact
       this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
@@ -528,6 +585,15 @@ export class RemoteDeployer {
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }
 
+      // 5b. Record what was installed, so the next deployment can tell
+      // whether it has anything to do. Written after the install rather than
+      // with the archive: a record that outlives a failed unpack would let
+      // the next run skip a transfer the node needs.
+      await this.sshExec(
+        target,
+        `printf %s ${shellEscape(artifact.checksum ?? '')} > ${shellEscape(`${remotePath}/${ARTIFACT_CHECKSUM_FILE}`)}`,
+      );
+
       // 6. Installed. Starting is a SEPARATE phase, and the order matters:
       // a node cannot start an app it has no definition for, and the
       // definitions are written once all the artifacts have landed. Starting
@@ -671,7 +737,13 @@ export class RemoteDeployer {
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
           .map((r) => ({ app: r.app, version: r.version }));
-        await this.registerNodeApps(target, project, options.apps, landed, options.appEnv);
+        const registration = await this.registerNodeApps(
+          target,
+          project,
+          options.apps,
+          landed,
+          options.appEnv,
+        );
 
         // Schema before the apps that read it.
         await this.migrateNodeApps(target, project, landed, options.appEnv);
@@ -680,12 +752,37 @@ export class RemoteDeployer {
         // no configuration can open by itself. See `gateway-reachability`.
         if (options.stack) await this.openGatewayPath(target, project, options.stack);
 
+        // What the node is running right now, asked once for the whole node
+        // rather than once per app: the decision below needs it for every
+        // app, and `omnitron status --json` answers about all of them.
+        const runningNow = await this.appsOnline(target, project);
+
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
         // running apps rather than installed files.
         for (const entry of landed) {
           const result = results.find((r) => r.app === entry.app && r.node === nodeKey);
           if (!result) continue;
+
+          // An app whose artifact did not move, whose configuration did not
+          // move, and which is running, has nothing that a restart would
+          // change — and a restart is downtime. See `decideRedeploy`.
+          const decision = decideRedeploy({
+            // `unchanged` is set by `deployToNode` when the node's recorded
+            // checksum matched the artifact's; anything else means files
+            // were written.
+            artifactChanged: result.unchanged === true ? false : true,
+            online: runningNow.has(entry.app),
+            configChanged: registration.changed,
+          });
+          if (decision.action === 'leave') {
+            this.emitProgress(result.node, entry.app, 'success', 100, 'Running — nothing to change');
+            this.logger.info(
+              { node: result.node, app: entry.app, version: entry.version, because: decision.because },
+              'Left running — this deployment changes nothing for this app',
+            );
+            continue;
+          }
 
           const started = await this.signalRemoteDaemon(target, entry.app);
           const health = started.ok
@@ -902,16 +999,26 @@ export class RemoteDeployer {
     }
   }
 
+  /**
+   * Write the node's app definitions, and say whether they changed.
+   *
+   * The caller decides whether to restart the applications, and "the
+   * configuration moved" is half of that decision — identical files with a
+   * different environment is a different deployment. Compared by the hash of
+   * the rendered body against one written beside it, rather than by reading
+   * the file back: the body holds every generated credential on the node,
+   * and it should cross the wire once, in the direction it has to.
+   */
   private async registerNodeApps(
     target: DeployTarget,
     project: string,
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
     landed: ReadonlyArray<{ app: string; version: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
-  ): Promise<void> {
+  ): Promise<{ changed: boolean }> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
-      return;
+      return { changed: false };
     }
 
     const { renderNodeAppConfig } = await import('../project/node-app-config.js');
@@ -924,8 +1031,15 @@ export class RemoteDeployer {
       appEnv,
     });
 
+    const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
+    let changed = true;
+
     try {
       await this.sshExec(target, `mkdir -p ${shellEscape(dir)}`);
+      const previous = parseRecordedChecksum(
+        await this.sshExec(target, readChecksumCommand(shellEscape(dir), NODE_CONFIG_HASH_FILE)),
+      );
+      changed = previous !== bodyHash;
       // Through a here-document: the config carries braces, quotes and
       // newlines, and a single-quoted argument would need every quote in it
       // escaped by hand — which is how a generated file acquires a syntax
@@ -941,6 +1055,10 @@ export class RemoteDeployer {
         `umask 077 && cat > ${shellEscape(configPath)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
       );
       await this.sshExec(target, `chmod 600 ${shellEscape(configPath)}`);
+      await this.sshExec(
+        target,
+        `printf %s ${shellEscape(bodyHash)} > ${shellEscape(`${dir}/${NODE_CONFIG_HASH_FILE}`)}`,
+      );
       const added = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
 
       // Registering the project is not starting it. The node reads the
@@ -969,18 +1087,22 @@ export class RemoteDeployer {
           { host: target.host, project, dir, detail: `${added}\n${out}`.trim().slice(0, 300) },
           'The node refused the apps it was given — its artifacts are installed and it will run none of them',
         );
-        return;
+        return { changed };
       }
 
       this.logger.info(
-        { host: target.host, project, dir, apps: landed.map((l) => l.app), detail: out.trim().slice(0, 200) },
+        { host: target.host, project, dir, apps: landed.map((l) => l.app), changed, detail: out.trim().slice(0, 200) },
         'The node now knows what to run',
       );
+      return { changed };
     } catch (err) {
       this.logger.error(
         { host: target.host, project, dir, error: (err as Error).message },
         'Could not tell the node what to run — its artifacts are installed and its daemon does not know the apps',
       );
+      // Unknown, and unknown must not read as "nothing moved": an app whose
+      // config may have changed is an app to restart.
+      return { changed: true };
     }
   }
 
@@ -1476,6 +1598,39 @@ export class RemoteDeployer {
       const detail = (err as Error).message;
       this.logger.error({ host: target.host, app: appName, error: detail }, 'Could not reach the node to start this app');
       return { ok: false, detail };
+    }
+  }
+
+  /**
+   * The apps this node reports as online, by their bare names.
+   *
+   * One question for the whole node. The per-app check beside this one asks
+   * the same command, and asking it six times to decide six restarts is six
+   * SSH round trips for one answer.
+   *
+   * An empty set on any failure: not knowing what is running is not a claim
+   * that nothing is, and the caller's fallback — restart it — is the safe
+   * reading of "we could not tell".
+   */
+  private async appsOnline(target: DeployTarget, project: string): Promise<Set<string>> {
+    try {
+      const raw = await this.sshExec(target, `omnitron status --json 2>&1`, 15_000);
+      const status = readNodeStatus(raw);
+      if (!status) return new Set();
+      return new Set(
+        status.apps
+          .filter((app) => app.status === 'online' && typeof app.name === 'string')
+          .map((app) => {
+            const name = app.name as string;
+            return name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
+          }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        { node: target.host, project, error: (err as Error).message },
+        'Could not read what this node is running — every app will be restarted',
+      );
+      return new Set();
     }
   }
 

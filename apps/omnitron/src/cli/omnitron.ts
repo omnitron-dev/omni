@@ -882,6 +882,23 @@ node
     await nodeUpdateCommand(id, input as any);
   });
 
+program
+  .command('audit')
+  .description('Who changed this control plane, and what they changed')
+  .option('-n, --limit <N>', 'How many entries (newest first)', '50')
+  .option('--action <action>', 'Only this action, e.g. stack.start')
+  .option('--resource <type>', 'Only this resource type, e.g. node')
+  .option('--actor <id>', 'Only this actor')
+  .action(async (opts: any) => {
+    const { auditListCommand } = await import('../commands/audit.js');
+    await auditListCommand({
+      limit: parseInt(opts.limit, 10),
+      action: opts.action,
+      resource: opts.resource,
+      actor: opts.actor,
+    });
+  });
+
 node
   .command('remove <id>')
   .alias('rm')

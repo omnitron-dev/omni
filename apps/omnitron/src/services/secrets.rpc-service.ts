@@ -13,7 +13,17 @@ import type { IOmnitronSecretsService } from '../shared/dto/services.js';
 
 @Service({ name: 'OmnitronSecrets' })
 export class SecretsRpcService implements IOmnitronSecretsService {
-  constructor(private readonly secrets: SecretsService) {}
+  constructor(
+    private readonly secrets: SecretsService,
+    /**
+     * The audit trail, when this daemon has one.
+     *
+     * The vault is the one surface where READING is worth recording: a
+     * value that leaves here can be used anywhere, and the only account of
+     * who took it is this row.
+     */
+    private readonly audit?: import('./audit.service.js').AuditService | undefined,
+  ) {}
 
   /**
    * Get a secret by key. Returns null if not found.
@@ -21,6 +31,12 @@ export class SecretsRpcService implements IOmnitronSecretsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async get(data: { key: string }): Promise<{ key: string; value: string | null }> {
     const value = await this.secrets.get(data.key);
+    await this.audit?.record({
+      action: 'secret.read',
+      resourceType: 'secret',
+      resourceId: data.key,
+      details: { found: value !== null },
+    });
     return { key: data.key, value };
   }
 
@@ -30,6 +46,8 @@ export class SecretsRpcService implements IOmnitronSecretsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async set(data: { key: string; value: string }): Promise<{ success: boolean }> {
     await this.secrets.set(data.key, data.value);
+    // The KEY, never the value — see `scrubDetails`.
+    await this.audit?.record({ action: 'secret.set', resourceType: 'secret', resourceId: data.key });
     return { success: true };
   }
 
@@ -39,6 +57,12 @@ export class SecretsRpcService implements IOmnitronSecretsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async delete(data: { key: string }): Promise<{ success: boolean; existed: boolean }> {
     const existed = await this.secrets.delete(data.key);
+    await this.audit?.record({
+      action: 'secret.delete',
+      resourceType: 'secret',
+      resourceId: data.key,
+      details: { existed },
+    });
     return { success: true, existed };
   }
 

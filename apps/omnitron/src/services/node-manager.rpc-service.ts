@@ -76,7 +76,11 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private leaderElection: { getClusterState(): unknown } | null = null;
 
-  constructor(private readonly nodeManager: NodeManagerService) {}
+  constructor(
+    private readonly nodeManager: NodeManagerService,
+    /** The audit trail, when this daemon has one — see `ProjectRpcService`. */
+    private readonly audit?: import('./audit.service.js').AuditService | undefined,
+  ) {}
 
   /** Set the health worker proxy after the worker is spawned */
   setHealthWorkerProxy(proxy: IHealthWorkerProxy | null): void {
@@ -104,14 +108,31 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  addNode(data: AddNodeInput): ReturnType<NodeManagerService['addNode']> {
-    return this.nodeManager.addNode(data);
+  async addNode(data: AddNodeInput): ReturnType<NodeManagerService['addNode']> {
+    const node = await this.nodeManager.addNode(data);
+    // Identifiers, not the input: `data` carries `sshPassword` on this path.
+    await this.audit?.record({
+      action: 'node.add',
+      resourceType: 'node',
+      resourceId: node.id,
+      details: { name: node.name, host: node.host, daemonPort: node.daemonPort, sshAuthMethod: node.sshAuthMethod },
+    });
+    return node;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  updateNode(data: { id: string } & UpdateNodeInput): ReturnType<NodeManagerService['updateNode']> {
+  async updateNode(data: { id: string } & UpdateNodeInput): ReturnType<NodeManagerService['updateNode']> {
     const { id, ...input } = data;
-    return this.nodeManager.updateNode(id, input);
+    const node = await this.nodeManager.updateNode(id, input);
+    // WHICH fields were touched, never their values — `sshPassword` and
+    // `sshPassphrase` arrive through here.
+    await this.audit?.record({
+      action: 'node.update',
+      resourceType: 'node',
+      resourceId: id,
+      details: { name: node.name, fields: Object.keys(input).sort().join(',') },
+    });
+    return node;
   }
 
   /**
@@ -125,7 +146,14 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async removeNode(data: { id: string }): Promise<void> {
+    const before = this.nodeManager.getNode(data.id);
     await this.nodeManager.removeNode(data.id);
+    await this.audit?.record({
+      action: 'node.remove',
+      resourceType: 'node',
+      resourceId: data.id,
+      details: { name: before?.name ?? null, host: before?.host ?? null },
+    });
     if (!this.healthRepo) return;
     try {
       await this.healthRepo.deleteHistory(data.id);

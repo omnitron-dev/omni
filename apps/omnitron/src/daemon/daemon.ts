@@ -77,6 +77,7 @@ import {
   TRACE_COLLECTOR_TOKEN,
   BACKUP_SERVICE_TOKEN,
   SECRETS_SERVICE_TOKEN,
+  AUDIT_SERVICE_TOKEN,
   DAEMON_STATE_STORE_TOKEN,
   TELEMETRY_RELAY_TOKEN,
   DEPLOY_SERVICE_TOKEN,
@@ -793,10 +794,32 @@ export class OmnitronDaemon {
     const healthCheckRpcService = new HealthCheckRpc(healthCheckService);
     await this.app.netron.peer.exposeService(healthCheckRpcService);
 
+    // The audit trail. Master-only — its table lives in the omnitron
+    // database — and every service that records into it takes it as an
+    // optional dependency, so a slave serves the same methods and records
+    // nothing rather than refusing them.
+    let audit: import('../services/audit.service.js').AuditService | undefined;
+    if (!isSlave) {
+      try {
+        audit = await container.resolveAsync<import('../services/audit.service.js').AuditService>(
+          AUDIT_SERVICE_TOKEN,
+        );
+        const { AuditRpcService } = await import('../services/audit.rpc-service.js');
+        await this.app.netron.peer.exposeService(new AuditRpcService(audit));
+      } catch (err) {
+        // A daemon whose database did not come up still runs; it simply
+        // records nothing, and says so once rather than at every action.
+        loggerModule.logger.warn(
+          { error: (err as Error).message },
+          'No audit trail on this daemon — actions will not be recorded',
+        );
+      }
+    }
+
     // Secrets RPC service (file-based, no DB dependency)
     const { SecretsRpcService: SecretsRpc } = await import('../services/secrets.rpc-service.js');
     const secretsService = await container.resolveAsync(SECRETS_SERVICE_TOKEN);
-    const secretsRpcService = new SecretsRpc(secretsService);
+    const secretsRpcService = new SecretsRpc(secretsService, audit);
     await this.app.netron.peer.exposeService(secretsRpcService);
 
     // Kubernetes RPC service (no DB dependency)
@@ -865,7 +888,7 @@ export class OmnitronDaemon {
 
     // Project + Stack management RPC service
     const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
-    const projectRpcService = new ProjectRpcService(projectService);
+    const projectRpcService = new ProjectRpcService(projectService, audit);
     await this.app.netron.peer.exposeService(projectRpcService);
 
     // Sync service (slave→master data replication)
@@ -957,7 +980,7 @@ export class OmnitronDaemon {
         secretsService as any,
       );
       this.nodeManagerService = nodeManager;
-      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager);
+      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit);
       // The deployer reaches nodes through the same SSH implementation as the
       // health checks — the only one that can present a stored password or a
       // key passphrase.

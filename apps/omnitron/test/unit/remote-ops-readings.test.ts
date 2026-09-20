@@ -103,14 +103,40 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
   });
 
   it('reads a running daemon', async () => {
+    // The answer a node actually gives. This test used to assert a flat
+    // `{pid, version, uptime, role}` — a shape nobody had measured — and
+    // passed against a reader that could never recognise a real node. The
+    // fleet listed every daemon `○ offline` for as long as both existed.
     sshMock.mockReset();
-    sshMock.mockResolvedValue(ok(JSON.stringify({ pid: 42, version: '0.2.0', uptime: 1000, role: 'slave' })));
+    sshMock.mockResolvedValue(
+      ok(
+        JSON.stringify({
+          ok: true,
+          data: { version: '0.2.0', pid: 42, uptime: 1000, role: 'slave', appsTotal: 6, appsOnline: 6, apps: [] },
+        }),
+      ),
+    );
 
     const ops = new RemoteOpsService(silentLogger);
     const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
 
     expect(result).toMatchObject({ connected: true, pid: 42, version: '0.2.0', role: 'slave' });
     expect(result.error).toBeUndefined();
+  });
+
+  it('does not read a flat object as a daemon', async () => {
+    // Not a node's answer in any version that has shipped. Accepting one
+    // would make any JSON with the right field names read as a healthy
+    // daemon, and this check runs against whatever `omnitron` happens to be
+    // on the far end of an SSH session.
+    sshMock.mockReset();
+    sshMock.mockResolvedValue(ok(JSON.stringify({ pid: 42, version: '0.2.0' })));
+
+    const ops = new RemoteOpsService(silentLogger);
+    const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
+
+    expect(result.connected).toBe(false);
+    expect(result.error).toMatch(/no running daemon/);
   });
 
   it('distinguishes "answered with nonsense" from "is not running"', async () => {
@@ -126,7 +152,7 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
 
   it('refuses a role it does not recognise instead of passing it through', async () => {
     sshMock.mockReset();
-    sshMock.mockResolvedValue(ok(JSON.stringify({ pid: 1, role: 'something-else' })));
+    sshMock.mockResolvedValue(ok(JSON.stringify({ ok: true, data: { pid: 1, role: 'something-else' } })));
 
     const ops = new RemoteOpsService(silentLogger);
     const result = await ops.checkRemoteOmnitron({ host: 'node.example' });

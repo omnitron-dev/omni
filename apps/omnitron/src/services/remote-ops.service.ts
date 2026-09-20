@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionService, type SSHTarget, type ExecResult } from '../execution/execution.service.js';
 import type { NodeCheckConfig } from '../shared/dto/nodes.js';
+import { readNodeStatus } from '../project/node-app-health.js';
 
 export type { NodeCheckConfig } from '../shared/dto/nodes.js';
 
@@ -298,19 +299,26 @@ export class RemoteOpsService {
         return { connected: false, error: firstLine(result.stderr) || `omnitron status exited ${result.exitCode}` };
       }
 
-      try {
-        const info = JSON.parse(result.stdout.trim() || '{}');
-        const status: RemoteOmnitronStatus & { error?: string } = { connected: !!info.pid };
-        if (info.version) status.version = info.version;
-        if (info.pid) status.pid = info.pid;
-        if (info.uptime) status.uptime = info.uptime;
-        if (info.role === 'master' || info.role === 'slave') status.role = info.role;
-        if (info.os) status.os = info.os;
-        if (!status.connected) status.error = 'omnitron status reported no running daemon';
-        return status;
-      } catch {
+      // Through the envelope. `omnitron status --json` answers
+      // `{ok, data:{version, pid, uptime, …}}`, and this read `info.pid` —
+      // undefined for every real answer — so a node whose daemon had been up
+      // for days, answering this very command, was listed `○ offline` in the
+      // console and in `omnitron node list`. Measured on the test node while
+      // it reported `appsOnline: 6`.
+      const info = readNodeStatus(result.stdout.trim() || '{}');
+      if (!info) {
         return { connected: false, error: 'omnitron status did not return JSON' };
       }
+      const status: RemoteOmnitronStatus & { error?: string } = { connected: !!info.pid };
+      if (info.version) status.version = info.version;
+      if (info.pid) status.pid = info.pid;
+      if (info.uptime) status.uptime = info.uptime;
+      if (info.role) status.role = info.role;
+      // No `os` here: this answer has never carried one — `data` holds
+      // version, pid, uptime, memoryBytes, appsTotal, appsOnline, errors and
+      // apps. The node's OS comes from the SSH check, which measures it.
+      if (!status.connected) status.error = 'omnitron status reported no running daemon';
+      return status;
     } catch (err) {
       return { connected: false, error: (err as Error).message };
     }

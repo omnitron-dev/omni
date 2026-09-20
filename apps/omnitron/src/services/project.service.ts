@@ -2424,6 +2424,82 @@ export class ProjectService extends EventEmitter {
     };
   }
 
+  /**
+   * A remote stack's apps, as the NODES report them.
+   *
+   * `toStackInfo` reads this daemon's own orchestrator handles. For a remote
+   * stack there are none — the applications run on the nodes, under the
+   * node's own naming (`<project>/deployed/<app>`) — so every app came back
+   * `stopped` and the report was:
+   *
+   *     Stack daos/test: only 0/6 apps came online.
+   *     Not online: main (stopped), storage (stopped), priceverse (stopped),
+   *     paysys (stopped), messaging (stopped), geo (stopped)
+   *
+   * measured against a node answering `appsTotal: 6, appsOnline: 6` with
+   * every port listening, thirty seconds after this same master installed,
+   * migrated and started them. The CLI exits 1 on that count, so a correct
+   * deployment fails a script; and the console's stack page shows the same
+   * six rows, stopped.
+   *
+   * A node that cannot be asked leaves its apps exactly as they were, with a
+   * line saying why. "We could not ask" is not "they are down" — and the
+   * local rows are at least honest about being local.
+   */
+  async withRemoteAppStatuses(projectName: string, info: IStackInfo): Promise<IStackInfo> {
+    if (info.type !== 'remote' && info.type !== 'cluster') return info;
+    const nodes = info.config.nodes ?? [];
+    if (nodes.length === 0 || !this.slaveConnector) return info;
+
+    const reported = new Map<string, import('../config/types.js').ProcessInfoDto>();
+    let answered = 0;
+    for (const node of nodes) {
+      try {
+        const status = (await this.slaveConnector.invokeOnSlave(
+          node.host,
+          node.port ?? 9700,
+          'OmnitronDaemon',
+          'status',
+          [],
+        )) as import('../config/types.js').DaemonStatusDto;
+        answered += 1;
+        for (const app of status?.apps ?? []) {
+          // The node names them `<project>/deployed/<app>`; the stack knows
+          // them by the app's own name.
+          const bare = app.name.includes('/') ? app.name.slice(app.name.lastIndexOf('/') + 1) : app.name;
+          reported.set(bare, app);
+        }
+      } catch (err) {
+        this.logger.warn(
+          { project: projectName, stack: info.name, node: node.host, error: (err as Error).message },
+          'Could not ask this node what it is running — its apps are reported as this master sees them',
+        );
+      }
+    }
+
+    if (answered === 0) return info;
+
+    return {
+      ...info,
+      apps: info.apps.map((app) => {
+        const running = reported.get(app.name);
+        if (!running) return app;
+        return {
+          ...app,
+          handleKey: running.name,
+          status: running.status,
+          pid: running.pid,
+          instances: running.instances,
+          uptime: running.uptime,
+          restarts: running.restarts,
+          cpu: running.cpu,
+          memory: running.memory,
+          port: running.port ?? null,
+        };
+      }),
+    };
+  }
+
   private toStackInfo(projectName: string, stackName: string, config: IStackConfig): IStackInfo {
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey);

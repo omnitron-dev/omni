@@ -644,6 +644,9 @@ export class RemoteDeployer {
           .map((r) => ({ app: r.app, version: r.version }));
         await this.registerNodeApps(target, project, options.apps, landed, options.appEnv);
 
+        // Schema before the apps that read it.
+        await this.migrateNodeApps(target, project, landed, options.appEnv);
+
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
         // running apps rather than installed files.
@@ -686,6 +689,84 @@ export class RemoteDeployer {
    * discard a transfer that succeeded. The operator needs to know the apps
    * are not runnable, which is what the error says.
    */
+  /**
+   * Run each app's migrations, on the node, against the node's database.
+   *
+   * They had never run there. `ProjectService` migrates by executing
+   * `apps/<name>/src/database/migrate.ts` from the PROJECT PATH against
+   * `localhost` — both of which name the machine the master is on. A node has
+   * no project sources and a different localhost, so a remote stack's
+   * databases were created and left empty.
+   *
+   * Measured on the test node after six apps installed and five started:
+   * every one of the six databases existed and held ZERO tables. Five apps
+   * came up anyway, because they touch no table at boot; `paysys` does, and
+   * said so —
+   *
+   *     Failed to call @PostConstruct 'bootstrap' on 'PlatformRevenueService':
+   *     relation "accounts" does not exist
+   *
+   * — which is the only reason anyone found out. A platform with no schema
+   * that reports five of six apps healthy is a worse state than one that
+   * refuses to start.
+   *
+   * The artifact already carries what is needed: `dist/database/migrate.js`
+   * beside `dist/database/migrations/` — 160 compiled files for paysys. The
+   * same build the app itself runs from, so there is no second copy of the
+   * schema to drift.
+   *
+   * Failure is reported and does not stop the deployment: an app whose
+   * migrations fail will fail its own start with a message about the table it
+   * wanted, which is more specific than anything this step could say.
+   */
+  private async migrateNodeApps(
+    target: DeployTarget,
+    project: string,
+    landed: ReadonlyArray<{ app: string; version: string }>,
+    appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
+  ): Promise<void> {
+    for (const entry of landed) {
+      const databaseUrl = appEnv?.[entry.app]?.['DATABASE_URL'];
+      if (!databaseUrl) continue;
+
+      const dir =
+        `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
+        `/${assertRemotePathSegment('app name', entry.app)}` +
+        `/${assertRemotePathSegment('version', entry.version)}`;
+      const script = `${dir}/dist/database/migrate.js`;
+
+      const present = await this.sshExec(
+        target,
+        `test -f ${shellEscape(script)} && echo yes || echo no`,
+      ).catch(() => 'no');
+      if (present.trim() !== 'yes') continue;
+
+      this.emitProgress(
+        `${target.host}:${target.daemonPort ?? 9700}`,
+        entry.app,
+        'installing',
+        75,
+        'Applying database migrations...',
+      );
+      try {
+        // `cd` into the artifact so the script resolves its own imports, and
+        // the URL in the environment rather than the command line, where it
+        // would be in every process listing on the host.
+        await this.sshExec(
+          target,
+          `cd ${shellEscape(dir)} && DATABASE_URL=${shellEscape(databaseUrl)} node ${shellEscape(script)}`,
+          600_000,
+        );
+        this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');
+      } catch (err) {
+        this.logger.error(
+          { node: target.host, app: entry.app, error: (err as Error).message.slice(0, 400) },
+          'Database migrations failed on the node — the app will fail on the first table it wants',
+        );
+      }
+    }
+  }
+
   private async registerNodeApps(
     target: DeployTarget,
     project: string,

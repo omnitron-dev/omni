@@ -173,6 +173,21 @@ export function deepClone<T>(obj: T): T {
 /**
  * Merge objects deeply
  */
+/**
+ * Keys that are not property names when you ASSIGN them.
+ *
+ * `__proto__` is a setter: `result['__proto__'] = x` replaces the object's
+ * prototype rather than adding a field. A merge walks keys it did not choose,
+ * so whoever supplies the source chooses which of them it writes.
+ *
+ * This became reachable on 2026-09-20 (`78880f00`): msgpack's decoder used to
+ * let `__proto__` through as a prototype replacement, and now keeps it as an
+ * OWN, enumerable property — which is safe in the decoded object and passes
+ * `hasOwnProperty` in every merge that walks it. Fixing one without the other
+ * moves the defect rather than removing it.
+ */
+const UNSAFE_MERGE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function deepMerge<T extends object>(target: T, ...sources: Partial<T>[]): T {
   if (!sources.length) return target;
 
@@ -180,7 +195,7 @@ export function deepMerge<T extends object>(target: T, ...sources: Partial<T>[])
   if (!source) return target;
 
   for (const key in source) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
+    if (Object.prototype.hasOwnProperty.call(source, key) && !UNSAFE_MERGE_KEYS.has(key)) {
       const sourceValue = source[key];
       const targetValue = target[key];
 

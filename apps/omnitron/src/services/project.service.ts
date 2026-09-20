@@ -1559,6 +1559,7 @@ export class ProjectService extends EventEmitter {
         const results = await this.deployer.deployToStack([target], artifacts, projectName, {
           apps: appEntries,
           appEnv,
+          stack: stackName,
         });
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');

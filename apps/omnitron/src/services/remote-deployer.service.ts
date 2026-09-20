@@ -582,6 +582,15 @@ export class RemoteDeployer {
        * existing callers keep working, and every one of them should pass it.
        */
       apps?: readonly import('../config/types.js').IEcosystemAppEntry[];
+      /**
+       * The infrastructure those apps connect to, as this stack resolved it.
+       *
+       * Carried into the node's generated config, because that is the only
+       * thing `resolveStackAddresses` reads when it builds `DATABASE_URL`
+       * and friends — and its fallback for a missing block is the literal
+       * `postgres`, not an error. See `NodeConfigInput.infrastructure`.
+       */
+      infrastructure?: Record<string, unknown> | undefined;
     },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
@@ -633,7 +642,7 @@ export class RemoteDeployer {
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
           .map((r) => ({ app: r.app, version: r.version }));
-        await this.registerNodeApps(target, project, options.apps, landed);
+        await this.registerNodeApps(target, project, options.apps, landed, options.infrastructure);
 
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
@@ -682,6 +691,7 @@ export class RemoteDeployer {
     project: string,
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
     landed: ReadonlyArray<{ app: string; version: string }>,
+    infrastructure?: Record<string, unknown> | undefined,
   ): Promise<void> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
@@ -690,7 +700,13 @@ export class RemoteDeployer {
 
     const { renderNodeAppConfig } = await import('../project/node-app-config.js');
     const dir = `/opt/omnitron/projects/${assertRemotePathSegment('project name', project)}`;
-    const body = renderNodeAppConfig({ project, artifactRoot: '/opt/omnitron/artifacts', apps, artifacts: landed });
+    const body = renderNodeAppConfig({
+      project,
+      artifactRoot: '/opt/omnitron/artifacts',
+      apps,
+      artifacts: landed,
+      infrastructure,
+    });
 
     try {
       await this.sshExec(target, `mkdir -p ${shellEscape(dir)}`);
@@ -698,10 +714,17 @@ export class RemoteDeployer {
       // newlines, and a single-quoted argument would need every quote in it
       // escaped by hand — which is how a generated file acquires a syntax
       // error nobody can see in the source that generated it.
+      const configPath = `${dir}/omnitron.config.mjs`;
+      // `umask 077` around the write, not a `chmod` after it: the file exists
+      // with its contents between the two, and what it contains is the
+      // generated password of every service on this node. It was written 0644
+      // for as long as it has existed — measured on the test node — which was
+      // harmless only because it held no credentials to leak.
       await this.sshExec(
         target,
-        `cat > ${shellEscape(`${dir}/omnitron.config.mjs`)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
+        `umask 077 && cat > ${shellEscape(configPath)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
       );
+      await this.sshExec(target, `chmod 600 ${shellEscape(configPath)}`);
       const added = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
 
       // Registering the project is not starting it. The node reads the

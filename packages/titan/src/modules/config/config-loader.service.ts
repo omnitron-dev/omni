@@ -632,6 +632,10 @@ export class ConfigLoaderService implements IConfigLoader {
     const result = { ...target };
 
     for (const key in source) {
+      // `__proto__` is a setter: assigning it replaces the prototype rather
+      // than adding a field, and a merge writes keys the SOURCE chose. Same
+      // set as `netron-browser/src/utils/index.ts`.
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       if (Object.prototype.hasOwnProperty.call(source, key)) {
         if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
           result[key] = this.deepMerge(result[key] || {}, source[key]);

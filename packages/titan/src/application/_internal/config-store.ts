@@ -185,6 +185,14 @@ export class ConfigStore {
  * Identical to the legacy in-line `deepMerge` but with a single
  * canonical definition that both `merge` and any future helper can use.
  */
+/**
+ * Keys that are not property names when you ASSIGN them — `__proto__` is a
+ * setter, so `result['__proto__'] = x` replaces the prototype. A merge walks
+ * keys it did not choose; see `netron-browser/src/utils/index.ts`, which
+ * carries the same set and the reason.
+ */
+const UNSAFE_MERGE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function deepMerge(target: unknown, source: unknown): unknown {
   if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
   if (!target || typeof target !== 'object' || Array.isArray(target)) {
@@ -193,6 +201,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
   }
   const result: ConfigObject = { ...(target as ConfigObject) };
   for (const key of Object.keys(source as ConfigObject)) {
+    if (UNSAFE_MERGE_KEYS.has(key)) continue;
     result[key] = deepMerge(result[key], (source as ConfigObject)[key]) as ConfigValue;
   }
   return result;

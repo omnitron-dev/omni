@@ -52,9 +52,22 @@ const render = (ui: ReactNode) =>
     </ThemeProvider>
   );
 
+/**
+ * Stop the page's polling loop without touching the page.
+ *
+ * `usePolledResource` listens for `visibilitychange` and stops while the
+ * document is hidden — the one lever this console already has for "do not
+ * fetch now", used here so an assertion about a click is about the click.
+ */
+function hideDocument(): void {
+  Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 beforeEach(() => {
   stopApp.mockReset();
   list.mockClear();
+  Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
 });
 
 describe('stopping an app that will not stop', () => {
@@ -82,11 +95,40 @@ describe('stopping an app that will not stop', () => {
     render(<AppsPage />);
 
     await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument());
+
+    // The page also polls, and the poll calls the same `list`. Counting calls
+    // across the click therefore measured "did anything fetch", not "did the
+    // stop handler fetch" — and the page re-arms its timer when the realtime
+    // connection state settles, which fetches immediately. That is why this
+    // assertion failed intermittently against a handler that is correct.
+    //
+    // `usePolledResource` stops entirely while the document is hidden, so
+    // hiding it leaves the click as the only thing that can call `list`.
+    hideDocument();
     const before = list.mock.calls.length;
+
     await user.click(screen.getByRole('button', { name: /stop/i }));
     await screen.findByText(/child ignored SIGTERM/i);
 
     expect(list.mock.calls.length).toBe(before);
+  });
+
+  it('does refresh when the stop worked, measured the same way', async () => {
+    // The control for the assertion above: with the poll stopped, a
+    // successful stop still fetches exactly once. Without this, "the counter
+    // did not move" could equally mean the instrument was broken.
+    stopApp.mockResolvedValue({ success: true });
+
+    const { default: AppsPage } = await import('../../webapp/src/pages/apps/index.js');
+    const user = userEvent.setup();
+    render(<AppsPage />);
+
+    await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument());
+    hideDocument();
+    const before = list.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(list.mock.calls.length).toBe(before + 1));
   });
 
   it('refreshes when the stop worked', async () => {

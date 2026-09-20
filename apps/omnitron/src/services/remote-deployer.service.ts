@@ -750,13 +750,22 @@ export class RemoteDeployer {
   private async openGatewayPath(target: DeployTarget, project: string, stack: string): Promise<void> {
     const network = `${project}-${stack}_default`;
     try {
+      // No `2>/dev/null || true`: a network that cannot be inspected is the
+      // reason the path stays shut, and discarding it leaves an operator
+      // with a 503 and no sentence. The failure is caught below and named.
       const subnet = (
         await this.sshExec(
           target,
-          `docker network inspect ${shellEscape(network)} --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || true`,
+          `docker network inspect ${shellEscape(network)} --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`,
         )
       ).trim();
-      if (!subnet) return;
+      if (!subnet) {
+        this.logger.warn(
+          { node: target.host, network },
+          'The stack network reports no subnet — the gateway’s path to the applications was left as it was',
+        );
+        return;
+      }
 
       const rule = reachabilityRule(subnet, project, stack);
       if (!rule) {

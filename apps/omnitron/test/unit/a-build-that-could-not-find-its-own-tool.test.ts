@@ -125,8 +125,10 @@ describe('a build with nothing to do is not a build', () => {
     const { stripComments } = await import('../../../../scripts/lib/strip-comments.mjs');
     const code = stripComments(src);
 
-    expect(code).toContain('tsconfig.tsbuildinfo');
-    expect(code).toMatch(/rmSync\(path\.join\(appDir, stale\)/);
+    // The removal itself moved into `clearBuildInfo`, which knows the four
+    // spellings this workspace uses — `tsc-only-writes-it-never-removes`
+    // pins those. What `runBuild` still owns is calling it.
+    expect(code).toMatch(/clearBuildInfo\(appDir\)/);
   });
 
   it('does it before the build, not after', async () => {
@@ -140,8 +142,7 @@ describe('a build with nothing to do is not a build', () => {
     // decided there was nothing to do changes nothing about this build, and
     // makes the NEXT one work — which is the kind of fix that looks like a
     // flaky build rather than a fixed one.
-    const removal = code.indexOf('tsconfig.tsbuildinfo');
-    const build = code.indexOf("['build']", removal - 2000 > 0 ? removal - 2000 : 0);
+    const removal = code.indexOf('clearBuildInfo(appDir)');
     expect(removal).toBeGreaterThan(0);
     expect(removal).toBeLessThan(code.indexOf("exec(resolvePnpm(), ['build']"));
   });

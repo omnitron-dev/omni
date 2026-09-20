@@ -56,19 +56,29 @@ describe('reconcileOrphanContainers', () => {
     expect(loadAt, '`listStacks` answers [] for a config nobody loaded').toBeLessThan(listAt);
   });
 
-  it('refuses to act on an incomplete expectation', () => {
+  it('tells the decision whether its picture is complete', () => {
     // A project that contributes no stacks, or whose config will not load,
     // means we do not know what to expect — which is not the same as
-    // expecting nothing.
-    expect(fn).toContain('expectationsComplete');
-    const guardAt = fn.indexOf('if (!expectationsComplete)');
+    // expecting nothing. The rule itself moved into `decideOrphans`, where
+    // `a-sweep-that-read-an-empty-list-as-an-answer` exercises it; what this
+    // method still owns is SAYING so.
+    expect(fn).toContain('expectationsComplete = false');
+    expect(fn).toContain('expectationsComplete,');
+  });
+
+  it('removes only what the decision named, and nothing on a skip', () => {
+    const decideAt = fn.indexOf('decideOrphans({');
+    const skipAt = fn.indexOf("decision.action === 'skip'");
     // The CALL, not the identifier: `removeContainer` is also in the import
     // destructure at the top of the method, which sits before everything.
     const removeAt = fn.indexOf('await removeContainer(');
-    expect(guardAt, 'the guard must exist').toBeGreaterThan(0);
-    expect(removeAt, 'and something must actually be removed below it').toBeGreaterThan(0);
-    expect(guardAt, 'the guard must come before anything is removed').toBeLessThan(removeAt);
-    expect(fn.slice(guardAt, removeAt)).toContain('return');
+
+    expect(decideAt, 'the decision is taken at all').toBeGreaterThan(0);
+    expect(skipAt, 'a skip is honoured').toBeGreaterThan(decideAt);
+    expect(removeAt, 'and something is removed below it').toBeGreaterThan(skipAt);
+    expect(fn.slice(skipAt, removeAt)).toContain('return');
+    // The list comes from the decision, not from a second filter here.
+    expect(fn).toContain('for (const name of decision.containers)');
   });
 
   it('still protects the internal containers by name', () => {

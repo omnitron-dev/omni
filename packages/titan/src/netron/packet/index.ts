@@ -202,6 +202,11 @@ export const encodePacket = (packet: Packet) => {
  * routed through here so a single setting controls every layer.
  */
 export const DEFAULT_MAX_PACKET_SIZE = 16 * 1024 * 1024;
+/** An id (4 bytes) and a flags byte: the smallest thing that can be a packet. */
+export const MIN_PACKET_SIZE = 5;
+/** The declared packet types as a range: TYPE_PING … TYPE_STREAM_CLOSE. */
+export const TYPE_MIN = 0x00;
+export const TYPE_MAX = 0x07;
 
 export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAULT_MAX_PACKET_SIZE) => {
   // Compute the byte length once; both Buffer and ArrayBuffer expose it.
@@ -211,6 +216,22 @@ export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAUL
       code: ErrorCode.PAYLOAD_TOO_LARGE,
       message: `Packet exceeds maximum allowed size: ${byteLength} > ${maxSize}`,
       details: { received: byteLength, max: maxSize },
+    });
+  }
+
+  // A packet is at least an id and a flags byte. Below that `readUInt32BE`
+  // reads past the end, and the failure surfaces as whatever SmartBuffer does
+  // rather than as "this is not a packet".
+  //
+  // The browser copy of this decoder checks this, and the type range below,
+  // and does NOT check the size above; this one checked only the size. Two
+  // copies of one decoder, each carrying half the guard — the other half is
+  // in `netron-browser/src/packet/index.ts`, which now carries all three.
+  if (byteLength < MIN_PACKET_SIZE) {
+    throw new TitanError({
+      code: ErrorCode.BAD_REQUEST,
+      message: `Packet too small: ${byteLength} bytes, minimum ${MIN_PACKET_SIZE} required`,
+      details: { received: byteLength, min: MIN_PACKET_SIZE },
     });
   }
 
@@ -224,6 +245,15 @@ export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAUL
   try {
     pkt = new Packet(buffer.readUInt32BE());
     pkt.flags = buffer.readUInt8()!;
+
+    // An undeclared type means the frame is not one of ours; decoding its
+    // payload as if it were is work done on somebody else's say-so.
+    const packetType = pkt.getType();
+    if (packetType < TYPE_MIN || packetType > TYPE_MAX) {
+      throw new Error(
+        `invalid packet type: 0x${packetType.toString(16)} (expected 0x${TYPE_MIN.toString(16)}-0x${TYPE_MAX.toString(16)})`,
+      );
+    }
 
     // decode() throws if the buffer is incomplete.
     pkt.data = serializer.decode(buffer);

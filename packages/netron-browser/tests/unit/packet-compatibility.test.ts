@@ -258,6 +258,67 @@ describe('Packet Protocol Compatibility', () => {
     });
   });
 
+  /**
+   * Two copies of one decoder, each carrying HALF the guard.
+   *
+   * Measured 2026-09-20: titan's `decodePacket` refused an oversized frame
+   * (`maxPacketSize`, 16 MB) and checked neither the minimum length nor the
+   * type range; the browser's checked both of those and had no upper bound at
+   * all — so a peer could hand a browser tab a frame of any size and it would
+   * allocate for it. Each side had what the other was missing, and nothing
+   * compared them.
+   *
+   * These assert the AGREEMENT rather than either implementation: the same
+   * frame must be refused on both sides, for the same reason.
+   */
+  describe('Decoder guards agree across implementations', () => {
+    const tooSmall = new Uint8Array([1, 2, 3]);
+
+    it('both refuse a frame shorter than a header, and SAY so', () => {
+      // Both threw before titan gained the check — SmartBuffer reads past the
+      // end and the RangeError surfaces wrapped. Asserting on the message is
+      // what separates "refused because it is not a packet" from "fell over
+      // while pretending it was one": measured, removing titan's check left
+      // `toThrow()` passing and this failing.
+      expect(() => decodeBrowserPacket(tooSmall)).toThrow(/too small/i);
+      expect(() => decodeTitanPacket(Buffer.from(tooSmall))).toThrow(/too small/i);
+    });
+
+    it('both refuse a frame larger than the bound', () => {
+      const packet = createBrowserPacket(31, 1, TYPE_PING, 'x');
+      const encoded = encodeBrowserPacket(packet);
+
+      // A bound smaller than this frame, passed explicitly, so the test does
+      // not have to build 16 MB to prove the check exists.
+      expect(() => decodeBrowserPacket(encoded, 4)).toThrow(/maximum allowed size/);
+      expect(() => decodeTitanPacket(Buffer.from(encoded), 4)).toThrow(/maximum allowed size/);
+    });
+
+    it('and both accept it under a bound that fits — the control', () => {
+      const packet = createBrowserPacket(32, 1, TYPE_PING, 'x');
+      const encoded = encodeBrowserPacket(packet);
+
+      expect(decodeBrowserPacket(encoded, 1024).getType()).toBe(TYPE_PING);
+      expect(decodeTitanPacket(Buffer.from(encoded), 1024).getType()).toBe(TYPE_PING);
+    });
+
+    it('both refuse an undeclared packet type', () => {
+      const packet = createBrowserPacket(33, 1, TYPE_PING, 'x');
+      const encoded = encodeBrowserPacket(packet);
+      const tampered = new Uint8Array(encoded);
+      // Flags byte is the fifth; the type occupies its low three bits.
+      tampered[4] = (tampered[4]! & 0b1111_1000) | 0x07;
+      tampered[4] = tampered[4]! | 0b0000_0111;
+      // 0x07 is the last declared type, so push one past it by setting a
+      // fourth type bit — which no declared type uses.
+      const outOfRange = new Uint8Array(tampered);
+      outOfRange[4] = 0xff;
+
+      expect(() => decodeBrowserPacket(outOfRange)).toThrow();
+      expect(() => decodeTitanPacket(Buffer.from(outOfRange))).toThrow();
+    });
+  });
+
   describe('Flag Compatibility', () => {
     it('should maintain all flag bits correctly', () => {
       const browserPacket = createBrowserPacket(9, 1, TYPE_CALL, 'test');

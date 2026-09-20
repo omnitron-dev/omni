@@ -129,12 +129,34 @@ export const encodePacket = (packet: Packet): Uint8Array => {
  * @example
  * const packet = decodePacket(receivedBuffer);
  */
-export const decodePacket = (buf: Uint8Array | ArrayBuffer): Packet => {
-  // Convert to Buffer for SmartBuffer.wrap
+/** Matches the server's `DEFAULT_MAX_PACKET_SIZE` — one wire, one bound. */
+export const DEFAULT_MAX_PACKET_SIZE = 16 * 1024 * 1024;
+/** An id (4 bytes) and a flags byte: the smallest thing that can be a packet. */
+export const MIN_PACKET_SIZE = 5;
+
+export const decodePacket = (
+  buf: Uint8Array | ArrayBuffer,
+  maxSize: number = DEFAULT_MAX_PACKET_SIZE,
+): Packet => {
   const bufferInput = buf instanceof Uint8Array ? Buffer.from(buf) : buf;
 
-  // Validate minimum packet size (4 bytes ID + 1 byte flags)
-  const MIN_PACKET_SIZE = 5;
+  // An upper bound, which this copy did not have.
+  //
+  // The server's `decodePacket` (`titan/src/netron/packet/index.ts`) has
+  // refused an oversized frame all along, with `maxPacketSize` threaded
+  // through its transports. This side — the one reading frames off a socket
+  // the page does not control — had only a LOWER bound, so a peer could hand
+  // a browser tab a frame of any size and it would allocate for it.
+  //
+  // Two copies of one decoder, each carrying half the guard: that side now
+  // checks the minimum size and the type range this side already checked.
+  if (bufferInput.byteLength > maxSize) {
+    throw SerializationError.decode(
+      buf,
+      new Error(`Packet exceeds maximum allowed size: ${bufferInput.byteLength} > ${maxSize}`),
+    );
+  }
+
   if (bufferInput.byteLength < MIN_PACKET_SIZE) {
     throw SerializationError.decode(
       buf,

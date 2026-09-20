@@ -104,6 +104,52 @@ export class ServiceRouter {
   }
 
   /**
+   * Expose a SINGLE process's service on the daemon Netron.
+   *
+   * `topology.expose` was implemented for pools only, and ignored in silence
+   * everywhere else: a process declaring it got no registration, no warning,
+   * and every consumer naming it in `topology.access` started without a
+   * proxy. Measured on priceverse, whose `collector` process is a single
+   * process and holds the only objects that know whether the exchange
+   * WebSockets are up — so the server process could not ask, and answered
+   * `ready: down — exchanges unavailable` while three of them were connected.
+   *
+   * The same proxy as a pool's, through the same `callExposedService` hop;
+   * what differs is only who is asked — one child rather than a pool that
+   * balances between several.
+   *
+   * `getProxy` is a function rather than the proxy itself because a child
+   * is replaced on restart: holding the object would route every later call
+   * into a dead process.
+   */
+  async exposeChildService(
+    processName: string,
+    serviceName: string,
+    serviceVersion: string,
+    getProxy: () => { callExposedService?: (...args: unknown[]) => Promise<unknown> } | null,
+    methodNames: string[]
+  ): Promise<void> {
+    const qualifiedName = serviceVersion ? `${serviceName}@${serviceVersion}` : serviceName;
+    await this.takeOverExisting(qualifiedName, processName);
+
+    const proxyInstance = this.createChildProxy(getProxy, serviceName, serviceVersion, methodNames);
+    await this.netron.peer.exposeService(proxyInstance);
+
+    this.services.set(qualifiedName, {
+      type: 'pool',
+      processName,
+      serviceName,
+      serviceVersion,
+      instance: proxyInstance,
+    });
+
+    this.logger.info(
+      { processName, qualifiedName, methods: methodNames.length },
+      'Child service exposed on daemon Netron via ServiceRouter'
+    );
+  }
+
+  /**
    * Drop any registration already standing under `qualifiedName`, on the
    * daemon and in this router, so the caller can register in its place.
    *
@@ -195,6 +241,56 @@ export class ServiceRouter {
    * The returned object has @Service metadata attached via Reflect,
    * so Netron's exposeService() treats it as a real service.
    */
+  /**
+   * The same shape as `createPoolProxy`, asking one child.
+   *
+   * Every note on that method applies here — the `callExposedService` hop,
+   * the plain-object `methods`/`properties` metadata that `Interface`
+   * indexes, the `{ type, arguments }` entries — and is not repeated; what
+   * this adds is that the child is looked up per call, because a restart
+   * replaces it.
+   */
+  private createChildProxy(
+    getProxy: () => { callExposedService?: (...args: unknown[]) => Promise<unknown> } | null,
+    serviceName: string,
+    serviceVersion: string,
+    methodNames: string[]
+  ): any {
+    const proto: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+
+    for (const method of methodNames) {
+      proto[method] = async (...args: unknown[]) => {
+        const child = getProxy();
+        if (!child?.callExposedService) {
+          // The process is down or between restarts. Said as an error the
+          // caller can read, rather than a `TypeError` naming a property.
+          throw new Error(
+            `${serviceName}.${method}: the process providing this service is not running`
+          );
+        }
+        return child.callExposedService(serviceName, method, args);
+      };
+    }
+
+    const DynamicRouterService = { [serviceName]: class {} }[serviceName]!;
+    Object.assign(DynamicRouterService.prototype, proto);
+
+    const metadata = {
+      name: serviceName,
+      version: serviceVersion,
+      description: `ServiceRouter proxy for process '${serviceName}'`,
+      methods: {} as Record<string, { type: string; arguments: unknown[] }>,
+      properties: {} as Record<string, unknown>,
+      events: [],
+    };
+    for (const method of methodNames) {
+      metadata.methods[method] = { type: 'Promise', arguments: [] };
+    }
+    Reflect.defineMetadata(SERVICE_ANNOTATION, metadata, DynamicRouterService);
+
+    return new DynamicRouterService();
+  }
+
   private createPoolProxy(
     pool: ProcessPool<unknown>,
     serviceName: string,

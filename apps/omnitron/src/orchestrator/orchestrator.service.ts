@@ -2081,6 +2081,106 @@ export class OrchestratorService extends EventEmitter {
 
     // Now start — events will be captured correctly
     await supervisor.start();
+
+    // Step 4: register the single processes that declare `topology.expose`.
+    //
+    // This was a pool-only feature, ignored in silence everywhere else: a
+    // process declaring `expose: true` got no registration and no warning,
+    // and every consumer naming it in `topology.access` started without a
+    // proxy. Measured on priceverse, whose `collector` is a single process
+    // holding the only objects that know whether the exchange WebSockets are
+    // up — the server process could not ask, and answered `ready: down —
+    // exchanges unavailable` while three were connected.
+    //
+    // After `supervisor.start()` because there is no child to ask before it.
+    // A consumer among these children may therefore start before the service
+    // is registered; consumers re-resolve their proxy on use for exactly that
+    // reason (see priceverse's `OhlcvSchedulerService`).
+    await this.exposeChildTopologyServices(entry, supervisor, serviceRouter, singleEntries);
+  }
+
+  /**
+   * Register each single process's `@Service` classes on the daemon.
+   *
+   * Mirrors the pool path above, including its poll: a child reports ready
+   * before its Application has started, and `@Service` classes are exposed to
+   * Netron during start, so asking once asks a process that is still booting
+   * and gets an empty list back.
+   */
+  private async exposeChildTopologyServices(
+    entry: IEcosystemAppEntry,
+    supervisor: { getChildProxy(name: string): any },
+    serviceRouter: ServiceRouter,
+    singleEntries: Array<{ name: string; topology?: { expose?: boolean } }>,
+  ): Promise<void> {
+    for (const procEntry of singleEntries) {
+      if (procEntry.topology?.expose !== true) continue;
+
+      const childName = `${entry.name}/${procEntry.name}`;
+      const getProxy = () => supervisor.getChildProxy(childName);
+
+      try {
+        const usable = (list: Array<{ methods: string[] }> | undefined) =>
+          Array.isArray(list) && list.length > 0 && list.some((svc) => svc.methods?.length > 0);
+
+        const ask = async () => {
+          const child = getProxy();
+          if (!child?.getExposedServices) return undefined;
+          return (await child.getExposedServices()) as Array<{
+            name: string;
+            version?: string;
+            methods: string[];
+          }>;
+        };
+
+        let services = await ask();
+        const deadline = Date.now() + TOPOLOGY_EXPOSE_TIMEOUT_MS;
+        while (!usable(services) && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, TOPOLOGY_EXPOSE_POLL_MS));
+          services = await ask();
+        }
+
+        if (!usable(services)) {
+          this.logger.warn(
+            {
+              app: entry.name,
+              process: procEntry.name,
+              waitedMs: TOPOLOGY_EXPOSE_TIMEOUT_MS,
+              reported: services?.map((svc) => `${svc.name}(${svc.methods?.length ?? 0})`) ?? [],
+            },
+            'No usable @Service found on this process — topology.expose has no effect, and any ' +
+              'process declaring topology.access on it will start without a proxy',
+          );
+          continue;
+        }
+
+        for (const svc of services ?? []) {
+          if (svc.methods.length === 0) {
+            this.logger.warn(
+              { app: entry.name, process: procEntry.name, service: svc.name },
+              'Process service exposes no methods — not registered on the daemon',
+            );
+            continue;
+          }
+          await serviceRouter.exposeChildService(
+            procEntry.name,
+            svc.name,
+            svc.version ?? '1.0.0',
+            getProxy,
+            svc.methods,
+          );
+          this.logger.info(
+            { app: entry.name, process: procEntry.name, service: svc.name, methods: svc.methods.length },
+            'Auto-discovered and exposed process service on daemon Netron',
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          { app: entry.name, process: procEntry.name, error: (err as Error).message },
+          "Failed to auto-discover/expose this process's services",
+        );
+      }
+    }
   }
 
   /**

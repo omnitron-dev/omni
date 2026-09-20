@@ -94,7 +94,7 @@ import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig,
-  IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
+  IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer,
 } from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
@@ -102,7 +102,7 @@ import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './m
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
 import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
 
-export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState } from './nodes.js';
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer } from './nodes.js';
 
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
@@ -544,6 +544,16 @@ export interface IOmnitronNodesService {
   getNodeRelayStats(data: { nodeId: string }): Promise<INodeRelayStats>;
   /** Which node this node believes is the leader — a split brain is only visible across nodes. */
   getNodeClusterState(data: { nodeId: string }): Promise<INodeClusterState>;
+  /**
+   * What the node's own daemon says it is running, asked over the mesh.
+   *
+   * The fleet commands dial `host:9700` themselves, which a hardened node
+   * does not answer — that is the reason the mesh tunnels over SSH. These
+   * three put the same questions through the connection that works.
+   */
+  getNodeDaemonStatus(data: { nodeId: string }): Promise<INodeDaemonAnswer<DaemonStatusDto>>;
+  getNodeDaemonHealth(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedHealthDto>>;
+  getNodeDaemonMetrics(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedMetricsDto>>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;

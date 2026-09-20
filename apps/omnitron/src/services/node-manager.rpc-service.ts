@@ -27,7 +27,8 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer } from '../shared/dto/nodes.js';
+import type { DaemonStatusDto, AggregatedHealthDto, AggregatedMetricsDto } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
@@ -374,6 +375,50 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return r.ok
       ? { nodeId: data.nodeId, reachable: true, error: null, status: r.value?.status ?? null, indicators: r.value?.indicators ?? {} }
       : { nodeId: data.nodeId, reachable: false, error: r.error, status: null, indicators: {} };
+  }
+
+  /**
+   * What the node's own daemon reports, asked over the mesh.
+   *
+   * `fleet status`, `fleet health` and `fleet metrics` each dial
+   * `host:9700` and ask `OmnitronDaemon` from the CLI. A node whose daemon
+   * port is not open to this master answers nothing — which is the normal
+   * state of a hardened server and the whole reason the mesh tunnels over
+   * SSH. Measured on the test node while it was running six apps with every
+   * port listening:
+   *
+   *     SERVER     HOST                 STATUS   APPS
+   *     daos-test  37.27.130.185:9700   offline  0
+   *
+   * Three methods rather than one relay taking a service name: a viewer may
+   * ask a node what it is running, and may not use this master as a proxy for
+   * arbitrary calls into it.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeDaemonStatus(data: { nodeId: string }): Promise<INodeDaemonAnswer<DaemonStatusDto>> {
+    return this.daemonAnswer<DaemonStatusDto>(data.nodeId, 'status', []);
+  }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeDaemonHealth(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedHealthDto>> {
+    return this.daemonAnswer<AggregatedHealthDto>(data.nodeId, 'getHealth', [{}]);
+  }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeDaemonMetrics(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedMetricsDto>> {
+    return this.daemonAnswer<AggregatedMetricsDto>(data.nodeId, 'getMetrics', [{}]);
+  }
+
+  /** One of the three questions above, put through `askNode`. */
+  private async daemonAnswer<T>(
+    nodeId: string,
+    method: 'status' | 'getHealth' | 'getMetrics',
+    args: unknown[],
+  ): Promise<INodeDaemonAnswer<T>> {
+    const r = await this.askNode<T>(nodeId, 'OmnitronDaemon', method, args, null);
+    return r.ok
+      ? { nodeId, reachable: true, error: null, answer: r.value ?? null }
+      : { nodeId, reachable: false, error: r.error, answer: null };
   }
 
   /**

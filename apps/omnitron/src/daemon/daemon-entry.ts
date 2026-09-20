@@ -77,11 +77,31 @@ async function main() {
     auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },
   };
 
+  // A node does not watch.
+  //
+  // Watch mode is what puts the orchestrator in `devMode`, and `devMode` is
+  // what makes it build every bootstrap app with esbuild and then WATCH the
+  // result. On a developer's machine that is the whole point. On a node it
+  // is the opposite: nobody edits sources there, the only thing that
+  // rewrites them is a deployment, and a deployment restarts what it
+  // deployed — so the watcher's every firing is a second restart fighting
+  // the first.
+  //
+  // Measured on the test node during a routine redeploy, in its own log:
+  //
+  //     esbuild rebuild detected — restarting        ×36
+  //     Max restarts exceeded                        (main, priceverse)
+  //     Crash restart task rejected
+  //
+  // The apps came up because the deployment then started them itself, which
+  // is how this stayed invisible: the end state was right and the path to
+  // it was a crash loop, indistinguishable in the log from a real one.
+  const isNode = dc.role === 'slave';
   const daemon = new OmnitronDaemon();
   await daemon.start(config, {
     noInfra: env.OMNITRON_NO_INFRA,
-    noWatch: env.OMNITRON_NO_WATCH,
-    watch: !env.OMNITRON_NO_WATCH,
+    noWatch: env.OMNITRON_NO_WATCH || isNode,
+    watch: !env.OMNITRON_NO_WATCH && !isNode,
   }, dc);
 }
 

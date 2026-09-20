@@ -202,6 +202,14 @@ export class ArtifactBuilder {
 
     // 1. Build TypeScript
     if (!options?.skipBuild) {
+      // Said before it starts, not after. Compiling one app takes minutes on
+      // a loaded machine, it writes nothing of its own, and it is the FIRST
+      // thing a deployment does — so the daemon log went silent between
+      // `Starting remote stack` and the first `packing` line, for six apps
+      // in a row, which reads exactly like a hang. Measured during one: `tsc`
+      // for a single app at four and a half minutes, with nothing in the log
+      // to say so.
+      this.logger?.info(`building ${entry.name}`);
       await this.runBuild(appDir, entry.name);
     }
 

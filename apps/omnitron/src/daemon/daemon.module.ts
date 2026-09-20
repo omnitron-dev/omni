@@ -575,9 +575,12 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any) =>
-            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN],
+          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any, secrets: SecretsService) =>
+            // `syncService` has never been passed here; `secrets` is what a
+            // stack's service overrides name their credentials with, and
+            // without it a deployed app is handed `<secret:…>` as a password.
+            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet, undefined, secrets),
+          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN, SECRETS_SERVICE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any] : [[

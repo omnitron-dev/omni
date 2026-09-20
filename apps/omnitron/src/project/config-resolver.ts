@@ -228,6 +228,7 @@ export async function resolveServiceSecretsAsync(
 export function resolveCustomServiceEnv(
   requirement: IServiceRequirement,
   address: IResolvedServiceAddress,
+  networkMode?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {};
 
@@ -235,6 +236,21 @@ export function resolveCustomServiceEnv(
     let value = template;
 
     value = value.replace(/\$\{host\}/g, address.host);
+
+    // The chain this stack is actually on.
+    //
+    // `networkMode` used to reach only `docker.variants`, so a stack that
+    // redirected an app to an external MAINNET daemon still handed it the
+    // network its own declaration named. Measured on the test node, where
+    // the stack says `mainnet` for both chains:
+    //
+    //     BITCOIN_RPC_URL  http://192.168.100.2:8332   (mainnet)
+    //     BITCOIN_NETWORK  regtest
+    //
+    // An application that believes it is on regtest while talking to mainnet
+    // gets address validation, confirmation depths and fee policy wrong, and
+    // every one of those is somebody's money.
+    value = value.replace(/\$\{network\}/g, networkMode ?? requirement.networkMode ?? '');
 
     value = value.replace(/\$\{port:(\w[\w-]*)\}/g, (_match, portName: string) =>
       String(address.ports[portName] ?? requirement.ports[portName] ?? '')
@@ -461,7 +477,11 @@ export function resolveStack(
           }
 
           // Generate env vars from templates and merge into resolved config
-          const serviceEnv = resolveCustomServiceEnv(requirement, address);
+          const serviceEnv = resolveCustomServiceEnv(
+            requirement,
+            address,
+            override?.networkMode ?? requirement.networkMode,
+          );
           if (!resolved['_customEnv']) resolved['_customEnv'] = {};
           Object.assign(resolved['_customEnv'] as Record<string, string>, serviceEnv);
         }

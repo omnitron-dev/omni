@@ -26,6 +26,7 @@ import {
   DashboardBuilderIcon,
   StacksIcon,
   ServerIcon,
+  AuditIcon,
   LogoutIcon,
 } from 'src/assets/icons';
 
@@ -84,6 +85,7 @@ function useNavData(): LayoutNavData {
           subheader: 'System',
           items: [
             { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
+            { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
             { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
           ],
         },
@@ -127,6 +129,7 @@ function useNavData(): LayoutNavData {
         items: [
           { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> },
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
+          { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
           { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
         ],
       },

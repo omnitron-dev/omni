@@ -104,6 +104,21 @@ export interface GatewayServiceConfig {
    * ones, and neither is guessable from the gateway's own config.
    */
   staticDir?: string;
+  /**
+   * Environment for building `staticDir`, when the deployment finds it stale.
+   *
+   * A frontend build can refuse to guess. The daos portal does exactly that:
+   *
+   *     VITE_AUTH_TRANSPORT must be set explicitly for a production build.
+   *       cookie — HttpOnly cookies, nothing in browser storage …
+   *
+   * — and it is right to, because the choice is compiled into the bundle and
+   * a wrong guess is an auth mode nobody asked for. A `.env.development`
+   * answers it for `vite dev` and there is no production counterpart, so the
+   * deployment has to say. The stack is where it belongs: which build a node
+   * serves is the stack's decision, and so is how that build is made.
+   */
+  staticEnv?: Record<string, string>;
   /** Redis DB index for gateway state — auto-allocated by omnitron (set internally, NOT in user config) */
   redisDb?: number;
   /** Auto-generated from app transport definitions if not specified */

@@ -1548,11 +1548,21 @@ export class ProjectService extends EventEmitter {
     // the gateway as a preset service or through the legacy top-level block,
     // and reading only one is how `serviceOverrides` was honoured for half
     // the services in this codebase once already.
-    const legacy = (infrastructure as { gateway?: { staticDir?: string } }).gateway;
-    const preset = (infrastructure as { services?: Record<string, { config?: { staticDir?: string } }> })
-      .services?.['gateway'];
+    const legacy = (infrastructure as { gateway?: { staticDir?: string; staticEnv?: Record<string, string> } })
+      .gateway;
+    const preset = (
+      infrastructure as {
+        services?: Record<string, { config?: { staticDir?: string; staticEnv?: Record<string, string> } }>;
+      }
+    ).services?.['gateway'];
     const staticDir = preset?.config?.staticDir ?? legacy?.staticDir;
     if (!staticDir) return {};
+
+    // How to build it, when it turns out to be stale. See `staticEnv`.
+    const staticEnv =
+      (preset?.config as { staticEnv?: Record<string, string> } | undefined)?.staticEnv ??
+      (legacy as { staticEnv?: Record<string, string> } | undefined)?.staticEnv ??
+      {};
 
     const abs = staticDir.startsWith('/')
       ? staticDir
@@ -1580,11 +1590,17 @@ export class ProjectService extends EventEmitter {
             cwd: path.dirname(abs),
             timeout: 900_000,
             maxBuffer: 16 * 1024 * 1024,
+            env: { ...process.env, ...staticEnv },
           });
         } catch (err) {
           this.logger.error(
-            { dir: abs, error: (err as Error).message.slice(0, 300) },
-            'Could not rebuild the frontend — shipping the build that is there',
+            {
+              dir: abs,
+              error: (err as Error).message.slice(0, 800),
+              staticEnv: Object.keys(staticEnv),
+            },
+            'Could not rebuild the frontend — shipping the build that is there. ' +
+              'A build that refuses to guess needs `staticEnv` on the gateway service.',
           );
         }
       }

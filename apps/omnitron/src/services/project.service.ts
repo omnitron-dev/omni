@@ -1266,8 +1266,27 @@ export class ProjectService extends EventEmitter {
           : {}),
         ...(project ? { cwd: project.path } : {}),
         env: {
-          ...entry.env,
+          // Derived first, stated second. `infraEnv` is COMPUTED from the
+          // stack's configuration; `entry.env` is WRITTEN — by a developer
+          // in the project config, or, on a node, by the master that
+          // provisioned the services and read their credentials back from
+          // the machine they run on.
+          //
+          // The other order made the computed value win, and on a node the
+          // computation has nothing to compute from: the generated config
+          // carries no `infrastructure` block, so `resolveStackAddresses`
+          // ends at its literal and overwrote a correct
+          // `postgres://postgres:<43-char secret>@…` with
+          // `postgres://postgres:postgres@…`. The apps then failed with
+          // `password authentication failed for user "postgres" (28P01)`
+          // against credentials that had been handed to them correctly and
+          // thrown away one line later.
+          //
+          // It also meant an operator could not override a computed address
+          // at all, which is not a thing a config system should refuse.
+          // `stackConfig.settings.env` still wins over both, as it did.
           ...infraEnv,
+          ...entry.env,
           ...stackConfig.settings?.env,
           OMNITRON_PROJECT: projectName,
           OMNITRON_STACK: stackName,

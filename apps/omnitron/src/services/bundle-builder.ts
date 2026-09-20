@@ -743,6 +743,75 @@ export async function archiveBundle(bundleDir: string, archivePath: string): Pro
   return resolved;
 }
 
+/** The package omnitron itself is — what a node's own upgrade is built from. */
+const OMNITRON_PACKAGE = '@omnitron-dev/omnitron';
+
+/**
+ * Where one build of omnitron's own bundle is staged.
+ *
+ * Under the temporary directory and named by the caller's label, so that the
+ * console upgrading one node and a `fleet upgrade` running in a terminal
+ * never stage into each other's directory.
+ */
+export function ownBundleStaging(label: string): string {
+  return path.join(os.tmpdir(), `omnitron-bundle-${label}`);
+}
+
+/** A built bundle of omnitron itself, ready to be packed and installed. */
+export interface OwnBundle {
+  /** `0.2.0+local.<sha>.<stamp>` — what the node will report once it runs this. */
+  readonly version: string;
+  /** Whether the tree it was built from had uncommitted changes. */
+  readonly dirty: boolean;
+  /** Pack it for transfer. The same archive, however often this is called. */
+  pack(): Promise<string>;
+  /** Remove the staging tree and the archive. Safe to call more than once. */
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Build omnitron from a working tree, for installing on a node.
+ *
+ * Two callers do this — `omnitron fleet upgrade` from a terminal, and the
+ * daemon when the console asks — and each used to write it out: the package
+ * name, the staging path, the `buildBundle`/`archiveBundle` pair. The copies
+ * had already drifted, in the way copies do: the daemon removed its staging
+ * tree in a `finally`, and the CLI left several hundred megabytes in the
+ * temporary directory on every run, including every `--dry-run` that shipped
+ * nothing at all.
+ *
+ * Packing is separate from building because a dry run wants the version and
+ * not the tarball.
+ */
+export async function buildOwnBundle(options: {
+  readonly workspaceRoot: string;
+  /** What distinguishes this build's staging directory from another's. */
+  readonly label: string;
+  readonly logger?: { info(message: string): void };
+}): Promise<OwnBundle> {
+  const staging = ownBundleStaging(options.label);
+  const archivePath = `${staging}.tar.gz`;
+  const built = await buildBundle({
+    workspaceRoot: options.workspaceRoot,
+    rootPackage: OMNITRON_PACKAGE,
+    outDir: staging,
+    ...(options.logger ? { logger: options.logger } : {}),
+  });
+
+  let packed: Promise<string> | null = null;
+  return {
+    version: built.metadata.version,
+    dirty: built.metadata.dirty,
+    pack: () => (packed ??= archiveBundle(built.outDir, archivePath)),
+    cleanup: async () => {
+      // The staging tree is hundreds of megabytes; leaving it behind fills
+      // the temporary directory one upgrade at a time.
+      await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      await fs.promises.rm(archivePath, { force: true }).catch(() => undefined);
+    },
+  };
+}
+
 // =============================================================================
 // Installing a bundle on a machine
 // =============================================================================

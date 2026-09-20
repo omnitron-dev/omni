@@ -20,7 +20,7 @@
  * every "cannot tell" answers `deploy`.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,6 +46,22 @@ import {
   ARTIFACT_CHECKSUM_FILE,
   NODE_CONFIG_HASH_FILE,
 } from '../../src/services/redeploy-decision.js';
+
+/**
+ * A directory to build a bundle out of, removed when the file is done.
+ *
+ * Tests that leave their trees behind are how a temporary directory fills
+ * up: this file alone makes a dozen per run.
+ */
+const made: string[] = [];
+const scratch = (prefix: string): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  made.push(dir);
+  return dir;
+};
+afterAll(() => {
+  for (const dir of made) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 const SHA = 'a'.repeat(64);
 const OTHER = 'b'.repeat(64);
@@ -230,7 +246,7 @@ describe('the deployment wires both halves', () => {
  */
 describe('an artifact is identified by what it ships, not when it was packed', () => {
   const tree = (files: Record<string, string>): string => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-bundle-id-'));
+    const dir = scratch('omnitron-bundle-id-');
     for (const [rel, body] of Object.entries(files)) {
       const full = path.join(dir, rel);
       fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -336,7 +352,7 @@ describe('an artifact is identified by what it ships, not when it was packed', (
  * it depends on.
  */
 describe('what makes a bundle new', () => {
-  const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-skip-'));
+  const tmp = (): string => scratch('omnitron-skip-');
 
   it('leaves the build record out of the identity', async () => {
     const a = tmp();
@@ -422,7 +438,7 @@ describe('what makes a bundle new', () => {
  */
 describe('the name a build gives itself', () => {
   const bundleOf = (manifest: Record<string, unknown>, extra?: Record<string, string>): string => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-version-'));
+    const dir = scratch('omnitron-version-');
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
     for (const [rel, body] of Object.entries(extra ?? {})) {
       const full = path.join(dir, rel);
@@ -457,7 +473,7 @@ describe('the name a build gives itself', () => {
   });
 
   it('hashes a manifest it cannot read as the bytes it is', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-version-'));
+    const dir = scratch('omnitron-version-');
     fs.writeFileSync(path.join(dir, 'package.json'), '{ this is not json');
 
     await expect(bundleChecksum(dir, rules)).resolves.toMatch(/^[0-9a-f]{64}$/);

@@ -23,7 +23,6 @@
  */
 
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -117,21 +116,22 @@ export class NodeUpgradeService {
   }
 
   private async run(nodeId: string, nodeName: string, workspace: string): Promise<void> {
-    const staging = path.join(os.tmpdir(), `omnitron-bundle-${process.pid}-${nodeId.slice(0, 8)}`);
     let version: string | null = null;
+    let bundle: import('./bundle-builder.js').OwnBundle | null = null;
 
     try {
-      const { buildBundle, archiveBundle } = await import('./bundle-builder.js');
-      const built = await buildBundle({
+      const { buildOwnBundle } = await import('./bundle-builder.js');
+      bundle = await buildOwnBundle({
         workspaceRoot: workspace,
-        rootPackage: '@omnitron-dev/omnitron',
-        outDir: staging,
+        // One directory per node, because two consoles may be upgrading two
+        // nodes from this daemon at the same moment.
+        label: `${process.pid}-${nodeId.slice(0, 8)}`,
         logger: this.logger,
       });
-      version = built.metadata.version;
+      version = bundle.version;
       this.emit(nodeId, 'transferring', 40, `Built ${version} — transferring`, version);
 
-      const archive = await archiveBundle(built.outDir, `${staging}.tar.gz`);
+      const archive = await bundle.pack();
       const target = await this.toTarget(nodeId);
 
       const installed = await this.deployer().installBundle(target, archive, version);
@@ -160,10 +160,7 @@ export class NodeUpgradeService {
       this.emit(nodeId, 'failed', 0, message, version);
       this.logger.error({ node: nodeName, nodeId, error: message }, 'Node upgrade failed');
     } finally {
-      // The staging tree is hundreds of megabytes; leaving it behind fills
-      // /tmp one upgrade at a time.
-      await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => undefined);
-      await fs.promises.rm(`${staging}.tar.gz`, { force: true }).catch(() => undefined);
+      await bundle?.cleanup();
     }
   }
 

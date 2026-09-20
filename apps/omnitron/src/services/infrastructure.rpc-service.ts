@@ -7,7 +7,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
-import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
@@ -484,7 +484,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     return { settled, failed, refusals };
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getState(): Promise<InfrastructureState | null> {
     const infra = this.getInfra();
     return infra ? infra.getState() : null;
@@ -507,12 +507,31 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * one that did the provisioning — and it is the same call the CLI makes,
    * which is what stops the two from disagreeing again.
    */
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async listContainers(): Promise<ContainerState[]> {
     return listManagedContainers();
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  /**
+   * The credentials a service was provisioned with.
+   *
+   * `CONTROL_PLANE_ROLES`, not `VIEWER_ROLES`, and the change is a
+   * tightening as well as a widening. This method returns `password`,
+   * `accessKey` and `secretKey` — the platform's own database password among
+   * them — and it sat in the READ-ONLY HUMAN tier, so any account that could
+   * look at a dashboard could read them. A viewer is someone allowed to see
+   * that a service is healthy, not someone allowed to connect to it as its
+   * owner.
+   *
+   * `service_role` is in the set because a master needs this about the nodes
+   * it drives: the credentials are generated ON the node, by its own vault,
+   * so the node is the only place the answer exists. Without it the master
+   * could tell a node to provision a database and could not learn the
+   * password to give the applications it then deployed there — which is
+   * exactly what happened: six apps handed `postgres:postgres` against a
+   * 43-character generated secret.
+   */
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null> {
     const infra = this.getInfra();
     if (!infra) return null;

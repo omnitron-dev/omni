@@ -76,5 +76,26 @@ export const OPERATOR_ROLES: OmnitronRole[] = ['admin', 'operator'];
  * `hasRole('service_role', 'viewer')` a question with an answer.
  */
 export const CONTROL_PLANE_ROLES: string[] = ['admin', 'operator', 'service_role'];
+
+/**
+ * A read a master may make about a node it drives.
+ *
+ * `VIEWER_ROLES` is the human hierarchy, and `service_role` is not in it —
+ * so a master could TELL a node to provision its infrastructure and could
+ * not ASK what it had provisioned. `provisionStack` answered; the read-only
+ * `getConnectionInfo` beside it answered `Missing required role`, from a
+ * node that had just authenticated the same credential for the strictly more
+ * powerful call.
+ *
+ * The docblock above predicted this exactly — "anything else the control
+ * plane asks a node to do needs it too, and spelling it out three times is
+ * how one of them ends up without it" — and it happened again on the reading
+ * half, which is why the reads now have a name of their own rather than a
+ * third hand-written list.
+ *
+ * Reads that hand out CREDENTIALS are not in here. They belong to
+ * `CONTROL_PLANE_ROLES`, where the human tier starts at operator.
+ */
+export const CONTROL_PLANE_READ_ROLES: string[] = ['admin', 'operator', 'viewer', 'service_role'];
 /** Roles that can administer (shutdown, secrets, backup) — admin only */
 export const ADMIN_ROLES: OmnitronRole[] = ['admin'];

@@ -265,7 +265,14 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async installBundleOnNode(data: { nodeId: string; archivePath: string; version: string }): Promise<boolean> {
     const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    return this.deployer().installBundle(target, data.archivePath, data.version);
+    const installed = await this.deployer().installBundle(target, data.archivePath, data.version);
+    await this.audit?.record({
+      action: 'node.bundle.install',
+      resourceType: 'node',
+      resourceId: data.nodeId,
+      details: { version: data.version, installed },
+    });
+    return installed;
   }
 
   /**
@@ -277,7 +284,23 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async activateBundleOnNode(data: { nodeId: string; version: string; keepVersions?: number }): Promise<boolean> {
     const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    return this.deployer().activateBundle(target, data.version, '/opt/omnitron', data.keepVersions ?? 3);
+    const activated = await this.deployer().activateBundle(
+      target,
+      data.version,
+      '/opt/omnitron',
+      data.keepVersions ?? 3,
+    );
+    // The one step that changes what a node SERVES, and the one an operator
+    // will want to find afterwards: `fleet upgrade` reaches it through this
+    // method, so every node upgrade lands in the trail whether it was asked
+    // for from the CLI or the console.
+    await this.audit?.record({
+      action: 'node.bundle.activate',
+      resourceType: 'node',
+      resourceId: data.nodeId,
+      details: { version: data.version, activated, keepVersions: data.keepVersions ?? 3 },
+    });
+    return activated;
   }
 
   /**

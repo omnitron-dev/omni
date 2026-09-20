@@ -203,6 +203,12 @@ describe('the actions worth recording are recorded', () => {
       ['addNode', 'node.add'],
       ['updateNode', 'node.update'],
       ['removeNode', 'node.remove'],
+      // `fleet upgrade` reaches a node through these two, so an upgrade
+      // lands in the trail whether it was asked for from the CLI or the
+      // console — and the activation is the step that changes what the node
+      // SERVES, which is the one an operator looks for afterwards.
+      ['installBundleOnNode', 'node.bundle.install'],
+      ['activateBundleOnNode', 'node.bundle.activate'],
     ] as const) {
       expect(bodyOf(src, method), method).toContain(`action: '${action}'`);
     }

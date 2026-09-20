@@ -493,6 +493,18 @@ export interface IOmnitronDiscoveryService {
 }
 
 /** Encrypted secret storage. */
+/**
+ * The audit trail — who changed this control plane and what they changed.
+ *
+ * Admin-only: the rows name people, resources and addresses.
+ */
+export interface IOmnitronAuditService {
+  list(data?: import('../../services/audit.service.js').AuditQuery): Promise<
+    import('../../services/audit.service.js').AuditRow[]
+  >;
+  available(): Promise<{ available: boolean }>;
+}
+
 export interface IOmnitronSecretsService {
   get(data: { key: string }): Promise<{ key: string; value: string | null }>;
   set(data: { key: string; value: string }): Promise<{ success: boolean }>;

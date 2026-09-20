@@ -39,6 +39,7 @@ import {
   TRACE_COLLECTOR_TOKEN,
   BACKUP_SERVICE_TOKEN,
   SECRETS_SERVICE_TOKEN,
+  AUDIT_SERVICE_TOKEN,
   TELEMETRY_RELAY_TOKEN,
   INFRASTRUCTURE_GATE_TOKEN,
   PROJECT_SERVICE_TOKEN,
@@ -63,6 +64,7 @@ import { PipelineService } from '../services/pipeline.service.js';
 import { TraceCollectorService } from '../services/trace-collector.service.js';
 import { BackupService } from '../services/backup.service.js';
 import { SecretsService } from '../services/secrets.service.js';
+import { AuditService } from '../services/audit.service.js';
 import { createTelemetryRelay } from '../services/telemetry.service.js';
 import { ProjectService } from '../services/project.service.js';
 import { SlaveStorageService } from '../services/slave-storage.service.js';
@@ -607,6 +609,19 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         INFRA_STATE_ACCESSOR_TOKEN,
         { useValue: () => ({}) },
+      ] as any] : []),
+
+      // The audit trail (master only — the table is in the omnitron
+      // database). Registered before the services that record into it so a
+      // reader of this file meets the writer first.
+      ...(!isSlave ? [[
+        AUDIT_SERVICE_TOKEN,
+        {
+          useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule) =>
+            new AuditService(loggerModule.logger, db),
+          inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
+          scope: Scope.Singleton,
+        },
       ] as any] : []),
 
       // Deploy service (master only). T-2 part 2 — useClass; the

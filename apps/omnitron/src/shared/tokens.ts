@@ -67,6 +67,13 @@ export const TRACE_COLLECTOR_TOKEN: Token<TraceCollectorService> = createToken<T
 export const BACKUP_SERVICE_TOKEN: Token<BackupService> = createToken<BackupService>('BackupService');
 /** Encrypted secrets storage */
 export const SECRETS_SERVICE_TOKEN: Token<SecretsService> = createToken<SecretsService>('SecretsService');
+
+/**
+ * The audit trail. Master-only: it writes to `omnitron_audit_log`, which is
+ * in the omnitron database, which a slave does not have.
+ */
+export const AUDIT_SERVICE_TOKEN: Token<import('../services/audit.service.js').AuditService> =
+  createToken<import('../services/audit.service.js').AuditService>('AuditService');
 /** Telemetry relay (store-and-forward pipeline) */
 export const TELEMETRY_RELAY_TOKEN: Token<TelemetryRelayService> = createToken<TelemetryRelayService>('TelemetryRelayService');
 

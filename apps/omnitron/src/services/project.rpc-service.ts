@@ -23,7 +23,18 @@ import type {
 
 @Service({ name: 'OmnitronProject' })
 export class ProjectRpcService {
-  constructor(private readonly projectService: ProjectService) {}
+  constructor(
+    private readonly projectService: ProjectService,
+    /**
+     * The audit trail, when this daemon has one.
+     *
+     * Optional so a daemon without the omnitron database still serves these
+     * methods — a stack start that cannot be recorded is still a stack
+     * start, and refusing it would make the audit trail an availability
+     * dependency of the control plane.
+     */
+    private readonly audit?: import('./audit.service.js').AuditService | undefined,
+  ) {}
 
   // ===========================================================================
   // Projects — Viewer
@@ -61,7 +72,14 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async addProject(data: { name: string; path: string }): Promise<IProjectInfo> {
-    return this.projectService.addProject(data.name, data.path);
+    const project = await this.projectService.addProject(data.name, data.path);
+    await this.audit?.record({
+      action: 'project.add',
+      resourceType: 'project',
+      resourceId: data.name,
+      details: { path: data.path },
+    });
+    return project;
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -72,6 +90,11 @@ export class ProjectRpcService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async removeProject(data: { name: string }): Promise<{ success: boolean }> {
     this.projectService.removeProject(data.name);
+    await this.audit?.record({
+      action: 'project.remove',
+      resourceType: 'project',
+      resourceId: data.name,
+    });
     return { success: true };
   }
 
@@ -133,15 +156,29 @@ export class ProjectRpcService {
   async startStack(data: { project: string; stack: string }): Promise<IStackInfo> {
     // The report an operator acts on, and a script exits on: `only 0/6 apps
     // came online` about six that were running.
-    return this.projectService.withRemoteAppStatuses(
+    const info = await this.projectService.withRemoteAppStatuses(
       data.project,
       await this.projectService.startStack(data.project, data.stack),
     );
+    await this.audit?.record({
+      action: 'stack.start',
+      resourceType: 'stack',
+      resourceId: `${data.project}/${data.stack}`,
+      details: { type: info.type, apps: info.apps.length, online: info.apps.filter((a) => a.status === 'online').length },
+    });
+    return info;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopStack(data: { project: string; stack: string }): Promise<IStackInfo> {
-    return this.projectService.stopStack(data.project, data.stack);
+    const info = await this.projectService.stopStack(data.project, data.stack);
+    await this.audit?.record({
+      action: 'stack.stop',
+      resourceType: 'stack',
+      resourceId: `${data.project}/${data.stack}`,
+      details: { type: info.type },
+    });
+    return info;
   }
 
   // ===========================================================================

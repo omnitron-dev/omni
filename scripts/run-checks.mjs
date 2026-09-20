@@ -49,6 +49,10 @@ const WORKLISTS = new Map([
     'destructive-sites',
     'every place omnitron deletes or overwrites, listed so the bound on each target is read by a person',
   ],
+  [
+    'a-build-older-than-its-source',
+    'a repository mid-change legitimately has sources ahead of artefacts; the list is what changes how other measurements read',
+  ],
 ]);
 
 /** Cannot run unattended. */

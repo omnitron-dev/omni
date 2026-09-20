@@ -163,14 +163,19 @@ export class StackInfrastructureManager {
     const gatewayInServices = normalizedServices?.['gateway'];
     const legacyGateway = stackInfraConfig.gateway;
     if ((gatewayInServices || legacyGateway) && projectRoot) {
-      const { resolveGateway } = await import('./service-resolver.js');
+      const { resolveGateway, containerEndpoint, REDIS_CONTAINER_PORT } = await import('./service-resolver.js');
       const gatewayRedisDb = portAlloc.redisDbEnd + 1;
       const redisPassword = typeof stackInfraConfig.redis?.password === 'string'
         ? stackInfraConfig.redis.password
         : undefined;
+      // Over the stack network, by container name. `host.docker.internal`
+      // and the host-published port sent the gateway out to the host and
+      // back, which a Linux node does not allow once the ports are bound to
+      // loopback — see `containerEndpoint`.
+      const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
       const redisConfig: { host: string; port: number; db: number; password?: string } = {
-        host: 'host.docker.internal',
-        port: portAlloc.redisPort,
+        host: endpoint.host,
+        port: endpoint.port,
         db: gatewayRedisDb,
       };
       if (redisPassword) redisConfig.password = redisPassword;

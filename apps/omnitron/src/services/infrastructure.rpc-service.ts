@@ -12,6 +12,7 @@ import type { InfrastructureService } from '../infrastructure/infrastructure.ser
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
+import { containerEndpoint, REDIS_CONTAINER_PORT } from '../infrastructure/service-resolver.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 import {
@@ -278,13 +279,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const staticRoots = await this.acceptStaticRoots(data.staticRoots);
     if (configRoots.size > 0) {
       // The gateway proxies through Redis for maintenance state, and its
-      // resolver needs to know where that is. On a node it is the same Redis
-      // this stack just provisioned, reached over the docker host bridge —
-      // the address the gateway's own container will use, not this daemon's.
+      // resolver needs to know where that is. It is the same Redis this stack
+      // just provisioned, on the same network as the gateway — the address
+      // the gateway's own container will use, not this daemon's.
+      //
+      // This said `host.docker.internal` and the host-published port. A node
+      // publishes every managed port on 127.0.0.1, so that address goes out
+      // to the docker bridge and finds nothing: every gateway request paid a
+      // 200ms Redis timeout and the maintenance check failed open, on a
+      // machine where the two containers were two IPs apart on one network.
       const redisCfg = (config as { redis?: { port?: number; db?: number; password?: string } }).redis;
+      const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
       service.setConfigRoots(configRoots, staticRoots, {
-        host: 'host.docker.internal',
-        port: redisCfg?.port ?? 6379,
+        host: endpoint.host,
+        port: endpoint.port,
         db: (redisCfg?.db ?? 0) + 1,
         ...(redisCfg?.password ? { password: redisCfg.password } : {}),
       });

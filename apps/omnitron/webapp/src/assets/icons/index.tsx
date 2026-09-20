@@ -129,6 +129,36 @@ export const LogsIcon = (props?: SvgIconProps) => (
 );
 
 // ---------------------------------------------------------------------------
+// AuditIcon — a shield with a check: what was done, and by whom
+// ---------------------------------------------------------------------------
+
+export const AuditIcon = (props?: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path
+      fill="currentColor"
+      opacity="0.4"
+      d="M12 2L4 5V11C4 16 7.5 20.3 12 22C16.5 20.3 20 16 20 11V5L12 2Z"
+    />
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 2L4 5V11C4 16 7.5 20.3 12 22C16.5 20.3 20 16 20 11V5L12 2Z"
+    />
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9 11.5L11.2 13.7L15.2 9.7"
+    />
+  </SvgIcon>
+);
+
+// ---------------------------------------------------------------------------
 // 4. MetricsIcon — bar chart
 // ---------------------------------------------------------------------------
 

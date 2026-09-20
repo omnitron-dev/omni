@@ -31,6 +31,7 @@ import type {
   IOmnitronHealthService,
   IOmnitronDiscoveryService,
   IOmnitronSecretsService,
+  IOmnitronAuditService,
   IOmnitronNodesService,
   IOmnitronMetricsService,
   IProjectRpcService,
@@ -57,6 +58,7 @@ export interface OmnitronConsoleSchema extends BackendSchema {
     OmnitronHealth: IOmnitronHealthService;
     OmnitronDiscovery: IOmnitronDiscoveryService;
     OmnitronSecrets: IOmnitronSecretsService;
+    OmnitronAudit: IOmnitronAuditService;
     OmnitronProject: IProjectRpcService;
     OmnitronSystemInfo: IOmnitronSystemInfoService;
     OmnitronNodes: IOmnitronNodesService;
@@ -228,6 +230,9 @@ export const discovery = daemonClient.daemon.OmnitronDiscovery;
 
 /** Secrets management */
 export const secrets = daemonClient.daemon.OmnitronSecrets;
+
+/** Who changed this control plane, and what they changed. Admin-only. */
+export const audit = daemonClient.daemon.OmnitronAudit;
 
 /** Project + Stack management */
 export const project = daemonClient.daemon.OmnitronProject;

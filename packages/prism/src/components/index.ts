@@ -510,6 +510,8 @@ export {
   Editor,
   editorClasses,
   resolveToolbar,
+  DEFAULT_EDITOR_LABELS,
+  type EditorLabels,
   type EditorProps,
   type ToolbarPreset,
   type ToolbarItem as EditorToolbarItem,

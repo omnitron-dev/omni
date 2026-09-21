@@ -135,10 +135,57 @@ describe('a bundle is unpacked only when it arrived whole', () => {
   });
 
   it('sends nothing when the node already has this build', async () => {
-    const { svc, uploadFile } = deployer((cmd) => (cmd.includes('test -d') ? 'yes' : ''));
+    // `test -s …delivered && test -d …` — both, answered together.
+    const { svc, uploadFile } = deployer((cmd) => (cmd.includes('.delivered') ? 'yes' : ''));
     const out = await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT);
     expect(out.bytes).toBe(0);
     expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('does not mistake a directory a failed unpack left behind for a bundle', async () => {
+    // What actually happened: `mkdir -p` succeeded, the transfer landed
+    // short, `tar` died on the truncated stream. The directory existed and
+    // held nothing. A check that asks «is the directory there» answers yes
+    // to that, and the next deployment reports a saved transfer where there
+    // is a missing portal.
+    const asked: string[] = [];
+    const { svc, uploadFile } = deployer((cmd) => {
+      asked.push(cmd);
+      // The node's honest answer: the directory is there, the record is not.
+      if (cmd.includes('.delivered')) return 'no';
+      if (cmd.includes('sha256sum')) return `${'a'.repeat(64)}  x`;
+      return '';
+    });
+    await expect(svc.uploadStaticBundle(TARGET, dirToServe(), ROOT)).rejects.toThrow(/corrupt/);
+    // It did not skip: it went and transferred.
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    // And it cleared the leftovers first rather than unpacking onto them.
+    expect(asked.some((c) => c.startsWith('rm -rf') && c.includes('.delivered'))).toBe(true);
+  });
+
+  it('writes the record only after the unpack, and last', async () => {
+    const asked: string[] = [];
+    const svc: any = Object.create(RemoteDeployer.prototype);
+    Object.assign(svc, {
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      execution: {
+        exec: async (cmd: string) => { execSync(cmd, { stdio: 'pipe' }); return { exitCode: 0, stdout: '', stderr: '' }; },
+        uploadFile: vi.fn(async () => {}),
+      },
+      sshExec: async (_t: unknown, cmd: string) => {
+        asked.push(cmd);
+        if (cmd.includes('.delivered') && cmd.startsWith('test')) return 'no';
+        if (cmd.includes('sha256sum')) return `${digestAskedFor(asked)}  x`;
+        return '';
+      },
+    });
+
+    await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT);
+    const extractAt = asked.findIndex((c) => c.includes('tar -xzf'));
+    const recordAt = asked.findIndex((c) => c.startsWith('printf'));
+    expect(extractAt).toBeGreaterThan(-1);
+    // A record that can outlive a failed unpack is the defect, not the fix.
+    expect(recordAt).toBeGreaterThan(extractAt);
   });
 
   it('packs without the macOS attributes that buried the last failure', async () => {

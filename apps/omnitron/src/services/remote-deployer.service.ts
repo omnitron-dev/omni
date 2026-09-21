@@ -1575,8 +1575,37 @@ export class RemoteDeployer {
 
       // Already there: the same build was sent before. Transferring it again
       // costs 32 MB over a link that may be an SSH tunnel, for no change.
-      const exists = await this.sshExec(target, `test -d ${shellEscape(remoteDir)} && echo yes || echo no`).catch(() => 'no');
+      //
+      // The question is «is the BUNDLE there», and `test -d` answered «is
+      // the DIRECTORY there» — two different statements, and the first
+      // deployment made them disagree. `mkdir -p` had succeeded, the
+      // transfer had landed short, and `tar` had died on the truncated
+      // stream: the directory existed, holding nothing or part of a tree.
+      // The next run would have seen it, answered «the node already has
+      // this build», and skipped the delivery — reporting a saved transfer
+      // where there was a missing portal. (omni-74 saw this coming before
+      // the second attempt reached the step.)
+      //
+      // So readiness is a RECORD, written last, exactly as the app
+      // artifacts do it with `.artifact-sha256`: a marker that cannot
+      // outlive a failed unpack because it is written after one succeeds.
+      //
+      // Not `test -s index.html` either, which was the first idea: that is
+      // a sign the CONTENT is present, and half a tree contains an
+      // index.html too. The marker is a sign the OPERATION completed.
+      // (omni-74 drew that distinction.)
+      // It sits beside the directory rather than inside it — everything
+      // inside is served to anyone who asks.
+      const marker = `${remoteDir}.delivered`;
+      const exists = await this.sshExec(
+        target,
+        `test -s ${shellEscape(marker)} && test -d ${shellEscape(remoteDir)} && echo yes || echo no`,
+      ).catch(() => 'no');
       if (exists.trim() === 'yes') return { remoteDir, bytes: 0 };
+
+      // Whatever a previous attempt left half-written is not a starting
+      // point: unpacking onto it would merge two trees.
+      await this.sshExec(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(marker)}`).catch(() => undefined);
 
       await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
       await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
@@ -1607,6 +1636,8 @@ export class RemoteDeployer {
       }
 
       await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+      // Last, and only now: the unpack is what this records.
+      await this.sshExec(target, `printf %s ${shellEscape(digest)} > ${shellEscape(marker)}`);
 
       this.logger.info({ host: target.host, remoteDir, bytes }, 'Static bundle delivered to the node');
       return { remoteDir, bytes };

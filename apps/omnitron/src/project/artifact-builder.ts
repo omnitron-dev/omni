@@ -19,6 +19,7 @@
  */
 
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -26,6 +27,7 @@ import type { IEcosystemAppEntry } from '../config/types.js';
 import { isVendorableRange, type PackageManifest } from '../services/local-bundle.js';
 import { resolvePnpm, resolvePnpmForTests } from '../shared/pnpm.js';
 import { clearBuildInfo } from '../services/bundle-builder.js';
+import { decideBuild, buildRecordPath, type BuildDecision, type BuildRecord } from './build-decision.js';
 
 export { resolvePnpmForTests };
 
@@ -201,17 +203,28 @@ export class ArtifactBuilder {
     const artifactName = `${entry.name}-${version}.tar.gz`;
     const artifactPath = path.join(this.outputDir, artifactName);
 
-    // 1. Build TypeScript
+    // 1. Build TypeScript — unless this dist is already what these inputs
+    //    produce. See `decideBuild`; every unknown compiles.
     if (!options?.skipBuild) {
-      // Said before it starts, not after. Compiling one app takes minutes on
-      // a loaded machine, it writes nothing of its own, and it is the FIRST
-      // thing a deployment does — so the daemon log went silent between
-      // `Starting remote stack` and the first `packing` line, for six apps
-      // in a row, which reads exactly like a hang. Measured during one: `tsc`
-      // for a single app at four and a half minutes, with nothing in the log
-      // to say so.
-      this.logger?.info(`building ${entry.name}`);
-      await this.runBuild(appDir, entry.name);
+      const decision = await this.decideRebuild(appDir);
+      if (decision.action === 'reuse') {
+        this.logger?.info(`${entry.name}: ${decision.because}`);
+      } else {
+        // Said before it starts, not after. Compiling one app takes minutes on
+        // a loaded machine, it writes nothing of its own, and it is the FIRST
+        // thing a deployment does — so the daemon log went silent between
+        // `Starting remote stack` and the first `packing` line, for six apps
+        // in a row, which reads exactly like a hang. Measured during one: `tsc`
+        // for a single app at four and a half minutes, with nothing in the log
+        // to say so.
+        this.logger?.info(`building ${entry.name} — ${decision.because}`);
+        await this.runBuild(appDir, entry.name);
+        // After, and only after a build that returned: a record written
+        // before the compiler ran describes a dist that does not exist yet,
+        // and one written after a build that threw describes a dist that
+        // never will.
+        await this.recordBuild(appDir);
+      }
     }
 
     // 2. Verify dist/ exists
@@ -520,6 +533,71 @@ export class ArtifactBuilder {
       throw new ArtifactWithoutDependencies(appName, (err as Error).message, outputPath);
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Where this master keeps what it knows about builds it has run.
+   *
+   * Under the temporary directory, because losing it costs one compile and
+   * nothing else — and because the alternative is writing into a repository
+   * that belongs to the project being deployed.
+   */
+  private buildCacheDir(): string {
+    const dir = path.join(os.tmpdir(), 'omnitron-build-cache');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  private async decideRebuild(appDir: string): Promise<BuildDecision> {
+    const { buildInputsChecksum, bundleChecksum, linkedWorkspaceRoots } = await import(
+      '../services/bundle-builder.js'
+    );
+    const manifest = this.manifestOf(appDir);
+
+    const inputs = await buildInputsChecksum(appDir, {
+      ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+      ...(this.packCache ? { memo: this.packCache } : {}),
+    }).catch(() => null);
+
+    const distDir = path.join(appDir, 'dist');
+    const distChecksum = fs.existsSync(distDir) ? await bundleChecksum(distDir).catch(() => null) : null;
+
+    return decideBuild({ recorded: this.readBuildRecord(appDir), inputs, distChecksum });
+  }
+
+  /** What the last build of this app recorded, or nothing anybody can use. */
+  private readBuildRecord(appDir: string): BuildRecord | null {
+    try {
+      const raw = fs.readFileSync(buildRecordPath(this.buildCacheDir(), appDir), 'utf8');
+      const parsed = JSON.parse(raw) as Partial<BuildRecord>;
+      if (typeof parsed.inputs !== 'string' || typeof parsed.dist !== 'string') return null;
+      return { inputs: parsed.inputs, dist: parsed.dist };
+    } catch {
+      // No record, or one nobody can read: the caller compiles either way.
+      return null;
+    }
+  }
+
+  private async recordBuild(appDir: string): Promise<void> {
+    const { buildInputsChecksum, bundleChecksum, linkedWorkspaceRoots } = await import(
+      '../services/bundle-builder.js'
+    );
+    const manifest = this.manifestOf(appDir);
+    const distDir = path.join(appDir, 'dist');
+
+    try {
+      const inputs = await buildInputsChecksum(appDir, {
+        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+        ...(this.packCache ? { memo: this.packCache } : {}),
+      });
+      if (!inputs) return;
+      const record: BuildRecord = { inputs, dist: await bundleChecksum(distDir) };
+      fs.writeFileSync(buildRecordPath(this.buildCacheDir(), appDir), JSON.stringify(record) + '\n');
+    } catch (err) {
+      // A record that could not be written costs the next deployment one
+      // compile. It must not cost it the artifact it was building.
+      this.logger?.info(`${path.basename(appDir)}: could not record this build — ${(err as Error).message}`);
     }
   }
 

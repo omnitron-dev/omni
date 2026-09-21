@@ -494,6 +494,10 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
             `${(err as Error).message.slice(0, 300)}`,
         );
       }
+      // What this package hashed to a moment ago is no longer what it is:
+      // the build decision and the packing step both read that number.
+      options.packCache?.delete(dir);
+
       const still = staleDist(dir);
       if (still) {
         throw new Error(
@@ -633,6 +637,16 @@ export const withoutBuildVersion = {
     return Buffer.from(JSON.stringify(manifest));
   },
 };
+
+/**
+ * Build output, which is what a compiler produces and never what it reads.
+ *
+ * Matched on the whole last segment, so `dist-tools/` and
+ * `node_modules_shim.ts` are sources like any other.
+ */
+const BUILD_OUTPUT = new Set(['node_modules', 'dist', 'coverage', '.turbo', '.omnitron-build', '.git', '.cache']);
+export const withoutBuildOutput = (relativePath: string): boolean =>
+  BUILD_OUTPUT.has(relativePath.slice(relativePath.lastIndexOf('/') + 1));
 
 /**
  * Installed dependencies, which are not sources and are not packed.
@@ -811,6 +825,69 @@ export async function buildOwnBundle(options: {
     },
   };
 }
+
+/**
+ * Everything that decides what an application's compiler emits.
+ *
+ * The application's own sources, and every workspace package that travels
+ * with it — the same closure the bundle vendors, because a package whose
+ * code moved changes both what the app compiles against and what ships
+ * beside it. A dependency is read whole, sources and `dist` together: which
+ * of the two moved is not the question, only whether anything did.
+ *
+ * `null` for every answer that cannot be had — no workspace above the app, a
+ * manifest that will not parse, a plan that refuses. The caller compiles.
+ *
+ * `memo` is shared with the packing step, which asks the same question of
+ * the same directories; `buildBundle` drops an entry for any package it
+ * rebuilds, so nothing here outlives the state it measured.
+ */
+export async function buildInputsChecksum(
+  appDir: string,
+  options?: {
+    readonly additionalWorkspaceRoots?: readonly string[];
+    readonly memo?: Map<string, string>;
+  },
+): Promise<string | null> {
+  const workspaceRoot = findWorkspaceRoot(appDir);
+  if (!workspaceRoot) return null;
+
+  let manifest: PackageManifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8')) as PackageManifest;
+  } catch {
+    return null;
+  }
+  if (!manifest.name) return null;
+
+  const workspace = readWorkspaces([workspaceRoot, ...(options?.additionalWorkspaceRoots ?? [])]);
+  const plan = planBundle(manifest.name, workspace);
+  if (plan.refusal) return null;
+
+  const memo = options?.memo;
+  const readOnce = async (key: string, dir: string, skip: (rel: string) => boolean): Promise<string> => {
+    const seen = memo?.get(key);
+    if (seen) return seen;
+    const hash = await bundleChecksum(dir, { skip });
+    memo?.set(key, hash);
+    return hash;
+  };
+
+  const parts = [`app ${manifest.name} ${await readOnce(sourcesKey(appDir), appDir, withoutBuildOutput)}`];
+  for (const vendored of plan.vendored) {
+    const entry = workspace.get(vendored.name);
+    if (!entry) return null;
+    const dir = directoryOf(entry);
+    parts.push(`dep ${vendored.name}@${vendored.version} ${await readOnce(dir, dir, withoutNodeModules)}`);
+  }
+  parts.sort();
+
+  const { createHash } = await import('node:crypto');
+  return createHash('sha256').update(parts.join('\n')).digest('hex');
+}
+
+/** The memo key for an app's own sources, which are read without its output. */
+const sourcesKey = (appDir: string): string => `sources:${path.resolve(appDir)}`;
 
 // =============================================================================
 // Installing a bundle on a machine

@@ -433,6 +433,8 @@ export {
   Lightbox,
   useLightbox,
   lightboxClasses,
+  DEFAULT_LIGHTBOX_LABELS,
+  type LightboxLabels,
   type LightboxProps,
   type LightboxSlide,
   type LightboxToolbarProps,

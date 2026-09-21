@@ -321,7 +321,23 @@ export class CacheService implements ICacheService {
       l2: options.l2
         ? {
             client: options.l2Adapter ?? options.l2.client,
-            prefix: options.l2.prefix,
+            // The cache's NAME, or every cache in the process shares one L2
+            // keyspace. `getL2Key` is `prefix + key` and the prefix came from
+            // the module, identical for all of them, so `getOrCreateCache
+            // ('users').set(id, …)` and `getOrCreateCache('sessions')
+            // .set(id, …)` wrote the same row.
+            //
+            // A key collision needs two caches to produce the same string and
+            // is unlikely on its own. `clear()` needs nothing: it is
+            // `l2Adapter.flush(prefix + '*')`, so with an empty prefix ONE
+            // cache's clear wiped every cache in the backend. Measured on the
+            // daos stand: five keys — a resolved permission set, two RBAC
+            // entries, a geo list — and one admin toggle of a country flag,
+            // which calls `geoCache.clear()`, left none. Eight admin geo
+            // mutations and one RBAC path do that. `mfaPending` is cache-only,
+            // so editing the country list dropped every login waiting on its
+            // second factor.
+            prefix: `${options.l2.prefix ?? ''}${name}:`,
             ttl: options.l2.ttl,
             serializer: options.l2.serializer,
             compression: options.l2.compression,

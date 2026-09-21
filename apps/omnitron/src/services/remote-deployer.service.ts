@@ -1556,8 +1556,16 @@ export class RemoteDeployer {
       // straight into the gateway's web root. Measured there:
       // `._index.html`, `._assets`, `._docs-static` — 163 bytes each, served
       // to anyone who asks for them.
+      // `--no-xattrs` for the same reason as `COPYFILE_DISABLE`, one layer
+      // down. macOS stamps `com.apple.provenance` on files it has seen, and
+      // bsdtar carries it as a `LIBARCHIVE.xattr.*` header that GNU tar on
+      // the node does not know. Measured: 29 319 characters of
+      // `tar: Ignoring unknown extended header keyword` in one error, with
+      // the four lines that named the actual failure at the very end. The
+      // warnings were harmless and the noise was not — it is what a reader
+      // sees first, and it says nothing.
       await this.execution.exec(
-        `COPYFILE_DISABLE=1 tar -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`,
+        `COPYFILE_DISABLE=1 tar --no-xattrs -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`,
       );
       const bytes = (await fsp.stat(archive)).size;
       const digest = createHash('sha256').update(await fsp.readFile(archive)).digest('hex').slice(0, 16);
@@ -1572,6 +1580,32 @@ export class RemoteDeployer {
 
       await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
       await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
+
+      // `uploadFile` already refuses a file that landed SHORT. That catches
+      // the likely failure and not the other one: a transfer that completes
+      // and corrupts in the middle has the right length and the wrong
+      // bytes, and `tar` would report it three steps later as a broken
+      // archive rather than as a bad transfer.
+      //
+      // The sum costs nothing to obtain here, because it is already the
+      // name of the directory this is going into. `sha256sum` on the node,
+      // `shasum -a 256` where that is what exists — asking for both and
+      // taking whichever answers beats assuming the platform.
+      // (omni-74's objection: the size check was one class of failure, and
+      // the stronger check needed no new information.)
+      const sum = await this.sshExec(
+        target,
+        `sha256sum ${shellEscape(remoteFile)} 2>/dev/null || shasum -a 256 ${shellEscape(remoteFile)}`,
+      );
+      const landed = sum.trim().split(/\s+/)[0]?.slice(0, 16);
+      if (landed !== digest) {
+        await this.sshExec(target, `rm -f ${shellEscape(remoteFile)}`).catch(() => undefined);
+        throw new Error(
+          `The static bundle arrived corrupt: sent sha256 ${digest}, the node has ${landed ?? 'no readable sum'}. ` +
+            'Nothing was unpacked and the partial file was removed.',
+        );
+      }
+
       await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
 
       this.logger.info({ host: target.host, remoteDir, bytes }, 'Static bundle delivered to the node');

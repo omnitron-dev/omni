@@ -1668,7 +1668,7 @@ export class OmnitronDaemon {
       // Start each enabled stack
       for (const stackName of enabledStacks) {
         try {
-          await projectService.startStack(project.name, stackName);
+          await projectService.startStack(project.name, stackName, { source: 'boot' });
           totalStacks++;
           logger.info({ project: project.name, stack: stackName }, 'Stack started');
         } catch (err) {

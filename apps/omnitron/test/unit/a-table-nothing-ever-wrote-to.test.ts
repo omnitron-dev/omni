@@ -188,12 +188,42 @@ describe('the actions worth recording are recorded', () => {
   it('records what is done to a stack or a project', () => {
     const src = sourceOf('project.rpc-service.ts');
     for (const [method, action] of [
-      ['startStack', 'stack.start'],
       ['stopStack', 'stack.stop'],
       ['addProject', 'project.add'],
       ['removeProject', 'project.remove'],
     ] as const) {
       expect(bodyOf(src, method), method).toContain(`action: '${action}'`);
+    }
+  });
+
+  it('records a stack START from the service, because this is not its only caller', () => {
+    // `startStack` used to be in the list above, and that is exactly how the
+    // trail came to be wrong: recording at the RPC layer covered the
+    // operator and missed the boot resume and the reconciler, both of which
+    // call `ProjectService.startStack` directly. Measured 2026-09-21 on
+    // `daos/test`: the audit knew of ONE deployment in twenty-four hours,
+    // the daemon log of eight.
+    //
+    // So the row moved down to where every caller passes, and this file
+    // follows it rather than dropping the claim. What the row CONTAINS, and
+    // that a failed start records nothing, are driven for real in
+    // `a-deployment-that-shipped-five-of-six.test.ts`.
+    const rpc = sourceOf('project.rpc-service.ts');
+    expect(bodyOf(rpc, 'startStack'), 'the RPC layer no longer records it').not.toContain(
+      "action: 'stack.start'"
+    );
+    expect(bodyOf(rpc, 'startStack'), 'and names itself instead').toContain("source: 'operator'");
+
+    const svc = sourceOf('project.service.ts');
+    expect(svc, 'the service records it').toContain("action: 'stack.start'");
+    // The three callers that exist, each saying which it is. A fourth that
+    // forgets records `unknown`, which is visible, rather than `operator`,
+    // which would be a lie about who deployed.
+    for (const source of ["source: 'operator'", "source: 'boot'", "source: 'auto-resume'"]) {
+      const inRpc = rpc.includes(source);
+      const inDaemon = sourceOf('../daemon/daemon.ts').includes(source);
+      const inSvc = svc.includes(source);
+      expect(inRpc || inDaemon || inSvc, source).toBe(true);
     }
   });
 

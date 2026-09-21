@@ -577,12 +577,15 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any, secrets: SecretsService) =>
+          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any, secrets: SecretsService, audit: AuditService) =>
             // `syncService` has never been passed here; `secrets` is what a
             // stack's service overrides name their credentials with, and
             // without it a deployed app is handed `<secret:…>` as a password.
-            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet, undefined, secrets),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN, SECRETS_SERVICE_TOKEN],
+            // `audit` is here because two of the three callers of
+            // `startStack` never pass through the RPC layer that used to
+            // record it — see the note on the parameter.
+            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet, undefined, secrets, audit),
+          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN, SECRETS_SERVICE_TOKEN, AUDIT_SERVICE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any] : [[
@@ -612,8 +615,11 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ] as any] : []),
 
       // The audit trail (master only — the table is in the omnitron
-      // database). Registered before the services that record into it so a
-      // reader of this file meets the writer first.
+      // database). Registration order does not bind resolution — the
+      // factories above resolve their tokens lazily — but note that
+      // ProjectService, registered earlier, now records into this; it was
+      // moved there because the RPC layer was only one of its three
+      // callers.
       ...(!isSlave ? [[
         AUDIT_SERVICE_TOKEN,
         {

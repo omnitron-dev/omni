@@ -110,6 +110,17 @@ interface StackRuntimeState {
   infraService: InfrastructureService | null;
 }
 
+/**
+ * Who asked for this stack to start.
+ *
+ * Three callers reach `startStack`, and only one of them is a person: the
+ * RPC surface an operator (or the CLI, or an MCP tool) goes through, the
+ * boot resume, and the reconciler that retries an enabled stack after the
+ * daemon restarts. The audit row carries this so «last deployment» stops
+ * meaning «last deployment a human typed».
+ */
+export type StackStartSource = 'operator' | 'boot' | 'auto-resume' | 'unknown';
+
 // =============================================================================
 // ProjectService
 // =============================================================================
@@ -140,6 +151,19 @@ export class ProjectService extends EventEmitter {
      * references travel unresolved and say so.
      */
     private readonly secrets?: import('./secrets.service.js').SecretsService,
+    /**
+     * The audit trail, for the one fact an operator asks this service about
+     * afterwards: what was deployed and when.
+     *
+     * It is taken HERE rather than left to the RPC layer because the RPC
+     * layer is not the only caller. Measured on 2026-09-21: `omnitron audit`
+     * knew about one deployment of `daos/test` in twenty-four hours; the
+     * daemon log knew about eight. The seven it missed were the boot resume
+     * and the reconciler, both of which call `startStack` directly — so the
+     * trail recorded the deployments a human typed and none of the ones the
+     * daemon decided on, which is the wrong half to have.
+     */
+    private readonly audit?: import('./audit.service.js').AuditService,
   ) {
     super();
     // T-7 — registry persistence routed through DaemonStateStore
@@ -557,7 +581,11 @@ export class ProjectService extends EventEmitter {
    */
   private readonly startsInFlight = new Map<string, Promise<IStackInfo>>();
 
-  async startStack(projectName: string, stackName: string): Promise<IStackInfo> {
+  async startStack(
+    projectName: string,
+    stackName: string,
+    opts?: { source?: StackStartSource },
+  ): Promise<IStackInfo> {
     const inFlightKey = `${projectName}/${stackName}`;
     const running = this.startsInFlight.get(inFlightKey);
     if (running) {
@@ -568,14 +596,18 @@ export class ProjectService extends EventEmitter {
       return running;
     }
 
-    const started = this.startStackOnce(projectName, stackName).finally(() => {
+    const started = this.startStackOnce(projectName, stackName, opts?.source ?? 'unknown').finally(() => {
       this.startsInFlight.delete(inFlightKey);
     });
     this.startsInFlight.set(inFlightKey, started);
     return started;
   }
 
-  private async startStackOnce(projectName: string, stackName: string): Promise<IStackInfo> {
+  private async startStackOnce(
+    projectName: string,
+    stackName: string,
+    source: StackStartSource,
+  ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];
@@ -642,9 +674,24 @@ export class ProjectService extends EventEmitter {
       this.updateEnabledStacks(projectName, stackName, true);
 
       this.emit('stack:started', projectName, stackName, stackConfig.type);
-      this.logger.info({ project: projectName, stack: stackName }, 'Stack started');
+      this.logger.info({ project: projectName, stack: stackName, source }, 'Stack started');
 
-      return this.toStackInfo(projectName, stackName, stackConfig);
+      const info = this.toStackInfo(projectName, stackName, stackConfig);
+      // Recorded for every caller, and saying WHICH one. `source: 'unknown'`
+      // is deliberate rather than a default of `'operator'`: a caller that
+      // has not been taught to identify itself should be visible in the
+      // trail, not quietly attributed to a person.
+      //
+      // The online count the RPC layer used to attach is gone on purpose —
+      // it was measured AFTER this returned, by re-asking the node, so it
+      // described a later moment than the row it sat in.
+      await this.audit?.record({
+        action: 'stack.start',
+        resourceType: 'stack',
+        resourceId: `${projectName}/${stackName}`,
+        details: { type: stackConfig.type, apps: info.apps.length, source },
+      });
+      return info;
     } catch (err) {
       state.status = 'error';
       this.emit('stack:error', projectName, stackName, (err as Error).message);
@@ -842,7 +889,7 @@ export class ProjectService extends EventEmitter {
         if (!this.getLoadedConfig(project)) {
           await this.loadProjectConfig(project);
         }
-        await this.startStack(project, stack);
+        await this.startStack(project, stack, { source: 'auto-resume' });
         this.resumeBackoff.delete(key);
         this.logger.info({ project, stack }, 'Reconciler: stack resumed');
       } catch (err) {
@@ -1383,6 +1430,13 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     let artifacts: import('../project/artifact-builder.js').ArtifactInfo[] = [];
 
+    // Why a variable and not a `throw` inside the `try` below: the `catch`
+    // is right there, and it swallowed exactly this. Caught by the test for
+    // this change on its first run — the refusal fired, the catch logged
+    // "deploying without rebuild", and the deployment carried on to the node
+    // as if nothing had happened.
+    let refusal: string | null = null;
+
     if (project) {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
@@ -1398,16 +1452,42 @@ export class ProjectService extends EventEmitter {
           for (const f of outcome.failed) {
             this.logger.error({ app: f.app, stack: stackName, error: f.error }, 'Artifact build failed');
           }
+          // ...and then the deployment STOPS, which it did not.
+          //
+          // Measured on 2026-09-21: `main` failed to compile at 15:17:27,
+          // the five that did compile were deployed, and at 15:19:02 this
+          // method's caller logged `Stack started`. `omnitron stack status`
+          // then reported `6/6 online` — true and useless, because the node
+          // daemon is restarted unconditionally on every deploy and
+          // auto-starts whatever its config still lists. `main` kept serving
+          // the artifact from the PREVIOUS cycle while the operator was
+          // shown a green stack. Earlier the same day three of six failed
+          // and the deployment went out with three.
+          //
+          // A partial deployment is worse than none: the apps that landed
+          // are newer than the ones that did not, and nothing on the node or
+          // in this log says which is which. The one place that can refuse
+          // is here, before a single byte leaves the machine.
+          refusal =
+            `Refusing to deploy ${stackName}: ${outcome.failed.length} of ${appEntries.length} artifact(s) failed to build — ` +
+            outcome.failed.map((f) => f.app).join(', ') +
+            '. Nothing was deployed; the per-app errors are above.';
+        } else {
+          this.logger.info(
+            { artifacts: artifacts.map((a) => `${a.app}@${a.version}`), stack: stackName },
+            'Artifacts built for deployment'
+          );
         }
-        this.logger.info(
-          { artifacts: artifacts.map((a) => `${a.app}@${a.version}`), stack: stackName },
-          'Artifacts built for deployment'
-        );
       } catch (err) {
+        // The build system itself did not run — a missing module, a spawn
+        // that threw, a timeout. `deploying without rebuild` described what
+        // came next and did not object to it: the node was handed whatever
+        // it had from the last cycle and told it was current.
         this.logger.error(
           { error: (err as Error).message, stack: stackName },
-          'Failed to build artifacts — deploying without rebuild'
+          'The artifact build did not run — nothing will be deployed'
         );
+        refusal = `Refusing to deploy ${stackName}: the artifact build did not run — ${(err as Error).message}`;
       }
     } else {
       // `if (project)` with nothing on the other side meant a name the
@@ -1420,7 +1500,13 @@ export class ProjectService extends EventEmitter {
         { project: projectName, stack: stackName, known: this.registry.list().map((p) => p.name) },
         'This project is not in the registry, so nothing was built and nothing will be deployed',
       );
+      refusal =
+        `Refusing to deploy ${stackName}: project '${projectName}' is not in the registry, so nothing was built. ` +
+        `Known projects: ${this.registry.list().map((p) => p.name).join(', ') || '(none)'}.`;
     }
+
+    // Before the mesh is opened and before the node is touched at all.
+    if (refusal) throw new Error(refusal);
 
     // Resolve master address (from the SLAVE's perspective — what it dials)
     const { DEFAULT_DAEMON_CONFIG: _dc } = await import('../config/defaults.js');
@@ -1572,7 +1658,17 @@ export class ProjectService extends EventEmitter {
         unsubDeploy();
         const failed = results.filter((r) => r.status === 'failed');
         if (failed.length > 0) {
-          this.logger.warn({ node: nodeKey, failed: failed.map((f) => f.app) }, 'Some app deployments failed');
+          // The other half of the same invariant. Building every artifact
+          // and then failing to DELIVER some of them leaves exactly the
+          // split state the throw above exists to prevent, and it was a
+          // WARN — a level nothing acts on, under a `Stack started` that
+          // follows regardless.
+          this.logger.error({ node: nodeKey, failed: failed.map((f) => f.app) }, 'App deployments failed');
+          throw new Error(
+            `Deployment to ${nodeKey} failed for ${failed.length} of ${results.length} app(s): ` +
+              failed.map((f) => f.app).join(', ') +
+              '. The node is in a mixed state — re-run the deployment once the cause is fixed.',
+          );
         }
       }
 

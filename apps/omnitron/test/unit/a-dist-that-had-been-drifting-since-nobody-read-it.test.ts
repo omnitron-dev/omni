@@ -196,6 +196,74 @@ describe('a built frontend is the same question without a manifest', () => {
     expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBe('the build directory is empty');
   });
 
+  /**
+   * A frontend's sources are not all under its own `src`.
+   *
+   * The portal resolves seven workspace packages from source through Vite
+   * aliases, two of them in a different repository. A change confined to the
+   * design system therefore left `apps/portal/src` untouched, this check
+   * answered «current», and the deployment shipped yesterday's bundle —
+   * measured 2026-09-21, where all ten «behind its sources» lines in the
+   * daemon log named portal files and not one came from prism.
+   *
+   * Under pnpm every dependency is a symlink (57 of 57 for the portal), so
+   * the link says nothing. Where it LANDS does: outside `node_modules` means
+   * a package being developed here.
+   */
+  it('sees a source under a linked package, not only its own src', () => {
+    const pkg = fs.mkdtempSync(path.join(os.tmpdir(), 'linked-pkg-'));
+    try {
+      fs.mkdirSync(path.join(pkg, 'src'), { recursive: true });
+      const late = path.join(pkg, 'src', 'button.tsx');
+      fs.writeFileSync(late, 'export const Button = 1;');
+
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: '@x/app', dependencies: { '@scope/design': 'workspace:*' } })
+      );
+      const link = path.join(dir, 'node_modules', '@scope', 'design');
+      fs.mkdirSync(path.dirname(link), { recursive: true });
+      fs.symlinkSync(pkg, link);
+
+      write('src/app.tsx', 'export const App = 1;', 500);
+      write('dist/index.html', '<!doctype html>', 100);
+
+      const answer = staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'));
+      expect(answer).toContain('button.tsx');
+      // The REAL path, not the name under node_modules: in production this
+      // reads `prism/src`, which is where a reader would go looking.
+      expect(answer).toContain(`${path.basename(pkg)}/src`);
+    } finally {
+      fs.rmSync(pkg, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores a dependency that resolves inside node_modules', () => {
+    // An installed package, which is what every dependency looks like under
+    // pnpm until you follow the link. Its files move when it is reinstalled
+    // and say nothing about whether this build is current.
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '@x/app', dependencies: { installed: '^1.0.0' } })
+    );
+    const store = path.join(dir, 'node_modules', '.pnpm', 'installed@1.0.0', 'node_modules', 'installed');
+    fs.mkdirSync(path.join(store, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(store, 'src', 'index.ts'), 'export const x = 1;');
+    fs.symlinkSync(store, path.join(dir, 'node_modules', 'installed'));
+
+    write('src/app.tsx', 'export const App = 1;', 500);
+    write('dist/index.html', '<!doctype html>', 100);
+
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toBeNull();
+  });
+
+  it('names the directories it watched, so «none» is distinguishable from «never looked»', () => {
+    write('src/app.tsx', 'export const App = 1;', 0);
+    write('dist/index.html', '<!doctype html>', 500);
+
+    expect(staleBuild(path.join(dir, 'src'), path.join(dir, 'dist'))).toMatch(/watched: [^)]+\/src/);
+  });
+
   it('does not count a test file, and does count a stylesheet', () => {
     // A frontend's sources are not only TypeScript: a changed stylesheet or
     // an added SVG is a changed build. A changed test is not.

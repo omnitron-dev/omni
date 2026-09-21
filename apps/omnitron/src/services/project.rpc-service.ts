@@ -156,16 +156,16 @@ export class ProjectRpcService {
   async startStack(data: { project: string; stack: string }): Promise<IStackInfo> {
     // The report an operator acts on, and a script exits on: `only 0/6 apps
     // came online` about six that were running.
+    //
+    // The `stack.start` audit row is written by `ProjectService`, not here:
+    // this is one of three callers, and the other two — the boot resume and
+    // the reconciler — never reached this method. Recording at this layer
+    // meant the trail held the deployments a human typed and none of the
+    // ones the daemon decided on. All it needs from us is which we are.
     const info = await this.projectService.withRemoteAppStatuses(
       data.project,
-      await this.projectService.startStack(data.project, data.stack),
+      await this.projectService.startStack(data.project, data.stack, { source: 'operator' }),
     );
-    await this.audit?.record({
-      action: 'stack.start',
-      resourceType: 'stack',
-      resourceId: `${data.project}/${data.stack}`,
-      details: { type: info.type, apps: info.apps.length, online: info.apps.filter((a) => a.status === 'online').length },
-    });
     return info;
   }
 

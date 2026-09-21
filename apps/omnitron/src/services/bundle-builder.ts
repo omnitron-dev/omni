@@ -309,6 +309,34 @@ function newestFile(dir: string, filter: (name: string) => boolean): { file: str
  *
  * Same reasoning as `staleDist` and a different shape: a frontend has no
  * manifest pointing at its output, so the caller names both directories.
+ *
+ * **A frontend's sources are not all under its own `src`.** The portal
+ * resolves several workspace packages from source through Vite aliases, two
+ * of them in a DIFFERENT repository (`@omnitron-dev/prism`,
+ * `@omnitron-dev/netron-browser`), so a change confined to the design system
+ * left `apps/portal/src` untouched, this check said «current», and the
+ * deployment shipped yesterday's bundle. Measured 2026-09-21: all ten «behind
+ * its sources» entries in the daemon log name files under `apps/portal/src`,
+ * not one came from prism, while prism changed on several of those days.
+ *
+ * So the sources are the frontend's own `src` PLUS the `src` of every
+ * dependency that resolves outside `node_modules` — which is what a workspace
+ * link is. Under pnpm every dependency is a symlink (57 of 57 for the
+ * portal), so the symlink itself says nothing; the real path does, and seven
+ * of the portal's dependencies live outside `node_modules`.
+ *
+ * The answer names the directories it watched, because the caller logs it:
+ * a reader must be able to tell «no linked sources» from «never looked».
+ *
+ * **Every linked package counts, even one the frontend imports only for its
+ * types.** Measured on the portal: of its seven, `@daos/geo` is type-only (3
+ * imports, all `import type`) and contributes nothing to the bundle, so
+ * watching it can cost a rebuild nobody needed. Telling types from values
+ * statically is an import-parsing heuristic, and the same counting done twice
+ * here gave 47 value-imports and then 8 — the difference being multi-line
+ * `import type {` blocks whose closing line looks like a value import. The
+ * asymmetry decides it: a false rebuild costs a couple of minutes of CPU, a
+ * missed one puts yesterday's portal in front of a person.
  */
 export function staleBuild(srcDir: string, buildDir: string): string | null {
   if (!fs.existsSync(buildDir)) return 'there is no build at all';
@@ -317,14 +345,63 @@ export function staleBuild(srcDir: string, buildDir: string): string | null {
   const isSource = (n: string): boolean =>
     /\.(ts|tsx|js|jsx|css|scss|html|json|svg|png|jpg|webp)$/.test(n) && !/\.(spec|test)\.[jt]sx?$/.test(n);
 
-  const newestSource = newestFile(srcDir, isSource);
+  const watched = [srcDir, ...linkedSourceDirs(path.dirname(srcDir))];
+  const names = watched.map((d) => path.basename(path.dirname(d)) + '/' + path.basename(d)).join(', ');
+
   const newestBuilt = newestFile(buildDir, () => true);
-  if (!newestSource) return null;
   if (!newestBuilt) return 'the build directory is empty';
+
+  let newestSource: { file: string; mtime: number; root: string } | null = null;
+  for (const dir of watched) {
+    const found = newestFile(dir, isSource);
+    if (found && (!newestSource || found.mtime > newestSource.mtime)) {
+      newestSource = { ...found, root: dir };
+    }
+  }
+  if (!newestSource) return null;
   if (newestSource.mtime <= newestBuilt.mtime) return null;
 
-  const count = countNewerThan(srcDir, isSource, newestBuilt.mtime);
-  return `${count} source file${count === 1 ? '' : 's'} newer than the build, the most recent being ${path.relative(srcDir, newestSource.file)}`;
+  const count = watched.reduce((n, dir) => n + countNewerThan(dir, isSource, newestBuilt.mtime), 0);
+  const where = path.relative(newestSource.root, newestSource.file);
+  return `${count} source file${count === 1 ? '' : 's'} newer than the build, the most recent being ${where} (watched: ${names})`;
+}
+
+/**
+ * The `src` of every dependency that lives outside `node_modules`.
+ *
+ * That is what a workspace link is, and it is the only reliable tell: pnpm
+ * makes EVERY dependency a symlink into its store, so `isSymbolicLink()`
+ * matches all of them. What separates a package being developed here from one
+ * that was installed is where the link lands.
+ *
+ * A package without a `src/` contributes nothing to look at and is skipped,
+ * which also drops anything vendored as built output.
+ */
+function linkedSourceDirs(pkgDir: string): string[] {
+  let manifest: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+  } catch {
+    return [];
+  }
+
+  const names = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+  const dirs: string[] = [];
+
+  for (const name of names) {
+    const linked = path.join(pkgDir, 'node_modules', ...name.split('/'));
+    let real: string;
+    try {
+      real = fs.realpathSync(linked);
+    } catch {
+      continue;
+    }
+    if (real.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    const src = path.join(real, 'src');
+    if (fs.existsSync(src)) dirs.push(src);
+  }
+
+  return dirs;
 }
 
 /** How many files under `dir` are newer than `mtime` — for a message worth reading. */

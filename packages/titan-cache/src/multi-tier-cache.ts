@@ -35,6 +35,13 @@ export interface MultiTierCacheOptions {
   name?: string;
   /** Tag-to-keys mapping for L2 tag invalidation (tags aren't stored in L2 by default) */
   trackL2Tags?: boolean;
+  /**
+   * Tell the other processes sharing this L2 to drop their L1 copies when
+   * this one invalidates. Requires an adapter that implements
+   * `publishInvalidation` / `subscribeInvalidation`; without one the flag is
+   * inert and `isInvalidationBroadcastActive()` answers `false`.
+   */
+  broadcastInvalidations?: boolean;
   /** Callback for write-back durability - called when buffer is flushed */
   onWriteBackFlush?: (entries: Map<string, unknown>) => Promise<void>;
   /** Callback for write-back recovery - called on startup to recover unflushed entries */
@@ -61,6 +68,32 @@ export interface IL2CacheAdapter {
    * connection on every cache shutdown.
    */
   dispose?(): Promise<void>;
+
+  /**
+   * Optional. Broadcast one invalidation to the other processes sharing this
+   * L2, so they can drop their own L1 copies.
+   *
+   * Deleting the shared row is not enough: L1 is per process and nobody told
+   * it. `MultiTierCache.set` forwards the caller's `ttl` to L1 as well, so an
+   * entry written with a five-minute TTL sits in every other process's L1 for
+   * five minutes after the row it mirrors is gone. Measured on a live
+   * permission cache — see `a-tag-flush-that-left-the-shared-copy.spec.ts`.
+   *
+   * Delivery is at most once. A message that does not arrive leaves that
+   * process's L1 stale until its TTL, which is why the TTL stays the backstop
+   * rather than being raised once this exists.
+   */
+  publishInvalidation?(message: string): Promise<void>;
+
+  /**
+   * Optional. Deliver invalidations published by other processes. Resolves to
+   * the function that stops the delivery; `MultiTierCache.dispose()` calls it.
+   *
+   * An adapter implementing this MUST use a connection of its own: a Redis
+   * connection in subscribe mode refuses ordinary commands, so sharing the
+   * one the cache reads through would take the cache down.
+   */
+  subscribeInvalidation?(handler: (message: string) => void): Promise<() => Promise<void>>;
 }
 
 export class MemoryL2Adapter implements IL2CacheAdapter {
@@ -179,6 +212,21 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
   /** Tag-to-keys mapping for L2 (since L2 adapters don't support tags natively) */
   private readonly l2TagIndex: Map<string, Set<string>> = new Map();
   private readonly trackL2Tags: boolean;
+  /**
+   * Identifies THIS cache instance on the invalidation channel, so a message
+   * this process published is not applied to the L1 it was published from —
+   * the entry is already gone there, and re-dropping it would be the only
+   * thing a self-echo could do.
+   */
+  private readonly originId: string = `${process.pid}:${Math.random().toString(36).slice(2, 10)}`;
+  private readonly broadcastInvalidations: boolean;
+  /**
+   * Resolves once the subscription is established or has failed. Started in
+   * the constructor, which cannot await; `dispose()` awaits it so a cache
+   * created and destroyed quickly does not leave a connection behind.
+   */
+  private subscriptionReady?: Promise<void>;
+  private unsubscribeInvalidations?: () => Promise<void>;
   private readonly onWriteBackFlush?: (entries: Map<string, unknown>) => Promise<void>;
   private readonly onWriteBackRecover?: () => Promise<Map<string, { value: unknown; ttl?: number }>>;
   private readonly readyPromise: Promise<void>;
@@ -217,6 +265,13 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
     this.l1Stats = this.createEmptyStats();
     this.l2Stats = this.createEmptyStats();
     this.trackL2Tags = options.trackL2Tags ?? false;
+    this.broadcastInvalidations =
+      (options.broadcastInvalidations ?? false) &&
+      typeof this.l2Adapter.publishInvalidation === 'function' &&
+      typeof this.l2Adapter.subscribeInvalidation === 'function';
+    if (this.broadcastInvalidations) {
+      this.subscriptionReady = this.startInvalidationSubscription();
+    }
     this.onWriteBackFlush = options.onWriteBackFlush;
     this.onWriteBackRecover = options.onWriteBackRecover;
 
@@ -457,6 +512,7 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
         keySet.delete(key);
       }
     }
+    await this.broadcast({ k: key });
     return l1Del || l2Del;
   }
 
@@ -483,6 +539,10 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
     if (this.trackL2Tags) {
       this.l2TagIndex.clear();
     }
+    // A pattern is not carried: the subscriber clears its whole L1 rather
+    // than re-deriving which keys matched. Over-dropping costs a re-read;
+    // under-dropping is the defect this exists to close.
+    await this.broadcast({ c: true });
   }
 
   async invalidateByTags(tags: string[]): Promise<number> {
@@ -491,8 +551,8 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
 
     // Invalidate L2 using our tag index
     let l2Count = 0;
+    const keysToDelete = new Set<string>();
     if (this.trackL2Tags) {
-      const keysToDelete = new Set<string>();
       for (const tag of tags) {
         const keys = this.l2TagIndex.get(tag);
         if (keys) {
@@ -519,6 +579,16 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
         }
       }
     }
+
+    // BOTH, and neither alone is enough.
+    //
+    // Tags do not survive the trip through L2: the store holds the serialised
+    // value and nothing else, so an entry another process PROMOTED out of L2
+    // sits in its L1 untagged, and a tag flush there finds nothing. The keys
+    // cover those. And the tags cover what that process wrote itself, which
+    // does carry them and may not be in this process's index at all — the
+    // index only knows what THIS process cached.
+    await this.broadcast({ t: tags, k: [...keysToDelete] });
 
     return l1Count + l2Count;
   }
@@ -682,6 +752,18 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
     // the inverse (L1 closed, L2 still open) would leave a window
     // where a get() falls through to a live L2 with no L1 to
     // populate, costing a network round-trip for nothing.
+    // Before the adapter closes: the unsubscribe runs through it.
+    if (this.subscriptionReady) {
+      await this.subscriptionReady;
+      if (this.unsubscribeInvalidations) {
+        try {
+          await this.unsubscribeInvalidations();
+        } catch {
+          // Already gone, or the connection died first.
+        }
+        this.unsubscribeInvalidations = undefined;
+      }
+    }
     if (this.l2Adapter.dispose) {
       await this.l2Adapter.dispose();
     }
@@ -866,6 +948,88 @@ export class MultiTierCache<T = unknown> implements IMultiTierCache<T> {
       total -= set.size;
       this.l2TagIndex.delete(tag);
     }
+  }
+
+  /**
+   * What travels on the channel. Deliberately small and self-describing:
+   * `o` names the publisher, `n` the cache (several caches can share one L2
+   * prefix and must not drop each other's keys), and exactly one of `k`
+   * (a key), `t` (tags) or `c` (a clear) says what to forget.
+   */
+  private async broadcast(payload: { k?: string | string[]; t?: string[]; c?: true }): Promise<void> {
+    if (!this.broadcastInvalidations || !this.l2Adapter.publishInvalidation) return;
+    try {
+      await this.l2Adapter.publishInvalidation(
+        JSON.stringify({ o: this.originId, n: this.name, ...payload }),
+      );
+    } catch {
+      // A broadcast that does not go out leaves the other L1s stale until
+      // their TTL — the same place they were before this existed. It must
+      // never fail the invalidation that the caller asked for.
+    }
+  }
+
+  private async startInvalidationSubscription(): Promise<void> {
+    try {
+      this.unsubscribeInvalidations = await this.l2Adapter.subscribeInvalidation!((message) => {
+        void this.applyRemoteInvalidation(message);
+      });
+    } catch {
+      // Redis unreachable at construction. The cache still works; the TTL is
+      // the bound on a stale L1, as it was before.
+    }
+  }
+
+  /**
+   * L1 ONLY. The publisher already removed the shared row; deleting it a
+   * second time from every subscriber would turn one invalidation into N
+   * round trips against the store that is already correct.
+   */
+  private async applyRemoteInvalidation(message: string): Promise<void> {
+    let payload: { o?: unknown; n?: unknown; k?: unknown; t?: unknown; c?: unknown };
+    try {
+      payload = JSON.parse(message) as typeof payload;
+    } catch {
+      return; // Not ours to interpret.
+    }
+    if (typeof payload !== 'object' || payload === null) return;
+    if (payload.o === this.originId) return; // Our own echo.
+    if (payload.n !== this.name) return; // Another cache on the same channel.
+
+    try {
+      if (payload.c === true) {
+        await this.l1Cache.clear();
+        this.l2TagIndex.clear();
+        return;
+      }
+      // Keys first: they are the half that reaches a promoted, untagged entry.
+      const keys = typeof payload.k === 'string' ? [payload.k] : payload.k;
+      if (Array.isArray(keys)) {
+        for (const key of keys) {
+          if (typeof key !== 'string') continue;
+          await this.l1Cache.delete(key);
+          for (const [, keySet] of this.l2TagIndex) keySet.delete(key);
+        }
+      }
+      if (Array.isArray(payload.t) && payload.t.every((x) => typeof x === 'string')) {
+        await this.l1Cache.invalidateByTags(payload.t as string[]);
+        for (const tag of payload.t as string[]) this.l2TagIndex.delete(tag);
+      }
+    } catch {
+      // A malformed or unapplicable message must not take down the listener.
+    }
+  }
+
+  /**
+   * Whether an invalidation here reaches the other processes' L1.
+   *
+   * `false` when the flag was not asked for AND when it was asked for but the
+   * adapter cannot carry it — a caller depending on the guarantee can tell
+   * the two apart from the adapter it passed, and must not read the flag it
+   * set as proof the guarantee holds.
+   */
+  isInvalidationBroadcastActive(): boolean {
+    return this.broadcastInvalidations;
   }
 
   /**

@@ -137,6 +137,32 @@ describe('the option reaches the cache it configures', () => {
       };
       expect(off.isL2TagTrackingEnabled()).toBe(false);
       expect(on.isL2TagTrackingEnabled()).toBe(true);
+      // Every flag `MultiTierCacheOptions` declares has to survive the trip
+      // through `createMultiTierCache`, which builds its options field by
+      // field. This one was added after `trackL2Tags` and would have been
+      // dropped the same way; the compiler caught it only because the module
+      // options interface was missing it too.
+      const broadcast = svc.getOrCreateCache('bcast', {
+        multiTier: true,
+        broadcastInvalidations: true,
+        l2: {
+          client: {
+            get: async () => null,
+            set: async () => {},
+            delete: async () => false,
+            exists: async () => false,
+            keys: async () => [],
+            mget: async () => [],
+            mset: async () => {},
+            expire: async () => {},
+            ttl: async () => -1,
+            flush: async () => {},
+            publishInvalidation: async () => {},
+            subscribeInvalidation: async () => async () => {},
+          },
+        },
+      }) as unknown as { isInvalidationBroadcastActive(): boolean };
+      expect(broadcast.isInvalidationBroadcastActive()).toBe(true);
     } finally {
       await svc.dispose();
     }

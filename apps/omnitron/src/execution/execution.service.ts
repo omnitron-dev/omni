@@ -355,8 +355,43 @@ export class ExecutionService {
         'Cannot transfer files: the execution engine is unavailable, and the fallback cannot use stored credentials.',
       );
     }
-    const ssh = engine.ssh(sshConfig(target));
-    await ssh.uploadFile(localPath, remotePath);
+    const fsp = await import('node:fs/promises');
+    const expected = (await fsp.stat(localPath)).size;
+
+    // The transfer is not finished when the call returns — it is finished
+    // when the bytes are there.
+    //
+    // Measured 2026-09-21 delivering the portal to `daos-test`: this method
+    // returned without error, the next step ran `tar -xzf` on the result,
+    // and the node answered `gzip: stdin: unexpected end of file`. A
+    // 19 687 584-byte archive had arrived short, and nothing between the two
+    // steps asked how long it was. The gateway was then configured with no
+    // static root at all and served nothing at `/`.
+    //
+    // `wc -c <` rather than `stat`: the flag for a file's size is spelled
+    // differently on the two systems this runs against, and a probe that
+    // fails on the healthy case is worse than none.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const ssh = engine.ssh(sshConfig(target));
+      await ssh.uploadFile(localPath, remotePath);
+
+      const out = await this.ssh(target, `wc -c < '${remotePath.replace(/'/g, "'\\''")}'`, {
+        timeout: 30_000,
+      });
+      const landed = Number.parseInt(out.stdout.trim(), 10);
+      if (Number.isFinite(landed) && landed === expected) return;
+
+      this.logger.warn(
+        { remotePath, expected, landed, attempt },
+        'The uploaded file is not the size it was sent — retrying',
+      );
+      if (attempt === 2) {
+        throw new Error(
+          `Upload of ${localPath} to ${remotePath} landed ${Number.isFinite(landed) ? landed : 'an unreadable size'} ` +
+            `of ${expected} bytes, twice. The file on the node is incomplete and was not used.`,
+        );
+      }
+    }
   }
 
   /**

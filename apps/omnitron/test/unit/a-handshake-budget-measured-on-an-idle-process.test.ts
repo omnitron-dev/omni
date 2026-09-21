@@ -18,6 +18,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, writeFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { ExecutionService } from '../../src/execution/execution.service.js';
 
@@ -31,8 +34,18 @@ function serviceWithSpy() {
   const configs: Array<Record<string, unknown>> = [];
   const service = new ExecutionService(logger);
 
+  // The fake answers the one question a real node is asked here: how many
+  // bytes landed. `uploadFile` refuses a short file, so a node that answers
+  // nothing is a node that failed the transfer — which would make this test
+  // about the refusal instead of about the dialling.
+  let answer = (_cmd: string): string => '';
+  const proc = (cmd: string): any => ({
+    nothrow: async () => ({ stdout: answer(cmd), stderr: '', exitCode: 0 }),
+    timeout: () => proc(cmd),
+    env: () => proc(cmd),
+  });
   const handle = {
-    raw: () => ({ nothrow: async () => ({ stdout: '', stderr: '', exitCode: 0 }), timeout: () => handle.raw(), env: () => handle.raw() }),
+    raw: (cmd: string[] | string) => proc(Array.isArray(cmd) ? (cmd[0] ?? '') : cmd),
     tunnel: async () => ({ localHost: '127.0.0.1', localPort: 1, close: async () => {} }),
     uploadFile: async () => {},
   };
@@ -42,7 +55,7 @@ function serviceWithSpy() {
     on: () => {},
   };
 
-  return { service, configs };
+  return { service, configs, answersWith: (f: (cmd: string) => string) => { answer = f; } };
 }
 
 const target = { host: '10.0.0.7', username: 'root', password: 'x' };
@@ -71,17 +84,26 @@ describe('every SSH connection this control plane opens', () => {
     expect(configs[0]!['keepaliveCountMax']).toBe(4);
   });
 
-  it('is the same config for a command, a tunnel and an upload', async () => {
-    const { service, configs } = serviceWithSpy();
+  it('is the same config for a command, a tunnel, an upload and its check', async () => {
+    const { service, configs, answersWith } = serviceWithSpy();
+    // A real file, because `uploadFile` now reads its size: the transfer is
+    // finished when the bytes are there, and the local length is half of
+    // that question. The path here used to be `/tmp/a`, which existed only
+    // in the sense that nothing looked.
+    const local = join(mkdtempSync(join(tmpdir(), 'handshake-')), 'payload');
+    writeFileSync(local, 'payload');
+    answersWith((cmd) => (cmd.startsWith('wc -c') ? String(statSync(local).size) : ''));
 
     await service.ssh(target, 'true');
     await service.tunnel(target, 9700);
-    await service.uploadFile(target, '/tmp/a', '/tmp/b');
+    await service.uploadFile(target, local, '/tmp/b');
 
-    // Written once because it was written three times.
-    expect(configs).toHaveLength(3);
-    expect(configs[1]).toEqual(configs[0]);
-    expect(configs[2]).toEqual(configs[0]);
+    // Four, not three: the upload opens one connection to send and one to
+    // ask the node how much landed. The claim is unchanged and now covers
+    // the check as well — a verification that dialled differently from the
+    // transfer would be measuring another host's opinion.
+    expect(configs).toHaveLength(4);
+    for (const c of configs.slice(1)) expect(c).toEqual(configs[0]);
   });
 
   it('still carries the credential the target holds', async () => {

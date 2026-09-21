@@ -120,6 +120,28 @@ describe('where the record of a build is kept', () => {
   });
 });
 
+/**
+ * The block a marker opens, by its braces.
+ *
+ * Not a window of N characters. A distance window breaks in one direction
+ * only: it loosens when code is deleted and tightens when code is
+ * EXPLAINED, so the first person to write a comment inside the region gets
+ * a red test and looks like the cause. Measured elsewhere in this
+ * repository: 51 assertions carry such a window, and one of them went red
+ * because somebody documented the very `catch` it was checking.
+ */
+function blockAt(source: string, marker: string): string {
+  const at = source.indexOf(marker);
+  expect(at, marker).toBeGreaterThan(0);
+  const open = source.indexOf('{', at);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(at, i + 1);
+  }
+  throw new Error(`unbalanced braces after ${marker}`);
+}
+
 describe('the builder asks before it compiles', () => {
   const builder = stripComments(
     fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'),
@@ -133,8 +155,7 @@ describe('the builder asks before it compiles', () => {
   it('still clears dist when it does build', () => {
     // The skip must not become a reason to stop removing the output: see
     // `runBuild`.
-    const at = builder.indexOf('private async runBuild(');
-    const body = builder.slice(at, builder.indexOf('\n  private ', at + 100));
+    const body = blockAt(builder, 'private async runBuild(');
 
     expect(body).toMatch(/rmSync\(path\.join\(appDir, 'dist'\)/);
     expect(body).toMatch(/clearBuildInfo\(appDir\)/);
@@ -143,8 +164,7 @@ describe('the builder asks before it compiles', () => {
   it('records only after a build that finished', () => {
     // A record written before the compiler ran, or after one that threw,
     // says a dist exists that does not.
-    const at = builder.indexOf('const decision = ');
-    const body = builder.slice(at, at + 1200);
+    const body = blockAt(builder, 'if (!options?.skipBuild) {');
 
     expect(body.indexOf('runBuild(')).toBeLessThan(body.indexOf('recordBuild('));
   });

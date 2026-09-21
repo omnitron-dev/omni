@@ -745,8 +745,9 @@ export class RemoteDeployer {
           options.appEnv,
         );
 
-        // Schema before the apps that read it.
-        await this.migrateNodeApps(target, project, landed, options.appEnv);
+        // Schema before the apps that read it — and an app whose schema did
+        // not arrive does not get its new code started on the old one.
+        const migrationFailed = await this.migrateNodeApps(target, project, landed, options.appEnv);
 
         // And the path from the gateway to them, which is the one crossing
         // no configuration can open by itself. See `gateway-reachability`.
@@ -763,6 +764,18 @@ export class RemoteDeployer {
         for (const entry of landed) {
           const result = results.find((r) => r.app === entry.app && r.node === nodeKey);
           if (!result) continue;
+
+          // Before anything decides to restart it. The code that was just
+          // unpacked expects the schema its migrations produce; starting it
+          // on the schema they failed to produce is the one outcome worse
+          // than not deploying — it can come up healthy and fail on a request.
+          const schemaError = migrationFailed.get(entry.app);
+          if (schemaError !== undefined) {
+            result.status = 'failed';
+            result.error = `database migrations failed, so the new code was not started: ${schemaError}`;
+            this.emitProgress(result.node, entry.app, 'failed', 80, result.error);
+            continue;
+          }
 
           // An app whose artifact did not move, whose configuration did not
           // move, and which is running, has nothing that a restart would
@@ -919,16 +932,36 @@ export class RemoteDeployer {
    * same build the app itself runs from, so there is no second copy of the
    * schema to drift.
    *
-   * Failure is reported and does not stop the deployment: an app whose
-   * migrations fail will fail its own start with a message about the table it
-   * wanted, which is more specific than anything this step could say.
+   * Returns the apps whose migrations failed, with the reason, and the
+   * caller does not start their new code.
+   *
+   * This used to say: «Failure is reported and does not stop the deployment:
+   * an app whose migrations fail will fail its own start with a message
+   * about the table it wanted, which is more specific than anything this
+   * step could say.» True for one of the two ways it goes. An app that
+   * fails to START is caught by `verifyHealth` and marked failed — that
+   * branch was covered, and the sentence is right about it. An app that
+   * starts fine and fails on the first REQUEST that touches the missing
+   * table passes `verifyHealth`, the stack reports `started`, and the only
+   * trace is one ERROR line in the master's log. The justification covered
+   * the branch that was already safe.
+   *
+   * Idempotence is what makes refusing cheap: the migrator records each
+   * migration it applied, in a transaction with the migration itself, so
+   * running the batch again after the cause is fixed applies exactly what
+   * is missing. That holds because `HardenedMigrationRunner` defaults
+   * `useTransactions` to true (`titan-database/src/migration/
+   * hardened-runner.ts:171`) and no daos `migrate.ts` overrides it — it is
+   * conditional in the runner (`:502`), so a migrator that turned it off
+   * would make a refused deployment leave a half-applied migration behind.
    */
   private async migrateNodeApps(
     target: DeployTarget,
     project: string,
     landed: ReadonlyArray<{ app: string; version: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
+    const failed = new Map<string, string>();
     for (const entry of landed) {
       const databaseUrl = appEnv?.[entry.app]?.['DATABASE_URL'];
       if (!databaseUrl) continue;
@@ -991,12 +1024,15 @@ export class RemoteDeployer {
         );
         this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');
       } catch (err) {
+        const message = (err as Error).message;
         this.logger.error(
-          { node: target.host, app: entry.app, error: (err as Error).message.slice(0, 400) },
-          'Database migrations failed on the node — the app will fail on the first table it wants',
+          { node: target.host, app: entry.app, error: message.slice(0, 400) },
+          'Database migrations failed on the node — its new code will not be started',
         );
+        failed.set(entry.app, message.slice(0, 300));
       }
     }
+    return failed;
   }
 
   /**

@@ -36,7 +36,7 @@ import {
   ExitFullscreenIcon,
 } from '../icons/index.js';
 
-export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: EditorToolbarProps) {
+export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen, labels }: EditorToolbarProps) {
   const state = useToolbarState(editor);
   const has = (item: string) => toolbar.items.has(item as any);
   const chain = () => editor.chain().focus();
@@ -48,7 +48,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
       {/* Heading selector */}
       {has('heading') && (
         <>
-          <HeadingBlock editor={editor} isActive={state.isTextLevel} />
+          <HeadingBlock labels={labels} editor={editor} isActive={state.isTextLevel} />
           <ToolbarDivider />
         </>
       )}
@@ -59,7 +59,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('bold') && (
               <ToolbarItem
-                aria-label="Bold (⌘B)"
+                aria-label={labels.bold}
                 active={state.isBold}
                 className={editorClasses.toolbar.bold}
                 onClick={() => chain().toggleBold().run()}
@@ -68,7 +68,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('italic') && (
               <ToolbarItem
-                aria-label="Italic (⌘I)"
+                aria-label={labels.italic}
                 active={state.isItalic}
                 className={editorClasses.toolbar.italic}
                 onClick={() => chain().toggleItalic().run()}
@@ -77,7 +77,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('underline') && (
               <ToolbarItem
-                aria-label="Underline (⌘U)"
+                aria-label={labels.underline}
                 active={state.isUnderline}
                 className={editorClasses.toolbar.underline}
                 onClick={() => chain().toggleUnderline().run()}
@@ -86,7 +86,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('strike') && (
               <ToolbarItem
-                aria-label="Strikethrough"
+                aria-label={labels.strike}
                 active={state.isStrike}
                 className={editorClasses.toolbar.strike}
                 onClick={() => chain().toggleStrike().run()}
@@ -95,7 +95,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('code') && (
               <ToolbarItem
-                aria-label="Inline code (⌘E)"
+                aria-label={labels.inlineCode}
                 active={state.isCode}
                 className={editorClasses.toolbar.code}
                 onClick={() => chain().toggleCode().run()}
@@ -113,7 +113,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('bulletList') && (
               <ToolbarItem
-                aria-label="Bullet list"
+                aria-label={labels.bulletList}
                 active={state.isBulletList}
                 className={editorClasses.toolbar.bulletList}
                 onClick={() => chain().toggleBulletList().run()}
@@ -122,7 +122,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('orderedList') && (
               <ToolbarItem
-                aria-label="Ordered list"
+                aria-label={labels.orderedList}
                 active={state.isOrderedList}
                 className={editorClasses.toolbar.orderedList}
                 onClick={() => chain().toggleOrderedList().run()}
@@ -131,7 +131,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('taskList') && (
               <ToolbarItem
-                aria-label="Task list"
+                aria-label={labels.taskList}
                 active={state.isTaskList}
                 className={editorClasses.toolbar.taskList}
                 onClick={() => chain().toggleTaskList().run()}
@@ -149,7 +149,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('alignLeft') && (
               <ToolbarItem
-                aria-label="Align left"
+                aria-label={labels.alignLeft}
                 active={state.isAlign('left')}
                 className={editorClasses.toolbar.alignLeft}
                 onClick={() => chain().setTextAlign('left').run()}
@@ -158,7 +158,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('alignCenter') && (
               <ToolbarItem
-                aria-label="Align center"
+                aria-label={labels.alignCenter}
                 active={state.isAlign('center')}
                 className={editorClasses.toolbar.alignCenter}
                 onClick={() => chain().setTextAlign('center').run()}
@@ -167,7 +167,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('alignRight') && (
               <ToolbarItem
-                aria-label="Align right"
+                aria-label={labels.alignRight}
                 active={state.isAlign('right')}
                 className={editorClasses.toolbar.alignRight}
                 onClick={() => chain().setTextAlign('right').run()}
@@ -176,7 +176,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('alignJustify') && (
               <ToolbarItem
-                aria-label="Align justify"
+                aria-label={labels.alignJustify}
                 active={state.isAlign('justify')}
                 className={editorClasses.toolbar.alignJustify}
                 onClick={() => chain().setTextAlign('justify').run()}
@@ -194,7 +194,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('blockquote') && (
               <ToolbarItem
-                aria-label="Blockquote"
+                aria-label={labels.blockquote}
                 active={state.isBlockquote}
                 className={editorClasses.toolbar.blockquote}
                 onClick={() => chain().toggleBlockquote().run()}
@@ -203,7 +203,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('codeBlock') && (
               <ToolbarItem
-                aria-label="Code block"
+                aria-label={labels.codeBlock}
                 active={state.isCodeBlock}
                 className={editorClasses.toolbar.codeBlock}
                 onClick={() => chain().toggleCodeBlock().run()}
@@ -212,7 +212,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('horizontalRule') && (
               <ToolbarItem
-                aria-label="Horizontal rule"
+                aria-label={labels.horizontalRule}
                 className={editorClasses.toolbar.hr}
                 onClick={() => chain().setHorizontalRule().run()}
                 icon={<HorizontalRuleIcon />}
@@ -228,9 +228,9 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
         <>
           <ToolbarBlock>
             {has('link') && (
-              <LinkBlock editor={editor} active={state.isLink} linkIcon={<LinkIcon />} unlinkIcon={<UnlinkIcon />} />
+              <LinkBlock labels={labels} editor={editor} active={state.isLink} linkIcon={<LinkIcon />} unlinkIcon={<UnlinkIcon />} />
             )}
-            {has('image') && <ImageBlock editor={editor} icon={<ImageIcon />} />}
+            {has('image') && <ImageBlock labels={labels} editor={editor} icon={<ImageIcon />} />}
           </ToolbarBlock>
           <ToolbarDivider />
         </>
@@ -242,7 +242,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('hardBreak') && (
               <ToolbarItem
-                aria-label="Hard break"
+                aria-label={labels.hardBreak}
                 className={editorClasses.toolbar.hardBreak}
                 onClick={() => chain().setHardBreak().run()}
                 icon={<HardBreakIcon />}
@@ -250,7 +250,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('clearFormat') && (
               <ToolbarItem
-                aria-label="Clear format (⌘⇧X)"
+                aria-label={labels.clearFormat}
                 className={editorClasses.toolbar.clear}
                 onClick={() => chain().clearNodes().unsetAllMarks().run()}
                 icon={<ClearMarksIcon />}
@@ -267,7 +267,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
           <ToolbarBlock>
             {has('undo') && (
               <ToolbarItem
-                aria-label="Undo (⌘Z)"
+                aria-label={labels.undo}
                 disabled={!state.canUndo}
                 className={editorClasses.toolbar.undo}
                 onClick={() => chain().undo().run()}
@@ -276,7 +276,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
             )}
             {has('redo') && (
               <ToolbarItem
-                aria-label="Redo (⌘⇧Z)"
+                aria-label={labels.redo}
                 disabled={!state.canRedo}
                 className={editorClasses.toolbar.redo}
                 onClick={() => chain().redo().run()}
@@ -292,7 +292,7 @@ export function Toolbar({ editor, toolbar, fullscreen, onToggleFullscreen }: Edi
       {has('fullscreen') && (
         <ToolbarBlock>
           <ToolbarItem
-            aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            aria-label={fullscreen ? labels.exitFullscreen : labels.fullscreen}
             active={fullscreen}
             className={editorClasses.toolbar.fullscreen}
             onClick={onToggleFullscreen}

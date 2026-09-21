@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import type { EditorToolbarItemProps } from '../types.js';
+import type { EditorLabels } from '../types.js';
 
 import { useState, useCallback } from 'react';
 
@@ -12,13 +13,14 @@ import { editorClasses } from '../classes.js';
 import { ToolbarItem } from './toolbar-item.js';
 
 interface LinkBlockProps {
+  labels: EditorLabels;
   editor: Editor;
   active: boolean;
   linkIcon: EditorToolbarItemProps['icon'];
   unlinkIcon: EditorToolbarItemProps['icon'];
 }
 
-export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockProps) {
+export function LinkBlock({ editor, linkIcon, unlinkIcon, active, labels }: LinkBlockProps) {
   const [linkUrl, setLinkUrl] = useState('');
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
@@ -52,7 +54,7 @@ export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockPro
     <>
       <ToolbarItem
         aria-describedby={popoverId}
-        aria-label="Insert link"
+        aria-label={labels.insertLink}
         active={active}
         className={editorClasses.toolbar.link}
         onClick={handleOpen}
@@ -60,7 +62,7 @@ export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockPro
       />
 
       <ToolbarItem
-        aria-label="Remove link"
+        aria-label={labels.removeLink}
         disabled={!active}
         className={editorClasses.toolbar.unlink}
         onClick={() => editor.chain().focus().unsetLink().run()}
@@ -88,7 +90,7 @@ export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockPro
           <TextField
             fullWidth
             size="small"
-            label="Link URL"
+            label={labels.linkUrlField}
             placeholder="https://"
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
@@ -97,7 +99,7 @@ export function LinkBlock({ editor, linkIcon, unlinkIcon, active }: LinkBlockPro
             }}
           />
           <Button variant="contained" disabled={!linkUrl} onClick={handleApply}>
-            Apply
+            {labels.linkApply}
           </Button>
         </Box>
       </Popover>

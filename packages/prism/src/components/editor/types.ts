@@ -100,6 +100,100 @@ export type EditorProps = Omit<UseEditorOptions, 'extensions' | 'content'> & {
   };
   /** Ref to the content container */
   ref?: React.RefObject<HTMLDivElement | null> | React.RefCallback<HTMLDivElement | null>;
+  /** Accessible names for the toolbar controls. Partial — anything omitted
+   *  keeps its English default. See {@link EditorLabels}. */
+  labels?: Partial<EditorLabels>;
+};
+
+// ---------------------------------------------------------------------------
+// Toolbar labels
+// ---------------------------------------------------------------------------
+
+/**
+ * Accessible names for every toolbar control, so a consumer can localise them.
+ *
+ * They were hardcoded English, which is fine for a design system's default and
+ * not fine on a Russian-first product: the editor is on every content form —
+ * a post, a community description, an organisation profile, a shop — and every
+ * tooltip in it read "Bold", "Insert link", "Fullscreen" next to Russian field
+ * labels. The names are also the ONLY text a screen reader gets for these
+ * buttons, so an English default is a localisation gap in the accessibility
+ * tree, not just in the tooltip.
+ *
+ * Defaults keep the previous strings verbatim, so a consumer that passes
+ * nothing is unchanged.
+ */
+export type EditorLabels = {
+  bold: string;
+  italic: string;
+  underline: string;
+  strike: string;
+  inlineCode: string;
+  clearFormat: string;
+  headingMenu: string;
+  bulletList: string;
+  orderedList: string;
+  taskList: string;
+  alignLeft: string;
+  alignCenter: string;
+  alignRight: string;
+  alignJustify: string;
+  blockquote: string;
+  codeBlock: string;
+  horizontalRule: string;
+  insertLink: string;
+  removeLink: string;
+  insertImage: string;
+  hardBreak: string;
+  undo: string;
+  redo: string;
+  fullscreen: string;
+  exitFullscreen: string;
+  /** The two popovers carry visible text of their own, not just icons. */
+  linkUrlField: string;
+  linkApply: string;
+  imagePopoverTitle: string;
+  imageUrlField: string;
+  imageAltField: string;
+  imageApply: string;
+  /** The code block's language picker, whose first option is a word. */
+  codeLanguageAuto: string;
+};
+
+/** The strings the toolbar used before `labels` existed. */
+export const DEFAULT_EDITOR_LABELS: EditorLabels = {
+  bold: 'Bold (⌘B)',
+  italic: 'Italic (⌘I)',
+  underline: 'Underline (⌘U)',
+  strike: 'Strikethrough',
+  inlineCode: 'Inline code (⌘E)',
+  clearFormat: 'Clear format (⌘⇧X)',
+  headingMenu: 'Heading menu',
+  bulletList: 'Bullet list',
+  orderedList: 'Ordered list',
+  taskList: 'Task list',
+  alignLeft: 'Align left',
+  alignCenter: 'Align center',
+  alignRight: 'Align right',
+  alignJustify: 'Align justify',
+  blockquote: 'Blockquote',
+  codeBlock: 'Code block',
+  horizontalRule: 'Horizontal rule',
+  insertLink: 'Insert link',
+  removeLink: 'Remove link',
+  insertImage: 'Insert image',
+  hardBreak: 'Hard break',
+  undo: 'Undo (⌘Z)',
+  redo: 'Redo (⌘⇧Z)',
+  fullscreen: 'Fullscreen',
+  exitFullscreen: 'Exit fullscreen',
+  linkUrlField: 'Link URL',
+  linkApply: 'Apply',
+  imagePopoverTitle: 'Add image',
+  imageUrlField: 'Image URL',
+  imageAltField: 'Alt text',
+  imageApply: 'Apply',
+  codeLanguageAuto: 'auto',
 };
 
 // ---------------------------------------------------------------------------
@@ -111,6 +205,7 @@ export type EditorToolbarProps = {
   toolbar: ResolvedToolbar;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
+  labels: EditorLabels;
 };
 
 export type EditorToolbarItemProps = ButtonBaseProps & {

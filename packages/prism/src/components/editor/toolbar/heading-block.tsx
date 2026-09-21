@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react';
+import type { EditorLabels } from '../types.js';
 import type { TextHeadingLevel } from './use-toolbar-state.js';
 
 import { useState, useCallback } from 'react';
@@ -23,11 +24,12 @@ const HEADING_OPTIONS = [
 ];
 
 interface HeadingBlockProps {
+  labels: EditorLabels;
   editor: Editor;
   isActive: (value: TextHeadingLevel) => boolean;
 }
 
-export function HeadingBlock({ editor, isActive }: HeadingBlockProps) {
+export function HeadingBlock({ editor, isActive, labels }: HeadingBlockProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
 
@@ -67,7 +69,7 @@ export function HeadingBlock({ editor, isActive }: HeadingBlockProps) {
     <>
       <HeadingButton
         id={buttonId}
-        aria-label="Heading menu"
+        aria-label={labels.headingMenu}
         aria-controls={open ? menuId : undefined}
         aria-haspopup="true"
         aria-expanded={open ? 'true' : undefined}

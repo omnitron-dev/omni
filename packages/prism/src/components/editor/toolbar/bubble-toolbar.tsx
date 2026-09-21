@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react';
+import type { EditorLabels } from '../types.js';
 
 import { BubbleMenu } from '@tiptap/react/menus';
 import Divider from '@mui/material/Divider';
@@ -20,9 +21,10 @@ import {
 
 interface BubbleToolbarProps {
   editor: Editor;
+  labels: EditorLabels;
 }
 
-export function BubbleToolbar({ editor }: BubbleToolbarProps) {
+export function BubbleToolbar({ editor, labels }: BubbleToolbarProps) {
   const state = useToolbarState(editor);
   const chain = () => editor.chain().focus();
 
@@ -30,37 +32,37 @@ export function BubbleToolbar({ editor }: BubbleToolbarProps) {
     <BubbleMenu editor={editor}>
       <BubbleRoot>
         <ToolbarItem
-          aria-label="Bold"
+          aria-label={labels.bold}
           active={state.isBold}
           className={editorClasses.toolbar.bold}
           onClick={() => chain().toggleBold().run()}
           icon={<BoldIcon />}
         />
         <ToolbarItem
-          aria-label="Italic"
+          aria-label={labels.italic}
           active={state.isItalic}
           className={editorClasses.toolbar.italic}
           onClick={() => chain().toggleItalic().run()}
           icon={<ItalicIcon />}
         />
         <ToolbarItem
-          aria-label="Underline"
+          aria-label={labels.underline}
           active={state.isUnderline}
           className={editorClasses.toolbar.underline}
           onClick={() => chain().toggleUnderline().run()}
           icon={<UnderlineIcon />}
         />
         <ToolbarItem
-          aria-label="Strike"
+          aria-label={labels.strike}
           active={state.isStrike}
           className={editorClasses.toolbar.strike}
           onClick={() => chain().toggleStrike().run()}
           icon={<StrikeIcon />}
         />
-        <LinkBlock editor={editor} active={state.isLink} linkIcon={<LinkIcon />} unlinkIcon={<UnlinkIcon />} />
+        <LinkBlock labels={labels} editor={editor} active={state.isLink} linkIcon={<LinkIcon />} unlinkIcon={<UnlinkIcon />} />
         <Divider orientation="vertical" flexItem sx={{ height: 16, my: 'auto' }} />
         <ToolbarItem
-          aria-label="Clear format"
+          aria-label={labels.clearFormat}
           className={editorClasses.toolbar.clear}
           onClick={() => chain().clearNodes().unsetAllMarks().run()}
           icon={<ClearMarksIcon />}

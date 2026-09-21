@@ -1564,8 +1564,24 @@ export class RemoteDeployer {
       // the four lines that named the actual failure at the very end. The
       // warnings were harmless and the noise was not — it is what a reader
       // sees first, and it says nothing.
+      // `| gzip -n` rather than tar's own `-z`, for the digest below.
+      //
+      // gzip writes the time of compression into its header, so the same
+      // directory packed twice a second apart produces two different sums —
+      // and this sum is what the remote directory is NAMED after. Measured:
+      // two archives of one file, one second apart, gave 2 distinct sha256
+      // with `-czf` and 1 with `| gzip -n`.
+      //
+      // Two consequences, and the second is the load-bearing one. A peer
+      // repacking the bundle to check what the node holds could compare
+      // only its LENGTH, because the sums were guaranteed to differ — an
+      // «almost proof» where a proof was one flag away. And the skip on an
+      // unchanged build never fired: every deployment minted a new digest,
+      // so `test -d <digest>` was always false and the same bytes crossed
+      // the link again. (omni-74, after their size-matched, sum-mismatched
+      // comparison.)
       await this.execution.exec(
-        `COPYFILE_DISABLE=1 tar --no-xattrs -czf ${shellEscape(archive)} -C ${shellEscape(localDir)} .`,
+        `COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C ${shellEscape(localDir)} . | gzip -n > ${shellEscape(archive)}`,
       );
       const bytes = (await fsp.stat(archive)).size;
       const digest = createHash('sha256').update(await fsp.readFile(archive)).digest('hex').slice(0, 16);

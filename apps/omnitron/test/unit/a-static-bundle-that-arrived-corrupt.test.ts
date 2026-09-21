@@ -188,6 +188,21 @@ describe('a bundle is unpacked only when it arrived whole', () => {
     expect(recordAt).toBeGreaterThan(extractAt);
   });
 
+  it('gives the same directory name to the same bundle', async () => {
+    // The digest names the remote directory, so a sum that changes with the
+    // clock means every deployment mints a new one — the skip on an
+    // unchanged build could never fire, and a peer checking what the node
+    // holds could compare only the length.
+    const dir = dirToServe();
+    const names: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const { svc } = deployer((cmd) => (cmd.includes('.delivered') ? 'yes' : ''));
+      names.push((await svc.uploadStaticBundle(TARGET, dir, ROOT)).remoteDir);
+      await new Promise((r) => setTimeout(r, 1100)); // past a gzip timestamp tick
+    }
+    expect(names[1]).toBe(names[0]);
+  });
+
   it('packs without the macOS attributes that buried the last failure', async () => {
     const { svc, asked } = deployer((cmd) => (cmd.includes('test -d') ? 'yes' : ''));
     await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT);

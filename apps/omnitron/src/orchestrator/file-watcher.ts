@@ -446,7 +446,13 @@ export class FileWatcher {
         await this.orchestrator.restartApp(appName);
         this.logger.info({ app: appName }, 'Restart complete');
       } catch (err) {
-        this.logger.error({ app: appName, error: (err as Error).message }, 'Restart failed');
+        const message = (err as Error).message;
+        this.logger.error({ app: appName, error: message }, 'Restart failed');
+        // A rebuild that restarts an app whose predecessor still holds the
+        // port is the commonest way into this, and the error names the
+        // address without ever naming the holder.
+        const held = await this.orchestrator.explainPortConflict(message);
+        if (held) this.logger.error({ app: appName }, `Restart failed — ${held}`);
       }
     } finally {
       app.restarting = false;

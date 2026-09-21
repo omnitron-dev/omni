@@ -105,7 +105,9 @@ const PINO_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace',
  */
 const TERMINAL_PROCESS_STATUSES: ReadonlySet<string> = new Set(['stopped', 'failed', 'crashed']);
 import { BuildService, type BuildResult } from './build-service.js';
+import { execFile } from 'node:child_process';
 import { ProcessJanitor } from './process-janitor.js';
+import { addressInUse, holderCommand, parseHolders, explainConflict } from './port-conflict.js';
 import { collectOwnedPids } from './owned-pids.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
@@ -599,6 +601,77 @@ export class OrchestratorService extends EventEmitter {
    * janitor's own tests supply this set as a fixture, so they could never
    * catch it being incomplete — and it was, by a whole class of process.
    */
+  /**
+   * Who is holding the port an app could not bind, in one sentence.
+   *
+   * Called where a start or restart failed, because that is the moment the
+   * answer is worth having and the moment nobody has it: the error names the
+   * address and never the holder. Measured on this daemon — four
+   * `EADDRINUSE` failures on 3005 in thirty-one seconds, `omnitron list`
+   * reporting the app crashed with no pid, and the port held the whole time
+   * by a child of this very daemon that nothing in its records claimed.
+   *
+   * Returns null when the failure was not a port clash, and says so out loud
+   * when it could not read the machine — a reading that failed and a port
+   * nobody holds are different findings.
+   */
+  async explainPortConflict(message: string): Promise<string | null> {
+    const address = addressInUse(message);
+    if (!address) return null;
+
+    const { file, args } = holderCommand(address.port, process.platform);
+    let output: string;
+    try {
+      output = await new Promise<string>((resolve, reject) => {
+        execFile(file, args, { encoding: 'utf8', timeout: 5_000 }, (err, stdout) => {
+          // `ss` and `lsof` both exit non-zero when nothing matches, which is
+          // an answer rather than a failure; the empty stdout carries it.
+          if (err && !stdout) reject(err);
+          else resolve(stdout);
+        });
+      });
+    } catch (err) {
+      return `could not read who holds port ${address.port}: ${file} ${(err as Error).message}`;
+    }
+
+    const holders = parseHolders(output, process.platform);
+    // One `ps` for the parents, before deciding: the decision is pure and
+    // takes the answers, so that it can be tested without a machine.
+    const parents = new Map<number, number>();
+    for (const holder of holders) {
+      const ppid = await this.parentOf(holder.pid);
+      if (ppid !== undefined) parents.set(holder.pid, ppid);
+    }
+
+    const verdict = explainConflict({
+      port: address.port,
+      holders,
+      parentOf: (pid) => parents.get(pid),
+      daemonPid: process.pid,
+      owned: this.collectOwnedPids(),
+    });
+    return verdict.because;
+  }
+
+  /** The parent of one process, or undefined when it cannot be read. */
+  private async parentOf(pid: number): Promise<number | undefined> {
+    try {
+      const out = await new Promise<string>((resolve, reject) => {
+        execFile('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8', timeout: 5_000 }, (err, stdout) => {
+          if (err && !stdout) reject(err);
+          else resolve(stdout);
+        });
+      });
+      const parsed = Number(out.trim());
+      return Number.isInteger(parsed) ? parsed : undefined;
+    } catch {
+      // A process that exited between the two readings has no parent to
+      // report, and that is not an error worth a line of its own — the
+      // verdict already says the holder was gone.
+      return undefined;
+    }
+  }
+
   private collectOwnedPids(): Set<number> {
     return collectOwnedPids(
       this.handles.values(),
@@ -2783,7 +2856,13 @@ export class OrchestratorService extends EventEmitter {
             await this.startAppInternal(entry, config);
             resolve();
           } catch (err) {
-            this.logger.error({ app: entry.name, error: (err as Error).message }, 'Restart failed');
+            const message = (err as Error).message;
+            this.logger.error({ app: entry.name, error: message }, 'Restart failed');
+            // Said separately and after, because reading the process table
+            // takes a moment and the failure itself must not wait for it.
+            void this.explainPortConflict(message).then((held) => {
+              if (held) this.logger.error({ app: entry.name }, `Restart failed — ${held}`);
+            });
             reject(err);
           }
         }, delay);

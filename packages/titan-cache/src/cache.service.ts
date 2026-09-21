@@ -339,6 +339,9 @@ export class CacheService implements ICacheService {
       // L2 row stayed — to be promoted back on the next read. See
       // `test/a-tag-flush-that-left-the-shared-copy.spec.ts`.
       trackL2Tags: options.trackL2Tags,
+      // Forwarded for the same reason, and it is the same defect if it is
+      // not: an option the module surface accepts and the cache never sees.
+      broadcastInvalidations: options.broadcastInvalidations,
     };
 
     return new MultiTierCache<T>(multiTierOptions) as ICache<T>;

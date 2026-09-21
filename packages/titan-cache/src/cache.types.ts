@@ -292,6 +292,17 @@ export interface ICacheModuleOptions {
    * to hold across processes needs the index in Redis.
    */
   trackL2Tags?: boolean;
+  /**
+   * Tell the other processes sharing this L2 to drop their L1 copies when
+   * this one invalidates. Needs an L2 adapter implementing
+   * `publishInvalidation` / `subscribeInvalidation`; with one that does not,
+   * the flag is inert and `isInvalidationBroadcastActive()` answers `false`.
+   *
+   * Deleting the shared row is not the whole job: only a process that
+   * PROMOTED the key holds an L1 copy, and that copy outlives the row by the
+   * entry's TTL. Delivery is at most once, so the TTL stays the backstop.
+   */
+  broadcastInvalidations?: boolean;
 }
 
 /**

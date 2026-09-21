@@ -30,6 +30,7 @@
 export { Editor } from './editor.js';
 export { editorClasses } from './classes.js';
 export { resolveToolbar } from './presets.js';
+export { DEFAULT_EDITOR_LABELS } from './types.js';
 
 // Types
 export type {
@@ -41,6 +42,7 @@ export type {
   ResolvedToolbar,
   EditorToolbarProps,
   EditorToolbarItemProps,
+  EditorLabels,
 } from './types.js';
 
 // Extensions (re-export for advanced usage)

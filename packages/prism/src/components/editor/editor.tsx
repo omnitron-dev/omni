@@ -1,4 +1,5 @@
 import type { EditorProps } from './types.js';
+import { DEFAULT_EDITOR_LABELS } from './types.js';
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { common, createLowlight } from 'lowlight';
@@ -10,7 +11,9 @@ import LinkExtension from '@tiptap/extension-link';
 import PlaceholderExtension from '@tiptap/extension-placeholder';
 import TaskListExtension from '@tiptap/extension-task-list';
 import TaskItemExtension from '@tiptap/extension-task-item';
-import CodeBlockLowlightExtension from '@tiptap/extension-code-block-lowlight';
+import CodeBlockLowlightExtension, {
+  type CodeBlockLowlightOptions,
+} from '@tiptap/extension-code-block-lowlight';
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 
 import Box from '@mui/material/Box';
@@ -55,6 +58,7 @@ export function Editor({
   editable = true,
   extraExtensions,
   placeholder = 'Write something...',
+  labels: labelOverrides,
   ref: contentRef,
   value: initialContent = '',
   ...other
@@ -67,6 +71,12 @@ export function Editor({
   const showToolbar = resolvedToolbar.items.size > 0;
 
   const lowlight = useMemo(() => createLowlight(common), []);
+
+  // Merged once per identity change so the toolbar's props stay stable.
+  const labels = useMemo(
+    () => ({ ...DEFAULT_EDITOR_LABELS, ...labelOverrides }),
+    [labelOverrides],
+  );
 
   // Parse initial content — if format is 'json' and value looks like JSON, parse it
   const parsedContent = useMemo(() => {
@@ -142,9 +152,15 @@ export function Editor({
 
     if (has('codeBlock')) {
       exts.push(
-        CodeBlockLowlightExtension.extend({
+        CodeBlockLowlightExtension.extend<
+          CodeBlockLowlightOptions & { autoLanguageLabel: string }
+        >({
+          addOptions() {
+            const inherited = this.parent?.() as CodeBlockLowlightOptions;
+            return { ...inherited, autoLanguageLabel: DEFAULT_EDITOR_LABELS.codeLanguageAuto };
+          },
           addNodeView: () => ReactNodeViewRenderer(CodeHighlightBlock),
-        }).configure({ lowlight })
+        }).configure({ lowlight, autoLanguageLabel: labels.codeLanguageAuto })
       );
     }
 
@@ -163,7 +179,10 @@ export function Editor({
     }
 
     return exts;
-  }, [resolvedToolbar, placeholder, lowlight, extraExtensions]);
+    // `labels` is a dependency because the code block's language picker is a
+    // node view: its word lives in the extension, so a language switch has to
+    // rebuild the extensions to reach it.
+  }, [resolvedToolbar, placeholder, lowlight, extraExtensions, labels]);
 
   const editor = useEditor({
     editable,
@@ -249,13 +268,14 @@ export function Editor({
             <>
               {showToolbar && (
                 <Toolbar
+                  labels={labels}
                   editor={editor}
                   toolbar={resolvedToolbar}
                   fullscreen={fullscreen}
                   onToggleFullscreen={handleToggleFullscreen}
                 />
               )}
-              {showBubbleMenu && <BubbleToolbar editor={editor} />}
+              {showBubbleMenu && <BubbleToolbar editor={editor} labels={labels} />}
               <EditorContent
                 ref={contentRef}
                 spellCheck={false}

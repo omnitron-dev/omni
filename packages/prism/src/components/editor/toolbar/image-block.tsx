@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import type { EditorToolbarItemProps } from '../types.js';
+import type { EditorLabels } from '../types.js';
 
 import { useState, useCallback } from 'react';
 
@@ -12,11 +13,12 @@ import { editorClasses } from '../classes.js';
 import { ToolbarItem } from './toolbar-item.js';
 
 interface ImageBlockProps {
+  labels: EditorLabels;
   editor: Editor;
   icon: EditorToolbarItemProps['icon'];
 }
 
-export function ImageBlock({ editor, icon }: ImageBlockProps) {
+export function ImageBlock({ editor, icon, labels }: ImageBlockProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
   const [state, setState] = useState({ imageUrl: '', altText: '' });
@@ -41,7 +43,7 @@ export function ImageBlock({ editor, icon }: ImageBlockProps) {
     <>
       <ToolbarItem
         aria-describedby={popoverId}
-        aria-label="Insert image"
+        aria-label={labels.insertImage}
         className={editorClasses.toolbar.image}
         onClick={handleOpen}
         icon={icon}
@@ -59,11 +61,11 @@ export function ImageBlock({ editor, icon }: ImageBlockProps) {
           },
         }}
       >
-        <Typography variant="subtitle2">Add image</Typography>
+        <Typography variant="subtitle2">{labels.imagePopoverTitle}</Typography>
         <TextField
           fullWidth
           size="small"
-          label="Image URL"
+          label={labels.imageUrlField}
           placeholder="https://"
           value={state.imageUrl}
           onChange={(e) => setState((prev) => ({ ...prev, imageUrl: e.target.value }))}
@@ -71,12 +73,12 @@ export function ImageBlock({ editor, icon }: ImageBlockProps) {
         <TextField
           fullWidth
           size="small"
-          label="Alt text"
+          label={labels.imageAltField}
           value={state.altText}
           onChange={(e) => setState((prev) => ({ ...prev, altText: e.target.value }))}
         />
         <Button variant="contained" disabled={!state.imageUrl} onClick={handleApply} sx={{ alignSelf: 'flex-end' }}>
-          Apply
+          {labels.imageApply}
         </Button>
       </Popover>
     </>

@@ -50,6 +50,44 @@ export interface LightboxSlide {
 }
 
 // =============================================================================
+// LIGHTBOX LABELS
+// =============================================================================
+
+/**
+ * Accessible names for the lightbox's controls, so a consumer can localise
+ * them.
+ *
+ * Every one of these buttons is an icon: there is no visible text beside it,
+ * so the `aria-label` is the ONLY text a screen reader has to offer. Written
+ * into the component they were English on a Russian-first product — and the
+ * lightbox is where a person looks at a photograph someone sent them in chat,
+ * an image in a shop review, or a picture in the documentation.
+ *
+ * Defaults keep the previous strings verbatim, so a consumer that passes
+ * nothing is unchanged.
+ */
+export interface LightboxLabels {
+  zoomIn: string;
+  zoomOut: string;
+  download: string;
+  share: string;
+  close: string;
+  previous: string;
+  next: string;
+}
+
+/** The strings the lightbox used before `labels` existed. */
+export const DEFAULT_LIGHTBOX_LABELS: LightboxLabels = {
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  download: 'Download',
+  share: 'Share',
+  close: 'Close',
+  previous: 'Previous',
+  next: 'Next',
+};
+
+// =============================================================================
 // LIGHTBOX PROPS
 // =============================================================================
 
@@ -100,6 +138,9 @@ export interface LightboxProps extends Omit<DialogProps, 'open' | 'onClose' | 'c
     /** Custom buttons */
     buttons?: React.ReactNode[];
   };
+  /** Accessible names for the controls. Partial — anything omitted keeps
+   *  its English default. See {@link LightboxLabels}. */
+  labels?: Partial<LightboxLabels>;
   /** MUI sx prop */
   sx?: SxProps<Theme>;
   /** Slot props for internal components */

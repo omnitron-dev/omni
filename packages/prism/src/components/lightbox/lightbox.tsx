@@ -10,6 +10,7 @@
  */
 
 import type { LightboxProps, LightboxSlide } from './types.js';
+import { DEFAULT_LIGHTBOX_LABELS } from './types.js';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
@@ -99,12 +100,20 @@ export function Lightbox({
   closeOnBackdropClick = true,
   closeOnEsc = true,
   toolbar = { show: true, position: 'top' },
+  labels: labelOverrides,
   sx,
   slotProps,
   className,
   ...dialogProps
 }: LightboxProps) {
   const theme = useTheme();
+
+  // Merged once per identity change, so a consumer passing an inline object
+  // does not rebuild the toolbar on every render.
+  const labels = useMemo(
+    () => ({ ...DEFAULT_LIGHTBOX_LABELS, ...labelOverrides }),
+    [labelOverrides]
+  );
 
   // State
   const [currentIndex, setCurrentIndex] = useState(controlledIndex);
@@ -465,7 +474,7 @@ export function Lightbox({
                 <GlassButton
                   onClick={zoomOut}
                   disabled={zoomLevel <= MIN_ZOOM}
-                  aria-label="Zoom out"
+                  aria-label={labels.zoomOut}
                   className={lightboxClasses.toolbarButton}
                   size="small"
                 >
@@ -490,7 +499,7 @@ export function Lightbox({
                 <GlassButton
                   onClick={zoomIn}
                   disabled={zoomLevel >= MAX_ZOOM}
-                  aria-label="Zoom in"
+                  aria-label={labels.zoomIn}
                   className={lightboxClasses.toolbarButton}
                   size="small"
                 >
@@ -513,7 +522,7 @@ export function Lightbox({
             {download && (
               <GlassButton
                 onClick={handleDownload}
-                aria-label="Download"
+                aria-label={labels.download}
                 className={lightboxClasses.toolbarButton}
                 size="small"
               >
@@ -524,7 +533,7 @@ export function Lightbox({
             {share && (
               <GlassButton
                 onClick={handleShare}
-                aria-label="Share"
+                aria-label={labels.share}
                 className={lightboxClasses.toolbarButton}
                 size="small"
               >
@@ -534,7 +543,7 @@ export function Lightbox({
 
             {toolbar?.buttons}
 
-            <GlassButton onClick={onClose} aria-label="Close" className={lightboxClasses.toolbarButton} size="small">
+            <GlassButton onClick={onClose} aria-label={labels.close} className={lightboxClasses.toolbarButton} size="small">
               <CloseIcon fontSize="small" />
             </GlassButton>
           </GlassToolbar>
@@ -694,7 +703,7 @@ export function Lightbox({
             className={cn(lightboxClasses.navButton, lightboxClasses.navPrev)}
             side="left"
             onClick={prev}
-            aria-label="Previous"
+            aria-label={labels.previous}
             sx={slotProps?.navButton}
           >
             <ChevronLeftIcon sx={{ fontSize: 28 }} />
@@ -706,7 +715,7 @@ export function Lightbox({
             className={cn(lightboxClasses.navButton, lightboxClasses.navNext)}
             side="right"
             onClick={next}
-            aria-label="Next"
+            aria-label={labels.next}
             sx={slotProps?.navButton}
           >
             <ChevronRightIcon sx={{ fontSize: 28 }} />
@@ -771,7 +780,7 @@ export function Lightbox({
               </CounterChip>
             )}
             <Box sx={{ flex: 1 }} />
-            <GlassButton onClick={onClose} aria-label="Close" size="small">
+            <GlassButton onClick={onClose} aria-label={labels.close} size="small">
               <CloseIcon fontSize="small" />
             </GlassButton>
           </GlassToolbar>

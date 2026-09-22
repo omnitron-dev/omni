@@ -261,3 +261,72 @@ export interface INodeClusterState {
   /** As `LeaderElection.getClusterState()` returns it. */
   cluster: Record<string, unknown> | null;
 }
+
+// =============================================================================
+// Fleet rollout — upgrading many nodes from the console
+// =============================================================================
+
+/**
+ * What a rollout will do to one node, decided BEFORE anything is shipped.
+ *
+ * The console shows these rows behind a «Plan» button so an operator sees the
+ * outcome before the outcome happens: how many will move, how many are
+ * already there, who cannot be reached and why. `planUpgrade` in
+ * `services/node-upgrade.ts` is the pure function that produces the decision;
+ * this is that decision projected onto the wire, with the two fields a table
+ * needs added — the node's label and the machine behind it.
+ *
+ * `host` is `host:sshPort`, the MACHINE, and it is here because two registry
+ * entries can name one box. Measured: `daos-test` and `acme-deploy-test`,
+ * both `37.27.130.185:22`, listed as two targets — one host would have
+ * received the bundle twice, the second install running while the first was
+ * still switching `current` underneath it. The plan collapses them and says
+ * so in `because`; showing the address is how an operator can see that the
+ * collapse was right.
+ */
+export interface INodeUpgradePlanRow {
+  nodeId: string;
+  /** What the node is called in the console — `UpgradeCandidate.name`. */
+  label: string;
+  /** `host:sshPort`. Null when the registry entry has no usable address. */
+  host: string | null;
+  /** What it runs now; null means it could not be asked. */
+  currentVersion: string | null;
+  targetVersion: string;
+  action: 'upgrade' | 'skip' | 'refuse';
+  /**
+   * Why, in the words the operator should read — «already on 0.2.0+…»,
+   * «unreachable: …», «the same machine as 'daos-test'».
+   *
+   * Empty for an `upgrade` row: there is no reason to give for doing the
+   * thing that was asked for.
+   */
+  because: string;
+}
+
+/** The whole plan, as `planUpgrade` decided it. */
+export interface INodeUpgradePlan {
+  /** The version this rollout would install everywhere. */
+  targetVersion: string;
+  rows: INodeUpgradePlanRow[];
+  /**
+   * Set when the run must not start at all — a daemon with nothing to build
+   * from, for instance. Distinct from every row refusing: this is about the
+   * rollout, not about the nodes.
+   */
+  refusal: string | null;
+}
+
+/** What a rollout accepted, and what it would not take. */
+export interface INodeRolloutStart {
+  /** Node ids the daemon has queued. Order is the order they will run in. */
+  accepted: string[];
+  /**
+   * Nodes the daemon declined to queue, each with its reason — already
+   * running, unknown to the registry, held by another deployment.
+   *
+   * Refused rather than silently dropped: a rollout that quietly shrinks is
+   * how an operator comes to believe a node was upgraded when it was not.
+   */
+  refused: Array<{ nodeId: string; because: string }>;
+}

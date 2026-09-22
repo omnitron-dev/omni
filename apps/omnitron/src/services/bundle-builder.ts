@@ -184,19 +184,40 @@ export function readWorkspaces(roots: readonly string[]): Workspace {
 }
 
 /**
- * Every workspace root a manifest's `link:` ranges point into.
+ * Every workspace root a manifest's `link:` dependencies are INSTALLED from.
  *
- * The path is right there in the range, and the root above it is marked by
- * `pnpm-workspace.yaml` — the same marker `findWorkspaceRoot` uses, because
- * it is the same question asked from the other end. Deriving it beats a
- * configured path that has to be kept in step with the manifest.
+ * Asked of the installed tree first — `<packageDir>/node_modules/<name>` is
+ * the link pnpm made, and it is what the package's code actually loads — and
+ * of the declared range only when nothing is installed. The two differ where
+ * it matters: daos declares every omni package as an ABSOLUTE
+ * `link:/Users/…/omni/…`, while its lockfile records them relative, and a
+ * release is built in a layout where the relative links land on a clean
+ * clone of omni (`release/layout.ts`). Reading the declaration, the release
+ * builder's packer found the DEVELOPER'S omni instead: on 2026-09-22 both
+ * releases of the day vendored `@omnitron-dev/omnitron` from the working tree
+ * — «rebuilding @omnitron-dev/omnitron — src/services/node-upgrade.service.ts
+ * is newer than anything in dist», a file edited after the clone was made —
+ * and rebuilt the running daemon's own `dist` in passing, uncommitted edits
+ * of other sessions included. The install had been checked to resolve inside
+ * the clone (98 of 98 links); the packer never asked it.
+ *
+ * A relative range is resolved against the package's directory, as pnpm
+ * resolves it — not against whatever directory this process runs in.
  */
-export function linkedWorkspaceRoots(manifest: PackageManifest): string[] {
+export function linkedWorkspaceRoots(manifest: PackageManifest, packageDir?: string): string[] {
   const roots: string[] = [];
   for (const group of [manifest.dependencies, manifest.optionalDependencies]) {
-    for (const range of Object.values(group ?? {})) {
+    for (const [name, range] of Object.entries(group ?? {})) {
       if (!isLinkRange(range)) continue;
-      const target = range.slice('link:'.length);
+      let target: string | null = null;
+      if (packageDir) {
+        try {
+          target = fs.realpathSync(path.join(packageDir, 'node_modules', name));
+        } catch {
+          // Not installed: the declaration is all there is.
+        }
+      }
+      target ??= path.resolve(packageDir ?? process.cwd(), range.slice('link:'.length));
       const root = findWorkspaceRoot(target);
       if (root && !roots.includes(root)) roots.push(root);
     }

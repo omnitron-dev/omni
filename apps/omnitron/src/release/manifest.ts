@@ -158,6 +158,26 @@ export interface ReleaseManifest {
     readonly bytes: number;
   };
   readonly gates: readonly GateOutcome[];
+  /**
+   * What the machine was doing while the gates ran.
+   *
+   * Measured 2026-09-22: three builds of the same commit, on one laptop,
+   * gave 21/21, 16/21 and 16/21 — with a DIFFERENT five red each time, and
+   * in every red gate either zero failing tests or a `connect ETIMEDOUT` to
+   * a container that was up. The fifteen-minute load average was 38, then
+   * 56; the CPU belonged to another project's arenas, not to anything here.
+   *
+   * A verdict that changes run to run is not a fact about the code, and the
+   * manifest is where that has to be visible — otherwise the next reader
+   * spends an hour in a diff looking for a regression that was a loaded
+   * machine. Two readings, because one at the end cannot show a spike that
+   * has passed.
+   */
+  readonly machine?: {
+    readonly cpus: number;
+    readonly loadAtGateStart: readonly [number, number, number];
+    readonly loadAtGateEnd: readonly [number, number, number];
+  };
   readonly builtWith: BuiltWith;
   readonly builtAt: string;
   readonly builtBy: string;

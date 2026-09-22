@@ -39,7 +39,7 @@ import type { ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { DeployIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
-import { GATE_TONE, GateStrip, bytes, elapsed, when } from 'src/components/release-bits';
+import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
 
@@ -175,6 +175,15 @@ export default function ReleaseDetailPage() {
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                     statics for <strong>{release.statics.stack}</strong> — {release.statics.files} files,{' '}
                     {bytes(release.statics.bytes)} from {manifest?.statics?.dir}
+                  </Typography>
+                )}
+                {release.machine && (
+                  <Typography
+                    variant="caption"
+                    sx={{ color: ranLoaded(release.machine) ? 'warning.main' : 'text.secondary' }}
+                  >
+                    machine while the gates ran: {loadWords(release.machine)}
+                    {ranLoaded(release.machine) ? ' — more than its cores, so read a red gate here as the machine first' : ''}
                   </Typography>
                 )}
               </Stack>

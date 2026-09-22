@@ -28,7 +28,7 @@ import type { BuildRecord, ReleaseDeploymentDto, ReleasePreflightDto, ReleaseSum
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
-import { CommitPair, GateCount, GateStrip, bytes, when } from 'src/components/release-bits';
+import { CommitPair, GateCount, GateStrip, bytes, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
 import { useActiveProject } from 'src/stores/project.store';
@@ -182,7 +182,17 @@ export default function ReleasesPage() {
       header: 'Gates',
       render: (r) => (
         <Stack spacing={0.5}>
-          <GateCount gates={r.gates} />
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+            <GateCount gates={r.gates} />
+            {r.machine && ranLoaded(r.machine) && (
+              <Tooltip
+                title={`The machine was carrying more than its cores while the gates ran — ${loadWords(r.machine)}. A red gate here is evidence about the machine before it is evidence about the code.`}
+                arrow
+              >
+                <Chip label="loaded" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+              </Tooltip>
+            )}
+          </Stack>
           <GateStrip gates={r.gateList} size={8} />
         </Stack>
       ),

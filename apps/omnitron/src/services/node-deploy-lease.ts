@@ -350,6 +350,13 @@ export class NodeLease {
 export interface LeaseCandidate {
   /** `host:daemonPort`, the key the deployment already uses. */
   node: string;
+  /**
+   * The machine the lease file lives on — `host:sshPort`. Candidates on one
+   * machine share one lease: two names for one server within one deployment
+   * are one writer, and two leases there would refuse each other. Defaults
+   * to `node`.
+   */
+  machine?: string;
   run: LeaseRunner;
 }
 
@@ -379,12 +386,27 @@ export async function withNodeLeases<T>(
   deploy: (leases: HeldLeases) => Promise<T>,
   timing: LeaseTiming = DEFAULT_LEASE_TIMING,
 ): Promise<T> {
-  const ordered = [...candidates].sort((a, b) => (a.node < b.node ? -1 : a.node > b.node ? 1 : 0));
+  const machineOf = (c: LeaseCandidate) => c.machine ?? c.node;
+  const order = (c: LeaseCandidate) => `${machineOf(c)}\u0000${c.node}`;
+  const ordered = [...candidates].sort((a, b) => (order(a) < order(b) ? -1 : order(a) > order(b) ? 1 : 0));
   const held = new Map<string, NodeLease>();
+  const byMachine = new Map<string, NodeLease>();
   const unreachable = new Map<string, string>();
+  const unreachableMachines = new Map<string, string>();
 
   try {
     for (const candidate of ordered) {
+      const machine = machineOf(candidate);
+      const shared = byMachine.get(machine);
+      if (shared) {
+        held.set(candidate.node, shared);
+        continue;
+      }
+      const lost = unreachableMachines.get(machine);
+      if (lost !== undefined) {
+        unreachable.set(candidate.node, lost);
+        continue;
+      }
       const lease = new NodeLease(candidate.node, candidate.run, stack, timing);
       let answer: AcquireAnswer;
       try {
@@ -392,6 +414,7 @@ export async function withNodeLeases<T>(
       } catch (err) {
         if (err instanceof LeaseUnavailableError) throw err;
         unreachable.set(candidate.node, (err as Error).message);
+        unreachableMachines.set(machine, (err as Error).message);
         logger.warn(
           { node: candidate.node, stack, error: (err as Error).message },
           'Could not reach this node to lease it — it will not be deployed to',
@@ -408,6 +431,7 @@ export async function withNodeLeases<T>(
         );
       }
       held.set(candidate.node, lease);
+      byMachine.set(machine, lease);
       lease.startRenewing(logger);
       logger.info({ node: candidate.node, stack, token: lease.record.token }, 'Deploy lease taken');
     }
@@ -432,7 +456,8 @@ export async function withNodeLeases<T>(
 }
 
 async function releaseAll(held: ReadonlyMap<string, NodeLease>, stack: string, logger: ILogger): Promise<void> {
-  for (const lease of held.values()) {
+  // Once per lease: several names may share one machine's.
+  for (const lease of new Set(held.values())) {
     try {
       const answer = await lease.release();
       if (answer.kind === 'not-held') {

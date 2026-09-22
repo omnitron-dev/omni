@@ -293,3 +293,36 @@ describe('a deployment takes every node first and gives them all back', () => {
     expect(fs.existsSync(leaseFile(a.dir))).toBe(false);
   });
 });
+
+describe('two names for one machine are one writer', () => {
+  it('share one lease — taken once, confirmed under either name, given back once', async () => {
+    const m = node('one-box');
+    const asked: string[] = [];
+    const run: LeaseRunner = async (script) => {
+      asked.push(script.includes("echo 'ACQUIRED'") ? 'acquire' : script.includes("echo 'RENEWED'") ? 'confirm' : 'release');
+      return m.run(script);
+    };
+
+    await withNodeLeases(
+      [
+        { node: 'daos-test', machine: '37.27.130.185:22', run },
+        { node: 'acme-deploy-test', machine: '37.27.130.185:22', run },
+      ],
+      'daos/test',
+      silentLogger,
+      async (leases) => {
+        expect(leases.has('daos-test')).toBe(true);
+        expect(leases.has('acme-deploy-test')).toBe(true);
+        await leases.confirm('acme-deploy-test', 'provisioning');
+        await leases.confirm('daos-test', 'provisioning');
+      },
+      m.timing,
+    );
+
+    // Without the sharing, the second name's acquire met the first's lease —
+    // a different token — and the deployment refused itself.
+    expect(asked.filter((a) => a === 'acquire')).toHaveLength(1);
+    expect(asked.filter((a) => a === 'release')).toHaveLength(1);
+    expect(fs.existsSync(leaseFile(m.dir))).toBe(false);
+  });
+});

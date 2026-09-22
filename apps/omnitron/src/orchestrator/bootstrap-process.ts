@@ -23,6 +23,7 @@ import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websock
 import { loadBootstrapConfig } from './bootstrap-loader.js';
 import type { IAppDefinition, IProcessEntry } from '../config/types.js';
 import { pathToFileURL } from 'node:url';
+import { queryTopologyService } from './topology-query.js';
 
 /**
  * Convert an absolute filesystem path to a file:// URL string suitable as
@@ -692,8 +693,16 @@ class BootstrapProcess {
     ]);
 
     for (const serviceName of serviceNames) {
+      // Asking once turned a half-second of startup order into a logged
+      // failure: this process connects as soon as it is up, and the pool
+      // that provides the service registers a beat later. Six such lines a
+      // day on the stand, none of them an outcome. `queryTopologyService`
+      // covers the window; a service that is genuinely absent still lands in
+      // the catch below, where the warning means what it says.
+      const queried = await queryTopologyService(daemonPeer, serviceName);
       try {
-        const proxy = await daemonPeer.queryInterface(serviceName);
+        if (!queried.ok) throw queried.error;
+        const proxy = queried.proxy;
         // Register under topology:{ServiceName} — consumers inject via
         // createToken('topology:OhlcvAggregatorWorker')
         const token = createToken(`${TOPOLOGY_TOKEN_PREFIX}${serviceName}`);

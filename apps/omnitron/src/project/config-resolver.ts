@@ -28,6 +28,7 @@ import type {
 import type { IServiceRequirement, IResolvedServiceAddress } from '../infrastructure/types.js';
 import type { StackPortAllocation } from '../infrastructure/stack-infra-manager.js';
 import { getEnv } from '../shared/env-config.js';
+import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 
 // =============================================================================
 // Types
@@ -61,8 +62,8 @@ export function resolveGenericServiceAddresses(
 ): GenericServiceAddresses {
   const addresses: GenericServiceAddresses = {};
   const host = stackConfig.type === 'local'
-    ? 'localhost'
-    : stackConfig.nodes?.[0]?.host ?? 'localhost';
+    ? LOCAL_INFRA_HOST
+    : stackConfig.nodes?.[0]?.host ?? LOCAL_INFRA_HOST;
 
   for (const [name, svc] of Object.entries(normalizedServices)) {
     // Resolve ports: use stack port allocation if available, else service defaults
@@ -381,7 +382,7 @@ export function resolveStack(
         const s3Cfg = typeof omnitronCfg.s3 === 'object' ? omnitronCfg.s3 : {};
         const storageAddr = genericAddresses?.['minio'];
         const s3Port = storageAddr?.ports['api'] ?? 9000;
-        const s3Host = storageAddr?.host ?? 'localhost';
+        const s3Host = storageAddr?.host ?? LOCAL_INFRA_HOST;
 
         resolved.s3 = {
           endpoint: addresses.s3?.endpoint ?? `http://${s3Host}:${s3Port}`,
@@ -471,7 +472,7 @@ export function resolveStack(
               hostPorts[portName] = docker?.portMappings?.[portName] ?? containerPort;
             }
             address = {
-              host: 'localhost',
+              host: LOCAL_INFRA_HOST,
               ports: hostPorts,
               secrets: resolveServiceSecrets(requirement.secrets ?? {}),
             };
@@ -597,18 +598,18 @@ function resolveStackAddresses(
     const minioPort = portAllocation?.minioPort ?? infra?.minio?.ports?.api ?? 9000;
     return {
       postgres: {
-        host: 'localhost',
+        host: LOCAL_INFRA_HOST,
         port: portAllocation?.postgresPort ?? infra?.postgres?.port ?? 5432,
         user: infra?.postgres?.user ?? getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: {
-        host: 'localhost',
+        host: LOCAL_INFRA_HOST,
         port: portAllocation?.redisPort ?? infra?.redis?.port ?? 6379,
         password: defaultRedisPassword,
       },
       s3: {
-        endpoint: `http://localhost:${minioPort}`,
+        endpoint: `http://${LOCAL_INFRA_HOST}:${minioPort}`,
         accessKey: defaultMinioAccessKey,
         secretKey: defaultMinioSecretKey,
       },
@@ -640,13 +641,13 @@ function resolveStackAddresses(
 
     return {
       postgres: {
-        host: dbNode?.host ?? 'localhost',
+        host: dbNode?.host ?? LOCAL_INFRA_HOST,
         port: dbNode?.port ?? 5432,
         user: getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: {
-        host: cacheNode?.host ?? 'localhost',
+        host: cacheNode?.host ?? LOCAL_INFRA_HOST,
         port: cacheNode?.port ?? 6379,
         password: defaultRedisPassword,
       },
@@ -657,12 +658,12 @@ function resolveStackAddresses(
   // Fallback: localhost
   return {
     postgres: {
-      host: 'localhost',
+      host: LOCAL_INFRA_HOST,
       port: 5432,
       user: getEnv().POSTGRES_USER ?? 'postgres',
       password: defaultPgPassword,
     },
-    redis: { host: 'localhost', port: 6379, password: defaultRedisPassword },
+    redis: { host: LOCAL_INFRA_HOST, port: 6379, password: defaultRedisPassword },
   };
 }
 

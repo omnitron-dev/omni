@@ -27,6 +27,7 @@ import type {
 } from './types.js';
 import { resolveInfrastructure, resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
+import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
   isDockerAvailable,
   getContainerState,
@@ -498,7 +499,7 @@ export class InfrastructureService {
         const pg = this.config.postgres;
         if (!pg) return null;
         return {
-          host: 'localhost',
+          host: LOCAL_INFRA_HOST,
           port: pg.port ?? 5432,
           user: pg.user ?? 'postgres',
           password: typeof pg.password === 'string' ? pg.password : 'postgres',
@@ -508,7 +509,7 @@ export class InfrastructureService {
         const redis = this.config.redis;
         if (!redis) return null;
         return {
-          host: 'localhost',
+          host: LOCAL_INFRA_HOST,
           port: redis.port ?? 6379,
           password: typeof redis.password === 'string' ? redis.password : undefined,
           databases: redis.databases ?? {},
@@ -518,7 +519,7 @@ export class InfrastructureService {
         const minio = this.config.minio;
         if (!minio) return null;
         return {
-          endpoint: `http://localhost:${minio.ports?.api ?? 9000}`,
+          endpoint: `http://${LOCAL_INFRA_HOST}:${minio.ports?.api ?? 9000}`,
           accessKey: minio.accessKey ?? 'minioadmin',
           secretKey: typeof minio.secretKey === 'string' ? minio.secretKey : 'minioadmin',
           forcePathStyle: true,
@@ -526,7 +527,7 @@ export class InfrastructureService {
       }
       case 'omnitron-pg':
         return {
-          host: 'localhost',
+          host: LOCAL_INFRA_HOST,
           port: OMNITRON_PG_PORT,
           user: OMNITRON_PG_USER,
           password: OMNITRON_PG_PASSWORD,

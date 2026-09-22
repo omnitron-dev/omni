@@ -1746,7 +1746,11 @@ export class ProjectService extends EventEmitter {
     }
     phases.enter(`leasing ${nodes.length} node(s)`);
     return withNodeLeases(
-      [...targets].map(([node, target]) => ({ node, run: this.deployer.leaseRunner(target) })),
+      [...targets].map(([node, target]) => ({
+        node,
+        machine: `${target.host}:${target.sshPort ?? 22}`,
+        run: this.deployer.leaseRunner(target),
+      })),
       `${projectName}/${stackName}`,
       this.logger,
       async (leases) => {

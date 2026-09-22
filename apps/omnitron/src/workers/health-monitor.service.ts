@@ -419,7 +419,34 @@ export class HealthMonitorService {
         os: r.os ? JSON.stringify(r.os) : null,
       }));
 
-      await this.db.insertInto('node_health_checks').values(rows).execute();
+      try {
+        await this.db.insertInto('node_health_checks').values(rows).execute();
+        return;
+      } catch {
+        // Fall through to one row at a time.
+      }
+
+      // A round is ONE statement, so a single row the table refuses took
+      // every other node's row with it. It happened: a node's build-stamped
+      // version outgrew `omnitronVersion` (migration 008), and from 12:15 UTC
+      // on 2026-09-22 no node — the master included — had any history at
+      // all. Row by row, the refusal costs the row that earned it.
+      const refused: Array<{ nodeId: string; error: string }> = [];
+      for (const row of rows) {
+        try {
+          await this.db.insertInto('node_health_checks').values(row).execute();
+        } catch (err) {
+          refused.push({ nodeId: row.nodeId, error: (err as Error).message });
+        }
+      }
+      if (refused.length === rows.length) {
+        this.logger.warn({ error: refused[0]?.error, rows: rows.length }, 'Failed to persist health check results');
+      } else if (refused.length > 0) {
+        this.logger.warn(
+          { refused, stored: rows.length - refused.length },
+          'Health check results refused for some nodes — the others were stored',
+        );
+      }
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Failed to persist health check results');
     }

@@ -20,6 +20,7 @@ import * as m004 from './004_sync_buffer.js';
 import * as m005 from './005_node_health_checks.js';
 import * as m006 from './006_login_throttle.js';
 import * as m007 from './007_sync_ingested.js';
+import * as m008 from './008_node_health_version_text.js';
 
 /**
  * Every Omnitron migration, in apply order.
@@ -35,4 +36,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   { name: '005_node_health_checks', up: m005.up, down: m005.down },
   { name: '006_login_throttle', up: m006.up, down: m006.down },
   { name: '007_sync_ingested', up: m007.up, down: m007.down },
+  { name: '008_node_health_version_text', up: m008.up, down: m008.down },
 ];

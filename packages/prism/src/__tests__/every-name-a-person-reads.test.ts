@@ -40,7 +40,9 @@ const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /** Component directory → the dictionary its `labels` prop merges over. */
 const REGISTRY: Record<string, Record<string, string>> = {
   'components/editor': DEFAULT_EDITOR_LABELS,
-  'components/lightbox': DEFAULT_LIGHTBOX_LABELS,
+  // Spread: `LightboxLabels` is an interface, and an interface has no implicit
+  // index signature — the literal copy has the same seven strings and does.
+  'components/lightbox': { ...DEFAULT_LIGHTBOX_LABELS },
 };
 
 /**

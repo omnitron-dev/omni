@@ -106,7 +106,7 @@ const FALLBACK_STYLE: StyleSpecification = {
   ],
 };
 
-export const Map = forwardRef<MapRef, MapProps>(function Map(
+export const Map = forwardRef<MapRef, MapProps>(function MapView(
   {
     styleUrl,
     viewport,
@@ -194,3 +194,7 @@ export const Map = forwardRef<MapRef, MapProps>(function Map(
     </div>
   );
 });
+
+// The render function is `MapView` so it does not shadow the export it is
+// assigned to; the name DevTools shows stays `Map`.
+Map.displayName = 'Map';

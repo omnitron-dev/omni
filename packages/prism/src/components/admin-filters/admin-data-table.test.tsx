@@ -59,7 +59,7 @@ describe('AdminDataTable — empty versus unable', () => {
    * had never returned a row, and displayed "No traces collected yet" for as
    * long as the page had existed.
    */
-  const columns = [{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }];
+  const nameColumns = [{ key: 'name', header: 'Name', render: (r: { name: string }) => r.name }];
 
   /**
    * The pagination props the component requires. Omitted here originally,
@@ -70,7 +70,7 @@ describe('AdminDataTable — empty versus unable', () => {
   const paging = { total: 0, page: 1, pageSize: 25, onPageChange: () => {} };
 
   it('says there is nothing when there is nothing', () => {
-    render(<AdminDataTable {...paging} data={[]} columns={columns} emptyMessage="No orders yet" />);
+    render(<AdminDataTable {...paging} data={[]} columns={nameColumns} emptyMessage="No orders yet" />);
 
     expect(screen.getByText('No orders yet')).toBeInTheDocument();
     expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('AdminDataTable — empty versus unable', () => {
       <AdminDataTable
         {...paging}
         data={[]}
-        columns={columns}
+        columns={nameColumns}
         emptyMessage="No orders yet"
         loadError="column child.trace_id does not exist"
       />
@@ -105,7 +105,7 @@ describe('AdminDataTable — empty versus unable', () => {
         {...paging}
         total={1}
         data={[{ name: 'row' }]}
-        columns={columns}
+        columns={nameColumns}
         loadError="pending, processing"
       />
     );
@@ -116,7 +116,7 @@ describe('AdminDataTable — empty versus unable', () => {
   });
 
   it('says nothing extra when the rows are all there', () => {
-    render(<AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} />);
+    render(<AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={nameColumns} />);
 
     expect(screen.getByText('row')).toBeInTheDocument();
     expect(screen.queryByText(/could not/i)).not.toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('AdminDataTable — empty versus unable', () => {
     // A warning a sighted user can see and a screen-reader user cannot is
     // the same failure one level down.
     render(
-      <AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={columns} loadError="one source" />
+      <AdminDataTable {...paging} total={1} data={[{ name: 'row' }]} columns={nameColumns} loadError="one source" />
     );
 
     expect(screen.getByRole('status')).toHaveTextContent('one source');
@@ -135,7 +135,7 @@ describe('AdminDataTable — empty versus unable', () => {
   it('treats an empty error string as no error', () => {
     // A caller threading `error ?? ''` through must not flip the table into
     // its failure state with nothing to say.
-    render(<AdminDataTable {...paging} data={[]} columns={columns} emptyMessage="No orders yet" loadError="" />);
+    render(<AdminDataTable {...paging} data={[]} columns={nameColumns} emptyMessage="No orders yet" loadError="" />);
 
     expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });
@@ -151,7 +151,7 @@ describe('AdminDataTable — empty versus unable', () => {
       <AdminDataTable
         {...paging}
         data={[]}
-        columns={columns}
+        columns={nameColumns}
         emptyMessage="No orders yet"
         loadError="backend unreachable"
         loadErrorLabels={labels}
@@ -168,7 +168,7 @@ describe('AdminDataTable — empty versus unable', () => {
         {...paging}
         total={1}
         data={[{ name: 'row' }]}
-        columns={columns}
+        columns={nameColumns}
         loadError="one source"
         loadErrorLabels={labels}
       />
@@ -180,7 +180,7 @@ describe('AdminDataTable — empty versus unable', () => {
   it('still says something when the host names nothing', () => {
     // The control: the prop is optional, and every existing consumer omits
     // it. Defaulting to silence would be worse than defaulting to English.
-    render(<AdminDataTable {...paging} data={[]} columns={columns} loadError="down" />);
+    render(<AdminDataTable {...paging} data={[]} columns={nameColumns} loadError="down" />);
 
     expect(screen.getByText('Could not load this data')).toBeInTheDocument();
   });
@@ -350,15 +350,15 @@ describe('rowSx', () => {
     // omnitron's alerts page dims a disabled rule. Without this the choice is
     // between losing the signal and applying it cell by cell, which makes one
     // row look like six unrelated ones.
-    const rows = [
+    const ruleRows = [
       { id: '1', name: 'cpu-high', enabled: true },
       { id: '2', name: 'disk-low', enabled: false },
     ];
     const { container } = render(
       <AdminDataTable
-        columns={[{ key: 'name', header: 'Name', render: (r: (typeof rows)[number]) => r.name }]}
-        data={rows}
-        total={rows.length}
+        columns={[{ key: 'name', header: 'Name', render: (r: (typeof ruleRows)[number]) => r.name }]}
+        data={ruleRows}
+        total={ruleRows.length}
         page={0}
         pageSize={10}
         onPageChange={() => {}}
@@ -452,7 +452,7 @@ describe('loading placeholders', () => {
 
 describe('renderExpanded', () => {
   const cols = [{ key: 'name', header: 'Name', render: (r: { id: string; name: string }) => r.name }];
-  const rows = [
+  const expandableRows = [
     { id: '1', name: 'nightly' },
     { id: '2', name: 'release' },
   ];
@@ -461,8 +461,8 @@ describe('renderExpanded', () => {
     const { container } = render(
       <AdminDataTable
         columns={cols}
-        data={rows}
-        total={rows.length}
+        data={expandableRows}
+        total={expandableRows.length}
         page={0}
         pageSize={10}
         onPageChange={() => {}}
@@ -482,7 +482,7 @@ describe('renderExpanded', () => {
     const { container } = render(
       <AdminDataTable
         columns={cols}
-        data={[rows[0]!]}
+        data={[expandableRows[0]!]}
         total={1}
         page={0}
         pageSize={10}
@@ -500,8 +500,8 @@ describe('renderExpanded', () => {
     const { container } = render(
       <AdminDataTable
         columns={cols}
-        data={rows}
-        total={rows.length}
+        data={expandableRows}
+        total={expandableRows.length}
         page={0}
         pageSize={10}
         onPageChange={() => {}}
@@ -516,8 +516,8 @@ describe('renderExpanded', () => {
     const { container } = render(
       <AdminDataTable
         columns={cols}
-        data={rows}
-        total={rows.length}
+        data={expandableRows}
+        total={expandableRows.length}
         page={0}
         pageSize={10}
         onPageChange={() => {}}

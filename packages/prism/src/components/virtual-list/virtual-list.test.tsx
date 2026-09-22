@@ -14,7 +14,7 @@ describe('VirtualList', () => {
   it('mounts and renders provided items', () => {
     const items = Array.from({ length: 5 }, (_, i) => ({ id: `item-${i}`, label: `Row ${i}` }));
     render(
-      <VirtualList items={items} getKey={(it) => it.id} estimateSize={40} maxHeight={200}>
+      <VirtualList items={items} getKey={(entry) => entry.id} estimateSize={40} maxHeight={200}>
         {(item) => <div data-testid="row">{item.label}</div>}
       </VirtualList>,
     );
@@ -40,12 +40,12 @@ describe('VirtualList', () => {
     // honored, React would warn about duplicate keys (caught by
     // testing-library's strict mode patches in CI).
     const { rerender } = render(
-      <VirtualList items={items} getKey={(it) => it.id} estimateSize={40} maxHeight={200}>
+      <VirtualList items={items} getKey={(entry) => entry.id} estimateSize={40} maxHeight={200}>
         {(item) => <div data-testid={`row-${item.id}`}>{item.id}</div>}
       </VirtualList>,
     );
     rerender(
-      <VirtualList items={[items[1]!, items[0]!]} getKey={(it) => it.id} estimateSize={40} maxHeight={200}>
+      <VirtualList items={[items[1]!, items[0]!]} getKey={(entry) => entry.id} estimateSize={40} maxHeight={200}>
         {(item) => <div data-testid={`row-${item.id}`}>{item.id}</div>}
       </VirtualList>,
     );

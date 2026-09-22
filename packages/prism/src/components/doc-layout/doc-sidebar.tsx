@@ -170,14 +170,14 @@ function SidebarLabel({ label, sx }: { label: string; sx?: object }) {
 
   useIsoLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return undefined;
     const check = () => {
       // +1 px slack for sub-pixel rounding in some engines so we
       // don't flag a perfectly-fitting label as overflowing.
       setIsOverflowing(el.scrollHeight > el.clientHeight + 1);
     };
     check();
-    if (typeof ResizeObserver === 'undefined') return;
+    if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(check);
     ro.observe(el);
     return () => ro.disconnect();

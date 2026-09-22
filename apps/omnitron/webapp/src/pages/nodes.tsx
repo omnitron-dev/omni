@@ -287,6 +287,7 @@ function UptimeStrip<T extends Record<string, any>>({
   segWidth = 6,
   gap = 4,
   height = 10,
+  lastCheckAt,
 }: {
   data: T[];
   metric: keyof T & string;
@@ -294,6 +295,8 @@ function UptimeStrip<T extends Record<string, any>>({
   segWidth?: number;
   gap?: number;
   height?: number;
+  /** When the history last recorded a check for this node, if known. */
+  lastCheckAt?: string | null;
 }) {
   const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -314,7 +317,7 @@ function UptimeStrip<T extends Record<string, any>>({
   }, [segWidth, gap]);
 
   // Pad data to fill visible area: take last N from data, pad front with empty
-  const segments: Array<{ val: number; time: string; checks?: number; unmeasured?: 'absent' | 'unreachable' }> = [];
+  const segments: Array<{ val: number; time: string; iso?: string; checks?: number; unmeasured?: 'absent' | 'unreachable' }> = [];
   if (visibleCount > 0) {
     const tail = data.slice(-visibleCount);
     // Left-pad with empty (no-data) segments so the strip is always full width
@@ -327,6 +330,7 @@ function UptimeStrip<T extends Record<string, any>>({
       segments.push({
         val,
         time,
+        ...(entry.t ? { iso: entry.t as string } : {}),
         checks: entry.checks as number | undefined,
         // Only the omnitron metric has a reason to give; ping either ran or
         // it did not.
@@ -344,6 +348,28 @@ function UptimeStrip<T extends Record<string, any>>({
   // something — "nothing to run here" — and the blank corner said it as
   // though the page had simply not loaded.
   const notInstalled = avgPct < 0 && segments.some((s) => s.unmeasured === 'absent');
+  // The percentage averages the buckets that HAVE checks, so a recorder that
+  // stopped left its last day's figure on screen as though it were today's.
+  // Measured 2026-09-22: no check recorded after 12:15 UTC, and at 18:17 both
+  // remote nodes read «OMNITRON 0%» in red about daemons serving 6/6 apps.
+  // When the newest buckets are empty and older ones are not, say how long
+  // it has been instead of repeating an old number.
+  // By the last RECORDED check, not by empty buckets: a bucket may be hours
+  // wide, and one that still holds this morning's checks looks current.
+  // Checks run every minute; five without one is a recorder that stopped.
+  const staleFor =
+    avgPct >= 0 && lastCheckAt && Date.now() - new Date(lastCheckAt).getTime() > 5 * 60_000
+      ? Date.now() - new Date(lastCheckAt).getTime()
+      : null;
+  const lastMeasured = lastCheckAt
+    ? { time: new Date(lastCheckAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    : null;
+  const staleWords =
+    staleFor == null
+      ? null
+      : staleFor >= 3_600_000
+        ? `${Math.round(staleFor / 3_600_000)}h`
+        : `${Math.max(1, Math.round(staleFor / 60_000))}m`;
 
   return (
     <Stack spacing={0.25}>
@@ -363,7 +389,16 @@ function UptimeStrip<T extends Record<string, any>>({
           }}>
           {label}
         </Typography>
-        {avgPct >= 0 ? (
+        {staleWords ? (
+          <Tooltip
+            title={`Nothing has been recorded for ${staleWords} — the last check was at ${lastMeasured?.time}. The strip shows what was measured before that, not the node now.`}
+            arrow
+          >
+            <Typography variant="caption" sx={{ fontSize: 9, color: 'warning.main' }}>
+              no checks for {staleWords}
+            </Typography>
+          </Tooltip>
+        ) : avgPct >= 0 ? (
           <Typography variant="caption" sx={{ fontSize: 9, color: avgPct >= 95 ? 'success.main' : avgPct >= 50 ? 'warning.main' : 'error.main' }}>
             {avgPct}%
           </Typography>
@@ -607,7 +642,7 @@ function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean })
             sx={{ height: 18, fontSize: 10 }}
           />
         ))}
-        <Typography variant="caption" sx={{ color: 'text.disabled', ml: 'auto !important' }}>
+        <Typography variant="caption" sx={{ color: 'text.disabled', ml: 'auto' }}>
           {row.checkDurationMs}ms
         </Typography>
       </Stack>
@@ -1217,7 +1252,7 @@ function NodeDiagnosisDialog({
 
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
           <Typography variant="overline" sx={{ color: 'text.secondary' }}>History</Typography>
-          <FormControl size="small" sx={{ ml: 'auto !important', minWidth: 120 }}>
+          <FormControl size="small" sx={{ ml: 'auto', minWidth: 120 }}>
             <Select
               value={limit}
               onChange={(e) => setLimit(Number(e.target.value))}
@@ -1277,7 +1312,7 @@ function NodeDiagnosisDialog({
 }
 
 function NodeCard({
-  node, onEdit, onRemove, onCheckSsh, onDiagnose, checking, uptimeData, newest, mesh,
+  node, onEdit, onRemove, onCheckSsh, onDiagnose, checking, uptimeData, lastCheckAt, newest, mesh,
 }: {
   node: INodeWithStatus;
   onEdit: (n: INodeWithStatus) => void;
@@ -1286,6 +1321,7 @@ function NodeCard({
   onDiagnose: (n: INodeWithStatus) => void;
   checking: boolean;
   uptimeData: UptimeBucket[];
+  lastCheckAt: string | null;
   /** The newest version anything in this fleet reports. */
   newest: string | undefined;
   /** Whether this node is replicating, or undefined before the first answer. */
@@ -1400,7 +1436,7 @@ function NodeCard({
               variant="caption"
               noWrap
               sx={{
-                ml: 'auto !important',
+                ml: 'auto',
                 fontSize: 10,
                 color: stale ? 'warning.main' : 'text.disabled',
               }}
@@ -1446,8 +1482,8 @@ function NodeCard({
         {!node.isLocal && (
           <Box sx={{ mt: 'auto', pt: 1.5 }}>
             <Stack spacing={0.75}>
-              <UptimeStrip data={uptimeData} metric="ping" label="PING" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} />
-              <UptimeStrip data={uptimeData} metric="omnitron" label="OMNITRON" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} />
+              <UptimeStrip data={uptimeData} metric="ping" label="PING" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} lastCheckAt={lastCheckAt} />
+              <UptimeStrip data={uptimeData} metric="omnitron" label="OMNITRON" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} lastCheckAt={lastCheckAt} />
             </Stack>
           </Box>
         )}
@@ -1699,7 +1735,7 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
                           noWrap
                           sx={{
                             color: "text.disabled",
-                            ml: 'auto !important'
+                            ml: 'auto'
                           }}>{key.path}</Typography>
                       </Stack>
                     </MenuItem>
@@ -1873,6 +1909,10 @@ export default function NodesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uptimeBars, setUptimeBars] = useState<Record<string, UptimeBucket[]>>({});
+  // When each node's history last RECORDED a check — the only honest answer
+  // to «is this strip current». A bucket can be hours wide, so an empty
+  // newest bucket proves nothing either way.
+  const [lastCheckAt, setLastCheckAt] = useState<Record<string, string | null>>({});
   const [listError, setListError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [history, setHistory] = useState<FleetHistoryConfig>({
@@ -1944,16 +1984,22 @@ export default function NodesPage() {
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
     const results: Record<string, UptimeBucket[]> = {};
+    const lastChecks: Record<string, string | null> = {};
     let failure: string | null = null;
     await Promise.allSettled(nodes.map(async (node) => {
       try {
         // Request more buckets than can fit — UptimeStrip will trim to visible width
         const { uptimeIntervalMs, retentionDays } = historyRef.current;
-        results[node.id] = await nodesRpc.getUptimeBar({
-          nodeId: node.id,
-          bucketCount: bucketsFor(retentionDays, uptimeIntervalMs),
-          intervalMs: uptimeIntervalMs,
-        });
+        const [bars, latest] = await Promise.all([
+          nodesRpc.getUptimeBar({
+            nodeId: node.id,
+            bucketCount: bucketsFor(retentionDays, uptimeIntervalMs),
+            intervalMs: uptimeIntervalMs,
+          }),
+          nodesRpc.getCheckHistory({ nodeId: node.id, limit: 1 }).catch(() => null),
+        ]);
+        results[node.id] = bars;
+        if (latest) lastChecks[node.id] = latest[0]?.checkedAt ?? null;
       } catch (err) {
         // Two things this used to do, both wrong in the same way as blanking
         // the list above. It wrote `[]`, which the strip draws as a row of
@@ -1966,6 +2012,7 @@ export default function NodesPage() {
     }));
     // Merge, so a node whose call failed keeps the bars it had.
     setUptimeBars((previous) => ({ ...previous, ...results }));
+    setLastCheckAt((previous) => ({ ...previous, ...lastChecks }));
     setBarsError(failure);
   }, []);
 
@@ -2227,7 +2274,8 @@ export default function NodesPage() {
             <Grid key={node.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <NodeCard node={node} onEdit={handleOpenEdit} onRemove={setConfirmRemoveId}
                 onCheckSsh={handleCheckSsh} onDiagnose={setDiagnoseNode} checking={checkingId === node.id}
-                uptimeData={uptimeBars[node.id] ?? []} newest={newestInFleet} mesh={mesh[node.id]} />
+                uptimeData={uptimeBars[node.id] ?? []} lastCheckAt={lastCheckAt[node.id] ?? null}
+                newest={newestInFleet} mesh={mesh[node.id]} />
             </Grid>
           ))}
         </Grid>

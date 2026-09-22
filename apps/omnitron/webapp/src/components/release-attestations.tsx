@@ -194,7 +194,7 @@ export function ReleaseAttestations({
               const passed = a.gates.filter((g) => g.status === 'passed').length;
               return (
                 <Box key={a.stack}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                     <Chip label={a.stack} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
                     <Typography
                       variant="body2"

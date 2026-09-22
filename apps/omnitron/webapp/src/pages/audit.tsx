@@ -21,14 +21,22 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
 import { audit } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { useAuthStore } from 'src/auth/store';
 
-/** The resource kinds this daemon records, as the actions name them. */
-const RESOURCE_TYPES = ['', 'stack', 'project', 'node', 'secret'] as const;
+/**
+ * The resource kinds this daemon records, as the actions name them.
+ *
+ * `release` joined when builds, stops, prunes and attestations started
+ * writing rows; a filter that could not select them hid the whole release
+ * trail behind «everything».
+ */
+const RESOURCE_TYPES = ['', 'stack', 'release', 'project', 'node', 'secret'] as const;
 
 const PAGE_SIZES = [50, 100, 250, 500] as const;
 
@@ -40,13 +48,45 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
+/**
+ * A detail value as a person reads it.
+ *
+ * `String(v)` printed `trees=[object Object]` for every `stack.start` — the
+ * row records which trees were deployed and at which commits, and that is the
+ * part nobody could read. Arrays and objects are written out, one level at a
+ * time, the way they were recorded.
+ */
+function detailValue(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(detailValue).join(', ')}]`;
+  if (v && typeof v === 'object') {
+    return `{${Object.entries(v as Record<string, unknown>)
+      .map(([k, x]) => `${k}:${detailValue(x)}`)
+      .join(' ')}}`;
+  }
+  return String(v);
+}
+
 /** `user` is a person; everything else is the machine, and says which. */
 function Actor({ actorId, actorType }: { actorId: string | null; actorType: string }) {
-  if (actorId) {
+  const me = useAuthStore((st) => st.user);
+  if (actorId && me && actorId === me.id) {
     return (
-      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-        {actorId}
-      </Typography>
+      <Tooltip title={actorId} arrow>
+        <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+          {me.username} <Box component="span" sx={{ color: 'text.secondary' }}>(you)</Box>
+        </Typography>
+      </Tooltip>
+    );
+  }
+  if (actorId) {
+    // A UUID wrapped onto five lines in a narrow column; eight characters
+    // tell rows apart, and the whole id is one hover away.
+    return (
+      <Tooltip title={actorId} arrow>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+          {actorId.length > 12 ? `${actorId.slice(0, 8)}…` : actorId}
+        </Typography>
+      </Tooltip>
     );
   }
   return (
@@ -132,40 +172,59 @@ export default function AuditPage() {
       )}
 
       {data?.available && data.rows.length > 0 && (
-        <Card sx={{ borderRadius: 2, overflowX: 'auto' }}>
-          <Table size="small">
+        // Four columns, and the details UNDER the event rather than beside it.
+        //
+        // «Details» was a sixth column, and at a laptop's width it sat
+        // entirely past the right edge of the card — `release=…`, `stack=…`,
+        // the part that says what actually happened, reachable only by a
+        // sideways scroll nobody knew was there. An event now reads as one
+        // block: what was done, to what, and with which particulars.
+        <Card sx={{ borderRadius: 2 }}>
+          <Table size="small" sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <TableCell>When</TableCell>
-                <TableCell>Action</TableCell>
-                <TableCell>Resource</TableCell>
-                <TableCell>Actor</TableCell>
-                <TableCell>From</TableCell>
-                <TableCell>Details</TableCell>
+                <TableCell sx={{ width: 110 }}>When</TableCell>
+                <TableCell>Event</TableCell>
+                <TableCell sx={{ width: 120 }}>Actor</TableCell>
+                <TableCell sx={{ width: 140 }}>From</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {data.rows.map((row) => (
-                <TableRow key={row.id} hover>
+                <TableRow key={row.id} hover sx={{ verticalAlign: 'top' }}>
                   <TableCell sx={{ whiteSpace: 'nowrap' }} title={new Date(row.createdAt).toLocaleString()}>
                     {when(row.createdAt)}
                   </TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace' }}>{row.action}</TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace' }}>
-                    {row.resourceId ? `${row.resourceType}:${row.resourceId}` : row.resourceType}
+                  <TableCell>
+                    <Stack spacing={0.25}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                          {row.action}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}
+                        >
+                          {row.resourceId ? `${row.resourceType}:${row.resourceId}` : row.resourceType}
+                        </Typography>
+                      </Stack>
+                      {row.details && Object.keys(row.details).length > 0 && (
+                        <Typography
+                          variant="caption"
+                          sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}
+                        >
+                          {Object.entries(row.details)
+                            .map(([k, v]) => `${k}=${detailValue(v)}`)
+                            .join(' · ')}
+                        </Typography>
+                      )}
+                    </Stack>
                   </TableCell>
                   <TableCell>
                     <Actor actorId={row.actorId} actorType={row.actorType} />
                   </TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                     {row.ipAddress ?? '—'}
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 12 }}>
-                    {row.details
-                      ? Object.entries(row.details)
-                          .map(([k, v]) => `${k}=${String(v)}`)
-                          .join(' · ')
-                      : '—'}
                   </TableCell>
                 </TableRow>
               ))}

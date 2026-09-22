@@ -43,6 +43,7 @@ import { ReleaseBuildPanel } from 'src/components/release-build-panel';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
+import { releaseApi } from 'src/netron/release-wire';
 
 export default function ReleaseDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -52,7 +53,7 @@ export default function ReleaseDetailPage() {
 
   const { data, loading, error, refresh } = usePolledResource(
     async () => {
-      const [detail, builds] = await Promise.all([releaseRpc.get({ id }), releaseRpc.builds().catch(() => [])]);
+      const [detail, builds] = await Promise.all([releaseApi.get(id), releaseApi.builds().catch(() => [])]);
       return { detail, builds };
     },
     { intervalMs: 15_000, enabled: Boolean(id) },
@@ -317,7 +318,7 @@ export default function ReleaseDetailPage() {
               This build wrote no logs.
             </Typography>
           ) : (
-            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
               {release.logs.map((l) => (
                 <Chip
                   key={l.name}

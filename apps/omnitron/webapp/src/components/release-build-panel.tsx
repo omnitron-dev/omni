@@ -90,7 +90,7 @@ export function ReleaseBuildPanel({
           </Typography>
         </Stack>
 
-        <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
+        <Stack direction="row" spacing={0.75} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
           {request.forStack && <Chip size="small" variant="outlined" label={`statics: ${request.forStack}`} sx={{ height: 20, fontSize: 11 }} />}
           {request.projectCommit && <Chip size="small" variant="outlined" label={`project ${request.projectCommit}`} sx={{ height: 20, fontSize: 11 }} />}
           {request.omniCommit && <Chip size="small" variant="outlined" label={`omni ${request.omniCommit}`} sx={{ height: 20, fontSize: 11 }} />}

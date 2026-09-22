@@ -24,13 +24,14 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { Alert, AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 
-import type { BuildRecord, ReleaseDeploymentDto, ReleasePreflightDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import type { BuildRecord, ReleaseDeploymentDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
 import { CommitPair, GateCount, GateStrip, bytes, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
+import { releaseApi, type ReleasePreflightView } from 'src/netron/release-wire';
 import { useActiveProject } from 'src/stores/project.store';
 import { useAuthStore } from 'src/auth/store';
 
@@ -41,7 +42,7 @@ interface PageData {
   releases: ReleaseSummary[];
   root: string;
   builds: BuildRecord[];
-  preflight: ReleasePreflightDto | null;
+  preflight: ReleasePreflightView | null;
   deployments: ReleaseDeploymentDto[];
   /** What could not be read, when the rest could. */
   partial: string | null;
@@ -56,10 +57,10 @@ interface PageData {
  */
 async function loadPage(): Promise<PageData> {
   const [list, builds, preflight, deployments] = await Promise.allSettled([
-    releaseRpc.list(),
-    releaseRpc.builds(),
-    releaseRpc.preflight(),
-    releaseRpc.deployments({ limit: 200 }),
+    releaseApi.list(),
+    releaseApi.builds(),
+    releaseApi.preflight(),
+    releaseApi.deployments(200),
   ]);
   const failures: string[] = [];
   if (list.status === 'rejected') failures.push(`releases: ${(list.reason as Error)?.message ?? 'unavailable'}`);
@@ -103,7 +104,7 @@ export default function ReleasesPage() {
   // Three seconds while something is building, twenty when nothing is: the
   // phase and the percent are the only readings on this page that change on
   // their own, and they change every few seconds.
-  const live = usePolledResource(async () => releaseRpc.builds(), { intervalMs: 3_000, enabled: building });
+  const live = usePolledResource(async () => releaseApi.builds(), { intervalMs: 3_000, enabled: building });
   const polled = live.data ?? data?.builds ?? [];
   const builds =
     justStarted && !polled.some((b) => b.buildId === justStarted.buildId) ? [justStarted, ...polled] : polled;
@@ -140,40 +141,65 @@ export default function ReleasesPage() {
     [live],
   );
 
+  /**
+   * Five columns, by what an operator decides with them.
+   *
+   * There were eight, and at a laptop's width — 1200 px, a 280 px sidebar —
+   * they overflowed into a horizontal scroll with «Deploy…» pressed against
+   * the table's edge. Where a release is deployed now sits beside its id,
+   * because that is the first thing looked for; what it carries — apps,
+   * statics, size — is one column.
+   */
   const columns: ColumnDef<ReleaseSummary>[] = [
     {
       key: 'id',
       header: 'Release',
-      render: (r) => (
-        <Stack spacing={0.25}>
-          <Typography
-            component={RouterLink}
-            to={`/releases/${r.id}`}
-            variant="body2"
-            sx={{ fontFamily: 'monospace', fontWeight: 600, textDecoration: 'none', color: 'text.primary', '&:hover': { color: 'primary.main' } }}
-          >
-            {r.id}
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <CommitPair projectCommit={r.projectCommit} omniCommit={r.omniCommit} onRemote={r.onRemote} project={r.project} />
-            {!r.complete && (
-              <Tooltip title="This directory holds no manifest: the build did not finish. Its logs are still there." arrow>
-                <Chip label="unfinished" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
-              </Tooltip>
-            )}
+      render: (r) => {
+        const targets = deployedBy.get(r.id) ?? [];
+        return (
+          <Stack spacing={0.5}>
+            <Typography
+              component={RouterLink}
+              to={`/releases/${r.id}`}
+              variant="body2"
+              sx={{ fontFamily: 'monospace', fontWeight: 600, textDecoration: 'none', color: 'text.primary', wordBreak: 'break-all', '&:hover': { color: 'primary.main' } }}
+            >
+              {r.id}
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <CommitPair projectCommit={r.projectCommit} omniCommit={r.omniCommit} onRemote={r.onRemote} project={r.project} />
+              {!r.complete && (
+                <Tooltip title="This directory holds no manifest: the build did not finish. Its logs are still there." arrow>
+                  <Chip label="unfinished" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                </Tooltip>
+              )}
+              {targets.map((t) => (
+                <Tooltip
+                  key={`${t.project}/${t.stack}`}
+                  title={`Last deployed to ${t.stack} ${when(t.at)} · ${t.source ?? 'unknown'}`}
+                  arrow
+                >
+                  <Chip label={`on ${t.stack}`} size="small" color="success" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                </Tooltip>
+              ))}
+            </Stack>
           </Stack>
-        </Stack>
-      ),
+        );
+      },
     },
     {
       key: 'built',
       header: 'Built',
       render: (r) => (
-        <Stack spacing={0.25}>
-          <Typography variant="body2">{when(r.builtAt)}</Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {r.builtBy ?? '—'}
+        <Stack spacing={0.25} sx={{ maxWidth: 170 }}>
+          <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+            {when(r.builtAt)}
           </Typography>
+          <Tooltip title={r.builtBy ?? ''} arrow>
+            <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'block' }}>
+              {r.builtBy ?? '—'}
+            </Typography>
+          </Tooltip>
         </Stack>
       ),
     },
@@ -193,95 +219,67 @@ export default function ReleasesPage() {
               </Tooltip>
             )}
           </Stack>
-          <GateStrip gates={r.gateList} size={8} />
+          <GateStrip gates={r.gateList} size={8} columns={7} />
+          {r.verified.map((v) => (
+            <Tooltip key={v.stack} title={`Probes ${v.stack} ran against this release while carrying it — measured ${when(v.at)}`} arrow>
+              <Typography
+                variant="caption"
+                sx={{ color: v.passed === v.total ? 'success.main' : 'warning.main', fontFamily: 'monospace', whiteSpace: 'nowrap' }}
+              >
+                verified on {v.stack}: {v.passed}/{v.total}
+              </Typography>
+            </Tooltip>
+          ))}
         </Stack>
       ),
     },
     {
-      key: 'apps',
-      header: 'Apps',
+      key: 'carries',
+      header: 'Carries',
       render: (r) => (
-        <Tooltip title={r.artifacts.apps.join(', ') || 'none'} arrow>
-          <Stack spacing={0.25}>
-            <Typography variant="body2">{r.artifacts.count}</Typography>
-            {r.artifacts.failed.length > 0 && (
-              <Typography variant="caption" sx={{ color: 'error.main' }}>
-                {r.artifacts.failed.length} did not build
-              </Typography>
-            )}
-          </Stack>
-        </Tooltip>
-      ),
-    },
-    {
-      key: 'statics',
-      header: 'Statics',
-      render: (r) =>
-        r.statics ? (
-          <Tooltip title={`${r.statics.files} files, ${bytes(r.statics.bytes)}`} arrow>
-            <Chip label={r.statics.stack} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
-          </Tooltip>
-        ) : (
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            —
-          </Typography>
-        ),
-    },
-    {
-      key: 'deployed',
-      header: 'Last deployed to',
-      render: (r) => {
-        const targets = deployedBy.get(r.id) ?? [];
-        if (targets.length === 0) {
-          return (
-            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-              never
+        <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+          <Tooltip title={r.artifacts.apps.join(', ') || 'none'} arrow>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap', color: r.complete ? 'text.primary' : 'text.disabled' }}>
+              {/* An unfinished build packed nothing because it did not get
+                  that far — «0 apps» would read as a build that produced none. */}
+              {r.complete ? `${r.artifacts.count} app${r.artifacts.count === 1 ? '' : 's'}` : '—'}
+              {r.artifacts.failed.length > 0 && (
+                <Typography component="span" variant="caption" sx={{ color: 'error.main', ml: 0.75 }}>
+                  {r.artifacts.failed.length} did not build
+                </Typography>
+              )}
             </Typography>
-          );
-        }
-        return (
-          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-            {targets.map((t) => (
-              <Tooltip key={`${t.project}/${t.stack}`} title={`${when(t.at)} · ${t.source ?? 'unknown'}`} arrow>
-                <Chip label={t.stack} size="small" color="success" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
-              </Tooltip>
-            ))}
-          </Stack>
-        );
-      },
-    },
-    {
-      key: 'size',
-      header: 'Size',
-      render: (r) => (
-        <Stack spacing={0.25}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-            {bytes(r.bytes)}
-          </Typography>
-          {r.keptSource && (
-            <Tooltip title="The build's two clones are still on disk — kept on purpose, or left by a build that failed. They are not counted in this size." arrow>
-              <Typography variant="caption" sx={{ color: 'warning.main' }}>
-                + clones
-              </Typography>
+          </Tooltip>
+          {r.statics && (
+            <Tooltip title={`Static bundle built with ${r.statics.stack}'s environment — ${r.statics.files} files, ${bytes(r.statics.bytes)}`} arrow>
+              <Chip label={`statics: ${r.statics.stack}`} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
             </Tooltip>
           )}
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+            {bytes(r.bytes)}
+            {r.keptSource && (
+              <Tooltip title="The build's two clones are still on disk — kept on purpose, or left by a build that failed. They are not counted in this size." arrow>
+                <Box component="span" sx={{ color: 'warning.main', ml: 0.75 }}>
+                  + clones
+                </Box>
+              </Tooltip>
+            )}
+          </Typography>
         </Stack>
       ),
     },
     {
       key: 'actions',
       header: '',
-      // One button, not two: the release id in the first column is already a
-      // link to its page, and a second «Details» pushed «Deploy…» off the
-      // right edge of the table — measured in the browser at 1194px.
       render: (r) => (
-        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+        <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
           <Button
             size="small"
             variant="outlined"
             startIcon={<DeployIcon />}
             disabled={!r.complete}
             onClick={() => setDeployTarget(r)}
+            sx={{ whiteSpace: 'nowrap' }}
           >
             Deploy…
           </Button>

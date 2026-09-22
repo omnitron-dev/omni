@@ -27,7 +27,7 @@ import Typography from '@mui/material/Typography';
 
 import { DeployIcon } from 'src/assets/icons';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { releases as releaseRpc } from 'src/netron/client';
+import { releaseApi } from 'src/netron/release-wire';
 
 import { GateCount, GateStrip, when } from './release-bits';
 
@@ -46,7 +46,7 @@ export function StackReleaseCard({
 }) {
   const { data, error } = usePolledResource(
     async () => {
-      const [list, deployments] = await Promise.all([releaseRpc.list(), releaseRpc.deployments({ limit: 200 })]);
+      const [list, deployments] = await Promise.all([releaseApi.list(), releaseApi.deployments(200)]);
       return { releases: list.releases, deployments };
     },
     { intervalMs: 20_000, enabled: !local },
@@ -101,7 +101,7 @@ export function StackReleaseCard({
 
         {last && (
           <Stack spacing={0.75}>
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
               {last.release ? (
                 <Typography
                   component={RouterLink}
@@ -124,8 +124,31 @@ export function StackReleaseCard({
                 </Tooltip>
               )}
               {deployed && <GateCount gates={deployed.gates} />}
-              {deployed && <GateStrip gates={deployed.gateList} size={8} />}
+              {deployed && <GateStrip gates={deployed.gateList} size={8} columns={11} />}
             </Stack>
+            {deployed && (
+              <Typography
+                variant="caption"
+                sx={{
+                  color: (() => {
+                    const v = deployed.verified.find((x) => x.stack === stack);
+                    if (!v) return 'text.secondary';
+                    return v.passed === v.total ? 'success.main' : 'warning.main';
+                  })(),
+                }}
+              >
+                {(() => {
+                  // The promotion question, answered where it is asked: has
+                  // what this stack carries been measured HERE? A stack whose
+                  // policy another stack's `verifiedOn` names is the one whose
+                  // answer production waits for.
+                  const v = deployed.verified.find((x) => x.stack === stack);
+                  return v
+                    ? `verified here: ${v.passed} of ${v.total} probes passed, measured ${when(v.at)}`
+                    : 'not verified on this stack — its probes have not been run against this release';
+                })()}
+              </Typography>
+            )}
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               last deployed {when(last.at)} · {last.source ?? 'unknown'}
               {last.actorId ? ` · ${last.actorId}` : ''}

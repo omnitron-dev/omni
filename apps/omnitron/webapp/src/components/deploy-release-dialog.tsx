@@ -31,7 +31,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import type { IStackInfo, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { project as projectRpc, releases as releaseRpc } from 'src/netron/client';
+import { project as projectRpc } from 'src/netron/client';
+import { releaseApi } from 'src/netron/release-wire';
 import { isRpcTimeout, useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
 
@@ -76,7 +77,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   useEffect(() => {
     if (!open || given) return undefined;
     let current = true;
-    releaseRpc
+    releaseApi
       .list()
       .then(({ releases }) => {
         if (!current) return;

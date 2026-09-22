@@ -233,14 +233,24 @@ export function decideSlaveDaemonRestart(input: SlaveDaemonInput): SlaveDaemonDe
   if (!input.daemon.running) {
     return { action: 'restart', because: 'the node daemon is not running' };
   }
-  if (input.daemon.role !== 'slave') {
-    return {
-      action: 'restart',
-      because: `the node daemon is running as ${input.daemon.role ?? 'no role it would name'}, not as a slave`,
-    };
+  // An explicit `master` is a wrong role and earns the restart. An ABSENT
+  // one is not evidence of anything, and demanding `=== 'slave'` made this
+  // whole decision unsatisfiable: measured 2026-09-22 against the test node,
+  //
+  //     because=the node daemon is running as no role it would name
+  //     steps=0  role=null  pid=1237622  uptime=273875
+  //
+  // — a daemon plainly up, on a host that needed nothing, taken down anyway
+  // because `omnitron status --json` on that node carries no `role` field at
+  // all. A guard keyed on a value nobody writes is a guard that always
+  // fires, and this one fired by taking six applications down with it.
+  if (input.daemon.role === 'master') {
+    return { action: 'restart', because: 'the node daemon is running as a master, not as a slave' };
   }
   return {
     action: 'leave',
-    because: 'the node daemon is already running as a slave and nothing under it changed',
+    because: input.daemon.role === 'slave'
+      ? 'the node daemon is already running as a slave and nothing under it changed'
+      : 'the node daemon is running, it does not name a role, and nothing under it changed',
   };
 }

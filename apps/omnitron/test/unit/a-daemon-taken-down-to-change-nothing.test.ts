@@ -73,21 +73,31 @@ describe('taking a node daemon down', () => {
     expect(decision.because).toBe('the node daemon is not running');
   });
 
-  it('restarts a daemon that came up as a master, and names what it found', () => {
+  it('leaves one that names no role — absent is not wrong', () => {
+    // The node measured on 2026-09-22 reports no `role` at all, so the first
+    // version of this rule — `role !== 'slave'` — could never be satisfied
+    // and took six applications down on every deployment to say so:
+    //
+    //     because=the node daemon is running as no role it would name
+    //     steps=0  role=null  pid=1237622  uptime=273875
+    //
+    // A guard keyed on a value nobody writes always fires.
+    const decision = decideSlaveDaemonRestart({ hostChanged: false, daemon: { running: true } });
+
+    expect(decision.action).toBe('leave');
+    expect(decision.because).toBe(
+      'the node daemon is running, it does not name a role, and nothing under it changed',
+    );
+  });
+
+  it('still restarts one that says it is a master', () => {
     const decision = decideSlaveDaemonRestart({
       hostChanged: false,
       daemon: { running: true, role: 'master' },
     });
 
     expect(decision.action).toBe('restart');
-    expect(decision.because).toBe('the node daemon is running as master, not as a slave');
-  });
-
-  it('restarts one that names no role at all', () => {
-    const decision = decideSlaveDaemonRestart({ hostChanged: false, daemon: { running: true } });
-
-    expect(decision.action).toBe('restart');
-    expect(decision.because).toBe('the node daemon is running as no role it would name, not as a slave');
+    expect(decision.because).toBe('the node daemon is running as a master, not as a slave');
   });
 });
 

@@ -683,6 +683,9 @@ export interface ReleasePreflightDto {
   /** `git`, `pnpm`, `node` — those not on the daemon's PATH. */
   readonly missingTools: string[];
   readonly path: string[];
+  /** The machine's 1, 5 and 15-minute load averages right now. */
+  readonly load: [number, number, number];
+  readonly cpus: number;
 }
 
 /** The last recorded deployment of one stack. */

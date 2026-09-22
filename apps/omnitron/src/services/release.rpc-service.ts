@@ -46,11 +46,19 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     // over a tool the build would have found.
     const env = buildEnv(process.env);
     const missing = missingTools(env);
+    const os = await import('node:os');
     return {
       root: this.releases.root(),
       canBuild: missing.length === 0,
       missingTools: missing,
       path: (env['PATH'] ?? '').split(':').filter(Boolean),
+      // Read BEFORE anyone presses Build. Tonight three builds of one commit
+      // went red three different ways on a machine at load 38-56 on 16 cores,
+      // and each cost a quarter of an hour to find out. The console shows
+      // this beside the button; it refuses nothing — the operator may know
+      // the load is about to drop.
+      load: os.loadavg() as [number, number, number],
+      cpus: os.cpus().length,
     };
   }
 

@@ -29,7 +29,7 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { BuildRecord, IStackInfo } from '@omnitron-dev/omnitron/dto/services';
+import type { BuildRecord, IStackInfo, ReleasePreflightDto } from '@omnitron-dev/omnitron/dto/services';
 import { releases as releaseRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
 
@@ -67,9 +67,11 @@ export interface BuildReleaseDialogProps {
   onClose: () => void;
   defaultProject: string | null;
   onStarted: (record: BuildRecord) => void;
+  /** The machine as the daemon reads it now — the load the gates would run under. */
+  preflight?: ReleasePreflightDto | null;
 }
 
-export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted }: BuildReleaseDialogProps) {
+export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted, preflight }: BuildReleaseDialogProps) {
   const projects = useProjectStore((s) => s.projects);
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
@@ -141,6 +143,22 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             Two commits are cloned fresh, installed, built and gated on this master. Nothing of the working tree takes
             part — not uncommitted edits, not an old <code>dist</code>, not another checkout of omni.
           </Typography>
+
+          {/*
+            Before the press, not after the fifteen minutes. Measured on this
+            master: three builds of ONE commit gave 21/21, 16/21 and 16/21,
+            each with a different five red, at load 38-56 on 16 cores. Nothing
+            is refused here — the operator may know the load is about to drop —
+            but nobody should find this out from the gate strip.
+          */}
+          {preflight && preflight.load[0] > preflight.cpus && (
+            <Alert severity="warning">
+              This machine is carrying more than its cores right now — load{' '}
+              <strong>{preflight.load.map((n) => n.toFixed(1)).join(' / ')}</strong> on {preflight.cpus} cores. The gates
+              time out on a machine like this: tests that pass alone fail on connection deadlines, and a different set each
+              run. A release built now records the machine as much as the code.
+            </Alert>
+          )}
 
           <TextField
             select

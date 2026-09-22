@@ -88,8 +88,21 @@ export class ReleaseService {
     return readReleaseLog(id, name, lines ?? 200);
   }
 
+  /**
+   * Remove old releases — never one that is being built right now.
+   *
+   * A build in progress is a directory with no manifest, and an unfinished
+   * release sorts to the END of the list: with `keep: 5` and six directories,
+   * the sixth is the one the daemon is writing into. Deleting it would take
+   * the clones out from under `pnpm` mid-install and leave the build failing
+   * on a path that stopped existing. The store cannot know this — only the
+   * service holds the live records — so the protection is added here.
+   */
   prune(options: { keep?: number; apply?: boolean; protect?: readonly string[] }): PruneResult {
-    return pruneReleases(options);
+    const building = [...this.records.values()]
+      .filter((r) => r.state === 'running' && r.releaseId)
+      .map((r) => r.releaseId!);
+    return pruneReleases({ ...options, protect: [...(options.protect ?? []), ...building] });
   }
 
   /** Every build this daemon has run since it started, newest first. */

@@ -190,3 +190,45 @@ export function classifyIngestFailure(err: unknown): IngestFailureKind {
 
   return 'transient';
 }
+
+// =============================================================================
+// How long the master remembers what it took
+// =============================================================================
+
+/**
+ * The dedup window: how long `sync_ingested` keeps a claim, in days.
+ *
+ * The ledger exists so that an entry offered twice is taken once, and an
+ * entry is offered again only while its node still holds it unacknowledged.
+ * Since a pull runs one at a time per connection (`pullSyncData`), at most
+ * ONE batch per node is ever claimed and not yet acknowledged: the batch in
+ * flight when the connection dropped between the claim and the ack. The
+ * window has to outlast that node's absence; when it does not, the price is
+ * bounded — at most one batch of telemetry stored twice.
+ *
+ * The ledger kept every claim instead. On the master, 2026-09-22: 9 934 304
+ * rows and 2.2 GB, growing by ~3.3 million a day per node at 38 entries a
+ * second, with an index on `ingestedAt` created «for pruning» and no pruner.
+ * Each day of window costs one such day of rows, so one day it is.
+ *
+ * The window also caps an open defect in the key. A node whose `slave.db` is
+ * recreated restarts its AUTOINCREMENT ids, and a new entry is read as a
+ * duplicate when its id is still claimed. Inside a window of one day that is
+ * only an id the node used in the last day — none at all for a node older
+ * than that, whose recent ids are its highest — instead of every id since the
+ * node first connected. The cure for the key itself is an epoch in it, which
+ * is a change to the protocol between versions.
+ */
+export const LEDGER_WINDOW_DAYS = 1;
+
+/**
+ * When the ledger is pruned. The same cadence as the log table's retention
+ * (`log-collector.service.ts`), for the same reasons: not at the instant the
+ * daemon starts, when the migrations that create the table may still be
+ * running; hourly after that; and a minute apart while a pass keeps hitting
+ * its ceiling, so the backlog of a ledger that was never pruned drains in
+ * minutes with every statement still bounded.
+ */
+export const LEDGER_FIRST_PASS_DELAY_MS = 60_000;
+export const LEDGER_INTERVAL_MS = 60 * 60 * 1_000;
+export const LEDGER_BACKLOG_INTERVAL_MS = 60 * 1_000;

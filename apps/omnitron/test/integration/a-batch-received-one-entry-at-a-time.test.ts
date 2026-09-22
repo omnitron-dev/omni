@@ -30,68 +30,36 @@
 
 import { createHash } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { Kysely, PostgresDialect, sql } from 'kysely';
-import pg from 'pg';
+import { sql, type Kysely } from 'kysely';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 import { SyncService, type SyncBatch, type SyncCategory } from '../../src/services/sync.service.js';
-import { migrateOmnitronDb } from '../../src/database/migration-runner.js';
 import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
+import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
 const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
-/**
- * A database of its own. `omnitron-migrations.test.ts` drops the shared
- * database's `public` schema before each of its tests, and vitest runs files
- * in parallel.
- */
+/** Its own database — see `a-database-of-its-own.ts` for why. */
 const DB_NAME = `omnitron_sync_ingest_${process.pid}`;
 
 /** The registry uuid the master labels a node's rows with. */
 const NODE = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
 
-let admin: Kysely<unknown> | undefined;
+let own: OwnDatabase | undefined;
 let db: Kysely<OmnitronDatabase>;
 /** Every statement the service sends, as Kysely compiled it. */
 const statements: string[] = [];
 
-/**
- * A pool whose idle clients may be cut off without it being a test failure.
- * `DROP DATABASE … WITH (FORCE)` terminates whatever is still attached
- * (57P01), and a pg client with no 'error' listener turns that into an
- * unhandled error reported against whichever test ran last.
- */
-function quietPool(connectionString: string, max: number): pg.Pool {
-  const pool = new pg.Pool({ connectionString, max });
-  pool.on('error', () => {});
-  return pool;
-}
-
 beforeAll(async () => {
   if (!testPg.ok) return;
-  admin = new Kysely({ dialect: new PostgresDialect({ pool: quietPool(TEST_PG_URL, 1) }) });
-  await sql.raw(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`).execute(admin);
-  await sql.raw(`CREATE DATABASE ${DB_NAME}`).execute(admin);
-
-  const url = new URL(TEST_PG_URL);
-  url.pathname = `/${DB_NAME}`;
-  db = new Kysely<OmnitronDatabase>({
-    dialect: new PostgresDialect({ pool: quietPool(url.toString(), 4) }),
-    log: (event) => {
-      if (event.level === 'query') statements.push(event.query.sql);
-    },
-  });
-  await migrateOmnitronDb(db as unknown as Kysely<unknown>);
+  own = await databaseOfItsOwn(TEST_PG_URL, DB_NAME, (text) => statements.push(text));
+  db = own.db;
 });
 
 afterAll(async () => {
-  await db?.destroy();
-  if (admin) {
-    await sql.raw(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`).execute(admin);
-    await admin.destroy();
-  }
+  await own?.drop();
 });
 
 beforeEach(async () => {

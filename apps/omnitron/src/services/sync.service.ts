@@ -50,8 +50,13 @@ import {
   sweepMadeProgress,
   planEviction,
   SYNCED_RETENTION_MS,
+  LEDGER_WINDOW_DAYS,
+  LEDGER_FIRST_PASS_DELAY_MS,
+  LEDGER_INTERVAL_MS,
+  LEDGER_BACKLOG_INTERVAL_MS,
   type IngestOutcome,
 } from './sync-policy.js';
+import { planRetention, batchesPerPass, type RetentionPlan } from './log-retention.js';
 
 // =============================================================================
 // Types
@@ -264,6 +269,8 @@ export class SyncService {
 
   private readonly config: ResolvedSyncConfig;
   private syncTimer: NodeJS.Timeout | null = null;
+  /** The master's ledger pruning, re-armed after each pass. See `pruneLedger`. */
+  private ledgerTimer: NodeJS.Timeout | null = null;
   private isSyncing = false;
   private backoff: SyncBackoffState = { attempt: 0, nextRetryAt: 0 };
   private lastSyncAt: number | null = null;
@@ -303,11 +310,15 @@ export class SyncService {
 
   /**
    * Start the sync loop.
-   * Only runs on slave daemons — master is a no-op.
+   *
+   * On a slave, the buffer's pass: bound it, then try to drain it. On a
+   * master, the ledger's: `sync_ingested` pruned to its dedup window. The
+   * master used to return here, and its half of the pipeline was never
+   * maintained at all.
    */
   start(): void {
-    if (this.role !== 'slave') {
-      this.logger.debug({ role: this.role }, 'Sync not needed for this daemon role');
+    if (this.role === 'master') {
+      this.scheduleLedgerPrune(LEDGER_FIRST_PASS_DELAY_MS);
       return;
     }
 
@@ -341,6 +352,10 @@ export class SyncService {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
       this.syncTimer = null;
+    }
+    if (this.ledgerTimer) {
+      clearTimeout(this.ledgerTimer);
+      this.ledgerTimer = null;
     }
 
     // Final sync attempt before shutdown
@@ -1217,6 +1232,92 @@ export class SyncService {
       await this.writeRows(trx, nodeId, [entry]);
       return 'accepted';
     });
+  }
+
+  // ===========================================================================
+  // Master-Side: the ledger's window
+  // ===========================================================================
+
+  /**
+   * Arm the next ledger pass: in an hour, or in a minute when the last one
+   * hit its ceiling and more is waiting. Chained rather than an interval, so
+   * the cadence is decided with the last pass's result in hand.
+   */
+  private scheduleLedgerPrune(delayMs: number): void {
+    if (this.ledgerTimer) clearTimeout(this.ledgerTimer);
+    if (this.disposed) return;
+
+    this.ledgerTimer = setTimeout(() => {
+      void this.pruneLedger().then((removed) => {
+        if (this.disposed) return;
+        const plan = planRetention(LEDGER_WINDOW_DAYS);
+        this.scheduleLedgerPrune(plan && removed >= plan.maxThisPass ? LEDGER_BACKLOG_INTERVAL_MS : LEDGER_INTERVAL_MS);
+      });
+    }, delayMs);
+    this.ledgerTimer.unref();
+  }
+
+  /**
+   * Forget claims older than the dedup window (`LEDGER_WINDOW_DAYS`), in
+   * bounded batches, and say how many went.
+   *
+   * `sync_ingested` was written on every entry and pruned by nothing: 9.9
+   * million rows, 2.2 GB, and ~3.3 million more a day per node, beside an
+   * index on `ingestedAt` whose migration says it is there «for pruning». A
+   * claim is needed only while its node may offer the entry again — see the
+   * window's own comment for why a day covers that.
+   *
+   * By a subquery on the key, like the buffer's eviction, so no statement
+   * binds a parameter per row; `batchSize` rows at a time, so no statement
+   * holds the ingest path's inserts behind it for long.
+   *
+   * Said at info whenever it removed something, with the oldest claim left:
+   * a month from now, «the ledger is stable» must be tellable from «the
+   * pruner never ran» by reading the log rather than the code.
+   */
+  async pruneLedger(plan: RetentionPlan | null = planRetention(LEDGER_WINDOW_DAYS)): Promise<number> {
+    if (!plan || this.disposed) return 0;
+
+    let removed = 0;
+    try {
+      for (let i = 0; i < batchesPerPass(plan); i++) {
+        if (this.disposed) break;
+        const oldest = this.db
+          .selectFrom('sync_ingested')
+          .select(['nodeId', 'entryId'])
+          .where('ingestedAt', '<', plan.cutoff)
+          .limit(plan.batchSize);
+        const result = await this.db
+          .deleteFrom('sync_ingested')
+          .where(({ eb, refTuple }) => eb(refTuple('nodeId', 'entryId'), 'in', oldest.$asTuple('nodeId', 'entryId')))
+          .executeTakeFirst();
+        const n = Number(result.numDeletedRows);
+        removed += n;
+        if (n < plan.batchSize) break;
+      }
+
+      if (removed > 0) {
+        const left = await this.db
+          .selectFrom('sync_ingested')
+          .select((eb) => eb.fn.min('ingestedAt').as('oldest'))
+          .executeTakeFirst();
+        this.logger.info(
+          {
+            removed,
+            cutoff: plan.cutoff.toISOString(),
+            oldestKept: left?.oldest ? toIsoUtc(left.oldest) : null,
+            windowDays: LEDGER_WINDOW_DAYS,
+          },
+          'Pruned sync ledger claims past the dedup window'
+        );
+      } else {
+        this.logger.debug({ cutoff: plan.cutoff.toISOString() }, 'Sync ledger holds nothing past the dedup window');
+      }
+    } catch (err) {
+      // A pruner that keeps failing is the ledger growing again, quietly.
+      this.logger.error({ error: describeError(err), removed }, 'Sync ledger prune failed');
+    }
+    return removed;
   }
 
   // ===========================================================================

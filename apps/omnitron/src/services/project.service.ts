@@ -15,7 +15,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { LOGGER_SERVICE_TOKEN, type ILogger, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import { AUDIT_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN, ORCHESTRATOR_TOKEN, SECRETS_SERVICE_TOKEN } from '../shared/tokens.js';
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import type { SecretsService } from './secrets.service.js';
+import type { AuditService } from './audit.service.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
 import { describeWorkingTrees, refusalForDirtyTree } from '../project/working-tree.js';
@@ -69,7 +73,6 @@ import {
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
 import type { LoadedRelease } from '../release/load.js';
-import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
@@ -170,6 +173,30 @@ export class FrontendNotDeliveredError extends Error {
  */
 export type AttestAccounts = 'provisioned' | 'not-declared' | 'producer-cannot';
 
+/** What `ProjectService` takes beyond its three required collaborators. */
+export interface ProjectServiceOptions {
+  /** Slave→master replication, handed to the lazily built mesh connector. */
+  readonly syncService?: SyncService;
+  /**
+   * The vault, for the secrets a stack's service overrides name. Without it
+   * the references travel unresolved and say so.
+   */
+  readonly secrets?: import('./secrets.service.js').SecretsService;
+  /**
+   * The audit trail, for the one fact an operator asks this service about
+   * afterwards: what was deployed and when.
+   *
+   * Taken HERE rather than left to the RPC layer because the RPC layer is not
+   * the only caller. Measured on 2026-09-21: `omnitron audit` knew about one
+   * deployment of `daos/test` in twenty-four hours; the daemon log knew about
+   * eight. The seven it missed were the boot resume and the reconciler, both
+   * of which call `startStack` directly — so the trail recorded the
+   * deployments a human typed and none of the ones the daemon decided on,
+   * which is the wrong half to have.
+   */
+  readonly audit?: import('./audit.service.js').AuditService;
+}
+
 export class ProjectService extends EventEmitter {
   private readonly registry: ProjectRegistry;
   private readonly configRegistry = new Map<string, LoadedProject>();
@@ -182,43 +209,29 @@ export class ProjectService extends EventEmitter {
   private readonly resumeBackoff = new Map<string, { nextAt: number; delayMs: number }>();
   private dockerWasAvailable: boolean | null = null;
 
+  private readonly syncService: SyncService | undefined;
+  private readonly secrets: import('./secrets.service.js').SecretsService | undefined;
+  private readonly audit: import('./audit.service.js').AuditService | undefined;
+
   constructor(
     private readonly logger: ILogger,
     private readonly orchestrator: OrchestratorService,
     daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     /**
-     * Read by nothing. It was handed to the slave connector, which wrote
-     * managed machines' heartbeats into the fleet table — the control plane's
-     * registry of daemons, where a machine has no row. Kept for its POSITION:
-     * the daemon's factory (daemon.module.ts) passes these positionally, and
-     * a slot removed here would move every later argument into the wrong one
-     * while its `any` let it compile.
+     * What a master has and a slave does not — by NAME. These were four more
+     * positional parameters, and the daemon's factory passed them through an
+     * `any`: `new ProjectService(logger, orchestrator, dStore, fleet,
+     * undefined, secrets, audit)`. A slot removed or reordered there moves
+     * every later argument into its neighbour's place and still compiles. The
+     * fourth had been read by nothing since the connector stopped writing the
+     * fleet table (f785d7f0); it went, and the rest became names.
      */
-    _fleetService?: FleetService,
-    private readonly syncService?: SyncService,
-    /**
-     * The vault, for the secrets a stack's service overrides name.
-     *
-     * Optional so the two existing construction sites and the tests keep
-     * working; the master's factory passes it, and without it the
-     * references travel unresolved and say so.
-     */
-    private readonly secrets?: import('./secrets.service.js').SecretsService,
-    /**
-     * The audit trail, for the one fact an operator asks this service about
-     * afterwards: what was deployed and when.
-     *
-     * It is taken HERE rather than left to the RPC layer because the RPC
-     * layer is not the only caller. Measured on 2026-09-21: `omnitron audit`
-     * knew about one deployment of `daos/test` in twenty-four hours; the
-     * daemon log knew about eight. The seven it missed were the boot resume
-     * and the reconciler, both of which call `startStack` directly — so the
-     * trail recorded the deployments a human typed and none of the ones the
-     * daemon decided on, which is the wrong half to have.
-     */
-    private readonly audit?: import('./audit.service.js').AuditService,
+    options: ProjectServiceOptions = {},
   ) {
     super();
+    this.syncService = options.syncService;
+    this.secrets = options.secrets;
+    this.audit = options.audit;
     // T-7 — registry persistence routed through DaemonStateStore
     // (SQLite, transactional, co-located with daemon-state-kv,
     // pid-lock, etc.). The registry itself is unchanged in API;
@@ -3616,3 +3629,40 @@ export class ProjectService extends EventEmitter {
     };
   }
 }
+
+/**
+ * How a master's daemon builds this service: the tokens it resolves, in
+ * order, and the factory that receives them.
+ *
+ * Here and not inline in daemon.module.ts so that the ORDER can be held to
+ * account: `inject` and the factory's parameters are two lists that must
+ * agree position by position, and the container hands the values over as
+ * `any`. Swapped there, the vault arrives as the audit trail and neither
+ * complains until a deployment needs one of them. See
+ * `test/unit/a-factory-that-passed-its-arguments-by-position.test.ts`.
+ */
+export const MASTER_PROJECT_SERVICE_PROVIDER: {
+  readonly inject: readonly unknown[];
+  readonly useFactory: (
+    loggerModule: ILoggerModule,
+    orchestrator: OrchestratorService,
+    daemonStateStore: DaemonStateStore,
+    secrets: SecretsService,
+    audit: AuditService,
+  ) => ProjectService;
+} = {
+  inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, SECRETS_SERVICE_TOKEN, AUDIT_SERVICE_TOKEN],
+  useFactory: (
+    loggerModule: ILoggerModule,
+    orchestrator: OrchestratorService,
+    daemonStateStore: DaemonStateStore,
+    secrets: SecretsService,
+    audit: AuditService,
+  ): ProjectService =>
+    // `syncService` has never been passed here; `secrets` is what a stack's
+    // service overrides name their credentials with, and without it a
+    // deployed app is handed `<secret:…>` as a password. `audit` is here
+    // because two of the three callers of `startStack` never pass through the
+    // RPC layer that used to record it.
+    new ProjectService(loggerModule.logger, orchestrator, daemonStateStore, { secrets, audit }),
+};

@@ -66,7 +66,7 @@ import { BackupService } from '../services/backup.service.js';
 import { SecretsService } from '../services/secrets.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { createTelemetryRelay } from '../services/telemetry.service.js';
-import { ProjectService } from '../services/project.service.js';
+import { ProjectService, MASTER_PROJECT_SERVICE_PROVIDER } from '../services/project.service.js';
 import { SlaveStorageService } from '../services/slave-storage.service.js';
 import { Writable } from 'node:stream';
 import type { Kysely } from 'kysely';
@@ -577,15 +577,9 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore, fleet: any, secrets: SecretsService, audit: AuditService) =>
-            // `syncService` has never been passed here; `secrets` is what a
-            // stack's service overrides name their credentials with, and
-            // without it a deployed app is handed `<secret:…>` as a password.
-            // `audit` is here because two of the three callers of
-            // `startStack` never pass through the RPC layer that used to
-            // record it — see the note on the parameter.
-            new ProjectService(loggerModule.logger, orchestrator, dStore, fleet, undefined, secrets, audit),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN, SECRETS_SERVICE_TOKEN, AUDIT_SERVICE_TOKEN],
+          // The tokens and the factory live beside the class, where their
+          // order is held to account — see MASTER_PROJECT_SERVICE_PROVIDER.
+          ...MASTER_PROJECT_SERVICE_PROVIDER,
           scope: Scope.Singleton,
         },
       ] as any] : [[

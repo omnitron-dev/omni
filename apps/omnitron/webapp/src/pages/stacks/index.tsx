@@ -25,7 +25,8 @@ import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
 import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon } from '../../assets/icons';
+import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon, DeployIcon } from '../../assets/icons';
+import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import CreateStackDialog from './create-stack-dialog';
 import {
   useProjectStore,
@@ -73,6 +74,7 @@ export default function StacksPage() {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deployTarget, setDeployTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeProject) {
@@ -189,6 +191,7 @@ export default function StacksPage() {
                 stack={stack}
                 pendingOp={activeProject ? (pendingOps[`${activeProject}/${stack.name}`] ?? null) : null}
                 onStart={() => handleStart(stack.name)}
+                onDeploy={() => setDeployTarget(stack.name)}
                 onStop={() => handleStop(stack.name)}
                 onDelete={() => setDeleteTarget(stack.name)}
                 onDetail={() => navigate(`/stacks/${stack.name}`)}
@@ -197,6 +200,14 @@ export default function StacksPage() {
           ))}
         </Grid>
       )}
+
+      <DeployReleaseDialog
+        open={deployTarget !== null}
+        onClose={() => setDeployTarget(null)}
+        project={activeProject ?? ''}
+        release={null}
+        {...(deployTarget ? { stack: deployTarget } : {})}
+      />
 
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Stack</DialogTitle>
@@ -223,6 +234,7 @@ function StackCard({
   pendingOp,
   onStart,
   onStop,
+  onDeploy,
   onDelete,
   onDetail,
 }: {
@@ -230,10 +242,14 @@ function StackCard({
   pendingOp: 'starting' | 'stopping' | null;
   onStart: () => void;
   onStop: () => void;
+  onDeploy: () => void;
   onDelete: () => void;
   onDetail: () => void;
 }) {
   const status = STATUS_CHIP[stack.status] ?? STATUS_CHIP.stopped!;
+  // A stack whose config says so takes releases only: its Start is refused by
+  // the daemon on purpose, so the card offers the button that works.
+  const takesReleasesOnly = stack.config?.release?.mode === 'required';
   const isRunning = stack.status === 'running';
   const isStopped = stack.status === 'stopped';
   const isTransitioning = stack.status === 'starting' || stack.status === 'stopping' || !!pendingOp;
@@ -269,9 +285,14 @@ function StackCard({
         </Box>
 
         {/* Type */}
-        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-          {TYPE_LABEL[stack.type] ?? stack.type}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {TYPE_LABEL[stack.type] ?? stack.type}
+          </Typography>
+          {takesReleasesOnly && (
+            <Chip label="releases only" size="small" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }} />
+          )}
+        </Box>
 
         {/* Stats grid */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
@@ -319,23 +340,36 @@ function StackCard({
               {pendingOp === 'starting' || stack.status === 'starting' ? 'Starting...' : 'Stopping...'}
             </Button>
           ) : isStopped ? (
-            <Button
-              size="small"
-              startIcon={<PlayIcon />}
-              color="success"
-              onClick={onStart}
-            >
-              Start
-            </Button>
+            takesReleasesOnly ? (
+              <Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>
+                Deploy release…
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                startIcon={<PlayIcon />}
+                color="success"
+                onClick={onStart}
+              >
+                Start
+              </Button>
+            )
           ) : isRunning ? (
-            <Button
-              size="small"
-              startIcon={<StopIcon />}
-              color="error"
-              onClick={onStop}
-            >
-              Stop
-            </Button>
+            <>
+              {stack.type !== 'local' && (
+                <Button size="small" startIcon={<DeployIcon />} onClick={onDeploy}>
+                  Deploy…
+                </Button>
+              )}
+              <Button
+                size="small"
+                startIcon={<StopIcon />}
+                color="error"
+                onClick={onStop}
+              >
+                Stop
+              </Button>
+            </>
           ) : (
             <Chip label={status.label} size="small" color={status.color} sx={{ height: 20, fontSize: '0.65rem' }} />
           )}

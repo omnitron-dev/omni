@@ -28,6 +28,7 @@ import {
   ServerIcon,
   AuditIcon,
   LogoutIcon,
+  ReleaseIcon,
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
@@ -78,6 +79,7 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
+            { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
           ],
         },
         {
@@ -117,6 +119,7 @@ function useNavData(): LayoutNavData {
         subheader: 'Infrastructure',
         items: [
           { id: 'stacks', title: 'Stacks', path: '/stacks', icon: <StacksIcon />, selectionPrefix: '/stacks' },
+          { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
           { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
           { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },

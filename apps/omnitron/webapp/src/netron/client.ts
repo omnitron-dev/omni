@@ -35,6 +35,7 @@ import type {
   IOmnitronNodesService,
   IOmnitronMetricsService,
   IProjectRpcService,
+  IOmnitronReleaseService,
 } from '@omnitron-dev/omnitron/dto/services';
 
 // =============================================================================
@@ -62,6 +63,7 @@ export interface OmnitronConsoleSchema extends BackendSchema {
     OmnitronProject: IProjectRpcService;
     OmnitronSystemInfo: IOmnitronSystemInfoService;
     OmnitronNodes: IOmnitronNodesService;
+    OmnitronRelease: IOmnitronReleaseService;
   };
 }
 
@@ -242,6 +244,15 @@ export const systemInfo = daemonClient.daemon.OmnitronSystemInfo;
 
 /** Infrastructure node management */
 export const nodes = daemonClient.daemon.OmnitronNodes;
+
+/**
+ * Releases — what was built from which two commits, and the builds running now.
+ *
+ * Master-only: a release is built from clean clones of both repositories, and
+ * only a master has both. A slave's console serves the same pages and this
+ * proxy answers «service not found», which is the honest answer.
+ */
+export const releases = daemonClient.daemon.OmnitronRelease;
 
 // =============================================================================
 // Legacy RPC helpers — use typed proxies above instead

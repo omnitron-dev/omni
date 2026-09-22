@@ -7,6 +7,14 @@
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
+    // The console imports its contracts from `@omnitron-dev/omnitron/dto/services`,
+    // whose `types` entry points at the daemon's SOURCE — so the daemon's
+    // services are part of this program, decorators and all. Without this the
+    // typecheck reported 29 errors in files this app does not own (TS1206,
+    // «Decorators are not valid here»), which meant `pnpm build` had been
+    // failing at `tsc -b` and everyone built the console through vite
+    // instead. A check nobody can run is not a check.
+    "experimentalDecorators": true,
     "skipLibCheck": true,
     // Vite emits `dist/`; this project is the typecheck step of `pnpm build`
     // and must not emit. It used to declare `outDir: "dist"`, which wrote a

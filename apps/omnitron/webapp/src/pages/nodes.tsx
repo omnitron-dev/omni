@@ -30,6 +30,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
 import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
+import { FleetRollout } from 'src/components/fleet-rollout';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // One contract, imported. These four were local copies of types the daemon
@@ -2184,6 +2185,14 @@ export default function NodesPage() {
       />
 
       <ClusterAgreement states={clusterStates} />
+
+      {/*
+        Upgrading the fleet, as one operation rather than a button per card.
+        A production estate is many machines, and «press upgrade on each and
+        remember which ones you pressed» is not a procedure — it is how a
+        node gets left three versions behind.
+      */}
+      <FleetRollout nodes={nodeList} />
 
       {listError && (
         <FormAlert severity="warning" onClose={() => setListError(null)}>

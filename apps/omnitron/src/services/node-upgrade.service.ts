@@ -89,6 +89,16 @@ export interface UpgradeDeployer {
   activateBundle(target: never, version: string, prefix?: string, keepVersions?: number): Promise<boolean>;
 }
 
+/**
+ * The target version of a plan that did not build one.
+ *
+ * A sentinel rather than `''`, because `decideFor` compares it against each
+ * node's current version and an empty string would silently match a node
+ * whose version is unknown — turning «we did not compare» into «already on
+ * it», which is the exact reading this plan exists to avoid.
+ */
+const UNKNOWN_TARGET = '\u0000unbuilt';
+
 export class NodeUpgradeService {
   private readonly progressByNode = new Map<string, NodeUpgradeProgress>();
   private readonly inFlight = new Set<string>();
@@ -126,7 +136,8 @@ export class NodeUpgradeService {
    */
   async plan(
     only?: readonly string[],
-  ): Promise<import('./node-upgrade.js').UpgradePlan> {
+    options: { readonly build?: boolean } = {},
+  ): Promise<import('./node-upgrade.js').UpgradePlan & { readonly compared: boolean }> {
     const { planUpgrade } = await import('./node-upgrade.js');
 
     // Said as a refusal, not as an empty plan. A planner wired without a
@@ -138,6 +149,7 @@ export class NodeUpgradeService {
         steps: [],
         toUpgrade: [],
         refusal: 'This daemon cannot list its fleet, so it cannot plan a rollout',
+        compared: false,
       };
     }
 
@@ -149,10 +161,32 @@ export class NodeUpgradeService {
         toUpgrade: [],
         refusal:
           'This daemon does not run from an omnitron workspace, so it has no source to build a bundle from',
+        compared: false,
       };
     }
 
     const candidates = this.nodes.listCandidates();
+
+    // WITHOUT A BUILD by default, and this is the important default.
+    //
+    // Naming the target version means compiling the workspace, and
+    // `bundle-builder` does that with 42 synchronous fs calls including a
+    // recursive `cpSync` of whole packages. On the daemon's own thread that
+    // is not slow, it is a STOP: measured from the console, the master
+    // answered nothing at all for ~150 s — health checks, node polls and
+    // every other RPC stood still with it — and the request died at nginx's
+    // 120 s `proxy_read_timeout` long before that, so no client deadline can
+    // reach it either.
+    //
+    // The cheap plan still answers most of the question: which nodes are
+    // local, which refused SSH, which would be attempted. What it cannot say
+    // is «already on it», and it says THAT rather than pretending the
+    // comparison happened.
+    if (!options.build) {
+      const plan = planUpgrade(candidates, UNKNOWN_TARGET, only ? { only } : {});
+      return { ...plan, targetVersion: UNKNOWN_TARGET, compared: false };
+    }
+
     const { buildOwnBundle } = await import('./bundle-builder.js');
     const bundle = await buildOwnBundle({
       workspaceRoot: workspace,
@@ -161,7 +195,7 @@ export class NodeUpgradeService {
     });
 
     try {
-      return planUpgrade(candidates, bundle.version, only ? { only } : {});
+      return { ...planUpgrade(candidates, bundle.version, only ? { only } : {}), compared: true };
     } finally {
       // A plan ships nothing, so the bundle it built has no further use.
       // Left behind, one per press of the Plan button, it is tens of

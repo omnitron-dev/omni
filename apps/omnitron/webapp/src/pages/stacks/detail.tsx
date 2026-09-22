@@ -32,6 +32,8 @@ import {
   useActiveProjectStacks,
 } from '../../stores/project.store';
 import { formatUptime } from '../../utils/formatters';
+import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
+import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
 
@@ -57,6 +59,7 @@ export default function StackDetailPage() {
   const clearError = useProjectStore((s) => s.clearError);
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deployOpen, setDeployOpen] = useState(false);
 
   const stack = stacks.find((s) => s.name === name);
   const pendingOp = activeProject && name ? (pendingOps[`${activeProject}/${name}`] ?? null) : null;
@@ -207,6 +210,7 @@ export default function StackDetailPage() {
     },
   ];
 
+  const takesReleasesOnly = stack.config?.release?.mode === 'required';
   const isRunning = stack.status === 'running';
   const isStopped = stack.status === 'stopped';
   const isTransitioning = stack.status === 'starting' || stack.status === 'stopping' || !!pendingOp;
@@ -249,9 +253,25 @@ export default function StackDetailPage() {
                 {pendingOp === 'starting' || stack.status === 'starting' ? 'Starting...' : 'Stopping...'}
               </Button>
             ) : isStopped ? (
-              <Button startIcon={<PlayIcon />} color="success" variant="contained" size="small" onClick={handleStart}>
-                Start
-              </Button>
+              // A stack that takes releases only refuses this button by
+              // design, and the daemon's refusal names the two commands. The
+              // console says it BEFORE the press instead: the release card
+              // below carries the button that works.
+              takesReleasesOnly ? (
+                <Button
+                  startIcon={<DeployIcon />}
+                  color="success"
+                  variant="contained"
+                  size="small"
+                  onClick={() => setDeployOpen(true)}
+                >
+                  Deploy release…
+                </Button>
+              ) : (
+                <Button startIcon={<PlayIcon />} color="success" variant="contained" size="small" onClick={handleStart}>
+                  Start
+                </Button>
+              )
             ) : isRunning ? (
               <Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={handleStop}>
                 Stop
@@ -270,6 +290,19 @@ export default function StackDetailPage() {
         <FormAlert sx={{ mb: 2 }} onClose={clearError}>
           {error}
         </FormAlert>
+      )}
+
+      {/* What this stack is carrying, before anything about its processes:
+          «which build is on test» is the first question in front of a remote
+          stack, and the console could not answer it at all. */}
+      {activeProject && name && (
+        <StackReleaseCard
+          project={activeProject}
+          stack={name}
+          requiresRelease={Boolean(takesReleasesOnly)}
+          local={stack.type === 'local'}
+          onDeploy={() => setDeployOpen(true)}
+        />
       )}
 
       {/* Deployment banner for remote/cluster stacks */}
@@ -379,6 +412,14 @@ export default function StackDetailPage() {
           </CardContent>
         </Card>
       )}
+      <DeployReleaseDialog
+        open={deployOpen}
+        onClose={() => setDeployOpen(false)}
+        project={activeProject ?? ''}
+        release={null}
+        {...(name ? { stack: name } : {})}
+      />
+
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Stack</DialogTitle>
         <DialogContent>

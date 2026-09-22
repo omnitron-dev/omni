@@ -78,11 +78,9 @@ import {
   checkDelivered,
 } from '../release/delivered.js';
 import crypto from 'node:crypto';
+import { shellEscape } from '../shared/shell-escape.js';
+import type { LeaseRunner } from './node-deploy-lease.js';
 
-/** Escape a string for safe use inside a single-quoted shell argument. */
-function shellEscape(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
-}
 
 /**
  * A name that is safe to place in a remote filesystem path.
@@ -1652,6 +1650,14 @@ export class RemoteDeployer {
    * command as an empty answer, and the two probes in `provisionSlaveNode`
    * would install a runtime onto a host that already has one.
    */
+  /**
+   * How a node deploy lease reaches its node: the lease module writes the
+   * scripts, the deployer owns the SSH. See `node-deploy-lease.ts`.
+   */
+  leaseRunner(target: DeployTarget): LeaseRunner {
+    return (script) => this.sshExec(target, script, 30_000);
+  }
+
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
     const result = await this.execution.ssh(sshTargetOf(target), command, { timeout });
     if (result.exitCode !== 0) {

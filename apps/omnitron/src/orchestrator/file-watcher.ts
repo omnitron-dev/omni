@@ -451,8 +451,26 @@ export class FileWatcher {
         // A rebuild that restarts an app whose predecessor still holds the
         // port is the commonest way into this, and the error names the
         // address without ever naming the holder.
-        const held = await this.orchestrator.explainPortConflict(message);
-        if (held) this.logger.error({ app: appName }, `Restart failed — ${held}`);
+        //
+        // In a try of its own, because this runs INSIDE the catch that
+        // reports the failure and it is only a diagnostic: it shells out to
+        // find the holder. Anything it throws here replaces the failure it
+        // was added to explain, and `triggerRestart` is invoked as
+        // `void this.triggerRestart(app)`, so there is nothing left to
+        // catch it — it lands as an unhandled rejection. Measured
+        // 2026-09-22: a collaborator that did not have the method turned
+        // «logs a failed restart instead of throwing» into a file that
+        // threw, and vitest warned that the rest of its tests could not be
+        // trusted.
+        try {
+          const held = await this.orchestrator.explainPortConflict(message);
+          if (held) this.logger.error({ app: appName }, `Restart failed — ${held}`);
+        } catch (explainErr) {
+          this.logger.warn(
+            { app: appName, error: (explainErr as Error).message },
+            'Could not work out who holds the port — the restart failure above stands',
+          );
+        }
       }
     } finally {
       app.restarting = false;

@@ -52,6 +52,10 @@ function createMockLogger() {
 function createMockOrchestrator(overrides: Record<string, unknown> = {}) {
   return {
     restartApp: vi.fn().mockResolvedValue(undefined),
+    // The real orchestrator has this, and `triggerRestart` calls it from
+    // inside its own catch — a double without it made the failure path
+    // throw rather than log. See «survives a diagnostic that throws».
+    explainPortConflict: vi.fn().mockResolvedValue(null),
     ...overrides,
   } as unknown as OrchestratorService;
 }
@@ -413,6 +417,46 @@ describe('FileWatcher', () => {
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ app: 'test-app', error: 'restart failed' }),
       'Restart failed'
+    );
+  });
+
+  it('names who holds the port when the orchestrator can work it out', async () => {
+    orchestrator = createMockOrchestrator({
+      restartApp: vi.fn().mockRejectedValue(new Error('listen EADDRINUSE: address already in use :::3001')),
+      explainPortConflict: vi.fn().mockResolvedValue('port 3001 is held by pid 4242 (main)'),
+    });
+    const w = startWatcher();
+
+    w.emit('src/broken.ts');
+    await settle();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ app: 'test-app' }),
+      'Restart failed — port 3001 is held by pid 4242 (main)'
+    );
+  });
+
+  it('survives a diagnostic that throws — the failure it explains still stands', async () => {
+    // This runs inside the catch that reports the restart failure, and
+    // `triggerRestart` is called as `void triggerRestart(app)`: an error
+    // here has nothing left to catch it and lands as an unhandled
+    // rejection, which is how the whole file started throwing.
+    orchestrator = createMockOrchestrator({
+      restartApp: vi.fn().mockRejectedValue(new Error('restart failed')),
+      explainPortConflict: vi.fn().mockRejectedValue(new Error('lsof: command not found')),
+    });
+    const w = startWatcher();
+
+    w.emit('src/broken.ts');
+    await settle();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ app: 'test-app', error: 'restart failed' }),
+      'Restart failed'
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ app: 'test-app', error: 'lsof: command not found' }),
+      'Could not work out who holds the port — the restart failure above stands'
     );
   });
 

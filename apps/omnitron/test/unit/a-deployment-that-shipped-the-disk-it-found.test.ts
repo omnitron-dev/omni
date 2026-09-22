@@ -167,7 +167,10 @@ describe('a remote stack will not start from a tree that is not its commit', () 
     const dir = repo();
     writeFileSync(join(dir, 'app.ts'), 'edited\n');
     const { svc, started } = service('remote', dir);
-    await expect(svc.startStack('daos', 'test', { source: 'boot' })).rejects.toThrow(/differ from the commit/);
+    // Through an operator start: a boot no longer deploys a remote stack at
+    // all — it re-attaches (`a-restart-that-shipped-its-tree-to-the-test-server`)
+    // — so the refusal guards the deployments that remain, the asked-for ones.
+    await expect(svc.startStack('daos', 'test', { source: 'operator' })).rejects.toThrow(/differ from the commit/);
     // The claim is not the throw — it is that the deployment never ran.
     expect(started).toEqual([]);
   });
@@ -199,7 +202,7 @@ describe('a remote stack will not start from a tree that is not its commit', () 
     // A check that cannot run is not a check that passed. Refusing every
     // project that is not a git checkout would be a rule about git.
     const { svc, started, warned } = service('remote', mkdtempSync(join(tmpdir(), 'not-a-repo-')));
-    await svc.startStack('daos', 'test', { source: 'boot' });
+    await svc.startStack('daos', 'test', { source: 'operator' });
     expect(started).toEqual(['remote']);
     expect(warned.some((w) => typeof w.why === 'string')).toBe(true);
   });

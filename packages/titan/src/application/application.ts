@@ -304,9 +304,12 @@ export class Application implements IApplication {
   // ─── Lifecycle (start) ───────────────────────────────────────────────
 
   async start(): Promise<void> {
-    // Join an in-flight start.
+    // Join an in-flight start. Awaited rather than returned: the caller
+    // waits for exactly the same thing, and `start` stops being a method
+    // that hands back a promise on one path and nothing on the others.
     if (this._lifecycle.state === ApplicationState.Starting && this._lifecycle.startPromise) {
-      return this._lifecycle.startPromise;
+      await this._lifecycle.startPromise;
+      return;
     }
     // Wait for an in-flight stop to settle then proceed.
     if (this._lifecycle.state === ApplicationState.Stopping && this._lifecycle.stopPromise) {
@@ -559,7 +562,8 @@ export class Application implements IApplication {
 
   async stop(options: IShutdownOptions = {}): Promise<void> {
     if (this._lifecycle.state === ApplicationState.Stopping && this._lifecycle.stopPromise) {
-      return this._lifecycle.stopPromise;
+      await this._lifecycle.stopPromise;
+      return;
     }
     if (this._lifecycle.state === ApplicationState.Starting && this._lifecycle.startPromise) {
       await this._lifecycle.startPromise;

@@ -4,7 +4,6 @@ import { Serializer, registerCommonTypesFor } from '@omnitron-dev/msgpack';
 import { Reference } from '../reference.js';
 import { Definition } from '../definition.js';
 import { TitanError } from '../../errors/core.js';
-import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * Global serializer instance for the Netron application.
@@ -38,18 +37,6 @@ function metaForTheWire(meta: Definition['meta']): Definition['meta'] {
   return rest as Definition['meta'];
 }
 
-
-/**
- * Optional logger for serializer operations
- */
-let serializerLogger: ILogger | undefined;
-
-/**
- * Set logger for serializer
- */
-export function setSerializerLogger(logger: ILogger): void {
-  serializerLogger = logger;
-}
 
 /**
  * SECURITY (T#38) — stack-trace transmission policy for the

@@ -35,7 +35,7 @@ export function attachMetricsService(instance: object, service: MetricsService):
  *                     Defaults to `ClassName.methodName`.
  */
 export function Metrics(metricName?: string) {
-  return function <T extends (...args: never[]) => unknown>(
+  return function metricsDecorator<T extends (...args: never[]) => unknown>(
     _target: object,
     propertyKey: string | symbol,
     descriptor: TypedPropertyDescriptor<T>,
@@ -45,14 +45,14 @@ export function Metrics(metricName?: string) {
 
     const methodKey = String(propertyKey);
 
-    descriptor.value = function (this: object, ...args: Parameters<T>): ReturnType<T> {
+    descriptor.value = function measuredMethod(this: object, ...args: Parameters<T>): ReturnType<T> {
       const svc = serviceMap.get(this);
       const name = metricName ?? `${this.constructor.name}.${methodKey}`;
       const start = performance.now();
 
       let result: unknown;
       try {
-        result = (original as Function).apply(this, args);
+        result = (original as (...a: Parameters<T>) => unknown).apply(this, args);
       } catch (err: unknown) {
         recordFinish(svc, name, start, 'error', err);
         throw err;

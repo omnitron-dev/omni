@@ -157,12 +157,15 @@ export class ProcessSupervisor extends EventEmitter {
    * makes concurrent callers join the same operation.
    */
   async start(): Promise<void> {
-    if (this.startPromise) return this.startPromise;
+    if (this.startPromise) {
+      await this.startPromise;
+      return;
+    }
     if (this.isStarted) return;
     this.startPromise = this.doStart().finally(() => {
       this.startPromise = null;
     });
-    return this.startPromise;
+    await this.startPromise;
   }
 
   private async doStart(): Promise<void> {

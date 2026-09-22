@@ -145,6 +145,6 @@ export function createCsrfMiddleware(opts: CsrfMiddlewareOptions): MiddlewareFun
       });
     }
 
-    await next();
+    return await next();
   };
 }

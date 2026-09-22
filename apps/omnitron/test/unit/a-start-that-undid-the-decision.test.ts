@@ -139,4 +139,18 @@ describe('the order the deployment asks in', () => {
     expect(deployer).toMatch(/'The node now knows what to run'/);
     expect(deployer).toMatch(/its stack was not restarted/);
   });
+
+  it('logs a restarted application as loudly as one it left alone', () => {
+    // «Left running» logs; restarting logged nothing, so the two outcomes
+    // differed in the log only by the absence of a line — and absence is
+    // what a reader cannot see. Measured 2026-09-22: six artifacts
+    // delivered, six applications restarted, and nothing between «Opened
+    // the gateway's path» and «Stack started» that said so.
+    expect(deployer).toMatch(/'Left running — this deployment changes nothing for this app'/);
+    expect(deployer).toMatch(/'Restarted onto the artifact this deployment installed'/);
+
+    // And it carries the reason the decision gave, not just the fact.
+    const restarted = deployer.indexOf('Restarted onto the artifact this deployment installed');
+    expect(deployer.slice(restarted - 300, restarted)).toMatch(/because: decision\.because/);
+  });
 });

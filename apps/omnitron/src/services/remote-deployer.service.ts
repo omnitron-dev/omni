@@ -805,6 +805,23 @@ export class RemoteDeployer {
             : { online: false, detail: started.detail };
           if (health.online) {
             this.emitProgress(result.node, entry.app, 'success', 100, 'Running');
+            // Said, because its opposite is. «Left running» above logs when
+            // this deployment leaves an application alone; restarting one
+            // logged nothing at all, so a log full of six «Left running»
+            // lines and a log of six silent restarts differ only by the
+            // absence of something — and absence is what a reader cannot
+            // see. Measured 2026-09-22: six artifacts delivered and every
+            // application restarted, with nothing in the log between
+            // «Opened the gateway's path» and «Stack started» to say so.
+            this.logger.info(
+              {
+                node: result.node,
+                app: entry.app,
+                version: entry.version,
+                because: decision.because,
+              },
+              'Restarted onto the artifact this deployment installed',
+            );
             continue;
           }
 

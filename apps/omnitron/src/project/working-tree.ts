@@ -80,3 +80,41 @@ export function refusalForDirtyTree(
     `Commit or stash them, or pass --allow-dirty to ship this disk deliberately.`
   );
 }
+
+/**
+ * Every distinct repository the deployment reads, answered together.
+ *
+ * A project is not the only tree that travels. The portal's bundle INLINES
+ * the sources of the packages it links — prism and netron-browser resolve
+ * through a vite alias to each package's `src` in another repository — so an
+ * uncommitted change there reaches the node inside `dist` while the
+ * project's own tree is spotless. (The backends are different: their
+ * vendored `@omnitron-dev/*` are replaced on the node by symlinks to the
+ * node daemon's copy, so what was packed for them does not run.)
+ *
+ * The inputs are derived from the mechanism — `linkedSourceDirs` is what the
+ * staleness check already uses to decide what the bundle is built from — and
+ * then collapsed to git roots, because two source directories in one
+ * repository are one answer.
+ */
+export async function describeWorkingTrees(
+  paths: readonly string[],
+): Promise<Array<{ root: string; tree: WorkingTree }>> {
+  const roots = new Map<string, string>();
+  for (const dir of paths) {
+    const root = await gitRootOf(dir);
+    if (root && !roots.has(root)) roots.set(root, dir);
+  }
+  const out: Array<{ root: string; tree: WorkingTree }> = [];
+  for (const [root] of roots) out.push({ root, tree: await describeWorkingTree(root) });
+  return out;
+}
+
+async function gitRootOf(dir: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { timeout: 15_000 });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}

@@ -377,7 +377,15 @@ export function staleBuild(srcDir: string, buildDir: string): string | null {
  * A package without a `src/` contributes nothing to look at and is skipped,
  * which also drops anything vendored as built output.
  */
-function linkedSourceDirs(pkgDir: string): string[] {
+/**
+ * The `src` of every dependency that resolves to a working package rather
+ * than an installed copy — what this bundle is actually built FROM.
+ *
+ * Exported because two questions need the same answer and neither may
+ * re-derive it: whether the build is stale, and whether the trees it reads
+ * are the commits they claim.
+ */
+export function linkedSourceDirs(pkgDir: string): string[] {
   let manifest: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   try {
     manifest = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));

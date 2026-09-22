@@ -8,8 +8,8 @@
  * @module components/admin-filters
  */
 
-import type { ReactNode } from 'react';
-import Chip from '@mui/material/Chip';
+import type { ReactNode, Ref } from 'react';
+import Chip, { type ChipProps } from '@mui/material/Chip';
 import { alpha } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
 
@@ -19,7 +19,7 @@ import type { SxProps, Theme } from '@mui/material/styles';
 
 export type StatusColor = 'success' | 'error' | 'warning' | 'info' | 'default';
 
-export interface StatusChipProps {
+interface StatusChipOwnProps {
   /** Status string to display (drives color mapping) */
   status: string;
   /**
@@ -35,6 +35,15 @@ export interface StatusChipProps {
   /** Additional styles */
   sx?: SxProps<Theme>;
 }
+
+/**
+ * The chip takes `ref` and passes everything else to MUI's `Chip`, as every
+ * leaf in this library does: the portal's members tab put two of these
+ * inside a `Tooltip`, which attaches its ref and its hover handlers to its
+ * child — and a chip that dropped both was a tooltip that never opened.
+ */
+export type StatusChipProps = StatusChipOwnProps &
+  Omit<ChipProps, keyof StatusChipOwnProps | 'ref'> & { ref?: Ref<HTMLDivElement> };
 
 // =============================================================================
 // DEFAULT COLOR MAP
@@ -93,7 +102,7 @@ const DEFAULT_COLOR_MAP: Record<string, StatusColor> = {
  * />
  * ```
  */
-export function StatusChip({ status, label, colorMap, size = 'small', sx }: StatusChipProps): ReactNode {
+export function StatusChip({ status, label, colorMap, size = 'small', sx, ref, ...other }: StatusChipProps): ReactNode {
   const normalizedStatus = status.toLowerCase();
   const mergedMap = colorMap ? { ...DEFAULT_COLOR_MAP, ...colorMap } : DEFAULT_COLOR_MAP;
   // Own-property lookup only. Statuses arrive from the server, and a plain
@@ -108,26 +117,30 @@ export function StatusChip({ status, label, colorMap, size = 'small', sx }: Stat
 
   return (
     <Chip
+      ref={ref}
+      {...other}
       label={displayLabel}
       size={size}
-      sx={{
-        height: size === 'small' ? 22 : 28,
-        fontSize: size === 'small' ? '0.7rem' : '0.775rem',
-        fontWeight: 600,
-        borderRadius: 0.75,
-        letterSpacing: '0.01em',
-        ...(color !== 'default' && {
-          color: (theme) => theme.palette[color].main,
-          bgcolor: (theme) => alpha(theme.palette[color].main, 0.1),
-          border: (theme) => `1px solid ${alpha(theme.palette[color].main, 0.2)}`,
-        }),
-        ...(color === 'default' && {
-          color: 'text.secondary',
-          bgcolor: (theme) => alpha(theme.palette.grey[500], 0.08),
-          border: (theme) => `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
-        }),
-        ...sx,
-      }}
+      sx={[
+        {
+          height: size === 'small' ? 22 : 28,
+          fontSize: size === 'small' ? '0.7rem' : '0.775rem',
+          fontWeight: 600,
+          borderRadius: 0.75,
+          letterSpacing: '0.01em',
+          ...(color !== 'default' && {
+            color: (theme: Theme) => theme.palette[color].main,
+            bgcolor: (theme: Theme) => alpha(theme.palette[color].main, 0.1),
+            border: (theme: Theme) => `1px solid ${alpha(theme.palette[color].main, 0.2)}`,
+          }),
+          ...(color === 'default' && {
+            color: 'text.secondary',
+            bgcolor: (theme: Theme) => alpha(theme.palette.grey[500], 0.08),
+            border: (theme: Theme) => `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+          }),
+        },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+      ]}
     />
   );
 }

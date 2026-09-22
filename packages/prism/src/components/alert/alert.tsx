@@ -8,11 +8,32 @@
  * @module components/alert
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
-import MuiAlert from '@mui/material/Alert';
+import { useEffect, useRef, type ReactNode, type Ref } from 'react';
+import MuiAlert, { type AlertProps as MuiAlertProps } from '@mui/material/Alert';
 import AlertTitle from '@mui/material/AlertTitle';
 import { alpha } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
+import { useForkRef } from '@mui/material/utils';
+
+/**
+ * Every alert here takes `ref` and passes whatever else it is given to the
+ * MUI root — the library's convention (see `Card`, `Avatar`, `Label`).
+ *
+ * These three did not, and it was measured on 2026-09-22: `Grow`, `Fade`,
+ * `Zoom` and `Slide` hold their child by ref and animate it through
+ * `style`, so a `<Snackbar>` (whose transition is `Grow`) around one of these
+ * found no node and threw from inside MUI's `reflow` — «Cannot read
+ * properties of null (reading 'scrollTop')» — taking the whole page down. The
+ * console's Topology page died that way on every failed fetch. A `Tooltip`
+ * around one fails quietly instead: it injects its handlers into props that
+ * were thrown away.
+ */
+type MuiAlertRest<Own> = Omit<MuiAlertProps, keyof Own | 'ref'>;
+
+/** `sx` in every form MUI accepts — object, function or array — after ours. */
+function mergeSx(own: SxProps<Theme>, sx: SxProps<Theme> | undefined): SxProps<Theme> {
+  return [own, ...(Array.isArray(sx) ? sx : sx ? [sx] : [])] as SxProps<Theme>;
+}
 
 /**
  * Alert severity levels.
@@ -27,7 +48,7 @@ export type AlertVariant = 'standard' | 'filled' | 'outlined' | 'soft';
 /**
  * Props for Alert component.
  */
-export interface AlertProps {
+interface AlertOwnProps {
   /** Alert severity */
   severity?: AlertSeverity;
   /** Alert variant */
@@ -47,6 +68,8 @@ export interface AlertProps {
   /** Custom sx props */
   sx?: SxProps<Theme>;
 }
+
+export type AlertProps = AlertOwnProps & MuiAlertRest<AlertOwnProps> & { ref?: Ref<HTMLDivElement> };
 
 /**
  * Alert - Enhanced alert with custom styling.
@@ -72,28 +95,35 @@ export function Alert({
   icon,
   action,
   sx,
+  ref,
+  ...other
 }: AlertProps): ReactNode {
   // Map 'soft' variant to 'standard' with custom styling
   const muiVariant = variant === 'soft' ? 'standard' : variant;
 
   return (
     <MuiAlert
+      ref={ref}
+      {...other}
       severity={severity}
       variant={muiVariant}
       onClose={closable ? onClose : undefined}
       icon={icon}
       action={action}
-      sx={{
-        ...(variant === 'soft' && {
-          backgroundColor: (theme) => alpha(theme.palette[severity].main, theme.palette.mode === 'light' ? 0.12 : 0.16),
-          color: (theme) =>
-            theme.palette.mode === 'light' ? theme.palette[severity].dark : theme.palette[severity].light,
-          '& .MuiAlert-icon': {
-            color: 'inherit',
-          },
-        }),
-        ...sx,
-      }}
+      sx={mergeSx(
+        variant === 'soft'
+          ? {
+              backgroundColor: (theme) =>
+                alpha(theme.palette[severity].main, theme.palette.mode === 'light' ? 0.12 : 0.16),
+              color: (theme) =>
+                theme.palette.mode === 'light' ? theme.palette[severity].dark : theme.palette[severity].light,
+              '& .MuiAlert-icon': {
+                color: 'inherit',
+              },
+            }
+          : {},
+        sx,
+      )}
     >
       {title && <AlertTitle>{title}</AlertTitle>}
       {children}
@@ -104,7 +134,7 @@ export function Alert({
 /**
  * Props for InlineAlert component.
  */
-export interface InlineAlertProps {
+interface InlineAlertOwnProps {
   /** Alert severity */
   severity?: AlertSeverity;
   /** Alert message */
@@ -112,6 +142,9 @@ export interface InlineAlertProps {
   /** Icon to display */
   icon?: ReactNode;
 }
+
+export type InlineAlertProps = InlineAlertOwnProps &
+  MuiAlertRest<InlineAlertOwnProps> & { ref?: Ref<HTMLDivElement> };
 
 /**
  * InlineAlert - Compact inline alert for form feedback.
@@ -121,18 +154,23 @@ export interface InlineAlertProps {
  * <InlineAlert severity="error" message="This field is required" />
  * ```
  */
-export function InlineAlert({ severity = 'info', message, icon }: InlineAlertProps): ReactNode {
+export function InlineAlert({ severity = 'info', message, icon, sx, ref, ...other }: InlineAlertProps): ReactNode {
   return (
     <MuiAlert
+      ref={ref}
+      {...other}
       severity={severity}
       icon={icon}
-      sx={{
-        py: 0,
-        px: 1,
-        '& .MuiAlert-message': {
-          py: 0.5,
+      sx={mergeSx(
+        {
+          py: 0,
+          px: 1,
+          '& .MuiAlert-message': {
+            py: 0.5,
+          },
         },
-      }}
+        sx,
+      )}
     >
       {message}
     </MuiAlert>
@@ -142,7 +180,7 @@ export function InlineAlert({ severity = 'info', message, icon }: InlineAlertPro
 /**
  * Props for FormAlert component.
  */
-export interface FormAlertProps {
+interface FormAlertOwnProps {
   /** Severity — defaults to 'error' since this primitive is most
    * commonly used to surface form submission failures. */
   severity?: AlertSeverity;
@@ -163,6 +201,8 @@ export interface FormAlertProps {
   /** Custom sx overrides for niche layouts. */
   sx?: SxProps<Theme>;
 }
+
+export type FormAlertProps = FormAlertOwnProps & MuiAlertRest<FormAlertOwnProps> & { ref?: Ref<HTMLDivElement> };
 
 /**
  * FormAlert — the platform's canonical surface for **form-level**
@@ -204,8 +244,13 @@ export function FormAlert({
   onClose,
   autoScroll = true,
   sx,
+  ref: outerRef,
+  ...other
 }: FormAlertProps): ReactNode {
   const ref = useRef<HTMLDivElement>(null);
+  // Its own ref (to scroll into view) and the caller's (a transition, a
+  // tooltip) are the same node — both have to reach it.
+  const handleRef = useForkRef(ref, outerRef);
 
   useEffect(() => {
     if (!autoScroll) return undefined;
@@ -221,7 +266,8 @@ export function FormAlert({
 
   return (
     <MuiAlert
-      ref={ref}
+      ref={handleRef}
+      {...other}
       severity={severity}
       onClose={onClose}
       // role/aria-live are normally set by MUI based on severity, but
@@ -231,11 +277,13 @@ export function FormAlert({
       role="alert"
       aria-live="assertive"
       aria-atomic="true"
-      sx={{
-        alignItems: 'flex-start',
-        mb: 2,
-        ...sx,
-      }}
+      sx={mergeSx(
+        {
+          alignItems: 'flex-start',
+          mb: 2,
+        },
+        sx,
+      )}
     >
       {title && <AlertTitle sx={{ mb: 0.5 }}>{title}</AlertTitle>}
       {children}

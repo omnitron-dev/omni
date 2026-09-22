@@ -8,7 +8,7 @@
  * @module components/badge
  */
 
-import type { ReactNode, Ref } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from 'react';
 import MuiBadge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import { styled } from '@mui/material/styles';
@@ -170,7 +170,7 @@ export function Badge({variant = 'standard', color = 'error', size = 'medium', b
 // COUNT BADGE
 // =============================================================================
 
-export interface CountBadgeProps {
+interface CountBadgeOwnProps {
   /** Count value */
   count: number;
   /** Maximum count before showing + */
@@ -184,6 +184,15 @@ export interface CountBadgeProps {
   /** Additional styles */
   sx?: SxProps<Theme>;
 }
+
+/**
+ * Leaves take `ref` and pass the rest to their root span — a count or a dot
+ * is exactly what gets a `Tooltip` («3 unread», «online since 14:02»), and a
+ * tooltip attaches its ref and its handlers to its child.
+ */
+type SpanRest<Own> = Omit<ComponentPropsWithoutRef<'span'>, keyof Own | 'color'> & { ref?: Ref<HTMLSpanElement> };
+
+export type CountBadgeProps = CountBadgeOwnProps & SpanRest<CountBadgeOwnProps>;
 
 /**
  * CountBadge - Standalone count badge without children.
@@ -201,6 +210,8 @@ export function CountBadge({
   color = 'error',
   size = 'medium',
   sx,
+  ref,
+  ...other
 }: CountBadgeProps): ReactNode {
   if (!showZero && count === 0) {
     return null;
@@ -231,20 +242,24 @@ export function CountBadge({
   return (
     <Box
       component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth,
-        height,
-        padding: '0 4px',
-        borderRadius: height / 2,
-        fontSize,
-        fontWeight: 600,
-        backgroundColor: bgColor,
-        color: 'white',
-        ...sx,
-      }}
+      ref={ref}
+      {...other}
+      sx={[
+        {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minWidth,
+          height,
+          padding: '0 4px',
+          borderRadius: height / 2,
+          fontSize,
+          fontWeight: 600,
+          backgroundColor: bgColor,
+          color: 'white',
+        },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+      ]}
     >
       {displayCount}
     </Box>
@@ -257,7 +272,7 @@ export function CountBadge({
 
 export type StatusDotStatus = 'online' | 'offline' | 'busy' | 'away';
 
-export interface StatusDotProps {
+interface StatusDotOwnProps {
   /** Status type */
   status: StatusDotStatus;
   /** Size in pixels */
@@ -268,6 +283,8 @@ export interface StatusDotProps {
   sx?: SxProps<Theme>;
 }
 
+export type StatusDotProps = StatusDotOwnProps & SpanRest<StatusDotOwnProps>;
+
 /**
  * StatusDot - Standalone status indicator.
  *
@@ -277,7 +294,7 @@ export interface StatusDotProps {
  * <StatusDot status="busy" size={12} />
  * ```
  */
-export function StatusDot({ status, size = 8, pulse = true, sx }: StatusDotProps): ReactNode {
+export function StatusDot({ status, size = 8, pulse = true, sx, ref, ...other }: StatusDotProps): ReactNode {
   const statusColors: Record<StatusDotStatus, string> = {
     online: '#22c55e',
     offline: '#9ca3af',
@@ -290,18 +307,22 @@ export function StatusDot({ status, size = 8, pulse = true, sx }: StatusDotProps
   return (
     <Box
       component="span"
-      sx={{
-        display: 'inline-block',
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        backgroundColor: color,
-        ...(pulse &&
-          status === 'online' && {
-            animation: 'pulse 2s infinite',
-          }),
-        ...sx,
-      }}
+      ref={ref}
+      {...other}
+      sx={[
+        {
+          display: 'inline-block',
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          backgroundColor: color,
+          ...(pulse &&
+            status === 'online' && {
+              animation: 'pulse 2s infinite',
+            }),
+        },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+      ]}
     />
   );
 }

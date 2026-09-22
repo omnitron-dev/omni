@@ -173,6 +173,18 @@ export class ProjectRpcService {
     return info;
   }
 
+  /**
+   * Would this stack take this release? The deploy's own verdict, in advance.
+   *
+   * Operator rather than viewer: it reads the release's every artifact off
+   * the disk to check them, and it is the question an operator asks before
+   * pressing Deploy.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }> {
+    return this.projectService.checkRelease(data.project, data.stack, data.release);
+  }
+
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopStack(data: { project: string; stack: string }): Promise<IStackInfo> {
     const info = await this.projectService.stopStack(data.project, data.stack);

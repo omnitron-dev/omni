@@ -243,6 +243,14 @@ export interface IStackConfig {
    * }
    */
   serviceOverrides?: Record<string, import('../infrastructure/types.js').IServiceOverride>;
+
+  /**
+   * What this stack demands of what reaches it. `mode: 'required'` — the
+   * stack takes releases only (`omnitron release build`, then `stack start
+   * --release <id>`); absent — it deploys the working tree, as a development
+   * stack does. See `StackReleaseRequirements`.
+   */
+  release?: import('../release/manifest.js').StackReleaseRequirements;
 }
 
 /**

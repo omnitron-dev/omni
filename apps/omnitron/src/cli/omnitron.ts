@@ -214,9 +214,16 @@ stack
   // rather than a setting because the path that caused the damage, a
   // master restart resuming its stacks, cannot pass one.
   .option('--allow-dirty', 'Deploy a working tree that differs from HEAD')
+  // A release instead of the working tree: built by `omnitron release build`
+  // from two commits in clean clones, every gate run. A stack whose config
+  // says `release: { mode: 'required' }` takes nothing else.
+  .option('--release <id>', 'Deploy this release (see `omnitron release build`) instead of the working tree')
   .action(async (projectName, stackName, options) => {
     const { stackStartCommand } = await import('../commands/stack.js');
-    await stackStartCommand(projectName, stackName, { allowDirty: options.allowDirty === true });
+    await stackStartCommand(projectName, stackName, {
+      allowDirty: options.allowDirty === true,
+      ...(typeof options.release === 'string' ? { release: options.release } : {}),
+    });
   });
 
 stack
@@ -509,13 +516,14 @@ release
   .option('--omni-commit <sha>', "The omni commit to build (default: the omni checkout's HEAD)")
   .option('--keep-source', 'Keep the clones after a successful build')
   .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
+  .option('--for <stack>', "Also build the static bundle this stack's gateway serves, with its environment")
   .action(
     async (
       projectName: string,
-      options: { projectCommit?: string; omniCommit?: string; keepSource?: boolean; skipGates?: boolean },
+      options: { projectCommit?: string; omniCommit?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
     ) => {
       const { releaseBuildCommand } = await import('../commands/release.js');
-      await releaseBuildCommand(projectName, options);
+      await releaseBuildCommand(projectName, { ...options, ...(options.for ? { forStack: options.for } : {}) });
     },
   );
 

@@ -71,13 +71,14 @@ export interface ManifestInput {
   readonly id: string;
   readonly project: ReleaseSource;
   readonly omni: ReleaseSource;
-  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number }>;
+  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number; checksum?: string }>;
   readonly artifactFailures: ReadonlyArray<{ app: string; error: string }>;
   readonly gates: readonly GateOutcome[];
   readonly omnitron: string;
   readonly packages: ReadonlyArray<{ name: string; distBuiltAt: string }>;
   readonly builtAt: Date;
   readonly builtBy: string;
+  readonly statics?: ReleaseManifest['statics'];
 }
 
 /**
@@ -93,6 +94,7 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     version: a.version,
     sha256: a.tarballSha256 ?? '',
     bytes: a.size,
+    ...(a.checksum ? { inputs: a.checksum } : {}),
   }));
   return {
     id: input.id,
@@ -104,5 +106,6 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     builtWith: { omnitron: input.omnitron, packages: input.packages },
     builtAt: input.builtAt.toISOString(),
     builtBy: input.builtBy,
+    ...(input.statics ? { statics: input.statics } : {}),
   };
 }

@@ -68,6 +68,7 @@ import {
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
+import type { LoadedRelease } from '../release/load.js';
 import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
@@ -595,7 +596,7 @@ export class ProjectService extends EventEmitter {
   async startStack(
     projectName: string,
     stackName: string,
-    opts?: { source?: StackStartSource; allowDirty?: boolean },
+    opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string },
   ): Promise<IStackInfo> {
     const inFlightKey = `${projectName}/${stackName}`;
     const running = this.startsInFlight.get(inFlightKey);
@@ -612,6 +613,7 @@ export class ProjectService extends EventEmitter {
       stackName,
       opts?.source ?? 'unknown',
       opts?.allowDirty === true,
+      opts?.release,
     ).finally(() => {
       this.startsInFlight.delete(inFlightKey);
     });
@@ -624,6 +626,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     source: StackStartSource,
     allowDirty: boolean,
+    releaseId?: string,
   ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
@@ -634,6 +637,17 @@ export class ProjectService extends EventEmitter {
     // one. See `attachRemoteStack`.
     if (stackConfig.type !== 'local' && (source === 'boot' || source === 'auto-resume')) {
       return this.attachRemoteStack(projectName, stackName, stackConfig, source);
+    }
+
+    // A release, when one is named — and a stack that takes nothing else.
+    let release: LoadedRelease | null = null;
+    if (releaseId) {
+      release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId);
+    } else if (stackConfig.release?.mode === 'required') {
+      throw new Error(
+        `${projectName}/${stackName} takes releases only: \`omnitron release build ${projectName} --for ${stackName}\`, ` +
+          `then \`omnitron stack start ${projectName} ${stackName} --release <id>\`.`,
+      );
     }
 
     // A remote deployment ships what is on DISK, so before anything is built
@@ -682,7 +696,10 @@ export class ProjectService extends EventEmitter {
         ];
     const tree = trees[0]?.tree ?? { checked: false as const, why: 'no tree to read', dirty: [] };
 
-    if (stackConfig.type === 'remote') {
+    // With a release the disk has already been held to the release's commit
+    // (`admitRelease`) — stricter than HEAD, and the artifacts are not built
+    // from it at all.
+    if (stackConfig.type === 'remote' && !release) {
       if (!allowDirty) {
         for (const { root, tree: t } of trees) {
           const refusal = refusalForDirtyTree(t, `${projectName}/${stackName}`);
@@ -707,7 +724,8 @@ export class ProjectService extends EventEmitter {
 
     const stateKey = `${projectName}/${stackName}`;
     const existing = this.stackStates.get(stateKey);
-    if (existing?.status === 'running') {
+    // Not for a release: putting a release onto a running stack is the point.
+    if (existing?.status === 'running' && !release) {
       // `running` is a claim about the past, and nothing revises it when the
       // apps underneath fall over — so this short-circuit used to hand the
       // operator a stack it had not touched. `toStackInfo` reads live
@@ -773,7 +791,7 @@ export class ProjectService extends EventEmitter {
       if (stackConfig.type === 'local') {
         await this.startLocalStack(projectName, stackName, stackConfig, config);
       } else if (stackConfig.type === 'remote') {
-        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config);
+        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release);
       } else if (stackConfig.type === 'cluster') {
         await this.startClusterStack(projectName, stackName, stackConfig, config);
       }
@@ -818,6 +836,17 @@ export class ProjectService extends EventEmitter {
           // Every tree the artifacts were built from, not only the project's:
           // the omni checkout's packages are vendored into them, and the
           // project's commit alone could not say which omni went out.
+          // The release, when that is what went out: its id, and the two
+          // commits its artifacts were built from in clean clones.
+          ...(release
+            ? {
+                release: {
+                  id: release.id,
+                  project: release.manifest.project.commit,
+                  omni: release.manifest.omni.commit,
+                },
+              }
+            : {}),
           trees: trees.map(({ root, tree: t }) => ({
             repo: path.basename(root),
             ...(t.checked ? { commit: t.head ?? null, dirty: t.dirty.length } : { commit: null, why: t.why ?? null }),
@@ -992,6 +1021,85 @@ export class ProjectService extends EventEmitter {
       const conn = connections.find((c) => c.host === node.host && c.port === port);
       return { role: node.role, syncStatus: conn?.syncStatus ?? null };
     });
+  }
+
+  /** Where releases are kept on this master — `~/.omnitron/releases`. */
+  private async releaseStore(): Promise<string> {
+    const { releasesRoot } = await import('../release/load.js');
+    return releasesRoot();
+  }
+
+  /**
+   * Take a release for a stack, or say why not.
+   *
+   * Three things are checked, each refusing by name. The stack's own
+   * requirements (`decideStackRelease`): every gate the release recorded
+   * passed, the floor it names is among them, every app the stack runs is
+   * carried. The disk: the stack definition is still evaluated HERE — the
+   * project's config keeps machine-local state beside itself (a generated
+   * dev signing key, an admin's saved coverage), so it cannot be run from a
+   * snapshot — and therefore this directory must be exactly the release's
+   * project commit, or the definition deployed is not the release's. And
+   * the statics: a stack whose gateway serves a bundle takes it from the
+   * release, built for this stack, or not at all.
+   */
+  private async admitRelease(
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    config: IEcosystemConfig,
+    releaseId: string,
+  ): Promise<LoadedRelease> {
+    if (stackConfig.type === 'local') {
+      throw new Error(`A release is for a remote stack — ${projectName}/${stackName} is local and runs its working tree.`);
+    }
+    const { loadRelease, treeEqualsCommit } = await import('../release/load.js');
+    const { decideStackRelease } = await import('../release/manifest.js');
+    const release = await loadRelease(releaseId, await this.releaseStore());
+
+    const apps = this.resolveStackApps(stackConfig, config).map((a) => a.name);
+    const verdict = decideStackRelease(release.manifest, stackConfig.release, apps);
+    if (verdict.action === 'refuse') {
+      throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${verdict.because}.`);
+    }
+
+    const project = this.registry.get(projectName);
+    if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
+    const commit = release.manifest.project.commit;
+    const tree = await treeEqualsCommit(fs.realpathSync(project.path), commit);
+    if (!tree.equal) {
+      throw new Error(
+        `Refusing release ${release.id} for ${projectName}/${stackName}: ${project.path} is not its commit ${commit.slice(0, 8)} — ` +
+          `${tree.files.length} file(s) differ (${tree.files.slice(0, 5).join(', ')}${tree.files.length > 5 ? ', …' : ''}). ` +
+          `The stack definition is read from this directory, so it has to be the release's: check out ${commit.slice(0, 8)}, ` +
+          `or build a release from what is here.`,
+      );
+    }
+
+    const infra = mergeInfrastructure(config, stackConfig) as
+      | { gateway?: { staticDir?: string }; services?: Record<string, { config?: { staticDir?: string } }> }
+      | undefined;
+    const servesStatics = Boolean(infra?.services?.['gateway']?.config?.staticDir ?? infra?.gateway?.staticDir);
+    if (servesStatics && (!release.staticsDir || release.manifest.statics?.stack !== stackName)) {
+      throw new Error(
+        `Refusing release ${release.id} for ${projectName}/${stackName}: the stack's gateway serves a static bundle, and the ` +
+          `release carries ${release.manifest.statics ? `one built for '${release.manifest.statics.stack}'` : 'none'} — ` +
+          `\`omnitron release build ${projectName} --for ${stackName}\` builds it with this stack's environment.`,
+      );
+    }
+
+    this.logger.info(
+      {
+        project: projectName,
+        stack: stackName,
+        release: release.id,
+        because: verdict.because,
+        projectCommit: commit.slice(0, 8),
+        omniCommit: release.manifest.omni.commit.slice(0, 8),
+      },
+      'Release admitted',
+    );
+    return release;
   }
 
   /**
@@ -1661,10 +1769,11 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
+    release: LoadedRelease | null = null,
   ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
     try {
-      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases);
+      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release);
     } finally {
       // Every exit, including the refusals: a reporter that outlives its
       // deployment narrates a step nobody is taking.
@@ -1678,6 +1787,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     phases: DeployPhases,
+    release: LoadedRelease | null = null,
   ): Promise<NodeReach> {
     const nodes = stackConfig.nodes ?? [];
     if (nodes.length === 0) {
@@ -1726,7 +1836,34 @@ export class ProjectService extends EventEmitter {
     // as if nothing had happened.
     let refusal: string | null = null;
 
-    if (project) {
+    if (release) {
+      // Built in clean clones, gated, and checked against the manifest by
+      // `loadRelease` — nothing is compiled here, from this machine's disk.
+      const files = new Map(release.files.map((f) => [f.app, f]));
+      artifacts = appEntries.flatMap((entry) => {
+        const file = files.get(entry.name);
+        return file
+          ? [{
+              app: file.app,
+              version: file.version,
+              path: file.path,
+              size: file.bytes,
+              builtAt: release.manifest.builtAt,
+              checksum: file.inputs,
+              tarballSha256: file.sha256,
+            }]
+          : [];
+      });
+      const missing = appEntries.filter((e) => !files.has(e.name)).map((e) => e.name);
+      if (missing.length > 0) {
+        refusal = `Refusing to deploy ${stackName}: release ${release.id} carries no artifact for ${missing.join(', ')}.`;
+      } else {
+        this.logger.info(
+          { release: release.id, artifacts: artifacts.map((a) => `${a.app}@${a.version}`), stack: stackName },
+          'Deploying a release — artifacts from its clean build, nothing compiled here',
+        );
+      }
+    } else if (project) {
       try {
         const { ArtifactBuilder } = await import('../project/artifact-builder.js');
         const builder = new ArtifactBuilder(project.path, undefined, {
@@ -1904,6 +2041,7 @@ export class ProjectService extends EventEmitter {
               declaredServices,
               { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
               project?.path,
+              release?.staticsDir ?? undefined,
             );
             if (!ready) {
               // Not fatal: a node whose infrastructure is incomplete can still
@@ -2235,6 +2373,12 @@ export class ProjectService extends EventEmitter {
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     projectRoot: string,
     node: import('../config/types.js').IStackNode,
+    /**
+     * A release's bundle, built in its clean clone with this stack's
+     * `staticEnv`. Shipped as it is: rebuilding it from this disk would put
+     * the developer's tree back into a release.
+     */
+    releasedStatics?: string,
   ): Promise<Record<string, string>> {
     // Both spellings, like the config reader beside it: a stack may declare
     // the gateway as a preset service or through the legacy top-level block,
@@ -2256,9 +2400,11 @@ export class ProjectService extends EventEmitter {
       (legacy as { staticEnv?: Record<string, string> } | undefined)?.staticEnv ??
       {};
 
-    const abs = staticDir.startsWith('/')
-      ? staticDir
-      : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
+    const abs =
+      releasedStatics ??
+      (staticDir.startsWith('/')
+        ? staticDir
+        : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`);
 
     try {
       // Build it if it is behind, for the same reason a vendored package is
@@ -2271,7 +2417,7 @@ export class ProjectService extends EventEmitter {
       // Best-effort: a frontend that will not build is still worth shipping
       // as it stands, beside an error that says which it is. Refusing would
       // block a deployment whose BACKENDS are what changed.
-      const stale = staleBuild(`${path.dirname(abs)}/src`, abs);
+      const stale = releasedStatics ? null : staleBuild(`${path.dirname(abs)}/src`, abs);
       if (stale) {
         this.logger.info({ dir: abs, stale }, 'The built frontend is behind its sources — rebuilding');
         try {
@@ -2414,6 +2560,8 @@ export class ProjectService extends EventEmitter {
      * and an onion serving `Welcome to OpenResty!` over Tor.
      */
     projectRoot?: string | undefined,
+    /** A release's static bundle, shipped as it was built — see `shipStackStatics`. */
+    releasedStatics?: string | undefined,
   ): Promise<boolean> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -2439,7 +2587,7 @@ export class ProjectService extends EventEmitter {
       // RPC argument, which is held whole on both sides and blocks the call
       // it rides on. Config files are 65 KB and ride along; a build does not.
       const staticRoots = projectRoot
-        ? await this.shipStackStatics(infrastructure, projectRoot, node)
+        ? await this.shipStackStatics(infrastructure, projectRoot, node, releasedStatics)
         : {};
 
       // Retry once if the connection turns out to be gone: the deployer just

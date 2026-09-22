@@ -116,9 +116,52 @@ export class SystemWorkerManager {
         'Worker handle has no onExit — a crash of this worker will not be noticed',
       );
     }
+    if (handle?.onLog) {
+      handle.onLog(this.forwardLog(name));
+    } else {
+      this.logger.warn({ worker: name, processId }, 'Worker handle has no onLog — what this worker says will not be seen');
+    }
 
     this.logger.info({ worker: name, processId }, 'System worker started');
     return proxy;
+  }
+
+  /**
+   * A worker's own lines, into the daemon's log under the worker's name.
+   *
+   * The daemon switches titan-pm's forwarding off (`forwardChildLogs: false`
+   * in daemon.module.ts), because the orchestrator subscribes to an APP's
+   * lines itself and a second forwarder stored each of them twice. A system
+   * worker has no such subscriber: its output was captured line by line and
+   * handed to nobody. The health monitor said «Failed to persist health
+   * check results» once a minute from 12:15 UTC on 2026-09-22, and the only
+   * place that sentence reached was Postgres's own log, as the error behind
+   * it. Six and a half hours without a node's history, in silence.
+   */
+  private forwardLog(name: string): (line: string, stream: 'stdout' | 'stderr') => void {
+    return (line, stream) => {
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        const value: unknown = JSON.parse(line);
+        if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+      } catch {
+        // Not pino's JSON: a stack trace, a runtime warning — said as it came.
+      }
+      if (!parsed) {
+        if (stream === 'stderr') this.logger.warn({ worker: name, stream }, line);
+        else this.logger.info({ worker: name, stream }, line);
+        return;
+      }
+      const { level, time: _time, pid: _pid, hostname: _hostname, msg, ...fields } = parsed;
+      const data = { ...fields, worker: name };
+      const text = typeof msg === 'string' ? msg : '';
+      const n = typeof level === 'number' ? level : 30;
+      // pino: 10 trace, 20 debug, 30 info, 40 warn, 50 error, 60 fatal.
+      if (n >= 50) this.logger.error(data, text);
+      else if (n >= 40) this.logger.warn(data, text);
+      else if (n >= 30) this.logger.info(data, text);
+      else this.logger.debug(data, text);
+    };
   }
 
   /** Get a running worker's proxy */

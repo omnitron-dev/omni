@@ -292,7 +292,12 @@ export interface INodeUpgradePlanRow {
   host: string | null;
   /** What it runs now; null means it could not be asked. */
   currentVersion: string | null;
-  targetVersion: string;
+  /**
+   * What the rollout would install. NULL in a plan asked for without a
+   * build: nothing has been compiled, so there is no version to compare
+   * against, and a made-up string here would be compared anyway.
+   */
+  targetVersion: string | null;
   action: 'upgrade' | 'skip' | 'refuse';
   /**
    * Why, in the words the operator should read — «already on 0.2.0+…»,
@@ -306,8 +311,20 @@ export interface INodeUpgradePlanRow {
 
 /** The whole plan, as `planUpgrade` decided it. */
 export interface INodeUpgradePlan {
-  /** The version this rollout would install everywhere. */
-  targetVersion: string;
+  /**
+   * The version this rollout would install everywhere, or null when the plan
+   * was asked for without building one.
+   *
+   * A plan without it still says which nodes are local, which refused SSH
+   * and which would be attempted — everything except «already on it», which
+   * is the one decision that needs something to compare against.
+   */
+  targetVersion: string | null;
+  /**
+   * False when no bundle was built, so the console can say that rather than
+   * letting an operator read «12 to upgrade» as a comparison that happened.
+   */
+  compared: boolean;
   rows: INodeUpgradePlanRow[];
   /**
    * Set when the run must not start at all — a daemon with nothing to build

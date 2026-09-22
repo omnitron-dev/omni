@@ -1401,3 +1401,33 @@ export const FolderIcon = (props?: SvgIconProps) => (
     />
   </SvgIcon>
 );
+
+// ---------------------------------------------------------------------------
+// ReleaseIcon — a sealed box: what was built, packed and can be shipped
+// ---------------------------------------------------------------------------
+
+export const ReleaseIcon = (props?: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path
+      fill="currentColor"
+      opacity="0.4"
+      d="M12 2.5L20.5 7V17L12 21.5L3.5 17V7L12 2.5Z"
+    />
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 2.5L20.5 7V17L12 21.5L3.5 17V7L12 2.5Z"
+    />
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M3.5 7L12 11.5L20.5 7M12 11.5V21.5"
+    />
+  </SvgIcon>
+);

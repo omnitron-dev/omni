@@ -356,18 +356,20 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    * what the fleet is running and what it would take to move it.
    */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async planUpgrade(data?: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
+  async planUpgrade(data?: { nodeIds?: string[]; build?: boolean }): Promise<INodeUpgradePlan> {
     if (!this.upgrades) {
       return {
-        targetVersion: '',
+        targetVersion: null,
+        compared: false,
         rows: [],
         refusal: 'Node upgrades are not configured on this daemon.',
       };
     }
 
-    const plan = await this.upgrades.plan(data?.nodeIds);
+    const plan = await this.upgrades.plan(data?.nodeIds, { build: data?.build === true });
     return {
-      targetVersion: plan.targetVersion,
+      targetVersion: plan.compared ? plan.targetVersion : null,
+      compared: plan.compared,
       refusal: plan.refusal ?? null,
       rows: plan.steps.map((step) => ({
         nodeId: step.node.nodeId,
@@ -378,13 +380,23 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
         // latter.
         host: step.node.address ?? null,
         currentVersion: step.node.currentVersion,
-        targetVersion: plan.targetVersion,
+        targetVersion: plan.compared ? plan.targetVersion : null,
         action: step.decision.action,
         // An `upgrade` row has no reason to give: it is doing what was
         // asked. `skip` and `refuse` carry theirs verbatim — they are
         // written for an operator to read, and shortening them here would
         // undo that.
-        because: step.decision.action === 'upgrade' ? '' : step.decision.because,
+        // An `upgrade` row normally owes no explanation — it is doing what
+        // was asked. But in an unbuilt plan it owes one: without a target
+        // version nothing was compared, so «upgrade» means «not ruled out»
+        // rather than «out of date», and twelve such rows must not read as
+        // twelve nodes needing work.
+        because:
+          step.decision.action !== 'upgrade'
+            ? step.decision.because
+            : plan.compared
+              ? ''
+              : 'not compared — no bundle has been built',
       })),
     };
   }

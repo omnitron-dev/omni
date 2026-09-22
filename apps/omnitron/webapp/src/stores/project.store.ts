@@ -54,7 +54,15 @@ interface ProjectState {
   addProject: (name: string, path: string) => Promise<void>;
   updateProject: (name: string, data: { path?: string }) => Promise<void>;
   removeProject: (name: string) => Promise<void>;
-  startStack: (project: string, stack: string) => Promise<void>;
+  /**
+   * Start a stack, optionally FROM A RELEASE.
+   *
+   * Without `release` the daemon deploys what is on its disk, which is what
+   * a development stand is for. A stack whose config says
+   * `release: { mode: 'required' }` refuses that outright and names the two
+   * commands instead — see `admitRelease`.
+   */
+  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<void>;
   stopStack: (project: string, stack: string) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
@@ -280,7 +288,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  startStack: async (projectName: string, stackName: string) => {
+  startStack: async (projectName: string, stackName: string, opts?: { release?: string; allowDirty?: boolean }) => {
     const opKey = `${projectName}/${stackName}`;
     // Guard against double-click
     if (get().pendingOps[opKey]) return;
@@ -293,7 +301,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      await projectRpc.startStack({ project: projectName, stack: stackName });
+      await projectRpc.startStack({
+        project: projectName,
+        stack: stackName,
+        ...(opts?.release ? { release: opts.release } : {}),
+        ...(opts?.allowDirty ? { allowDirty: true } : {}),
+      });
     } catch (err) {
       // An RPC timeout is expected for a long-running start: both pages that
       // call this poll `fetchStacks`, so the real status arrives on its own.
@@ -390,7 +403,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
  * `ErrorCode.REQUEST_TIMEOUT` (408). Both signals are checked because either
  * one alone depends on nothing in between re-wrapping the error.
  */
-function isRpcTimeout(err: unknown): boolean {
+export function isRpcTimeout(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
   if (code === 'TIMEOUT' || code === 408) return true;
   return /\bRequest timeout after \d+ms\b/.test((err as Error | null)?.message ?? '');

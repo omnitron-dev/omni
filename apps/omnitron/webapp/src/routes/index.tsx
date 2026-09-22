@@ -30,6 +30,8 @@ const SystemInfoPage = lazy(() => import('src/pages/system-info'));
 const NodesPage = lazy(() => import('src/pages/nodes'));
 const ProjectsPage = lazy(() => import('src/pages/projects'));
 const AuditPage = lazy(() => import('src/pages/audit'));
+const ReleasesPage = lazy(() => import('src/pages/releases/index'));
+const ReleaseDetailPage = lazy(() => import('src/pages/releases/detail'));
 
 // ---------------------------------------------------------------------------
 // Router
@@ -65,6 +67,14 @@ export function Router() {
         <Route path="settings" element={<Page><SettingsPage /></Page>} />
         <Route path="logs" element={<Page><LogsPage /></Page>} />
         <Route path="audit" element={<Page><AuditPage /></Page>} />
+        {/*
+          Not project-scoped. A release names the project it was built for,
+          and the page filters by the active one — but the master holds every
+          project's releases, and a console with no project selected is
+          exactly where somebody goes looking for what was built.
+        */}
+        <Route path="releases" element={<Page><ReleasesPage /></Page>} />
+        <Route path="releases/:id" element={<Page><ReleaseDetailPage /></Page>} />
 
         {/* Project-scoped — redirect to / if no active project */}
         <Route path="apps" element={<ProjectRoute><AppsListPage /></ProjectRoute>} />

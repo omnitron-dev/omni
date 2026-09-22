@@ -37,20 +37,48 @@ export type { NodeRole, NodeStatus, FleetNode, FleetSummary, NodeRegistration } 
 export class FleetService {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private readonly logger: ILogger;
+  /** This daemon's own row in `nodes`, once it has registered itself. See `registerSelf`. */
+  private ownNodeId: string | undefined;
 
-  // T-2 part 2 — @Inject + useClass; selfNodeId arrives via the
+  // T-2 part 2 — @Inject + useClass; an explicit id arrives via the
   // FLEET_SELF_NODE_ID_TOKEN useValue provider (string | undefined).
   constructor(
     @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
     @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
-    @Inject(FLEET_SELF_NODE_ID_TOKEN) readonly selfNodeId?: string,
+    @Inject(FLEET_SELF_NODE_ID_TOKEN) private readonly configuredSelfNodeId?: string,
   ) {
     this.logger = loggerModule.logger;
+  }
+
+  /**
+   * Which row of `nodes` is this daemon: the id it was configured with, or
+   * the one its own registration created.
+   *
+   * It was the configured value alone, which the daemon provides as
+   * `undefined` — so the scheduler's heartbeat sent the literal `'self'`,
+   * and `UPDATE nodes … WHERE id = 'self'` failed on the uuid column every
+   * interval (119 times in 30 minutes on the master, 2026-09-22), under a
+   * `catch` that called it non-critical. The master's row kept the
+   * `lastHeartbeat` of the moment it registered.
+   */
+  get selfNodeId(): string | undefined {
+    return this.configuredSelfNodeId ?? this.ownNodeId;
   }
 
   // ===========================================================================
   // Node Registration
   // ===========================================================================
+
+  /**
+   * Register THIS daemon, and remember which row it is — the id the
+   * heartbeat keeps current. `registerNode` returned it, and its caller
+   * dropped it.
+   */
+  async registerSelf(registration: NodeRegistration): Promise<FleetNode> {
+    const node = await this.registerNode(registration);
+    this.ownNodeId = node.id;
+    return node;
+  }
 
   /**
    * Register a new node in the fleet.
@@ -182,14 +210,19 @@ export class FleetService {
   // ===========================================================================
 
   /**
-   * Record a heartbeat from a node.
+   * Record a heartbeat from a node; returns how many rows it reached.
+   *
+   * The count, because an UPDATE that matches nothing is not an error: a
+   * heartbeat for a row that is not there reads as success unless somebody
+   * asks how many rows it touched.
    */
-  async heartbeat(nodeId: string): Promise<void> {
-    await this.db
+  async heartbeat(nodeId: string): Promise<number> {
+    const result = await this.db
       .updateTable('nodes')
       .set({ lastHeartbeat: new Date(), status: 'online', updatedAt: new Date() } as any)
       .where('id', '=', nodeId)
-      .execute();
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0);
   }
 
   /**

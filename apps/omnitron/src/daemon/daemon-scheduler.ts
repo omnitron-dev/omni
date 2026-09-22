@@ -108,13 +108,41 @@ export function registerDaemonJobs(
     skipped.push({ job: 'alert-evaluation', because: 'no alert service (master only — requires PG)' });
   }
 
-  // Fleet heartbeat sweep (master only — requires PG)
+  // Fleet heartbeat (master only — requires PG): keeps this daemon's own row
+  // in `nodes` current.
+  //
+  // It sent `selfNodeId ?? 'self'`, and the id was never set on a default
+  // master, so every interval ran `UPDATE nodes … WHERE id = 'self'` against a
+  // uuid column and failed — 119 times in 30 minutes on 2026-09-22 — inside a
+  // `catch` that said «non-critical» and nothing else. The job had never
+  // written a row. A problem is said once at warn and quietly after, and a
+  // heartbeat that succeeds clears it, so one that comes BACK is said again.
   if (fleetService) {
+    let lastProblem: string | null = null;
+    const problem = (msg: string, fields: Record<string, unknown>) => {
+      const key = `${msg} ${String(fields['error'] ?? '')}`;
+      if (lastProblem === key) {
+        logger.debug(fields, msg);
+        return;
+      }
+      lastProblem = key;
+      logger.warn(fields, msg);
+    };
     scheduler.addInterval('fleet-heartbeat', deps.healthCheckInterval, async () => {
+      const nodeId = fleetService.selfNodeId;
+      if (!nodeId) {
+        problem('Fleet heartbeat has nothing to beat — this daemon has not registered itself', {});
+        return;
+      }
       try {
-        await fleetService.heartbeat(fleetService.selfNodeId ?? 'self');
-      } catch {
-        // Non-critical
+        const reached = await fleetService.heartbeat(nodeId);
+        if (reached === 0) {
+          problem("Fleet heartbeat reached no row — this daemon's registration is gone", { nodeId });
+          return;
+        }
+        lastProblem = null;
+      } catch (err) {
+        problem('Fleet heartbeat failed', { nodeId, error: (err as Error).message });
       }
     });
     jobs.push('fleet-heartbeat');

@@ -160,6 +160,53 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   }
 
   /**
+   * Take an attestation a stack produced about this release.
+   *
+   * The caller hands over what the producer printed, whole; this side
+   * decides whether to keep it (`release/attest.ts`), and refuses in four
+   * named ways. The one refusal that needs this layer is freshness: «older
+   * than the deployment it claims to be about» can only be checked against
+   * the audit trail, which is here and not in the file that does the rest.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }> {
+    if (!data?.release || !data?.stack || typeof data.stdout !== 'string') {
+      throw new Error('An attestation needs a release, a stack, and what the producer printed');
+    }
+    const { storeAttestation } = await import('../release/attest.js');
+    const deployedAt = await this.lastDeployedAt(data.release, data.stack);
+    const stored = await storeAttestation(data.release, data.stack, data.stdout, {
+      ...(deployedAt ? { deployedAt } : {}),
+    });
+    const passed = stored.attestation.gates.filter((g) => g.status === 'passed').length;
+    await this.audit?.record({
+      action: 'release.attest',
+      resourceType: 'release',
+      resourceId: data.release,
+      details: {
+        stack: data.stack,
+        probes: stored.attestation.gates.length,
+        passed,
+        at: stored.attestation.at,
+        onNode: stored.attestation.onNode.matched === null ? 'unconfirmed' : String(stored.attestation.onNode.matched),
+      },
+    });
+    return { path: stored.path, gates: stored.attestation.gates.length, passed };
+  }
+
+  /** When this stack last took this exact release, from the trail. */
+  private async lastDeployedAt(release: string, stack: string): Promise<string | null> {
+    if (!this.audit) return null;
+    const rows = await this.audit.list({ action: 'stack.start', limit: MAX_DEPLOYMENTS });
+    for (const row of rows) {
+      if (!row.resourceId?.endsWith(`/${stack}`)) continue;
+      if ((row.details ?? {})['release'] !== release) continue;
+      return row.createdAt;
+    }
+    return null;
+  }
+
+  /**
    * What each stack was last started with, from the audit trail.
    *
    * The running state lives in memory and a daemon restart empties it; the

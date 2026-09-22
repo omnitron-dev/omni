@@ -578,6 +578,18 @@ export async function runReleaseBuild(
     );
   }
 
+  // 6b. The project's own scripts, at this commit.
+  //
+  // An attestation runs the release's probes against a stack that is
+  // CARRYING the release, on the node. Taking them from the master's working
+  // tree would measure one commit's system with another commit's probes; a
+  // release that carries them is self-sufficient, and the copy is a
+  // megabyte against sixty.
+  const scriptsDir = path.join(plan.projectDir, 'scripts');
+  if (fs.existsSync(scriptsDir)) {
+    fs.cpSync(scriptsDir, path.join(releaseRoot, 'scripts'), { recursive: true });
+  }
+
   // 7. The manifest.
   const manifest = assembleManifest({
     id,

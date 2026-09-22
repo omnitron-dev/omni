@@ -734,4 +734,6 @@ export interface IOmnitronReleaseService {
   stopBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord>;
   prune(data: { keep?: number; apply?: boolean; protect?: string[] }): Promise<import('../../release/store.js').PruneResult>;
   deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
+  /** Take what a stack measured about this release, or refuse it by name. */
+  attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }>;
 }

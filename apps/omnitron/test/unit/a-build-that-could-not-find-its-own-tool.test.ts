@@ -144,6 +144,14 @@ describe('a build with nothing to do is not a build', () => {
     // flaky build rather than a fixed one.
     const removal = code.indexOf('clearBuildInfo(appDir)');
     expect(removal).toBeGreaterThan(0);
-    expect(removal).toBeLessThan(code.indexOf("exec(resolvePnpm(), ['build']"));
+    // The anchor is the COMMAND, not the function that runs it: the build
+    // moved from `exec(…)` to `execInGroup(…)` so its deadline would reach
+    // the whole process tree, and an anchor on the old spelling answered -1,
+    // which made this read «removal < -1» — a failure that named neither the
+    // rename nor the order it guards. Found first, so a future rename fails
+    // here, by name.
+    const build = code.indexOf("resolvePnpm(), ['build']");
+    expect(build, 'the build call is where this test can find it').toBeGreaterThan(0);
+    expect(removal).toBeLessThan(build);
   });
 });

@@ -1081,6 +1081,77 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  /**
+   * Run a release's probes on the node of the stack that carries it, and
+   * hand back what the producer printed and how it exited.
+   *
+   * Deciding whether to KEEP the result is not done here: that is
+   * `release/attest.ts`, reached through the release service, which also
+   * holds the audit trail the freshness refusal needs. This method is the
+   * transport — the release's own scripts and the stack definition at its
+   * commit, uploaded and run on the node under its deploy lease, so an
+   * attestation never interleaves with a deployment.
+   *
+   * One node only, and refused by name otherwise. The probes reach
+   * `localhost` and the stack's containers; on a stack of several nodes one
+   * run measures one machine, and an attestation is stored per STACK — kept
+   * as it is, it would claim for all of them what was measured on one.
+   */
+  async attestOnNode(
+    projectName: string,
+    stackName: string,
+    releaseId: string,
+  ): Promise<{ stdout: string; stderr: string; code: number; node: string; scriptsFrom: 'release' | 'history' }> {
+    const config = await this.loadProjectConfig(projectName);
+    const stacks = this.resolveStacks(config, projectName);
+    const stackConfig = stacks[stackName];
+    if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+    if (stackConfig.type === 'local') {
+      throw new Error(
+        `${projectName}/${stackName} is local: its probes run on this machine with \`node scripts/attest.mjs --stack=${stackName}\`, and need no transport`,
+      );
+    }
+    const nodes = stackConfig.nodes ?? [];
+    if (nodes.length === 0) throw new Error(`${projectName}/${stackName} has no nodes to run the probes on`);
+    if (nodes.length > 1) {
+      throw new Error(
+        `${projectName}/${stackName} has ${nodes.length} nodes. The probes reach localhost and the stack's containers, so one run ` +
+          `measures one machine, and an attestation is stored per stack — it would claim for ${nodes.length} what was measured ` +
+          `on 1. Not supported until attestations are kept per node.`,
+      );
+    }
+    const project = this.registry.get(projectName);
+    if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
+
+    const { loadRelease } = await import('../release/load.js');
+    const release = await loadRelease(releaseId, await this.releaseStore());
+    const { stageAttestation, attestationCommand } = await import('../release/attest-on-node.js');
+    const staged = await stageAttestation({
+      releaseRoot: release.root,
+      projectPath: fs.realpathSync(project.path),
+      projectCommit: release.manifest.project.commit,
+    });
+    const target = await this.targetForStackNode(nodes[0]!);
+    const machine = `${target.host}:${target.sshPort ?? 22}`;
+    const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
+    try {
+      return await this.deployer.underLease(target, `attestation of ${releaseId} on ${projectName}/${stackName}`, async () => {
+        const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/attest');
+        this.logger.info(
+          { project: projectName, stack: stackName, release: releaseId, node: machine, remoteDir, scriptsFrom: staged.scriptsFrom },
+          'Running the release\'s probes on its node',
+        );
+        const run = await this.deployer.runOnNode(
+          target,
+          attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix }),
+        );
+        return { ...run, node: machine, scriptsFrom: staged.scriptsFrom };
+      });
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+
   private async admitRelease(
     projectName: string,
     stackName: string,

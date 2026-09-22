@@ -18,7 +18,7 @@ import fs from 'node:fs';
 
 import { log, table } from '@xec-sh/kit';
 
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { emitJson } from './output.js';
 import { runReleaseBuild, type ReleaseBuildOptions } from '../release/build-run.js';
 import { listReleases, pruneReleases, readReleaseDetail, releasesRoot } from '../release/store.js';
@@ -157,11 +157,36 @@ export async function releaseShowCommand(id: string): Promise<void> {
  */
 export async function releaseAttestCommand(
   id: string,
-  options: { stack?: string; from?: string } = {},
+  options: { stack?: string; from?: string; onNode?: boolean } = {},
 ): Promise<void> {
   if (!options.stack) {
-    log.error('Which stack measured it? `omnitron release attest <id> --stack test --from <file|->`');
+    log.error('Which stack measured it? `omnitron release attest <id> --stack test --on-node`, or `--from <file|->`');
     process.exitCode = 1;
+    return;
+  }
+  if (options.onNode && options.from) {
+    log.error('Either the daemon runs the probes on the node (--on-node) or you hand over what they printed (--from) — not both');
+    process.exitCode = 1;
+    return;
+  }
+  if (options.onNode) {
+    const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+    try {
+      log.info(`Running ${id}'s probes on ${options.stack}'s node — upload, then the suite, under the node's deploy lease…`);
+      const svc = await client.service<import('../shared/dto/services.js').IOmnitronReleaseService>('OmnitronRelease');
+      const answer = await svc.attestOnNode({ release: id, stack: options.stack });
+      const failed = answer.gates - answer.passed;
+      const line = `${answer.passed} of ${answer.gates} probes passed on ${answer.node}`;
+      if (failed === 0) log.success(`Attested ${id} on ${options.stack}: ${line}`);
+      else log.warn(`Attested ${id} on ${options.stack}: ${line}, ${failed} did not`);
+      log.info(`  probes from ${answer.scriptsFrom === 'release' ? 'the release itself' : "the release's commit (git archive)"}`);
+      log.info(`  ${answer.path}`);
+    } catch (err) {
+      log.error((err as Error).message);
+      process.exitCode = 1;
+    } finally {
+      await client.disconnect();
+    }
     return;
   }
   let stdout: string;

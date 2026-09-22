@@ -1688,6 +1688,24 @@ export class RemoteDeployer {
     return result.stdout.trim();
   }
 
+  /**
+   * Run a command on a node and hand back what it said, exit code included.
+   *
+   * `sshExec` turns every non-zero exit into a throw, which is right for a
+   * deployment step — a step either happened or it did not. A PROBE's exit
+   * code is information: the attestation producer exits 1 when probes failed
+   * (a fact to keep) and 2 when it could not measure at all (nothing to
+   * keep), and a throw would flatten the two into one.
+   */
+  async runOnNode(
+    target: DeployTarget,
+    command: string,
+    timeoutMs = 600_000,
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    const result = await this.execution.ssh(sshTargetOf(target), command, { timeout: timeoutMs });
+    return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode ?? -1 };
+  }
+
   private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
     await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
   }

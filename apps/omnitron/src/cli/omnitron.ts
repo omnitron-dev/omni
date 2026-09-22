@@ -548,7 +548,8 @@ release
   .description('Store what a stack measured about this release — production asks for it by name')
   .requiredOption('--stack <name>', 'Which stack ran the probes')
   .option('--from <file>', 'Where the producer printed it; `-` or absent reads standard input')
-  .action(async (id: string, options: { stack?: string; from?: string }) => {
+  .option('--on-node', "Have the daemon run the release's probes on the stack's node, over its own transport")
+  .action(async (id: string, options: { stack?: string; from?: string; onNode?: boolean }) => {
     const { releaseAttestCommand } = await import('../commands/release.js');
     await releaseAttestCommand(id, options);
   });

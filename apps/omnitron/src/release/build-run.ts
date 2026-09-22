@@ -530,6 +530,13 @@ export async function runReleaseBuild(
   }
 
   // 4. The gates.
+  //
+  // The machine is read on both sides of them. A gate suite's verdict on a
+  // loaded machine is a fact about the machine: measured on this master,
+  // three builds of ONE commit gave 21/21, 16/21 and 16/21, with a different
+  // five red each time and `connect ETIMEDOUT` to containers that were up.
+  // Recording the load turns the next hour in a diff into one glance.
+  const loadAtGateStart = os.loadavg() as [number, number, number];
   let gates: GateOutcome[];
   if (options.skipGates) {
     gates = [{ name: 'gates', status: 'not-run', detail: 'skipped by --skip-gates' }];
@@ -549,6 +556,20 @@ export async function runReleaseBuild(
     gates = gateOutcomesFromGates(r.stdout, r.code);
     const passed = gates.filter((g) => g.status === 'passed').length;
     say(`gates: ${passed} of ${gates.length} passed`, 80, { gates });
+  }
+
+  const machine = {
+    cpus: os.cpus().length,
+    loadAtGateStart,
+    loadAtGateEnd: os.loadavg() as [number, number, number],
+  };
+  if (machine.loadAtGateEnd[1] > machine.cpus) {
+    say(
+      `the machine was loaded while the gates ran: ${machine.loadAtGateStart.map((n) => n.toFixed(1)).join(' / ')} → ` +
+        `${machine.loadAtGateEnd.map((n) => n.toFixed(1)).join(' / ')} on ${machine.cpus} cores`,
+      82,
+      { gates },
+    );
   }
 
   // 5. The artifacts, by the same builder a deployment uses.
@@ -600,6 +621,7 @@ export async function runReleaseBuild(
     gates,
     omnitron,
     packages: linked.map((l) => ({ name: l.name, distBuiltAt: distBuiltAt(path.join(plan.omniDir, l.dir)) })),
+    machine,
     builtAt: new Date(),
     builtBy: `${os.userInfo().username}@${os.hostname()}`,
     ...(statics ? { statics } : {}),

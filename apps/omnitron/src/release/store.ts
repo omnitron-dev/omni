@@ -55,6 +55,12 @@ export interface ReleaseSummary {
   readonly bytes: number;
   /** The build's clones are still on disk — kept on purpose, or left by a failure. */
   readonly keptSource: boolean;
+  /**
+   * How loaded the machine was while the gates ran, when the build recorded
+   * it. A red gate on a machine carrying more than its cores is evidence
+   * about the machine first.
+   */
+  readonly machine: ReleaseManifest['machine'] | null;
 }
 
 /** A release in full, for one screen: the manifest, plus what is beside it. */
@@ -164,6 +170,7 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
       failed: (manifest?.artifactFailures ?? []).map((f) => f.app),
     },
     statics: manifest?.statics ?? null,
+    machine: manifest?.machine ?? null,
     bytes: weight.bytes,
     keptSource: weight.keptSource,
   };

@@ -77,6 +77,24 @@ export function gateSentence(gates: readonly GateOutcome[]): string {
 }
 
 /**
+ * Was the machine carrying more than it has cores while the gates ran?
+ *
+ * The five-minute average against the core count, because that is the window
+ * a gate suite occupies. A red gate on such a machine is evidence about the
+ * machine before it is evidence about the code — measured here, three builds
+ * of one commit gave three different sets of red.
+ */
+export function ranLoaded(machine: ReleaseSummary['machine']): boolean {
+  return machine != null && machine.loadAtGateEnd[1] > machine.cpus;
+}
+
+/** `38.1 / 56.0 / 33.9 on 16 cores`, as the build recorded it. */
+export function loadWords(machine: NonNullable<ReleaseSummary['machine']>): string {
+  const at = (l: readonly [number, number, number]) => l.map((n) => n.toFixed(1)).join(' / ');
+  return `${at(machine.loadAtGateStart)} → ${at(machine.loadAtGateEnd)} on ${machine.cpus} cores`;
+}
+
+/**
  * One square per gate, in the order the build recorded them.
  *
  * Twenty-one gates fit in a table cell this way and a count does not: «19/21»

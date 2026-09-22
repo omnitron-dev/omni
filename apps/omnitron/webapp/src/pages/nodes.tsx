@@ -37,7 +37,7 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // `omnitronRole?: string` where the daemon says `'master' | 'slave'`, so a
 // role it can never send would have type-checked here.
 import type {
-  INode, INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
+  INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
   INodeDaemonAnswer, DaemonStatusDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
@@ -928,8 +928,31 @@ function ClusterAgreement({ states }: { states: Record<string, INodeClusterState
  * the file's own header says "Webapp → Leader telemetry stats (relay
  * health)", and the console never called it.
  */
-function NodeRelay({ data }: { data: INodeRelayStats | null }) {
-  if (!data || !data.reachable || !data.relay) return null;
+export function NodeRelay({ data }: { data: INodeRelayStats | null }) {
+  // Not read at all — the dialog has not asked yet. Nothing to say.
+  if (!data) return null;
+
+  // Asked and refused. This was `return null` alongside the other two
+  // branches, so a node that could not answer looked exactly like a node
+  // with a healthy relay: the row simply was not there. `NodeIndicators` and
+  // `NodeSyncStatus` beside it both say «not asked» and print the reason,
+  // and this is the third copy of that decision, written the other way.
+  //
+  // It mattered more than it looks: until `getRelayStats` was moved to
+  // CONTROL_PLANE_READ_ROLES today, every node refused this read with
+  // «Missing required role», so the empty space WAS the permanent state and
+  // nothing anywhere said why.
+  if (!data.reachable || !data.relay) {
+    return (
+      <Stack direction="row" spacing={1} sx={{ py: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Typography variant="caption" sx={{ minWidth: 96, color: 'text.secondary' }}>telemetry</Typography>
+        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+          {data.error ?? 'no reason given'}
+        </Typography>
+      </Stack>
+    );
+  }
 
   const r = data.relay as {
     buffer?: { size?: number; totalPushed?: number; totalDropped?: number; totalFlushed?: number };

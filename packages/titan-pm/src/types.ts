@@ -35,6 +35,20 @@ import type { EventEmitter } from '@omnitron-dev/eventemitter';
  */
 export interface IProcessOptions {
   /**
+   * Total budget for stopping this child, in milliseconds.
+   *
+   * Spent as a ladder — IPC `shutdown`, then SIGTERM, then SIGKILL — and the
+   * child is TOLD its share of it through `TITAN_SHUTDOWN_TIMEOUT_MS`, so
+   * both sides size their phases from one number. Until that variable was
+   * set by the spawner, the child used a 5000 default while the ladder
+   * killed it at 4000, and a worker walking its phases correctly could be
+   * killed 0.4 s from finishing.
+   *
+   * Omitted means `DEFAULT_SHUTDOWN_BUDGET_MS`. Zero means brutal kill.
+   */
+  shutdownTimeout?: number;
+
+  /**
    * Log level for the child's own logger.
    *
    * Read by `worker-runtime` when it builds the worker's pino. It used to

@@ -44,10 +44,26 @@ const deployer = stripComments(
   fs.readFileSync(path.join(here, '../../src/services/remote-deployer.service.ts'), 'utf8'),
 );
 
+/**
+ * `migrateNodeApps`, from its signature to the brace that closes it.
+ *
+ * Each case below read `deployer.slice(at, at + 2200)` — a window of
+ * characters, not the method — and a guard added near the top pushed the
+ * migration's own `catch` past 2400 of them: red over a method that still
+ * did what the case asked. A method at class level closes on a line of two
+ * spaces and a brace.
+ */
+const migrateNodeApps = (() => {
+  const at = deployer.indexOf('private async migrateNodeApps(');
+  return at === -1 ? '' : deployer.slice(at, deployer.indexOf('\n  }\n', at));
+})();
+
 describe('the schema arrives before the apps that read it', () => {
   it('runs the migrations on the node', () => {
     expect(deployer).toContain('migrateNodeApps');
     expect(deployer).toMatch(/dist\/database\/migrate\.js/);
+    // The body every case below reads is the whole method and no more.
+    expect(migrateNodeApps.trimEnd().endsWith('return failed;'), 'migrateNodeApps is where this test thinks it is').toBe(true);
   });
 
   it('runs them after the config is written and before anything starts', () => {
@@ -76,15 +92,13 @@ describe('the schema arrives before the apps that read it', () => {
     // Not recomputed here. The URL the migration runs against and the URL the
     // app connects with have to be the same string, or the schema lands
     // somewhere the app will not look.
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 2200);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/appEnv\?\.\[entry\.app\]\?\.\['DATABASE_URL'\]/);
   });
 
   it('skips an app that ships no migrator rather than failing it', () => {
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 2200);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/test -f/);
     expect(body).toMatch(/continue/);
@@ -94,8 +108,7 @@ describe('the schema arrives before the apps that read it', () => {
     // A password on a command line is readable by every process on the host.
     // Every value goes in the environment of that one command, through one
     // assignment list that escapes each of them.
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 3000);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/DATABASE_URL: databaseUrl/);
     expect(body).toMatch(/\$\{k\}=\$\{shellEscape\(v\)\}/);
@@ -104,19 +117,17 @@ describe('the schema arrives before the apps that read it', () => {
   });
 
   it('reports a failure and lets the deployment continue', () => {
-    // The app's own start will fail with the name of the table it wanted,
-    // which is more specific than anything this step could say. Stopping the
-    // whole deployment would hide the other five.
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 2400);
+    // A failed migration fails that app — its new code is not started, see
+    // a-schema-that-did-not-arrive — and the deployment goes on for the
+    // rest: stopping all of it would hide the other five.
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/catch \(err\)/);
     expect(body).toMatch(/Database migrations failed on the node/);
   });
 
   it('builds the remote path through the segment guard', () => {
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 2200);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/assertRemotePathSegment\('project name', project\)/);
     expect(body).toMatch(/assertRemotePathSegment\('app name', entry\.app\)/);
@@ -141,8 +152,7 @@ describe('the migrator is given the environment it actually reads', () => {
    * a convention nobody wrote down costs exactly this much when one appears.
    */
   it('passes the app-prefixed variables as well as the URL', () => {
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 3000);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/__DATABASE__HOST/);
     expect(body).toMatch(/__DATABASE__PORT/);
@@ -153,15 +163,13 @@ describe('the migrator is given the environment it actually reads', () => {
   });
 
   it('derives them from the one URL, so the two cannot disagree', () => {
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 3000);
+    const body = migrateNodeApps;
 
     expect(body).toMatch(/parseDatabaseUrl\(databaseUrl\)/);
   });
 
   it('keeps every value in the environment, never on the command line', () => {
-    const at = deployer.indexOf('private async migrateNodeApps(');
-    const body = deployer.slice(at, at + 3000);
+    const body = migrateNodeApps;
 
     // One assignment list, every value shell-escaped, nothing appended to
     // the command itself.

@@ -15,6 +15,11 @@
  *
  * Started and polled rather than awaited, because a build is minutes and an
  * RPC that takes minutes is one that times out somewhere in the middle.
+ *
+ * Since a9866bc8 `start` is a rollout of one: it goes through the queue
+ * (`a-fleet-rolled-out-one-node-at-a-time`), is refused in the plan's words,
+ * waits as `queued` while the one bundle is built in a child process, and the
+ * build itself lives in `bundle-build-worker.ts`. This court moved with it.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -36,13 +41,26 @@ const logger: any = {
   child() { return logger; },
 };
 
-const node = (over: Record<string, unknown> = {}) => ({
+/** The registry as the daemon wires it: one node, and the candidate list the plan decides on. */
+const node = (over: { isLocal?: boolean } = {}) => ({
   getNode: (id: string) => (id === 'n1' ? { id: 'n1', name: 'daos-test', ...over } : null),
+  listCandidates: () => [
+    {
+      nodeId: 'n1',
+      name: 'daos-test',
+      currentVersion: '0.2.0',
+      isLocal: over.isLocal === true,
+      sshReachable: true,
+      address: '37.27.130.185:22',
+    },
+  ],
 });
 
-/** A service whose build never runs — these tests are about the decisions. */
+/** A build that never finishes — these tests are about the decisions, not the bundle. */
+const neverBuilds = () => new Promise<never>(() => undefined);
+
 const service = (
-  source = node(),
+  source: object = node(),
   deployer: Record<string, unknown> = {},
   audit?: { record: (e: unknown) => Promise<void> },
 ) =>
@@ -52,12 +70,13 @@ const service = (
     (async () => ({}) as never) as never,
     (() => deployer as never) as never,
     audit as never,
+    neverBuilds as never,
   );
 
 describe('what it refuses, and why', () => {
   it('refuses a node it does not have', async () => {
     const out = await service().start('nope');
-    expect(out).toEqual({ started: false, reason: 'No such node' });
+    expect(out).toEqual({ started: false, reason: 'No such node: nope.' });
   });
 
   it('refuses the local daemon', async () => {
@@ -77,7 +96,14 @@ describe('what it refuses, and why', () => {
     const second = await svc.start('n1');
 
     expect(first.started).toBe(true);
-    expect(second).toEqual({ started: false, reason: 'An upgrade of this node is already running' });
+    expect(second).toEqual({ started: false, reason: 'An upgrade of this node is already queued or running' });
+  });
+
+  it('refuses in the plan\'s words when it cannot list the fleet, not with «No such node»', async () => {
+    const out = await service({ getNode: node().getNode }).start('n1');
+
+    expect(out.started).toBe(false);
+    expect(out.reason).toMatch(/cannot list its fleet/);
   });
 });
 
@@ -86,10 +112,12 @@ describe('what it reports while it works', () => {
     const svc = service();
     await svc.start('n1');
 
+    // Waiting for its slot while the one bundle of the rollout is built —
+    // said, with its place, rather than no record at all.
     const p = svc.progressFor('n1')!;
-    expect(p.phase).toBe('building');
-    expect(p.percent).toBeGreaterThan(0);
-    expect(p.message).toMatch(/Building/);
+    expect(p.phase).toBe('queued');
+    expect(p.position).toBe(1);
+    expect(p.message).toMatch(/Building one bundle/);
   });
 
   it('lists the nodes it has been asked about, newest first', async () => {
@@ -196,11 +224,13 @@ describe('one bundle of omnitron itself, two callers', () => {
 
   it('is what both callers use', () => {
     const cli = stripComments(fs.readFileSync(path.join(here, '../../src/commands/fleet.ts'), 'utf8'));
-    const service = stripComments(
-      fs.readFileSync(path.join(here, '../../src/services/node-upgrade.service.js'.replace('.js', '.ts')), 'utf8'),
-    );
+    // The daemon builds in a child process since a9866bc8 — the worker is
+    // where its call to the one builder now lives.
+    const worker = stripComments(fs.readFileSync(path.join(here, '../../src/services/bundle-build-worker.ts'), 'utf8'));
+    const service = stripComments(fs.readFileSync(path.join(here, '../../src/services/node-upgrade.service.ts'), 'utf8'));
 
-    for (const [what, source] of [['the CLI', cli], ['the daemon', service]] as const) {
+    expect(service, 'the daemon hands the build to the worker').toMatch(/bundle-build-worker/);
+    for (const [what, source] of [['the CLI', cli], ['the daemon\'s worker', worker]] as const) {
       expect(source, what).toMatch(/buildOwnBundle\(/);
       // Neither spells out what omnitron's own package is called, nor where
       // a bundle is staged: that is one answer, in one place.

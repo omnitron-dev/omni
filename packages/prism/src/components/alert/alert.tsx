@@ -208,7 +208,7 @@ export function FormAlert({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!autoScroll) return;
+    if (!autoScroll) return undefined;
     // Schedule after paint so we measure the alert in its final
     // position. `nearest` keeps the dialog stable instead of
     // jumping to the very top, which would feel jarring if the

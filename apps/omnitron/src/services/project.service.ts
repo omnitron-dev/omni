@@ -1232,10 +1232,34 @@ export class ProjectService extends EventEmitter {
           // the record, kept on this side; the node keeps its artifacts and
           // not a copy of the code they were built from. With its marker, so
           // the next run uploads again instead of trusting a directory gone.
+          //
+          // This ended in `.catch(() => undefined)`, which catches a throw —
+          // and `runOnNode` answers a failed command with its exit code, over
+          // a transport that turns even an unreachable node into `exit 1`. An
+          // `rm` the node refused left the source where it was, the
+          // attestation finished without a word, and nothing else ever
+          // removes `/opt/omnitron/attest/`. So it is said here, and only
+          // said: the probes' result stands, since this `rm` measured none of
+          // it, and a failure in a `finally` must not replace what it guards.
           const { shellEscape } = await import('../shared/shell-escape.js');
-          await this.deployer
+          const removed = await this.deployer
             .runOnNode(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(`${remoteDir}.delivered`)}`, 60_000)
-            .catch(() => undefined);
+            .catch((err: unknown) => ({ stdout: '', stderr: err instanceof Error ? err.message : String(err), code: -1 }));
+          if (removed.code !== 0) {
+            const words = (removed.stderr || removed.stdout).trim().split('\n').slice(-3).join(' | ');
+            this.logger.warn(
+              {
+                project: projectName,
+                stack: stackName,
+                release: releaseId,
+                node: machine,
+                remoteDir,
+                code: removed.code,
+                reason: words || `exit ${removed.code}`,
+              },
+              'The release\'s source is still on the node after its probes, and nothing else removes it',
+            );
+          }
         }
       });
     } finally {

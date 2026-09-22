@@ -137,6 +137,21 @@ export type StackStartSource = 'operator' | 'boot' | 'auto-resume' | 'unknown';
 // ProjectService
 // =============================================================================
 
+/**
+ * Where an on-node attestation's probes got the accounts they sign in with.
+ *
+ *   provisioned      the stack allows it and the release's producer can: the
+ *                    run created them and removed them (`--provision`);
+ *   not-declared     the stack does not declare `release.attest.provision`;
+ *   producer-cannot  it does, and the release was built before its producer
+ *                    knew the flag.
+ *
+ * In the latter two the probes that need a signed-in person say NOT RUN,
+ * which is their floor — and the answer says why, so a reader does not look
+ * for the cause in the release.
+ */
+export type AttestAccounts = 'provisioned' | 'not-declared' | 'producer-cannot';
+
 export class ProjectService extends EventEmitter {
   private readonly registry: ProjectRegistry;
   private readonly configRegistry = new Map<string, LoadedProject>();
@@ -1108,6 +1123,7 @@ export class ProjectService extends EventEmitter {
     node: string;
     scriptsFrom: 'release' | 'history';
     sourceFiles: number;
+    accounts: AttestAccounts;
   }> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
@@ -1132,12 +1148,21 @@ export class ProjectService extends EventEmitter {
 
     const { loadRelease } = await import('../release/load.js');
     const release = await loadRelease(releaseId, await this.releaseStore());
-    const { stageAttestation, attestationCommand } = await import('../release/attest-on-node.js');
+    const { stageAttestation, attestationCommand, producerProvisions } = await import('../release/attest-on-node.js');
     const staged = await stageAttestation({
       releaseRoot: release.root,
       projectPath: fs.realpathSync(project.path),
       projectCommit: release.manifest.project.commit,
     });
+    // The stack decides whether its probes may create accounts; the release's
+    // producer decides whether it can. Both, or the flag is not passed — a
+    // producer handed a flag it does not know measures nothing (exit 2).
+    const accounts: AttestAccounts =
+      stackConfig.release?.attest?.provision !== true
+        ? 'not-declared'
+        : producerProvisions(staged.dir)
+          ? 'provisioned'
+          : 'producer-cannot';
     const target = await this.targetForStackNode(nodes[0]!);
     const machine = `${target.host}:${target.sshPort ?? 22}`;
     const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
@@ -1153,15 +1178,16 @@ export class ProjectService extends EventEmitter {
             remoteDir,
             scriptsFrom: staged.scriptsFrom,
             sourceFiles: staged.sourceFiles,
+            accounts,
           },
           'Running the release\'s probes on its node',
         );
         try {
           const run = await this.deployer.runOnNode(
             target,
-            attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix }),
+            attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix, provision: accounts === 'provisioned' }),
           );
-          return { ...run, node: machine, scriptsFrom: staged.scriptsFrom, sourceFiles: staged.sourceFiles };
+          return { ...run, node: machine, scriptsFrom: staged.scriptsFrom, sourceFiles: staged.sourceFiles, accounts };
         } finally {
           // The stage carries the application's source. The run's output is
           // the record, kept on this side; the node keeps its artifacts and

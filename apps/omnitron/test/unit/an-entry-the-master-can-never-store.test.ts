@@ -8,7 +8,7 @@
  * the head of the buffer with everything behind it.
  *
  * Not hypothetical. `alert_events.ruleId` is a `uuid` with a foreign key to
- * `alert_rules`, and `ingestAlert` writes `payload.ruleId ?? 'unknown'`:
+ * `alert_rules`, and `alertRow` writes `payload.ruleId ?? 'unknown'`:
  *
  *     select 'unknown'::uuid;
  *     ERROR:  invalid input syntax for type uuid: "unknown"
@@ -99,7 +99,7 @@ const silent: any = {
   child: () => silent,
 };
 
-/** Captures the row an ingest would write. */
+/** Captures the rows an ingest would write. */
 function capturingDb() {
   const rows: Array<{ table: string; values: any }> = [];
   return {
@@ -112,57 +112,54 @@ function capturingDb() {
 
 const master = () => new SyncService({} as never, silent, 'master-1', 'master', undefined as never);
 
+/**
+ * The row one entry becomes, through `writeRows` — the door both ingest
+ * paths write through, the batch and the entry-by-entry one alike.
+ */
+async function rowFor(category: 'alerts' | 'traces', payload: Record<string, unknown>) {
+  const db = capturingDb();
+  await (master() as unknown as {
+    writeRows(db: unknown, nodeId: string, entries: unknown[]): Promise<void>;
+  }).writeRows(db, 'edge-7', [{ id: 'e1', category, payload, createdAt: '2026-09-15T00:00:00Z' }]);
+  expect(db.rows).toHaveLength(1);
+  return db.rows[0]!.values[0];
+}
+
 describe('a replicated alert says which machine raised it', () => {
   it('records the node in the annotations', async () => {
-    const db = capturingDb();
-
-    await (master() as unknown as {
-      ingestAlert(db: unknown, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void>;
-    }).ingestAlert(db, 'edge-7', {
-      payload: { ruleId: 'b0a7…', status: 'firing', annotations: { summary: 'disk above 90%' } },
-      createdAt: '2026-09-15T00:00:00Z',
+    const row = await rowFor('alerts', {
+      ruleId: 'b0a7…',
+      status: 'firing',
+      annotations: { summary: 'disk above 90%' },
     });
 
     // `nodeId` was `_nodeId` here — accepted and discarded. `alert_events`
     // has no node column, so an alert that says "disk above 90%" could not
     // say whose disk.
-    const written = JSON.parse(db.rows[0]!.values.annotations);
-    expect(written).toEqual({ summary: 'disk above 90%', node: 'edge-7' });
+    expect(JSON.parse(row.annotations)).toEqual({ summary: 'disk above 90%', node: 'edge-7' });
   });
 
   it('records it even for an alert that carried no annotations', async () => {
-    const db = capturingDb();
+    const row = await rowFor('alerts', { ruleId: 'b0a7…' });
 
-    await (master() as unknown as { ingestAlert(db: unknown, nodeId: string, entry: unknown): Promise<void> })
-      .ingestAlert(db, 'edge-7', { payload: { ruleId: 'b0a7…' }, createdAt: '2026-09-15T00:00:00Z' });
-
-    expect(JSON.parse(db.rows[0]!.values.annotations)).toEqual({ node: 'edge-7' });
+    expect(JSON.parse(row.annotations)).toEqual({ node: 'edge-7' });
   });
 });
 
 describe('a replicated span says which machine produced it', () => {
   it('keeps the span s own tags and adds the node', async () => {
-    const db = capturingDb();
-
-    await (master() as unknown as { ingestTrace(db: unknown, nodeId: string, entry: unknown): Promise<void> })
-      .ingestTrace(db, 'edge-7', {
-        payload: { traceId: 't1', spanId: 's1', tags: { 'http.method': 'GET' } },
-        createdAt: '2026-09-15T00:00:00Z',
-      });
+    const row = await rowFor('traces', { traceId: 't1', spanId: 's1', tags: { 'http.method': 'GET' } });
 
     // This was `entry.payload['tags'] ?? { nodeId }` — a fallback, so the
     // node was recorded ONLY for a span with no tags at all, and dropped for
     // every span that carried any. The `??` fires exactly when there is
     // nothing to lose and is skipped exactly when there is.
-    expect(JSON.parse(db.rows[0]!.values.tags)).toEqual({ 'http.method': 'GET', node: 'edge-7' });
+    expect(JSON.parse(row.tags)).toEqual({ 'http.method': 'GET', node: 'edge-7' });
   });
 
   it('records it for a span with no tags', async () => {
-    const db = capturingDb();
+    const row = await rowFor('traces', { traceId: 't1', spanId: 's1' });
 
-    await (master() as unknown as { ingestTrace(db: unknown, nodeId: string, entry: unknown): Promise<void> })
-      .ingestTrace(db, 'edge-7', { payload: { traceId: 't1', spanId: 's1' }, createdAt: '2026-09-15T00:00:00Z' });
-
-    expect(JSON.parse(db.rows[0]!.values.tags)).toEqual({ node: 'edge-7' });
+    expect(JSON.parse(row.tags)).toEqual({ node: 'edge-7' });
   });
 });

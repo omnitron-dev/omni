@@ -37,7 +37,7 @@
  * Dedup ledger (master side): `sync_ingested`, keyed on (nodeId, slave entry id)
  */
 
-import type { Kysely, Transaction } from 'kysely';
+import type { Insertable, Kysely, Transaction } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
@@ -132,6 +132,117 @@ interface RateLimitEntry {
 
 /** Max batches per node per minute */
 const RATE_LIMIT_PER_MINUTE = 60;
+
+/**
+ * The most parameters one statement binds.
+ *
+ * Postgres takes 65 535 and SQLite 32 766 (better-sqlite3 13.0.3 / SQLite
+ * 3.53.4, measured: 32 767 is refused with «too many SQL variables»). This
+ * service writes to both — a master on Postgres, a slave on SQLite — so the
+ * smaller one bounds every statement it builds from a list, with room.
+ */
+const MAX_BOUND_PARAMETERS = 30_000;
+
+/** Rows split into statements that each stay within `MAX_BOUND_PARAMETERS`. */
+function statementsOf<R extends object>(rows: R[]): R[][] {
+  if (rows.length === 0) return [];
+  const perRow = Math.max(1, Object.keys(rows[0]!).length);
+  const size = Math.max(1, Math.floor(MAX_BOUND_PARAMETERS / perRow));
+  const parts: R[][] = [];
+  for (let i = 0; i < rows.length; i += size) parts.push(rows.slice(i, i + size));
+  return parts;
+}
+
+// =============================================================================
+// Master-Side: the row each entry becomes
+// =============================================================================
+
+type IngestEntry = SyncBatch['entries'][number];
+
+/** One remote metric sample, for `metrics_raw`. See `recordMetrics` for the other half. */
+function metricRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['metrics_raw']> {
+  return {
+    timestamp: entry.createdAt,
+    nodeId,
+    app: (entry.payload['app'] as string) ?? 'unknown',
+    name: (entry.payload['name'] as string) ?? 'unknown',
+    value: Number(entry.payload['value'] ?? 0),
+    labels: JSON.stringify(entry.payload['labels'] ?? {}) as any,
+  };
+}
+
+function logRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['logs']> {
+  return {
+    timestamp: (entry.payload['timestamp'] as string) ?? entry.createdAt,
+    nodeId,
+    app: (entry.payload['app'] as string) ?? 'unknown',
+    level: (entry.payload['level'] as string) ?? 'info',
+    message: (entry.payload['message'] as string) ?? '',
+    labels: JSON.stringify(entry.payload['labels'] ?? {}) as any,
+    traceId: (entry.payload['traceId'] as string) ?? null,
+    spanId: (entry.payload['spanId'] as string) ?? null,
+    metadata: entry.payload['metadata'] ? JSON.stringify(entry.payload['metadata']) as any : null,
+  };
+}
+
+/**
+ * A remote alert, with the machine that raised it.
+ *
+ * `nodeId` was `_nodeId` here: accepted and discarded. `alert_events` has
+ * no node column, so it goes into `annotations`, which is the jsonb this
+ * table already carries context in — an alert that says "disk above 90%"
+ * and cannot say whose disk is an alert an operator cannot act on.
+ *
+ * `ruleId` keeps its `?? 'unknown'` only so the shape is unchanged; the
+ * column is a `uuid` with a foreign key to `alert_rules`, so that literal
+ * is refused by the database and the entry is now discarded by
+ * `classifyIngestFailure` instead of being offered forever. A slave's
+ * rules are its own, so the same is true of any real ruleId the master
+ * does not share — which is what makes the permanent-failure path the
+ * important half of this.
+ */
+function alertRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['alert_events']> {
+  const annotations = {
+    ...(entry.payload['annotations'] as Record<string, unknown> | undefined),
+    node: nodeId,
+  };
+  return {
+    ruleId: (entry.payload['ruleId'] as string) ?? 'unknown',
+    status: (entry.payload['status'] as string) ?? 'firing',
+    value: entry.payload['value'] != null ? String(entry.payload['value']) : null,
+    annotations: JSON.stringify(annotations) as any,
+    firedAt: (entry.payload['firedAt'] as string) ?? entry.createdAt,
+    resolvedAt: (entry.payload['resolvedAt'] as string) ?? null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+  };
+}
+
+/**
+ * A remote span, with the machine that produced it.
+ *
+ * The node went into `tags` as `entry.payload['tags'] ?? { nodeId }` — a
+ * fallback, so it was recorded ONLY for a span that carried no tags at
+ * all, and dropped for every span that carried any. The `??` fires exactly
+ * when there is nothing to lose and is skipped exactly when there is.
+ * Merged now, and the node wins the key, because the span's own view of
+ * which node it ran on is the one thing about it the master can check.
+ */
+function traceRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['traces']> {
+  return {
+    traceId: (entry.payload['traceId'] as string) ?? 'unknown',
+    spanId: (entry.payload['spanId'] as string) ?? 'unknown',
+    parentSpanId: (entry.payload['parentSpanId'] as string) ?? null,
+    operationName: (entry.payload['operationName'] as string) ?? 'unknown',
+    serviceName: (entry.payload['serviceName'] as string) ?? 'unknown',
+    startTime: (entry.payload['startTime'] as string) ?? entry.createdAt,
+    endTime: (entry.payload['endTime'] as string) ?? entry.createdAt,
+    duration: Number(entry.payload['duration'] ?? 0),
+    status: (entry.payload['status'] as string) ?? 'ok',
+    tags: JSON.stringify({ ...(entry.payload['tags'] as Record<string, unknown> | undefined), node: nodeId }) as any,
+    logs: entry.payload['logs'] ? JSON.stringify(entry.payload['logs']) as any : null,
+  };
+}
 
 // =============================================================================
 // SyncService
@@ -766,40 +877,7 @@ export class SyncService {
       throw new Error(`Checksum mismatch for batch ${batch.batchId}. Expected ${expectedChecksum}, got ${batch.checksum}. Batch rejected.`);
     }
 
-    const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [], discarded: [] };
-    // Why entries were refused, and how many times each reason came up. A
-    // thousand entries failing on one dead database is ONE event; naming the
-    // reason per entry buried the cause under its own repetitions.
-    const causes = new Map<string, number>();
-
-    for (const entry of batch.entries) {
-      try {
-        // Claim the entry, then ingest it, in one transaction. A failure
-        // rolls the claim back, so the entry is retried rather than recorded
-        // as taken; a conflicting claim means this batch repeats one already
-        // applied, which is what "idempotent" was always supposed to mean.
-        const result = await this.claimAndIngest(batch.nodeId, entry);
-        if (result === 'duplicate') outcome.duplicates.push(entry.id);
-        else if (result === 'discarded') outcome.discarded.push(entry.id);
-        else outcome.accepted.push(entry.id);
-      } catch (err) {
-        // Not marked delivered. The slave keeps it and offers it again —
-        // previously this warning was the only trace of an entry that had
-        // just been dropped on both sides.
-        outcome.failed.push(entry.id);
-        // `(err as Error).message` was the empty string for the commonest
-        // failure of all — an unreachable database arrives as an
-        // `AggregateError` whose reasons live in `.errors`. 76 659 records in
-        // one hour carried `error: ""`, while the cause was named in three
-        // lines of the file next to it.
-        const cause = describeError(err);
-        causes.set(cause, (causes.get(cause) ?? 0) + 1);
-        this.logger.debug(
-          { nodeId: batch.nodeId, entryId: entry.id, category: entry.category, error: cause },
-          'Failed to ingest sync entry — left unacknowledged for retry'
-        );
-      }
-    }
+    const { outcome, causes } = await this.ingest(batch.nodeId, batch.entries);
 
     if (outcome.failed.length > 0) {
       this.logger.warn(
@@ -838,6 +916,247 @@ export class SyncService {
       // existed.
       discardedIds: outcome.discarded,
     };
+  }
+
+  /**
+   * Take a batch: as one transaction, or — when the database refuses it as
+   * a whole — one entry at a time, which is what finds the entry it refused.
+   *
+   * Every batch used to take the second road. Each entry was claimed and
+   * ingested in a transaction of its own, so that one entry the database
+   * refuses costs that entry and not its thousand neighbours — and so every
+   * batch cost a thousand `BEGIN … COMMIT`s, on a master whose omnitron-pg
+   * runs `synchronous_commit = on`: a WAL flush per entry, a thousand per
+   * pull. While the machine was idle that was 800–1 100 entries a second
+   * against 38 produced on the test node. Under load a pull outlasted the
+   * 15 s heartbeat, and the next heartbeat started another over the same
+   * entries (see `pullSyncData`). Measured 2026-09-22: nine pulls of the
+   * same 7 918 entries finishing within 122 ms of each other.
+   *
+   * The isolation is kept, and paid for only where it buys something: a
+   * batch the database refuses — a malformed uuid, a foreign key the master
+   * does not have — is retried entry by entry, and that path classifies
+   * each refusal exactly as it always has. The fast path is never worse
+   * than the old one; it falls back to it.
+   */
+  private async ingest(
+    nodeId: string,
+    entries: SyncBatch['entries'],
+  ): Promise<{ outcome: IngestOutcome; causes: Map<string, number> }> {
+    try {
+      return { outcome: await this.ingestAsOne(nodeId, entries), causes: new Map() };
+    } catch (err) {
+      // Debug: the path below says, per entry and at the right level, what
+      // was refused and why. That the batch had to take it is not news.
+      this.logger.debug(
+        { nodeId, entries: entries.length, error: describeError(err) },
+        'Sync batch refused as a whole — ingesting it entry by entry',
+      );
+      return this.ingestEntryByEntry(nodeId, entries);
+    }
+  }
+
+  /**
+   * The whole batch in one transaction: the claims in one statement, each
+   * destination table's rows in one more.
+   *
+   * An id that appears twice in a batch is taken once and its second
+   * occurrence reported a duplicate — what the per-entry path does, because
+   * there the first occurrence's claim is committed before the second's is
+   * tried.
+   */
+  private async ingestAsOne(nodeId: string, entries: SyncBatch['entries']): Promise<IngestOutcome> {
+    const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [], discarded: [] };
+    const taken: SyncBatch['entries'] = [];
+
+    await this.db.transaction().execute(async (trx) => {
+      const claimed = await this.claimAll(trx, nodeId, entries.map((e) => e.id));
+      for (const entry of entries) {
+        if (claimed.delete(entry.id)) {
+          outcome.accepted.push(entry.id);
+          taken.push(entry);
+        } else {
+          outcome.duplicates.push(entry.id);
+        }
+      }
+      await this.writeRows(trx, nodeId, taken);
+    });
+
+    this.recordMetrics(nodeId, taken);
+    return outcome;
+  }
+
+  /**
+   * One transaction per entry: the road for a batch the database refused.
+   *
+   * Slow on purpose. Each entry succeeds or fails on its own, so the one the
+   * database will never store is named, discarded and released, and a
+   * failure that may pass is left for the next pull — while everything else
+   * in the batch is taken.
+   */
+  private async ingestEntryByEntry(
+    nodeId: string,
+    entries: SyncBatch['entries'],
+  ): Promise<{ outcome: IngestOutcome; causes: Map<string, number> }> {
+    const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [], discarded: [] };
+    // Why entries were refused, and how many times each reason came up. A
+    // thousand entries failing on one dead database is ONE event; naming the
+    // reason per entry buried the cause under its own repetitions.
+    const causes = new Map<string, number>();
+
+    for (const entry of entries) {
+      try {
+        // Claim the entry, then ingest it, in one transaction. A failure
+        // rolls the claim back, so the entry is retried rather than recorded
+        // as taken; a conflicting claim means this batch repeats one already
+        // applied, which is what "idempotent" was always supposed to mean.
+        const result = await this.claimAndIngest(nodeId, entry);
+        if (result === 'duplicate') outcome.duplicates.push(entry.id);
+        else if (result === 'discarded') outcome.discarded.push(entry.id);
+        else {
+          outcome.accepted.push(entry.id);
+          this.recordMetrics(nodeId, [entry]);
+        }
+      } catch (err) {
+        // Not marked delivered. The slave keeps it and offers it again —
+        // previously this warning was the only trace of an entry that had
+        // just been dropped on both sides.
+        outcome.failed.push(entry.id);
+        // `(err as Error).message` was the empty string for the commonest
+        // failure of all — an unreachable database arrives as an
+        // `AggregateError` whose reasons live in `.errors`. 76 659 records in
+        // one hour carried `error: ""`, while the cause was named in three
+        // lines of the file next to it.
+        const cause = describeError(err);
+        causes.set(cause, (causes.get(cause) ?? 0) + 1);
+        this.logger.debug(
+          { nodeId, entryId: entry.id, category: entry.category, error: cause },
+          'Failed to ingest sync entry — left unacknowledged for retry'
+        );
+      }
+    }
+
+    return { outcome, causes };
+  }
+
+  /**
+   * Claim entries for this node; the ids that come back are the new ones.
+   *
+   * Sorted, so that two transactions claiming overlapping batches take the
+   * ledger's rows in the same order and cannot deadlock on each other.
+   */
+  private async claimAll(db: SyncExecutor, nodeId: string, ids: string[]): Promise<Set<string>> {
+    const rows = [...new Set(ids)].sort().map((entryId) => ({ nodeId, entryId }));
+    const claimed = new Set<string>();
+    for (const part of statementsOf(rows)) {
+      const taken = await db
+        .insertInto('sync_ingested')
+        .values(part)
+        .onConflict((oc) => oc.columns(['nodeId', 'entryId']).doNothing())
+        .returning('entryId')
+        .execute();
+      for (const row of taken) claimed.add(String(row.entryId));
+    }
+    return claimed;
+  }
+
+  /**
+   * Store claimed entries in the tables the console reads, one statement per
+   * table (per `MAX_BOUND_PARAMETERS` rows). Both roads write through here,
+   * so an entry lands as the same row whichever one took it.
+   */
+  private async writeRows(db: SyncExecutor, nodeId: string, entries: SyncBatch['entries']): Promise<void> {
+    const metrics: Insertable<OmnitronDatabase['metrics_raw']>[] = [];
+    const logs: Insertable<OmnitronDatabase['logs']>[] = [];
+    const alerts: Insertable<OmnitronDatabase['alert_events']>[] = [];
+    const traces: Insertable<OmnitronDatabase['traces']>[] = [];
+    const unknown: IngestEntry[] = [];
+
+    for (const entry of entries) {
+      switch (entry.category) {
+        case 'metrics':
+          metrics.push(metricRow(nodeId, entry));
+          break;
+        case 'logs':
+          logs.push(logRow(nodeId, entry));
+          break;
+        case 'alerts':
+          alerts.push(alertRow(nodeId, entry));
+          break;
+        case 'traces':
+          traces.push(traceRow(nodeId, entry));
+          break;
+        case 'events':
+        case 'state':
+          // Stored as logs. The category itself is not kept: `logs` has no
+          // column for it, and the `_category` this path once added to the
+          // payload reached none.
+          logs.push(logRow(nodeId, entry));
+          break;
+        default:
+          unknown.push(entry);
+          break;
+      }
+    }
+
+    for (const part of statementsOf(metrics)) await db.insertInto('metrics_raw').values(part).execute();
+    for (const part of statementsOf(logs)) await db.insertInto('logs').values(part).execute();
+    for (const part of statementsOf(alerts)) await db.insertInto('alert_events').values(part).execute();
+    for (const part of statementsOf(traces)) await db.insertInto('traces').values(part).execute();
+
+    if (unknown.length > 0) {
+      // An unknown category is not a failure to retry — retrying cannot make
+      // it known. It is claimed and dropped, so the slave releases it, and
+      // said at warning level rather than debug: a category the master does
+      // not understand means the two are out of step.
+      this.logger.warn(
+        {
+          nodeId,
+          entries: unknown.length,
+          categories: [...new Set(unknown.map((e) => e.category))],
+          firstEntryId: unknown[0]!.id,
+        },
+        'Unknown sync category — entries discarded'
+      );
+    }
+  }
+
+  /**
+   * Hand stored remote metrics to the store the console reads.
+   *
+   * Two destinations while the second is being proven. `metrics_raw` is where
+   * these always went — and nothing in this repository reads that table, so a
+   * connected pipeline would have filled it invisibly. The sink records the
+   * same sample into titan-metrics, which is what the console's `getSnapshot`
+   * and `querySeries` actually read, tagged with `node` so a remote reading
+   * is a label dimension rather than a second table. The `metrics_raw` write
+   * stays until the console is observed showing the label. Removing the old
+   * path before the new one is seen working is how you end up with neither.
+   *
+   * AFTER the commit. The sink is not part of the transaction, and it used to
+   * be called inside it, before the row was written: an entry whose write
+   * then failed was recorded anyway, and recorded again by the retry that
+   * stored it. With a batch rolled back and retried entry by entry, that
+   * would have been every metric in it.
+   */
+  private recordMetrics(nodeId: string, entries: SyncBatch['entries']): void {
+    if (!this.metricsSink) return;
+    try {
+      for (const entry of entries) {
+        if (entry.category !== 'metrics') continue;
+        this.metricsSink({
+          node: nodeId,
+          name: String(entry.payload['name'] ?? 'unknown'),
+          app: String(entry.payload['app'] ?? 'unknown'),
+          labels: (entry.payload['labels'] ?? {}) as Record<string, string>,
+          value: Number(entry.payload['value'] ?? 0),
+        });
+      }
+    } catch (err) {
+      // The entries are stored and will be acknowledged; a sink that throws
+      // must not turn that into a retry the ledger then calls a duplicate.
+      this.logger.warn({ nodeId, error: describeError(err) }, 'Stored remote metrics could not be recorded for the console');
+    }
   }
 
   /**
@@ -895,153 +1214,9 @@ export class SyncService {
 
       if (!claim) return 'duplicate';
 
-      switch (entry.category) {
-        case 'metrics':
-          await this.ingestMetric(trx, nodeId, entry);
-          break;
-        case 'logs':
-          await this.ingestLog(trx, nodeId, entry);
-          break;
-        case 'alerts':
-          await this.ingestAlert(trx, nodeId, entry);
-          break;
-        case 'traces':
-          await this.ingestTrace(trx, nodeId, entry);
-          break;
-        case 'events':
-        case 'state':
-          // Events and state changes stored as logs with category label
-          await this.ingestLog(trx, nodeId, {
-            ...entry,
-            payload: { ...entry.payload, _category: entry.category },
-          });
-          break;
-        default:
-          // An unknown category is not a failure to retry — retrying cannot
-          // make it known. It is claimed and dropped, so the slave releases
-          // it, and said once at warning level rather than debug: a category
-          // the master does not understand means the two are out of step.
-          this.logger.warn(
-            { nodeId, entryId: entry.id, category: entry.category },
-            'Unknown sync category — entry discarded'
-          );
-          break;
-      }
+      await this.writeRows(trx, nodeId, [entry]);
       return 'accepted';
     });
-  }
-
-  // ===========================================================================
-  // Master-Side: Data Ingestion
-  // ===========================================================================
-
-  /**
-   * Store one remote metric sample.
-   *
-   * Two destinations while the second is being proven. `metrics_raw` is where
-   * this always went — and nothing in this repository reads that table, so a
-   * connected pipeline would have filled it invisibly. The sink records the
-   * same sample into titan-metrics, which is what the console's `getSnapshot`
-   * and `querySeries` actually read, tagged with `node` so a remote reading
-   * is a label dimension rather than a second table.
-   *
-   * The `metrics_raw` write stays until the console is observed showing the
-   * label. Removing the old path before the new one is seen working is how
-   * you end up with neither.
-   */
-  private async ingestMetric(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
-    if (this.metricsSink) {
-      const labels = (entry.payload['labels'] ?? {}) as Record<string, string>;
-      this.metricsSink({
-        node: nodeId,
-        name: String(entry.payload['name'] ?? 'unknown'),
-        app: String(entry.payload['app'] ?? 'unknown'),
-        labels,
-        value: Number(entry.payload['value'] ?? 0),
-      });
-    }
-
-    await db.insertInto('metrics_raw').values({
-      timestamp: entry.createdAt,
-      nodeId,
-      app: (entry.payload['app'] as string) ?? 'unknown',
-      name: (entry.payload['name'] as string) ?? 'unknown',
-      value: Number(entry.payload['value'] ?? 0),
-      labels: JSON.stringify(entry.payload['labels'] ?? {}) as any,
-    }).execute();
-  }
-
-  private async ingestLog(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
-    await db.insertInto('logs').values({
-      timestamp: (entry.payload['timestamp'] as string) ?? entry.createdAt,
-      nodeId,
-      app: (entry.payload['app'] as string) ?? 'unknown',
-      level: (entry.payload['level'] as string) ?? 'info',
-      message: (entry.payload['message'] as string) ?? '',
-      labels: JSON.stringify(entry.payload['labels'] ?? {}) as any,
-      traceId: (entry.payload['traceId'] as string) ?? null,
-      spanId: (entry.payload['spanId'] as string) ?? null,
-      metadata: entry.payload['metadata'] ? JSON.stringify(entry.payload['metadata']) as any : null,
-    }).execute();
-  }
-
-  /**
-   * A remote alert, with the machine that raised it.
-   *
-   * `nodeId` was `_nodeId` here: accepted and discarded. `alert_events` has
-   * no node column, so it goes into `annotations`, which is the jsonb this
-   * table already carries context in — an alert that says "disk above 90%"
-   * and cannot say whose disk is an alert an operator cannot act on.
-   *
-   * `ruleId` keeps its `?? 'unknown'` only so the shape is unchanged; the
-   * column is a `uuid` with a foreign key to `alert_rules`, so that literal
-   * is refused by the database and the entry is now discarded by
-   * `classifyIngestFailure` instead of being offered forever. A slave's
-   * rules are its own, so the same is true of any real ruleId the master
-   * does not share — which is what makes the permanent-failure path the
-   * important half of this.
-   */
-  private async ingestAlert(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
-    const annotations = {
-      ...(entry.payload['annotations'] as Record<string, unknown> | undefined),
-      node: nodeId,
-    };
-    await db.insertInto('alert_events').values({
-      ruleId: (entry.payload['ruleId'] as string) ?? 'unknown',
-      status: (entry.payload['status'] as string) ?? 'firing',
-      value: entry.payload['value'] != null ? String(entry.payload['value']) : null,
-      annotations: JSON.stringify(annotations) as any,
-      firedAt: (entry.payload['firedAt'] as string) ?? entry.createdAt,
-      resolvedAt: (entry.payload['resolvedAt'] as string) ?? null,
-      acknowledgedAt: null,
-      acknowledgedBy: null,
-    }).execute();
-  }
-
-  /**
-   * A remote span, with the machine that produced it.
-   *
-   * The node went into `tags` as `entry.payload['tags'] ?? { nodeId }` — a
-   * fallback, so it was recorded ONLY for a span that carried no tags at
-   * all, and dropped for every span that carried any. The `??` fires exactly
-   * when there is nothing to lose and is skipped exactly when there is.
-   * Merged now, and the node wins the key, because the span's own view of
-   * which node it ran on is the one thing about it the master can check.
-   */
-  private async ingestTrace(db: SyncExecutor, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void> {
-    await db.insertInto('traces').values({
-      traceId: (entry.payload['traceId'] as string) ?? 'unknown',
-      spanId: (entry.payload['spanId'] as string) ?? 'unknown',
-      parentSpanId: (entry.payload['parentSpanId'] as string) ?? null,
-      operationName: (entry.payload['operationName'] as string) ?? 'unknown',
-      serviceName: (entry.payload['serviceName'] as string) ?? 'unknown',
-      startTime: (entry.payload['startTime'] as string) ?? entry.createdAt,
-      endTime: (entry.payload['endTime'] as string) ?? entry.createdAt,
-      duration: Number(entry.payload['duration'] ?? 0),
-      status: (entry.payload['status'] as string) ?? 'ok',
-      tags: JSON.stringify({ ...(entry.payload['tags'] as Record<string, unknown> | undefined), node: nodeId }) as any,
-      logs: entry.payload['logs'] ? JSON.stringify(entry.payload['logs']) as any : null,
-    }).execute();
   }
 
   // ===========================================================================

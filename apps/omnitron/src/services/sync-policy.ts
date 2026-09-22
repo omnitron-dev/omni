@@ -144,7 +144,7 @@ export function planEviction(params: {
  * at the head of the buffer forever with everything behind it.
  *
  * That is not hypothetical. `alert_events.ruleId` is a `uuid` with a foreign
- * key to `alert_rules`, and `ingestAlert` writes `payload.ruleId ?? 'unknown'`
+ * key to `alert_rules`, and `alertRow` writes `payload.ruleId ?? 'unknown'`
  * — so an alert whose rule the master does not have, or one with no ruleId at
  * all, is refused:
  *

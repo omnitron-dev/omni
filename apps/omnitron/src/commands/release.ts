@@ -180,6 +180,14 @@ export async function releaseAttestCommand(
       if (failed === 0) log.success(`Attested ${id} on ${options.stack}: ${line}`);
       else log.warn(`Attested ${id} on ${options.stack}: ${line}, ${failed} did not`);
       log.info(`  probes from ${answer.scriptsFrom === 'release' ? 'the release itself' : "the release's commit (git archive)"}`);
+      // An older daemon does not report it; say nothing rather than «0».
+      if (typeof answer.sourceFiles === 'number') {
+        log.info(
+          answer.sourceFiles > 0
+            ? `  with ${answer.sourceFiles} application source files from the release's commit, removed from the node after the run`
+            : "  with no application sources — the release's commit has no apps/*/src or packages/*/src; probes that read code say NOT RUN",
+        );
+      }
       log.info(`  ${answer.path}`);
     } catch (err) {
       log.error((err as Error).message);

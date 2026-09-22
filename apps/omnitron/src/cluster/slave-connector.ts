@@ -153,6 +153,17 @@ const SLAVE_REQUEST_TIMEOUT = 10 * 60_000;
  * remote failure into a retry loop against a node that will refuse it again.
  */
 export function isConnectionGone(err: unknown): boolean {
+  // Netron's own word for it, recognised by what it is. A dropped peer — by
+  // the heartbeat below, or by the far side — rejects every call in flight
+  // with a `TransportLostError` whose message is only its REASON: «manual
+  // disconnect», «peer disconnected», a transport's name. None of those
+  // matched the patterns underneath, so the one dead connection this could
+  // not see was the one this connector closes itself. Test node, 2026-09-22
+  // 21:17:51 UTC: the heartbeat dropped the peer while the deployment was
+  // reading its credentials, a read that `retryOnDisconnect` exists for.
+  // By name rather than `instanceof`: the class is the same one only while
+  // there is one copy of titan loaded.
+  if ((err as { name?: unknown } | null)?.name === 'TransportLostError') return true;
   const message = (err as Error)?.message ?? String(err);
   return /socket closed|not connected|ECONNRESET|EPIPE|connection closed|socket is not open|Peer .* disconnected/i.test(
     message,

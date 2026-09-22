@@ -2571,9 +2571,17 @@ export class ProjectService extends EventEmitter {
    * only account of these secrets that is true on the machine the apps will
    * run on.
    *
-   * Best-effort per service: a node that cannot answer for `minio` should
-   * still get correct database credentials, and a missing answer leaves that
-   * service exactly as the stack declared it.
+   * `null` is an answer — the node runs no such service — and leaves it as
+   * the stack declared it. A read that did not happen is not an answer. This
+   * was «best-effort per service»: a failed read fell back to the declared
+   * credentials, and for a secret the node generated those are wrong by
+   * construction. Test node, 2026-09-22 21:17:51 UTC: the heartbeat dropped
+   * the peer mid-read («manual disconnect»), the apps were configured with
+   * the declared postgres password, 6 of 6 migrations failed on it, and the
+   * node was left in a mixed state. So a dropped connection is reconnected
+   * and asked once more — this is a read, it can be — and a read that still
+   * fails stops the deployment HERE, before any application is configured
+   * with a password that is not the node's.
    */
   private async readNodeCredentials(
     connector: SlaveConnector,
@@ -2581,21 +2589,25 @@ export class ProjectService extends EventEmitter {
   ): Promise<Record<string, Record<string, unknown>>> {
     const out: Record<string, Record<string, unknown>> = {};
     for (const service of ['postgres', 'redis', 'minio']) {
+      let info: Record<string, unknown> | null;
       try {
-        const info = (await connector.invokeOnSlave(
+        info = (await connector.invokeOnSlave(
           node.host,
           node.port ?? 9700,
           'OmnitronInfra',
           'getConnectionInfo',
           [{ service }],
+          { retryOnDisconnect: true },
         )) as Record<string, unknown> | null;
-        if (info) out[service] = info;
       } catch (err) {
-        this.logger.warn(
-          { node: node.host, service, error: (err as Error).message },
-          'Could not read this service\'s credentials from the node — its apps will use whatever the stack declared',
+        throw new Error(
+          `Could not read ${service}'s credentials from ${node.host}: ${(err as Error).message}. ` +
+            'A secret the node generated is known only there, and the one this stack declares would be wrong — ' +
+            'stopping before any application is configured with it.',
+          { cause: err },
         );
       }
+      if (info) out[service] = info;
     }
     return out;
   }

@@ -61,7 +61,12 @@ function remoteStackService(deployToStack = vi.fn(async () => [])) {
       provisionSlaveNode: vi.fn(async () => true),
       leaseRunner: () => grantingLease,
     },
-    getSlaveConnector: () => ({ addSlave: vi.fn(async () => {}) }),
+    // The node, asked for the credentials it generated, runs none of these
+    // services — true of a stack that declares no infrastructure. The court
+    // passed without an answer only because a failed read was waved through;
+    // a read that fails now stops the deployment
+    // (apps-configured-with-passwords-the-node-never-had).
+    getSlaveConnector: () => ({ addSlave: vi.fn(async () => {}), invokeOnSlave: vi.fn(async () => null) }),
     collectDeclaredServices: vi.fn(async () => ({})),
     resolveStackApps: () => APPS.map((name) => ({ name, script: `apps/${name}/dist/main.js` })),
     provisionNode: vi.fn(async () => true),

@@ -143,11 +143,25 @@ export function tarballNameFor(name: string, version: string): string {
 export function planBundle(rootName: string, workspace: Workspace): BundlePlan {
   const root = workspace.get(rootName);
   if (!root) {
+    // The refusal names the PLACE, not only the package. Run from another
+    // project's repository — `cd ~/projects/dao/daos && omnitron fleet
+    // upgrade` — the old sentence was «@omnitron-dev/omnitron is not a
+    // package in this workspace», which is true of that workspace and reads
+    // as a broken omnitron checkout. `commands/fleet.ts` guards the
+    // neighbouring case, a cwd with NO workspace above it, and its comment
+    // describes this exact trap; a cwd with somebody ELSE'S workspace above
+    // it walks past that guard and arrives here, in the same words.
+    const names = [...workspace.keys()];
+    const found =
+      names.length === 0
+        ? 'that workspace declares no packages at all'
+        : `that workspace holds ${names.length} package${names.length === 1 ? '' : 's'}, ` +
+          `including ${names.slice(0, 2).join(', ')}`;
     return {
       root: { name: rootName, version: '0.0.0' },
       vendored: [],
       overrides: {},
-      refusal: `${rootName} is not a package in this workspace.`,
+      refusal: `${rootName} is not a package in this workspace — ${found}.`,
     };
   }
 

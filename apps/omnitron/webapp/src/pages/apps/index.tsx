@@ -295,7 +295,7 @@ export default function AppsListPage() {
         variant="caption"
         sx={{
           color: "text.disabled",
-          mt: 2,
+          mt: 1,
           display: 'block'
         }}>
         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>

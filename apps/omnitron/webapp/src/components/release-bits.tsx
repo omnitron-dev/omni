@@ -101,7 +101,21 @@ export function loadWords(machine: NonNullable<ReleaseSummary['machine']>): stri
  * tells an operator that something failed and nothing about what, and the
  * answer decides whether the release is worth deploying at all.
  */
-export function GateStrip({ gates, size = 10 }: { gates: readonly GateOutcome[]; size?: number }) {
+export function GateStrip({
+  gates,
+  size = 10,
+  columns,
+}: {
+  gates: readonly GateOutcome[];
+  size?: number;
+  /**
+   * A fixed number of squares per row, for a table column: every release then
+   * draws the same shape — 21 gates are three rows of seven — and two rows of
+   * the table can be compared at a glance. Without it the strip flows onto as
+   * many lines as the space allows, which suits a page header.
+   */
+  columns?: number;
+}) {
   if (gates.length === 0) {
     return (
       <Typography variant="caption" sx={{ color: 'text.disabled' }}>
@@ -109,8 +123,19 @@ export function GateStrip({ gates, size = 10 }: { gates: readonly GateOutcome[];
       </Typography>
     );
   }
+  const gap = Math.max(2, Math.round(size * 0.35));
   return (
-    <Stack direction="row" spacing={0.4} sx={{ flexWrap: 'wrap', gap: 0.4 }}>
+    <Box
+      sx={
+        // A grid, not a wrapping row: a wrapping flex row leaves whatever does
+        // not fit as a lone square on the last line — 21 gates at four per
+        // line drew five full rows and one orphan — and its lines are only as
+        // aligned as the spacing mechanism lets them be.
+        columns
+          ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, ${size}px)`, gap: `${gap}px` }
+          : { display: 'flex', flexWrap: 'wrap', gap: `${gap}px` }
+      }
+    >
       {gates.map((gate, i) => (
         <Tooltip
           key={`${gate.name}-${i}`}
@@ -135,7 +160,7 @@ export function GateStrip({ gates, size = 10 }: { gates: readonly GateOutcome[];
           />
         </Tooltip>
       ))}
-    </Stack>
+    </Box>
   );
 }
 

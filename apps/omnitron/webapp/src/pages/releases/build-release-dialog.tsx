@@ -29,7 +29,8 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { BuildRecord, IStackInfo, ReleasePreflightDto } from '@omnitron-dev/omnitron/dto/services';
+import type { BuildRecord, IStackInfo } from '@omnitron-dev/omnitron/dto/services';
+import type { ReleasePreflightView } from 'src/netron/release-wire';
 import { releases as releaseRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
 
@@ -68,7 +69,7 @@ export interface BuildReleaseDialogProps {
   defaultProject: string | null;
   onStarted: (record: BuildRecord) => void;
   /** The machine as the daemon reads it now — the load the gates would run under. */
-  preflight?: ReleasePreflightDto | null;
+  preflight?: ReleasePreflightView | null;
 }
 
 export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted, preflight }: BuildReleaseDialogProps) {
@@ -151,7 +152,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             is refused here — the operator may know the load is about to drop —
             but nobody should find this out from the gate strip.
           */}
-          {preflight && preflight.load[0] > preflight.cpus && (
+          {preflight?.load && preflight.cpus !== null && preflight.load[0] > preflight.cpus && (
             <Alert severity="warning">
               This machine is carrying more than its cores right now — load{' '}
               <strong>{preflight.load.map((n) => n.toFixed(1)).join(' / ')}</strong> on {preflight.cpus} cores. The gates

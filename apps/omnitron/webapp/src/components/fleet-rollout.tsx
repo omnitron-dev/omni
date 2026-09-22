@@ -163,7 +163,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
               const node = byId.get(row.nodeId);
               return (
                 <Box key={row.nodeId}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 140 }}>
                       {node?.name ?? row.nodeId}
                     </Typography>

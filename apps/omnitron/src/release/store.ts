@@ -62,6 +62,14 @@ export interface ReleaseSummary {
    * about the machine first.
    */
   readonly machine: ReleaseManifest['machine'] | null;
+  /**
+   * What each stack measured about this release, in one line per stack.
+   *
+   * In the LIST, not only on the release's page: «has this been verified on
+   * test» is the promotion question, and it is asked in front of the list
+   * and of the stack, not after opening each release.
+   */
+  readonly verified: ReadonlyArray<{ stack: string; passed: number; total: number; at: string }>;
 }
 
 /** A release in full, for one screen: the manifest, plus what is beside it. */
@@ -174,6 +182,12 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
     },
     statics: manifest?.statics ?? null,
     machine: manifest?.machine ?? null,
+    verified: loadAttestations(id, path.dirname(dir)).map((a) => ({
+      stack: a.stack,
+      passed: a.gates.filter((g) => g.status === 'passed').length,
+      total: a.gates.length,
+      at: a.at,
+    })),
     bytes: weight.bytes,
     keptSource: weight.keptSource,
   };

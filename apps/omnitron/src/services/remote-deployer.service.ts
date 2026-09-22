@@ -1067,10 +1067,24 @@ export class RemoteDeployer {
         `/${assertRemotePathSegment('version', entry.version)}`;
       const script = `${dir}/dist/database/migrate.js`;
 
-      const present = await this.sshExec(
-        target,
-        `test -f ${shellEscape(script)} && echo yes || echo no`,
-      ).catch(() => 'no');
+      // A node that could not be asked is not an app without a migrator.
+      // This command exits 0 either way, so `sshExec` throws only when the
+      // question never arrived — and that was answered `'no'`: migrations
+      // skipped, new code started on the old schema. The worst case of the
+      // docblock above, reached through a dropped SSH connection instead of
+      // a failed migration, and refused the same way.
+      let present: string;
+      try {
+        present = await this.sshExec(target, `test -f ${shellEscape(script)} && echo yes || echo no`);
+      } catch (err) {
+        const message = `the node could not be asked whether there are any to apply — ${(err as Error).message}`;
+        this.logger.error(
+          { node: target.host, app: entry.app, error: message.slice(0, 400) },
+          'Could not ask the node for the app\'s migrations — its new code will not be started',
+        );
+        failed.set(entry.app, message.slice(0, 300));
+        continue;
+      }
       if (present.trim() !== 'yes') continue;
 
       this.emitProgress(

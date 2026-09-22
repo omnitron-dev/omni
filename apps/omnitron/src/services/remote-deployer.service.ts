@@ -985,6 +985,13 @@ export class RemoteDeployer {
           { node: target.host, subnet: rule.subnet },
           'Could not open the gateway’s path — every /api/* request will answer 503 while the apps are healthy',
         );
+      } else if (outcome.startsWith('ufw-unreadable')) {
+        // Not `ufw-inactive`: nothing is known about the firewall, and if it
+        // is active it is dropping the gateway's traffic right now.
+        this.logger.warn(
+          { node: target.host, subnet: rule.subnet, reason: outcome.slice('ufw-unreadable'.length).replace(/^:\s*/, '') },
+          'Could not read the node’s firewall — if it is active, the gateway’s path to the applications is closed and /api/* will answer 503',
+        );
       }
     } catch (err) {
       this.logger.warn(

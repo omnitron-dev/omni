@@ -92,13 +92,31 @@ export function reachabilityRule(subnet: string, project: string, stack: string)
  * Every failure is swallowed into a message rather than a non-zero exit: a
  * deployment must not be stopped by a firewall it could not read, and the
  * gateway's own 503 will say the rest.
+ *
+ * But a firewall it could not READ is not a firewall that is off. This asked
+ * `ufw status 2>/dev/null | head -1 | grep -q 'Status: active'`: a pipeline's
+ * status is its last command's, and `2>/dev/null` threw away the only line
+ * that said why. A `ufw status` that failed — a deploy user who is not root
+ * gets «ERROR: You need to be root to run this script» — printed nothing, the
+ * grep found nothing, and the answer was `ufw-inactive`: no rule added, every
+ * /api/* request dropped by an ACTIVE firewall, and the one explanation on
+ * record saying there was nothing to drop them. The status is now read once,
+ * its exit checked, and a failure reported as `ufw-unreadable: <its first
+ * line>`. (`ufw_status`, not `status`: that name is read-only in zsh, which
+ * is what an SSH command runs under when it is the account's shell.)
  */
 export function reachabilityCommand(rule: ReachabilityRule): string {
   const spec = `from ${rule.subnet} to any port ${rule.fromPort}:${rule.toPort} proto tcp`;
   return [
     `if ! command -v ufw >/dev/null 2>&1; then echo 'no-ufw'; exit 0; fi`,
-    `if ! ufw status 2>/dev/null | head -1 | grep -q 'Status: active'; then echo 'ufw-inactive'; exit 0; fi`,
-    `if ufw status 2>/dev/null | grep -q '${rule.subnet}.*${rule.fromPort}:${rule.toPort}'; then echo 'already-allowed'; exit 0; fi`,
+    `if ! ufw_status=$(ufw status 2>&1); then echo "ufw-unreadable: $(printf '%s\\n' "$ufw_status" | head -1)"; exit 0; fi`,
+    `if ! printf '%s\\n' "$ufw_status" | head -1 | grep -q 'Status: active'; then echo 'ufw-inactive'; exit 0; fi`,
+    // Subnet and ports on one line, in either order: `ufw status` prints the
+    // port (To) before the source (From), and the pattern this was —
+    // `<subnet>.*<ports>` — never matched a rule ufw had printed. Every
+    // deployment asked ufw for the rule again (it skips one it has, exit 0)
+    // and logged «Opened the gateway's path» for a path open all along.
+    `if printf '%s\\n' "$ufw_status" | grep -F '${rule.subnet}' | grep -qF '${rule.fromPort}:${rule.toPort}'; then echo 'already-allowed'; exit 0; fi`,
     `ufw allow ${spec} comment '${rule.comment}' >/dev/null 2>&1 && echo 'allowed' || echo 'failed'`,
   ].join('; ');
 }

@@ -91,15 +91,35 @@ describe('causeFields', () => {
   });
 });
 
+/** Every block that ends in a `'Netron error'` line, not just the first. */
+function errorLogBlocks(): string[] {
+  const blocks: string[] = [];
+  const needle = "this.netronPeer.logger.error(logFields, 'Netron error')";
+  for (let at = SERVER.indexOf(needle); at !== -1; at = SERVER.indexOf(needle, at + 1)) {
+    blocks.push(SERVER.slice(Math.max(0, at - 2600), at));
+  }
+  return blocks;
+}
+
 describe('the 5xx log line', () => {
   it('writes the cause beside the wrapper stack, not instead of it', () => {
-    const at = SERVER.indexOf("'Netron error'");
-    const block = SERVER.slice(Math.max(0, at - 2600), at);
+    // Anchored on EVERY such block rather than the first one found. This
+    // assertion used to read `SERVER.indexOf(...)` and check the 2600
+    // characters before it, which was the right block for exactly as long as
+    // there was one of them. A second copy — the fast path, taught to log in
+    // 377f1f79 — inserted itself ABOVE the first and the court started
+    // reporting on a block it was never written about. It went red for the
+    // right reason by luck: had the copy been added below, it would have
+    // stayed green over a path that logged the mask and nothing else.
+    const blocks = errorLogBlocks();
+    expect(blocks.length, 'both copies of this operation are checked').toBeGreaterThanOrEqual(2);
 
-    // Both: the wrapper stack locates the boundary, the cause says what broke.
-    expect(block).toContain('stack: titanError.stack');
-    expect(block).toContain('causeFields(titanError)');
-    // And only on 5xx — a 4xx is the caller's own doing and needs no internals.
-    expect(block).toMatch(/httpError\.status >= 500 && causeFields/);
+    for (const [i, block] of blocks.entries()) {
+      // Both: the wrapper stack locates the boundary, the cause says what broke.
+      expect(block, `5xx log block #${i + 1}`).toContain('stack: titanError.stack');
+      expect(block, `5xx log block #${i + 1}`).toContain('causeFields(titanError)');
+      // And only on 5xx — a 4xx is the caller's own doing and needs no internals.
+      expect(block, `5xx log block #${i + 1}`).toMatch(/httpError\.status >= 500 && causeFields/);
+    }
   });
 });

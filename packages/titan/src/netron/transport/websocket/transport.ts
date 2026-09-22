@@ -127,11 +127,19 @@ export class WebSocketTransport extends BaseTransport {
     if (typeof addressOrOptions === 'string') {
       const parsed = this.parseAddress(addressOrOptions);
       host = parsed.host || host;
-      port = parsed.port || port;
+      port = parsed.port ?? port;
     } else if (addressOrOptions) {
       options = addressOrOptions;
       host = options.host || host;
-      port = options.port || port;
+      // `??`, not `||`. Port 0 is how a caller asks the OS for any free port
+      // — what every test, sidecar and anything that must not collide passes
+      // — and `0 || 8080` handed all of them the one port most likely to be
+      // occupied. There is no bind error to read afterwards: when 8080 is
+      // free the server comes up on it and nothing looks wrong, so this
+      // surfaces as a connection timeout on a machine where something else
+      // holds the port. `host` keeps `||`: an empty string is nobody's
+      // deliberate value, while 0 is.
+      port = options.port ?? port;
     }
 
     const wss = new WebSocketServer({

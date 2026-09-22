@@ -1091,6 +1091,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           requestId: message.id,
           status: httpError.status,
           error: titanError.message,
+          // The same two fields the other copy carries, and the reason this
+          // block exists at all. Teaching this path to log without them
+          // repeated the very defect it was written to close, one level in:
+          // the line appeared, said «An unexpected error occurred», and
+          // still could not say what broke. `error:` is the MASK — the
+          // sentence chosen so the wire reveals nothing — so a log line
+          // holding only that is a log line about nothing.
+          ...(httpError.status >= 500 && titanError.stack && { stack: titanError.stack }),
+          ...(httpError.status >= 500 && causeFields(titanError)),
           path: 'fast',
         };
         if (httpError.status >= 500) {

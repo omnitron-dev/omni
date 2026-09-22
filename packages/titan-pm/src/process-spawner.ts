@@ -33,6 +33,7 @@ import { getAvailablePort } from '@omnitron-dev/titan/utils';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import { shutdownLadder, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
 import { confirmDeath } from './confirm-death.js';
+import { threadPoolSizeFor } from './thread-pool.js';
 // MockProcessSpawner is now in @omnitron-dev/testing/titan - use dynamic import to avoid circular dependency
 let MockProcessSpawnerClass: any = null;
 
@@ -787,6 +788,24 @@ function sanitizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
+ * The environment a child starts with: secrets stripped, and libuv's thread
+ * pool sized to the machine rather than left at its default of four.
+ *
+ * One place rather than per-call-site, because a child that misses it runs
+ * every `bcrypt`, `pbkdf2`, `fs` and DNS call four at a time however many
+ * cores it has — and the only way to notice is to read `ps eww` of a live
+ * process, which nobody does routinely.
+ */
+function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const base = sanitizeEnv(process.env);
+  return {
+    ...base,
+    UV_THREADPOOL_SIZE: threadPoolSizeFor(base, { parallelism: os.availableParallelism() }),
+    ...extra,
+  };
+}
+
+/**
  * Process spawner implementation - File-based architecture
  */
 export class ProcessSpawner implements IProcessSpawner {
@@ -1278,7 +1297,7 @@ export class ProcessSpawner implements IProcessSpawner {
 
     const worker = new Worker(this.workerRuntimePath, {
       workerData: serializableContext,
-      env: sanitizeEnv(process.env),
+      env: childEnv(),
     });
 
     return worker;
@@ -1324,8 +1343,7 @@ export class ProcessSpawner implements IProcessSpawner {
 
     const child = fork(this.forkWorkerPath, [], {
       env: {
-        ...sanitizeEnv(process.env),
-        ...(context.options?.env ?? {}),
+        ...childEnv(context.options?.env ?? {}),
         TITAN_WORKER_CONTEXT: contextJson,
         // The window this child will actually get between SIGTERM and
         // SIGKILL. `worker-runtime` and `last-resort-handlers` both read

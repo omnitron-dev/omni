@@ -308,13 +308,15 @@ export interface HealthModuleAsyncOptions {
  */
 export interface MemoryThresholds {
   /**
-   * Heap usage percentage that triggers degraded status
+   * Share of the heap LIMIT (`v8.getHeapStatistics().heap_size_limit`) in use
+   * that triggers degraded status — not of `heapTotal`, which V8 keeps close
+   * to what is in use whatever the pressure
    * @default 0.7 (70%)
    */
   heapDegradedThreshold?: number;
 
   /**
-   * Heap usage percentage that triggers unhealthy status
+   * Share of the heap limit in use that triggers unhealthy status
    * @default 0.9 (90%)
    */
   heapUnhealthyThreshold?: number;

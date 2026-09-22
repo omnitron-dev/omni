@@ -555,6 +555,25 @@ release
   });
 
 release
+  .command('push <id>')
+  .description("Put a release in the artifact store (`releaseStore` in ~/.omnitron/config.json, its key in the daemon's vault)")
+  .option('--root <dir>', 'Where the release is read from (default: ~/.omnitron/releases)')
+  .option('--repair', "Write every object again even where the store's index matches — for a store a pull found damaged")
+  .action(async (id: string, options: { root?: string; repair?: boolean }) => {
+    const { releasePushCommand } = await import('../commands/release-store.js');
+    await releasePushCommand(id, options);
+  });
+
+release
+  .command('pull <id>')
+  .description('Take a release from the artifact store and check it as a deployment would, before it appears here')
+  .option('--root <dir>', 'Where the release is written (default: ~/.omnitron/releases)')
+  .action(async (id: string, options: { root?: string }) => {
+    const { releasePullCommand } = await import('../commands/release-store.js');
+    await releasePullCommand(id, options);
+  });
+
+release
   .command('prune')
   .description('Remove all but the newest releases (they are ~35 MB each)')
   .option('--keep <n>', 'How many to keep (default: 5)', (v: string) => Number(v))

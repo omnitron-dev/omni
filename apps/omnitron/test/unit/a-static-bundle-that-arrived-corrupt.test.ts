@@ -9,9 +9,13 @@
  *     gzip: stdin: unexpected end of file
  *     tar: Unexpected EOF in archive
  *
- * The consequence was not a retry. `shipStackStatics` catches, returns `{}`,
- * and the gateway is then configured with no static root at all: the node
- * served nothing at `/` until the next deployment.
+ * The consequence was not a retry. `shipStackStatics` caught, returned `{}`,
+ * and the gateway was then configured with no static root at all: the node
+ * served nothing at `/` until the next deployment. (It retries once and then
+ * fails the deployment now — `a-deploy-that-reported-success-with-no-portal`,
+ * which also found the case these two checks cannot see: an archive packed
+ * short on THIS side, whose sum matches because it is the sum of the short
+ * file.)
  *
  * Two checks now stand between the transfer and the extraction, at the two
  * levels where the knowledge exists: `uploadFile` refuses a file that landed

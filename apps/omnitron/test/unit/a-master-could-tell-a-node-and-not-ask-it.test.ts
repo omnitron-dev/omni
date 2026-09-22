@@ -58,6 +58,8 @@ const CONTROL_PLANE_CALLS: ReadonlyArray<{ service: string; method: string; why:
   { service: 'OmnitronInfra', method: 'getState', why: 'infrastructure status for the console' },
   { service: 'OmnitronInfra', method: 'listContainers', why: 'container list for the console' },
   { service: 'OmnitronDaemon', method: 'status', why: 'what the node is running' },
+  { service: 'OmnitronDaemon', method: 'getHealth', why: 'node health for the console' },
+  { service: 'OmnitronDaemon', method: 'getMetrics', why: 'node metrics for the console' },
   { service: 'OmnitronSync', method: 'drainBuffer', why: 'pull replicated entries' },
   { service: 'OmnitronSync', method: 'ackDrained', why: 'release what the master stored' },
   { service: 'OmnitronSync', method: 'getSyncStatus', why: 'the «Sync» column, and the backlog' },
@@ -152,5 +154,44 @@ describe('a master could tell a node and not ask it', () => {
 
     expect(seen.size, 'the scan found no calls at all — it has stopped working').toBeGreaterThan(3);
     expect([...seen].filter((c) => !listed.has(c)), 'calls nobody checks').toEqual([]);
+  });
+
+  it('names the calls whose method it cannot read, so they are not assumed covered', () => {
+    // The scan above matches a LITERAL method name. `daemonAnswer` passes one
+    // through a variable —
+    //
+    //     this.askNode<T>(nodeId, 'OmnitronDaemon', method, args, null)
+    //
+    // — so its three methods (`status`, `getHealth`, `getMetrics`, fixed by
+    // the parameter's union type) were invisible to it, and the test above
+    // said «the registry names every call the code makes» while seeing none
+    // of them. A scanner that cannot see part of its subject must SAY so,
+    // not pass quietly; that is the difference between a check and a
+    // decoration.
+    //
+    // So: every service reached through a variable method must have at least
+    // one entry in the registry, and this assertion prints which services
+    // those are, because their method lists are maintained by hand.
+    const byVariable = new Set<string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts')) {
+          for (const m of readFileSync(full, 'utf8').matchAll(
+            /(?:invokeOnSlave|askNode)(?:<[^>]*>)?\([^)]*?'(Omnitron[A-Za-z]+)',\s*\n?\s*([a-z][\w.]*)\s*[,)]/g,
+          )) {
+            byVariable.add(m[1] as string);
+          }
+        }
+      }
+    };
+    walk(SRC);
+
+    const covered = new Set(CONTROL_PLANE_CALLS.map((c) => c.service));
+    expect(
+      [...byVariable].filter((svc) => !covered.has(svc)),
+      'a service reached with a computed method and no entry in the registry',
+    ).toEqual([]);
   });
 });

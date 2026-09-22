@@ -43,6 +43,7 @@ import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import { toIsoUtc } from '../database/sqlite-date-binding.js';
+import { describeError } from '../shared/describe-error.js';
 import {
   classifyIngestFailure,
   deliveredIds,
@@ -700,6 +701,10 @@ export class SyncService {
     }
 
     const outcome: IngestOutcome = { accepted: [], duplicates: [], failed: [], discarded: [] };
+    // Why entries were refused, and how many times each reason came up. A
+    // thousand entries failing on one dead database is ONE event; naming the
+    // reason per entry buried the cause under its own repetitions.
+    const causes = new Map<string, number>();
 
     for (const entry of batch.entries) {
       try {
@@ -716,8 +721,15 @@ export class SyncService {
         // previously this warning was the only trace of an entry that had
         // just been dropped on both sides.
         outcome.failed.push(entry.id);
-        this.logger.warn(
-          { nodeId: batch.nodeId, entryId: entry.id, category: entry.category, error: (err as Error).message },
+        // `(err as Error).message` was the empty string for the commonest
+        // failure of all — an unreachable database arrives as an
+        // `AggregateError` whose reasons live in `.errors`. 76 659 records in
+        // one hour carried `error: ""`, while the cause was named in three
+        // lines of the file next to it.
+        const cause = describeError(err);
+        causes.set(cause, (causes.get(cause) ?? 0) + 1);
+        this.logger.debug(
+          { nodeId: batch.nodeId, entryId: entry.id, category: entry.category, error: cause },
           'Failed to ingest sync entry — left unacknowledged for retry'
         );
       }
@@ -725,7 +737,13 @@ export class SyncService {
 
     if (outcome.failed.length > 0) {
       this.logger.warn(
-        { nodeId: batch.nodeId, batchId: batch.batchId, failed: outcome.failed.length, total: batch.entries.length },
+        {
+          nodeId: batch.nodeId,
+          batchId: batch.batchId,
+          failed: outcome.failed.length,
+          total: batch.entries.length,
+          causes: [...causes.entries()].map(([cause, count]) => `${cause} ×${count}`),
+        },
         'Sync batch partially ingested'
       );
     } else {

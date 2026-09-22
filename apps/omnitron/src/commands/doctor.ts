@@ -45,6 +45,7 @@ import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
 import type { ProcessInfoDto } from '../config/types.js';
 import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
+import { describeError } from '../shared/describe-error.js';
 import {
   findDominantErrors,
   findRepetitionLoad,
@@ -1627,22 +1628,6 @@ export function containerRemedy(name: string, error: string | undefined, neverSt
 // Rendering
 // ---------------------------------------------------------------------------
 
-function describeError(err: unknown): string {
-  if (!err) return 'unknown error';
-  if (typeof err === 'string') return err;
-  const e = err as { message?: string; errors?: Array<{ message?: string; code?: string }>; code?: string };
-
-  // A failed pg connection throws an AggregateError whose own `message` is
-  // EMPTY — the reason hides in `errors[]`. Logging `err.message` there
-  // prints nothing at all, which is how a dead database looked like a
-  // blank line in the logs.
-  if (Array.isArray(e.errors) && e.errors.length > 0) {
-    const inner = e.errors.map((x) => x.message || x.code).filter(Boolean).join('; ');
-    if (inner) return e.code ? `${inner} (${e.code})` : inner;
-  }
-  if (e.message) return e.code ? `${e.message} (${e.code})` : e.message;
-  return e.code ?? 'unknown error';
-}
 
 function severityMark(severity: FindingSeverity): string {
   if (severity === 'error') return prism.red('[x]');

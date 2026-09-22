@@ -32,6 +32,7 @@ import { decideBuild, buildRecordPath, type BuildDecision, type BuildRecord } fr
 export { resolvePnpmForTests };
 
 const exec = promisify(execFile);
+import { execInGroup } from './exec-in-group.js';
 
 // =============================================================================
 // Types
@@ -419,7 +420,18 @@ export class ArtifactBuilder {
     }
 
     try {
-      await exec(resolvePnpm(), ['build'], { cwd: appDir, timeout: 300_000 });
+      // A deadline for the whole build TREE — see `exec-in-group.ts` for why
+      // `execFile`'s own timeout bounded nothing here.
+      //
+      // Thirty minutes, not the five this used to name, and the difference is
+      // the point. Five were never enforced, so nothing ever hit them; made
+      // real, they would have refused tonight's deployment, whose build of
+      // `main` took 21 minutes at load ~100 on 16 cores (another project's
+      // Rust builds) and was progressing the whole time. What a limit here is
+      // FOR is a build that has stopped making progress — which today hangs
+      // the deployment forever, since a start in flight is never retried —
+      // not one that is slow because the machine is busy.
+      await execInGroup(resolvePnpm(), ['build'], { cwd: appDir, timeout: 30 * 60_000 });
     } catch (err: any) {
       // Everything the child said, in the order a reader wants it. `stderr`
       // alone produced `Build failed for paysys: ` — an empty string, because
@@ -434,7 +446,13 @@ export class ArtifactBuilder {
         .filter(Boolean)
         .join('\n')
         .slice(-1500);
-      const how = err.code !== undefined ? ` (exit ${err.code})` : err.signal ? ` (killed by ${err.signal})` : '';
+      const how = err.timedOut
+        ? ' (stopped after 30 minutes — the build and everything it started)'
+        : err.code !== undefined && err.code !== null
+          ? ` (exit ${err.code})`
+          : err.signal
+            ? ` (killed by ${err.signal})`
+            : '';
       throw new Error(`Build failed for ${appName}${how}: ${said || err.message || 'the build said nothing'}`, {
         cause: err,
       });

@@ -75,7 +75,14 @@ describe('an artifact build starts from nothing', () => {
   it('does both before the compiler runs', () => {
     const body = runBuildBody();
     const output = body.indexOf("rmSync(path.join(appDir, 'dist')");
-    const compile = body.indexOf("exec(resolvePnpm(), ['build']");
+    // The COMMAND, not the function that runs it: the build moved to
+    // `execInGroup(…)` so its deadline would reach the whole process tree,
+    // and the old spelling answered -1 — an assertion that failed about the
+    // wrong thing. Third anchor in this repo on that same literal; each was
+    // making a true claim and each broke on a rename that changed none of
+    // them.
+    const compile = body.indexOf("resolvePnpm(), ['build']");
+    expect(compile, 'the build call is where this test can find it').toBeGreaterThan(0);
 
     expect(compile).toBeGreaterThan(output);
   });

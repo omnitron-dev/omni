@@ -25,7 +25,6 @@ import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 // Peer type from netron.connect() — RemotePeer for TCP connections
-import type { FleetService } from '../services/fleet.service.js';
 import type { SyncService } from '../services/sync.service.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import { directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
@@ -183,7 +182,6 @@ export class SlaveConnector {
 
   constructor(
     private readonly logger: ILogger,
-    private readonly fleetService: FleetService | undefined,
     private readonly syncService: SyncService | null,
     options?: { heartbeatInterval?: number; maxBackoff?: number; dial?: MeshDialer },
   ) {
@@ -511,8 +509,6 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
       void this.refreshSyncStatus(conn);
       void this.pullSyncData(key, conn);
 
-      await this.recordFleetHeartbeat(conn);
-
       // Monitor for disconnection
       netron.on('peer:disconnected', () => {
         if (this.disposed) return;
@@ -571,35 +567,6 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
     // that has been silent for hours, which is the exact reading this whole
     // path exists to prevent.
     conn.syncStatus = null;
-  }
-
-  /**
-   * Tell the fleet table this node answered, if it is a node the fleet knows.
-   *
-   * `heartbeat(nodeId)` is `UPDATE nodes SET lastHeartbeat=… WHERE id=$1`
-   * and `nodes.id` is a `uuid`. Both call sites passed `${host}:${port}` —
-   * the connector's own map key — so every heartbeat since this class was
-   * written raised `invalid input syntax for type uuid` into a bare `catch`
-   * that discarded it. A write that cannot succeed, in a silence that cannot
-   * report it.
-   *
-   * Called only with the master's registry id, and only when there is one: a
-   * node that reached this connector through a stack has no fleet row, and
-   * an UPDATE matching nothing is not an error, so it would go on being
-   * silent for a second reason. The debug line is what distinguishes the two
-   * states for whoever next asks why `lastHeartbeat` is stale.
-   */
-  private async recordFleetHeartbeat(conn: SlaveConnection): Promise<void> {
-    const nodeId = conn.config.nodeId;
-    if (!this.fleetService || !nodeId) return;
-    try {
-      await this.fleetService.heartbeat(nodeId);
-    } catch (err) {
-      this.logger.debug(
-        { host: conn.config.host, nodeId, error: (err as Error).message },
-        'Fleet heartbeat not recorded — this node has no row in the fleet table',
-      );
-    }
   }
 
   /** Give back whatever was opened to make this connection possible. */
@@ -661,9 +628,12 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
           new Promise((_, reject) => setTimeout(() => reject(new Error('Heartbeat timeout')), 10_000)),
         ]);
 
+        // This connection's own record, and the only one this class keeps.
+        // It also wrote the node into the fleet table — the control plane's
+        // registry of daemons, where a managed machine has no row — so every
+        // one of those UPDATEs reached nothing. A machine's liveness has one
+        // writer: the health monitor, into the node registry.
         conn.lastHeartbeat = Date.now();
-
-        await this.recordFleetHeartbeat(conn);
       } catch (err) {
         this.logger.warn(
           { host: conn.config.host, port: conn.config.port, error: (err as Error).message },

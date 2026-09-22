@@ -157,7 +157,7 @@ const connectors: SlaveConnector[] = [];
  */
 function connected(peer: unknown, sync: unknown) {
   // An interval nobody waits for: each test drives the sweep itself.
-  const connector = new SlaveConnector(createNullLogger(), undefined, sync as never, {
+  const connector = new SlaveConnector(createNullLogger(), sync as never, {
     heartbeatInterval: 3_600_000,
   });
   connectors.push(connector);

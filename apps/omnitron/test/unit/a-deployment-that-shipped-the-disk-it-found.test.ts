@@ -29,7 +29,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { describeWorkingTree, refusalForDirtyTree } from '../../src/project/working-tree.js';
+import { describeWorkingTree, describeWorkingTrees, refusalForDirtyTree } from '../../src/project/working-tree.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 /** A real repository, because the subject is what git says. */
@@ -82,6 +82,30 @@ describe('what git says about this tree', () => {
     const t = await describeWorkingTree(notARepo);
     expect(t.checked).toBe(false);
     expect(t.why).toBeTruthy();
+  });
+});
+
+describe('every repository the deployment reads', () => {
+  it('answers for each, and collapses two directories of one repo into one', async () => {
+    // The portal's bundle inlines the sources of the packages it links, and
+    // those live in another checkout — so a clean project tree is not the
+    // whole question. Two source directories in ONE repository are one
+    // answer, not two.
+    const a = repo();
+    const b = repo();
+    writeFileSync(join(b, 'app.ts'), 'edited\n');
+    execFileSync('mkdir', ['-p', join(a, 'nested')]);
+
+    const trees = await describeWorkingTrees([a, join(a, 'nested'), b]);
+    expect(trees).toHaveLength(2);
+    const dirty = trees.filter((t) => t.tree.dirty.length > 0);
+    expect(dirty).toHaveLength(1);
+    expect(dirty[0]!.tree.dirty).toEqual(['app.ts']);
+  });
+
+  it('ignores a path that is in no repository at all', async () => {
+    const trees = await describeWorkingTrees([mkdtempSync(join(tmpdir(), 'loose-'))]);
+    expect(trees).toEqual([]);
   });
 });
 

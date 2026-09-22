@@ -18,7 +18,7 @@ import path from 'node:path';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
-import { describeWorkingTree, refusalForDirtyTree } from '../project/working-tree.js';
+import { describeWorkingTrees, refusalForDirtyTree } from '../project/working-tree.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
@@ -635,14 +635,43 @@ export class ProjectService extends EventEmitter {
     // a development stand is FOR — hot reload is that feature — and a rule
     // that refused there would be turned off within the hour.
     const projectForTree = this.registry.get(projectName);
-    const tree = projectForTree
-      ? await describeWorkingTree(projectForTree.path)
-      : { checked: false as const, why: `project '${projectName}' is not in the registry`, dirty: [] };
+    // Not only the project's own repository. The static bundle INLINES the
+    // sources of the packages it links — the portal's vite alias resolves
+    // prism and netron-browser to their `src` in another checkout — so an
+    // uncommitted change there rides to the node inside `dist` while this
+    // tree is spotless. The backends differ: their vendored
+    // `@omnitron-dev/*` are replaced on the node by symlinks to the node
+    // daemon's copy, so what was packed for them never runs.
+    //
+    // The list is derived from the mechanism, not written down:
+    // `linkedSourceDirs` is the same function the staleness check uses to
+    // decide what the bundle is built from.
+    const treeInputs: string[] = [];
+    if (projectForTree) {
+      treeInputs.push(projectForTree.path);
+      const staticAbs = this.staticDirOf(stackConfig.infrastructure, projectForTree.path);
+      if (staticAbs) {
+        const { linkedSourceDirs } = await import('./bundle-builder.js');
+        const pkgDir = staticAbs.replace(/\/[^/]+\/?$/, '');
+        treeInputs.push(...linkedSourceDirs(pkgDir));
+      }
+    }
+    const trees = projectForTree
+      ? await describeWorkingTrees(treeInputs)
+      : [
+          {
+            root: projectName,
+            tree: { checked: false as const, why: `project '${projectName}' is not in the registry`, dirty: [] },
+          },
+        ];
+    const tree = trees[0]?.tree ?? { checked: false as const, why: 'no tree to read', dirty: [] };
 
     if (stackConfig.type === 'remote') {
       if (!allowDirty) {
-        const refusal = refusalForDirtyTree(tree, `${projectName}/${stackName}`);
-        if (refusal) throw new Error(refusal);
+        for (const { root, tree: t } of trees) {
+          const refusal = refusalForDirtyTree(t, `${projectName}/${stackName}`);
+          if (refusal) throw new Error(trees.length > 1 ? `${refusal}\n(in ${root})` : refusal);
+        }
       } else if (tree.checked && tree.dirty.length > 0) {
         this.logger.warn(
           { project: projectName, stack: stackName, dirty: tree.dirty.length, head: tree.head },
@@ -2030,6 +2059,28 @@ export class ProjectService extends EventEmitter {
       );
       return {};
     }
+  }
+
+  /**
+   * Where the stack's static build lives, absolute, or undefined.
+   *
+   * Both spellings, and the same resolution `shipStackStatics` performs —
+   * named once because two questions ask it: what to ship, and whether the
+   * trees it is built from are the commits they claim.
+   */
+  private staticDirOf(
+    infrastructure: import('../infrastructure/types.js').InfrastructureConfig | undefined,
+    projectRoot: string,
+  ): string | undefined {
+    if (!infrastructure) return undefined;
+    const legacy = (infrastructure as { gateway?: { staticDir?: string } }).gateway;
+    const preset = (infrastructure as { services?: Record<string, { config?: { staticDir?: string } }> })
+      .services?.['gateway'];
+    const staticDir = preset?.config?.staticDir ?? legacy?.staticDir;
+    if (!staticDir) return undefined;
+    return staticDir.startsWith('/')
+      ? staticDir
+      : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
   }
 
   private async readStackConfigFiles(

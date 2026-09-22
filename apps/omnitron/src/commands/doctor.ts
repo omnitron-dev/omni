@@ -875,20 +875,50 @@ export async function checkAppInternals(findings: Findings, apps: ProcessInfoDto
  * more: the question is whether a listener exists, not whether it speaks any
  * particular protocol.
  */
-async function tcpReachable(port: number, host = '127.0.0.1', timeoutMs = 1_000): Promise<boolean> {
+/**
+ * What a loopback port answered — three outcomes, not two.
+ *
+ * `refused` is the container's fault: the kernel replied, and nothing is
+ * listening. `no-answer` is not. On 127.0.0.1 a connect that produces no
+ * reply at all is the machine failing to schedule it, and reporting that as
+ * an unreachable port accuses a healthy container of the load it is running
+ * under — at exactly the moment an operator runs `doctor`, which is when the
+ * machine is busy.
+ *
+ * Measured 2026-09-22: this probe's own test, which starts a real listener
+ * and expects silence, failed twice inside the full suite at load averages
+ * of 22 and 41, and passed alone both times within the minute. The port was
+ * open every time; one second was not enough to be told so.
+ *
+ * Raising the number would move that threshold rather than remove it, which
+ * is why the answer is a third value instead. Three seconds is a loopback
+ * connect on a machine under load, not a network round trip.
+ */
+type PortAnswer = 'open' | 'refused' | 'no-answer';
+
+export async function probePort(port: number, host = '127.0.0.1', timeoutMs = 3_000): Promise<PortAnswer> {
   const net = await import('node:net');
   return new Promise((resolve) => {
     const socket = new net.Socket();
-    const done = (ok: boolean) => {
+    const done = (answer: PortAnswer) => {
       socket.destroy();
-      resolve(ok);
+      resolve(answer);
     };
     socket.setTimeout(timeoutMs);
-    socket.once('connect', () => done(true));
-    socket.once('timeout', () => done(false));
-    socket.once('error', () => done(false));
+    socket.once('connect', () => done('open'));
+    socket.once('timeout', () => done('no-answer'));
+    // ECONNREFUSED is an answer; anything else — a host that will not
+    // resolve, a descriptor limit — is the probe failing rather than the
+    // port, and is not the container's to explain.
+    socket.once('error', (err: NodeJS.ErrnoException) =>
+      done(err.code === 'ECONNREFUSED' ? 'refused' : 'no-answer'),
+    );
     socket.connect(port, host);
   });
+}
+
+async function tcpReachable(port: number, host = '127.0.0.1', timeoutMs = 3_000): Promise<boolean> {
+  return (await probePort(port, host, timeoutMs)) === 'open';
 }
 
 /**
@@ -1492,9 +1522,28 @@ export async function checkPublishedPorts(
   if (Number.isFinite(startedMs) && Date.now() - startedMs < CONTAINER_SETTLE_MS) return;
 
   const unreachable: number[] = [];
+  const silent: number[] = [];
   for (const [, hostPort] of ports) {
-    if (!(await tcpReachable(hostPort))) unreachable.push(hostPort);
+    const answer = await probePort(hostPort);
+    if (answer === 'refused') unreachable.push(hostPort);
+    else if (answer === 'no-answer') silent.push(hostPort);
   }
+
+  // A port that did not answer is a measurement this machine could not
+  // take, and saying so is the whole of what is known. Reporting it as
+  // unreachable would be the load speaking in the container's name.
+  if (silent.length > 0) {
+    findings.add({
+      id: 'infra.port-unanswered',
+      severity: 'info',
+      title: `Container "${c.name}" published ${silent.join(', ')} and the probe got no answer`,
+      evidence: [
+        `TCP connect to 127.0.0.1:${silent.join(', 127.0.0.1:')} neither connected nor was refused within 3s`,
+        'On loopback that is this machine, not the container — run `omnitron doctor` again when it is quieter',
+      ],
+    });
+  }
+
   if (unreachable.length === 0) return;
 
   const healthy = c.health === 'healthy';

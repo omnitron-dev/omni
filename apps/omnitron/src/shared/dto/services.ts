@@ -95,6 +95,7 @@ import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 import type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig,
   IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer,
+  INodeUpgradePlan, INodeRolloutStart,
 } from './nodes.js';
 import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
@@ -102,7 +103,7 @@ import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './m
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
 import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
 
-export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer } from './nodes.js';
+export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer, INodeUpgradePlan, INodeUpgradePlanRow, INodeRolloutStart } from './nodes.js';
 
 /** Where a node's upgrade got to — see `NodeUpgradeService`. */
 export type { NodeUpgradeProgress, UpgradePhase } from '../../services/node-upgrade.service.js';
@@ -305,6 +306,8 @@ export interface IProjectRpcService {
 
   // --- Stacks (Operator) ---
   startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string }): Promise<IStackInfo>;
+  /** Would this stack take this release? The deployment's own decision, asked in advance. */
+  checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }>;
   stopStack(data: { project: string; stack: string }): Promise<IStackInfo>;
 
   // --- Stacks (Admin) ---
@@ -577,6 +580,52 @@ export interface IOmnitronNodesService {
    */
   upgradeNode(data: { nodeId: string }): Promise<{ started: boolean; reason?: string }>;
   getUpgradeProgress(): Promise<import('../../services/node-upgrade.service.js').NodeUpgradeProgress[]>;
+
+  // ---------------------------------------------------------------------------
+  // Fleet rollout — many nodes, from the console
+  //
+  // The queue lives in the DAEMON, not in the browser. A rollout across a
+  // dozen servers outlives the tab that started it, and a page that closes
+  // must not be able to leave half a fleet on one version and half on
+  // another. So the console asks for a rollout and then watches one.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * What a rollout WOULD do, without doing any of it.
+   *
+   * The plan is the `--dry-run` of `fleet upgrade`, which builds a bundle to
+   * learn the target version and then decides per node. Costly enough to be
+   * worth showing, and cheap compared with finding out afterwards.
+   *
+   * `nodeIds` narrows it; absent means the whole registry.
+   */
+  planUpgrade(data?: { nodeIds?: string[] }): Promise<INodeUpgradePlan>;
+
+  /**
+   * Queue a rollout and return immediately.
+   *
+   * `concurrency` is how many nodes are touched at once; the rest wait in
+   * `queued` with a position. Default 1, because an upgrade restarts the
+   * daemon it lands on and a fleet that restarts together has no witness
+   * left.
+   *
+   * What is refused here is refused BEFORE anything ships — an unknown node,
+   * one already running, one held by another deployment's lease — and each
+   * refusal carries its reason so the console can show it beside the node
+   * rather than as a count.
+   */
+  upgradeNodes(data: { nodeIds: string[]; concurrency?: number }): Promise<INodeRolloutStart>;
+
+  /**
+   * Take a node out of a running rollout.
+   *
+   * Honest about what it can do: a node still `queued` is dropped, and one
+   * already installing is NOT interrupted — stopping an upgrade between
+   * `installBundle` and `activateBundle` is how a node ends up with a
+   * half-switched `current`. `stopped: false` with the reason is the answer
+   * in that case.
+   */
+  cancelUpgrade(data: { nodeId: string }): Promise<{ stopped: boolean; because: string }>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getCheckHistory(data: { nodeId: string; limit?: number }): Promise<HealthCheckRow[]>;
   getUptimeBar(data: { nodeId: string; bucketCount?: number; intervalMs?: number }): Promise<UptimeBucket[]>;
@@ -612,4 +661,68 @@ export interface IOmnitronMetricsService {
   getSnapshot(): Promise<MetricsSnapshot>;
   querySeries(data: MetricsQueryFilter): Promise<MetricsTimeSeries[]>;
   getPrometheusText(): Promise<string>;
+}
+
+// ============================================================================
+// Release Service Interface
+// ============================================================================
+
+export type {
+  ReleaseSummary,
+  ReleaseDetail,
+  PruneResult,
+} from '../../release/store.js';
+export type { ReleaseManifest, GateOutcome, ReleaseArtifact, StackReleaseRequirements } from '../../release/manifest.js';
+export type { BuildRecord, BuildRequest } from '../../services/release.service.js';
+
+/** Whether this master can build a release, and where they are kept. */
+export interface ReleasePreflightDto {
+  readonly root: string;
+  readonly canBuild: boolean;
+  /** `git`, `pnpm`, `node` — those not on the daemon's PATH. */
+  readonly missingTools: string[];
+  readonly path: string[];
+}
+
+/** The last recorded deployment of one stack. */
+export interface ReleaseDeploymentDto {
+  readonly project: string;
+  readonly stack: string;
+  readonly at: string;
+  readonly actorId: string | null;
+  /** `operator`, `boot`, `auto-resume` — who asked for that start. */
+  readonly source: string | null;
+  /** The release deployed, or `null` when the working tree was. */
+  readonly release: string | null;
+  readonly projectCommit: string | null;
+  readonly omniCommit: string | null;
+}
+
+/**
+ * Releases: what was built on this master, and the builds themselves.
+ *
+ * A build takes a quarter of an hour, so `build` starts one and returns its
+ * record; the console follows it with `getBuild`. Everything that reads is a
+ * viewer's, starting and stopping is an operator's, and `prune` — the only
+ * call that deletes — is an administrator's.
+ */
+export interface IOmnitronReleaseService {
+  preflight(): Promise<ReleasePreflightDto>;
+  list(): Promise<{ releases: import('../../release/store.js').ReleaseSummary[]; root: string }>;
+  get(data: { id: string }): Promise<import('../../release/store.js').ReleaseDetail>;
+  getLog(data: { id: string; name: string; lines?: number }): Promise<{ name: string; bytes: number; tail: string }>;
+  builds(): Promise<import('../../services/release.service.js').BuildRecord[]>;
+  getBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord | null>;
+  build(data: {
+    project: string;
+    projectCommit?: string;
+    omniCommit?: string;
+    forStack?: string;
+    skipGates?: boolean;
+    keepSource?: boolean;
+    env?: Record<string, string>;
+  }): Promise<import('../../services/release.service.js').BuildRecord>;
+  stopBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord>;
+  prune(data: { keep?: number; apply?: boolean; protect?: string[] }): Promise<import('../../release/store.js').PruneResult>;
+  deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
 }

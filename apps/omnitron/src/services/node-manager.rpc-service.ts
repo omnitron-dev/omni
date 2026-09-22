@@ -17,7 +17,8 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
+import { Errors } from '@omnitron-dev/titan/errors';
 import type {
   NodeManagerService,
   AddNodeInput,
@@ -27,7 +28,8 @@ import type {
   SshKeyInfo,
 } from './node-manager.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
-import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer } from '../shared/dto/nodes.js';
+import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer,
+  INodeUpgradePlan, INodeRolloutStart } from '../shared/dto/nodes.js';
 import type { DaemonStatusDto, AggregatedHealthDto, AggregatedMetricsDto } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { INodeHealthSummary } from '../workers/types.js';
@@ -337,6 +339,41 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getUpgradeProgress(): Promise<import('./node-upgrade.service.js').NodeUpgradeProgress[]> {
     return this.upgrades?.listProgress() ?? [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fleet rollout — declared before it is built, so the console can be written
+  // against the real contract instead of an untyped `invoke`. Each refuses
+  // out loud: a stub that answered with an empty plan would be read as «this
+  // fleet needs no upgrades», which is the worst available lie here.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * What a rollout would do to each node, before anything ships.
+   *
+   * A read, not an action — `CONTROL_PLANE_READ_ROLES` rather than
+   * `OPERATOR_ROLES` — so an operator without deploy rights can still see
+   * what the fleet is running and what it would take to move it.
+   */
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
+  async planUpgrade(_data?: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
+    throw Errors.notImplemented(
+      'planUpgrade is declared but not built yet — the CLI has this as `fleet upgrade --dry-run`.',
+    );
+  }
+
+  /** Queue a rollout across several nodes. Returns once queued, not once done. */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async upgradeNodes(_data: { nodeIds: string[]; concurrency?: number }): Promise<INodeRolloutStart> {
+    throw Errors.notImplemented(
+      'upgradeNodes is declared but not built yet — `upgradeNode` still does one node at a time.',
+    );
+  }
+
+  /** Drop a node from a running rollout, if it has not started installing. */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async cancelUpgrade(_data: { nodeId: string }): Promise<{ stopped: boolean; because: string }> {
+    throw Errors.notImplemented('cancelUpgrade is declared but not built yet.');
   }
 
   /** Wired by the daemon at startup, on a master. */

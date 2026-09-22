@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { tmpdir } from 'node:os';
 
 import { ProjectService } from '../../src/services/project.service.js';
 
@@ -131,6 +132,11 @@ describe('every start is recorded, and says who asked', () => {
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record },
+      // `startStackOnce` asks the registry where the project is, to ask git
+      // whether its tree is the commit it claims. A local stack is exempt
+      // from the refusal, and this one is local — what the fixture owes is
+      // the lookup, not a repository.
+      registry: { get: () => ({ name: 'daos', path: tmpdir() }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
       loadProjectConfig: vi.fn(async () => ({})),

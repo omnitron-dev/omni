@@ -27,6 +27,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 // Peer type from netron.connect() — RemotePeer for TCP connections
 import type { FleetService } from '../services/fleet.service.js';
 import type { SyncService } from '../services/sync.service.js';
+import type { ISyncStatus } from '../shared/dto/project.js';
 import { directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
 
 // =============================================================================
@@ -77,6 +78,13 @@ export interface SlaveConnection {
   reconnectTimer: NodeJS.Timeout | null;
   /** How this connection was reached, and what has to be released. */
   link: MeshLink | null;
+  /**
+   * What the node last said about its own replication, or null for a node we
+   * have not heard from. Null is the honest answer: the console used to
+   * report `syncedSlaves: 0, totalPending: 0` as a literal, and a confident
+   * zero about a buffer nobody has asked about reads as «up to date».
+   */
+  syncStatus: ISyncStatus | null;
 }
 
 // =============================================================================
@@ -196,6 +204,7 @@ export class SlaveConnector {
       netron: null,
       peer: null,
       lastHeartbeat: null,
+      syncStatus: null,
       lastError: null,
       reconnectAttempt: 0,
       reconnectTimer: null,
@@ -296,6 +305,8 @@ export class SlaveConnector {
     via: MeshLink['via'] | null;
     /** False here means `ping` works and no data can be pulled. */
     authenticated: boolean;
+    /** The node's own replication state, or null if it has not been heard. */
+    syncStatus: ISyncStatus | null;
   }> {
     return [...this.connections.values()].map((conn) => ({
       host: conn.config.host,
@@ -306,6 +317,7 @@ export class SlaveConnector {
       lastError: conn.lastError,
       via: conn.link?.via ?? null,
       authenticated: Boolean(conn.link?.token),
+      syncStatus: conn.syncStatus,
     }));
   }
 
@@ -355,7 +367,12 @@ export class SlaveConnector {
       await this.removeSlave(host, port);
       await this.addSlave({ host, port });
       if (!(await this.waitUntilConnected(host, port, 60_000))) {
-        throw new Error(`Slave ${host}:${port} did not come back after its connection dropped`);
+        // The symptom is «did not come back»; the diagnosis is in what
+        // dropped it, and without the cause the second failure hides the
+        // first.
+        throw new Error(`Slave ${host}:${port} did not come back after its connection dropped`, {
+          cause: err,
+        });
       }
       return await this.callOnSlave(host, port, service, method, args);
     }
@@ -471,8 +488,11 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         'Node joined the mesh'
       );
 
-      // Pull buffered sync data from slave immediately
-      void this.pullSyncData(key, conn);
+      // Pull buffered sync data from slave immediately, then ask what is
+      // left. Both call sites of the drain do this: without it here, a node
+      // that just joined shows an empty «Sync» column until the first sweep
+      // fifteen seconds later, which is exactly when somebody is looking.
+      void this.pullSyncData(key, conn).then(() => this.refreshSyncStatus(conn));
 
       await this.recordFleetHeartbeat(conn);
 
@@ -529,6 +549,11 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
 
     conn.peer = null;
     conn.status = 'disconnected';
+    // What it last told us about its buffer is no longer something we know.
+    // Keeping the last figure would report a stale «0 pending» about a node
+    // that has been silent for hours, which is the exact reading this whole
+    // path exists to prevent.
+    conn.syncStatus = null;
   }
 
   /**
@@ -640,8 +665,45 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
     // Pull sync data from all connected slaves during heartbeat
     for (const [key, conn] of this.connections) {
       if (conn.status === 'connected' && conn.peer) {
-        void this.pullSyncData(key, conn);
+        // The status is read AFTER the drain, and regardless of whether the
+        // drain worked: `pendingItems` then means what is still waiting
+        // rather than what was waiting before this sweep touched it. A
+        // failed drain is precisely when the figure matters.
+        void this.pullSyncData(key, conn).then(() => this.refreshSyncStatus(conn));
       }
+    }
+  }
+
+  /**
+   * Ask the node what its own replication is doing, and remember the answer.
+   *
+   * `OmnitronSync.getSyncStatus` has answered this since it was written, and
+   * the only caller was the node's own page. The stack view reported
+   * `syncedSlaves: 0, totalPending: 0` as literals and `syncStatus: null` per
+   * node — a «Sync» column that could never show anything — while the figure
+   * it could not show was 47,407 entries buffered on one node, none
+   * delivered, over eleven hours.
+   *
+   * It rides the heartbeat because the heartbeat already reaches every node
+   * every 15 s, so the view costs one extra call per node per sweep and
+   * nothing at all at read time.
+   */
+  private async refreshSyncStatus(conn: SlaveConnection): Promise<void> {
+    if (conn.status !== 'connected' || !conn.peer) return;
+
+    try {
+      const syncProxy = await conn.peer.queryInterface('OmnitronSync');
+      const status = (await syncProxy.getSyncStatus()) as ISyncStatus | undefined;
+      conn.syncStatus = status ?? null;
+    } catch (err) {
+      // A node that cannot answer is a node we do not know about, not a node
+      // with an empty buffer. The heartbeat above is what decides whether it
+      // is still connected; this only decides what we claim to know.
+      conn.syncStatus = null;
+      this.logger.debug(
+        { host: conn.config.host, error: (err as Error).message },
+        'Sync status unavailable — the node reports nothing until the next heartbeat'
+      );
     }
   }
 

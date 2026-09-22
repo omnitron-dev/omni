@@ -40,11 +40,25 @@ export interface NodeWithSync {
 }
 
 /**
- * A node is synced when it is connected AND has nothing left to deliver.
- * Connected with a backlog is not synced — that is the eleven-hour case.
+ * A node is synced when it has nothing left to deliver.
+ *
+ * NOT `connected && pendingItems === 0`, which is what this said first and
+ * which can never be true. `ISyncStatus.connected` is `masterInvoke !==
+ * null` — whether the slave holds a PUSH channel to the master — and that
+ * channel has no production caller; `sync.rpc-service.ts` says so in as many
+ * words. Replication runs the other way: the master PULLS, through
+ * `drainBuffer`/`ackDrained`, and `ackDrained` is what advances
+ * `lastSyncAt`. So a node that is perfectly up to date reports
+ * `connected: false`, and requiring it made «synced» a state the column
+ * could never print — an unreachable figure one level down from the literal
+ * zero it replaced.
+ *
+ * Of the six fields, three are written only by that dead path — `connected`,
+ * `lastError` and `failedAttempts`. `pendingItems` and `lastSyncAt` are the
+ * two the pull path maintains, and they are the two to count on.
  */
 function isSynced(status: ISyncStatus): boolean {
-  return status.connected && status.pendingItems === 0;
+  return status.pendingItems === 0;
 }
 
 export function summariseSync(nodes: readonly NodeWithSync[]): SyncSummary {

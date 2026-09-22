@@ -147,8 +147,15 @@ export async function stackStatusCommand(projectName: string, stackName: string)
           host: `${n.host}:${n.port}`,
           role: n.daemonRole === 'slave' ? 'slave' : 'master',
           label: n.label ?? '',
+          // Read off `pendingItems`, not `connected`. `connected` reports
+          // whether the slave holds a PUSH channel to the master, and that
+          // path has no production caller — replication runs the other way,
+          // with the master pulling — so it is false on every healthy node
+          // and this cell could never print «synced».
           sync: n.syncStatus
-            ? n.syncStatus.connected ? prism.green('synced') : `${n.syncStatus.pendingItems} pending`
+            ? n.syncStatus.pendingItems === 0
+              ? prism.green('synced')
+              : `${n.syncStatus.pendingItems} pending`
             : '',
         })),
         columns: [

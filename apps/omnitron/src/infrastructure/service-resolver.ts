@@ -8,6 +8,10 @@
  *   { name: 'omnitron-postgres', image: 'postgres:17-alpine', ports: [...], env: [...] }
  */
 
+import fs from 'node:fs';
+
+import { configFilesHash, type ConfigFile } from './config-payload.js';
+
 import type {
   InfrastructureConfig,
   GatewayServiceConfig,
@@ -539,6 +543,50 @@ export function resolveOmnitronPg(options?: {
  * Port 9800 (public) → nginx → port 9801 (internal daemon HTTP)
  */
 /**
+ * A digest of every file a container mounts from under `root`.
+ *
+ * `configFilesHash` was written for this — its docblock says it is «folded
+ * into the container's spec hash by the caller, so a changed template
+ * recreates the container» — and had no caller. So a node wrote each new
+ * nginx.conf over the old one and kept serving the old one: the gateway
+ * renders its template once, at start, and a reconcile that compares volume
+ * PATHS saw nothing to do. The test gateway was recreated only when its
+ * static bundle changed, which carried the config along by accident.
+ *
+ * Taken from the volumes themselves rather than a list of file names, so a
+ * mount added later is covered without anyone remembering this function.
+ * Read from disk on the machine that will run the container: on a node that
+ * is the copy just written from the master's payload, on a master the
+ * project's own files. Synchronous, because the resolver is — and small: the
+ * daos gateway's files are 65 KB, read once per provision.
+ *
+ * `undefined` when there is nothing under `root` to read, or it cannot be
+ * read — the spec hash then stays what it was without this.
+ */
+export function mountedConfigDigest(root: string, volumes: ResolvedContainer['volumes']): string | undefined {
+  const prefix = root.endsWith('/') ? root : `${root}/`;
+  const files: ConfigFile[] = [];
+  const visit = (abs: string): void => {
+    const stat = fs.statSync(abs);
+    if (stat.isDirectory()) {
+      for (const name of fs.readdirSync(abs).sort()) visit(`${abs}/${name}`);
+    } else if (stat.isFile()) {
+      // latin1 maps bytes to code units one to one, so the digest sees the
+      // bytes the container will, text or not.
+      files.push({ path: abs.slice(prefix.length), content: fs.readFileSync(abs, 'latin1'), mode: (stat.mode & 0o777).toString(8) });
+    }
+  };
+  try {
+    for (const v of volumes) {
+      if (v.source.startsWith(prefix)) visit(v.source);
+    }
+  } catch {
+    return undefined;
+  }
+  return files.length > 0 ? configFilesHash(files) : undefined;
+}
+
+/**
  * Resolve API gateway container (OpenResty + Lua).
  *
  * Mounts project-level nginx configs as read-only bind volumes.
@@ -575,7 +623,7 @@ export function resolveGateway(
   // Default upstream host — host.docker.internal for Docker, overridable for bare-metal/cluster
   const upstreamHost = 'host.docker.internal';
 
-  return applyManagedDefaults({
+  const spec = applyManagedDefaults({
     name: containerName('gateway'),
     image,
     ports: [{ host: port, container: 80 }],
@@ -642,6 +690,9 @@ export function resolveGateway(
     extraHosts: ['host.docker.internal:host-gateway'],
     resources: config.resources,
   });
+  const configDigest = mountedConfigDigest(absConfigDir, spec.volumes);
+  if (configDigest) spec.configDigest = configDigest;
+  return spec;
 }
 
 // =============================================================================

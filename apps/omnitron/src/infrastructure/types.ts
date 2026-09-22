@@ -604,6 +604,21 @@ export interface ResolvedContainer {
   /** Extra /etc/hosts entries (e.g., 'host.docker.internal:host-gateway') */
   extraHosts?: string[] | undefined;
   /**
+   * The content of the files this container bind-mounts from its config
+   * directory, as one digest — part of the spec hash, so a changed file
+   * recreates the container.
+   *
+   * The mounts name PATHS, and a path does not change when its file does. A
+   * gateway reads nginx.conf once, when its entrypoint renders it, so without
+   * this a corrected template reached the node, was written over the old one,
+   * and the running gateway went on serving the old one for as long as its
+   * static bundle did not change.
+   *
+   * Absent for a container that mounts no config files, which leaves its
+   * spec hash what it was before this field existed.
+   */
+  configDigest?: string | undefined;
+  /**
    * Docker network this container joins. When unset, Docker assigns the
    * default `bridge` network — which is known to accumulate phantom
    * endpoints after dockerd restarts / host sleep on macOS, blocking

@@ -60,6 +60,11 @@ export function containerSpecHash(config: ResolvedContainer): string {
     // is on the old one, and its name resolves for nobody.
     network: config.network ?? null,
     restart: config.restart,
+    // What the mounted config files SAY, which the volume paths above cannot:
+    // an nginx.conf rewritten in place has the same path. Only when present,
+    // so a container with no config files keeps the hash it was created
+    // with and an upgrade of omnitron recreates nothing on its account.
+    ...(config.configDigest ? { configDigest: config.configDigest } : {}),
   });
   return createHash('sha1').update(normalized).digest('hex').slice(0, 16);
 }

@@ -32,6 +32,7 @@ import { ServiceProxyHandler } from './service-proxy.js';
 import { getAvailablePort } from '@omnitron-dev/titan/utils';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import { shutdownLadder, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
+import { confirmDeath } from './confirm-death.js';
 // MockProcessSpawner is now in @omnitron-dev/testing/titan - use dynamic import to avoid circular dependency
 let MockProcessSpawnerClass: any = null;
 
@@ -510,36 +511,29 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
             resolve();
             return;
           }
-          // No initialiser: both arms below assign, so `= false` was a value
-          // that could never be read.
-          let stillAlive: boolean;
-          try {
-            process.kill(child.pid, 0);
-            stillAlive = true;
-          } catch (err) {
-            // ESRCH = process gone (the expected case after SIGKILL).
-            // EPERM = exists but we can't signal it; treat as alive.
-            stillAlive = (err as NodeJS.ErrnoException).code === 'EPERM';
-          }
-          if (!stillAlive) {
+          // Asked properly: Node's own knowledge first, then a short poll,
+          // and only then a verdict carrying the OS state. A single probe
+          // under a second after the signal reported fifteen «survivors»
+          // that were merely being reaped — see `confirm-death.ts`.
+          void confirmDeath(child).then((verdict) => {
+            if (verdict.dead) {
+              resolve();
+              return;
+            }
+            // A real survivor: an uninterruptible syscall, a kernel hang, or
+            // a pid that now belongs to someone else. One more SIGKILL as a
+            // last attempt, and a record that says which case it was.
+            this.logger.error(
+              { workerId: this.id, pid: child.pid, state: verdict.state, waitedMs: verdict.waitedMs },
+              'Process survived SIGKILL — escalating one more SIGKILL and logging the leak',
+            );
+            try {
+              if (child.pid != null) process.kill(child.pid, 'SIGKILL');
+            } catch {
+              // Best-effort — the kernel will reap soon or never.
+            }
             resolve();
-            return;
-          }
-          // Surviving SIGKILL is rare but possible (uninterruptible
-          // syscall, kernel hang, PID reused by an unrelated process
-          // we shouldn't touch). Send one more SIGKILL as a last
-          // attempt; either way, log a structured error so the
-          // condition is observable.
-          this.logger.error(
-            { workerId: this.id, pid: child.pid },
-            'Process survived SIGKILL — escalating one more SIGKILL and logging the leak',
-          );
-          try {
-            process.kill(child.pid, 'SIGKILL');
-          } catch {
-            // Best-effort — the kernel will reap soon or never.
-          }
-          resolve();
+          });
         },
         GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT + SIGKILL_TIMEOUT
       );

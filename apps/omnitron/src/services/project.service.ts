@@ -836,15 +836,18 @@ export class ProjectService extends EventEmitter {
           // Every tree the artifacts were built from, not only the project's:
           // the omni checkout's packages are vendored into them, and the
           // project's commit alone could not say which omni went out.
-          // The release, when that is what went out: its id, and the two
-          // commits its artifacts were built from in clean clones.
+          // The release, when that is what went out: its id and the two
+          // commits its artifacts were built from in clean clones. Flat,
+          // because `scrubDetails` keeps facts and replaces a nested object
+          // with `[object]` — measured on the first release deployed, whose
+          // row said exactly that. Not the same as `trees` below, which
+          // describes THIS master's disk: the artifacts came from the
+          // release's omni, and the master's may have moved since.
           ...(release
             ? {
-                release: {
-                  id: release.id,
-                  project: release.manifest.project.commit,
-                  omni: release.manifest.omni.commit,
-                },
+                release: release.id,
+                releaseProjectCommit: release.manifest.project.commit.slice(0, 8),
+                releaseOmniCommit: release.manifest.omni.commit.slice(0, 8),
               }
             : {}),
           trees: trees.map(({ root, tree: t }) => ({

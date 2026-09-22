@@ -448,6 +448,10 @@ export async function runReleaseBuild(
   const omniSha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
 
   id = releaseId(projectName, new Date(), projectSha, omniSha);
+  // Said BEFORE the directory exists, so that from the moment there is
+  // anything on disk under this name, the service watching these phases can
+  // name it — and `prune` can refuse to delete a build in progress.
+  say('preparing the build root', 3);
   const releaseRoot = path.join(OMNITRON_HOME, 'releases', id);
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });

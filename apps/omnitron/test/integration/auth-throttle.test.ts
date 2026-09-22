@@ -21,8 +21,14 @@ import type { Kysely } from 'kysely';
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { AuthService } from '../../src/services/auth.service.js';
 import type { OmnitronDatabase } from '../../src/database/schema.js';
+import { requiresTestPostgres } from './requires-test-postgres.js';
 
 const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+
+// Asked once, at module scope: `describe.skipIf` needs the answer before the
+// suite is declared, and a `beforeAll` runs too late to skip its own suite.
+// An absent database is a different finding from a defect — see the helper.
+const testPg = await requiresTestPostgres(TEST_PG_URL);
 const PASSWORD = 'correct-horse-battery-staple';
 
 let db: Kysely<OmnitronDatabase>;
@@ -46,7 +52,7 @@ async function attemptsFor(userId: string) {
     .executeTakeFirstOrThrow();
 }
 
-describe('sign-in throttling (integration)', () => {
+describe.skipIf(!testPg.ok)('sign-in throttling (integration)', () => {
   beforeAll(async () => {
     resetEnvCache();
     setEnvOverride({ OMNITRON_DATABASE_URL: TEST_PG_URL });
@@ -54,14 +60,6 @@ describe('sign-in throttling (integration)', () => {
     const { createOmnitronDb } = await import('../../src/database/connection.js');
     db = await createOmnitronDb({ max: 2 });
 
-    const { sql } = await import('kysely');
-    try {
-      await sql`SELECT 1`.execute(db);
-    } catch (err) {
-      throw new Error(
-        `Test PostgreSQL unreachable at ${TEST_PG_URL} — run \`pnpm test:up\` first. Cause: ${(err as Error).message}`
-      );
-    }
 
     auth = new AuthService(db, 'test-secret-for-throttle-suite');
   });

@@ -22,8 +22,14 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { Kysely } from 'kysely';
 
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
+import { requiresTestPostgres } from './requires-test-postgres.js';
 
 const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+
+// Asked once, at module scope: `describe.skipIf` needs the answer before the
+// suite is declared, and a `beforeAll` runs too late to skip its own suite.
+// An absent database is a different finding from a defect — see the helper.
+const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 let db: Kysely<unknown>;
 
@@ -46,7 +52,7 @@ async function listTables(handle: Kysely<unknown>): Promise<string[]> {
   return result.rows.map((r) => r.tablename).sort();
 }
 
-describe('Omnitron migrations (integration)', () => {
+describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
   beforeAll(async () => {
     resetEnvCache();
     setEnvOverride({ OMNITRON_DATABASE_URL: TEST_PG_URL });

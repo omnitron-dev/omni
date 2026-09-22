@@ -14,7 +14,7 @@ import net from 'node:net';
 
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { Findings, checkPublishedPorts, directorySize, biggestSubdirectories } from '../../src/commands/doctor.js';
+import { Findings, checkPublishedPorts, probePort, directorySize, biggestSubdirectories } from '../../src/commands/doctor.js';
 import type { ContainerState } from '../../src/infrastructure/types.js';
 
 /** A real listener, so "reachable" is observed rather than mocked. */
@@ -240,5 +240,35 @@ describe('biggestSubdirectories', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('what a loopback port answered', () => {
+  it('says open when something is listening', async () => {
+    const l = await listener();
+    try {
+      expect(await probePort(l.port)).toBe('open');
+    } finally {
+      l.close();
+    }
+  });
+
+  it('says refused when the kernel answered and nobody is there', async () => {
+    // The container's fault, and still reported as before.
+    expect(await probePort(await deadPort())).toBe('refused');
+  });
+
+  it('says no-answer when nothing replies at all', async () => {
+    // 192.0.2.0/24 is TEST-NET-1: reserved for documentation and routed
+    // nowhere, so a connect there produces neither a reply nor a refusal —
+    // the shape a loaded machine produces on loopback, deterministically.
+    expect(await probePort(9, '192.0.2.1', 300)).toBe('no-answer');
+  });
+
+  it('does not call a port refused when the probe itself failed', async () => {
+    // A host that will not resolve is the probe failing, not the port. It
+    // was `false` before, indistinguishable from «nothing is listening»,
+    // and that is what let the machine speak in a container's name.
+    expect(await probePort(80, 'no-such-host.invalid', 500)).toBe('no-answer');
   });
 });

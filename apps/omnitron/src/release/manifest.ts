@@ -68,7 +68,12 @@ export interface ReleaseArtifact {
  */
 export interface GateOutcome {
   readonly name: string;
-  readonly status: 'passed' | 'failed' | 'not-run' | 'timed-out';
+  /**
+   * `killed` is the machine as well: a signal from outside — the OS
+   * reclaiming memory — ended the gate before it answered. `gates.mjs`
+   * reports it apart from its own timeout, and so does this.
+   */
+  readonly status: 'passed' | 'failed' | 'not-run' | 'timed-out' | 'killed';
   /** The gate's own words — an exit code and a line, not a paraphrase. */
   readonly detail?: string;
   readonly durationMs?: number;
@@ -101,10 +106,22 @@ export interface BuiltWith {
   readonly packages: ReadonlyArray<{ readonly name: string; readonly distBuiltAt: string }>;
 }
 
+/** A repository and the commit taken from it. */
+export interface ReleaseSource {
+  readonly repo: string;
+  readonly commit: string;
+  /**
+   * Whether a remote-tracking branch contains the commit — null when the
+   * checkout has no remote refs to ask. A release built from a commit that
+   * exists on one laptop cannot be rebuilt by anyone else.
+   */
+  readonly onRemote?: boolean | null;
+}
+
 export interface ReleaseManifest {
   readonly id: string;
   /** The project's repository and the commit this was built from. */
-  readonly project: { readonly repo: string; readonly commit: string };
+  readonly project: ReleaseSource;
   /**
    * And omni's, because its packages are vendored into every artifact.
    *
@@ -112,8 +129,14 @@ export interface ReleaseManifest {
    * self-hosted GitLab — which is why neither forge's CI can produce this
    * object and the master can.
    */
-  readonly omni: { readonly repo: string; readonly commit: string };
+  readonly omni: ReleaseSource;
   readonly artifacts: readonly ReleaseArtifact[];
+  /**
+   * Applications whose artifact did not build, with the builder's words. A
+   * release carrying them is still written — it is evidence — and a stack
+   * that requires the app refuses it by the missing artifact.
+   */
+  readonly artifactFailures?: ReadonlyArray<{ readonly app: string; readonly error: string }>;
   readonly gates: readonly GateOutcome[];
   readonly builtWith: BuiltWith;
   readonly builtAt: string;
@@ -157,6 +180,15 @@ export type ReleaseDecision =
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
+/** How each non-pass reads in a refusal: which one it was is the finding. */
+const OUTCOME_WORDS: Record<GateOutcome['status'], string> = {
+  passed: 'passed',
+  failed: 'failed',
+  'not-run': 'did not run',
+  'timed-out': 'did not answer in time',
+  killed: 'was killed before it answered',
+};
+
 /**
  * May this release reach this stack?
  *
@@ -190,6 +222,12 @@ export function decideRelease(
       return {
         action: 'refuse',
         because: `the gate '${required}' did not run${gate.detail ? `: ${gate.detail}` : ''}`,
+      };
+    }
+    if (gate.status === 'killed') {
+      return {
+        action: 'refuse',
+        because: `the gate '${required}' was killed before it answered${gate.detail ? `: ${gate.detail}` : ''}`,
       };
     }
     if (gate.status === 'timed-out') {
@@ -241,7 +279,7 @@ export function decideRelease(
       if (gate.status !== 'passed') {
         return {
           action: 'refuse',
-          because: `'${required}' ${gate.status === 'failed' ? 'failed' : 'did not run'} against this release on '${stack}'` +
+          because: `'${required}' ${OUTCOME_WORDS[gate.status]} against this release on '${stack}'` +
             (gate.detail ? `: ${gate.detail}` : ''),
         };
       }

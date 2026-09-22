@@ -42,7 +42,7 @@ async function readOnions(container: string): Promise<OnionEntry[]> {
   // portable across container shells than glob expansion in a quoted
   // `sh -c '...'`, which has shown up as empty output via some runtime
   // adapters. We avoid `-printf` (not in BusyBox find).
-  let raw = '';
+  let raw: string;
   try {
     raw = await execInContainer(container, [
       'find',

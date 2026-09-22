@@ -577,6 +577,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         throw new Error(
           `${vendored.name} ships 'dist' and its 'dist' is out of date (${stale}), and rebuilding it failed: ` +
             `${(err as Error).message.slice(0, 300)}`,
+          { cause: err },
         );
       }
       // What this package hashed to a moment ago is no longer what it is:

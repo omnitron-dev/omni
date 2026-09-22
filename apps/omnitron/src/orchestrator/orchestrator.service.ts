@@ -3090,7 +3090,6 @@ export class OrchestratorService extends EventEmitter {
     if (unique.length === 0) return out;
 
     try {
-      const { execFile } = await import('node:child_process');
       const psOutput = await new Promise<string>((resolve, reject) => {
         execFile('ps', ['-p', unique.join(','), '-o', 'pid=,rss=,%cpu='], { timeout: 5000 }, (err, stdout) => {
           // `ps` exits non-zero when NONE of the pids exist, but still
@@ -3120,7 +3119,6 @@ export class OrchestratorService extends EventEmitter {
    */
   private async sampleProcessMetrics(pid: number): Promise<{ cpu: number; memory: number } | null> {
     try {
-      const { execFile } = await import('node:child_process');
       const psOutput = await new Promise<string>((resolve, reject) => {
         execFile('ps', ['-p', String(pid), '-o', 'pid=,rss=,%cpu='], { timeout: 5000 }, (err, stdout) => {
           if (err && !stdout) reject(err);

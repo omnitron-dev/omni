@@ -214,6 +214,7 @@ export function createDeferredTopologyProxy(
             } catch (err) {
               throw new Error(
                 `Topology service '${serviceName}' unavailable: ${(err as Error).message}`,
+                { cause: err },
               );
             }
           }
@@ -765,7 +766,6 @@ class BootstrapProcess {
    */
   private async assertContainerIdentity(moduleResolveDir: string): Promise<void> {
     const { realpathSync, existsSync, readFileSync } = await import('node:fs');
-    const path = await import('node:path');
     const { createRequire } = await import('node:module');
 
     /**

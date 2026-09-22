@@ -991,7 +991,6 @@ export class OmnitronDaemon {
     if (!isSlave) {
       const { NodeManagerService } = await import('../services/node-manager.service.js');
       const { NodeManagerRpcService } = await import('../services/node-manager.rpc-service.js');
-      const secretsService = await container.resolveAsync(SECRETS_SERVICE_TOKEN);
       const { DaemonStateStore: DaemonStateStoreCls } = await import('./daemon-state-store.service.js');
       const daemonStateStore = await container.resolveAsync<InstanceType<typeof DaemonStateStoreCls>>(DAEMON_STATE_STORE_TOKEN);
       const nodeManager = new NodeManagerService(
@@ -1082,7 +1081,6 @@ export class OmnitronDaemon {
         });
 
         this.slaveConnector = connector;
-        const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
         projectService.setSlaveConnector(connector);
         // So the console can answer "is this node replicating", which is a
         // different question from "can this master reach it".
@@ -2362,7 +2360,6 @@ export class OmnitronDaemon {
       {
         name: 'orchestrator',
         apply: async (cfg) => {
-          const { ORCHESTRATOR_TOKEN } = await import('../shared/tokens.js');
           const orchestrator = await this.app!.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
           orchestrator.setConfig(cfg);
         },

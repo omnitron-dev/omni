@@ -12,7 +12,7 @@ import {
   type KnownMachine,
   type NodeLike,
 } from '../infrastructure/known-machines.js';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { MeshAsker, askMachine } from './fleet-asking.js';
 import { formatStatus, formatMemory } from '../shared/format.js';
 import { spinner } from './spinner.js';
@@ -244,7 +244,6 @@ export async function fleetUpgradeCommand(
   nodeNames: string[],
   options: { dryRun?: boolean; keep?: number } = {},
 ): Promise<void> {
-  const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await import('../daemon/daemon-client.js');
   const { requireDaemon } = await import('./daemon-required.js');
   const { planUpgrade, runUpgrade } = await import('../services/node-upgrade.js');
 

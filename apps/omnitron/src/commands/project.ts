@@ -61,7 +61,7 @@ export async function projectListCommand(): Promise<void> {
       async (svc) => ({ projects: await svc.listProjects(), online: true }),
       () => {
         const seeds = ProjectRegistry.open().list();
-        const projects = seeds.map<IProjectInfo>((p) => ({
+        const fromRegistry = seeds.map<IProjectInfo>((p) => ({
           name: p.name,
           displayName: p.name,
           path: p.path,
@@ -70,7 +70,7 @@ export async function projectListCommand(): Promise<void> {
           runningStacks: 0,
           totalStacks: 0,
         }));
-        return { projects, online: false };
+        return { projects: fromRegistry, online: false };
       },
     );
 

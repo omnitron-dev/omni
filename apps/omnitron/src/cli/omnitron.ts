@@ -392,9 +392,9 @@ program
 program
   .command('exec <app> <service> <method> [args...]')
   .description('Invoke an RPC method on a managed app')
-  .action(async (app, service, method, args) => {
+  .action(async (app, serviceName, method, args) => {
     const { execCommand } = await import('../commands/exec.js');
-    await execCommand(app, service, method, args);
+    await execCommand(app, serviceName, method, args);
   });
 
 program
@@ -656,9 +656,9 @@ infra
   .description('View infrastructure service logs')
   .option('-f, --follow', 'Follow log output')
   .option('-n, --lines <N>', 'Number of lines', '50')
-  .action(async (service, opts) => {
+  .action(async (serviceName, opts) => {
     const { infraLogsCommand } = await import('../commands/infra.js');
-    await infraLogsCommand(service, opts);
+    await infraLogsCommand(serviceName, opts);
   });
 
 infra

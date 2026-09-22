@@ -701,7 +701,25 @@ export class ProjectService extends EventEmitter {
       // Observed on the dev stand with all six apps dead: `stack start`
       // printed "Stack acme/dev started — 0/6 apps online", exited 0, and
       // started nothing. Ask what is actually online before believing it.
-      const current = this.toStackInfo(projectName, stackName, stackConfig);
+      //
+      // And ask the machine that runs them. `toStackInfo` reads THIS
+      // daemon's orchestrator, which lists none of a remote stack's
+      // applications because they run on the node — so `down` was all six,
+      // every time, and this short-circuit could never fire for a remote
+      // stack. Measured 2026-09-22: six occurrences, every one of them
+      // `down: [main, storage, priceverse, paysys, messaging, geo]` against
+      // a node where all six were online with pids and uptimes to show for
+      // it. Each fell through to a full deployment of a stack that needed
+      // nothing — which is most of the «four master restarts, four full
+      // redeploys, twenty-four application restarts» that `decideRedeploy`
+      // was written to stop. Same reader, same mistake, third caller: see
+      // `getStackStatus` and `withRemoteAppStatuses`, which is what this
+      // now goes through. For a local stack it changes nothing — the
+      // wrapper returns the info untouched.
+      const current = await this.withRemoteAppStatuses(
+        projectName,
+        this.toStackInfo(projectName, stackName, stackConfig),
+      );
       const down = current.apps.filter((a) => a.status !== 'online');
       if (down.length === 0) {
         this.logger.warn({ project: projectName, stack: stackName }, 'Stack already running');

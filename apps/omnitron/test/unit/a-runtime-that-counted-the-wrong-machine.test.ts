@@ -184,3 +184,84 @@ describe('a local stack still counts this machine', () => {
     expect(invokeOnSlave).not.toHaveBeenCalled();
   });
 });
+
+describe('«this stack is already running» is asked of the machine that runs it', () => {
+  /** A service with what `startStackOnce`'s short-circuit reaches, and no more. */
+  function startable(nodeApps: Array<{ name: string; status: string }>) {
+    const stackConfig = {
+      type: 'remote' as const,
+      apps: 'all' as const,
+      nodes: [{ host: '37.27.130.185', port: 9700 }],
+    };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const svc: any = Object.create(ProjectService.prototype);
+    Object.assign(svc, {
+      logger,
+      // Unknown to the registry, so the working-tree check has no path to
+      // ask about and the method goes straight to the short-circuit.
+      registry: { get: () => null, list: () => [] },
+      loadProjectConfig: async () => ({ apps: SIX.map((name) => ({ name })) }),
+      resolveStacks: () => ({ test: stackConfig }),
+      stackStates: new Map([['daos/test', { status: 'running', config: stackConfig }]]),
+      toStackInfo: () => ({
+        name: 'test',
+        type: 'remote',
+        status: 'running',
+        config: stackConfig,
+        infrastructure: null,
+        // What THIS daemon's orchestrator knows about applications that run
+        // somewhere else: nothing.
+        apps: SIX.map((name) => ({ name, status: 'stopped', pid: null, cpu: 0, memory: 0 })),
+      }),
+      slaveConnector: {
+        invokeOnSlave: vi.fn(async () => ({ apps: nodeApps.map((a) => nodeApp(a.name, a.status)) })),
+        getConnections: () => [],
+      },
+      remoteInfraStatus: vi.fn(async () => null),
+    });
+    return { svc, logger };
+  }
+
+  it('returns without deploying when the node says all six are up', async () => {
+    const { svc, logger } = startable(SIX.map((name) => ({ name, status: 'online' })));
+
+    const info = await svc.startStackOnce('daos', 'test', 'operator', false);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ project: 'daos', stack: 'test' }),
+      'Stack already running',
+    );
+    expect(info.apps.filter((a: { status: string }) => a.status === 'online')).toHaveLength(6);
+  });
+
+  it('falls through when the node says one is down, and names it', async () => {
+    // The control in the other direction: the short-circuit must not become
+    // a way to skip a deployment a stack actually needs.
+    const { svc, logger } = startable(
+      SIX.map((name) => ({ name, status: name === 'paysys' ? 'stopped' : 'online' })),
+    );
+
+    await svc.startStackOnce('daos', 'test', 'operator', false).catch(() => undefined);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ down: ['paysys'] }),
+      'Stack is marked running but some of its apps are not — starting them',
+    );
+  });
+
+  it('does not read this daemon for a remote stack — that is what made it always fall through', async () => {
+    // Six occurrences measured on 2026-09-22, every one of them
+    // `down: [main, storage, priceverse, paysys, messaging, geo]` against a
+    // node where all six were online. The master's orchestrator lists none
+    // of them, so the short-circuit could never fire and every start became
+    // a full deployment of a stack that needed nothing.
+    const { svc, logger } = startable(SIX.map((name) => ({ name, status: 'online' })));
+
+    await svc.startStackOnce('daos', 'test', 'operator', false);
+
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'Stack is marked running but some of its apps are not — starting them',
+    );
+  });
+});

@@ -156,6 +156,35 @@ export function resolveMaxBodyBytes(options: unknown): number {
  * loop on a self-referencing cause. Returns nothing when there is no cause,
  * so the field simply does not appear rather than appearing empty.
  */
+/** What a method says about caching its own answers, for the response hints. */
+export interface CacheHint {
+  maxAge: number;
+  tags: string[];
+}
+
+/**
+ * The cache hint a method's descriptor produces, or null when it makes none.
+ *
+ * `?? 300000`, not `|| 300000`. `cacheMaxAge: 0` is a method saying «do not
+ * hold this» — the client already reads it that way, gating its store on
+ * `maxAge > 0` — but the server could never SEND a zero, so that guard was
+ * unreachable and the answer was cached for five minutes instead. A defence
+ * the value never arrives at.
+ *
+ * One function because this was written twice, identically, in the two
+ * places that build hints; two copies of one rule is how they come to differ.
+ */
+export function cacheHintFor(method: {
+  cacheable?: boolean;
+  cacheMaxAge?: number;
+  cacheTags?: string[];
+  contract?: { http?: { responseHeaders?: Record<string, unknown> } };
+}): CacheHint | null {
+  const asked = method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control'];
+  if (!asked) return null;
+  return { maxAge: method.cacheMaxAge ?? 300000, tags: method.cacheTags ?? [] };
+}
+
 export function causeFields(error: { cause?: unknown }): Record<string, unknown> {
   const chain: string[] = [];
   let current: unknown = error.cause;
@@ -1020,12 +1049,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       };
 
       // Add cache hints if applicable
-      if (method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control']) {
-        hints.cache = {
-          maxAge: method.cacheMaxAge || 300000,
-          tags: method.cacheTags || [],
-        };
-      }
+      const cacheHint = cacheHintFor(method);
+      if (cacheHint) hints.cache = cacheHint;
 
       const response = createSuccessResponse(message.id, result, hints);
 
@@ -1405,12 +1430,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         hints.streaming = true;
       }
 
-      if (method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control']) {
-        hints.cache = {
-          maxAge: method.cacheMaxAge || 300000,
-          tags: method.cacheTags || [],
-        };
-      }
+      const cacheHint = cacheHintFor(method);
+      if (cacheHint) hints.cache = cacheHint;
 
       const response = createSuccessResponse(message.id, context.output, hints);
 

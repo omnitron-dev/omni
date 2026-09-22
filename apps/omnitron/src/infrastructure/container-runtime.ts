@@ -132,8 +132,12 @@ export async function isDockerAvailable(): Promise<boolean> {
 
 /**
  * List all Omnitron-managed containers.
+ *
+ * `[]` when Docker cannot be asked, which is right for a listing and wrong for
+ * a health check: «nothing is running» and «Docker did not answer» are
+ * different states. `orThrow` keeps them apart.
  */
-export async function listManagedContainers(): Promise<ContainerState[]> {
+export async function listManagedContainers(options: { orThrow?: boolean } = {}): Promise<ContainerState[]> {
   try {
     const names = await withAdapter((adapter) => adapter.listContainers(true) as Promise<string[]>);
     if (names.length === 0) return [];
@@ -147,6 +151,11 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
     // churn per poll when it was working, and under load it stopped returning
     // at all, leaving the containers page in its loading state indefinitely.
     const inspected = await inspectContainers(names);
+    // Named and then not described: `inspectContainers` swallows its own
+    // failure, and an empty answer here is Docker going away mid-question.
+    if (options.orThrow && inspected.length === 0) {
+      throw new Error(`docker listed ${names.length} container(s) and then described none of them`);
+    }
 
     const managed: ContainerState[] = [];
     for (const info of inspected) {
@@ -168,7 +177,8 @@ export async function listManagedContainers(): Promise<ContainerState[]> {
     }
 
     return managed;
-  } catch {
+  } catch (err) {
+    if (options.orThrow) throw err;
     return [];
   }
 }

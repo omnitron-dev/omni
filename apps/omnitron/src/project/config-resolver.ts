@@ -325,8 +325,9 @@ export function resolveStack(
 
   // Allocate Redis DBs with stack offset
   const redisDbOffset = stackConfig.settings?.redisDbOffset ?? portAllocation?.redisDbStart ?? 0;
+  const declaredRedisDbs = stackConfig.infrastructure?.redis?.databases;
   const redisAllocation = useNewPath
-    ? allocateRedisDBs(enabledApps.map((a) => a.name), omnitronConfigs, redisDbOffset)
+    ? allocateRedisDBs(enabledApps.map((a) => a.name), omnitronConfigs, redisDbOffset, declaredRedisDbs)
     : allocateRedisDBsLegacy(enabledApps, appDefinitions, redisDbOffset);
 
   // Generate per-app resolved config
@@ -673,27 +674,44 @@ function allocateRedisDBs(
   apps: string[],
   omnitronConfigs: Map<string, OmnitronAppConfig>,
   offset: number,
+  declared?: Record<string, number>,
 ): Map<string, number> {
   const allocation = new Map<string, number>();
-  let nextDb = offset;
+  const taken = new Set<number>();
 
-  // App Redis DBs
+  // Every key this allocation will contain, in the order it is handed out:
+  // apps first, then the Titan service modules.
+  const keys: string[] = [];
+  for (const appName of apps) {
+    if (omnitronConfigs.get(appName)?.redis) keys.push(appName);
+  }
   for (const appName of apps) {
     const config = omnitronConfigs.get(appName);
-    if (config?.redis) {
-      allocation.set(appName, nextDb++);
-    }
+    if (config?.services?.discovery) keys.push(`${appName}:discovery`);
+    if (config?.services?.notifications) keys.push(`${appName}:notifications`);
   }
 
-  // Titan service module Redis DBs
-  for (const appName of apps) {
-    const config = omnitronConfigs.get(appName);
-    if (config?.services?.discovery) {
-      allocation.set(`${appName}:discovery`, nextDb++);
-    }
-    if (config?.services?.notifications) {
-      allocation.set(`${appName}:notifications`, nextDb++);
-    }
+  // What the stack states comes first. Until this pass existed, the
+  // `infrastructure.redis.databases` block was written by an operator,
+  // printed back as a count, and never executed — every app was handed the
+  // database its POSITION in the list happened to name. `allocateRedisDBsLegacy`
+  // below honoured an explicit index; this returns the ability to the new path.
+  for (const key of keys) {
+    const stated = declared?.[key];
+    if (stated === undefined) continue;
+    allocation.set(key, stated);
+    taken.add(stated);
+  }
+
+  // The counter fills the rest, stepping over every number already spoken
+  // for — including one stated for a key that comes later in the list.
+  let nextDb = offset;
+  for (const key of keys) {
+    if (allocation.has(key)) continue;
+    while (taken.has(nextDb)) nextDb++;
+    allocation.set(key, nextDb);
+    taken.add(nextDb);
+    nextDb++;
   }
 
   return allocation;

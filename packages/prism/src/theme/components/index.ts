@@ -162,6 +162,38 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     ...createCardOverrides(config),
 
     // =========================================================================
+    // LAYOUT
+    // =========================================================================
+    /**
+     * `Stack` spaces its children with CSS `gap`, never with margins.
+     *
+     * MUI's own default (`useFlexGap: false`) gives every child but the first
+     * a margin on the spacing side, and resets every child's own margin to 0.
+     * Both halves of that were measured in this codebase on 2026-09-22:
+     *
+     *   - when a row wraps, the first item of every wrapped line keeps its
+     *     margin and the first item of the first line does not, so the first
+     *     line sits one gap to the left of the rest. The release console's
+     *     gate strip showed it; the same shape — a wrapping `Stack` with
+     *     `spacing` — was in 146 places across the console, prism and the
+     *     portal;
+     *   - a child's own margin is silently discarded. `ml: 'auto'` does not
+     *     push, `mt: -1.5` does not pull a subtitle up, `FormControlLabel`
+     *     loses the -11px that aligns its control with the text around it —
+     *     which is why `ml: 'auto !important'` appears in both apps, and why
+     *     eight `ml: 'auto'` in the portal did nothing at all.
+     *
+     * `gap` has neither problem, every browser the apps support implements it,
+     * and MUI recommends turning it on here, globally. A child's margin now
+     * ADDS to the gap, as margins do everywhere else in CSS.
+     */
+    MuiStack: {
+      defaultProps: {
+        useFlexGap: true,
+      },
+    },
+
+    // =========================================================================
     // PAPER & SURFACES
     // =========================================================================
     MuiPaper: {

@@ -20,16 +20,24 @@ const HEX: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padSt
  * shared by the server and the browser. Declaring just what is used keeps it
  * that way instead of taking a type dependency on either platform.
  */
-declare const globalThis: {
-  crypto: { getRandomValues<T extends Uint8Array>(array: T): T };
-};
+interface RandomSource {
+  getRandomValues<T extends Uint8Array>(array: T): T;
+}
+
+/**
+ * Read at call time, as the global itself was, so a platform without it fails
+ * where the randomness is needed rather than when the module loads. This used
+ * to be `declare const globalThis`, which re-declared the global under its own
+ * name for the whole file.
+ */
+const webCrypto = (): RandomSource => (globalThis as unknown as { crypto: RandomSource }).crypto;
 
 let _lastMs = 0;
 let _seq = 0;
 
 function randomSeq(): number {
   const buf = new Uint8Array(2);
-  globalThis.crypto.getRandomValues(buf);
+  webCrypto().getRandomValues(buf);
   return ((buf[0]! << 8) | buf[1]!) & 0xfff;
 }
 
@@ -52,7 +60,7 @@ export function uuid(): string {
   const msLo = ms >>> 0;
 
   const rand = new Uint8Array(8);
-  globalThis.crypto.getRandomValues(rand);
+  webCrypto().getRandomValues(rand);
 
   return (
     HEX[(msHi >>> 8) & 0xff]! +

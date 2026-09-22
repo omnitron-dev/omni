@@ -274,16 +274,30 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
     const expected =
       this._status === ProcessStatus.STOPPING || this._status === ProcessStatus.STOPPED;
     this._status = ProcessStatus.STOPPED;
+    // An expected stop that had to be enforced is not a clean one: the
+    // worker was asked, did not leave within its window, and was killed with
+    // its shutdown hooks unrun. `expected` answers "did we ask for this?",
+    // which the message used to read as "did it go quietly" — so 123 kills
+    // over three days were logged at INFO as ordinary stops, one of them
+    // three lines below «SIGTERM timeout, sending SIGKILL» for the same
+    // worker. Being signalled is not the test: a worker that takes SIGTERM
+    // and leaves is clean. Being KILLED after refusing is not.
+    const forced = expected && signal === 'SIGKILL';
     const info: IWorkerExitInfo = {
       workerId: this.id,
       serviceName: this.serviceName,
       code,
       signal,
       expected,
+      forced,
     };
-    this.logger[expected ? 'info' : 'warn'](
+    this.logger[expected && !forced ? 'info' : 'warn'](
       info,
-      expected ? 'Worker exited cleanly' : 'Worker exited unexpectedly'
+      !expected
+        ? 'Worker exited unexpectedly'
+        : forced
+          ? 'Worker had to be killed — it did not exit within its shutdown window'
+          : 'Worker exited cleanly'
     );
     // EventEmitter swallows listener throws into an `error` event
     // if any; we want subscriber faults isolated from each other AND

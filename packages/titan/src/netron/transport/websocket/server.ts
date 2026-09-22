@@ -175,7 +175,18 @@ export class WebSocketServerAdapter extends BaseServer {
   async listen(): Promise<void> {
     // No-op if WebSocketServer was created with port option - it's automatically listening
     // Otherwise, WebSocketServer must have been provided with a server option
-    if ((this.wss as any).options?.port || (this.wss as any).options?.server || (this.wss as any).listening) {
+    //
+    // `listening` is asked FIRST and `port` is compared against `undefined`,
+    // because the same `0`-is-falsy reading that sent «any free port» to 8080
+    // in the transport lands here too, one layer down: a server created with
+    // `port: 0` IS listening, on a port the OS chose, and this refused it as
+    // «not configured to listen». Two halves of one mistake, and fixing only
+    // the first turned a silent wrong port into a loud false refusal.
+    if (
+      (this.wss as any).listening ||
+      (this.wss as any).options?.port !== undefined ||
+      (this.wss as any).options?.server
+    ) {
       // Emit listening event on next tick to ensure listeners are attached
       process.nextTick(() => this.handleListening());
       // Also return a promise that resolves after the event is emitted

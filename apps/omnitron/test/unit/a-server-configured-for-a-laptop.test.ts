@@ -130,14 +130,7 @@ describe('an override names its credentials; the app needs their values', () => 
   const service = (secrets?: { get(key: string): Promise<string | null> }) => {
     const orchestrator = { list: () => [], listHandleNames: () => [] } as never;
     const stateStore = { save() {}, load: () => null, get: () => null, set() {} } as never;
-    return new ProjectService(
-      logger.l as never,
-      orchestrator,
-      stateStore,
-      undefined,
-      undefined,
-      secrets as never,
-    ) as unknown as {
+    return new ProjectService(logger.l as never, orchestrator, stateStore, { secrets: secrets as never }) as unknown as {
       resolveOverrideSecrets(project: string, o: unknown): Promise<Record<string, never>>;
     };
   };

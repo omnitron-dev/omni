@@ -183,6 +183,20 @@ export function causeFields(error: { cause?: unknown }): Record<string, unknown>
   };
 }
 
+/**
+ * Refusals that are recorded whether or not request logging is on.
+ *
+ * 401 and 403 are the security record: an authenticated platform needs to
+ * know when a caller was turned away. 404 is the surface probe — a call for
+ * a service or method that does not exist is how someone maps what is there.
+ * 429 is the budget speaking, and a budget nobody can see engaging is
+ * indistinguishable from a budget that never engages.
+ *
+ * Everything else below 500 stays behind `options.logging`: a validation
+ * error on a form is the caller's own business and arrives in their response.
+ */
+const WITNESSED_REFUSALS = new Set([401, 403, 404, 429]);
+
 export class HttpServer extends EventEmitter implements ITransportServer {
   readonly connections = new Map<string, ITransportConnection>();
 
@@ -1060,6 +1074,32 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       const titanError = error instanceof TitanError ? error : toTitanError(error);
       const httpError = mapToHttp(titanError);
 
+      // This path logged NOTHING — not a refusal, not a 500.
+      //
+      // `handleInvocationRequest` records a 5xx as `error` and the witnessed
+      // refusals as `warn`; this one is the same operation written twice, and
+      // the second copy carried none of it. So a server fault on the fast
+      // path (no auth manager, no PRE_INVOKE middleware — the shape a plain
+      // service runs in) answered 500 to the caller and left the log empty.
+      // Found while proving a 404 goes unrecorded: the fix to the other copy
+      // did not reach this one, which is the usual way a one-directional fix
+      // ends.
+      if (this.netronPeer?.logger) {
+        const logFields = {
+          service: message.service,
+          method: message.method,
+          requestId: message.id,
+          status: httpError.status,
+          error: titanError.message,
+          path: 'fast',
+        };
+        if (httpError.status >= 500) {
+          this.netronPeer.logger.error(logFields, 'Netron error');
+        } else if (WITNESSED_REFUSALS.has(httpError.status) || this.options.logging) {
+          this.netronPeer.logger.warn(logFields, 'Netron error');
+        }
+      }
+
       // Use business error code when available (e.g., "SESSION_EXPIRED"),
       // fall back to HTTP status code for generic errors.
       const errorCode = (titanError.details as any)?.errorCode ?? String(httpError.status);
@@ -1532,7 +1572,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         };
         if (httpError.status >= 500) {
           this.netronPeer.logger.error(logFields, 'Netron error');
-        } else if (this.options.logging) {
+        } else if (WITNESSED_REFUSALS.has(httpError.status) || this.options.logging) {
+          // A refusal is not traffic tracing, and gating it on `logging`
+          // (default false) meant nothing recorded it. Measured on the dev
+          // stand 2026-09-22: `POST /netron/invoke` for a method that does
+          // not exist answered 404 with `Method zzz_nonexistent not found in
+          // service Auth`, and the app's log grew by ZERO bytes — no entry,
+          // no mention of the probe's id. On a platform where every viewer
+          // is authenticated, «who was refused, and for what» is the part
+          // worth keeping; «who was served» is the part that would drown it.
           this.netronPeer.logger.warn(logFields, 'Netron error');
         }
       }

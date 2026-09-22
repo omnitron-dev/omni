@@ -606,31 +606,25 @@ export class SyncService {
       });
       if (plan.overflowRows === 0) return;
 
-      // Oldest first, delivered before undelivered — so an overflow that is
-      // small enough to be absorbed by already-synced rows costs nothing.
-      const doomed = await this.db
-        .selectFrom('sync_buffer')
-        .select('id')
-        .orderBy('syncedAt', 'desc')
-        .orderBy('createdAt', 'asc')
-        .limit(plan.overflowRows)
-        .execute();
+      // Delivered before undelivered, oldest first within each — so an
+      // overflow small enough to be absorbed by rows the master already has
+      // costs nothing.
+      const delivered = await this.dropOldest('delivered', plan.overflowRows);
+      const undelivered =
+        delivered < plan.overflowRows ? await this.dropOldest('undelivered', plan.overflowRows - delivered) : 0;
+      const dropped = delivered + undelivered;
+      if (dropped === 0) return;
 
-      if (doomed.length === 0) return;
-      await this.db
-        .deleteFrom('sync_buffer')
-        .where('id', 'in', doomed.map((r) => String(r.id)))
-        .execute();
-
-      const level = plan.discardsUndelivered ? 'warn' : 'info';
+      // Counted, not predicted: the level follows what was actually dropped.
+      const level = undelivered > 0 ? 'warn' : 'info';
       this.logger[level](
         {
-          dropped: doomed.length,
+          dropped,
+          undelivered,
           totalBytes: stats.totalBytes,
           maxBytes: this.config.maxBufferSize,
-          undelivered: plan.discardsUndelivered,
         },
-        plan.discardsUndelivered
+        undelivered > 0
           ? 'Sync buffer over budget — dropped entries the master never received'
           : 'Sync buffer over budget — dropped delivered entries'
       );
@@ -639,6 +633,48 @@ export class SyncService {
       // the unbounded growth stayed invisible in the first place.
       this.logger.warn({ error: (err as Error).message }, 'Sync buffer retention pass failed');
     }
+  }
+
+  /**
+   * Delete up to `limit` of the oldest rows of one kind; say how many went.
+   *
+   * By a subquery, not by a list. The ids used to be read into memory and
+   * deleted with `WHERE id IN (…)` — one bound parameter per row, where
+   * SQLite takes 32 766. So the pass worked for a small overflow and refused
+   * exactly the large one, which is the only kind a buffer cut off from its
+   * master produces. Measured on the test node, 2026-09-22: «too many SQL
+   * variables» on 558 passes in a row, 13:03–17:42 UTC, against 4 019 288
+   * rows and 555 MB of payload over a 500 MB budget. The bound bounded
+   * nothing, and said so every thirty seconds in a log nobody on the master
+   * reads.
+   *
+   * Two queries rather than one ordered `syncedAt DESC`, which put NULLs —
+   * the undelivered rows — last on SQLite and FIRST on Postgres, and among
+   * the delivered took the most recently delivered first, against the
+   * comment above it. Both of these are served by `idx_sync_pending
+   * (syncedAt, createdAt)`: delivered rows in the order they were delivered,
+   * which is the order the routine pass retires them in, only sooner; and
+   * undelivered ones in the order they were buffered.
+   */
+  private async dropOldest(which: 'delivered' | 'undelivered', limit: number): Promise<number> {
+    const oldest =
+      which === 'delivered'
+        ? this.db
+            .selectFrom('sync_buffer')
+            .select('id')
+            .where('syncedAt', 'is not', null)
+            .orderBy('syncedAt', 'asc')
+            .orderBy('createdAt', 'asc')
+            .limit(limit)
+        : this.db
+            .selectFrom('sync_buffer')
+            .select('id')
+            .where('syncedAt', 'is', null)
+            .orderBy('createdAt', 'asc')
+            .limit(limit);
+
+    const result = await this.db.deleteFrom('sync_buffer').where('id', 'in', oldest).executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   /**

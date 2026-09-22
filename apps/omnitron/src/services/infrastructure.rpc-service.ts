@@ -12,6 +12,7 @@ import type { InfrastructureService } from '../infrastructure/infrastructure.ser
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
+import { duringPhase } from '../project/deploy-phases.js';
 import { containerEndpoint, REDIS_CONTAINER_PORT } from '../infrastructure/service-resolver.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
@@ -170,6 +171,18 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     failed: Array<{ name: string; status: string; error: string | null }>;
     missing: string[];
   }> {
+    // Named while it runs, so a stall on this node says what it was doing.
+    // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
+    // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
+    return duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
+      this.provisionStackNow(data),
+    );
+  }
+
+  /** `provisionStack`'s work. Not an RPC method: it carries no `@Public`. */
+  private async provisionStackNow(
+    data: Parameters<InfrastructureRpcService['provisionStack']>[0],
+  ): ReturnType<InfrastructureRpcService['provisionStack']> {
     if (!this.hostInfra) {
       throw Errors.badRequest('This daemon does not host stack infrastructure.');
     }

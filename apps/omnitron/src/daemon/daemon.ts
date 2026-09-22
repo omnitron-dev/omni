@@ -50,6 +50,8 @@ import { InfrastructureService } from '../infrastructure/infrastructure.service.
 import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
 import { DockerHealthIndicator } from '../monitoring/docker-health.indicator.js';
 import { AppHealthIndicator } from '../monitoring/app-health.indicator.js';
+import { EventLoopWatch } from '../monitoring/event-loop-watch.js';
+import { EventLoopStallIndicator } from '../monitoring/event-loop-stall.indicator.js';
 import { registerDaemonJobs } from './daemon-scheduler.js';
 import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, type IMetricsService } from '@omnitron-dev/titan-metrics';
 import type { LogManager } from '../monitoring/log-manager.js';
@@ -282,6 +284,7 @@ export class OmnitronDaemon {
 
   private fileWatcher: FileWatcher | null = null;
   private infraService: InfrastructureService | null = null;
+  private eventLoopWatch: EventLoopWatch | null = null;
   private eventBroadcaster: EventBroadcasterService | null = null;
   private syncService: SyncService | null = null;
   private nodeManagerService: import('../services/node-manager.service.js').NodeManagerService | null = null;
@@ -376,6 +379,13 @@ export class OmnitronDaemon {
 
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
     const logger = loggerModule.logger;
+
+    // As soon as there is somewhere to say it, so a stall in the boot's own
+    // steps — infrastructure, migrations — is seen too. A node whose loop
+    // stands still answers nothing, its heartbeat included, and until this
+    // nothing on the node could say so. See `monitoring/event-loop-watch.ts`.
+    this.eventLoopWatch = new EventLoopWatch(logger);
+    this.eventLoopWatch.start();
 
     logger.info(
       {
@@ -1574,6 +1584,10 @@ export class OmnitronDaemon {
 
       // Managed apps health indicator
       titanHealth.registerIndicator(new AppHealthIndicator(orchestrator));
+
+      // How long the loop has stood still, and when — the number the console
+      // reads for a node that went quiet.
+      if (this.eventLoopWatch) titanHealth.registerIndicator(new EventLoopStallIndicator(this.eventLoopWatch));
 
       // The console asks every node for its own indicators, and a daemon has
       // no mesh connection to itself — so the local node's answer comes from

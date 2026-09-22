@@ -19,6 +19,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
 import { describeWorkingTrees, refusalForDirtyTree } from '../project/working-tree.js';
+import { reportPhases, type DeployPhases } from '../project/deploy-phases.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
@@ -1483,11 +1484,37 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  /**
+   * Deploy a stack to its nodes, and say what it is doing while it does it.
+   *
+   * Measured on 2026-09-22: 829 seconds between this method's first log line
+   * and its next one, with the work in flight the whole time. The CLI stops
+   * waiting at 600 and says the operation is «probably still running» — true,
+   * and silent about which of its seven steps was running. See
+   * `deploy-phases.ts`.
+   */
   private async startRemoteStack(
     projectName: string,
     stackName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
+  ): Promise<void> {
+    const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
+    try {
+      await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases);
+    } finally {
+      // Every exit, including the refusals: a reporter that outlives its
+      // deployment narrates a step nobody is taking.
+      phases.done();
+    }
+  }
+
+  private async deployRemoteStack(
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    ecosystemConfig: IEcosystemConfig,
+    phases: DeployPhases,
   ): Promise<void> {
     const nodes = stackConfig.nodes ?? [];
     if (nodes.length === 0) {
@@ -1508,6 +1535,7 @@ export class ProjectService extends EventEmitter {
     // reading them again on that side would be a second implementation of
     // variant selection and override merging, on the side with less
     // information.
+    phases.enter('reading what the applications declare');
     const declaredServices = await this.collectDeclaredServices(projectName, stackConfig, ecosystemConfig);
 
     // Build artifacts for apps in this stack
@@ -1528,6 +1556,7 @@ export class ProjectService extends EventEmitter {
         const builder = new ArtifactBuilder(project.path, undefined, {
           info: (msg) => this.logger.info({ project: project.name }, msg),
         });
+        phases.enter('building artifacts');
         const outcome = await builder.buildAll(appEntries);
         artifacts = outcome.built;
         if (outcome.failed.length > 0) {
@@ -1625,6 +1654,7 @@ export class ProjectService extends EventEmitter {
           'Provisioning this node without a master address — it will be pulled from, not dial in',
         );
       }
+      phases.enter(`provisioning ${node.host}`);
       const provisioned = await this.deployer.provisionSlaveNode(
         target,
         master.host,
@@ -1659,6 +1689,7 @@ export class ProjectService extends EventEmitter {
       // databases and no gateway, and no onion address to reach it by.
       const nodeInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
       if (nodeInfra || Object.keys(declaredServices).length > 0) {
+        phases.enter(`bringing up infrastructure on ${node.host}`);
         const ready = await this.provisionNodeInfrastructure(
           connector,
           node,
@@ -1699,6 +1730,7 @@ export class ProjectService extends EventEmitter {
       // Only the secrets are taken from the node: ports, database names and
       // the rest stay as this stack declared them, because those are the
       // master's to decide and the node merely carried them out.
+      phases.enter(`reading credentials from ${node.host}`);
       const nodeCredentials = await this.readNodeCredentials(connector, node);
       const deployedInfra = overlayCredentials(
         nodeInfra as Record<string, unknown> | undefined,
@@ -1719,6 +1751,7 @@ export class ProjectService extends EventEmitter {
       // complete set of containers under `daos-deployed-*` on empty volumes,
       // and swept the master's `daos-test-*` as orphans. An address is not an
       // instruction to build what it points at.
+      phases.enter(`resolving the environment for ${node.host}`);
       const appEnv = await this.resolveNodeAppEnv(
         ecosystemConfig,
         projectName,
@@ -1735,6 +1768,7 @@ export class ProjectService extends EventEmitter {
         // The definitions travel with the artifacts. A node that receives
         // one without the other has files it cannot run, and says so only if
         // someone asks it directly.
+        phases.enter(`delivering ${artifacts.length} artifact(s) to ${node.host}`);
         const results = await this.deployer.deployToStack([target], artifacts, projectName, {
           apps: appEntries,
           appEnv,
@@ -1758,6 +1792,7 @@ export class ProjectService extends EventEmitter {
       }
 
       // 4. Connect master to slave daemon via Netron TCP
+      phases.enter(`joining ${node.host} to the mesh`);
       await connector.addSlave({
         host: node.host,
         port: node.port ?? 9700,

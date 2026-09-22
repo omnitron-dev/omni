@@ -31,6 +31,7 @@ import { NetronClient } from './netron-client.js';
 import { ServiceProxyHandler } from './service-proxy.js';
 import { getAvailablePort } from '@omnitron-dev/titan/utils';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
+import { shutdownLadder, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
 // MockProcessSpawner is now in @omnitron-dev/testing/titan - use dynamic import to avoid circular dependency
 let MockProcessSpawnerClass: any = null;
 
@@ -395,22 +396,13 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
    * behaves identically to the legacy default.
    */
   private async terminateChildProcess(child: ChildProcess, totalDeadlineMs?: number): Promise<void> {
-    let GRACEFUL_TIMEOUT = 2000;
-    let SIGTERM_TIMEOUT = 2000;
-    let SIGKILL_TIMEOUT = 1000;
-
-    if (totalDeadlineMs !== undefined) {
-      if (totalDeadlineMs === 0) {
-        // Brutal-kill: immediate SIGKILL, very short final wait.
-        GRACEFUL_TIMEOUT = 0;
-        SIGTERM_TIMEOUT = 0;
-        SIGKILL_TIMEOUT = 500;
-      } else {
-        GRACEFUL_TIMEOUT = Math.floor(totalDeadlineMs * 0.4);
-        SIGTERM_TIMEOUT = Math.floor(totalDeadlineMs * 0.4);
-        SIGKILL_TIMEOUT = totalDeadlineMs - GRACEFUL_TIMEOUT - SIGTERM_TIMEOUT;
-      }
-    }
+    // One split, shared with the child: `shutdownLadder` is what
+    // `childShutdownWindowMs` hands the worker in `TITAN_SHUTDOWN_TIMEOUT_MS`,
+    // so the window the child plans inside is the window it actually has.
+    const ladder = shutdownLadder(totalDeadlineMs);
+    const GRACEFUL_TIMEOUT = ladder.gracefulMs;
+    const SIGTERM_TIMEOUT = ladder.sigtermMs;
+    const SIGKILL_TIMEOUT = ladder.sigkillMs;
 
     return new Promise((resolve, reject) => {
       let resolved = false;
@@ -1341,6 +1333,14 @@ export class ProcessSpawner implements IProcessSpawner {
         ...sanitizeEnv(process.env),
         ...(context.options?.env ?? {}),
         TITAN_WORKER_CONTEXT: contextJson,
+        // The window this child will actually get between SIGTERM and
+        // SIGKILL. `worker-runtime` and `last-resort-handlers` both read
+        // this variable and, until now, nothing set it — so the child sized
+        // its shutdown against a 5000 default while the ladder killed it at
+        // 4000. The deadline belongs to whoever holds SIGKILL.
+        TITAN_SHUTDOWN_TIMEOUT_MS: String(
+          shutdownLadder(context.options?.shutdownTimeout ?? DEFAULT_SHUTDOWN_BUDGET_MS).childWindowMs,
+        ),
       },
       execArgv: execArgv || [],
       silent: true,

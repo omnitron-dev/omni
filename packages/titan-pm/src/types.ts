@@ -1048,6 +1048,16 @@ export interface IWorkerExitInfo {
    * external kill). Drives the supervisor's restart policy.
    */
   expected: boolean;
+  /**
+   * `true` when an EXPECTED stop had to be enforced with SIGKILL because the
+   * worker did not leave within its shutdown window.
+   *
+   * Separate from `expected`, which answers "did we ask for this?". We asked,
+   * and it refused — so its shutdown hooks never ran, and calling that a
+   * clean exit is what kept 123 kills in three days looking like ordinary
+   * stops.
+   */
+  forced?: boolean;
 }
 
 /**

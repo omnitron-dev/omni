@@ -199,6 +199,24 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 const DEFAULT_CHILD_STARTUP_TIMEOUT = 60_000;
 
+/**
+ * Deadline for an RPC the daemon makes to a child it supervises.
+ *
+ * A call across this connection is WORK — aggregate five minutes of candles,
+ * answer a health probe that touches a pool, hand back metrics — not a wire
+ * request, and netron's default (5000 ms) is sized for the latter. The pool
+ * path stated this number and the single-child path stated nothing, so a
+ * client built for a single child fell back to that default: measured, 94
+ * timeouts «after 5000ms» in the daemon log, every one on
+ * `callExposedService`, which lives on exactly those single children.
+ *
+ * It belongs here rather than in titan-pm because the orchestrator is what
+ * knows the nature of the work; the library's own fallback is 30 s
+ * (`process-pool.ts:212`) and applies when a caller states nothing — which,
+ * after this, no caller here does.
+ */
+const CHILD_REQUEST_TIMEOUT = 120_000;
+
 export class OrchestratorService extends EventEmitter {
   private readonly handles = new Map<string, AppHandle>();
 
@@ -1915,7 +1933,7 @@ export class OrchestratorService extends EventEmitter {
         // match the behaviour — and `false` would have been a no-op that did
         // not, leaving an operator believing they had turned replacement off.
         // What actually governs it is `healthCheck.unhealthyThreshold`.
-        requestTimeout: 120_000,
+        requestTimeout: CHILD_REQUEST_TIMEOUT,
         maxQueueSize: 200,
         spawnOptions: {
           name: `${entry.name}/${procEntry.name}`,
@@ -2084,6 +2102,9 @@ export class OrchestratorService extends EventEmitter {
         name: `${entry.name}/${procEntry.name}`,
         version: '1.0.0',
         allMethodsPublic: true,
+        // Without this the child's client takes netron's 5000 ms; the pool
+        // path beside it has always stated one. See CHILD_REQUEST_TIMEOUT.
+        requestTimeout: CHILD_REQUEST_TIMEOUT,
         startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
         ...(entry.env && { env: entry.env as Record<string, string> }),
         ...((entry as any).cwd && { cwd: (entry as any).cwd }),
@@ -2278,6 +2299,8 @@ export class OrchestratorService extends EventEmitter {
     const spawnOpts = {
       name: entry.name,
       version: '1.0.0',
+      // As above: a single child's client otherwise runs on netron's default.
+      requestTimeout: CHILD_REQUEST_TIMEOUT,
       ...(entry.env && { env: entry.env as Record<string, string> }),
       dependencies: {
         bootstrapPath: bootstrapAbsPath,

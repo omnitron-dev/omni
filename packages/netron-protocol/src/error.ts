@@ -165,7 +165,7 @@ export class TitanError extends Error {
     // without the DOM or Node type libraries, so the surface is named locally
     // rather than pulled in from @types/node.
     const V8Error = Error as ErrorConstructor & {
-      captureStackTrace?: (target: object, constructorOpt?: Function) => void;
+      captureStackTrace?: (target: object, constructorOpt?: abstract new (...args: never[]) => unknown) => void;
     };
     if (V8Error.captureStackTrace) {
       V8Error.captureStackTrace(this, new.target);

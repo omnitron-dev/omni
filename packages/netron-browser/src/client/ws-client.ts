@@ -282,21 +282,22 @@ export class WebSocketClient extends EventEmitter {
         const ws = this.ws!; // Capture ws in local variable to avoid null checks
 
         let isResolved = false;
-        let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
         const settle = (error?: Error) => {
           if (isResolved) return;
           isResolved = true;
-          if (handshakeTimer !== undefined) clearTimeout(handshakeTimer);
+          clearTimeout(handshakeTimer);
           this.connectSettle = undefined;
           if (error) reject(error);
           else resolve();
         };
-        this.connectSettle = settle;
         // Bounded, because a server that never sends its id frame would
         // otherwise leave this promise pending for the life of the tab.
-        handshakeTimer = setTimeout(() => {
+        // Created before `settle` is published: nothing can call it until
+        // `connectSettle` is set below, so the timer always exists by then.
+        const handshakeTimer = setTimeout(() => {
           settle(new ConnectionError(`Netron handshake did not complete within ${this.timeout}ms`));
         }, this.timeout);
+        this.connectSettle = settle;
 
         // Handle connection open
         ws.addEventListener('open', () => {

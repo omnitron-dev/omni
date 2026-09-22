@@ -13,9 +13,9 @@ import { createInterface } from 'node:readline';
 import { KnowledgeBase } from '../core/knowledge-base.js';
 import { SurrealKbStore } from '../surreal/client.js';
 
-const args = process.argv.slice(2);
-const rootIdx = args.indexOf('--root');
-const root = rootIdx >= 0 ? resolve(args[rootIdx + 1]!) : process.cwd();
+const argv = process.argv.slice(2);
+const rootIdx = argv.indexOf('--root');
+const root = rootIdx >= 0 ? resolve(argv[rootIdx + 1]!) : process.cwd();
 
 const dbPath = resolve(process.env['HOME'] ?? '.', '.omnitron', 'kb.db');
 

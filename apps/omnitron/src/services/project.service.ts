@@ -809,6 +809,13 @@ export class ProjectService extends EventEmitter {
           ...(reach ? { nodes: reach.nodes, reached: reach.reached } : {}),
           ...(reach && reach.skipped.length > 0 ? { skipped: reach.skipped } : {}),
           ...(tree.checked ? { commit: tree.head, dirty: tree.dirty.length } : { commit: null }),
+          // Every tree the artifacts were built from, not only the project's:
+          // the omni checkout's packages are vendored into them, and the
+          // project's commit alone could not say which omni went out.
+          trees: trees.map(({ root, tree: t }) => ({
+            repo: path.basename(root),
+            ...(t.checked ? { commit: t.head ?? null, dirty: t.dirty.length } : { commit: null, why: t.why ?? null }),
+          })),
         },
       });
       return info;

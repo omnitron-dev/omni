@@ -29,6 +29,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tmpdir } from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import { ProjectService } from '../../src/services/project.service.js';
 
@@ -282,6 +285,34 @@ describe('the row says what the deployment reached', () => {
     expect(row.type).toBe('local');
     expect(row).not.toHaveProperty('nodes');
     expect(row).not.toHaveProperty('reached');
+  });
+
+  it('names every tree the artifacts were built from, with its commit', async () => {
+    // The project's commit alone could not say which omni went out with it.
+    const repo = fs.mkdtempSync(path.join(tmpdir(), 'stack-start-trees-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    fs.writeFileSync(path.join(repo, 'omnitron.config.ts'), 'export default {};\n');
+    git('add', '.');
+    git('commit', '-qm', 'one');
+    const head = git('rev-parse', '--short', 'HEAD').trim();
+
+    const svc = remoteStartable({ nodes: 1, reached: 1, skipped: [] });
+    svc.registry = { get: () => ({ name: 'daos', path: repo }), list: () => [] };
+    await svc.startStack('daos', 'test', { source: 'operator' });
+
+    const row = (record.mock.calls[0]![0] as any).details;
+    expect(row.trees).toEqual([{ repo: path.basename(repo), commit: head, dirty: 0 }]);
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('keeps a tree it could not read in the list, saying why', async () => {
+    const svc = remoteStartable({ nodes: 1, reached: 1, skipped: [] });
+    await svc.startStack('daos', 'test', { source: 'operator' });
+
+    const row = (record.mock.calls[0]![0] as any).details;
+    expect(row.trees).toEqual([{ repo: 'daos', commit: null, why: expect.stringMatching(/not in the registry/) }]);
   });
 });
 

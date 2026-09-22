@@ -31,7 +31,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 
-import { VIEWER_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type {
   LeaderElection,
   VoteRequest,
@@ -71,7 +71,10 @@ export class ClusterRpcService {
    * anonymous — and it hands out the fleet's node ids, terms and leader,
    * which is exactly the reconnaissance the two calls below are weakest to.
    */
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  // Only meaningful ACROSS nodes, which means the master is the one asking:
+  // two nodes naming different leaders is a split brain, and no single
+  // node's own answer shows it.
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getClusterState(): Promise<ClusterStateInfo> {
     return this.election.getClusterState();
   }

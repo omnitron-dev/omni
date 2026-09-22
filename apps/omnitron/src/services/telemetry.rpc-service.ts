@@ -8,7 +8,7 @@
 
 import { requireArray, requirePayload, requireString } from './anonymous-input.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES } from '../shared/roles.js';
+import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { TelemetryRelayService, TelemetryEntry } from '@omnitron-dev/titan-telemetry-relay';
 
 @Service({ name: 'OmnitronTelemetry' })
@@ -31,7 +31,9 @@ export class TelemetryRpcService {
   /**
    * Get relay stats for monitoring dashboard.
    */
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  // Same read, same principal: `getNodeRelayStats` asks each node for this,
+  // and `totalDropped` is the one counter in the fleet that reports LOSS.
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getRelayStats(): Promise<ReturnType<TelemetryRelayService['stats']>> {
     return this.relay.stats();
   }

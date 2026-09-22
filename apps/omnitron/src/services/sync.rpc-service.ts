@@ -10,7 +10,7 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES } from '../shared/roles.js';
+import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { SyncService, SyncBatch, IngestBatchResult } from './sync.service.js';
 export type { SyncBatch };
 import type { ISyncStatus } from '../shared/dto/project.js';
@@ -63,7 +63,12 @@ export class SyncRpcService {
   /**
    * Get sync status (for webapp monitoring).
    */
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  // Read BY the master, not only about it: the master pulls this on every
+  // heartbeat to fill the «Sync» column and the stack's backlog figure. It
+  // reaches the node with `service_role`, which `VIEWER_ROLES` — the human
+  // hierarchy — does not contain, so the node accepted `drainBuffer` from
+  // this very credential and refused the read beside it.
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getSyncStatus(): Promise<ISyncStatus> {
     return this.syncService.getStatus();
   }

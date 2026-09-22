@@ -85,6 +85,8 @@ export interface SlaveConnection {
    * zero about a buffer nobody has asked about reads as «up to date».
    */
   syncStatus: ISyncStatus | null;
+  /** The last refusal seen for that read, so it is reported once, not every 15 s. */
+  lastSyncStatusError: string | null;
 }
 
 // =============================================================================
@@ -205,6 +207,7 @@ export class SlaveConnector {
       peer: null,
       lastHeartbeat: null,
       syncStatus: null,
+      lastSyncStatusError: null,
       lastError: null,
       reconnectAttempt: 0,
       reconnectTimer: null,
@@ -488,11 +491,13 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         'Node joined the mesh'
       );
 
-      // Pull buffered sync data from slave immediately, then ask what is
-      // left. Both call sites of the drain do this: without it here, a node
-      // that just joined shows an empty «Sync» column until the first sweep
-      // fifteen seconds later, which is exactly when somebody is looking.
-      void this.pullSyncData(key, conn).then(() => this.refreshSyncStatus(conn));
+      // Ask what it is holding, then start pulling it. Both in that order
+      // and neither waiting on the other: without the first call here a node
+      // that just joined shows an empty «Sync» column until the sweep fifteen
+      // seconds later, which is exactly when somebody is looking, and putting
+      // it after the drain would queue it behind up to 10 000 entries.
+      void this.refreshSyncStatus(conn);
+      void this.pullSyncData(key, conn);
 
       await this.recordFleetHeartbeat(conn);
 
@@ -665,11 +670,20 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
     // Pull sync data from all connected slaves during heartbeat
     for (const [key, conn] of this.connections) {
       if (conn.status === 'connected' && conn.peer) {
-        // The status is read AFTER the drain, and regardless of whether the
-        // drain worked: `pendingItems` then means what is still waiting
-        // rather than what was waiting before this sweep touched it. A
-        // failed drain is precisely when the figure matters.
-        void this.pullSyncData(key, conn).then(() => this.refreshSyncStatus(conn));
+        // The status is read BEFORE the drain, and independently of it.
+        //
+        // It used to be chained onto the drain's completion, on the reasoning
+        // that `pendingItems` should mean «what is still waiting» rather than
+        // «what was waiting before this sweep touched it». The stand refuted
+        // that within the hour: a node with a real backlog drains 10 000
+        // entries per sweep — the safety limit — and the first status did not
+        // arrive until 40 s after the master connected, because it was queued
+        // behind the very work it measures. A backlog large enough to matter
+        // is exactly a backlog large enough to delay the figure describing
+        // it, and a diagnostic that waits on the thing it diagnoses is not
+        // available when it is needed.
+        void this.refreshSyncStatus(conn);
+        void this.pullSyncData(key, conn);
       }
     }
   }
@@ -695,15 +709,34 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
       const syncProxy = await conn.peer.queryInterface('OmnitronSync');
       const status = (await syncProxy.getSyncStatus()) as ISyncStatus | undefined;
       conn.syncStatus = status ?? null;
+      // Cleared on success, so a refusal that comes BACK is reported again
+      // rather than being swallowed as «already said that once».
+      conn.lastSyncStatusError = null;
     } catch (err) {
       // A node that cannot answer is a node we do not know about, not a node
       // with an empty buffer. The heartbeat above is what decides whether it
       // is still connected; this only decides what we claim to know.
       conn.syncStatus = null;
-      this.logger.debug(
-        { host: conn.config.host, error: (err as Error).message },
-        'Sync status unavailable — the node reports nothing until the next heartbeat'
-      );
+
+      // Said ONCE at warn, then quietly. This was `debug` alone, and the
+      // daemon logs at `info` — so when the node refused the read with
+      // `Missing required role`, the whole effect was a blank «Sync» column
+      // and not one line anywhere saying why. A control-plane read that a
+      // node refuses is worth a sentence; the same sentence every 15 s for
+      // a node that will never answer is not.
+      const message = (err as Error).message;
+      if (conn.lastSyncStatusError !== message) {
+        conn.lastSyncStatusError = message;
+        this.logger.warn(
+          { host: conn.config.host, port: conn.config.port, error: message },
+          'Sync status unavailable — the node did not answer getSyncStatus'
+        );
+      } else {
+        this.logger.debug(
+          { host: conn.config.host, error: message },
+          'Sync status still unavailable'
+        );
+      }
     }
   }
 

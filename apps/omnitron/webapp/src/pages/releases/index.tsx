@@ -83,6 +83,15 @@ export default function ReleasesPage() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [deployTarget, setDeployTarget] = useState<ReleaseSummary | null>(null);
+  /**
+   * The build this page just started.
+   *
+   * Held for the seconds before a poll has seen it. Without it the panel
+   * appeared only on the next twenty-second refresh — measured: the build
+   * started, the daemon logged it, and the page showed nothing at all, which
+   * reads as «the button did not work».
+   */
+  const [justStarted, setJustStarted] = useState<BuildRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -90,12 +99,14 @@ export default function ReleasesPage() {
 
   const { data, loading, error, refresh } = usePolledResource(loadPage, { intervalMs: 20_000 });
 
-  const building = (data?.builds ?? []).some((b) => b.state === 'running');
+  const building = (data?.builds ?? []).some((b) => b.state === 'running') || justStarted !== null;
   // Three seconds while something is building, twenty when nothing is: the
   // phase and the percent are the only readings on this page that change on
   // their own, and they change every few seconds.
   const live = usePolledResource(async () => releaseRpc.builds(), { intervalMs: 3_000, enabled: building });
-  const builds = live.data ?? data?.builds ?? [];
+  const polled = live.data ?? data?.builds ?? [];
+  const builds =
+    justStarted && !polled.some((b) => b.buildId === justStarted.buildId) ? [justStarted, ...polled] : polled;
 
   // Same reason as the stacks list in the build dialog: `?? []` is a new
   // array each render, and the filter below is keyed on it.
@@ -233,9 +244,18 @@ export default function ReleasesPage() {
       key: 'size',
       header: 'Size',
       render: (r) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-          {bytes(r.bytes)}
-        </Typography>
+        <Stack spacing={0.25}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+            {bytes(r.bytes)}
+          </Typography>
+          {r.keptSource && (
+            <Tooltip title="The build's two clones are still on disk — kept on purpose, or left by a build that failed. They are not counted in this size." arrow>
+              <Typography variant="caption" sx={{ color: 'warning.main' }}>
+                + clones
+              </Typography>
+            </Tooltip>
+          )}
+        </Stack>
       ),
     },
     {
@@ -368,7 +388,10 @@ export default function ReleasesPage() {
         open={buildOpen}
         onClose={() => setBuildOpen(false)}
         defaultProject={activeProject}
-        onStarted={() => void live.refresh().then(() => refresh())}
+        onStarted={(record) => {
+          setJustStarted(record);
+          void live.refresh().then(() => refresh());
+        }}
       />
 
       <PruneReleasesDialog

@@ -51,8 +51,10 @@ export interface ReleaseSummary {
   readonly gateList: readonly GateOutcome[];
   readonly artifacts: { count: number; bytes: number; apps: string[]; failed: string[] };
   readonly statics: { stack: string; files: number; bytes: number } | null;
-  /** What the whole directory occupies, artifacts, statics, gate logs and all. */
+  /** What the release carries: artifacts, statics, gate logs. Not the clones. */
   readonly bytes: number;
+  /** The build's clones are still on disk — kept on purpose, or left by a failure. */
+  readonly keptSource: boolean;
 }
 
 /** A release in full, for one screen: the manifest, plus what is beside it. */
@@ -65,6 +67,46 @@ export interface ReleaseDetail extends ReleaseSummary {
 /** `daos-202609221432-81c8a074-c64963f6` → `daos`; a name may hold dashes too. */
 export function projectOfId(id: string): string {
   return id.replace(/-\d{12}-[0-9a-f]{8}-[0-9a-f]{8}$/, '');
+}
+
+/**
+ * What a release WEIGHS, without walking the build root.
+ *
+ * `src/` holds the two clones — with their `node_modules`, several hundred
+ * thousand files — and it is transient: removed after a successful build
+ * unless `--keep-source`, kept after a failed one as evidence. Walking it to
+ * draw a table is what a list must never do: measured here, the console sat
+ * on skeleton rows for the whole of a build because `dirBytes` was counting
+ * the clones as they were being written.
+ *
+ * So the size is what the release CARRIES — artifacts, statics, logs — and
+ * the presence of the clones is reported as a fact instead of a number.
+ */
+function releaseBytes(dir: string): { bytes: number; keptSource: boolean } {
+  let keptSource = false;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return { bytes: 0, keptSource: false };
+  }
+  let bytes = 0;
+  for (const entry of entries) {
+    if (entry.name === 'src') {
+      keptSource = true;
+      continue;
+    }
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) bytes += dirBytes(full);
+    else if (entry.isFile()) {
+      try {
+        bytes += fs.statSync(full).size;
+      } catch {
+        // Removed while we read; it is not in the total either way.
+      }
+    }
+  }
+  return { bytes, keptSource };
 }
 
 /** Bytes under a directory. Unreadable or absent counts as zero, not as a failure. */
@@ -95,6 +137,7 @@ export function dirBytes(dir: string): number {
 
 function summarise(id: string, dir: string, manifest: ReleaseManifest | null): ReleaseSummary {
   const gates = manifest?.gates ?? [];
+  const weight = releaseBytes(dir);
   return {
     id,
     project: projectOfId(id),
@@ -121,7 +164,8 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
       failed: (manifest?.artifactFailures ?? []).map((f) => f.app),
     },
     statics: manifest?.statics ?? null,
-    bytes: dirBytes(dir),
+    bytes: weight.bytes,
+    keptSource: weight.keptSource,
   };
 }
 

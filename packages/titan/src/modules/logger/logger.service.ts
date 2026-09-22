@@ -21,6 +21,29 @@ import { Injectable, Inject, Optional } from '../../decorators/index.js';
  */
 const ASYNC_WRAPPED = Symbol.for('@omnitron-dev/titan/logger/async-wrapped');
 
+/**
+ * How the pino-pretty destination is configured.
+ *
+ * Colour is for a terminal. Under a supervisor an app's stdout is a FILE, and
+ * `colorize` was unconditional, so escape sequences went into `app.log` —
+ * read back by `grep`, not by eyes.
+ *
+ * And pino-pretty's default header is the time of day alone: `[08:39:43]`
+ * says nothing about which day, recoverable only from the record's position
+ * in the file. Worse, that clock is local while the JSON records in the very
+ * same file are UTC — three hours apart here, enough to read a stand that had
+ * just restarted as one that had been idle for three hours. Both halves of a
+ * log must agree on the day and on the zone.
+ */
+export function prettyStreamOptions(
+  isTTY: boolean = process.stdout.isTTY === true,
+): { colorize: boolean; translateTime: string } {
+  return {
+    colorize: isTTY,
+    translateTime: 'UTC:yyyy-mm-dd HH:MM:ss.l',
+  };
+}
+
 function wrapAsyncStream(dest: NodeJS.WritableStream): NodeJS.WritableStream {
   if (!dest || (dest as any)[ASYNC_WRAPPED]) return dest;
   const wrapper = new Writable({
@@ -259,7 +282,7 @@ export class LoggerService implements ILoggerModule {
       (config.environment === 'development' && config.prettyPrint !== false && config.pretty !== false);
     const makeStdoutStream = (): NodeJS.WritableStream =>
       prettyPrint
-        ? (prettyStream({ colorize: true }) as unknown as NodeJS.WritableStream)
+        ? (prettyStream(prettyStreamOptions()) as unknown as NodeJS.WritableStream)
         : (process.stdout as unknown as NodeJS.WritableStream);
 
     // Build destination. ITransport sinks and extra `destinations` both require

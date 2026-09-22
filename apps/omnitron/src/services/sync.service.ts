@@ -411,6 +411,7 @@ export class SyncService {
 
     try {
       let totalSynced = 0;
+      let totalRefused = 0;
       const seenThisCycle = new Set<string>();
 
       // Sync in batches until no more pending entries
@@ -422,6 +423,7 @@ export class SyncService {
         const delivered = deliveredIds(outcome);
         await this.markSynced(delivered);
         totalSynced += delivered.length;
+        totalRefused += outcome.failed.length;
 
         // Entries the master rejected stay pending, so the next fetch
         // returns them again. Stop the sweep when a page yields nothing new
@@ -443,28 +445,56 @@ export class SyncService {
         this.logger.info({ synced: totalSynced }, 'Sync cycle completed');
       }
 
+      // A cycle that delivered NOTHING and was refused everything is not a
+      // success, even though nothing threw.
+      //
+      // Only one of the two ways to fail used to reach the backoff. An
+      // unreachable master makes the push throw, and the `catch` below grows
+      // the delay to five minutes. But a master that ANSWERS and says no to
+      // every entry returns normally — and control arrived here, at a reset
+      // of a backoff that had never been set. That is how 1000 entries were
+      // offered 94 times in 37 minutes while the master's own Postgres was
+      // down behind a stopped Docker: the RPC succeeded on every attempt,
+      // and only the ingest failed. The configured delay (5 s, doubling, to
+      // 300 s) would have made that about a dozen attempts; it was never
+      // consulted.
+      if (totalSynced === 0 && totalRefused > 0) {
+        this.noteSyncFailure(`master refused every entry (${totalRefused})`);
+        return;
+      }
+
       // Reset backoff on success
       this.backoff = { attempt: 0, nextRetryAt: 0 };
       this.lastSyncAt = Date.now();
       this.lastError = null;
     } catch (err) {
-      const message = (err as Error).message;
-      this.lastError = message;
-      this.backoff.attempt++;
-
-      const delay = Math.min(
-        this.config.backoff.initial * Math.pow(this.config.backoff.factor, this.backoff.attempt),
-        this.config.backoff.max,
-      );
-      this.backoff.nextRetryAt = Date.now() + delay;
-
-      this.logger.warn(
-        { error: message, attempt: this.backoff.attempt, nextRetryMs: delay },
-        'Sync failed — will retry'
-      );
+      this.noteSyncFailure(describeError(err));
     } finally {
       this.isSyncing = false;
     }
+  }
+
+  /**
+   * Grow the retry delay and record why.
+   *
+   * Shared by both ways a cycle can fail — a master that cannot be reached,
+   * and a master that answers no — because the buffer does not care which
+   * one it was, and neither does the disk it is filling.
+   */
+  private noteSyncFailure(message: string): void {
+    this.lastError = message;
+    this.backoff.attempt++;
+
+    const delay = Math.min(
+      this.config.backoff.initial * Math.pow(this.config.backoff.factor, this.backoff.attempt),
+      this.config.backoff.max,
+    );
+    this.backoff.nextRetryAt = Date.now() + delay;
+
+    this.logger.warn(
+      { error: message, attempt: this.backoff.attempt, nextRetryMs: delay },
+      'Sync failed — will retry'
+    );
   }
 
   private async fetchPendingBatch(limit?: number): Promise<SyncBatch> {

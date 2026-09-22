@@ -181,3 +181,66 @@ export function decideNodeStackStart(input: NodeStackStartInput): NodeStackStart
     because: `all ${input.apps.length} are running with the configuration they already had`,
   };
 }
+
+/**
+ * Whether the node's daemon has to be taken down and brought back.
+ *
+ * Provisioning ends with `omnitron down 2>/dev/null; omnitron up --slave`, and
+ * the comment beside it says «or restart if already running» — which is true,
+ * and costs every application on that node. `down` stops the daemon and
+ * everything under it; `up` boots it and its boot-resume starts them again.
+ *
+ * Measured on 2026-09-22, and it took three deployments to attribute. A
+ * deployment with nothing to do skipped every build, transferred no byte,
+ * skipped the node-side `stack start` by `decideNodeStackStart` above — and
+ * every pid on the node still changed:
+ *
+ *     07:25:46  Slave node provisioned
+ *     07:25:47  every application on the node starts, 1–3 s later
+ *     07:26:15  its stack was not restarted   started=false
+ *     07:26:21  Left running — this deployment changes nothing   ×6
+ *
+ * With the other path closed, the attribution is unambiguous: this is the one
+ * that restarts them. The applications came back a second after provisioning
+ * and half a minute before the deployment decided to leave them alone.
+ *
+ * What makes a restart necessary is a change UNDER the daemon — a runtime or
+ * an omnitron the host did not have — and `plan.steps` is exactly that list.
+ * An empty plan means the host already had everything, and a daemon already
+ * running as a slave on an unchanged host has nothing to gain from being
+ * killed. Every uncertainty restarts: a node that cannot say what it is
+ * running is a node whose daemon gets rebuilt from a known state.
+ */
+
+export interface SlaveDaemonInput {
+  /** Whether preparing the host changed anything on it. */
+  readonly hostChanged: boolean;
+  /** What the node says about its own daemon, or null when it would not say. */
+  readonly daemon: { readonly running: boolean; readonly role?: 'master' | 'slave' } | null;
+}
+
+export type SlaveDaemonDecision =
+  | { readonly action: 'restart'; readonly because: string }
+  | { readonly action: 'leave'; readonly because: string };
+
+export function decideSlaveDaemonRestart(input: SlaveDaemonInput): SlaveDaemonDecision {
+  if (input.hostChanged) {
+    return { action: 'restart', because: 'the host was prepared, so something under the daemon changed' };
+  }
+  if (input.daemon === null) {
+    return { action: 'restart', because: 'the node would not say what its daemon is doing' };
+  }
+  if (!input.daemon.running) {
+    return { action: 'restart', because: 'the node daemon is not running' };
+  }
+  if (input.daemon.role !== 'slave') {
+    return {
+      action: 'restart',
+      because: `the node daemon is running as ${input.daemon.role ?? 'no role it would name'}, not as a slave`,
+    };
+  }
+  return {
+    action: 'leave',
+    because: 'the node daemon is already running as a slave and nothing under it changed',
+  };
+}

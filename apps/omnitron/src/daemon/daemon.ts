@@ -113,6 +113,16 @@ import { createAuthContextWrapper } from '../services/auth-context.js';
 import { ROLES } from '../shared/roles.js';
 import { expandPath } from '../shared/paths.js';
 
+/**
+ * Deadline for a request on the daemon's unix socket.
+ *
+ * Same value as `CLI_REQUEST_TIMEOUT` in `daemon-client.ts`: one number for
+ * one socket, stated by both ends rather than inherited from a default meant
+ * for wire requests.
+ */
+const DAEMON_SOCKET_REQUEST_TIMEOUT = 60_000;
+
+
 export interface DaemonStartOptions {
   /** Enable file watching — restarts apps on source file changes */
   watch?: boolean;
@@ -528,6 +538,16 @@ export class OmnitronDaemon {
         path: expandPath(dc.socketPath),
         force: true,
         mode: 0o600, // Owner-only access for security
+        // Every other party on this socket states a deadline and this one
+        // did not, so `netron.ts:797` — `serverRequestTimeout ??
+        // transportOpts.requestTimeout` — found both undefined and built its
+        // accepted-connection peers with netron's 5 s default, which is a
+        // deadline for a wire request rather than for management-plane work.
+        // The reading of the server option was added deliberately («a
+        // `requestTimeout` set on the server was silently ignored»); the
+        // value was never supplied. Same number as `CLI_REQUEST_TIMEOUT`,
+        // which the daemon's own client uses over this same socket.
+        requestTimeout: DAEMON_SOCKET_REQUEST_TIMEOUT,
       },
     });
 

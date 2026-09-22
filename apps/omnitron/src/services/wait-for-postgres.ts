@@ -36,10 +36,13 @@ export async function waitForPostgres(
   const deadline = startedAt + timeoutMs;
   const { Client } = await import('pg').catch(() => ({ Client: null as unknown as null }));
 
-  const fail = (kind: string, lastError: Error | null): never => {
+  const failure = (kind: string, lastError: Error | null): Error => {
     const waited = Math.round((Date.now() - startedAt) / 1000);
-    const cause = lastError ? ` Last attempt: ${lastError.message}.` : '';
-    throw new Error(`Postgres at ${host}:${port} ${kind} (waited ${waited}s, limit ${timeoutMs}ms).${cause}`);
+    const last = lastError ? ` Last attempt: ${lastError.message}.` : '';
+    return new Error(
+      `Postgres at ${host}:${port} ${kind} (waited ${waited}s, limit ${timeoutMs}ms).${last}`,
+      lastError ? { cause: lastError } : undefined,
+    );
   };
 
   let lastError: Error | null = null;
@@ -65,7 +68,7 @@ export async function waitForPostgres(
       if (ok) return;
       await new Promise((r) => setTimeout(r, 500));
     }
-    return fail('was not reachable', lastError);
+    throw failure('was not reachable', lastError);
   }
 
   while (Date.now() < deadline) {
@@ -81,5 +84,5 @@ export async function waitForPostgres(
       await new Promise((r) => setTimeout(r, 500));
     }
   }
-  return fail('did not become ready', lastError);
+  throw failure('did not become ready', lastError);
 }

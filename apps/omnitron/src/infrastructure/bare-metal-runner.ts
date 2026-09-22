@@ -179,6 +179,12 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       if (!r.ok) throw new Error(`could not restart ${action.unit}: ${firstLine(r.stderr)}`);
       return;
     }
+    default: {
+      // An action this runner cannot perform is a failed step, never a done
+      // one: the reconcile loop counts whatever returns here as applied.
+      const unexpected: never = action;
+      throw new Error(`unknown bare-metal action: ${JSON.stringify(unexpected)}`);
+    }
   }
 }
 
@@ -193,6 +199,10 @@ export function describe(action: BareMetalAction): string {
     case 'enable-unit': return `enable ${action.unit}`;
     case 'start-unit': return `start ${action.unit}`;
     case 'restart-unit': return `restart ${action.unit} — ${action.because}`;
+    default: {
+      const unexpected: never = action;
+      return `unknown action ${JSON.stringify(unexpected)}`;
+    }
   }
 }
 

@@ -31,6 +31,12 @@ export function describeAbsence(absence: DaemonAbsence): string {
       return `Daemon is running (PID ${absence.pid}) but did not answer within ${Math.round(absence.waitedMs / 1000)}s`;
     case 'unknown':
       return `Could not reach the daemon: ${absence.reason}`;
+    default: {
+      // A fifth kind fails to compile here; one that arrives anyway is named
+      // rather than printed as `undefined`.
+      const unexpected: never = absence;
+      return `Could not reach the daemon: ${JSON.stringify(unexpected)}`;
+    }
   }
 }
 
@@ -47,6 +53,12 @@ export function adviseAbsence(absence: DaemonAbsence): string | null {
       return 'It is most likely busy starting apps. Retry shortly, or `omnitron down` to stop it.';
     case 'unknown':
       return null;
+    default: {
+      // Exhaustive at compile time, as above; a kind with no advice gets none.
+      const unexpected: never = absence;
+      void unexpected;
+      return null;
+    }
   }
 }
 

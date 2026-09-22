@@ -41,14 +41,18 @@ export class ServerRegistry {
       data = fs.readFileSync(this.registryFile, 'utf-8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw new Error(`Cannot read the server registry at ${this.registryFile}: ${(err as Error).message}`);
+      throw new Error(`Cannot read the server registry at ${this.registryFile}: ${(err as Error).message}`, {
+        cause: err,
+      });
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(data);
     } catch (err) {
-      throw new Error(`The server registry at ${this.registryFile} is not valid JSON: ${(err as Error).message}`);
+      throw new Error(`The server registry at ${this.registryFile} is not valid JSON: ${(err as Error).message}`, {
+        cause: err,
+      });
     }
     if (!Array.isArray(parsed)) {
       throw new Error(`The server registry at ${this.registryFile} does not contain a list of servers.`);

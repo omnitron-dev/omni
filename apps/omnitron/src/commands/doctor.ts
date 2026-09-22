@@ -356,7 +356,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
       });
     }
     const why = isConnectionFailure(err) ? 'the database stopped answering' : 'a database query failed';
-    for (const [id, what] of DB_DEPENDENT_CHECKS.filter(([id]) => !done.has(id))) {
+    for (const [id, what] of DB_DEPENDENT_CHECKS.filter(([checkId]) => !done.has(checkId))) {
       findings.skip(id, `not checked: ${what} — ${why}`);
     }
   } finally {

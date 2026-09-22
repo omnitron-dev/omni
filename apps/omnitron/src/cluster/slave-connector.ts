@@ -87,6 +87,8 @@ export interface SlaveConnection {
   syncStatus: ISyncStatus | null;
   /** The last refusal seen for that read, so it is reported once, not every 15 s. */
   lastSyncStatusError: string | null;
+  /** The same, for the pull — a failing pull is a backlog nobody is draining. */
+  lastPullError: string | null;
 }
 
 // =============================================================================
@@ -155,6 +157,8 @@ export function isConnectionGone(err: unknown): boolean {
 export class SlaveConnector {
   private readonly connections = new Map<string, SlaveConnection>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  /** Said once per master, not once per node: it is a property of this daemon. */
+  private noSyncServiceReported = false;
   private disposed = false;
 
   /** Heartbeat interval — how often we ping each slave (ms) */
@@ -208,6 +212,7 @@ export class SlaveConnector {
       lastHeartbeat: null,
       syncStatus: null,
       lastSyncStatusError: null,
+      lastPullError: null,
       lastError: null,
       reconnectAttempt: 0,
       reconnectTimer: null,
@@ -750,7 +755,23 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
    * Drains slave's WAL buffer and ingests into master's SyncService.
    */
   private async pullSyncData(_key: string, conn: SlaveConnection): Promise<void> {
-    if (!this.syncService || conn.status !== 'connected' || !conn.peer) return;
+    // Said once, at warn. Without a sync service this master CANNOT replicate
+    // anything from anywhere, and the old bare `return` made that
+    // indistinguishable from a node with an empty buffer: the «Sync» column
+    // reports a backlog climbing while nothing anywhere says the puller is
+    // not wired. Measured on the stand — 33 614 → 34 189 pending over 40 s
+    // with not one line about it.
+    if (!this.syncService) {
+      if (!this.noSyncServiceReported) {
+        this.noSyncServiceReported = true;
+        this.logger.warn(
+          { host: conn.config.host, port: conn.config.port },
+          'No sync service on this master — nothing will be pulled from any node',
+        );
+      }
+      return;
+    }
+    if (conn.status !== 'connected' || !conn.peer) return;
 
     try {
       const syncProxy = await conn.peer.queryInterface('OmnitronSync');
@@ -804,6 +825,8 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         if (totalPulled >= 10_000) break;
       }
 
+      conn.lastPullError = null;
+
       if (totalPulled > 0) {
         this.logger.info(
           { host: conn.config.host, port: conn.config.port, entries: totalPulled },
@@ -811,10 +834,22 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         );
       }
     } catch (err) {
-      this.logger.debug(
-        { host: conn.config.host, error: (err as Error).message },
-        'Sync pull failed — will retry on next heartbeat'
-      );
+      // Same rule as the status read beside it: once at warn, quietly after,
+      // cleared on success. A pull that keeps failing is a backlog that keeps
+      // growing, and the column showing the backlog cannot say why.
+      const message = (err as Error).message;
+      if (conn.lastPullError !== message) {
+        conn.lastPullError = message;
+        this.logger.warn(
+          { host: conn.config.host, port: conn.config.port, error: message },
+          'Sync pull failed — the node\'s buffer will keep growing until it succeeds',
+        );
+      } else {
+        this.logger.debug(
+          { host: conn.config.host, error: message },
+          'Sync pull still failing'
+        );
+      }
     }
   }
 }

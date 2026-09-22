@@ -486,7 +486,16 @@ export class TcpTransport extends BaseTransport {
     // Parse address if string provided
     if (typeof addressOrOptions === 'string') {
       const parsed = this.parseAddress(addressOrOptions);
-      port = parsed.port || 9000;
+      // `??`, not `||`. Port 0 is how a caller asks the OS for a free port,
+      // and the options branch below already honoured it — so the same
+      // request answered differently depending on which way it was spelled,
+      // with the string form being what an address in a config file
+      // produces. Two servers asking for an ephemeral port therefore
+      // collided on 9000, and the failure named a port the caller never
+      // mentioned. Third copy of this: `http/server.ts` records the same
+      // symptom on 3000, the WebSocket transport had it on 8080. `host`
+      // keeps `||`: an empty string is nobody's deliberate value, 0 is.
+      port = parsed.port ?? 9000;
       host = parsed.host || '0.0.0.0';
     } else if (addressOrOptions) {
       options = addressOrOptions;

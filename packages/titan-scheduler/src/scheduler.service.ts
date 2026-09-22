@@ -187,8 +187,14 @@ export class SchedulerService implements ILifecycle {
     // apart from an operator cancelling one job.
     this.executor.cancelAllJobs('scheduler shutdown');
 
-    // Wait for graceful shutdown
-    const timeout = this.config?.shutdownTimeout || 30000;
+    // Wait for graceful shutdown.
+    //
+    // `??`, not `||`. `shutdownTimeout: 0` is an operator saying «do not wait
+    // for running jobs», and `0 || 30000` turned that into waiting half a
+    // minute — the opposite instruction. Same shape found three times today:
+    // `port: 0` read as absent in two netron transports, and
+    // `TITAN_SHUTDOWN_TIMEOUT_MS=0` read as 5000 in titan-pm's two readers.
+    const timeout = this.config?.shutdownTimeout ?? 30000;
     await this.waitForJobsCompletion(timeout);
 
     // Persist final state

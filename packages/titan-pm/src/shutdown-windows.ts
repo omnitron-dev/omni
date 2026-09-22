@@ -123,3 +123,33 @@ export function lifecycleWindows(childWindowMs: number): LifecycleWindows {
     forceKillBufferMs: buffer,
   };
 }
+
+/**
+ * The child's own fallback when the supervisor said nothing.
+ *
+ * Matches the ladder's child window for the default budget, so a child
+ * spawned by something that does not set the variable — an older supervisor,
+ * a test harness — sizes itself the same way a properly-told one does.
+ */
+export const DEFAULT_FORCE_EXIT_MS = 3_500;
+
+/**
+ * The window this child was given, read from its environment.
+ *
+ * ONE reader, because there were two and they drifted: `worker-runtime` fell
+ * back to `shutdownLadder(DEFAULT_SHUTDOWN_BUDGET_MS).childWindowMs` and
+ * `last-resort-handlers` to a 5000 constant of its own, so one malformed
+ * value produced two different windows for one child.
+ *
+ * `??`-shaped, not `||`-shaped. `0` is a window an operator stated on
+ * purpose — `shutdownLadder(0)` supports it and its court says so, «a brutal
+ * kill leaves the child no window and says so» — and it means stop NOW.
+ * `0 || 5000` made the child told to leave immediately hold on for five
+ * seconds, past the ladder that was killing it. Negative and non-numeric
+ * fall back: a typo is not a decision.
+ */
+export function childShutdownWindowMs(env: NodeJS.ProcessEnv): number {
+  const stated = Number(env['TITAN_SHUTDOWN_TIMEOUT_MS']);
+  if (Number.isFinite(stated) && stated >= 0 && env['TITAN_SHUTDOWN_TIMEOUT_MS'] !== '') return stated;
+  return DEFAULT_FORCE_EXIT_MS;
+}

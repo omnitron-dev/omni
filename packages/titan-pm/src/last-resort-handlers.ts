@@ -39,6 +39,7 @@
  */
 
 import { isOperationalError } from '@omnitron-dev/titan/utils';
+import { childShutdownWindowMs } from './shutdown-windows.js';
 
 /**
  * How long the shutdown owners get before the exit is enforced.
@@ -46,7 +47,7 @@ import { isOperationalError } from '@omnitron-dev/titan/utils';
  * The same variable `worker-runtime.ts` builds its LifecycleController with,
  * so the two agree on the size of the window by construction.
  */
-const DEFAULT_FORCE_EXIT_MS = 5_000;
+
 
 function describe(err: unknown): Record<string, unknown> {
   return err instanceof Error
@@ -66,8 +67,11 @@ export interface LastResortOptions {
 }
 
 export function installLastResortErrorHandlers(options: LastResortOptions = {}): void {
-  const forceExitAfterMs =
-    options.forceExitAfterMs ?? (Number(process.env['TITAN_SHUTDOWN_TIMEOUT_MS']) || DEFAULT_FORCE_EXIT_MS);
+  // One reader for this variable, in `shutdown-windows.ts`. It used to be
+  // read here with `|| DEFAULT_FORCE_EXIT_MS`, which turned a stated `0` —
+  // «stop now» — into five seconds, and fell back to a different number than
+  // the other reader did.
+  const forceExitAfterMs = options.forceExitAfterMs ?? childShutdownWindowMs(process.env);
 
   const fatal = (event: 'uncaughtException' | 'unhandledRejection', msg: string, err: unknown): void => {
     emit(60, msg, err);

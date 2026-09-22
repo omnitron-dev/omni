@@ -102,7 +102,10 @@ function defaultIsAlive(pid: number): boolean {
 function defaultProcessState(pid: number): Promise<string | null> {
   return new Promise((resolve) => {
     execFile('ps', ['-o', 'stat=', '-p', String(pid)], { timeout: 2_000 }, (err, stdout) => {
-      if (err) return resolve(null);
+      if (err) {
+        resolve(null);
+        return;
+      }
       const state = stdout.trim().split(/\s+/)[0];
       resolve(state || null);
     });

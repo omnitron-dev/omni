@@ -47,15 +47,25 @@ export interface DiscoveryDeps {
  * to key it, and deriving the name a second time by a different rule is how a
  * decorator module ended up tokenised under an empty name.
  */
+/**
+ * What discovery hands this: a module class it has just instantiated. Named
+ * rather than `Function` because the two things read off it — `.name` and
+ * `__titanModuleMetadata` — are properties of a CLASS, and `Function` would
+ * equally accept a bound method or an arrow that has neither.
+ */
+type DiscoveredExport = (abstract new (...args: never[]) => unknown) & {
+  __titanModuleMetadata?: { name?: unknown };
+};
+
 export function resolveDiscoveredModuleName(
-  exported: Function,
+  exported: DiscoveredExport,
   instance: unknown,
   exportName?: string,
 ): string | undefined {
   const named = instance as { name?: unknown } | undefined;
   if (typeof named?.name === 'string' && named.name) return named.name;
 
-  const metadata = (exported as { __titanModuleMetadata?: { name?: unknown } }).__titanModuleMetadata;
+  const metadata = exported.__titanModuleMetadata;
   if (metadata && typeof metadata.name === 'string' && metadata.name) return metadata.name;
 
   return exported.name || exportName || undefined;
@@ -97,7 +107,7 @@ export class ModuleDiscovery {
     const paths = await this.resolvePaths(scanPaths, pathMod);
 
     for (const scanPath of paths) {
-      let files: string[] = [];
+      let files: string[];
       try {
         // `stat` failing and `stat` succeeding on something that is neither a
         // file nor a directory used to end at the same silent `continue`. The

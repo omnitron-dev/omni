@@ -105,11 +105,11 @@ export class MetricsRegistry {
     const src = buckets ?? DEFAULT_HISTOGRAM_BUCKETS;
     const normalised: number[] = [];
     let lastSeen: number | undefined;
-    for (const b of [...src].sort((a, b) => a - b)) {
-      if (!Number.isFinite(b)) continue; // drop NaN / ±Inf
-      if (lastSeen !== undefined && b === lastSeen) continue; // dedupe
-      normalised.push(b);
-      lastSeen = b;
+    for (const bucket of [...src].sort((a, b) => a - b)) {
+      if (!Number.isFinite(bucket)) continue; // drop NaN / ±Inf
+      if (lastSeen !== undefined && bucket === lastSeen) continue; // dedupe
+      normalised.push(bucket);
+      lastSeen = bucket;
     }
     if (normalised.length === 0) {
       // Empty fallback would make `_bucket` lines empty in Prometheus

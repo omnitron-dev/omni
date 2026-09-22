@@ -46,6 +46,14 @@ import {
 import type { ILogger } from '../../modules/logger/index.js';
 
 /**
+ * What every dispatch path here calls a listener WITH — the payload and the
+ * `{event, timestamp, source}` meta. The casts used to say `Function`, which
+ * accepts a constructor, a getter and a class alike and would have let any of
+ * them through to be invoked with two arguments.
+ */
+type EventListener = (data: unknown, meta: IEventMeta) => unknown;
+
+/**
  * Wildcard event name. Listeners registered against this name receive
  * every event emitted through the bus, with the original event name
  * surfaced in `IEventMeta.event`. EnhancedEventEmitter's wildcard
@@ -192,10 +200,10 @@ export class EventBus extends EnhancedEventEmitter implements IAsyncEventBus {
 
     try {
       const listeners = this.listeners(eventStr);
-      await Promise.all(listeners.map((l) => Promise.resolve((l as Function)(data, meta))));
+      await Promise.all(listeners.map((l) => Promise.resolve((l as EventListener)(data, meta))));
       if (eventStr !== WILDCARD_EVENT) {
         const wildcards = this.listeners(WILDCARD_EVENT);
-        await Promise.all(wildcards.map((l) => Promise.resolve((l as Function)(data, meta))));
+        await Promise.all(wildcards.map((l) => Promise.resolve((l as EventListener)(data, meta))));
       }
     } catch (error) {
       this.logger?.error({ error, event: eventStr }, 'Error in async event handler');
@@ -222,12 +230,12 @@ export class EventBus extends EnhancedEventEmitter implements IAsyncEventBus {
   private dispatchSync(event: string, data: unknown, meta: IEventMeta): boolean {
     let handled = false;
     for (const listener of this.listeners(event)) {
-      this.invokeSync(event, listener as Function, data, meta, false);
+      this.invokeSync(event, listener as EventListener, data, meta, false);
       handled = true;
     }
     if (event !== WILDCARD_EVENT) {
       for (const listener of this.listeners(WILDCARD_EVENT)) {
-        this.invokeSync(event, listener as Function, data, meta, true);
+        this.invokeSync(event, listener as EventListener, data, meta, true);
         handled = true;
       }
     }
@@ -278,7 +286,7 @@ export class EventBus extends EnhancedEventEmitter implements IAsyncEventBus {
    */
   private invokeSync(
     event: string,
-    listener: Function,
+    listener: EventListener,
     data: unknown,
     meta: IEventMeta,
     isWildcardFanout: boolean,

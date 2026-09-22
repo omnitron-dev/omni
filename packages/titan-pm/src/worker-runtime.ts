@@ -90,7 +90,7 @@ function defineRpcMetrics(registry: MetricsRegistry): void {
  * The `enabled` ref allows runtime toggle with zero overhead when disabled.
  */
 function createInstrumentedMethod(
-  original: Function,
+  original: (...args: unknown[]) => unknown,
   methodName: string,
   target: object,
   state: { requestCount: number; errorCount: number },

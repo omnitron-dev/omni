@@ -34,7 +34,7 @@ import { describeError } from './utils/describe-error.js';
  * install, because `ERR_MODULE_NOT_FOUND` deep inside a dependency is a
  * sentence about a file path and not about what the reader should do.
  */
-import type { Pool, PoolConfig } from 'pg';
+import type { Pool } from 'pg';
 import type * as mysql from 'mysql2';
 import type BetterSqlite3Types from 'better-sqlite3';
 
@@ -52,6 +52,7 @@ async function loadDriver<T>(name: string, dialect: string, load: () => Promise<
       `The '${dialect}' dialect needs the '${name}' package, which is not installed. ` +
         `It is an optional peer dependency of @omnitron-dev/titan-database: install the driver ` +
         `for the database this application uses. (${(err as Error).message})`,
+      { cause: err },
     );
   }
 }
@@ -390,13 +391,14 @@ export class DatabaseManager implements IDatabaseManager {
     // open for the life of the process.
     if (this.initPromise) {
       this.logger.debug('Database manager initialization already in progress, joining');
-      return this.initPromise;
+      await this.initPromise;
+      return;
     }
 
     this.initPromise = this.doInit().finally(() => {
       this.initPromise = null;
     });
-    return this.initPromise;
+    await this.initPromise;
   }
 
   private async doInit(): Promise<void> {

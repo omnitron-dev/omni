@@ -41,10 +41,11 @@ export class RlsGuardError extends Error {
  * Reads directly from @kysera/rls rlsContext singleton.
  */
 export function RequireRlsContext(options: RequireRlsContextOptions = {}): MethodDecorator {
-  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return function requireRlsContextDecorator(target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
     const originalMethod = descriptor.value as (...args: unknown[]) => unknown;
 
-    descriptor.value = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
+    // Named, so a guard refusal in a stack trace says which guard.
+    descriptor.value = async function rlsContextGuarded(this: unknown, ...args: unknown[]): Promise<unknown> {
       const ctx = rlsContext.getContextOrNull();
 
       if (!ctx) {
@@ -132,10 +133,10 @@ export function RequirePermission(permission: string): MethodDecorator {
  * Require admin/system privileges.
  */
 export function RequireAdmin(): MethodDecorator {
-  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return function requireAdminDecorator(target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
     const originalMethod = descriptor.value as (...args: unknown[]) => unknown;
 
-    descriptor.value = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
+    descriptor.value = async function adminGuarded(this: unknown, ...args: unknown[]): Promise<unknown> {
       const ctx = rlsContext.getContextOrNull();
 
       if (!ctx) {

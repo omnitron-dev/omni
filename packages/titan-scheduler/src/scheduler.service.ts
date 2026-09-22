@@ -383,7 +383,7 @@ export class SchedulerService implements ILifecycle {
     if (distributed?.enabled && this.lockProvider) {
       const key = this.fireWindowKey(job);
       const ttlMs = distributed.lockTTL ?? 30000;
-      let lockId: string | null = null;
+      let lockId: string | null;
       try {
         lockId = await this.lockProvider.acquireLock(key, ttlMs);
       } catch {

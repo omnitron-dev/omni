@@ -236,8 +236,8 @@ export class EventSchedulerService {
   /**
    * Schedule a cron-based event
    */
-  scheduleCron(event: string, data: any, cron: string): string {
-    return this.scheduleEvent(event, data, { cron });
+  scheduleCron(event: string, data: any, expression: string): string {
+    return this.scheduleEvent(event, data, { cron: expression });
   }
 
   /**

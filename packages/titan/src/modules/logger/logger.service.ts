@@ -222,7 +222,13 @@ export class LoggerService implements ILoggerModule {
     // Get configuration from options or config service
     const config = this.getConfiguration();
 
-    // Create root logger with configuration
+    // Create root logger with configuration.
+    //
+    // The alias is load-bearing: `hooks.logMethod` below runs with pino's
+    // own `this` (it needs it for `method.apply(this, …)`) and also has to
+    // reach THIS service's processor list. Two different receivers in one
+    // function — an arrow would lose pino's, and `this` alone cannot be both.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     const pinoOptions: ILoggerOptions = {
       level: config.level || 'info',
@@ -575,10 +581,12 @@ export class LoggerService implements ILoggerModule {
    */
   private createTransportFanout(): NodeJS.WritableStream {
     if (this.transportFanout) return this.transportFanout;
-    const self = this;
+    // No alias here, unlike `initialize()`: this writer never reads anything
+    // off the stream it is installed on, so an arrow closing over the service
+    // is both shorter and the honest description of what it uses.
     const fanout = new Writable({
-      write(chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) {
-        const transports = self.transports;
+      write: (chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) => {
+        const transports = this.transports;
         if (transports.length === 0) {
           callback();
           return;

@@ -630,6 +630,12 @@ export class ProjectService extends EventEmitter {
     const stackConfig = stacks[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
 
+    // A restart of this daemon re-attaches a remote stack; it never deploys
+    // one. See `attachRemoteStack`.
+    if (stackConfig.type !== 'local' && (source === 'boot' || source === 'auto-resume')) {
+      return this.attachRemoteStack(projectName, stackName, stackConfig, source);
+    }
+
     // A remote deployment ships what is on DISK, so before anything is built
     // the disk has to be a commit.
     //
@@ -986,6 +992,68 @@ export class ProjectService extends EventEmitter {
       const conn = connections.find((c) => c.host === node.host && c.port === port);
       return { role: node.role, syncStatus: conn?.syncStatus ?? null };
     });
+  }
+
+  /**
+   * What a restart of THIS daemon may do to a remote stack: look, not ship.
+   *
+   * Boot and the enabled-stacks reconciler resumed every enabled stack through
+   * a full start, and for a remote stack a full start is a deployment — build,
+   * deliver, restart — of whatever this machine's working tree holds, onto
+   * machines other people deploy to as well. Measured 2026-09-22: a master
+   * restarted on a clean tree shipped its tree to the one test server by
+   * itself (`source: 'auto-resume'`, 13:56:56 → 14:00:05, five applications
+   * restarted onto new artifacts); the three restarts before it that morning
+   * were stopped only because the tree happened to be dirty — a condition
+   * that has nothing to do with intent, and a clean tree of an old commit
+   * passes it as easily. Every development machine with the stack enabled did
+   * the same, on every restart, past every gate.
+   *
+   * The applications on a node are supervised by the node's own daemon. What
+   * this master lost in its restart is its own picture of them, so that is
+   * what is rebuilt: the nodes are asked what they run, and the answer becomes
+   * the stack's state — `running`, or `degraded` when some application is not
+   * online (the node restarts its own; this master does not ship over it). A
+   * stack no node answered for is an error the reconciler retries, by asking
+   * again. Deploying stays something an operator asks for.
+   */
+  private async attachRemoteStack(
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    source: StackStartSource,
+  ): Promise<IStackInfo> {
+    const { info, answered } = await this.askNodes(projectName, this.toStackInfo(projectName, stackName, stackConfig));
+    const why = source === 'boot' ? 'a daemon boot' : 'an automatic resume';
+    if (answered === 0) {
+      throw new Error(
+        `Not deploying ${projectName}/${stackName} from ${why}: none of its node(s) answered, so there is nothing ` +
+          `to attach to yet. \`omnitron stack start ${projectName} ${stackName}\` deploys it, deliberately.`,
+      );
+    }
+    const down = info.apps.filter((a) => a.status !== 'online');
+    this.stackStates.set(`${projectName}/${stackName}`, {
+      project: projectName,
+      stack: stackName,
+      status: down.length === 0 ? 'running' : 'degraded',
+      config: stackConfig,
+      startedAt: Date.now(),
+      infraService: null,
+    });
+    this.logger.info(
+      {
+        project: projectName,
+        stack: stackName,
+        source,
+        online: info.apps.length - down.length,
+        total: info.apps.length,
+        ...(down.length > 0 ? { down: down.map((a) => a.name) } : {}),
+      },
+      down.length === 0
+        ? 'Attached to a remote stack running on its nodes — nothing deployed'
+        : 'Attached to a remote stack with applications not online — its nodes supervise them; nothing deployed from a restart',
+    );
+    return info;
   }
 
   /**

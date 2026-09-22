@@ -73,7 +73,7 @@ describe('a persisted batch reaches the replication buffer', () => {
     await collector.flush();
 
     // The rows written to the local table carry `labels` and `metadata`
-    // already serialised for that column. The master's `ingestLog`
+    // already serialised for that column. The master's `logRow`
     // serialises whatever it is handed — so shipping the ROWS would store
     // the string `{"env":"prod"}` as the label object on the other side,
     // and every remote log would arrive with its labels wrapped in quotes.
@@ -149,13 +149,18 @@ describe('an ingested remote metric carries the node it came from', () => {
   it('records through the sink with the node as a separate field', async () => {
     const { svc, sunk } = master();
 
-    await (svc as unknown as {
-      ingestMetric(db: unknown, nodeId: string, entry: { payload: Record<string, unknown>; createdAt: string }): Promise<void>;
-    }).ingestMetric(
-      { insertInto: () => ({ values: () => ({ execute: async () => undefined }) }) },
-      'edge-7',
-      { payload: { name: 'cpu_percent', app: 'payments', labels: { region: 'eu' }, value: 42 }, createdAt: '2026-09-14T00:00:00Z' },
-    );
+    // `recordMetrics` is the one door to the sink, called by both ingest
+    // paths once the rows are committed.
+    (svc as unknown as {
+      recordMetrics(nodeId: string, entries: unknown[]): void;
+    }).recordMetrics('edge-7', [
+      {
+        id: 'e1',
+        category: 'metrics',
+        payload: { name: 'cpu_percent', app: 'payments', labels: { region: 'eu' }, value: 42 },
+        createdAt: '2026-09-14T00:00:00Z',
+      },
+    ]);
 
     // `node` is its own argument, not a key in `labels`, precisely so a
     // caller cannot omit it. A sample recorded without it merges with the

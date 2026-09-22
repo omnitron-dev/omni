@@ -72,6 +72,11 @@ import {
   ARTIFACT_CHECKSUM_FILE,
   NODE_CONFIG_HASH_FILE,
 } from './redeploy-decision.js';
+import {
+  deliveredProbeCommand,
+  parseDeliveredProbe,
+  checkDelivered,
+} from '../release/delivered.js';
 import crypto from 'node:crypto';
 
 /** Escape a string for safe use inside a single-quoted shell argument. */
@@ -435,6 +440,50 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
       const remoteFile = `${remotePath}/${artifact.app}-${artifact.version}.tar.gz`;
       await this.scpTransfer(target, artifact.path, remoteFile);
+
+      // 3b. And ask the node whether what it has is what was sent.
+      //
+      // This used to go straight to `tar -xzf`. The `.artifact-sha256`
+      // written further down reads like this check and is not one: it holds
+      // `artifact.checksum`, the hash of the build INPUTS, it is written
+      // AFTER the unpack, and it is compared against the next build rather
+      // than against the file. So a truncated transfer reached tar, which
+      // failed with whatever tar says about a corrupt archive, and one that
+      // happened to end on a record boundary unpacked a subset and reported
+      // success.
+      //
+      // Skipped only when the artifact carries no tarball hash — an
+      // artifact found on disk by `listArtifacts` rather than built here.
+      // That is an absence of information, not a verdict, and it is said out
+      // loud rather than passed over in silence.
+      if (artifact.tarballSha256) {
+        const probe = await this.sshExec(target, deliveredProbeCommand(remoteFile));
+        const verdict = checkDelivered(
+          { sha256: artifact.tarballSha256, bytes: artifact.size },
+          parseDeliveredProbe(probe),
+        );
+        if (!verdict.ok) {
+          const duration = Date.now() - startTime;
+          this.emitProgress(nodeKey, artifact.app, 'failed', 30, verdict.because);
+          this.logger.error(
+            { node: nodeKey, app: artifact.app, file: remoteFile },
+            `Artifact transfer failed verification — ${verdict.because}`,
+          );
+          return {
+            node: nodeKey,
+            app: artifact.app,
+            version: artifact.version,
+            status: 'failed',
+            duration,
+            error: verdict.because,
+          };
+        }
+      } else {
+        this.logger.warn(
+          { node: nodeKey, app: artifact.app },
+          'Artifact carries no tarball hash — the transfer was not verified',
+        );
+      }
 
       // 4. Extract on remote, into an empty directory.
       //
@@ -1087,14 +1136,13 @@ export class RemoteDeployer {
     });
 
     const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
-    let changed = true;
 
     try {
       await this.sshExec(target, `mkdir -p ${shellEscape(dir)}`);
       const previous = parseRecordedChecksum(
         await this.sshExec(target, readChecksumCommand(shellEscape(dir), NODE_CONFIG_HASH_FILE)),
       );
-      changed = previous !== bodyHash;
+      const changed = previous !== bodyHash;
       // Through a here-document: the config carries braces, quotes and
       // newlines, and a single-quoted argument would need every quote in it
       // escaped by hand — which is how a generated file acquires a syntax

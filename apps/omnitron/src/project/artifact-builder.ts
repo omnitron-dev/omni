@@ -32,6 +32,22 @@ import { decideBuild, buildRecordPath, type BuildDecision, type BuildRecord } fr
 export { resolvePnpmForTests };
 
 const exec = promisify(execFile);
+
+/**
+ * sha256 of a file, read in a stream rather than into memory: an artifact is
+ * tens of megabytes and this runs inside the daemon.
+ */
+async function sha256OfFile(file: string): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  const hash = createHash('sha256');
+  await new Promise<void>((resolve, reject) => {
+    const stream = fs.createReadStream(file);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve());
+  });
+  return hash.digest('hex');
+}
 import { execInGroup } from './exec-in-group.js';
 
 // =============================================================================
@@ -44,7 +60,22 @@ export interface ArtifactInfo {
   path: string; // Local tarball path
   size: number;
   builtAt: string;
+  /**
+   * Hash of the build INPUTS — sources plus vendored dependencies — which is
+   * what tells the next deployment whether it has anything to do. NOT the
+   * hash of the file below, despite `.artifact-sha256` being the name it is
+   * stored under on the node.
+   */
   checksum: string;
+  /**
+   * sha256 of the tarball itself, as the receiving side recomputes it.
+   *
+   * The pair `{ tarballSha256, size }` is what makes a transfer checkable at
+   * the one moment the bytes cross a machine boundary. Absent for an
+   * artifact found on disk rather than built here — `listArtifacts` reads a
+   * directory and does not hash what it finds.
+   */
+  tarballSha256?: string;
 }
 
 export interface BuildOptions {
@@ -260,6 +291,7 @@ export class ArtifactBuilder {
     if (!options?.skipBuild) await this.recordBuild(appDir);
 
     const stat = fs.statSync(artifactPath);
+    const tarballSha256 = await sha256OfFile(artifactPath);
 
     return {
       app: entry.name,
@@ -268,6 +300,7 @@ export class ArtifactBuilder {
       size: stat.size,
       builtAt: new Date().toISOString(),
       checksum,
+      tarballSha256,
     };
   }
 
@@ -518,7 +551,6 @@ export class ArtifactBuilder {
    * the one being installed on.
    */
   private async createTarball(appDir: string, outputPath: string, appName: string): Promise<string> {
-    const os = await import('node:os');
     const fsp = await import('node:fs/promises');
     const {
       buildBundle,

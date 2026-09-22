@@ -692,8 +692,17 @@ export interface ReleaseDeploymentDto {
   readonly actorId: string | null;
   /** `operator`, `boot`, `auto-resume` — who asked for that start. */
   readonly source: string | null;
-  /** The release deployed, or `null` when the working tree was. */
+  /** The release deployed, or `null` when the working tree was — or when the row cannot say. */
   readonly release: string | null;
+  /**
+   * True when the row recorded a release and cannot name it.
+   *
+   * Rows written before the audit trail learned to flatten this field hold
+   * the literal `[object]`. «A release, name not recorded» and «the working
+   * tree» are different facts, and a console that showed the second for the
+   * first would be inventing a deployment nobody made.
+   */
+  readonly releaseUnnamed: boolean;
   readonly projectCommit: string | null;
   readonly omniCommit: string | null;
 }

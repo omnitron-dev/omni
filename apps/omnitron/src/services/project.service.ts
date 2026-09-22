@@ -1046,12 +1046,48 @@ export class ProjectService extends EventEmitter {
    * the statics: a stack whose gateway serves a bundle takes it from the
    * release, built for this stack, or not at all.
    */
+  /**
+   * Would this release be taken by this stack? Asked without deploying it.
+   *
+   * The console shows this before an operator presses Deploy, and it is the
+   * DEPLOYMENT'S OWN decision — the same `admitRelease` a start runs, with
+   * nothing skipped and nothing re-implemented. A second copy of these rules
+   * in the browser would drift from these ones within a week, and the only
+   * thing worse than a refusal at deploy time is a console that promised the
+   * opposite.
+   */
+  async checkRelease(
+    projectName: string,
+    stackName: string,
+    releaseId: string,
+  ): Promise<{ ok: boolean; because: string }> {
+    try {
+      const config = await this.loadProjectConfig(projectName);
+      const stacks = this.resolveStacks(config, projectName);
+      const stackConfig = stacks[stackName];
+      if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+      const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
+      const gates = release.manifest.gates;
+      const passed = gates.filter((g) => g.status === 'passed').length;
+      return {
+        ok: true,
+        because:
+          `${projectName}/${stackName} would take ${release.id}: ${passed} of ${gates.length} gates passed, ` +
+          `${release.files.length} artifact(s) match the manifest` +
+          `${release.staticsDir ? `, static bundle built for ${release.manifest.statics?.stack}` : ''}.`,
+      };
+    } catch (err) {
+      return { ok: false, because: (err as Error).message };
+    }
+  }
+
   private async admitRelease(
     projectName: string,
     stackName: string,
     stackConfig: IStackConfig,
     config: IEcosystemConfig,
     releaseId: string,
+    purpose: 'deploy' | 'check' = 'deploy',
   ): Promise<LoadedRelease> {
     if (stackConfig.type === 'local') {
       throw new Error(`A release is for a remote stack — ${projectName}/${stackName} is local and runs its working tree.`);
@@ -1100,7 +1136,7 @@ export class ProjectService extends EventEmitter {
         projectCommit: commit.slice(0, 8),
         omniCommit: release.manifest.omni.commit.slice(0, 8),
       },
-      'Release admitted',
+      purpose === 'check' ? 'Release would be admitted — asked, not deployed' : 'Release admitted',
     );
     return release;
   }

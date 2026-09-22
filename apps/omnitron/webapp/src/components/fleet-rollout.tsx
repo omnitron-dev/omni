@@ -71,18 +71,18 @@ const PHASE_TONE: Record<NodeUpgradeProgress['phase'], 'default' | 'info' | 'war
 };
 
 /**
- * The plan, asked for with a deadline that fits what it does.
+ * The plan that compares, asked for with a deadline that fits what it does.
  *
- * `planUpgrade` BUILDS the bundle — that is how it can name a target version
- * and say «already on it» instead of listing every node as «upgrade». The
- * console's default deadline is 30 seconds and the build takes longer:
- * measured here, the typed call came back `Request timeout after 30000ms`
- * every time while the master went on building. So this one call is made
- * through the untyped invoke with a deadline of three minutes; everything
- * else on this page uses the typed proxy.
+ * A plan can only say «already on the target version» if something built the
+ * target, and that build runs on the daemon's own thread: measured from this
+ * console, 30 s typed call → timeout; 180 s → `HTTP 504` at the gateway's own
+ * 120 s; and for the 150 seconds it ran, the master answered no health check
+ * and both nodes read «not reachable». So comparing is a deliberate, named
+ * act here — never what the Plan button does by itself — and it goes through
+ * the untyped invoke because `build` is not on the typed contract yet.
  */
-function planUpgrade(data: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
-  return daemonClient.invoke<INodeUpgradePlan>('daemon', 'OmnitronNodes', 'planUpgrade', [data], {
+function comparePlan(data: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
+  return daemonClient.invoke<INodeUpgradePlan>('daemon', 'OmnitronNodes', 'planUpgrade', [{ ...data, build: true }], {
     timeout: 180_000,
   });
 }
@@ -263,18 +263,22 @@ function RolloutDialog({
 
   const allPicked = picked.size > 0 && picked.size === candidates.length;
 
-  const buildPlan = useCallback(async () => {
-    setPlanning(true);
-    setFailure(null);
-    try {
-      setPlan(await planUpgrade(picked.size > 0 ? { nodeIds: [...picked] } : {}));
-    } catch (err) {
-      setFailure((err as Error).message);
-      setPlan(null);
-    } finally {
-      setPlanning(false);
-    }
-  }, [picked]);
+  const buildPlan = useCallback(
+    async (compare: boolean) => {
+      setPlanning(true);
+      setFailure(null);
+      const request = picked.size > 0 ? { nodeIds: [...picked] } : {};
+      try {
+        setPlan(compare ? await comparePlan(request) : await nodesRpc.planUpgrade(request));
+      } catch (err) {
+        setFailure((err as Error).message);
+        setPlan(null);
+      } finally {
+        setPlanning(false);
+      }
+    },
+    [picked],
+  );
 
   const upgradeRows = plan?.rows.filter((r) => r.action === 'upgrade') ?? [];
 
@@ -349,9 +353,19 @@ function RolloutDialog({
           </Box>
 
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-            <Button size="small" variant="outlined" onClick={() => void buildPlan()} disabled={planning || starting}>
+            <Button size="small" variant="outlined" onClick={() => void buildPlan(false)} disabled={planning || starting}>
               {planning ? 'Planning…' : 'Plan'}
             </Button>
+            <Tooltip
+              title="Builds the bundle so each node can be compared to it. It runs on the master's own thread and stops it answering anything else for a minute or two."
+              arrow
+            >
+              <span>
+                <Button size="small" onClick={() => void buildPlan(true)} disabled={planning || starting}>
+                  Compare versions
+                </Button>
+              </span>
+            </Tooltip>
             {planning && <CircularProgress size={16} />}
             <TextField
               select
@@ -384,16 +398,29 @@ function RolloutDialog({
                   </Typography>
                 </Alert>
               )}
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                Target <strong style={{ fontFamily: 'monospace' }}>{plan.targetVersion}</strong> —{' '}
-                {upgradeRows.length} would be upgraded, {plan.rows.filter((r) => r.action === 'skip').length} already there,{' '}
-                {plan.rows.filter((r) => r.action === 'refuse').length} refused.
-              </Typography>
+              {plan.compared ? (
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Target <strong style={{ fontFamily: 'monospace' }}>{plan.targetVersion}</strong> —{' '}
+                  {upgradeRows.length} would be upgraded, {plan.rows.filter((r) => r.action === 'skip').length} already there,{' '}
+                  {plan.rows.filter((r) => r.action === 'refuse').length} refused.
+                </Typography>
+              ) : (
+                <Box sx={{ mb: 1 }}>
+                  <Typography variant="body2">
+                    {upgradeRows.length} would be attempted, {plan.rows.filter((r) => r.action === 'refuse').length} refused —{' '}
+                    <strong>nothing was compared</strong>.
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    No bundle has been built, so no row can say «already on the target version». Twelve rows reading
+                    «upgrade» here mean twelve nodes that would be touched, not twelve that are out of date.
+                  </Typography>
+                </Box>
+              )}
               <Table size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell>Node</TableCell>
-                    <TableCell>Now</TableCell>
+                    <TableCell>{plan.compared ? 'Now → target' : 'Now'}</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Why</TableCell>
                   </TableRow>
@@ -409,7 +436,15 @@ function RolloutDialog({
                           {r.host ?? 'no address'}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{r.currentVersion ?? '—'}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                        {r.currentVersion ?? '—'}
+                        {plan.compared && r.targetVersion && r.targetVersion !== r.currentVersion && (
+                          <Typography component="span" variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+                            {' → '}
+                            {r.targetVersion}
+                          </Typography>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Chip
                           size="small"

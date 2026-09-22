@@ -124,6 +124,46 @@ describe('the door', () => {
     expect(stored.attestation.gates[0]).toMatchObject({ status: 'not-run', detail: expect.stringContaining("'ok'") });
   });
 
+  it("keeps a probe's own output — the finding in its words, not only its last line", async () => {
+    // 2026-09-22, on test: `a-state-no-path-produced-live` reported «something
+    // writes a word the declared vocabulary lacks», and which word, in which
+    // column, stayed on the node. The producer now sends the tail as `output`.
+    const finding = [
+      'rows hold a value the enum does not declare',
+      '  orders.status  «refund_pending»  3 rows',
+      "REFUSED — this grew: predicates naming a value no row has ever held, on a table of 20+ rows 0 → 12.",
+    ].join('\n');
+    const stored = await storeAttestation(
+      RELEASE,
+      'test',
+      printed({ probes: [{ name: 'a-state-no-path-produced-live', outcome: 'failed', detail: 'REFUSED — this grew', output: `${finding}\n\n` }] }),
+      { root },
+    );
+
+    expect(stored.attestation.gates[0]?.output).toBe(finding);
+  });
+
+  it('keeps the END of a long output, marked as cut, and nothing that is not text', async () => {
+    const long = `${'x'.repeat(10_000)}\nthe last line says what it found`;
+    const stored = await storeAttestation(
+      RELEASE,
+      'test',
+      printed({
+        probes: [
+          { name: 'long-live', outcome: 'failed', output: long },
+          { name: 'odd-live', outcome: 'failed', output: { lines: ['not', 'a', 'string'] } },
+        ],
+      }),
+      { root },
+    );
+    const [longGate, oddGate] = stored.attestation.gates;
+
+    expect(longGate?.output?.startsWith('…')).toBe(true);
+    expect(longGate?.output?.endsWith('the last line says what it found')).toBe(true);
+    expect(longGate?.output?.length).toBe(4096 + 1);
+    expect(oddGate).not.toHaveProperty('output');
+  });
+
   it('finds the last JSON object even when the producer spoke before it', () => {
     expect(parseAttestation('line one\n{"not":"it"}\nnoise\n{"stack":"test"}\n')).toEqual({ stack: 'test' });
     expect(() => parseAttestation('only words\n')).toThrow(/nothing was measured/);

@@ -161,12 +161,23 @@ describe('the builder asks before it compiles', () => {
     expect(body).toMatch(/clearBuildInfo\(appDir\)/);
   });
 
-  it('records only after a build that finished', () => {
+  it('records only after a build that finished, and after the packing that can move its inputs', () => {
     // A record written before the compiler ran, or after one that threw,
-    // says a dist exists that does not.
-    const body = blockAt(builder, 'if (!options?.skipBuild) {');
+    // says a dist exists that does not. Both were already avoided here.
+    //
+    // The third order was not, and this assertion used to hold the record
+    // inside the `skipBuild` block where the defect lived: packing rebuilds
+    // a vendored package whose `dist` is stale, and that package's
+    // directory is part of the inputs just written down. Measured
+    // 2026-09-22 — `main` recorded at 08:01:15, packing rebuilt two
+    // packages at 08:01:33 and 08:01:54, and the next deployment rebuilt an
+    // app nobody had touched. See
+    // `a-record-the-same-run-invalidated.test.ts`, which drives the order
+    // rather than reading it.
+    const body = blockAt(builder, 'async buildApp(');
 
     expect(body.indexOf('runBuild(')).toBeLessThan(body.indexOf('recordBuild('));
+    expect(body.indexOf('createTarball(')).toBeLessThan(body.indexOf('recordBuild('));
   });
 });
 

@@ -51,6 +51,7 @@ import type {
   IProjectRequirements,
   ISyncStatus,
 } from '../shared/dto/project.js';
+import { summariseSync } from './sync-summary.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
 import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
@@ -931,11 +932,7 @@ export class ProjectService extends EventEmitter {
       totalCpu: apps.reduce((sum, a) => sum + a.cpu, 0),
       totalMemory: apps.reduce((sum, a) => sum + a.memory, 0),
       syncSummary: (stackConfig.type === 'remote' || stackConfig.type === 'cluster')
-        ? {
-            totalSlaves: stackConfig.nodes?.filter((n) => n.role !== 'master').length ?? 0,
-            syncedSlaves: 0,
-            totalPending: 0,
-          }
+        ? summariseSync(this.nodesWithSync(stackConfig))
         : null,
     };
 
@@ -961,6 +958,26 @@ export class ProjectService extends EventEmitter {
       totalCpu: remote.reduce((sum, a) => sum + (a.cpu ?? 0), 0),
       totalMemory: remote.reduce((sum, a) => sum + (a.memory ?? 0), 0),
     };
+  }
+
+  /**
+   * Each configured node paired with what it last said about its own
+   * replication — the input the summary is counted from.
+   *
+   * Matching is by `host` and effective `port`, the same rule the node list
+   * below uses; a node with no connection contributes `null`, which the
+   * summary reads as «not heard from» rather than «nothing pending».
+   */
+  private nodesWithSync(stackConfig: IStackConfig): Array<{
+    role: string;
+    syncStatus: ISyncStatus | null;
+  }> {
+    const connections = this.slaveConnector?.getConnections() ?? [];
+    return (stackConfig.nodes ?? []).map((node) => {
+      const port = node.port ?? 9700;
+      const conn = connections.find((c) => c.host === node.host && c.port === port);
+      return { role: node.role, syncStatus: conn?.syncStatus ?? null };
+    });
   }
 
   /**
@@ -3047,7 +3064,7 @@ export class ProjectService extends EventEmitter {
           daemonRole: n.role === 'master' ? 'master' as DaemonRole : 'slave' as DaemonRole,
           connected,
           lastSeen: conn?.lastHeartbeat ?? null,
-          syncStatus: null as ISyncStatus | null,
+          syncStatus: (conn?.syncStatus ?? null) as ISyncStatus | null,
         };
       });
 

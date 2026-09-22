@@ -1102,11 +1102,8 @@ export class OmnitronDaemon {
         const { ExecutionService: Exec } = await import('../execution/execution.service.js');
 
         const meshLogger = loggerModule.logger.child({ component: 'mesh' });
-        const fleetService = await container
-          .resolveAsync<FleetService>(FLEET_SERVICE_TOKEN)
-          .catch(() => undefined);
 
-        const connector = new SlaveConnector(meshLogger, fleetService, this.syncService ?? null, {
+        const connector = new SlaveConnector(meshLogger, this.syncService ?? null, {
           dial: createMeshDialer({
             logger: meshLogger,
             execution: new Exec(meshLogger),

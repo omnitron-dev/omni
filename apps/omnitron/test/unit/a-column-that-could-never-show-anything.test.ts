@@ -77,7 +77,7 @@ function connectedSlave(connector: SlaveConnector, answer: () => Promise<ISyncSt
 
 describe('a column that could never show anything', () => {
   it('carries what the node said about its own buffer', async () => {
-    const connector = new SlaveConnector(createNullLogger(), undefined, null);
+    const connector = new SlaveConnector(createNullLogger(), null);
     connectedSlave(connector, async () => status({ pendingItems: 47_407, lastSyncAt: null }));
 
     await (connector as unknown as { refreshSyncStatus: (c: unknown) => Promise<void> })
@@ -99,7 +99,7 @@ describe('a column that could never show anything', () => {
     // The node answered once and then stopped answering. Keeping the old
     // number would report «0 pending» about a node that has said nothing
     // since — the literal's mistake, one level down.
-    const connector = new SlaveConnector(createNullLogger(), undefined, null);
+    const connector = new SlaveConnector(createNullLogger(), null);
     let answering = true;
     connectedSlave(connector, async () => {
       if (!answering) throw new Error('Request timeout');
@@ -126,7 +126,7 @@ describe('a column that could never show anything', () => {
   it('says nothing about a node it is not connected to', async () => {
     // Control: the sweep skips it, and so must the read. A node with no
     // peer cannot have a current figure.
-    const connector = new SlaveConnector(createNullLogger(), undefined, null);
+    const connector = new SlaveConnector(createNullLogger(), null);
     const conn = connectedSlave(connector, async () => status({ pendingItems: 5 }));
 
     await (connector as unknown as { refreshSyncStatus: (c: unknown) => Promise<void> })

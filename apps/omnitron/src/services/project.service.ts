@@ -168,7 +168,15 @@ export class ProjectService extends EventEmitter {
     private readonly logger: ILogger,
     private readonly orchestrator: OrchestratorService,
     daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
-    private readonly fleetService?: FleetService,
+    /**
+     * Read by nothing. It was handed to the slave connector, which wrote
+     * managed machines' heartbeats into the fleet table — the control plane's
+     * registry of daemons, where a machine has no row. Kept for its POSITION:
+     * the daemon's factory (daemon.module.ts) passes these positionally, and
+     * a slot removed here would move every later argument into the wrong one
+     * while its `any` let it compile.
+     */
+    _fleetService?: FleetService,
     private readonly syncService?: SyncService,
     /**
      * The vault, for the secrets a stack's service overrides name.
@@ -255,7 +263,7 @@ export class ProjectService extends EventEmitter {
    */
   private getSlaveConnector(): SlaveConnector {
     if (!this.slaveConnector) {
-      this.slaveConnector = new SlaveConnector(this.logger, this.fleetService, this.syncService ?? null);
+      this.slaveConnector = new SlaveConnector(this.logger, this.syncService ?? null);
     }
     return this.slaveConnector;
   }

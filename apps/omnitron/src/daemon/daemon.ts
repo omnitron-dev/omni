@@ -1821,11 +1821,13 @@ export class OmnitronDaemon {
       }
     }
 
-    // Register self in fleet (master only — requires PG)
+    // Register self in fleet (master only — requires PG). `registerSelf`, so
+    // the service remembers which row is this daemon's: the fleet-heartbeat
+    // job beats that row, and had only the literal 'self' before.
     if (!isSlave) {
       try {
         const fleetService = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
-        await fleetService.registerNode({
+        await fleetService.registerSelf({
           hostname: os.hostname(),
           address: advertisedAddress(this.dc.host),
           port: this.dc.port,

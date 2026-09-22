@@ -220,11 +220,6 @@ export class ArtifactBuilder {
         // to say so.
         this.logger?.info(`building ${entry.name} — ${decision.because}`);
         await this.runBuild(appDir, entry.name);
-        // After, and only after a build that returned: a record written
-        // before the compiler ran describes a dist that does not exist yet,
-        // and one written after a build that threw describes a dist that
-        // never will.
-        await this.recordBuild(appDir);
       }
     }
 
@@ -238,6 +233,32 @@ export class ArtifactBuilder {
     //    artifact's identity from the bundle rather than from the archive —
     //    see `bundleChecksum`.
     const checksum = await this.createTarball(appDir, artifactPath, entry.name);
+
+    // What this artifact was built from, recorded AFTER it was packed.
+    //
+    // Two orders are wrong and one is right. Before the compiler runs, the
+    // record describes a dist that does not exist yet; after a build that
+    // threw, it describes a dist that never will. Both were already
+    // avoided. The third was not: packing rebuilds a vendored package whose
+    // `dist` is stale (`bundle-builder`, «rebuilding X — src/… is newer»),
+    // and that package's directory is part of these inputs — so a record
+    // written before the tarball describes a state the same run then
+    // changed.
+    //
+    // Measured 2026-09-22. `main` recorded `inputs 9463e320636e0319` at
+    // 08:01:15; packing rebuilt `@omnitron-dev/omnitron` at 08:01:33 and
+    // `@omnitron-dev/titan` at 08:01:54, 832 files between them. The next
+    // deployment measured `c5fb6c99ecf39c44` with no source touched, and
+    // rebuilt an app it could have skipped. Only the FIRST app of a run was
+    // affected — by the second the packages were current and the memo had
+    // already dropped them — which is why five of six skipped and one did
+    // not.
+    //
+    // Recorded on the reuse path too: a run that compiles nothing can still
+    // rebuild a vendored package while packing, and that leaves the record
+    // of an app that was never touched describing inputs it no longer has.
+    if (!options?.skipBuild) await this.recordBuild(appDir);
+
     const stat = fs.statSync(artifactPath);
 
     return {

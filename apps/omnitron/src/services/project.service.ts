@@ -840,7 +840,24 @@ export class ProjectService extends EventEmitter {
     }
   }
 
-  getStackStatus(projectName: string, stackName: string): StackRuntime {
+  /**
+   * What is running in this stack, asked of whoever is running it.
+   *
+   * For a remote stack that is the node. This counted `this.orchestrator
+   * .list()` — the MASTER's process table — which lists none of a remote
+   * stack's applications, so `stack runtime daos test` answered
+   * `totalApps: 0, onlineApps: 0, connectedNodes: 0` while `stack status`
+   * listed six apps online from the same node, three times in three seconds
+   * (measured 2026-09-22). The JSON surface is the one a script and a
+   * dashboard read.
+   *
+   * The sibling readers were taught this already — `listStacks`, `getStack`
+   * and `startStack` all pass through `withRemoteAppStatuses`, and the
+   * comment beside one of them names the same symptom: «only 0/6 apps came
+   * online» about six that were running. The fix reached three callers of
+   * four.
+   */
+  async getStackStatus(projectName: string, stackName: string): Promise<StackRuntime> {
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey);
 
@@ -871,16 +888,14 @@ export class ProjectService extends EventEmitter {
       status = 'degraded';
     }
 
-    return {
+    const base: StackRuntime = {
       name: stackName,
       type: stackConfig.type,
       status,
       totalApps: apps.length,
       onlineApps: onlineApps.length,
       totalNodes: stackConfig.nodes?.length ?? 1,
-      connectedNodes: stackConfig.type === 'local'
-        ? 1
-        : (this.slaveConnector?.getConnections().filter((c) => c.stack === stackName && c.status === 'connected').length ?? 0),
+      connectedNodes: stackConfig.type === 'local' ? 1 : 0,
       totalCpu: apps.reduce((sum, a) => sum + a.cpu, 0),
       totalMemory: apps.reduce((sum, a) => sum + a.memory, 0),
       syncSummary: (stackConfig.type === 'remote' || stackConfig.type === 'cluster')
@@ -890,6 +905,29 @@ export class ProjectService extends EventEmitter {
             totalPending: 0,
           }
         : null,
+    };
+
+    if (stackConfig.type === 'local') return base;
+
+    // The node is asked, and what it answers replaces every count that was
+    // taken from this machine. `connectedNodes` is the number of nodes that
+    // ANSWERED rather than the number of entries in the connector's
+    // registry: that registry reported 0 connections for a node that was
+    // answering RPCs in the same second.
+    const { info, answered } = await this.askNodes(
+      projectName,
+      this.getStack(projectName, stackName),
+    );
+    const remote = info.apps;
+    const up = remote.filter((a) => a.status === 'online');
+    return {
+      ...base,
+      status: info.status,
+      totalApps: remote.length,
+      onlineApps: up.length,
+      connectedNodes: answered,
+      totalCpu: remote.reduce((sum, a) => sum + (a.cpu ?? 0), 0),
+      totalMemory: remote.reduce((sum, a) => sum + (a.memory ?? 0), 0),
     };
   }
 
@@ -2685,9 +2723,25 @@ export class ProjectService extends EventEmitter {
    * local rows are at least honest about being local.
    */
   async withRemoteAppStatuses(projectName: string, info: IStackInfo): Promise<IStackInfo> {
-    if (info.type !== 'remote' && info.type !== 'cluster') return info;
+    return (await this.askNodes(projectName, info)).info;
+  }
+
+  /**
+   * The same question, with the count of nodes that answered it.
+   *
+   * `connectedNodes` used to be read from the connector's registry, which
+   * said 0 about a node that was answering RPCs at that moment — measured
+   * 2026-09-22, three times in three seconds, beside a `stack status` that
+   * listed six apps online from the very same node. A registry is
+   * bookkeeping; an answer is a fact, and this is where the answers are.
+   */
+  private async askNodes(
+    projectName: string,
+    info: IStackInfo,
+  ): Promise<{ info: IStackInfo; answered: number }> {
+    if (info.type !== 'remote' && info.type !== 'cluster') return { info, answered: 0 };
     const nodes = info.config.nodes ?? [];
-    if (nodes.length === 0 || !this.slaveConnector) return info;
+    if (nodes.length === 0 || !this.slaveConnector) return { info, answered: 0 };
 
     const reported = new Map<string, import('../config/types.js').ProcessInfoDto>();
     let remoteInfra: IStackInfraStatus | null = null;
@@ -2722,7 +2776,7 @@ export class ProjectService extends EventEmitter {
       }
     }
 
-    if (answered === 0) return info;
+    if (answered === 0) return { info, answered };
 
     const apps = info.apps.map((app) => {
       const running = reported.get(app.name);
@@ -2754,10 +2808,13 @@ export class ProjectService extends EventEmitter {
           : info.status;
 
     return {
-      ...info,
-      status,
-      infrastructure: remoteInfra ?? info.infrastructure,
-      apps,
+      info: {
+        ...info,
+        status,
+        infrastructure: remoteInfra ?? info.infrastructure,
+        apps,
+      },
+      answered,
     };
   }
 

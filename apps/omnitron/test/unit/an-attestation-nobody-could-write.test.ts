@@ -23,7 +23,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { loadAttestations, parseAttestation, storeAttestation } from '../../src/release/attest.js';
-import { attestationCommand, interpretRun } from '../../src/release/attest-on-node.js';
+import { attestationCommand, interpretRun, producerProvisions } from '../../src/release/attest-on-node.js';
 import { decideStackRelease, type ReleaseManifest } from '../../src/release/manifest.js';
 
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'attest-court-')));
@@ -225,5 +225,30 @@ describe('the transport, as the producer defines it', () => {
     // Anything else is `unknown argument`, exit 2 — which would store nothing.
     const flags = command.match(/--[a-z-]+/g) ?? [];
     for (const flag of flags) expect(['--stack', '--release', '--out', '--only', '--on-node']).toContain(flag);
+  });
+
+  it('asks the producer to provision accounts only when told to', () => {
+    const base = { remoteDir: '/opt/omnitron/attest/0123456789abcdef', stack: 'test', releaseId: RELEASE, containerPrefix: 'daos-test' };
+
+    expect(attestationCommand({ ...base, provision: true })).toContain(' --provision ');
+    expect(attestationCommand({ ...base, provision: false })).not.toContain('--provision');
+    expect(attestationCommand(base)).not.toContain('--provision');
+  });
+
+  it("reads whether the staged producer knows --provision from its own list of flags", () => {
+    const stage = (source: string | null) => {
+      const dir = fs.mkdtempSync(path.join(root, 'stage-'));
+      fs.mkdirSync(path.join(dir, 'scripts'));
+      if (source !== null) fs.writeFileSync(path.join(dir, 'scripts', 'attest.mjs'), source);
+      return dir;
+    };
+    // The producer on probes-node (daos 4f082ac2) and the one every release before it carries.
+    const knows = "const KNOWN = ['--stack=', '--release=', '--out=', '--only=', '--on-node', '--provision'];\n";
+    const predates = "// run with --provision to create accounts (not yet)\nconst KNOWN = ['--stack=', '--release=', '--out=', '--only=', '--on-node'];\n";
+
+    expect(producerProvisions(stage(knows))).toBe(true);
+    // A comment that NAMES the flag is not the producer accepting it.
+    expect(producerProvisions(stage(predates))).toBe(false);
+    expect(producerProvisions(stage(null))).toBe(false);
   });
 });

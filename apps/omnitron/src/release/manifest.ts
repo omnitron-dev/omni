@@ -364,6 +364,19 @@ export interface StackReleaseRequirements {
   /** Refuse a release whose commits no remote branch contains. */
   readonly requireOnRemote?: boolean;
   readonly verifiedOn?: { readonly stack: string; readonly gates: readonly string[] };
+  /**
+   * How a release's probes may run on this stack's node.
+   *
+   * `provision`: the run creates the accounts its probes sign in with —
+   * an admin among them, raised through the stack's own Postgres — and
+   * removes them at the end (`attest.mjs --provision`). A stand seeded with
+   * nobody's accounts, like test, measures nothing that needs a signed-in
+   * person without it: on 2026-09-22 ten probes there failed on the dev
+   * passwords and three more could not start. Declared per stack and off
+   * unless declared, because a temporary superadmin is not something a
+   * production stack should get from a flag nobody chose.
+   */
+  readonly attest?: { readonly provision?: boolean };
 }
 
 /**

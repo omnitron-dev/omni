@@ -43,6 +43,14 @@ type AttestAnswer = {
   scriptsFrom: 'release' | 'history';
   /** Absent from a daemon older than the field. */
   sourceFiles?: number;
+  /** Where the probes' accounts came from; absent from an older daemon. */
+  accounts?: 'provisioned' | 'not-declared' | 'producer-cannot';
+};
+
+const ACCOUNTS_WORDS: Record<NonNullable<AttestAnswer['accounts']>, string> = {
+  provisioned: ' Accounts were created by the run and removed at its end.',
+  'not-declared': ' No accounts were provisioned — the stack does not declare release.attest.provision, so probes that sign in said NOT RUN.',
+  'producer-cannot': " No accounts were provisioned — the stack allows it, but this release's producer predates --provision.",
 };
 
 /**
@@ -223,7 +231,7 @@ export function ReleaseAttestations({
               (answer.sourceFiles > 0
                 ? `, with ${answer.sourceFiles} application source files from that commit`
                 : ', with no application sources — probes that read code said NOT RUN')}
-            .
+            .{answer.accounts ? ACCOUNTS_WORDS[answer.accounts] : ''}
           </Alert>
         )}
         {failure && (

@@ -201,6 +201,11 @@ export async function releaseAttestCommand(
             : "  with no application sources — the release's commit has no apps/*/src or packages/*/src; probes that read code say NOT RUN",
         );
       }
+      if (answer.accounts === 'provisioned') log.info('  accounts: created by the run and removed at its end (--provision)');
+      else if (answer.accounts === 'not-declared')
+        log.info(`  accounts: none provisioned — ${options.stack} does not declare release.attest.provision; probes that sign in say NOT RUN`);
+      else if (answer.accounts === 'producer-cannot')
+        log.warn("  accounts: none provisioned — the stack allows it, but this release's producer predates --provision");
       log.info(`  ${answer.path}`);
     } catch (err) {
       log.error((err as Error).message);

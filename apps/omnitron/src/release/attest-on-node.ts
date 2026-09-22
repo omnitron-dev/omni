@@ -75,6 +75,8 @@ export function attestationCommand(input: {
   stack: string;
   releaseId: string;
   containerPrefix: string;
+  /** Pass `--provision`: only when the stack allows it AND the staged producer knows the flag. */
+  provision?: boolean;
 }): string {
   const env = {
     DAOS_PG_CONTAINER: `${input.containerPrefix}-postgres`,
@@ -89,8 +91,26 @@ export function attestationCommand(input: {
   // `scripts/..` — which is where `stageAttestation` puts it.
   return (
     `cd ${shellEscape(input.remoteDir)} && ${assignments} node scripts/attest.mjs ` +
-    `--stack=${shellEscape(input.stack)} --on-node --release=${shellEscape(input.releaseId)}`
+    `--stack=${shellEscape(input.stack)} --on-node${input.provision ? ' --provision' : ''} --release=${shellEscape(input.releaseId)}`
   );
+}
+
+/**
+ * Does the staged producer take `--provision`?
+ *
+ * Read from its own list of known flags, because the producer refuses a flag
+ * it does not know with exit 2 — «unknown argument», nothing measured — and
+ * a release built before the flag existed carries a producer without it.
+ * Asking the file rather than a version keeps one question in one place.
+ */
+export function producerProvisions(stagedDir: string): boolean {
+  try {
+    const source = fs.readFileSync(path.join(stagedDir, 'scripts', 'attest.mjs'), 'utf8');
+    const known = /const KNOWN\s*=\s*\[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    return /['"]--provision['"]/.test(known);
+  } catch {
+    return false;
+  }
 }
 
 /**

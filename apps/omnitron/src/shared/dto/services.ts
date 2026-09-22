@@ -749,5 +749,7 @@ export interface IOmnitronReleaseService {
     scriptsFrom: 'release' | 'history';
     /** Application source files staged beside the probes; 0 when the commit has none. */
     sourceFiles: number;
+    /** Where the probes' accounts came from — see `AttestAccounts` in project.service. */
+    accounts: 'provisioned' | 'not-declared' | 'producer-cannot';
   }>;
 }

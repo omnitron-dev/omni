@@ -326,3 +326,52 @@ describe('two names for one machine are one writer', () => {
     expect(fs.existsSync(leaseFile(m.dir))).toBe(false);
   });
 });
+
+describe('fleet upgrade is a writer too', () => {
+  // `underLease` is what `installBundleOnNode` and `activateBundleOnNode` run
+  // their work in. The activation restarts the node's daemon — the last thing
+  // to do underneath somebody else's deployment.
+  async function deployerOn(runScript: (script: string) => Promise<string>) {
+    const { RemoteDeployer } = await import('../../src/services/remote-deployer.service.js');
+    const execution = {
+      ssh: async (_target: unknown, command: string) => ({ stdout: await runScript(command), stderr: '', exitCode: 0, duration: 1 }),
+      uploadFile: async () => undefined,
+    };
+    return new RemoteDeployer(silentLogger, execution as never);
+  }
+  const target = { host: '37.27.130.185', sshPort: 22 };
+
+  it('takes the lease before the work and gives it back after', async () => {
+    const n = node('fleet');
+    const order: string[] = [];
+    const deployer = await deployerOn(async (script) => {
+      order.push(script.includes("echo 'ACQUIRED'") ? 'lease' : 'release');
+      return n.run(script.replace(/\/opt\/omnitron\/locks/g, n.dir));
+    });
+
+    const result = await deployer.underLease(target, 'fleet upgrade: activate 0.2.0+local.f5dec792', async () => {
+      order.push('activate');
+      expect(fs.existsSync(leaseFile(n.dir))).toBe(true);
+      return true;
+    });
+
+    expect(result).toBe(true);
+    expect(order).toEqual(['lease', 'activate', 'release']);
+    expect(fs.existsSync(leaseFile(n.dir))).toBe(false);
+  });
+
+  it('a node another writer holds is refused, and the work never runs', async () => {
+    const holder = JSON.stringify({ token: 't', holder: 'laptop-2 pid 7', stack: 'daos/test', startedAt: '2026-09-22T14:00:00.000Z' });
+    let worked = false;
+    const deployer = await deployerOn(async (script) =>
+      script.includes("echo 'ACQUIRED'") ? `HELD 3\t${holder}\n` : 'RELEASED\n',
+    );
+
+    await expect(
+      deployer.underLease(target, 'fleet upgrade: install', async () => {
+        worked = true;
+      }),
+    ).rejects.toThrow(/37\.27\.130\.185:22 is being deployed by laptop-2 pid 7 \(deploying daos\/test/);
+    expect(worked).toBe(false);
+  });
+});

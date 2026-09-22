@@ -113,6 +113,45 @@ export function findWorkspaceRoot(from: string): string | null {
 }
 
 /**
+ * Why `fleet upgrade` must not build from here — or null.
+ *
+ * Three refusals, each naming the place rather than a package. No workspace
+ * above the directory. A workspace, but somebody else's: run from
+ * `~/projects/dao/daos`, the command found daos's root and failed inside the
+ * bundler with «@omnitron-dev/omnitron is not a package in this workspace»,
+ * which reads as a broken omnitron checkout (`planBundle` keeps that refusal
+ * for callers that arrive some other way). And a tree with uncommitted
+ * changes: the version a node reports names the commit, so a bundle built
+ * from a dirty tree is a node reporting a commit that is not what it runs —
+ * the record that outlives everyone who knew. That one is lifted only by
+ * `--allow-dirty`, as for `stack start`.
+ */
+export function upgradeWorkspaceRefusal(input: {
+  cwd: string;
+  root: string | null;
+  hasOmnitron: boolean;
+  dirty: boolean;
+  allowDirty: boolean;
+}): string | null {
+  if (!input.root) {
+    return `This command builds omnitron from source, and there is no workspace above ${input.cwd}. Run it from inside the omnitron repository.`;
+  }
+  if (!input.hasOmnitron) {
+    return (
+      `This command builds omnitron from source, and ${input.root} is a workspace — but not omnitron's: ` +
+      `it holds no ${OMNITRON_PACKAGE}. Run it from inside the omnitron repository.`
+    );
+  }
+  if (input.dirty && !input.allowDirty) {
+    return (
+      `The omnitron working tree at ${input.root} has uncommitted changes, and a node would report a version ` +
+      `naming a commit that is not what it runs. Commit or stash them, or pass --allow-dirty to ship this disk deliberately.`
+    );
+  }
+  return null;
+}
+
+/**
  * Read every workspace package's manifest.
  *
  * The root is resolved to an absolute path first, and every directory
@@ -844,7 +883,7 @@ export async function archiveBundle(bundleDir: string, archivePath: string): Pro
 }
 
 /** The package omnitron itself is — what a node's own upgrade is built from. */
-const OMNITRON_PACKAGE = '@omnitron-dev/omnitron';
+export const OMNITRON_PACKAGE = '@omnitron-dev/omnitron';
 
 /**
  * Where one build of omnitron's own bundle is staged.

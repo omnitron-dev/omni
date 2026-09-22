@@ -79,7 +79,7 @@ import {
 } from '../release/delivered.js';
 import crypto from 'node:crypto';
 import { shellEscape } from '../shared/shell-escape.js';
-import type { LeaseRunner } from './node-deploy-lease.js';
+import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 
 
 /**
@@ -1656,6 +1656,27 @@ export class RemoteDeployer {
    */
   leaseRunner(target: DeployTarget): LeaseRunner {
     return (script) => this.sshExec(target, script, 30_000);
+  }
+
+  /**
+   * Run `work` holding the machine's deploy lease — for what changes a node
+   * outside a stack deployment. `fleet upgrade`'s install and activate went
+   * to the node with no lease at all, and are exactly a second writer: the
+   * activation restarts the node's daemon under whatever else is deploying.
+   */
+  async underLease<T>(target: DeployTarget, purpose: string, work: () => Promise<T>): Promise<T> {
+    const machine = `${target.host}:${target.sshPort ?? 22}`;
+    return withNodeLeases(
+      [{ node: machine, machine, run: this.leaseRunner(target) }],
+      purpose,
+      this.logger,
+      async (leases) => {
+        if (!leases.has(machine)) {
+          throw new Error(`Could not reach ${machine} to lease it for ${purpose}: ${leases.unreachable.get(machine) ?? 'no answer'}`);
+        }
+        return work();
+      },
+    );
   }
 
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {

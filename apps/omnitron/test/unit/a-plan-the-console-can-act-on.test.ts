@@ -130,20 +130,21 @@ describe('a plan the console can act on', () => {
     // A plan ships nothing, so the staging directory it made has no further
     // use. Left behind once per Plan press, it is tens of megabytes each.
     const cleanup = vi.fn(async () => undefined);
+    // The builder is handed in rather than mocked: the plan builds out of
+    // process now (a build on the daemon's thread stopped it for ~150 s),
+    // and the constructor takes the builder so a court need not compile.
     const service = new NodeUpgradeService(
       silent as never,
       { getNode: () => null, listCandidates: () => [candidate()] } as never,
       (async () => ({})) as never,
       (() => ({})) as never,
+      undefined,
+      async () => ({ version: '0.2.0', archive: '/tmp/x.tar.gz', cleanup }),
     );
     vi.spyOn(service as never, 'workspaceRoot' as never).mockReturnValue('/w' as never);
-    vi.doMock('../../src/services/bundle-builder.js', () => ({
-      buildOwnBundle: async () => ({ version: '0.2.0', dirty: false, pack: async () => '', cleanup }),
-    }));
 
     await service.plan(undefined, { build: true });
 
     expect(cleanup, 'the staging directory is released').toHaveBeenCalled();
-    vi.doUnmock('../../src/services/bundle-builder.js');
   });
 });

@@ -21,6 +21,12 @@
  * for it moved from «throws» to «refuses with a reason», which is the same
  * rule surviving the implementation rather than being dropped with the stub.
  * Its behaviour is covered in `a-plan-the-console-can-act-on`.
+ *
+ * `upgradeNodes` and `cancelUpgrade` followed. On a daemon with no upgrade
+ * service each node comes back in `refused` with the reason, and a cancel
+ * says it stopped nothing and why; an empty selection is a bad request, since
+ * `{ accepted: [], refused: [] }` is exactly the answer this file exists to
+ * forbid. The queue itself is judged in `a-fleet-rolled-out-one-node-at-a-time`.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,26 +47,30 @@ describe('a stub that refuses rather than answers empty', () => {
     expect(plan.rows).toEqual([]);
   });
 
-  it('upgradeNodes refuses instead of reporting nothing queued', async () => {
-    await expect(service().upgradeNodes({ nodeIds: ['a', 'b'] })).rejects.toThrow(
-      /not built yet|not implemented/i,
-    );
+  it('upgradeNodes, now built, names every node it did not queue', async () => {
+    const outcome = await service().upgradeNodes({ nodeIds: ['a', 'b'] });
+
+    expect(outcome.accepted).toEqual([]);
+    expect(outcome.refused.map((r) => r.nodeId), 'each node is accounted for').toEqual(['a', 'b']);
+    for (const r of outcome.refused) expect(r.because, `a reason for ${r.nodeId}`).toBeTruthy();
   });
 
-  it('cancelUpgrade refuses instead of reporting a stop that did not happen', async () => {
-    await expect(service().cancelUpgrade({ nodeId: 'a' })).rejects.toThrow(
-      /not built yet|not implemented/i,
-    );
+  it('upgradeNodes refuses an empty selection instead of reporting nothing queued', async () => {
+    await expect(service().upgradeNodes({ nodeIds: [] })).rejects.toThrow(/at least one node/i);
+  });
+
+  it('cancelUpgrade, now built, says it stopped nothing and why', async () => {
+    const outcome = await service().cancelUpgrade({ nodeId: 'a' });
+
+    expect(outcome.stopped).toBe(false);
+    expect(outcome.because).toBeTruthy();
   });
 
   it('names what is missing rather than what is broken', async () => {
-    // The two still-stubbed methods say they are not built and point at the
-    // CLI where the capability already exists, which saves the reader a
-    // search.
-    const err = await service()
-      .upgradeNodes({ nodeIds: ['a'] })
-      .catch((e: unknown) => e as Error);
+    // The reason says the capability is absent on this daemon, which is
+    // what the operator can act on — not a generic failure.
+    const outcome = await service().upgradeNodes({ nodeIds: ['a'] });
 
-    expect(err.message).toMatch(/upgradeNode/);
+    expect(outcome.refused[0]?.because).toMatch(/not configured/i);
   });
 });

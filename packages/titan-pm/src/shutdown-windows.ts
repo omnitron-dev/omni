@@ -41,7 +41,19 @@ export interface ShutdownLadder {
   sigtermMs: number;
   /** Wait after SIGKILL before giving up on the process entirely. */
   sigkillMs: number;
-  /** What the child has between SIGTERM and SIGKILL — its share of the budget. */
+  /**
+   * What the child has for its `dispose` phase — the SIGTERM window.
+   *
+   * Measured rather than assumed, because I first assumed the opposite. The
+   * IPC `shutdown` message does start work in the child, but a different
+   * part of it: on 2026-09-22 at 11:18 the message landed at 28.285, the
+   * phases it triggers were finished by 28.391 — 106 ms — and then nothing
+   * happened until SIGTERM at 30.283. `dispose`, which is where
+   * `service-wrapper-shutdown` runs, starts on the SIGNAL.
+   *
+   * So the child's real budget is this phase alone, and the ratios below
+   * follow from that measurement.
+   */
   childWindowMs: number;
 }
 
@@ -51,9 +63,21 @@ export const DEFAULT_SHUTDOWN_BUDGET_MS = 5_000;
 /**
  * Split a stop budget into the supervisor's ladder.
  *
- * 40% waiting for the child to act on the IPC message, 40% after SIGTERM,
- * 20% after SIGKILL — the ratios the 2000/2000/1000 default already had, so
- * a stated budget behaves like the legacy one scaled.
+ * 10% waiting for the child to act on the IPC message, 70% after SIGTERM,
+ * 20% after SIGKILL.
+ *
+ * The legacy split was 40/40/20, and measurement showed the first share was
+ * almost entirely waste while the second was short. On 2026-09-22 at 11:18
+ * the IPC message landed at 28.285 and everything it triggers was done by
+ * 28.391 — 106 ms of a 2000 ms window — after which the child sat idle until
+ * SIGTERM at 30.283. Meanwhile `dispose`, which starts on that signal, ran
+ * out of time at 1600 ms with «Lifecycle task "service-wrapper-shutdown"
+ * exceeded 1600ms».
+ *
+ * Moving the share costs nothing: SIGKILL still lands at 80% of the budget,
+ * so a six-app stack stops in the same time it did — the phase that needed
+ * the time simply has it. 500 ms for a step measured at 106 is a fivefold
+ * margin.
  */
 export function shutdownLadder(totalDeadlineMs?: number): ShutdownLadder {
   if (totalDeadlineMs === 0) {
@@ -62,8 +86,8 @@ export function shutdownLadder(totalDeadlineMs?: number): ShutdownLadder {
   }
 
   const budget = totalDeadlineMs ?? DEFAULT_SHUTDOWN_BUDGET_MS;
-  const gracefulMs = Math.floor(budget * 0.4);
-  const sigtermMs = Math.floor(budget * 0.4);
+  const gracefulMs = Math.floor(budget * 0.1);
+  const sigtermMs = Math.floor(budget * 0.7);
   const sigkillMs = budget - gracefulMs - sigtermMs;
 
   return { gracefulMs, sigtermMs, sigkillMs, childWindowMs: sigtermMs };

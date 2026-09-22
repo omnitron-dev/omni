@@ -219,14 +219,22 @@ function reportLifecycleError(
   process.exitCode = 1;
 }
 
-export async function stackStartCommand(projectName: string, stackName: string): Promise<void> {
+export async function stackStartCommand(
+  projectName: string,
+  stackName: string,
+  opts?: { allowDirty?: boolean },
+): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
-    const stack = await svc.startStack({ project: projectName, stack: stackName });
+    const stack = await svc.startStack({
+      project: projectName,
+      stack: stackName,
+      ...(opts?.allowDirty === true ? { allowDirty: true } : {}),
+    });
     const online = stack.apps.filter((a) => a.status === 'online').length;
 
     if (emitJson({

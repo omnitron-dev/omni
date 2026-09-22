@@ -18,6 +18,7 @@ import path from 'node:path';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
+import { describeWorkingTree, refusalForDirtyTree } from '../project/working-tree.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
@@ -584,7 +585,7 @@ export class ProjectService extends EventEmitter {
   async startStack(
     projectName: string,
     stackName: string,
-    opts?: { source?: StackStartSource },
+    opts?: { source?: StackStartSource; allowDirty?: boolean },
   ): Promise<IStackInfo> {
     const inFlightKey = `${projectName}/${stackName}`;
     const running = this.startsInFlight.get(inFlightKey);
@@ -596,7 +597,12 @@ export class ProjectService extends EventEmitter {
       return running;
     }
 
-    const started = this.startStackOnce(projectName, stackName, opts?.source ?? 'unknown').finally(() => {
+    const started = this.startStackOnce(
+      projectName,
+      stackName,
+      opts?.source ?? 'unknown',
+      opts?.allowDirty === true,
+    ).finally(() => {
       this.startsInFlight.delete(inFlightKey);
     });
     this.startsInFlight.set(inFlightKey, started);
@@ -607,11 +613,52 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackName: string,
     source: StackStartSource,
+    allowDirty: boolean,
   ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+
+    // A remote deployment ships what is on DISK, so before anything is built
+    // the disk has to be a commit.
+    //
+    // Measured over one night with three sessions in one checkout: an
+    // automatic resume compiled somebody's half-finished edit, `main` failed
+    // to build, and five artifacts of six went out under `Stack started`.
+    // The hazard is not the operator typing the command — it is that every
+    // master restart runs this path, and a restart happens for reasons
+    // nobody chose: a crash, a laptop asleep, launchd. Four of them did so
+    // that day.
+    //
+    // Local stacks are exempt on purpose. Compiling the working tree is what
+    // a development stand is FOR — hot reload is that feature — and a rule
+    // that refused there would be turned off within the hour.
+    const projectForTree = this.registry.get(projectName);
+    const tree = projectForTree
+      ? await describeWorkingTree(projectForTree.path)
+      : { checked: false as const, why: `project '${projectName}' is not in the registry`, dirty: [] };
+
+    if (stackConfig.type === 'remote') {
+      if (!allowDirty) {
+        const refusal = refusalForDirtyTree(tree, `${projectName}/${stackName}`);
+        if (refusal) throw new Error(refusal);
+      } else if (tree.checked && tree.dirty.length > 0) {
+        this.logger.warn(
+          { project: projectName, stack: stackName, dirty: tree.dirty.length, head: tree.head },
+          'Deploying a working tree that is not its commit — asked for with --allow-dirty',
+        );
+      }
+      if (!tree.checked) {
+        // Not a pass. The deployment goes on, because refusing every project
+        // that is not a git checkout would be a rule about git rather than
+        // about deployments — but the log says the check did not run.
+        this.logger.warn(
+          { project: projectName, stack: stackName, why: tree.why },
+          'Could not tell whether the working tree matches its commit — shipping what is on disk',
+        );
+      }
+    }
 
     const stateKey = `${projectName}/${stackName}`;
     const existing = this.stackStates.get(stateKey);
@@ -689,7 +736,16 @@ export class ProjectService extends EventEmitter {
         action: 'stack.start',
         resourceType: 'stack',
         resourceId: `${projectName}/${stackName}`,
-        details: { type: stackConfig.type, apps: info.apps.length, source },
+        // The commit, so the trail answers what went out and not only when.
+        // A node's artifacts carry no revision (every app is version `0.0.1`
+        // forever, and `BUNDLE.json` is excluded from the checksum and read
+        // by nobody), so this row is the only place the two can be joined.
+        details: {
+          type: stackConfig.type,
+          apps: info.apps.length,
+          source,
+          ...(tree.checked ? { commit: tree.head, dirty: tree.dirty.length } : { commit: null }),
+        },
       });
       return info;
     } catch (err) {

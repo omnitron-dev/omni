@@ -209,9 +209,14 @@ stack
 stack
   .command('start <project> <stack>')
   .description('Start a stack — provision infra + deploy + start apps')
-  .action(async (projectName, stackName) => {
+  // A remote deployment ships the working tree, so it refuses one that is
+  // not its commit. This is how you say you meant it — and it is a FLAG
+  // rather than a setting because the path that caused the damage, a
+  // master restart resuming its stacks, cannot pass one.
+  .option('--allow-dirty', 'Deploy a working tree that differs from HEAD')
+  .action(async (projectName, stackName, options) => {
     const { stackStartCommand } = await import('../commands/stack.js');
-    await stackStartCommand(projectName, stackName);
+    await stackStartCommand(projectName, stackName, { allowDirty: options.allowDirty === true });
   });
 
 stack

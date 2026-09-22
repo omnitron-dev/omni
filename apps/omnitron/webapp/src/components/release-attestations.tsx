@@ -58,6 +58,44 @@ function attestOnNode(release: string, stack: string): Promise<AttestAnswer> {
   });
 }
 
+/**
+ * What a probe printed, folded until asked for.
+ *
+ * The finding in the probe's own words — the column and the value — which the
+ * one-line `detail` beside it cannot hold. Present only when the producer
+ * sent it; the master keeps the last 4 KB.
+ */
+function ProbeOutput({ output }: { output: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box sx={{ pl: 2, mb: 0.5 }}>
+      <Button size="small" onClick={() => setOpen((o) => !o)} sx={{ minWidth: 0, p: 0, fontSize: 11, textTransform: 'none' }}>
+        {open ? 'hide what it printed' : 'what it printed'}
+      </Button>
+      {open && (
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            mt: 0.5,
+            p: 1,
+            maxHeight: 240,
+            overflow: 'auto',
+            borderRadius: 1,
+            bgcolor: 'action.hover',
+            fontFamily: 'monospace',
+            fontSize: 11,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {output}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 /** A gateway or client deadline, as opposed to the daemon refusing. */
 function isDeadline(message: string): boolean {
   return /^HTTP 50\d|Request timeout|Gateway Time-?out/i.test(message);
@@ -249,15 +287,18 @@ export function ReleaseAttestations({
                       {a.gates
                         .filter((g) => g.status !== 'passed')
                         .map((g) => (
-                          <Typography key={g.name} variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                            <Box component="span" sx={{ color: GATE_TONE[g.status].color, fontWeight: 600 }}>
-                              {GATE_TONE[g.status].label}
-                            </Box>{' '}
-                            <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                              {g.name}
-                            </Box>
-                            {g.detail ? ` — ${g.detail}` : ''}
-                          </Typography>
+                          <Box key={g.name}>
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                              <Box component="span" sx={{ color: GATE_TONE[g.status].color, fontWeight: 600 }}>
+                                {GATE_TONE[g.status].label}
+                              </Box>{' '}
+                              <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                                {g.name}
+                              </Box>
+                              {g.detail ? ` — ${g.detail}` : ''}
+                            </Typography>
+                            {g.output && <ProbeOutput output={g.output} />}
+                          </Box>
                         ))}
                     </Box>
                   )}

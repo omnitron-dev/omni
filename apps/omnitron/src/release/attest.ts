@@ -74,6 +74,12 @@ export function parseAttestation(stdout: string): RawAttestation {
   throw new Error('The attestation printed no JSON object on its last line — nothing was measured, so nothing is stored');
 }
 
+/**
+ * How much of a probe's own output is kept: the END of it, where a probe
+ * says what it found. Enough for a table of findings; not a log.
+ */
+export const OUTPUT_TAIL_CHARS = 4096;
+
 /** A probe's outcome, with an unrecognised word recorded as not-run and named. */
 function outcomeOf(probe: Record<string, unknown>): GateOutcome {
   const name = String(probe['name'] ?? '(unnamed)');
@@ -81,10 +87,13 @@ function outcomeOf(probe: Record<string, unknown>): GateOutcome {
   const status = OUTCOMES[word];
   const detail = typeof probe['detail'] === 'string' ? probe['detail'] : undefined;
   const ms = typeof probe['ms'] === 'number' ? probe['ms'] : undefined;
+  const printed = typeof probe['output'] === 'string' ? probe['output'].trimEnd() : '';
+  const output = printed.length > OUTPUT_TAIL_CHARS ? `…${printed.slice(-OUTPUT_TAIL_CHARS)}` : printed;
   return {
     name,
     status: status ?? 'not-run',
     ...(status ? (detail ? { detail } : {}) : { detail: `unrecognised outcome '${word}'${detail ? ` — ${detail}` : ''}` }),
+    ...(output ? { output } : {}),
     ...(ms !== undefined ? { durationMs: ms } : {}),
   };
 }

@@ -128,6 +128,19 @@ export async function releaseShowCommand(id: string): Promise<void> {
     for (const f of m.artifactFailures ?? []) log.warn(`  ${f.app} did not build — ${f.error.split('\n')[0]}`);
     if (m.statics) log.info(`  statics for ${m.statics.stack}: ${m.statics.files} files, ${mb(m.statics.bytes)} MB from ${m.statics.dir}`);
     log.info(`  ${release.files.length} artifact file(s) on this disk match the manifest`);
+    // What stacks measured about it since — with each probe that did not
+    // pass in its own words, the tail it printed included: a finding on a
+    // node is read here or nowhere.
+    const { loadAttestations } = await import('../release/attest.js');
+    for (const a of loadAttestations(m.id)) {
+      const passed = a.gates.filter((g) => g.status === 'passed').length;
+      const where = a.onNode.hosts.length > 0 ? ` on ${a.onNode.hosts.join(', ')}` : '';
+      log.info(`  attested on ${a.stack}: ${passed} of ${a.gates.length} probes passed, measured ${a.at}${where}`);
+      for (const g of a.gates.filter((x) => x.status !== 'passed')) {
+        log.info(`    ${g.status.padEnd(9)} ${g.name}${g.detail ? ` — ${g.detail}` : ''}`);
+        for (const line of (g.output ?? '').split('\n').filter(Boolean)) log.info(`        ${line}`);
+      }
+    }
   } catch (err) {
     log.error((err as Error).message);
     // An unfinished build has no manifest to load; say what IS there rather

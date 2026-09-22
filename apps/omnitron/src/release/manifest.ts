@@ -83,6 +83,16 @@ export interface GateOutcome {
   readonly status: 'passed' | 'failed' | 'not-run' | 'timed-out' | 'killed';
   /** The gate's own words — an exit code and a line, not a paraphrase. */
   readonly detail?: string;
+  /**
+   * The last of what a probe printed, when the producer sends it: a finding
+   * in its own words — which column, which value — that `detail`, one line,
+   * cannot carry. Without it a probe that found something on a node reported
+   * a verdict and kept the evidence on the node (2026-09-22:
+   * `a-state-no-path-produced-live` on test, «something writes a word the
+   * declared vocabulary lacks», and nowhere to read which). At most
+   * `OUTPUT_TAIL_CHARS` from the end.
+   */
+  readonly output?: string;
   readonly durationMs?: number;
   /**
    * How many checks this gate is made of, when it is made of several.

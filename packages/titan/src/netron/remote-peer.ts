@@ -1122,7 +1122,25 @@ export class RemotePeer extends AbstractPeer {
             ),
           );
         } catch (err: unknown) {
-          this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
+          // A peer that went away mid-call is not a failed call — it is the
+          // other side shutting down while we held a request. `isPeerGone`
+          // already exists and is asked three times in this file; this, the
+          // noisiest place, was the one that did not ask.
+          //
+          // Measured on the dev stand 2026-09-22: `geo` had 205 lines of
+          // «Failed to call method on remote service» at level ERROR and
+          // `storage` 19, every one of them `__getProcessMetrics` failing
+          // with «Socket closed during RPC» — a metrics poll racing a
+          // restart. The same files held 8 real errors between them. A log
+          // where the routine outnumbers the real 27 to 1 is read by nobody.
+          if (isPeerGone(err)) {
+            this.logger.debug(
+              { err, defId: defIdOrServiceName, method },
+              'Peer gone during a call — no response will be sent'
+            );
+          } else {
+            this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
+          }
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: unknown) {

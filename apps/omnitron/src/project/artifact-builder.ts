@@ -582,7 +582,7 @@ export class ArtifactBuilder {
         // What an app ships. `webapp/dist` is the daemon's console and has no
         // meaning here; `config/` does, because an app reads it at startup.
         include: ['dist', 'config', 'README.md'],
-        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
         ...(this.packCache ? { packCache: this.packCache } : {}),
         ...(this.logger ? { logger: { info: (m: string) => this.logger!.info(`${appName}: ${m}`) } } : {}),
       });
@@ -627,7 +627,7 @@ export class ArtifactBuilder {
     const manifest = this.manifestOf(appDir);
 
     const inputs = await buildInputsChecksum(appDir, {
-      ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+      ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
       ...(this.packCache ? { memo: this.packCache } : {}),
     }).catch(() => null);
 
@@ -659,7 +659,7 @@ export class ArtifactBuilder {
 
     try {
       const inputs = await buildInputsChecksum(appDir, {
-        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest) } : {}),
+        ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
         ...(this.packCache ? { memo: this.packCache } : {}),
       });
       if (!inputs) return;

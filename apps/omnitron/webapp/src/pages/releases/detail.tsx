@@ -38,6 +38,7 @@ import { Alert, Breadcrumbs, LoadingScreen } from '@omnitron-dev/prism';
 import type { ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { DeployIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
+import { ReleaseAttestations } from 'src/components/release-attestations';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -247,6 +248,15 @@ export default function ReleaseDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {release.complete && (
+        <ReleaseAttestations
+          releaseId={release.id}
+          project={release.project}
+          attestations={release.attestations}
+          onChanged={() => void refresh()}
+        />
+      )}
 
       <Card variant="outlined">
         <CardContent>

@@ -28,6 +28,8 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   constructor(
     private readonly releases: ReleaseService,
     private readonly audit?: AuditService | undefined,
+    /** The transport to a stack's node, for attestations run there. */
+    private readonly projects?: import('./project.service.js').ProjectService | undefined,
   ) {}
 
   /**
@@ -192,6 +194,39 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
       },
     });
     return { path: stored.path, gates: stored.attestation.gates.length, passed };
+  }
+
+  /**
+   * Run this release's probes on the node of the stack carrying it, and keep
+   * the result if it is one to keep.
+   *
+   * Exit 0 and exit 1 are both stored — a probe that refused is a fact about
+   * the release on that stack, and dropping it would let the next run look
+   * like the first. Exit 2 is the producer failing to measure anything, and
+   * its own words are the refusal. The four refusals of the door itself
+   * (`release/attest.ts`) apply on top, freshness included.
+   *
+   * Long by nature — an upload and a probe suite over SSH — and the console
+   * reaches the daemon through a gateway that cuts a request at 120 s, so the
+   * console calls this with a deadline and says so while it waits.
+   */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async attestOnNode(data: { release: string; stack: string }): Promise<{
+    path: string;
+    gates: number;
+    passed: number;
+    node: string;
+    scriptsFrom: 'release' | 'history';
+  }> {
+    if (!data?.release || !data?.stack) throw new Error('An attestation needs a release and a stack');
+    if (!this.projects) throw new Error('This daemon has no project service to reach a node with');
+    const { projectOfId } = await import('../release/store.js');
+    const { interpretRun } = await import('../release/attest-on-node.js');
+    const run = await this.projects.attestOnNode(projectOfId(data.release), data.stack, data.release);
+    const verdict = interpretRun(run);
+    if (!verdict.keep) throw new Error(`Nothing stored for ${data.release} on ${data.stack} (${run.node}): ${verdict.because}`);
+    const stored = await this.attest({ release: data.release, stack: data.stack, stdout: verdict.stdout });
+    return { ...stored, node: run.node, scriptsFrom: run.scriptsFrom };
   }
 
   /** When this stack last took this exact release, from the trail. */

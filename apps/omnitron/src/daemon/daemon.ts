@@ -926,7 +926,7 @@ export class OmnitronDaemon {
       const { ReleaseService } = await import('../services/release.service.js');
       const { ReleaseRpcService } = await import('../services/release.rpc-service.js');
       this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }));
-      await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit));
+      await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService));
     }
 
     // Sync service (slave→master data replication)

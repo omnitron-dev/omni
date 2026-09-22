@@ -674,6 +674,7 @@ export type {
 } from '../../release/store.js';
 export type { ReleaseManifest, GateOutcome, ReleaseArtifact, StackReleaseRequirements } from '../../release/manifest.js';
 export type { BuildRecord, BuildRequest } from '../../services/release.service.js';
+export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */
 export interface ReleasePreflightDto {
@@ -736,4 +737,12 @@ export interface IOmnitronReleaseService {
   deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
   /** Take what a stack measured about this release, or refuse it by name. */
   attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }>;
+  /** Run this release's probes on the stack's node, over the master's transport, and keep what should be kept. */
+  attestOnNode(data: { release: string; stack: string }): Promise<{
+    path: string;
+    gates: number;
+    passed: number;
+    node: string;
+    scriptsFrom: 'release' | 'history';
+  }>;
 }

@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadAttestations, type StoredAttestation } from './attest.js';
 import { releasesRoot } from './load.js';
 import type { GateOutcome, ReleaseManifest } from './manifest.js';
 
@@ -68,6 +69,8 @@ export interface ReleaseDetail extends ReleaseSummary {
   readonly manifest: ReleaseManifest | null;
   readonly logs: ReadonlyArray<{ name: string; bytes: number }>;
   readonly root: string;
+  /** What each stack measured about this release after carrying it. */
+  readonly attestations: readonly StoredAttestation[];
 }
 
 /** `daos-202609221432-81c8a074-c64963f6` → `daos`; a name may hold dashes too. */
@@ -216,7 +219,7 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   } catch {
     // A build that never reached its first step wrote no logs.
   }
-  return { ...summarise(id, dir, manifest), manifest, logs, root: dir };
+  return { ...summarise(id, dir, manifest), manifest, logs, root: dir, attestations: loadAttestations(id, root) };
 }
 
 /**

@@ -1322,6 +1322,21 @@ export class RemoteDeployer {
           'The node daemon was left alone — this deployment changes nothing under it',
         );
       } else {
+        // Said as loudly as the other branch. A decision that only speaks
+        // when it declines is a decision an operator cannot audit: this one
+        // took three deployments to attribute and a fourth to explain,
+        // because «restart» left nothing behind but the restart itself.
+        this.logger.info(
+          {
+            host: target.host,
+            because: daemonDecision.because,
+            steps: plan.steps.length,
+            role: daemonNow?.role ?? null,
+            pid: daemonNow?.pid ?? null,
+            uptime: daemonNow?.uptime ?? null,
+          },
+          'Taking the node daemon down and back up — and everything under it',
+        );
         this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
         await this.sshExec(
           target,

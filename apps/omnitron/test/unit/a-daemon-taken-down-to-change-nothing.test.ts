@@ -115,9 +115,32 @@ describe('where the deployment asks', () => {
     expect(between).toMatch(/daemonDecision\.action === 'leave'/);
   });
 
-  it('says which of the two it did', () => {
+  it('says which of the two it did, and says it at the same volume', () => {
+    // Both branches log. The first version of this logged only the one that
+    // declined, and it cost a deployment to find out why the other had
+    // fired: «restart» left nothing behind but the restart itself. A
+    // decision that speaks only when it says no cannot be audited when it
+    // says yes.
     expect(deployer).toMatch(/The node daemon was left alone/);
-    expect(deployer).toMatch(/Starting slave daemon\.\.\./);
+    expect(deployer).toMatch(/Taking the node daemon down and back up/);
+
+    const restartLog = deployer.indexOf('Taking the node daemon down and back up');
+    const takesDown = deployer.indexOf('omnitron down 2>/dev/null');
+    expect(restartLog).toBeLessThan(takesDown);
+  });
+
+  it('carries what it saw, not only what it concluded', () => {
+    // `because` is the verdict; `role`, `pid`, `uptime` and `steps` are the
+    // evidence. Without them the next reader repeats the deployment that
+    // produced this line.
+    const block = deployer.slice(
+      deployer.indexOf('Taking the node daemon down and back up') - 600,
+      deployer.indexOf('Taking the node daemon down and back up'),
+    );
+
+    for (const field of ['because:', 'steps:', 'role:', 'pid:', 'uptime:']) {
+      expect(block, field).toContain(field);
+    }
   });
 
   it('reads the plan it just ran as the sign that something changed', () => {

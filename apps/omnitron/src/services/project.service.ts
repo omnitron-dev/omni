@@ -20,6 +20,13 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
 import { describeWorkingTrees, refusalForDirtyTree } from '../project/working-tree.js';
 import { reportPhases, type DeployPhases } from '../project/deploy-phases.js';
+
+/** What a remote deployment actually reached, for the row that records it. */
+interface NodeReach {
+  readonly nodes: number;
+  readonly reached: number;
+  readonly skipped: readonly string[];
+}
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
@@ -753,11 +760,12 @@ export class ProjectService extends EventEmitter {
 
     this.emit('stack:starting', projectName, stackName, stackConfig.type);
 
+    let reach: NodeReach | null = null;
     try {
       if (stackConfig.type === 'local') {
         await this.startLocalStack(projectName, stackName, stackConfig, config);
       } else if (stackConfig.type === 'remote') {
-        await this.startRemoteStack(projectName, stackName, stackConfig, config);
+        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config);
       } else if (stackConfig.type === 'cluster') {
         await this.startClusterStack(projectName, stackName, stackConfig, config);
       }
@@ -790,8 +798,14 @@ export class ProjectService extends EventEmitter {
         // by nobody), so this row is the only place the two can be joined.
         details: {
           type: stackConfig.type,
+          // How many the stack DECLARES. What a remote deployment reached is
+          // a different number and now sits beside it: a row saying `apps: 6`
+          // described a deployment whose only node could not be provisioned,
+          // and nothing in it said so.
           apps: info.apps.length,
           source,
+          ...(reach ? { nodes: reach.nodes, reached: reach.reached } : {}),
+          ...(reach && reach.skipped.length > 0 ? { skipped: reach.skipped } : {}),
           ...(tree.checked ? { commit: tree.head, dirty: tree.dirty.length } : { commit: null }),
         },
       });
@@ -1554,10 +1568,10 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
-  ): Promise<void> {
+  ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
     try {
-      await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases);
+      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases);
     } finally {
       // Every exit, including the refusals: a reporter that outlives its
       // deployment narrates a step nobody is taking.
@@ -1571,7 +1585,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     phases: DeployPhases,
-  ): Promise<void> {
+  ): Promise<NodeReach> {
     const nodes = stackConfig.nodes ?? [];
     if (nodes.length === 0) {
       throw new Error(`Remote stack '${stackName}' has no nodes configured`);
@@ -1583,6 +1597,19 @@ export class ProjectService extends EventEmitter {
     );
 
     const connector = this.getSlaveConnector();
+
+    // Which nodes this deployment actually reached.
+    //
+    // A node that fails to provision is skipped and the loop moves on —
+    // right when there are others, and a lie when there are not. Measured
+    // 2026-09-22: the only node's SSH stopped completing handshakes, both
+    // attempts logged «Failed to provision slave — skipping», and the
+    // deployment went on to mark the stack running and write a `stack.start`
+    // row saying `apps: 6`. The CLI was honest — «only 0/6 apps came
+    // online» — and the audit trail, which is what anyone reads a week
+    // later, recorded a deployment that never touched the machine.
+    const reached: string[] = [];
+    const skipped: string[] = [];
 
     // What the applications in this stack declare they need.
     //
@@ -1720,9 +1747,11 @@ export class ProjectService extends EventEmitter {
       unsubProvision();
 
       if (!provisioned) {
+        skipped.push(nodeKey);
         this.logger.error({ node: nodeKey }, 'Failed to provision slave — skipping');
         continue;
       }
+      reached.push(nodeKey);
 
       // 2. Bring up the stack's infrastructure, ON the node, before the
       //    applications that need it arrive.
@@ -1857,6 +1886,20 @@ export class ProjectService extends EventEmitter {
         project: projectName,
       });
     }
+
+    // Not one node took the deployment. Nothing was installed, nothing was
+    // started, and the applications on those machines — if any are still up
+    // — are running whatever they were running before. Marking the stack
+    // `running` and recording a `stack.start` after that is how a trail
+    // acquires a deployment that did not happen.
+    if (reached.length === 0 && nodes.length > 0) {
+      throw new Error(
+        `Refusing to call ${stackName} started: none of its ${nodes.length} node(s) could be provisioned — ` +
+          `${skipped.join(', ')}. The per-node errors are above.`,
+      );
+    }
+
+    return { nodes: nodes.length, reached: reached.length, skipped };
   }
 
   /**

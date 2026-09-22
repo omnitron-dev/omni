@@ -147,7 +147,13 @@ describe('a remote stack will not start from a tree that is not its commit', () 
       loadProjectConfig: vi.fn(async () => ({})),
       resolveStacks: () => ({ test: { type, apps: 'all' } }),
       startLocalStack: vi.fn(async () => started.push('local')),
-      startRemoteStack: vi.fn(async () => started.push('remote')),
+      // Returns what the real one returns: a deployment reports which nodes
+      // it reached, and the audit row carries it. A stub that answered with
+      // `push`'s return value — a number — made `reach.skipped` undefined.
+      startRemoteStack: vi.fn(async () => {
+        started.push('remote');
+        return { nodes: 1, reached: 1, skipped: [] as string[] };
+      }),
       updateEnabledStacks: vi.fn(),
       toStackInfo: () => ({ name: 'test', type, apps: [] }),
       emit: vi.fn(),

@@ -185,3 +185,97 @@ describe('every start is recorded, and says who asked', () => {
     expect(record).not.toHaveBeenCalled();
   });
 });
+
+describe('a deployment that reached no node at all', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
+  });
+
+  it('refuses rather than calling the stack started', async () => {
+    // Measured 2026-09-22: the only node's SSH stopped completing
+    // handshakes. Both attempts logged «Failed to provision slave —
+    // skipping», the loop moved on with nothing left to move on to, and the
+    // deployment marked the stack running and wrote a `stack.start` row
+    // saying `apps: 6`. Nothing was installed on any machine.
+    const svc = remoteStackService();
+    svc.deployer.provisionSlaveNode = vi.fn(async () => false);
+
+    await expect(svc.startRemoteStack('daos', 'test', REMOTE, {})).rejects.toThrow(
+      /none of its 1 node\(s\) could be provisioned/
+    );
+  });
+
+  it('names every node it could not reach', async () => {
+    const svc = remoteStackService();
+    svc.deployer.provisionSlaveNode = vi.fn(async () => false);
+    const two = {
+      ...REMOTE,
+      nodes: [
+        { host: '37.27.130.185', port: 9700, label: 'test' },
+        { host: '10.0.0.9', port: 9700, label: 'spare' },
+      ],
+    };
+
+    await expect(svc.startRemoteStack('daos', 'test', two, {})).rejects.toThrow(
+      /37\.27\.130\.185:9700, 10\.0\.0\.9:9700/
+    );
+  });
+});
+
+describe('the row says what the deployment reached', () => {
+  const record = vi.fn(async () => {});
+
+  function remoteStartable(reach: { nodes: number; reached: number; skipped: string[] } | null) {
+    const svc: any = Object.create(ProjectService.prototype);
+    Object.assign(svc, {
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      audit: { record },
+      registry: { get: () => null, list: () => [] },
+      stackStates: new Map(),
+      startsInFlight: new Map(),
+      loadProjectConfig: vi.fn(async () => ({})),
+      resolveStacks: () => ({
+        test: reach ? { type: 'remote', apps: 'all', nodes: [] } : { type: 'local', apps: 'all' },
+      }),
+      startLocalStack: vi.fn(async () => {}),
+      startRemoteStack: vi.fn(async () => reach),
+      updateEnabledStacks: vi.fn(),
+      toStackInfo: () => ({ name: 'test', type: reach ? 'remote' : 'local', apps: APPS.map((name) => ({ name, status: 'stopped' })) }),
+      emit: vi.fn(),
+    });
+    return svc;
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('carries how many nodes there were and how many took it', async () => {
+    const svc = remoteStartable({ nodes: 2, reached: 1, skipped: ['10.0.0.9:9700'] });
+    await svc.startStack('daos', 'test', { source: 'operator' });
+
+    const row = (record.mock.calls[0]![0] as any).details;
+    expect(row.apps).toBe(6);
+    expect(row.nodes).toBe(2);
+    expect(row.reached).toBe(1);
+    expect(row.skipped).toEqual(['10.0.0.9:9700']);
+  });
+
+  it('leaves `skipped` out when every node took it, rather than writing an empty list', async () => {
+    const svc = remoteStartable({ nodes: 1, reached: 1, skipped: [] });
+    await svc.startStack('daos', 'test', { source: 'operator' });
+
+    const row = (record.mock.calls[0]![0] as any).details;
+    expect(row.reached).toBe(1);
+    expect(row).not.toHaveProperty('skipped');
+  });
+
+  it('says nothing about nodes for a local stack — the control', async () => {
+    const svc = remoteStartable(null);
+    await svc.startStack('daos', 'test', { source: 'operator' });
+
+    const row = (record.mock.calls[0]![0] as any).details;
+    expect(row.type).toBe('local');
+    expect(row).not.toHaveProperty('nodes');
+    expect(row).not.toHaveProperty('reached');
+  });
+});

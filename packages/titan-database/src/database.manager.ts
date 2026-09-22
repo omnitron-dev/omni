@@ -280,6 +280,22 @@ const PERMANENT_DRIVER_CODES = new Set([
  */
 const PERMANENT_MESSAGES = [/Cannot open database because the directory does not exist/i];
 
+/** A passing health check slower than this is worth a line in the log. */
+const HIGH_LATENCY_MS = 500;
+
+/**
+ * The abort deadline a single health-check query races against.
+ *
+ * Named here because two places need the same number: the check enforces it,
+ * and the caller reads it to judge its own measurement. A success that
+ * arrives LATER than this deadline cannot be a query that was allowed to run
+ * that long — the abort timer would have rejected it — so it is evidence
+ * about the process, not about the database.
+ */
+function healthCheckDeadlineMs(dialect: DatabaseDialect): number {
+  return dialect === 'sqlite' ? 10_000 : 5_000;
+}
+
 export function isPermanentConnectionError(error: unknown): boolean {
   // A BAD_REQUEST is permanent by definition: the request is wrong, and asking
   // again does not make it right. `createKyselyInstance` raises one for an
@@ -510,17 +526,42 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private async runSingleHealthCheck(name: string, info: ConnectionInfo): Promise<void> {
     try {
-      const startTime = Date.now();
+      // Two clocks, because one value cannot answer three questions. The wall
+      // clock advances while the process does NOT run — a sleeping machine, a
+      // suspended container, an event loop held by synchronous work — so on
+      // its own it reports the sum of "slow database", "blocked process" and
+      // "time that passed elsewhere" under the first name. The monotonic
+      // clock stops when the process stops; the pair separates them.
+      const wallStart = Date.now();
+      const monoStart = process.hrtime.bigint();
       const result = await this.validateConnectionHealth(info.instance, info.config.dialect);
-      const latency = Date.now() - startTime;
+      const wallMs = Date.now() - wallStart;
+      const monoMs = Math.round(Number(process.hrtime.bigint() - monoStart) / 1e6);
 
       if (result.healthy) {
         // Reset failure counter on success
         this.healthCheckFailures.set(name, 0);
 
-        // Log if latency is high (> 500ms)
-        if (latency > 500) {
-          this.logger.warn({ connection: name, latency }, 'Connection health check passed but with high latency');
+        const deadlineMs = healthCheckDeadlineMs(info.config.dialect);
+        if (monoMs > deadlineMs) {
+          // Proof, not inference: `validateConnectionHealth` races the query
+          // against an abort timer set to `deadlineMs`. A result that says
+          // `healthy` after longer than that means the timer did not fire on
+          // time, so the timers phase did not run for at least the
+          // difference. The database is not the subject of this report.
+          this.logger.warn(
+            { connection: name, monoMs, wallMs, deadlineMs, stalledAtLeastMs: monoMs - deadlineMs },
+            'Health check returned later than its own abort deadline — the event loop was blocked, not the database'
+          );
+        } else if (monoMs > HIGH_LATENCY_MS) {
+          this.logger.warn({ connection: name, monoMs, wallMs }, 'Connection health check passed but with high latency');
+        } else if (wallMs > HIGH_LATENCY_MS) {
+          // The process did not run for most of that interval: nothing was
+          // slow, and calling it latency is what filled the stand's logs.
+          this.logger.debug(
+            { connection: name, monoMs, wallMs },
+            'Wall clock jumped during a health check — the machine likely slept'
+          );
         }
       } else {
         await this.handleHealthCheckFailure(name, info, result.error);
@@ -1273,7 +1314,7 @@ export class DatabaseManager implements IDatabaseManager {
     db: Kysely<unknown>,
     dialect: DatabaseDialect
   ): Promise<{ healthy: true } | { healthy: false; error: Error }> {
-    const timeout = dialect === 'sqlite' ? 10000 : 5000;
+    const timeout = healthCheckDeadlineMs(dialect);
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeout);
 

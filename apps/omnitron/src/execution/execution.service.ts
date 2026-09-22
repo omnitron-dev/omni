@@ -125,6 +125,43 @@ export function describeXecError(error: unknown): string {
  * `uploadFile` each built this object, and a change to any of them would
  * have reached one of the three.
  */
+/**
+ * How long a pooled SSH connection may sit without a command run on it.
+ *
+ * The mesh reaches a node whose daemon port is closed through an in-process
+ * SSH tunnel (`tunnel()` below, `mesh-link.ts`). That connection is never
+ * idle — netron heartbeats cross it every 15 s — but `@xec-sh/core` counts
+ * USE as command execution, and a forwarded channel is not a command. Its
+ * pool sweeps every 60 s and closes anything whose `lastUsed` is older than
+ * `idleTimeout`, which defaults to 300 s. Sweeps land at 60, 120 … 300
+ * (300 is not greater than 300, so it survives) and 360, where it closes.
+ *
+ * Measured on `daos/test`, 2026-09-22: 51 mesh drops in a day, «Socket
+ * closed during RPC», median interval between them 360 s with 32 of 45
+ * inside 360 ± 5, each followed by a rejoin about nine seconds later. An
+ * interval that precise is a timer, and this is the timer.
+ *
+ * So idleness is switched off as a reason to close: not because these
+ * connections are precious, but because the pool cannot measure it for the
+ * one that matters. What it CAN measure it still does — its own
+ * `isConnected()` pass reaps a connection that actually died, and this does
+ * not touch that.
+ *
+ * The two numbers do not mean the same thing, which is the trap here.
+ * `maxLifetime` is guarded by `maxLifetime > 0`, so zero disables it.
+ * `idleTimeout` has no such guard — `now - lastUsed > idleTimeout` — so zero
+ * would close every connection on the very next sweep, the exact opposite.
+ * The way to say «never» with this API is a number nothing can exceed.
+ *
+ * A first attempt used a day, and the test for it said so: the sweep at
+ * 24 h + 60 s still closes the link. That would have moved the drop from
+ * every six minutes to once a day and called it fixed.
+ */
+export const SSH_CONNECTION_POOL = {
+  idleTimeout: Number.MAX_SAFE_INTEGER,
+  maxLifetime: 0,
+} as const;
+
 function sshConfig(target: SSHTarget): Record<string, unknown> {
   return {
     host: target.host,
@@ -157,6 +194,11 @@ export class ExecutionService {
       this.engine = new xec.ExecutionEngine({
         defaultTimeout: 30_000,
         defaultShell: '/bin/sh',
+        // The pool is configured HERE and nowhere else: the SSH adapter is
+        // built once from the engine's own config, so a `connectionPool`
+        // passed to `engine.ssh(target)` per call is read by nothing. See
+        // `SSH_CONNECTION_POOL`.
+        adapters: { ssh: { connectionPool: SSH_CONNECTION_POOL } },
       });
 
       // Wire adapter events to logger.

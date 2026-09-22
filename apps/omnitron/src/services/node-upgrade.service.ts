@@ -277,8 +277,16 @@ export class NodeUpgradeService {
       return { accepted, refused };
     }
 
+    // Without a candidate list every node would read «No such node» — a
+    // wrong sentence about nodes that exist. Refused in the plan's words.
+    if (!this.nodes.listCandidates) {
+      const because = 'This daemon cannot list its fleet, so it cannot plan a rollout';
+      for (const id of nodeIds) refused.push({ nodeId: id, because });
+      return { accepted, refused };
+    }
+
     // The same decision the plan shows, without a build: which to touch.
-    const candidates = this.nodes.listCandidates?.() ?? [];
+    const candidates = this.nodes.listCandidates();
     const plan = planUpgrade(candidates, UNKNOWN_TARGET, { only: nodeIds });
     if (plan.refusal) {
       for (const id of nodeIds) refused.push({ nodeId: id, because: plan.refusal });

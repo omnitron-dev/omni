@@ -544,6 +544,16 @@ release
   });
 
 release
+  .command('attest <id>')
+  .description('Store what a stack measured about this release — production asks for it by name')
+  .requiredOption('--stack <name>', 'Which stack ran the probes')
+  .option('--from <file>', 'Where the producer printed it; `-` or absent reads standard input')
+  .action(async (id: string, options: { stack?: string; from?: string }) => {
+    const { releaseAttestCommand } = await import('../commands/release.js');
+    await releaseAttestCommand(id, options);
+  });
+
+release
   .command('prune')
   .description('Remove all but the newest releases (they are ~35 MB each)')
   .option('--keep <n>', 'How many to keep (default: 5)', (v: string) => Number(v))

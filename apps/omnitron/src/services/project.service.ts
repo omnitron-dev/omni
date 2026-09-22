@@ -1097,7 +1097,13 @@ export class ProjectService extends EventEmitter {
     const release = await loadRelease(releaseId, await this.releaseStore());
 
     const apps = this.resolveStackApps(stackConfig, config).map((a) => a.name);
-    const verdict = decideStackRelease(release.manifest, stackConfig.release, apps);
+    // The fourth argument, which was `[]` for as long as nothing wrote one:
+    // a stack declaring `verifiedOn` refused every release forever, with a
+    // refusal that read «nothing has been verified on 'test'» while there
+    // was no way for anything to be. See `release/attest.ts`.
+    const { loadAttestations } = await import('../release/attest.js');
+    const attestations = loadAttestations(release.id, await this.releaseStore());
+    const verdict = decideStackRelease(release.manifest, stackConfig.release, apps, attestations);
     if (verdict.action === 'refuse') {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${verdict.because}.`);
     }

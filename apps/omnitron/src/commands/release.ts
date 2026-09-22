@@ -18,6 +18,7 @@ import fs from 'node:fs';
 
 import { log, table } from '@xec-sh/kit';
 
+import { createDaemonClient } from '../daemon/daemon-client.js';
 import { emitJson } from './output.js';
 import { runReleaseBuild, type ReleaseBuildOptions } from '../release/build-run.js';
 import { listReleases, pruneReleases, readReleaseDetail, releasesRoot } from '../release/store.js';
@@ -141,6 +142,49 @@ export async function releaseShowCommand(id: string): Promise<void> {
       // Not there at all; the first message said so.
     }
     process.exitCode = 1;
+  }
+}
+
+/**
+ * `omnitron release attest <id> --stack test --from <file|->`
+ *
+ * Takes what a stack's probes measured about this release and stores it
+ * beside the manifest. Through the DAEMON rather than the disk, for one
+ * reason: the freshness refusal — «this attestation finished before the
+ * deployment it claims to be about» — needs the audit trail, and the trail
+ * is the daemon's. A command that wrote the file itself would keep an
+ * attestation about a system that had since been replaced.
+ */
+export async function releaseAttestCommand(
+  id: string,
+  options: { stack?: string; from?: string } = {},
+): Promise<void> {
+  if (!options.stack) {
+    log.error('Which stack measured it? `omnitron release attest <id> --stack test --from <file|->`');
+    process.exitCode = 1;
+    return;
+  }
+  let stdout: string;
+  try {
+    stdout = options.from && options.from !== '-' ? fs.readFileSync(options.from, 'utf8') : fs.readFileSync(0, 'utf8');
+  } catch (err) {
+    log.error(`Could not read the attestation: ${(err as Error).message}`);
+    process.exitCode = 1;
+    return;
+  }
+  const client = createDaemonClient();
+  try {
+    const svc = await client.service<import('../shared/dto/services.js').IOmnitronReleaseService>('OmnitronRelease');
+    const answer = await svc.attest({ release: id, stack: options.stack, stdout });
+    const failed = answer.gates - answer.passed;
+    if (failed === 0) log.success(`Attested ${id} on ${options.stack}: ${answer.passed} of ${answer.gates} probes passed`);
+    else log.warn(`Attested ${id} on ${options.stack}: ${answer.passed} of ${answer.gates} probes passed, ${failed} did not`);
+    log.info(`  ${answer.path}`);
+  } catch (err) {
+    log.error((err as Error).message);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
   }
 }
 

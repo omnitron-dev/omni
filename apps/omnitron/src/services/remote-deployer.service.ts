@@ -64,6 +64,7 @@ import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway
 import { readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
 import {
   decideRedeploy,
+  decideNodeStackStart,
   artifactChanged,
   readChecksumCommand,
   parseRecordedChecksum,
@@ -1105,11 +1106,25 @@ export class RemoteDeployer {
       // `startStack` is how a project's apps are started, which is why the
       // generated config carries a stack for them to be in.
       const { NODE_STACK } = await import('../project/node-app-config.js');
-      const out = await this.sshExec(
-        target,
-        `omnitron stack start ${shellEscape(project)} ${shellEscape(NODE_STACK)} 2>&1`,
-        300_000,
-      );
+
+      // ...and whether it has to be told at all. This command starts
+      // everything the node's config lists, so it overruled the per-app
+      // decision taken below it — measured 2026-09-22, six «Left running»
+      // lines about six applications this same deployment had restarted
+      // twenty seconds earlier. See `decideNodeStackStart`.
+      const start = decideNodeStackStart({
+        configChanged: changed,
+        apps: landed.map((l) => l.app),
+        online: await this.appsOnline(target, project),
+      });
+      const out =
+        start.action === 'start'
+          ? await this.sshExec(
+              target,
+              `omnitron stack start ${shellEscape(project)} ${shellEscape(NODE_STACK)} 2>&1`,
+              300_000,
+            )
+          : '';
       void added;
 
       // The node's CLI prints its refusals and exits zero — `omnitron project
@@ -1127,8 +1142,19 @@ export class RemoteDeployer {
       }
 
       this.logger.info(
-        { host: target.host, project, dir, apps: landed.map((l) => l.app), changed, detail: out.trim().slice(0, 200) },
-        'The node now knows what to run',
+        {
+          host: target.host,
+          project,
+          dir,
+          apps: landed.map((l) => l.app),
+          changed,
+          started: start.action === 'start',
+          because: start.because,
+          detail: out.trim().slice(0, 200),
+        },
+        start.action === 'start'
+          ? 'The node now knows what to run'
+          : 'The node is already running these apps with this configuration — its stack was not restarted',
       );
       return { changed };
     } catch (err) {

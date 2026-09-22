@@ -114,3 +114,70 @@ export function parseRecordedChecksum(out: string): string | null {
   // warning first, must not be compared as though it were one.
   return /^[0-9a-f]{64}$/.test(value) ? value : null;
 }
+
+/**
+ * Whether the node has to be told to start its stack at all.
+ *
+ * `decideRedeploy` above decides per app, and it was right — and it was
+ * overruled. Measured on 2026-09-22, a deployment with nothing to do:
+ *
+ *     05:51:20  The node now knows what to run   changed=false
+ *               detail: «Stack daos/deployed started — 6/6 apps online»
+ *     05:51:26  Left running — this deployment changes nothing for this app  ×6
+ *     05:51:40  every app on the node has a new pid
+ *
+ * The master wrote «left running» about six applications it had restarted
+ * twenty seconds earlier, because registering the config ends in an
+ * unconditional `omnitron stack start` ON THE NODE, which starts everything
+ * the node's config lists. The per-app decision came after, and by then
+ * `appsOnline` reported them all up — started by this same deployment — so
+ * `leave` was the answer to a question the restart had already settled.
+ *
+ * The decision has to be taken before the node is told, which is what this
+ * is for. It is deliberately coarse: the bulk start is a stack-wide command,
+ * so the only thing worth asking of it is whether it has anything to do at
+ * all. When one app of six changed, this says `start` and the node restarts
+ * six; narrowing that is a per-app start on the node, not a condition here.
+ *
+ * Every uncertainty answers `start`: `appsOnline` returns an empty set when
+ * the node cannot be asked, and an app nobody can vouch for is an app that
+ * has to be started.
+ */
+
+export interface NodeStackStartInput {
+  /** Whether the config body this node runs the apps with is about to change. */
+  readonly configChanged: boolean;
+  /** The apps this deployment put on the node. */
+  readonly apps: readonly string[];
+  /** What the node reports online right now — empty when it could not be asked. */
+  readonly online: ReadonlySet<string>;
+}
+
+export type NodeStackStartDecision =
+  | { readonly action: 'start'; readonly because: string }
+  | { readonly action: 'leave'; readonly because: string };
+
+export function decideNodeStackStart(input: NodeStackStartInput): NodeStackStartDecision {
+  // Nothing landed is not «nothing to do»: the caller has no list to check
+  // against, so it cannot know the node is running what it should.
+  if (input.apps.length === 0) {
+    return { action: 'start', because: 'no app was named, so nothing here can say the node is running them' };
+  }
+
+  if (input.configChanged) {
+    return { action: 'start', because: 'the configuration these apps run with changed' };
+  }
+
+  const down = input.apps.filter((app) => !input.online.has(app));
+  if (down.length > 0) {
+    return {
+      action: 'start',
+      because: `${down.length} of ${input.apps.length} are not running on the node: ${down.join(', ')}`,
+    };
+  }
+
+  return {
+    action: 'leave',
+    because: `all ${input.apps.length} are running with the configuration they already had`,
+  };
+}

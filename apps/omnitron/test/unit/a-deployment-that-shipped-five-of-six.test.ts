@@ -42,6 +42,10 @@ vi.mock('../../src/project/artifact-builder.js', () => ({
 const APPS = ['main', 'storage', 'priceverse', 'paysys', 'messaging', 'geo'];
 const built = (names: string[]) => names.map((app) => ({ app, version: '0.0.1' }));
 
+/** A node that grants its deploy lease, renews it, and takes it back. */
+const grantingLease = async (script: string) =>
+  script.includes("echo 'ACQUIRED'") ? 'ACQUIRED\n' : script.includes("echo 'RENEWED'") ? 'RENEWED\n' : 'RELEASED\n';
+
 /** A service with just the collaborators `startRemoteStack` reaches. */
 function remoteStackService(deployToStack = vi.fn(async () => [])) {
   const svc: any = Object.create(ProjectService.prototype);
@@ -52,6 +56,7 @@ function remoteStackService(deployToStack = vi.fn(async () => [])) {
       deployToStack,
       onProgress: () => () => {},
       provisionSlaveNode: vi.fn(async () => true),
+      leaseRunner: () => grantingLease,
     },
     getSlaveConnector: () => ({ addSlave: vi.fn(async () => {}) }),
     collectDeclaredServices: vi.fn(async () => ({})),
@@ -277,5 +282,65 @@ describe('the row says what the deployment reached', () => {
     expect(row.type).toBe('local');
     expect(row).not.toHaveProperty('nodes');
     expect(row).not.toHaveProperty('reached');
+  });
+});
+
+describe('one writer per node', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("takes the node's lease before touching it, and gives it back after", async () => {
+    buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
+    const order: string[] = [];
+    const svc = remoteStackService(
+      vi.fn(async () => {
+        order.push('deliver');
+        return APPS.map((app) => ({ app, status: 'success' }));
+      }),
+    );
+    svc.deployer.leaseRunner = () => async (script: string) => {
+      if (script.includes("echo 'ACQUIRED'")) {
+        order.push('lease');
+        return 'ACQUIRED\n';
+      }
+      if (script.includes("echo 'RENEWED'")) {
+        order.push('confirm');
+        return 'RENEWED\n';
+      }
+      order.push('release');
+      return 'RELEASED\n';
+    };
+    svc.deployer.provisionSlaveNode = vi.fn(async () => {
+      order.push('provision');
+      return true;
+    });
+
+    await svc.startRemoteStack('daos', 'test', REMOTE, {});
+
+    expect(order[0]).toBe('lease');
+    // Confirmed with the node before each step that changes it…
+    expect(order.slice(0, 3)).toEqual(['lease', 'confirm', 'provision']);
+    expect(order[order.indexOf('deliver') - 1]).toBe('confirm');
+    // …and given back exactly once, after everything else.
+    expect(order.at(-1)).toBe('release');
+    expect(order.filter((s) => s === 'release')).toHaveLength(1);
+  });
+
+  it('a node another deployment holds is refused before anything on it changes', async () => {
+    buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
+    const svc = remoteStackService();
+    const holder = JSON.stringify({
+      token: 't-other',
+      holder: 'laptop-2 pid 4242',
+      stack: 'daos/test',
+      startedAt: '2026-09-22T13:40:00.000Z',
+    });
+    svc.deployer.leaseRunner = () => async (script: string) =>
+      script.includes("echo 'ACQUIRED'") ? `HELD 12\t${holder}\n` : 'RELEASED\n';
+
+    await expect(svc.startRemoteStack('daos', 'test', REMOTE, {})).rejects.toThrow(
+      /37\.27\.130\.185:9700 is being deployed by laptop-2 pid 4242 \(deploying daos\/test, since .*\); its lease was renewed 12s ago/,
+    );
+    expect(svc.deployer.provisionSlaveNode).not.toHaveBeenCalled();
+    expect(svc.deployer.deployToStack).not.toHaveBeenCalled();
   });
 });

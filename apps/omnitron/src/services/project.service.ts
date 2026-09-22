@@ -67,6 +67,7 @@ import {
   type DeployTarget,
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
+import { withNodeLeases } from './node-deploy-lease.js';
 import type { FleetService } from './fleet.service.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
@@ -1727,196 +1728,225 @@ export class ProjectService extends EventEmitter {
     const { resolveMasterHost } = await import('./master-address.js');
     const masterPort = _dc.port;
 
-    // Deploy to each node: provision slave → deploy artifacts → connect
+    // One writer per node. Every development machine is a master deploying
+    // to these same nodes, and nothing made them see each other: two
+    // `stack start`s interleaved on one node. Each node's lease is taken
+    // before anything on it changes, confirmed before every step that changes
+    // it, and given back when this deployment is done — `node-deploy-lease.ts`.
+    const targets = new Map<string, DeployTarget>();
     for (const node of nodes) {
-      const nodeKey = `${node.host}:${node.port ?? 9700}`;
+      targets.set(`${node.host}:${node.port ?? 9700}`, await this.targetForStackNode(node));
+    }
+    phases.enter(`leasing ${nodes.length} node(s)`);
+    return withNodeLeases(
+      [...targets].map(([node, target]) => ({ node, run: this.deployer.leaseRunner(target) })),
+      `${projectName}/${stackName}`,
+      this.logger,
+      async (leases) => {
+        // Deploy to each node: provision slave → deploy artifacts → connect
+        for (const node of nodes) {
+          const nodeKey = `${node.host}:${node.port ?? 9700}`;
+          if (!leases.has(nodeKey)) {
+            skipped.push(nodeKey);
+            this.logger.error(
+              { node: nodeKey, because: leases.unreachable.get(nodeKey) },
+              'Could not reach this node to lease it — skipping',
+            );
+            continue;
+          }
 
-      // 1. Provision slave: install runtime + omnitron + generate slave config + start daemon
-      const unsubProvision = this.deployer.onProgress((progress) => {
-        this.emit('stack:deploy_progress', projectName, stackName, progress);
-      });
-      const target = await this.targetForStackNode(node);
-      const master = await resolveMasterHost(
-        { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
-        target,
-      );
-      if (master.host) {
-        this.logger.info(
-          { node: nodeKey, masterHost: master.host, from: master.source },
-          'Resolved the master address this slave will dial',
-        );
-      } else {
-        // Not an obstacle: the mesh connects the other way. Said once, at
-        // warn level, because a deployment that hands out no master address
-        // is worth noticing if somebody expected the push path to exist.
-        this.logger.warn(
-          { node: nodeKey, because: master.reason },
-          'Provisioning this node without a master address — it will be pulled from, not dial in',
-        );
-      }
-      phases.enter(`provisioning ${node.host}`);
-      const provisioned = await this.deployer.provisionSlaveNode(
-        target,
-        master.host,
-        masterPort,
-        projectName,
-      );
-      unsubProvision();
-
-      if (!provisioned) {
-        skipped.push(nodeKey);
-        this.logger.error({ node: nodeKey }, 'Failed to provision slave — skipping');
-        continue;
-      }
-      reached.push(nodeKey);
-
-      // 2. Bring up the stack's infrastructure, ON the node, before the
-      //    applications that need it arrive.
-      //
-      //    This step did not exist. A remote stack provisioned the daemon,
-      //    shipped the artifacts and opened the mesh connection, and the
-      //    stack's `infrastructure` block — its Postgres, its Redis, its
-      //    MinIO — was read by the master and never left it. The
-      //    applications started on the node and had nothing to connect to,
-      //    which surfaces as every one of them failing its first query
-      //    rather than as a missing deployment step.
-      //
-      //    Ordered before the artifacts deliberately: an app that starts
-      //    against a database that is not there yet spends its startup
-      //    budget retrying, and a supervisor's deadline turns that into a
-      //    crash loop over a condition that would have resolved.
-      // The same infrastructure a local stack would get: the ecosystem's
-      // services — gateway, Tor, tiles — plus whatever this stack declares.
-      // Sending only the stack's own block is why a remote deployment had
-      // databases and no gateway, and no onion address to reach it by.
-      const nodeInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
-      if (nodeInfra || Object.keys(declaredServices).length > 0) {
-        phases.enter(`bringing up infrastructure on ${node.host}`);
-        const ready = await this.provisionNodeInfrastructure(
-          connector,
-          node,
-          (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
-          declaredServices,
-          { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
-          project?.path,
-        );
-        if (!ready) {
-          // Not fatal: a node whose infrastructure is incomplete can still
-          // be looked at, and stopping here would leave the fleet in a state
-          // no command describes. It is said at error level with the node,
-          // and the applications will say the rest.
-          this.logger.error(
-            { node: nodeKey, stack: stackName },
-            'Node infrastructure is not ready — deploying anyway, applications may not reach their databases',
+          // 1. Provision slave: install runtime + omnitron + generate slave config + start daemon
+          const unsubProvision = this.deployer.onProgress((progress) => {
+            this.emit('stack:deploy_progress', projectName, stackName, progress);
+          });
+          const target = targets.get(nodeKey)!;
+          const master = await resolveMasterHost(
+            { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
+            target,
           );
+          if (master.host) {
+            this.logger.info(
+              { node: nodeKey, masterHost: master.host, from: master.source },
+              'Resolved the master address this slave will dial',
+            );
+          } else {
+            // Not an obstacle: the mesh connects the other way. Said once, at
+            // warn level, because a deployment that hands out no master address
+            // is worth noticing if somebody expected the push path to exist.
+            this.logger.warn(
+              { node: nodeKey, because: master.reason },
+              'Provisioning this node without a master address — it will be pulled from, not dial in',
+            );
+          }
+          await leases.confirm(nodeKey, `provisioning ${node.host}`);
+          phases.enter(`provisioning ${node.host}`);
+          const provisioned = await this.deployer.provisionSlaveNode(
+            target,
+            master.host,
+            masterPort,
+            projectName,
+          );
+          unsubProvision();
+
+          if (!provisioned) {
+            skipped.push(nodeKey);
+            this.logger.error({ node: nodeKey }, 'Failed to provision slave — skipping');
+            continue;
+          }
+          reached.push(nodeKey);
+
+          // 2. Bring up the stack's infrastructure, ON the node, before the
+          //    applications that need it arrive.
+          //
+          //    This step did not exist. A remote stack provisioned the daemon,
+          //    shipped the artifacts and opened the mesh connection, and the
+          //    stack's `infrastructure` block — its Postgres, its Redis, its
+          //    MinIO — was read by the master and never left it. The
+          //    applications started on the node and had nothing to connect to,
+          //    which surfaces as every one of them failing its first query
+          //    rather than as a missing deployment step.
+          //
+          //    Ordered before the artifacts deliberately: an app that starts
+          //    against a database that is not there yet spends its startup
+          //    budget retrying, and a supervisor's deadline turns that into a
+          //    crash loop over a condition that would have resolved.
+          // The same infrastructure a local stack would get: the ecosystem's
+          // services — gateway, Tor, tiles — plus whatever this stack declares.
+          // Sending only the stack's own block is why a remote deployment had
+          // databases and no gateway, and no onion address to reach it by.
+          const nodeInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
+          if (nodeInfra || Object.keys(declaredServices).length > 0) {
+            await leases.confirm(nodeKey, `bringing up infrastructure on ${node.host}`);
+            phases.enter(`bringing up infrastructure on ${node.host}`);
+            const ready = await this.provisionNodeInfrastructure(
+              connector,
+              node,
+              (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
+              declaredServices,
+              { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
+              project?.path,
+            );
+            if (!ready) {
+              // Not fatal: a node whose infrastructure is incomplete can still
+              // be looked at, and stopping here would leave the fleet in a state
+              // no command describes. It is said at error level with the node,
+              // and the applications will say the rest.
+              this.logger.error(
+                { node: nodeKey, stack: stackName },
+                'Node infrastructure is not ready — deploying anyway, applications may not reach their databases',
+              );
+            }
+          }
+
+          // 2b. Ask the node what it actually provisioned.
+          //
+          // The credentials are generated ON THE NODE — `provisionStack` runs
+          // `withGeneratedCredentials` against the node's own vault — so the
+          // master's copy of the stack's infrastructure carries whatever was
+          // DECLARED, which for a stack that declares none is nothing at all.
+          // Writing that into the node's config left `resolveStackAddresses`
+          // with no `infrastructure` block, and its fallback chain ends in a
+          // literal:
+          //
+          //     infra?.postgres?.password ?? getEnv().POSTGRES_PASSWORD ?? 'postgres'
+          //
+          // Six apps were handed `postgres://postgres:postgres@localhost:5432/…`
+          // against a container holding a 43-character generated secret, and
+          // every one of them died with `password authentication failed for user
+          // "postgres" (28P01)` after five retries.
+          //
+          // Only the secrets are taken from the node: ports, database names and
+          // the rest stay as this stack declared them, because those are the
+          // master's to decide and the node merely carried them out.
+          phases.enter(`reading credentials from ${node.host}`);
+          const nodeCredentials = await this.readNodeCredentials(connector, node);
+          const deployedInfra = overlayCredentials(
+            nodeInfra as Record<string, unknown> | undefined,
+            nodeCredentials,
+          );
+
+          // Resolved as a LOCAL stack, because from the node's side these
+          // services are: containers on that machine, ports on its loopback. The
+          // remote branch of `resolveStackAddresses` answers with the node's
+          // public host, which is the master's way of reaching it and not the
+          // app's — and omnitron publishes every managed port on 127.0.0.1, so
+          // that address reaches nothing from inside the node.
+          //
+          // Per app, and NOT as an `infrastructure` block in the node's config.
+          // Writing one was the first attempt and it was worse than the problem:
+          // a stack with an infrastructure block is a stack the node PROVISIONS,
+          // so the node autostarted its own `deployed` stack, built a second
+          // complete set of containers under `daos-deployed-*` on empty volumes,
+          // and swept the master's `daos-test-*` as orphans. An address is not an
+          // instruction to build what it points at.
+          phases.enter(`resolving the environment for ${node.host}`);
+          const appEnv = await this.resolveNodeAppEnv(
+            ecosystemConfig,
+            projectName,
+            stackConfig,
+            appEntries,
+            deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
+          );
+
+          // 3. Deploy app artifacts via SSH
+          if (artifacts.length > 0) {
+            const unsubDeploy = this.deployer.onProgress((progress) => {
+              this.emit('stack:deploy_progress', projectName, stackName, progress);
+            });
+            // The definitions travel with the artifacts. A node that receives
+            // one without the other has files it cannot run, and says so only if
+            // someone asks it directly.
+            await leases.confirm(nodeKey, `delivering ${artifacts.length} artifact(s) to ${node.host}`);
+            phases.enter(`delivering ${artifacts.length} artifact(s) to ${node.host}`);
+            const results = await this.deployer.deployToStack([target], artifacts, projectName, {
+              apps: appEntries,
+              appEnv,
+              stack: stackName,
+            });
+            unsubDeploy();
+            const failed = results.filter((r) => r.status === 'failed');
+            if (failed.length > 0) {
+              // The other half of the same invariant. Building every artifact
+              // and then failing to DELIVER some of them leaves exactly the
+              // split state the throw above exists to prevent, and it was a
+              // WARN — a level nothing acts on, under a `Stack started` that
+              // follows regardless.
+              this.logger.error({ node: nodeKey, failed: failed.map((f) => f.app) }, 'App deployments failed');
+              throw new Error(
+                `Deployment to ${nodeKey} failed for ${failed.length} of ${results.length} app(s): ` +
+                  failed.map((f) => f.app).join(', ') +
+                  '. The node is in a mixed state — re-run the deployment once the cause is fixed.',
+              );
+            }
+          }
+
+          // 4. Connect master to slave daemon via Netron TCP
+          await leases.confirm(nodeKey, `joining ${node.host} to the mesh`);
+          phases.enter(`joining ${node.host} to the mesh`);
+          await connector.addSlave({
+            host: node.host,
+            port: node.port ?? 9700,
+            label: node.label,
+            stack: stackName,
+            project: projectName,
+          });
         }
-      }
 
-      // 2b. Ask the node what it actually provisioned.
-      //
-      // The credentials are generated ON THE NODE — `provisionStack` runs
-      // `withGeneratedCredentials` against the node's own vault — so the
-      // master's copy of the stack's infrastructure carries whatever was
-      // DECLARED, which for a stack that declares none is nothing at all.
-      // Writing that into the node's config left `resolveStackAddresses`
-      // with no `infrastructure` block, and its fallback chain ends in a
-      // literal:
-      //
-      //     infra?.postgres?.password ?? getEnv().POSTGRES_PASSWORD ?? 'postgres'
-      //
-      // Six apps were handed `postgres://postgres:postgres@localhost:5432/…`
-      // against a container holding a 43-character generated secret, and
-      // every one of them died with `password authentication failed for user
-      // "postgres" (28P01)` after five retries.
-      //
-      // Only the secrets are taken from the node: ports, database names and
-      // the rest stay as this stack declared them, because those are the
-      // master's to decide and the node merely carried them out.
-      phases.enter(`reading credentials from ${node.host}`);
-      const nodeCredentials = await this.readNodeCredentials(connector, node);
-      const deployedInfra = overlayCredentials(
-        nodeInfra as Record<string, unknown> | undefined,
-        nodeCredentials,
-      );
-
-      // Resolved as a LOCAL stack, because from the node's side these
-      // services are: containers on that machine, ports on its loopback. The
-      // remote branch of `resolveStackAddresses` answers with the node's
-      // public host, which is the master's way of reaching it and not the
-      // app's — and omnitron publishes every managed port on 127.0.0.1, so
-      // that address reaches nothing from inside the node.
-      //
-      // Per app, and NOT as an `infrastructure` block in the node's config.
-      // Writing one was the first attempt and it was worse than the problem:
-      // a stack with an infrastructure block is a stack the node PROVISIONS,
-      // so the node autostarted its own `deployed` stack, built a second
-      // complete set of containers under `daos-deployed-*` on empty volumes,
-      // and swept the master's `daos-test-*` as orphans. An address is not an
-      // instruction to build what it points at.
-      phases.enter(`resolving the environment for ${node.host}`);
-      const appEnv = await this.resolveNodeAppEnv(
-        ecosystemConfig,
-        projectName,
-        stackConfig,
-        appEntries,
-        deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
-      );
-
-      // 3. Deploy app artifacts via SSH
-      if (artifacts.length > 0) {
-        const unsubDeploy = this.deployer.onProgress((progress) => {
-          this.emit('stack:deploy_progress', projectName, stackName, progress);
-        });
-        // The definitions travel with the artifacts. A node that receives
-        // one without the other has files it cannot run, and says so only if
-        // someone asks it directly.
-        phases.enter(`delivering ${artifacts.length} artifact(s) to ${node.host}`);
-        const results = await this.deployer.deployToStack([target], artifacts, projectName, {
-          apps: appEntries,
-          appEnv,
-          stack: stackName,
-        });
-        unsubDeploy();
-        const failed = results.filter((r) => r.status === 'failed');
-        if (failed.length > 0) {
-          // The other half of the same invariant. Building every artifact
-          // and then failing to DELIVER some of them leaves exactly the
-          // split state the throw above exists to prevent, and it was a
-          // WARN — a level nothing acts on, under a `Stack started` that
-          // follows regardless.
-          this.logger.error({ node: nodeKey, failed: failed.map((f) => f.app) }, 'App deployments failed');
+        // Not one node took the deployment. Nothing was installed, nothing was
+        // started, and the applications on those machines — if any are still up
+        // — are running whatever they were running before. Marking the stack
+        // `running` and recording a `stack.start` after that is how a trail
+        // acquires a deployment that did not happen.
+        if (reached.length === 0 && nodes.length > 0) {
           throw new Error(
-            `Deployment to ${nodeKey} failed for ${failed.length} of ${results.length} app(s): ` +
-              failed.map((f) => f.app).join(', ') +
-              '. The node is in a mixed state — re-run the deployment once the cause is fixed.',
+            `Refusing to call ${stackName} started: none of its ${nodes.length} node(s) could be provisioned — ` +
+              `${skipped.join(', ')}. The per-node errors are above.`,
           );
         }
-      }
 
-      // 4. Connect master to slave daemon via Netron TCP
-      phases.enter(`joining ${node.host} to the mesh`);
-      await connector.addSlave({
-        host: node.host,
-        port: node.port ?? 9700,
-        label: node.label,
-        stack: stackName,
-        project: projectName,
-      });
-    }
-
-    // Not one node took the deployment. Nothing was installed, nothing was
-    // started, and the applications on those machines — if any are still up
-    // — are running whatever they were running before. Marking the stack
-    // `running` and recording a `stack.start` after that is how a trail
-    // acquires a deployment that did not happen.
-    if (reached.length === 0 && nodes.length > 0) {
-      throw new Error(
-        `Refusing to call ${stackName} started: none of its ${nodes.length} node(s) could be provisioned — ` +
-          `${skipped.join(', ')}. The per-node errors are above.`,
-      );
-    }
-
-    return { nodes: nodes.length, reached: reached.length, skipped };
+        return { nodes: nodes.length, reached: reached.length, skipped };
+      },
+    );
   }
 
   /**

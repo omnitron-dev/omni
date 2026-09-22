@@ -65,6 +65,7 @@ import { readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
 import {
   decideRedeploy,
   decideNodeStackStart,
+  decideSlaveDaemonRestart,
   artifactChanged,
   readChecksumCommand,
   parseRecordedChecksum,
@@ -1294,25 +1295,52 @@ export class RemoteDeployer {
       assertRemotePathSegment('project name', project);
       const masterAddr = masterHost ? `${masterHost}:${masterPort}` : null;
 
-      // 5. Start slave daemon (or restart if already running)
-      this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
-      await this.sshExec(
-        target,
-        masterAddr
-          ? `omnitron down 2>/dev/null; omnitron up --slave ${shellEscape(masterAddr)} --no-infra`
-          // `--slave` with no address still sets the role; the node buffers
-          // locally and waits to be pulled from, which is what it would do
-          // with an address it cannot reach anyway.
-          : 'omnitron down 2>/dev/null; omnitron up --slave --no-infra',
-        180_000,
-      ).catch((err) => {
-        // Reported, not swallowed. The verification below tells us whether the
-        // daemon came up; this tells us what it said on the way.
-        this.logger.warn(
-          { host: target.host, error: (err as Error).message },
-          'Slave start command did not return cleanly — verifying anyway',
-        );
+      // 5. Start the slave daemon — if it is not already the one we want.
+      //
+      // `omnitron down` stops the daemon AND every application under it, so
+      // this step is the most expensive thing a deployment does to a node
+      // that needed nothing. See `decideSlaveDaemonRestart`: it took three
+      // deployments to attribute, because the node-side `stack start` was
+      // restarting them too and either one alone explains the pids.
+      const daemonNow = readNodeStatus(
+        await this.sshExec(target, 'omnitron status --json 2>&1', 15_000).catch(() => ''),
+      );
+      const daemonDecision = decideSlaveDaemonRestart({
+        hostChanged: plan.steps.length > 0,
+        daemon: daemonNow
+          ? {
+              running: typeof daemonNow.pid === 'number' || typeof daemonNow.uptime === 'number',
+              ...(daemonNow.role ? { role: daemonNow.role } : {}),
+            }
+          : null,
       });
+
+      if (daemonDecision.action === 'leave') {
+        this.emitProgress(nodeKey, '*', 'restarting', 70, 'Slave daemon already running');
+        this.logger.info(
+          { host: target.host, because: daemonDecision.because, apps: daemonNow?.apps.length ?? 0 },
+          'The node daemon was left alone — this deployment changes nothing under it',
+        );
+      } else {
+        this.emitProgress(nodeKey, '*', 'restarting', 70, 'Starting slave daemon...');
+        await this.sshExec(
+          target,
+          masterAddr
+            ? `omnitron down 2>/dev/null; omnitron up --slave ${shellEscape(masterAddr)} --no-infra`
+            // `--slave` with no address still sets the role; the node buffers
+            // locally and waits to be pulled from, which is what it would do
+            // with an address it cannot reach anyway.
+            : 'omnitron down 2>/dev/null; omnitron up --slave --no-infra',
+          180_000,
+        ).catch((err) => {
+          // Reported, not swallowed. The verification below tells us whether the
+          // daemon came up; this tells us what it said on the way.
+          this.logger.warn(
+            { host: target.host, error: (err as Error).message },
+            'Slave start command did not return cleanly — verifying anyway',
+          );
+        });
+      }
 
       // 6. Verify the daemon is running, and mean it.
       //

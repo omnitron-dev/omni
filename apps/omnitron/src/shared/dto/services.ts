@@ -747,5 +747,7 @@ export interface IOmnitronReleaseService {
     passed: number;
     node: string;
     scriptsFrom: 'release' | 'history';
+    /** Application source files staged beside the probes; 0 when the commit has none. */
+    sourceFiles: number;
   }>;
 }

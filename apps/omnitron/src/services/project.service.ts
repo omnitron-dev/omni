@@ -1101,7 +1101,14 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackName: string,
     releaseId: string,
-  ): Promise<{ stdout: string; stderr: string; code: number; node: string; scriptsFrom: 'release' | 'history' }> {
+  ): Promise<{
+    stdout: string;
+    stderr: string;
+    code: number;
+    node: string;
+    scriptsFrom: 'release' | 'history';
+    sourceFiles: number;
+  }> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];
@@ -1138,14 +1145,33 @@ export class ProjectService extends EventEmitter {
       return await this.deployer.underLease(target, `attestation of ${releaseId} on ${projectName}/${stackName}`, async () => {
         const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/attest');
         this.logger.info(
-          { project: projectName, stack: stackName, release: releaseId, node: machine, remoteDir, scriptsFrom: staged.scriptsFrom },
+          {
+            project: projectName,
+            stack: stackName,
+            release: releaseId,
+            node: machine,
+            remoteDir,
+            scriptsFrom: staged.scriptsFrom,
+            sourceFiles: staged.sourceFiles,
+          },
           'Running the release\'s probes on its node',
         );
-        const run = await this.deployer.runOnNode(
-          target,
-          attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix }),
-        );
-        return { ...run, node: machine, scriptsFrom: staged.scriptsFrom };
+        try {
+          const run = await this.deployer.runOnNode(
+            target,
+            attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix }),
+          );
+          return { ...run, node: machine, scriptsFrom: staged.scriptsFrom, sourceFiles: staged.sourceFiles };
+        } finally {
+          // The stage carries the application's source. The run's output is
+          // the record, kept on this side; the node keeps its artifacts and
+          // not a copy of the code they were built from. With its marker, so
+          // the next run uploads again instead of trusting a directory gone.
+          const { shellEscape } = await import('../shared/shell-escape.js');
+          await this.deployer
+            .runOnNode(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(`${remoteDir}.delivered`)}`, 60_000)
+            .catch(() => undefined);
+        }
       });
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });

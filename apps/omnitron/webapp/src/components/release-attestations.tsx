@@ -35,7 +35,15 @@ import { useProjectStore } from 'src/stores/project.store';
 
 import { GATE_TONE, GateStrip, when } from './release-bits';
 
-type AttestAnswer = { path: string; gates: number; passed: number; node: string; scriptsFrom: 'release' | 'history' };
+type AttestAnswer = {
+  path: string;
+  gates: number;
+  passed: number;
+  node: string;
+  scriptsFrom: 'release' | 'history';
+  /** Absent from a daemon older than the field. */
+  sourceFiles?: number;
+};
 
 /**
  * The run, with a deadline that fits it.
@@ -172,7 +180,12 @@ export function ReleaseAttestations({
         {answer && (
           <Alert severity={answer.passed === answer.gates ? 'success' : 'warning'} sx={{ mb: 1.5 }}>
             {answer.passed} of {answer.gates} probes passed on {answer.node} — probes from{' '}
-            {answer.scriptsFrom === 'release' ? 'the release itself' : "the release's commit"}.
+            {answer.scriptsFrom === 'release' ? 'the release itself' : "the release's commit"}
+            {typeof answer.sourceFiles === 'number' &&
+              (answer.sourceFiles > 0
+                ? `, with ${answer.sourceFiles} application source files from that commit`
+                : ', with no application sources — probes that read code said NOT RUN')}
+            .
           </Alert>
         )}
         {failure && (

@@ -225,6 +225,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     passed: number;
     node: string;
     scriptsFrom: 'release' | 'history';
+    sourceFiles: number;
   }> {
     if (!data?.release || !data?.stack) throw new Error('An attestation needs a release and a stack');
     if (!this.projects) throw new Error('This daemon has no project service to reach a node with');
@@ -234,7 +235,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     const verdict = interpretRun(run);
     if (!verdict.keep) throw new Error(`Nothing stored for ${data.release} on ${data.stack} (${run.node}): ${verdict.because}`);
     const stored = await this.attest({ release: data.release, stack: data.stack, stdout: verdict.stdout });
-    return { ...stored, node: run.node, scriptsFrom: run.scriptsFrom };
+    return { ...stored, node: run.node, scriptsFrom: run.scriptsFrom, sourceFiles: run.sourceFiles };
   }
 
   /** When this stack last took this exact release, from the trail. */

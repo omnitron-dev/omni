@@ -38,9 +38,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { log } from '@xec-sh/kit';
+import { log, table } from '@xec-sh/kit';
 
 import { OMNITRON_HOME } from '../config/defaults.js';
+import { emitJson } from './output.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from '../release/builder.js';
 import { planBuildRoot, readLinkLayout, resolveCheckouts } from '../release/layout.js';
@@ -304,8 +305,13 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     const plan = planBuildRoot(path.join(releaseRoot, 'src'), projectPath, layout);
     if ('refusal' in plan) throw new Error(plan.refusal);
 
+    // Read at the START: the identity of the omnitron that packs this, not
+    // of whatever this checkout has become by the time the build ends. The
+    // first release recorded a commit made while it was running.
+    const omnitron = await ownIdentity();
     log.info(`Release ${id}`);
-    log.info(`  ${projectName} ${projectSha.slice(0, 8)} · omni ${omniSha.slice(0, 8)} · ${releaseRoot}`);
+    log.info(`  ${projectName} ${projectSha.slice(0, 8)} · omni ${omniSha.slice(0, 8)} · built with omnitron ${omnitron}`);
+    log.info(`  ${releaseRoot}`);
     const phase = (what: string) => log.info(`  ${new Date().toISOString().slice(11, 19)}  ${what}`);
 
     // 1. Clean clones of the two commits.
@@ -421,7 +427,7 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
       artifacts: packed.built,
       artifactFailures: packed.failed,
       gates,
-      omnitron: await ownIdentity(),
+      omnitron,
       packages: linked.map((l) => ({ name: l.name, distBuiltAt: distBuiltAt(path.join(plan.omniDir, l.dir)) })),
       builtAt: new Date(),
       builtBy: `${os.userInfo().username}@${os.hostname()}`,
@@ -446,4 +452,148 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     if (releaseRoot) log.info(`  kept for inspection: ${releaseRoot}`);
     process.exitCode = 1;
   }
+}
+
+/** Everything built on this machine, newest first, with what it is worth. */
+export async function releaseListCommand(): Promise<void> {
+  const { releasesRoot } = await import('../release/load.js');
+  const root = releasesRoot();
+  if (!fs.existsSync(root)) {
+    log.info(`No releases on this machine — ${root} does not exist. \`omnitron release build <project>\` makes one.`);
+    return;
+  }
+  const rows = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .flatMap((e) => {
+      const file = path.join(root, e.name, 'manifest.json');
+      if (!fs.existsSync(file)) {
+        // A build that failed leaves its logs and no manifest. Listed as
+        // such rather than hidden: it is taking up the disk either way.
+        return [{ id: e.name, built: '—', gates: 'no manifest', artifacts: '—', mb: dirMegabytes(path.join(root, e.name)), statics: '—' }];
+      }
+      const m = JSON.parse(fs.readFileSync(file, 'utf8')) as import('../release/manifest.js').ReleaseManifest;
+      const passed = m.gates.filter((g) => g.status === 'passed').length;
+      return [{
+        id: m.id,
+        built: m.builtAt.slice(0, 16).replace('T', ' '),
+        gates: `${passed}/${m.gates.length}`,
+        artifacts: String(m.artifacts.length),
+        mb: dirMegabytes(path.join(root, e.name)),
+        statics: m.statics ? m.statics.stack : '—',
+      }];
+    })
+    .sort((a, b) => (a.built < b.built ? 1 : -1));
+  if (emitJson({ releases: rows, root })) return;
+  if (rows.length === 0) {
+    log.info(`No releases on this machine — \`omnitron release build <project>\` makes one.`);
+    return;
+  }
+  table({
+    width: 'auto',
+    data: rows,
+    columns: [
+      { key: 'id', header: 'Release', width: 46 },
+      { key: 'built', header: 'Built (UTC)', width: 17 },
+      { key: 'gates', header: 'Gates', width: 7 },
+      { key: 'artifacts', header: 'Apps', width: 5 },
+      { key: 'statics', header: 'Statics', width: 8 },
+      { key: 'mb', header: 'MB', width: 7 },
+    ],
+  });
+}
+
+function dirMegabytes(dir: string): string {
+  let bytes = 0;
+  const walk = (d: string) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) bytes += fs.statSync(full).size;
+    }
+  };
+  try {
+    walk(dir);
+  } catch {
+    return '?';
+  }
+  return (bytes / 1024 / 1024).toFixed(1);
+}
+
+/** One release, in full: what it was built from, what it says, what it carries. */
+export async function releaseShowCommand(id: string): Promise<void> {
+  const { loadRelease } = await import('../release/load.js');
+  try {
+    const release = await loadRelease(id);
+    const m = release.manifest;
+    if (emitJson(m)) return;
+    log.info(`Release ${m.id}`);
+    log.info(`  built ${m.builtAt} by ${m.builtBy} with omnitron ${m.builtWith.omnitron}`);
+    for (const [what, source] of [['project', m.project], ['omni', m.omni]] as const) {
+      const remote = source.onRemote === true ? '' : source.onRemote === false ? ' — on no remote branch' : ' — no remote to ask';
+      log.info(`  ${what}: ${source.commit.slice(0, 12)} ${source.repo}${remote}`);
+    }
+    const failed = m.gates.filter((g) => g.status !== 'passed');
+    log.info(`  gates: ${m.gates.length - failed.length} of ${m.gates.length} passed`);
+    for (const gate of m.gates) {
+      const mark = gate.status === 'passed' ? 'pass' : gate.status;
+      log.info(`    ${mark.padEnd(9)} ${gate.name}${gate.detail ? ` — ${gate.detail}` : ''}`);
+    }
+    for (const a of m.artifacts) {
+      log.info(`  ${a.app}@${a.version}  ${(a.bytes / 1024 / 1024).toFixed(1)} MB  sha256 ${a.sha256.slice(0, 12) || '(none)'}`);
+    }
+    for (const f of m.artifactFailures ?? []) log.warn(`  ${f.app} did not build — ${f.error.split('\n')[0]}`);
+    if (m.statics) log.info(`  statics for ${m.statics.stack}: ${m.statics.files} files, ${(m.statics.bytes / 1024 / 1024).toFixed(1)} MB from ${m.statics.dir}`);
+    log.info(`  ${release.files.length} artifact file(s) on this disk match the manifest`);
+  } catch (err) {
+    log.error((err as Error).message);
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * Remove all but the newest `keep` releases.
+ *
+ * Deliberately blunt and deliberately explicit: it does not know which
+ * release a stack is running — the `stack.start` rows do — so it never
+ * decides that for itself, and `--yes` is required before anything is
+ * deleted.
+ */
+export async function releasePruneCommand(options: { keep?: number; yes?: boolean } = {}): Promise<void> {
+  const { releasesRoot } = await import('../release/load.js');
+  const keep = options.keep ?? 5;
+  if (!Number.isInteger(keep) || keep < 0) {
+    log.error(`--keep takes a whole number of releases to keep, not ${String(options.keep)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const root = releasesRoot();
+  if (!fs.existsSync(root)) {
+    log.info('Nothing to prune.');
+    return;
+  }
+  const dirs = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => {
+      const file = path.join(root, e.name, 'manifest.json');
+      const builtAt = fs.existsSync(file)
+        ? (JSON.parse(fs.readFileSync(file, 'utf8')) as { builtAt?: string }).builtAt ?? ''
+        : '';
+      return { name: e.name, builtAt, path: path.join(root, e.name) };
+    })
+    .sort((a, b) => (a.builtAt < b.builtAt ? 1 : -1));
+  const doomed = dirs.slice(keep);
+  if (doomed.length === 0) {
+    log.info(`${dirs.length} release(s), keeping ${keep} — nothing to remove.`);
+    return;
+  }
+  const freed = doomed.reduce((sum, d) => sum + Number(dirMegabytes(d.path)), 0);
+  for (const d of doomed) log.info(`  ${options.yes ? 'removing' : 'would remove'} ${d.name} (${dirMegabytes(d.path)} MB)`);
+  if (!options.yes) {
+    log.warn(`${doomed.length} release(s), ${freed.toFixed(1)} MB. Nothing was removed — pass --yes to remove them.`);
+    return;
+  }
+  for (const d of doomed) fs.rmSync(d.path, { recursive: true, force: true });
+  log.success(`Removed ${doomed.length} release(s), ${freed.toFixed(1)} MB freed; ${Math.min(keep, dirs.length)} kept.`);
 }

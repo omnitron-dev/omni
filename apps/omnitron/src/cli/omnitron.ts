@@ -527,6 +527,32 @@ release
     },
   );
 
+release
+  .command('list')
+  .description('Every release built on this machine, newest first')
+  .action(async () => {
+    const { releaseListCommand } = await import('../commands/release.js');
+    await releaseListCommand();
+  });
+
+release
+  .command('show <id>')
+  .description('One release in full: its commits, its gates, its artifacts')
+  .action(async (id: string) => {
+    const { releaseShowCommand } = await import('../commands/release.js');
+    await releaseShowCommand(id);
+  });
+
+release
+  .command('prune')
+  .description('Remove all but the newest releases (they are ~35 MB each)')
+  .option('--keep <n>', 'How many to keep (default: 5)', (v: string) => Number(v))
+  .option('--yes', 'Remove them; without this it only says what it would remove')
+  .action(async (options: { keep?: number; yes?: boolean }) => {
+    const { releasePruneCommand } = await import('../commands/release.js');
+    await releasePruneCommand(options);
+  });
+
 // ============================================================================
 // Cluster
 // ============================================================================

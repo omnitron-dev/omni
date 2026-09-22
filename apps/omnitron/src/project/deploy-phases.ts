@@ -23,6 +23,33 @@ export interface PhaseLogger {
   info(obj: Record<string, unknown>, msg: string): void;
 }
 
+/**
+ * What this process is in the middle of, by name — for whoever measures it
+ * while that runs.
+ *
+ * The event-loop watch (`monitoring/event-loop-watch.ts`) names the phase a
+ * stall happened in, and a phase is known only to whoever entered it. So every
+ * reporter below keeps its current phase here, and `duringPhase` does the same
+ * for work that has no reporter of its own.
+ */
+const inProgress = new Map<symbol, string>();
+
+/** The phases in progress in this process right now, oldest first. */
+export function activePhases(): string[] {
+  return [...inProgress.values()];
+}
+
+/** Run `work` as a named phase, for as long as it runs and not a moment longer. */
+export async function duringPhase<T>(name: string, work: () => Promise<T>): Promise<T> {
+  const key = Symbol(name);
+  inProgress.set(key, name);
+  try {
+    return await work();
+  } finally {
+    inProgress.delete(key);
+  }
+}
+
 export interface DeployPhases {
   /** Name the step now running. Resets the clock this reporter prints. */
   enter(phase: string): void;
@@ -51,14 +78,21 @@ export function reportPhases(
   // A progress timer must never be the reason a process outlives its work.
   timer.unref?.();
 
+  // Named with what it belongs to: two deployments on one master are two
+  // phases, and «reading credentials» alone does not say whose.
+  const key = Symbol('deploy phase');
+  const whose = [context['project'], context['stack']].filter((v) => typeof v === 'string').join('/');
+
   return {
     enter(next: string): void {
       phase = next;
       since = Date.now();
+      inProgress.set(key, whose ? `${whose}: ${next}` : next);
     },
     done(): void {
       phase = null;
       clearInterval(timer);
+      inProgress.delete(key);
     },
   };
 }

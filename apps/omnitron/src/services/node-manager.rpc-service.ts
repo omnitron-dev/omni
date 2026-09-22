@@ -356,10 +356,37 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    * what the fleet is running and what it would take to move it.
    */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async planUpgrade(_data?: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
-    throw Errors.notImplemented(
-      'planUpgrade is declared but not built yet — the CLI has this as `fleet upgrade --dry-run`.',
-    );
+  async planUpgrade(data?: { nodeIds?: string[] }): Promise<INodeUpgradePlan> {
+    if (!this.upgrades) {
+      return {
+        targetVersion: '',
+        rows: [],
+        refusal: 'Node upgrades are not configured on this daemon.',
+      };
+    }
+
+    const plan = await this.upgrades.plan(data?.nodeIds);
+    return {
+      targetVersion: plan.targetVersion,
+      refusal: plan.refusal ?? null,
+      rows: plan.steps.map((step) => ({
+        nodeId: step.node.nodeId,
+        label: step.node.name,
+        // `null`, not `''`: an entry with no usable address is a different
+        // thing from one whose machine could not be reached, and an empty
+        // string in a column of addresses reads as the former being the
+        // latter.
+        host: step.node.address ?? null,
+        currentVersion: step.node.currentVersion,
+        targetVersion: plan.targetVersion,
+        action: step.decision.action,
+        // An `upgrade` row has no reason to give: it is doing what was
+        // asked. `skip` and `refuse` carry theirs verbatim — they are
+        // written for an operator to read, and shortening them here would
+        // undo that.
+        because: step.decision.action === 'upgrade' ? '' : step.decision.because,
+      })),
+    };
   }
 
   /** Queue a rollout across several nodes. Returns once queued, not once done. */

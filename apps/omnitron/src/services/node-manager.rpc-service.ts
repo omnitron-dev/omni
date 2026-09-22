@@ -403,16 +403,41 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   /** Queue a rollout across several nodes. Returns once queued, not once done. */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async upgradeNodes(_data: { nodeIds: string[]; concurrency?: number }): Promise<INodeRolloutStart> {
-    throw Errors.notImplemented(
-      'upgradeNodes is declared but not built yet — `upgradeNode` still does one node at a time.',
-    );
+  async upgradeNodes(data: { nodeIds: string[]; concurrency?: number }): Promise<INodeRolloutStart> {
+    // An empty selection is refused before anything else: answering it with
+    // `{ accepted: [], refused: [] }` would read as «queued nothing, nothing wrong».
+    if (!Array.isArray(data?.nodeIds) || data.nodeIds.length === 0) {
+      throw Errors.badRequest('A rollout needs at least one node');
+    }
+    if (!this.upgrades) {
+      return {
+        accepted: [],
+        refused: data.nodeIds.map((nodeId) => ({ nodeId, because: 'Node upgrades are not configured on this daemon.' })),
+      };
+    }
+    const outcome = this.upgrades.rollout(data.nodeIds, data.concurrency ?? 1);
+    await this.audit?.record({
+      action: 'node.rollout',
+      resourceType: 'node',
+      resourceId: null,
+      details: {
+        accepted: outcome.accepted.join(',') || '(none)',
+        refused: outcome.refused.map((r) => r.nodeId).join(',') || '(none)',
+        concurrency: data.concurrency ?? 1,
+      },
+    });
+    return outcome;
   }
 
   /** Drop a node from a running rollout, if it has not started installing. */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async cancelUpgrade(_data: { nodeId: string }): Promise<{ stopped: boolean; because: string }> {
-    throw Errors.notImplemented('cancelUpgrade is declared but not built yet.');
+  async cancelUpgrade(data: { nodeId: string }): Promise<{ stopped: boolean; because: string }> {
+    if (!this.upgrades) return { stopped: false, because: 'Node upgrades are not configured on this daemon.' };
+    const outcome = this.upgrades.cancel(data.nodeId);
+    if (outcome.stopped) {
+      await this.audit?.record({ action: 'node.upgrade.cancel', resourceType: 'node', resourceId: data.nodeId });
+    }
+    return outcome;
   }
 
   /** Wired by the daemon at startup, on a master. */

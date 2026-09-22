@@ -93,7 +93,12 @@ export class LeaderElection extends EventEmitter {
   private running = false;
 
   constructor(
-    private readonly nodeId: string,
+    /**
+     * What this node is called until `start()` — when it becomes this
+     * daemon's row in the fleet table, which is the only name its peers can
+     * find it by. See `start()`.
+     */
+    private nodeId: string,
     private readonly fleetService: FleetService,
     /**
      * The daemon passes a full `ILogger`; this shape used to name only
@@ -128,6 +133,26 @@ export class LeaderElection extends EventEmitter {
    */
   async start(): Promise<void> {
     if (this.running) return;
+
+    // Peers know this node by its row in the fleet table: `isFleetMember`
+    // looks a candidate or a leader up there by id, and the rows' ids are
+    // uuids. The daemon constructed this election as `${hostname}-${port}`,
+    // which no row is called — so every vote this node asked for and every
+    // heartbeat it sent as leader would have been refused as coming from a
+    // stranger, its own `heartbeat`/`setRole` failed on the uuid column, and
+    // it counted itself among its peers. A cluster of more than one master
+    // could never have elected anyone. The row exists by now: the daemon
+    // registers itself (`registerSelf`) before it starts the election.
+    const row = this.fleetService.selfNodeId;
+    if (row) {
+      this.nodeId = row;
+    } else {
+      this.logger.error(
+        { nodeId: this.nodeId },
+        'Leader election is starting without a row in the fleet table — peers will refuse its votes and heartbeats',
+      );
+    }
+
     this.running = true;
     this.state = 'follower';
     this.term = 0;

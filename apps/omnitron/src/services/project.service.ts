@@ -138,6 +138,24 @@ export type StackStartSource = 'operator' | 'boot' | 'auto-resume' | 'unknown';
 // =============================================================================
 
 /**
+ * The stack's frontend could not be put on a node, twice.
+ *
+ * Its own class because it ends the deployment where every other failure to
+ * bring up a node's infrastructure is logged and deployed past: nothing on
+ * the node has changed yet, and a deployment that continued would recreate
+ * the gateway without a web root — see `shipStackStatics`.
+ */
+export class FrontendNotDeliveredError extends Error {
+  constructor(host: string, cause: string) {
+    super(
+      `The frontend could not be delivered to ${host} (two attempts): ${cause.slice(0, 400)}. ` +
+        'Nothing on the node was changed — its gateway keeps serving the frontend it had.',
+    );
+    this.name = 'FrontendNotDeliveredError';
+  }
+}
+
+/**
  * Where an on-node attestation's probes got the accounts they sign in with.
  *
  *   provisioned      the stack allows it and the release's producer can: the
@@ -2624,22 +2642,36 @@ export class ProjectService extends EventEmitter {
       // attempt failed: `Failed to connect to 37.27.130.185`, an error about
       // credentials that were sitting in the registry all along.
       const target = await this.targetForStackNode(node);
-      const { remoteDir, bytes } = await this.deployer.uploadStaticBundle(
-        target,
-        abs,
-        '/opt/omnitron/stack-static/gateway',
-      );
+      const deliver = () => this.deployer.uploadStaticBundle(target, abs, '/opt/omnitron/stack-static/gateway');
+      // Once more before giving up: `uploadStaticBundle` starts from nothing
+      // each time — it removes what a failed attempt left — so a second try
+      // is a clean one, and a transfer that broke once on a loaded link
+      // usually does not break twice.
+      const { remoteDir, bytes } = await deliver().catch((first: Error) => {
+        this.logger.warn(
+          { node: node.host, service: 'gateway', dir: abs, error: first.message.slice(0, 400) },
+          'The frontend did not reach the node whole — sending it once more',
+        );
+        return deliver();
+      });
       this.logger.info(
         { node: node.host, service: 'gateway', from: abs, remoteDir, bytes },
         bytes === 0 ? 'The node already has this build' : 'Frontend delivered to the node',
       );
       return { gateway: remoteDir };
     } catch (err) {
+      // Fatal, and before anything on the node changes. This returned `{}`,
+      // and the node was then provisioned with no static root: the gateway,
+      // recreated without its `/var/www/portal`, fell back to proxying `/` to
+      // a Vite that is not there, and answered 504 after 60 s to every page
+      // — while the deployment reported «6/6 apps online» and exited 0.
+      // Measured on test, 2026-09-22 20:12–20:20 UTC. Refusing here leaves
+      // the gateway serving the frontend it had.
       this.logger.error(
         { node: node.host, service: 'gateway', dir: abs, error: (err as Error).message },
-        'Could not deliver the frontend — the gateway will serve nothing at /',
+        'Could not deliver the frontend — refusing to provision a gateway that would serve nothing at /',
       );
-      return {};
+      throw new FrontendNotDeliveredError(node.host, (err as Error).message);
     }
   }
 
@@ -2791,6 +2823,9 @@ export class ProjectService extends EventEmitter {
       );
       return report?.ready === true;
     } catch (err) {
+      // Not «infrastructure incomplete, deploying anyway»: the node was not
+      // touched, and going on would put new backends behind the old frontend.
+      if (err instanceof FrontendNotDeliveredError) throw err;
       this.logger.error(
         { node: `${host}:${port}`, error: (err as Error).message },
         'Could not bring up this node\'s infrastructure',

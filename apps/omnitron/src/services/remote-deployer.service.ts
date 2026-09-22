@@ -78,6 +78,7 @@ import {
   checkDelivered,
 } from '../release/delivered.js';
 import crypto from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 
@@ -317,6 +318,27 @@ function parseDatabaseUrl(
   } catch {
     return null;
   }
+}
+
+/**
+ * Is this a gzip stream of a COMPLETE tar archive?
+ *
+ * Two ways to be short, told apart: a gzip stream cut off fails to
+ * decompress («unexpected end of file»), and a tar cut off inside a gzip
+ * that finished — `tar` killed, `gzip` still closing its own stream —
+ * decompresses to something that is not a whole number of 512-byte blocks,
+ * or does not end in the two zero blocks every tar writer closes an archive
+ * with. Answers `true` or the reason it is not.
+ */
+export function wholeTarGz(archive: Buffer): true | string {
+  let tar: Buffer;
+  try {
+    tar = gunzipSync(archive);
+  } catch (err) {
+    return `the gzip stream is broken: ${(err as Error).message}`;
+  }
+  if (tar.length < 1024 || tar.length % 512 !== 0) return `the tar inside is ${tar.length} bytes, not whole blocks`;
+  return tar.subarray(tar.length - 1024).every((b) => b === 0) ? true : 'the tar inside has no end-of-archive marker';
 }
 
 export class RemoteDeployer {
@@ -1795,11 +1817,28 @@ export class RemoteDeployer {
       // so `test -d <digest>` was always false and the same bytes crossed
       // the link again. (omni-74, after their size-matched, sum-mismatched
       // comparison.)
-      await this.execution.exec(
+      const packed = await this.execution.exec(
         `COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C ${shellEscape(localDir)} . | gzip -n > ${shellEscape(archive)}`,
       );
-      const bytes = (await fsp.stat(archive)).size;
-      const digest = createHash('sha256').update(await fsp.readFile(archive)).digest('hex').slice(0, 16);
+      // Read, and judged whole, BEFORE it is summed. `exec` never throws, and
+      // this pipeline's status is gzip's alone, so a `tar` that stopped
+      // halfway left a short archive that was then summed, sent, checked
+      // against its own short sum — and failed only on the node: «gzip:
+      // stdin: unexpected end of file» (daos-202609221949-23dce2f6 to test,
+      // 2026-09-22). The sum proves the file ARRIVED as it left; nothing
+      // proved it left whole.
+      const content = await fsp.readFile(archive).catch(() => null);
+      const verdict = content ? wholeTarGz(content) : 'no archive was written';
+      if (packed.exitCode !== 0 || verdict !== true) {
+        const words = (packed.stderr || '').trim().split('\n').slice(-3).join(' | ');
+        throw new Error(
+          `Packing ${localDir} for the node failed (exit ${packed.exitCode}; ${verdict === true ? 'archive whole' : verdict})` +
+            (words ? `: ${words}` : '') +
+            ' — nothing was sent',
+        );
+      }
+      const bytes = content!.length;
+      const digest = createHash('sha256').update(content!).digest('hex').slice(0, 16);
 
       const remoteDir = `${remoteRoot}/${digest}`;
       const remoteFile = `${remoteDir}.tar.gz`;

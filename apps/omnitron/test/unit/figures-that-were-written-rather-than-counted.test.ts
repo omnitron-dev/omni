@@ -91,3 +91,62 @@ describe('figures that were written rather than counted', () => {
     expect(summary).toEqual({ totalSlaves: 0, syncedSlaves: 0, totalPending: 0 });
   });
 });
+
+/**
+ * And then I built the figure on the one field that cannot be true.
+ *
+ * `summariseSync` counted a slave as synced when `connected && pendingItems
+ * === 0`, which reads correctly and is unreachable. `ISyncStatus.connected`
+ * is `this.masterInvoke !== null` — whether the slave holds a PUSH channel to
+ * the master — and that channel has no production caller. The file says so
+ * itself, in `sync.rpc-service.ts`:
+ *
+ *     «the other end, `SyncService.setMasterConnection()`, has no production
+ *      caller either»
+ *
+ * Replication does work: the MASTER pulls, through `drainBuffer` /
+ * `ackDrained`, and `ackDrained` is what advances `lastSyncAt`. So a node
+ * that is perfectly up to date reports `connected: false`, and the column
+ * could never print «synced» no matter how empty the buffer got — a second
+ * unreachable state, one level down from the literal it replaced.
+ *
+ * Three of the six fields are fed only by that dead path:
+ *
+ *     connected       masterInvoke !== null     always false
+ *     lastError       noteSyncFailure()         always null
+ *     failedAttempts  backoff.attempt           always 0
+ *
+ * The two that are alive — `pendingItems` and `lastSyncAt` — are the two the
+ * pull path writes, and they are the ones to count on. A slave with nothing
+ * left to deliver IS synced; whether it also holds a push socket it never
+ * uses is not the question anyone is asking of that column.
+ */
+describe('a figure built on a field that cannot be true', () => {
+  it('counts a slave with an empty buffer as synced', () => {
+    // `connected: false` is what EVERY node reports, so it must not be what
+    // decides this.
+    const nodes: NodeWithSync[] = [
+      { role: 'app', syncStatus: sync({ connected: false, pendingItems: 0 }) },
+      { role: 'app', syncStatus: sync({ connected: false, pendingItems: 40 }) },
+    ];
+
+    const summary = summariseSync(nodes);
+
+    expect(summary.syncedSlaves, 'nothing left to deliver is synced').toBe(1);
+    expect(summary.totalPending).toBe(40);
+  });
+
+  it('does not count a node it has not heard from', () => {
+    // Control, restated against the new rule: the absence of a status must
+    // still not be read as an empty buffer.
+    expect(summariseSync([{ role: 'app', syncStatus: null }]).syncedSlaves).toBe(0);
+  });
+
+  it('a backlog is not synced even on a node that claims a channel', () => {
+    // Control the other way: if `connected` ever starts being true, it must
+    // not make a node with 47 407 entries look finished.
+    const nodes: NodeWithSync[] = [{ role: 'app', syncStatus: sync({ connected: true, pendingItems: 47_407 }) }];
+
+    expect(summariseSync(nodes).syncedSlaves).toBe(0);
+  });
+});

@@ -495,6 +495,31 @@ fleet
   });
 
 // ============================================================================
+// Release — two commits, clean clones, every gate, the artifacts
+// ============================================================================
+
+const release = program
+  .command('release')
+  .description('Build a release: a named commit of the project AND omni, in clean clones, gated and packed');
+
+release
+  .command('build <project>')
+  .description('Clone both commits, install, run every gate, pack the artifacts, write the manifest')
+  .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
+  .option('--omni-commit <sha>', "The omni commit to build (default: the omni checkout's HEAD)")
+  .option('--keep-source', 'Keep the clones after a successful build')
+  .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
+  .action(
+    async (
+      projectName: string,
+      options: { projectCommit?: string; omniCommit?: string; keepSource?: boolean; skipGates?: boolean },
+    ) => {
+      const { releaseBuildCommand } = await import('../commands/release.js');
+      await releaseBuildCommand(projectName, options);
+    },
+  );
+
+// ============================================================================
 // Cluster
 // ============================================================================
 

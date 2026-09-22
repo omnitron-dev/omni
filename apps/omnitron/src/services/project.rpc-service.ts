@@ -153,7 +153,7 @@ export class ProjectRpcService {
   // ===========================================================================
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async startStack(data: { project: string; stack: string; allowDirty?: boolean }): Promise<IStackInfo> {
+  async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string }): Promise<IStackInfo> {
     // The report an operator acts on, and a script exits on: `only 0/6 apps
     // came online` about six that were running.
     //
@@ -167,6 +167,7 @@ export class ProjectRpcService {
       await this.projectService.startStack(data.project, data.stack, {
         source: 'operator',
         ...(data.allowDirty === true ? { allowDirty: true } : {}),
+        ...(typeof data.release === 'string' && data.release ? { release: data.release } : {}),
       }),
     );
     return info;

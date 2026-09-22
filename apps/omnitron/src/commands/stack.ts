@@ -222,7 +222,7 @@ function reportLifecycleError(
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: { allowDirty?: boolean },
+  opts?: { allowDirty?: boolean; release?: string },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
@@ -234,6 +234,7 @@ export async function stackStartCommand(
       project: projectName,
       stack: stackName,
       ...(opts?.allowDirty === true ? { allowDirty: true } : {}),
+      ...(opts?.release ? { release: opts.release } : {}),
     });
     const online = stack.apps.filter((a) => a.status === 'online').length;
 

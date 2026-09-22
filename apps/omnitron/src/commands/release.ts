@@ -57,6 +57,13 @@ export interface ReleaseBuildOptions {
   keepSource?: boolean;
   /** Record every gate as not-run instead of running them — for a look, never for a stack. */
   skipGates?: boolean;
+  /**
+   * Build the static bundle this stack's gateway serves, with this stack's
+   * `staticEnv`, into the release. A frontend bakes its environment in, so the
+   * bundle belongs to a stack; a stack that serves one refuses a release
+   * without it.
+   */
+  forStack?: string;
 }
 
 const MINUTE = 60_000;
@@ -81,12 +88,12 @@ interface StepResult {
 function runStep(
   cmd: string,
   args: string[],
-  opts: { cwd: string; logFile: string; timeoutMs: number },
+  opts: { cwd: string; logFile: string; timeoutMs: number; env?: NodeJS.ProcessEnv },
 ): Promise<StepResult> {
   return new Promise((resolve) => {
     const out = fs.createWriteStream(opts.logFile, { flags: 'a' });
     out.write(`$ ${cmd} ${args.join(' ')}\n  (in ${opts.cwd})\n`);
-    const child = spawn(cmd, args, { cwd: opts.cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     let stdout = '';
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -198,6 +205,74 @@ async function ownIdentity(): Promise<string> {
   }
   const tree = await describeTree(root);
   return `${version} from omni@${tree.commit.slice(0, 8) || 'nocommit'}${tree.dirty ? '+dirty' : ''}`;
+}
+
+type StaticsRecord = { stack: string; dir: string; files: number; bytes: number };
+
+function countFiles(dir: string): { files: number; bytes: number } {
+  let files = 0;
+  let bytes = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = countFiles(full);
+      files += sub.files;
+      bytes += sub.bytes;
+    } else if (entry.isFile()) {
+      files += 1;
+      bytes += fs.statSync(full).size;
+    }
+  }
+  return { files, bytes };
+}
+
+/**
+ * The stack's gateway bundle, built in the clone exactly as a deployment
+ * would build it from a tree — `pnpm run build` beside `staticDir`, with the
+ * stack's `staticEnv` — and copied into the release. The stacks are resolved
+ * as `ProjectService.resolveStacks` resolves them: `omnitron.stacks.json`,
+ * then the config's own over it.
+ */
+async function buildStaticsFor(
+  stack: string,
+  projectDir: string,
+  config: { stacks?: Record<string, unknown>; infrastructure?: unknown },
+  releaseRoot: string,
+  logFile: string,
+): Promise<StaticsRecord | null> {
+  let userStacks: Record<string, unknown> = {};
+  try {
+    userStacks = JSON.parse(fs.readFileSync(path.join(projectDir, 'omnitron.stacks.json'), 'utf8')) as Record<string, unknown>;
+  } catch {
+    // No stacks file at this commit: the config's stacks are all there are.
+  }
+  const stackConfig = { ...userStacks, ...(config.stacks ?? {}) }[stack] as { infrastructure?: unknown } | undefined;
+  if (!stackConfig) throw new Error(`There is no stack '${stack}' at this commit`);
+  const { mergeInfrastructure } = await import('../services/project.service.js');
+  const infra = mergeInfrastructure(config as never, stackConfig as never) as
+    | {
+        gateway?: { staticDir?: string; staticEnv?: Record<string, string> };
+        services?: Record<string, { config?: { staticDir?: string; staticEnv?: Record<string, string> } }>;
+      }
+    | undefined;
+  const gateway = infra?.services?.['gateway']?.config ?? infra?.gateway;
+  const staticDir = gateway?.staticDir;
+  if (!staticDir) return null;
+  const abs = path.resolve(projectDir, staticDir);
+  await must(
+    'static bundle build',
+    runStep('pnpm', ['run', 'build'], {
+      cwd: path.dirname(abs),
+      logFile,
+      timeoutMs: 30 * MINUTE,
+      env: { ...process.env, ...(gateway?.staticEnv ?? {}) },
+    }),
+    logFile,
+  );
+  if (!fs.existsSync(abs)) throw new Error(`The static bundle build finished and ${abs} does not exist — ${logFile}`);
+  const target = path.join(releaseRoot, 'statics');
+  fs.cpSync(abs, target, { recursive: true });
+  return { stack, dir: staticDir, ...countFiles(target) };
 }
 
 export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions = {}): Promise<void> {
@@ -330,7 +405,15 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     });
     const packed = await builder.buildAll(apps);
 
-    // 6. The manifest.
+    // 6. The static bundle, for the stack named — built in the clone.
+    let statics: StaticsRecord | null = null;
+    if (options.forStack) {
+      phase(`building the static bundle for ${options.forStack}`);
+      statics = await buildStaticsFor(options.forStack, plan.projectDir, config, releaseRoot, path.join(logs, 'statics.log'));
+      phase(statics ? `static bundle: ${statics.files} files, ${(statics.bytes / 1024 / 1024).toFixed(1)} MB` : `${options.forStack} serves no static bundle`);
+    }
+
+    // 7. The manifest.
     const manifest = assembleManifest({
       id,
       project: await sourceOf(projectPath, projectSha),
@@ -342,6 +425,7 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
       packages: linked.map((l) => ({ name: l.name, distBuiltAt: distBuiltAt(path.join(plan.omniDir, l.dir)) })),
       builtAt: new Date(),
       builtBy: `${os.userInfo().username}@${os.hostname()}`,
+      ...(statics ? { statics } : {}),
     });
     const manifestPath = path.join(releaseRoot, 'manifest.json');
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

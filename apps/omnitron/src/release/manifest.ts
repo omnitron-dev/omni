@@ -49,6 +49,13 @@ export interface ReleaseArtifact {
    * both.
    */
   readonly bytes: number;
+  /**
+   * The hash of the build INPUTS, as a working-tree deployment records it on
+   * the node — what `decideRedeploy` compares to tell an app that changed from
+   * one that did not. Carried so a release deployed over the same code leaves
+   * the app running, as a deployment of the tree would.
+   */
+  readonly inputs?: string;
 }
 
 /**
@@ -137,6 +144,19 @@ export interface ReleaseManifest {
    * that requires the app refuses it by the missing artifact.
    */
   readonly artifactFailures?: ReadonlyArray<{ readonly app: string; readonly error: string }>;
+  /**
+   * The static bundle a stack's gateway serves, built in the clone with that
+   * stack's `staticEnv`. Per stack, because the build is: a frontend bundle
+   * bakes its environment in. Absent when the release was not built for a
+   * stack that serves one — and a stack that does refuses the release.
+   */
+  readonly statics?: {
+    readonly stack: string;
+    /** The stack's `staticDir`, relative to the project, as declared. */
+    readonly dir: string;
+    readonly files: number;
+    readonly bytes: number;
+  };
   readonly gates: readonly GateOutcome[];
   readonly builtWith: BuiltWith;
   readonly builtAt: string;
@@ -295,4 +315,65 @@ export function decideRelease(
         ? `, ${policy.verifiedOn.gates.length} verified on '${policy.verifiedOn.stack}'`
         : ''),
   };
+}
+
+/**
+ * What a stack declares about the releases it takes — `release` in its
+ * config.
+ *
+ * `required`: the stack takes releases only, and a `stack start` without one
+ * is refused. Every gate the release RECORDED must have passed; the gates
+ * listed here must additionally be among them — a floor, so a gate that
+ * disappears from the build is noticed rather than silently not run. The
+ * number of gates is not fixed (they are derived from the manifests), which
+ * is why the rule is "all that ran, and at least these", not a list.
+ */
+export interface StackReleaseRequirements {
+  readonly mode: 'required' | 'optional';
+  readonly requiredGates?: readonly string[];
+  /** Refuse a release whose commits no remote branch contains. */
+  readonly requireOnRemote?: boolean;
+  readonly verifiedOn?: { readonly stack: string; readonly gates: readonly string[] };
+}
+
+/**
+ * May this release reach this stack, under what the stack declares?
+ *
+ * Absent requirements are the weakest honest reading, not a pass-through:
+ * every gate the release recorded must still have passed, and every app the
+ * stack runs must be in it. A stack that wants less must say so in its
+ * config, where a reader can see it.
+ */
+export function decideStackRelease(
+  manifest: ReleaseManifest,
+  requirements: StackReleaseRequirements | undefined,
+  stackApps: readonly string[],
+  attestations: readonly StackAttestation[] = [],
+): ReleaseDecision {
+  if (requirements?.requireOnRemote) {
+    const local = [
+      manifest.project.onRemote !== true ? `the project commit ${manifest.project.commit.slice(0, 8)}` : null,
+      manifest.omni.onRemote !== true ? `the omni commit ${manifest.omni.commit.slice(0, 8)}` : null,
+    ].filter(Boolean);
+    if (local.length > 0) {
+      return {
+        action: 'refuse',
+        because: `${local.join(' and ')} ${local.length > 1 ? 'are' : 'is'} on no remote branch — nobody else could rebuild this release`,
+      };
+    }
+  }
+  const recorded = manifest.gates.map((g) => g.name);
+  if (recorded.length === 0) {
+    return { action: 'refuse', because: 'the release recorded no gates at all' };
+  }
+  const requiredGates = [...new Set([...recorded, ...(requirements?.requiredGates ?? [])])];
+  return decideRelease(
+    manifest,
+    {
+      requiredGates,
+      requiredApps: stackApps,
+      ...(requirements?.verifiedOn ? { verifiedOn: requirements.verifiedOn } : {}),
+    },
+    attestations,
+  );
 }

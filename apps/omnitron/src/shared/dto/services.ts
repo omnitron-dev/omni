@@ -304,7 +304,7 @@ export interface IProjectRpcService {
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;
 
   // --- Stacks (Operator) ---
-  startStack(data: { project: string; stack: string }): Promise<IStackInfo>;
+  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string }): Promise<IStackInfo>;
   stopStack(data: { project: string; stack: string }): Promise<IStackInfo>;
 
   // --- Stacks (Admin) ---

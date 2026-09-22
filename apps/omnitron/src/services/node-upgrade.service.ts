@@ -67,6 +67,20 @@ export interface NodeUpgradeProgress {
 /** What this service needs from the node registry. */
 export interface UpgradeNodeSource {
   getNode(id: string): { id: string; name: string; isLocal?: boolean } | null;
+  /**
+   * Every node, in the shape the planner decides on.
+   *
+   * The planner needs four things `getNode` does not carry: the version each
+   * node runs, whether SSH worked last time, and the MACHINE behind the
+   * registry row. Asking for them here — rather than reaching into the
+   * registry from the planner — keeps this service testable with a literal.
+   *
+   * Optional so the one existing construction site and the tests keep
+   * working; `plan()` refuses with a reason when it is absent, because a
+   * planner that answers an empty plan would read as «this fleet is up to
+   * date».
+   */
+  listCandidates?(): readonly import('./node-upgrade.js').UpgradeCandidate[];
 }
 
 /** What it needs from the deployer — the same two calls the CLI makes. */
@@ -95,6 +109,65 @@ export class NodeUpgradeService {
 
   progressFor(nodeId: string): NodeUpgradeProgress | null {
     return this.progressByNode.get(nodeId) ?? null;
+  }
+
+  /**
+   * What a rollout would do to each node, without doing any of it.
+   *
+   * The version comes from a BUILD: a plan that cannot name the target
+   * cannot say «already on it», and «already on it» is half the value —
+   * without it an operator sees twelve rows saying `upgrade` where two need
+   * upgrading. So this is expensive on purpose, and the console is told to
+   * expect that rather than given a cheap answer that means less.
+   *
+   * The decision itself is `planUpgrade` in `node-upgrade.ts`, unchanged and
+   * still pure: this method's whole job is to gather what that function
+   * needs and to throw the bundle away afterwards.
+   */
+  async plan(
+    only?: readonly string[],
+  ): Promise<import('./node-upgrade.js').UpgradePlan> {
+    const { planUpgrade } = await import('./node-upgrade.js');
+
+    // Said as a refusal, not as an empty plan. A planner wired without a
+    // candidate source that answered `rows: []` would be read as «nothing
+    // to upgrade», which is the one thing it cannot know.
+    if (!this.nodes.listCandidates) {
+      return {
+        targetVersion: '',
+        steps: [],
+        toUpgrade: [],
+        refusal: 'This daemon cannot list its fleet, so it cannot plan a rollout',
+      };
+    }
+
+    const workspace = this.workspaceRoot();
+    if (!workspace) {
+      return {
+        targetVersion: '',
+        steps: [],
+        toUpgrade: [],
+        refusal:
+          'This daemon does not run from an omnitron workspace, so it has no source to build a bundle from',
+      };
+    }
+
+    const candidates = this.nodes.listCandidates();
+    const { buildOwnBundle } = await import('./bundle-builder.js');
+    const bundle = await buildOwnBundle({
+      workspaceRoot: workspace,
+      label: `plan-${Date.now()}`,
+      logger: { info: (m: string) => this.logger.debug({ msg: m }, 'plan build') },
+    });
+
+    try {
+      return planUpgrade(candidates, bundle.version, only ? { only } : {});
+    } finally {
+      // A plan ships nothing, so the bundle it built has no further use.
+      // Left behind, one per press of the Plan button, it is tens of
+      // megabytes of staging directory each time.
+      await bundle.cleanup().catch(() => undefined);
+    }
   }
 
   /**

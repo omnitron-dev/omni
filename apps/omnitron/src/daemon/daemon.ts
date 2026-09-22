@@ -288,6 +288,15 @@ export class OmnitronDaemon {
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
+
+  /**
+   * The live record of release builds this daemon is running.
+   *
+   * Held on the daemon rather than in the container because it is the state
+   * of work in progress: a build that a restart kills leaves a release
+   * directory with no manifest, and that — not this — is the durable trace.
+   */
+  private releaseService: import('../services/release.service.js').ReleaseService | null = null;
   private systemWorkerManager: import('../workers/system-worker-manager.js').SystemWorkerManager | null = null;
   /** Everything the health-monitor worker needs to be spawned again. */
   private healthWorkerSpawn: (() => Promise<void>) | null = null;
@@ -911,6 +920,15 @@ export class OmnitronDaemon {
     const projectRpcService = new ProjectRpcService(projectService, audit);
     await this.app.netron.peer.exposeService(projectRpcService);
 
+    // Releases. Master-only, like the builds themselves: a release is built
+    // from clean clones of BOTH repositories, and only a master has both.
+    if (!isSlave) {
+      const { ReleaseService } = await import('../services/release.service.js');
+      const { ReleaseRpcService } = await import('../services/release.rpc-service.js');
+      this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }));
+      await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit));
+    }
+
     // Sync service (slave→master data replication)
     const syncNodeId = `${os.hostname()}-${dc.port}`;
 
@@ -1017,7 +1035,27 @@ export class OmnitronDaemon {
         nodeManagerRpcService.setUpgradeService(
           new NodeUpgradeService(
             loggerModule.logger.child({ component: 'node-upgrade' }),
-            { getNode: (id: string) => nodeManager.getNode(id) },
+            {
+              getNode: (id: string) => nodeManager.getNode(id),
+              // The same projection the CLI builds for `fleet upgrade`, made
+              // here so the console's plan and the terminal's dry run decide
+              // from identical inputs. Two places computing «what is this
+              // node running» is how they come to disagree.
+              listCandidates: () =>
+                nodeManager.listNodes().map((n) => ({
+                  nodeId: n.id,
+                  name: n.name,
+                  currentVersion: n.status?.omnitronVersion ?? null,
+                  isLocal: n.isLocal,
+                  // SSH, not the daemon port: an upgrade travels over SSH,
+                  // and a node whose daemon is unreachable is often exactly
+                  // the one worth upgrading.
+                  sshReachable: n.status?.sshConnected ?? null,
+                  // The machine, for telling two registry names for one box
+                  // apart before both get the bundle.
+                  address: `${n.host}:${n.sshPort}`,
+                })),
+            },
             (id: string) => nodeManager.nodeToDeployTarget(id) as never,
             () => remoteDeployer as never,
             audit,
@@ -2465,6 +2503,21 @@ export class OmnitronDaemon {
         const { removeContainer } = await import('../infrastructure/container-runtime.js');
         void removeContainer('omnitron-nginx');
       } catch { /* non-critical */ }
+    }, ShutdownPriority.First);
+
+    // A release build outlives its daemon otherwise.
+    //
+    // Every step runs in its own process group, detached, so `pnpm install`
+    // and the gate suite carry on after the daemon that started them is
+    // gone — holding ports, writing into a release directory nothing will
+    // ever finish, and for a quarter of an hour. Stopped first, with the
+    // file watcher, because ending them is instant and everything after
+    // this is slower.
+    app.registerShutdownTask('stop-release-builds', () => {
+      // It says what it stopped through its own logger; a shutdown task that
+      // resolved the logger module to say one line would be one more thing
+      // that can fail while the daemon is going down.
+      this.releaseService?.stopAll();
     }, ShutdownPriority.First);
 
     // --- Priority: VeryHigh (10) — Stop managed apps (fast — 5s per app max) ---

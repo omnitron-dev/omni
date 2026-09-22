@@ -16,6 +16,11 @@
  * So the stubs throw, and this court holds them to it until they are built.
  * When they are, this file is the thing that has to change, which is the
  * point: the change is visible.
+ *
+ * `planUpgrade` has since been built, and this file did change — the entry
+ * for it moved from «throws» to «refuses with a reason», which is the same
+ * rule surviving the implementation rather than being dropped with the stub.
+ * Its behaviour is covered in `a-plan-the-console-can-act-on`.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -26,8 +31,14 @@ import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-servi
 const service = () => new NodeManagerRpcService(...([] as never[]));
 
 describe('a stub that refuses rather than answers empty', () => {
-  it('planUpgrade refuses instead of reporting an empty plan', async () => {
-    await expect(service().planUpgrade()).rejects.toThrow(/not built yet|not implemented/i);
+  it('planUpgrade, now built, still refuses rather than answering emptily', async () => {
+    // Built, so it no longer throws — but an unconfigured daemon must still
+    // say WHY there is no plan instead of returning `rows: []`, which the
+    // console draws as «nothing to upgrade».
+    const plan = await service().planUpgrade();
+
+    expect(plan.refusal, 'a reason travels with the empty rows').toBeTruthy();
+    expect(plan.rows).toEqual([]);
   });
 
   it('upgradeNodes refuses instead of reporting nothing queued', async () => {
@@ -42,11 +53,14 @@ describe('a stub that refuses rather than answers empty', () => {
     );
   });
 
-  it('names the CLI equivalent where there is one', async () => {
-    // A refusal that says where the capability already exists saves the
-    // reader a search. `fleet upgrade --dry-run` is this plan today.
-    const err = await service().planUpgrade().catch((e: unknown) => e as Error);
+  it('names what is missing rather than what is broken', async () => {
+    // The two still-stubbed methods say they are not built and point at the
+    // CLI where the capability already exists, which saves the reader a
+    // search.
+    const err = await service()
+      .upgradeNodes({ nodeIds: ['a'] })
+      .catch((e: unknown) => e as Error);
 
-    expect(err.message).toMatch(/fleet upgrade/);
+    expect(err.message).toMatch(/upgradeNode/);
   });
 });

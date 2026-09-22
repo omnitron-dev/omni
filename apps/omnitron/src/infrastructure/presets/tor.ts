@@ -82,7 +82,66 @@ export interface ITorPresetConfig {
  * Why inline rather than a custom Dockerfile: keeps the preset hermetic.
  * No image build step, no separate registry, no image-tag drift.
  */
+/**
+ * Client-authorization keys, written where tor reads them — or the container
+ * stops.
+ *
+ * Each key goes to `<HiddenServiceDir>/authorized_clients/`, which tor reads
+ * at startup, and a key that does not arrive is a restriction that silently
+ * does not exist: the onion answers everyone. This was
+ *
+ *     apk add --no-cache jq >/dev/null 2>&1 || true
+ *     printf '%s' "$JSON" | jq -c '.[]' | while IFS= read -r f; do … done
+ *
+ * under `set -eu` and no `pipefail`. A jq that was not there (the `|| true`
+ * swallowed the failed install) or JSON it could not read failed IN FRONT of
+ * the pipe; the loop read nothing and ended 0, the pipeline's status was the
+ * loop's, `set -e` saw success — and `exec tor` started the service with no
+ * key in place. Fail-open, on the one setting whose whole purpose is to close.
+ *
+ * Now nothing here is in a pipeline whose failure could hide (the loop reads
+ * a here-document, in this shell), jq is required rather than hoped for, and
+ * the keys are counted: fewer written than configured stops the container.
+ * An onion that is down is better than one that was meant for a few and
+ * answers everyone. `-e` where a null must fail — a key's path or content —
+ * and not on the list itself: `jq -e '.[]'` answers an empty one with exit 4,
+ * which would stop, without a sentence, an onion restricted to nobody.
+ *
+ * Exported so the court can run exactly this text. It needs `set -eu -o
+ * pipefail` in effect, which ENTRYPOINT_SHELL sets; busybox `sh` in
+ * alpine:3.21 honours `pipefail` (measured: `false | cat` → 1).
+ */
+export const CLIENT_AUTH_SHELL = `# Client-authorization keys, when the service uses them.
+if [ -n "\${OMNITRON_TOR_CLIENT_AUTH_JSON:-}" ]; then
+  command -v jq >/dev/null 2>&1 || apk add --no-cache jq >/dev/null 2>&1 || apk add jq >/dev/null 2>&1 || true
+  if ! command -v jq >/dev/null 2>&1; then
+    echo 'tor: client authorization is configured and there is no jq to write its keys; not starting an onion service without them' >&2
+    exit 1
+  fi
+  expected=$(printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -e 'length')
+  entries=$(printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -c '.[]')
+  written=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    path=$(printf '%s' "$f" | jq -er .path)
+    mkdir -p "$(dirname "$path")"
+    printf '%s' "$f" | jq -er .content > "$path"
+    chmod 600 "$path"
+    written=$((written + 1))
+  done <<CLIENT_AUTH_KEYS
+$entries
+CLIENT_AUTH_KEYS
+  if [ "$written" -ne "$expected" ]; then
+    echo "tor: wrote $written of $expected client-authorization keys; not starting an onion service without them" >&2
+    exit 1
+  fi
+fi
+`;
+
 const ENTRYPOINT_SHELL = `set -eu
+# A pipeline's status is its LAST command's. Without this, a command that
+# failed in front of a pipe was invisible to \`set -e\` — see CLIENT_AUTH_SHELL.
+set -o pipefail
 
 # Tor, from the distribution. The version this pins to is measured, not
 # assumed: \`docker run --rm alpine:3.21 sh -c 'apk add tor && tor --version'\`
@@ -98,18 +157,7 @@ mkdir -p /etc/tor /var/lib/tor
 # quoting in the path between what omnitron decided and what tor reads.
 printf '%s\\n' "$OMNITRON_TORRC" > /etc/tor/torrc
 
-# Client-authorization keys, when the service uses them. Each goes to
-# <HiddenServiceDir>/authorized_clients/, which tor reads at startup.
-if [ -n "\${OMNITRON_TOR_CLIENT_AUTH_JSON:-}" ]; then
-  apk add --no-cache jq >/dev/null 2>&1 || true
-  printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -c '.[]' | while IFS= read -r f; do
-    path=$(printf '%s' "$f" | jq -r .path)
-    mkdir -p "$(dirname "$path")"
-    printf '%s' "$f" | jq -r .content > "$path"
-    chmod 600 "$path"
-  done
-fi
-
+${CLIENT_AUTH_SHELL}
 # Key material must be tor's and nobody else's; tor refuses to start on a
 # directory it does not own at 0700, which is the check working.
 chown -R tor:tor /var/lib/tor 2>/dev/null || true

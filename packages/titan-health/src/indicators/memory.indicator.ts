@@ -6,6 +6,8 @@
  * @module titan/modules/health/indicators
  */
 
+import v8 from 'node:v8';
+
 import { HealthIndicator } from '../health.indicator.js';
 import type { HealthIndicatorResult, MemoryThresholds } from '../health.types.js';
 
@@ -25,6 +27,9 @@ const DEFAULT_THRESHOLDS: Required<MemoryThresholds> = {
 interface MemoryInfo {
   heapUsed: number;
   heapTotal: number;
+  /** The size V8 will not grow the heap past — where allocation fails. */
+  heapLimit: number;
+  /** `heapUsed` as a share of `heapLimit`. */
   heapUsedPercent: number;
   rss: number;
   external: number;
@@ -71,6 +76,7 @@ export class MemoryHealthIndicator extends HealthIndicator {
     const details = {
       heapUsed: this.formatBytes(memoryInfo.heapUsed),
       heapTotal: this.formatBytes(memoryInfo.heapTotal),
+      heapLimit: this.formatBytes(memoryInfo.heapLimit),
       heapUsedPercent: (memoryInfo.heapUsedPercent * 100).toFixed(1) + '%',
       rss: this.formatBytes(memoryInfo.rss),
       external: this.formatBytes(memoryInfo.external),
@@ -117,7 +123,7 @@ export class MemoryHealthIndicator extends HealthIndicator {
     if (memoryInfo.heapUsedPercent >= this.thresholds.heapUnhealthyThreshold) {
       return {
         ...this.unhealthy(
-          'Heap usage (' + (memoryInfo.heapUsedPercent * 100).toFixed(1) + '%) exceeds unhealthy threshold',
+          'Heap usage (' + this.ofLimit(memoryInfo) + ') exceeds unhealthy threshold',
           details
         ),
         latency,
@@ -127,7 +133,7 @@ export class MemoryHealthIndicator extends HealthIndicator {
     if (memoryInfo.heapUsedPercent >= this.thresholds.heapDegradedThreshold) {
       return {
         ...this.degraded(
-          'Heap usage (' + (memoryInfo.heapUsedPercent * 100).toFixed(1) + '%) exceeds degraded threshold',
+          'Heap usage (' + this.ofLimit(memoryInfo) + ') exceeds degraded threshold',
           details
         ),
         latency,
@@ -136,7 +142,7 @@ export class MemoryHealthIndicator extends HealthIndicator {
 
     return {
       ...this.healthy(
-        'Memory usage is within normal limits (' + (memoryInfo.heapUsedPercent * 100).toFixed(1) + '% heap)',
+        'Memory usage is within normal limits (' + this.ofLimit(memoryInfo) + ')',
         details
       ),
       latency,
@@ -148,15 +154,30 @@ export class MemoryHealthIndicator extends HealthIndicator {
    */
   private getMemoryInfo(): MemoryInfo {
     const memUsage = process.memoryUsage();
+    // Against the ceiling V8 will grow the heap to, not against what it has
+    // committed so far. `heapTotal` grows to fit what is live plus a margin,
+    // so `heapUsed / heapTotal` is the heap's SHAPE, not its pressure —
+    // measured: 70.4% for a fresh idle process holding 3.8 MB (degraded, at
+    // the default threshold), 85.1% at 378 MB, 2.6% a moment after that was
+    // released. An omnitron node reported `degraded` at 79.1% while nothing
+    // was wrong with it. How close the heap is to `heap_size_limit` — where
+    // allocation fails — is the pressure this indicator is named for.
+    const heapLimit = v8.getHeapStatistics().heap_size_limit;
 
     return {
       heapUsed: memUsage.heapUsed,
       heapTotal: memUsage.heapTotal,
-      heapUsedPercent: memUsage.heapUsed / memUsage.heapTotal,
+      heapLimit,
+      heapUsedPercent: memUsage.heapUsed / heapLimit,
       rss: memUsage.rss,
       external: memUsage.external,
       arrayBuffers: memUsage.arrayBuffers,
     };
+  }
+
+  /** «8.8% of the 4.19 GB heap limit» — the share, and what it is a share of. */
+  private ofLimit(info: MemoryInfo): string {
+    return (info.heapUsedPercent * 100).toFixed(1) + '% of the ' + this.formatBytes(info.heapLimit) + ' heap limit';
   }
 
   /**

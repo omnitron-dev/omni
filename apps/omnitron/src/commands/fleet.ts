@@ -242,7 +242,7 @@ export async function fleetMetricsCommand(): Promise<void> {
  */
 export async function fleetUpgradeCommand(
   nodeNames: string[],
-  options: { dryRun?: boolean; keep?: number } = {},
+  options: { dryRun?: boolean; keep?: number; allowDirty?: boolean } = {},
 ): Promise<void> {
   const { requireDaemon } = await import('./daemon-required.js');
   const { planUpgrade, runUpgrade } = await import('../services/node-upgrade.js');
@@ -284,15 +284,24 @@ export async function fleetUpgradeCommand(
 
     // Built before the plan is printed, because the plan names the version
     // and the version comes from the build.
-    const { buildOwnBundle, findWorkspaceRoot } = await import('../services/bundle-builder.js');
+    const { buildOwnBundle, findWorkspaceRoot, readWorkspace, describeTree, upgradeWorkspaceRefusal, OMNITRON_PACKAGE } =
+      await import('../services/bundle-builder.js');
     // Not `process.cwd()`: run from `apps/omnitron`, that is two levels below
     // the packages this has to bundle, and the failure it produces —
     // "@omnitron-dev/omnitron is not a package in this workspace" — is true of
-    // the directory and says nothing about the mistake.
+    // the directory and says nothing about the mistake. Whose workspace it
+    // is, and whether it is its commit, are asked here too, before anything
+    // is built — see `upgradeWorkspaceRefusal`.
     const workspaceRoot = findWorkspaceRoot(process.cwd());
-    if (!workspaceRoot) {
-      log.error('This command builds omnitron from source, and there is no workspace above this directory.');
-      log.info('  Run it from inside the omnitron repository.');
+    const refusal = upgradeWorkspaceRefusal({
+      cwd: process.cwd(),
+      root: workspaceRoot,
+      hasOmnitron: workspaceRoot ? readWorkspace(workspaceRoot).has(OMNITRON_PACKAGE) : false,
+      dirty: workspaceRoot ? (await describeTree(workspaceRoot)).dirty : false,
+      allowDirty: options.allowDirty === true,
+    });
+    if (refusal || !workspaceRoot) {
+      log.error(refusal ?? 'No workspace to build from.');
       process.exitCode = 1;
       return;
     }
@@ -301,10 +310,9 @@ export async function fleetUpgradeCommand(
     bundle = await buildOwnBundle({ workspaceRoot, label: String(process.pid) });
     s.stop(`Built ${bundle.version}`);
     if (bundle.dirty) {
-      // Not a refusal: shipping an uncommitted build is a normal thing to do
-      // while developing. But a node will report a version whose commit does
-      // not describe what it is running, and that is worth saying once.
-      log.warn('  The working tree has uncommitted changes — the version names a commit it is not.');
+      // Only reachable with --allow-dirty, asked for deliberately — and the
+      // node will still report a version naming a commit it is not running.
+      log.warn('  Shipping uncommitted changes (--allow-dirty): the version names a commit it is not.');
     }
 
     const plan = planUpgrade(candidates, bundle.version, { only: nodeNames });

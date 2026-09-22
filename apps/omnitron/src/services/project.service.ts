@@ -2521,44 +2521,70 @@ export class ProjectService extends EventEmitter {
 
     // Provision all slave nodes in parallel (install runtime + omnitron + config)
     const appNodes = nodes.filter((n) => n.role !== 'database' && n.role !== 'cache');
+    // One writer per machine, as for a remote stack — see `deployRemoteStack`
+    // and `node-deploy-lease.ts`.
+    const targets = new Map<string, DeployTarget>();
     for (const node of appNodes) {
-      const unsubProvision = this.deployer.onProgress((progress) => {
-        this.emit('stack:deploy_progress', projectName, stackName, progress);
-      });
-      const target = await this.targetForStackNode(node);
-      const master = await resolveMasterHost(
-        { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
-        target,
-      );
-      this.logger.info(
-        { node: node.host, masterHost: master.host ?? '(none — this node is pulled from)', from: master.source },
-        'Resolved the master address this slave will dial',
-      );
-      await this.deployer.provisionSlaveNode(target, master.host, masterPort, projectName);
-      unsubProvision();
+      targets.set(`${node.host}:${node.port ?? 9700}`, await this.targetForStackNode(node));
     }
+    await withNodeLeases(
+      [...targets].map(([node, target]) => ({
+        node,
+        machine: `${target.host}:${target.sshPort ?? 22}`,
+        run: this.deployer.leaseRunner(target),
+      })),
+      `${projectName}/${stackName}`,
+      this.logger,
+      async (leases) => {
+        const leased = appNodes.filter((n) => leases.has(`${n.host}:${n.port ?? 9700}`));
+        for (const [node, because] of leases.unreachable) {
+          this.logger.error({ node, because }, 'Could not reach this node to lease it — skipping');
+        }
+        for (const node of leased) {
+          const nodeKey = `${node.host}:${node.port ?? 9700}`;
+          const unsubProvision = this.deployer.onProgress((progress) => {
+            this.emit('stack:deploy_progress', projectName, stackName, progress);
+          });
+          const target = targets.get(nodeKey)!;
+          const master = await resolveMasterHost(
+            { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
+            target,
+          );
+          this.logger.info(
+            { node: node.host, masterHost: master.host ?? '(none — this node is pulled from)', from: master.source },
+            'Resolved the master address this slave will dial',
+          );
+          await leases.confirm(nodeKey, `provisioning ${node.host}`);
+          await this.deployer.provisionSlaveNode(target, master.host, masterPort, projectName);
+          unsubProvision();
+        }
 
-    // Deploy app artifacts to all provisioned nodes
-    if (artifacts.length > 0 && appNodes.length > 0) {
-      const unsubDeploy = this.deployer.onProgress((progress) => {
-        this.emit('stack:deploy_progress', projectName, stackName, progress);
-      });
-      const results = await this.deployer.deployToStack(
-        await Promise.all(appNodes.map((n) => this.targetForStackNode(n))),
-        artifacts,
-        projectName,
-        // Same on the cluster path: artifacts without definitions are files a
-        // node cannot run.
-        { concurrency: 5, apps: appEntries },
-      );
-      unsubDeploy();
-      const successful = results.filter((r) => r.status === 'success').length;
-      const failed = results.filter((r) => r.status === 'failed').length;
-      this.logger.info(
-        { successful, failed, total: results.length },
-        'Cluster deployment complete'
-      );
-    }
+        // Deploy app artifacts to all provisioned nodes
+        if (artifacts.length > 0 && leased.length > 0) {
+          for (const node of leased) {
+            await leases.confirm(`${node.host}:${node.port ?? 9700}`, `delivering to ${node.host}`);
+          }
+          const unsubDeploy = this.deployer.onProgress((progress) => {
+            this.emit('stack:deploy_progress', projectName, stackName, progress);
+          });
+          const results = await this.deployer.deployToStack(
+            leased.map((n) => targets.get(`${n.host}:${n.port ?? 9700}`)!),
+            artifacts,
+            projectName,
+            // Same on the cluster path: artifacts without definitions are files a
+            // node cannot run.
+            { concurrency: 5, apps: appEntries },
+          );
+          unsubDeploy();
+          const successful = results.filter((r) => r.status === 'success').length;
+          const failed = results.filter((r) => r.status === 'failed').length;
+          this.logger.info(
+            { successful, failed, total: results.length },
+            'Cluster deployment complete'
+          );
+        }
+      },
+    );
 
     // Connect to all slave daemons
     for (const node of nodes) {

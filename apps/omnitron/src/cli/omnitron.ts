@@ -488,7 +488,8 @@ fleet
   .description('Install the omnitron built from this working tree on registered nodes')
   .option('--dry-run', 'Print the plan and ship nothing')
   .option('--keep <n>', 'Versions to keep on each node (default: 3)', (v: string) => Number(v))
-  .action(async (nodes: string[], options: { dryRun?: boolean; keep?: number }) => {
+  .option('--allow-dirty', 'Ship a working tree with uncommitted changes, deliberately')
+  .action(async (nodes: string[], options: { dryRun?: boolean; keep?: number; allowDirty?: boolean }) => {
     const { fleetUpgradeCommand } = await import('../commands/fleet.js');
     await fleetUpgradeCommand(nodes ?? [], options);
   });

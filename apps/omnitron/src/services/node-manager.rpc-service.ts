@@ -267,7 +267,10 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async installBundleOnNode(data: { nodeId: string; archivePath: string; version: string }): Promise<boolean> {
     const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    const installed = await this.deployer().installBundle(target, data.archivePath, data.version);
+    // Under the machine's deploy lease: one writer per node, whoever writes.
+    const installed = await this.deployer().underLease(target, `fleet upgrade: install ${data.version}`, () =>
+      this.deployer().installBundle(target, data.archivePath, data.version),
+    );
     await this.audit?.record({
       action: 'node.bundle.install',
       resourceType: 'node',
@@ -286,11 +289,10 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async activateBundleOnNode(data: { nodeId: string; version: string; keepVersions?: number }): Promise<boolean> {
     const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    const activated = await this.deployer().activateBundle(
-      target,
-      data.version,
-      '/opt/omnitron',
-      data.keepVersions ?? 3,
+    // The step that restarts the node's daemon — the last thing to do under
+    // somebody else's deployment.
+    const activated = await this.deployer().underLease(target, `fleet upgrade: activate ${data.version}`, () =>
+      this.deployer().activateBundle(target, data.version, '/opt/omnitron', data.keepVersions ?? 3),
     );
     // The one step that changes what a node SERVES, and the one an operator
     // will want to find afterwards: `fleet upgrade` reaches it through this

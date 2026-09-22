@@ -89,6 +89,12 @@ export interface SlaveConnection {
   lastSyncStatusError: string | null;
   /** The same, for the pull — a failing pull is a backlog nobody is draining. */
   lastPullError: string | null;
+  /**
+   * The pull running on this connection, if one is — and the peer it runs
+   * on. See `pullSyncData`. Optional so a connection built without it reads
+   * as «no pull running», which is what it means.
+   */
+  pull?: { peer: unknown; startedAt: number; sweepsSkipped: number } | null;
 }
 
 // =============================================================================
@@ -213,6 +219,7 @@ export class SlaveConnector {
       syncStatus: null,
       lastSyncStatusError: null,
       lastPullError: null,
+      pull: null,
       lastError: null,
       reconnectAttempt: 0,
       reconnectTimer: null,
@@ -753,6 +760,27 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
    * Pull buffered sync data from a slave.
    * Called on initial connect and periodically during heartbeat.
    * Drains slave's WAL buffer and ingests into master's SyncService.
+   *
+   * ONE pull per connection at a time. Both callers fire and forget, and the
+   * heartbeat calls this every 15 s whether or not the last sweep's pull has
+   * finished. While a node's backlog is small a pull takes well under a
+   * second and that never mattered. When one outlasted a heartbeat — the
+   * master's machine busy, its database slow — the next sweep started a
+   * second pull over the SAME entries, since the node releases nothing until
+   * it is acknowledged; every entry was then ingested once per pull, the
+   * pulls contended over each entry's claim and advanced in lockstep, and
+   * each sweep added one more. Measured in this master's log, 2026-09-22:
+   * nine pulls finishing within 122 ms of each other, eight of them the same
+   * 7 918 entries, after `receiveBatch`'s limit of 60 batches a minute per
+   * node — written against a flooding slave — had refused the master itself.
+   * A backlog that the master drains at 800–1 100 entries a second when idle
+   * grew instead.
+   *
+   * The turn belongs to the PEER, not to the connection. A call to a node
+   * may wait out SLAVE_REQUEST_TIMEOUT — ten minutes — and a pull stuck on a
+   * peer that has died would otherwise hold the reconnected one off for that
+   * long: the guard would become the outage. A reconnect replaces the peer,
+   * and a pull on the new one may start while the old one is still stuck.
    */
   private async pullSyncData(_key: string, conn: SlaveConnection): Promise<void> {
     // Said once, at warn. Without a sync service this master CANNOT replicate
@@ -773,8 +801,22 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
     }
     if (conn.status !== 'connected' || !conn.peer) return;
 
+    const running = conn.pull;
+    if (running && running.peer === conn.peer) {
+      // Debug per sweep; the pull reports how many it outlasted when it ends.
+      running.sweepsSkipped++;
+      this.logger.debug(
+        { host: conn.config.host, runningMs: Date.now() - running.startedAt, sweepsSkipped: running.sweepsSkipped },
+        'Sync pull still running — not starting another over the same entries',
+      );
+      return;
+    }
+    const peer = conn.peer;
+    const pull = { peer, startedAt: Date.now(), sweepsSkipped: 0 };
+    conn.pull = pull;
+
     try {
-      const syncProxy = await conn.peer.queryInterface('OmnitronSync');
+      const syncProxy = await peer.queryInterface('OmnitronSync');
       let totalPulled = 0;
       const seen = new Set<string>();
 
@@ -828,8 +870,16 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
       conn.lastPullError = null;
 
       if (totalPulled > 0) {
+        // How long it took, and how many heartbeats it outlasted: a pull that
+        // skips sweeps is a master ingesting slower than it is asked to.
         this.logger.info(
-          { host: conn.config.host, port: conn.config.port, entries: totalPulled },
+          {
+            host: conn.config.host,
+            port: conn.config.port,
+            entries: totalPulled,
+            ms: Date.now() - pull.startedAt,
+            sweepsSkipped: pull.sweepsSkipped,
+          },
           'Sync data pulled from slave'
         );
       }
@@ -850,6 +900,10 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
           'Sync pull still failing'
         );
       }
+    } finally {
+      // Only our own turn: after a reconnect the field may already hold the
+      // pull on the new peer.
+      if (conn.pull === pull) conn.pull = null;
     }
   }
 }

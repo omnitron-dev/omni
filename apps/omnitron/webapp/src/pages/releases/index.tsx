@@ -398,6 +398,7 @@ export default function ReleasesPage() {
         open={buildOpen}
         onClose={() => setBuildOpen(false)}
         defaultProject={activeProject}
+        preflight={data?.preflight ?? null}
         onStarted={(record) => {
           setJustStarted(record);
           void live.refresh().then(() => refresh());

@@ -263,17 +263,22 @@ describe('a release is admitted only onto its own commit', () => {
       emit: vi.fn(),
       releaseStore: async () => store,
     });
-    return { dir, id, svc };
+    return { dir, id, svc, commit };
   }
 
   it('admits a release onto the directory that is its commit, and records it', async () => {
-    const { id, svc } = setup();
+    const { id, svc, commit } = setup();
     await svc.startStack('daos', 'test', { source: 'operator', release: id });
 
     expect(svc.startRemoteStack).toHaveBeenCalledTimes(1);
     expect(svc.startRemoteStack.mock.calls[0][4].id).toBe(id);
-    const row = svc.audit.record.mock.calls[0][0];
-    expect(row.details.release.id).toBe(id);
+    // Flat fields: `scrubDetails` replaces a nested object with `[object]`,
+    // which is what the first deployed release's row recorded.
+    const { scrubDetails } = await import('../../src/services/audit.service.js');
+    const details = scrubDetails(svc.audit.record.mock.calls[0][0].details)!;
+    expect(details['release']).toBe(id);
+    expect(details['releaseProjectCommit']).toBe(commit.slice(0, 8));
+    expect(details['releaseOmniCommit']).toBe('b'.repeat(8));
   });
 
   it('refuses it onto a directory that is not its commit, naming the file', async () => {

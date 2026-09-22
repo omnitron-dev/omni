@@ -16,7 +16,7 @@ import type { ILogger, LogLevel } from '@omnitron-dev/titan/module/logger';
 import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
 import { classifyWorkerHealth } from './worker-health.js';
-import { shutdownLadder, lifecycleWindows, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
+import { lifecycleWindows, childShutdownWindowMs } from './shutdown-windows.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -682,9 +682,7 @@ async function initialize() {
     // arithmetic asked for `shutdownTimeoutMs + 1000` against a default of
     // 5000 while the ladder killed at 4000, and the comment here promised
     // the opposite of what it computed.
-    const childWindowMs =
-      Number(process.env['TITAN_SHUTDOWN_TIMEOUT_MS']) ||
-      shutdownLadder(DEFAULT_SHUTDOWN_BUDGET_MS).childWindowMs;
+    const childWindowMs = childShutdownWindowMs(process.env);
     const lifecycle = new LifecycleController({
       ...lifecycleWindows(childWindowMs),
       logger,

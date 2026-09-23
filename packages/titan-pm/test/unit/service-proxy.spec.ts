@@ -481,3 +481,45 @@ describe('ServiceProxyHandler', () => {
     });
   });
 });
+
+/**
+ * The metrics answer the proxy hands the supervisor.
+ *
+ * It rebuilt the process's answer from four fields — cpu, memory, requests,
+ * errors — and dropped `traffic` and `latency`: a process that reported its
+ * HTTP traffic reached the daemon as «not reported», one hop after it was
+ * measured (seen live on 2026-09-23: every dev app `n/r` right after the
+ * change that made them report).
+ */
+describe('ServiceProxyHandler — metrics carry the traffic the process reported', () => {
+  const traffic = {
+    requests: 250,
+    serverErrors: 4,
+    clientErrors: 9,
+    probes: 30,
+    active: 0,
+    latency: { windowMs: 60_000, coveredMs: 60_000, count: 250, mean: 21, p50: 12, p75: 20, p90: 33, p95: 40, p99: 90, max: 310 },
+  };
+
+  const proxyAnswering = (answer: unknown) => {
+    const client = createMockNetronClient();
+    client.mockCall = vi.fn().mockResolvedValue(answer);
+    const h = new ServiceProxyHandler<ITestService>('p-1', client as any, 'TestService', createMockLogger() as any, {
+      requestTimeout: 5000,
+      streamTimeout: 10000,
+    });
+    return h.createProxy() as unknown as { __getMetrics(): Promise<IProcessMetrics> };
+  };
+
+  it('passes the traffic and its latency through', async () => {
+    const out = await proxyAnswering({ cpu: 1, memory: 2, requests: 250, errors: 4, traffic }).__getMetrics();
+    expect(out.traffic).toEqual(traffic);
+    expect(out.latency?.p95).toBe(40);
+  });
+
+  it('keeps an unreadable traffic field out rather than passing noise on', async () => {
+    const out = await proxyAnswering({ cpu: 1, memory: 2, requests: 3, errors: 0, traffic: { requests: 'many' } }).__getMetrics();
+    expect(out.traffic).toBeUndefined();
+    expect(out.requests).toBe(3);
+  });
+});

@@ -56,3 +56,29 @@ export function trafficFields(
       : {}),
   };
 }
+
+/**
+ * A `traffic` field as it arrived over the wire, checked field by field —
+ * the consumer is the last place that can tell a report from noise, the same
+ * rule `classifyWorkerHealth` applies to health. `undefined` when it is not a
+ * readable report.
+ */
+export function readTrafficField(value: unknown): IProcessTraffic | undefined {
+  const t = value as Partial<IProcessTraffic> | null | undefined;
+  const n = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  if (!t || typeof t !== 'object') return undefined;
+  if (![t.requests, t.serverErrors, t.clientErrors, t.probes, t.active].every(n)) return undefined;
+  const l = t.latency as Record<string, unknown> | null | undefined;
+  const latency =
+    l && typeof l === 'object' && ['windowMs', 'coveredMs', 'count', 'mean', 'p50', 'p75', 'p90', 'p95', 'p99', 'max'].every((k) => n(l[k]))
+      ? (l as unknown as NonNullable<IProcessTraffic['latency']>)
+      : null;
+  return {
+    requests: t.requests!,
+    serverErrors: t.serverErrors!,
+    clientErrors: t.clientErrors!,
+    probes: t.probes!,
+    active: t.active!,
+    latency,
+  };
+}

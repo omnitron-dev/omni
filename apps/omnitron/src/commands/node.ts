@@ -8,6 +8,7 @@
 import { log, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
+import type { INodeStatus, INodeWithStatus } from '../shared/dto/nodes.js';
 
 /**
  * Render `sshConnected`, which has three states and not two.
@@ -46,15 +47,110 @@ export function formatCheckedAt(iso: string | undefined): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export async function nodeListCommand(): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
+/**
+ * Render whether the node's daemon answered, which has three states and not
+ * two — the same as `formatSsh`.
+ *
+ * `null` means no path reached the daemon: not the mesh, not a direct dial.
+ * That is not «offline». The daemon's own check used to write `false` there,
+ * and this printed `○ offline` about a node serving six apps through a mesh
+ * connection the check had never asked. A node never checked at all has no
+ * status, and says so rather than borrowing either answer.
+ */
+export function formatDaemon(
+  status: Pick<INodeStatus, 'omnitronConnected' | 'omnitronVersion'> | null | undefined,
+  form: 'short' | 'dot' = 'short',
+): string {
+  if (!status) return form === 'dot' ? '-' : '- not checked';
+  if (status.omnitronConnected === true) return form === 'dot' ? '●' : `● v${status.omnitronVersion ?? '?'}`;
+  if (status.omnitronConnected === false) return form === 'dot' ? '○' : '○ offline';
+  return form === 'dot' ? '?' : '? unknown';
+}
+
+/** Which registered node an argument names, if exactly one. */
+export type NodeResolution<T> =
+  | { readonly kind: 'found'; readonly node: T }
+  | { readonly kind: 'ambiguous'; readonly matches: readonly T[] }
+  | { readonly kind: 'none' };
+
+/**
+ * Resolve what an operator typed to one registered node.
+ *
+ * `node list` prints the first eight characters of each id, and every
+ * command that takes an id passed the argument through as it was typed — so
+ * the id the product prints was accepted by no command. Measured
+ * 2026-09-23: `node check 16f3dd5a` and `node check daos-test` both answered
+ * «Node not found», exit 0.
+ *
+ * In order: the whole id; the name exactly; the name ignoring case; a
+ * prefix of the id. An exact answer wins over a looser one, and at each
+ * step more than one match is ambiguous rather than a guess — acting on the
+ * first of two nodes is how a `remove` lands on the wrong machine.
+ */
+export function resolveNodeArgument<T extends { readonly id: string; readonly name: string }>(
+  argument: string,
+  nodes: readonly T[],
+): NodeResolution<T> {
+  const wanted = argument.trim();
+  if (!wanted) return { kind: 'none' };
+
+  const byId = nodes.find((n) => n.id === wanted);
+  if (byId) return { kind: 'found', node: byId };
+
+  const steps: Array<(n: T) => boolean> = [
+    (n) => n.name === wanted,
+    (n) => n.name.toLowerCase() === wanted.toLowerCase(),
+    (n) => n.id.startsWith(wanted),
+  ];
+  for (const matches of steps) {
+    const found = nodes.filter(matches);
+    if (found.length === 1) return { kind: 'found', node: found[0]! };
+    if (found.length > 1) return { kind: 'ambiguous', matches: found };
   }
+  return { kind: 'none' };
+}
+
+/** The slice of `OmnitronNodes` these commands call. */
+interface NodesService {
+  listNodes(): Promise<INodeWithStatus[]>;
+  getNode(data: { id: string }): Promise<INodeWithStatus | null>;
+  addNode(data: Record<string, unknown>): Promise<INodeWithStatus>;
+  updateNode(data: Record<string, unknown>): Promise<INodeWithStatus>;
+  removeNode(data: { id: string }): Promise<void>;
+  checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
+  checkAllNodes(): Promise<INodeStatus[]>;
+  listSshKeys(): Promise<Array<{ name: string; type: string; path: string }>>;
+}
+
+/**
+ * Find the node an argument names, or say why not and fail the command.
+ *
+ * `null` after reporting: the caller only has to return.
+ */
+async function resolveRegisteredNode(nodes: NodesService, argument: string): Promise<INodeWithStatus | null> {
+  const registered = await nodes.listNodes();
+  const resolution = resolveNodeArgument(argument, registered);
+  if (resolution.kind === 'found') return resolution.node;
+
+  if (resolution.kind === 'ambiguous') {
+    log.error(`'${argument}' names ${resolution.matches.length} nodes — give more of the id:`);
+    for (const n of resolution.matches) log.info(`  ${n.id}  ${n.name}  ${n.host}`);
+  } else {
+    log.error(`No node '${argument}' in the registry.`);
+    if (registered.length > 0) {
+      log.info(`Registered: ${registered.map((n) => `${n.name} (${n.isLocal ? n.id : n.id.slice(0, 8)})`).join(', ')}`);
+    }
+  }
+  process.exitCode = 1;
+  return null;
+}
+
+export async function nodeListCommand(): Promise<void> {
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
-    const nodes = await client.service<any>('OmnitronNodes');
+    const nodes = await client.service<NodesService>('OmnitronNodes');
     const list = await nodes.listNodes();
 
     if (list.length === 0) {
@@ -69,15 +165,19 @@ export async function nodeListCommand(): Promise<void> {
     // returns earlier, which is the only path that ever worked.
     table({
       width: 'auto',
-      data: list.map((n: any) => ({
+      data: list.map((n) => ({
+        // Eight characters, and every command that takes a node resolves
+        // them — see `resolveNodeArgument`.
         id: n.isLocal ? n.id : n.id.slice(0, 8),
         name: n.name,
         // The SSH port rides along with the host and the daemon port is
-        // left to `omnitron node show`: extra columns are the difference
-        // between a readable table and one where every cell is an ellipsis.
+        // left to `omnitron node check <id>`, which prints the whole address:
+        // extra columns are the difference between a readable table and one
+        // where every cell is an ellipsis. (This said `omnitron node show`,
+        // a command that does not exist.)
         host: `${n.host}:${n.sshPort}`,
         ssh: n.isLocal ? '-' : formatSsh(n.status?.sshConnected),
-        omnitron: n.status?.omnitronConnected ? `● v${n.status.omnitronVersion ?? '?'}` : '○ offline',
+        omnitron: formatDaemon(n.status),
         checked: formatCheckedAt(n.status?.checkedAt),
         tags: n.tags.join(', ') || '-',
       })),
@@ -92,10 +192,36 @@ export async function nodeListCommand(): Promise<void> {
       ],
     });
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }
+}
+
+/**
+ * Report a failed command, in prose AND in the exit code.
+ *
+ * Every command in this file printed `Failed: …` and exited 0, so a script
+ * running `omnitron node check <id> && …` went on as if it had worked.
+ */
+function fail(err: unknown): void {
+  log.error(`Failed: ${(err as Error).message}`);
+  process.exitCode = 1;
+}
+
+/**
+ * Open the daemon for a node command, or say why not and fail the command.
+ *
+ * `null` after reporting. `requireDaemon` says why the daemon did not
+ * answer and leaves the exit code alone, because some of its callers can
+ * carry on without one; none of these can.
+ */
+async function openDaemon(): Promise<ReturnType<typeof createDaemonClient> | null> {
+  const client = createDaemonClient();
+  if (await requireDaemon(client)) return client;
+  process.exitCode = 1;
+  await client.disconnect();
+  return null;
 }
 
 /**
@@ -132,11 +258,8 @@ export async function nodeAddCommand(options: {
   /** Read the SSH password (or key passphrase) from stdin. */
   secretFromStdin?: boolean;
 }): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
     const { secretFromStdin, ...input } = options;
@@ -147,11 +270,11 @@ export async function nodeAddCommand(options: {
         options.sshAuthMethod === 'password' ? 'password' : 'key passphrase',
       );
     }
-    const nodes = await client.service<any>('OmnitronNodes');
+    const nodes = await client.service<NodesService>('OmnitronNodes');
     const node = await nodes.addNode(payload);
     log.success(`Node "${node.name}" added (${node.host}, id: ${node.id.slice(0, 8)})`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }
@@ -170,15 +293,16 @@ export async function nodeUpdateCommand(id: string, options: {
   /** Read the SSH password (or key passphrase) from stdin. */
   secretFromStdin?: boolean;
 }): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
+    const nodes = await client.service<NodesService>('OmnitronNodes');
+    const node = await resolveRegisteredNode(nodes, id);
+    if (!node) return;
+
     const { secretFromStdin, ...input } = options;
-    const payload: Record<string, unknown> = { id, ...input };
+    const payload: Record<string, unknown> = { id: node.id, ...input };
     if (secretFromStdin) {
       // Whichever this row now authenticates with. Switching to `password`
       // and sending a passphrase would store a secret nothing reads.
@@ -187,47 +311,50 @@ export async function nodeUpdateCommand(id: string, options: {
         options.sshAuthMethod === 'key' ? 'key passphrase' : 'password',
       );
     }
-    const nodes = await client.service<any>('OmnitronNodes');
-    const node = await nodes.updateNode(payload);
-    log.success(`Node "${node.name}" updated`);
+    const updated = await nodes.updateNode(payload);
+    log.success(`Node "${updated.name}" updated`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }
 }
 
 export async function nodeRemoveCommand(id: string): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
-    const nodes = await client.service<any>('OmnitronNodes');
-    await nodes.removeNode({ id });
-    log.success('Node removed');
+    const nodes = await client.service<NodesService>('OmnitronNodes');
+    const node = await resolveRegisteredNode(nodes, id);
+    if (!node) return;
+    await nodes.removeNode({ id: node.id });
+    // Named in full: a removal resolved from a prefix or a name must say
+    // which row it deleted.
+    log.success(`Node "${node.name}" (${node.id}, ${node.host}) removed`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }
 }
 
 export async function nodeCheckCommand(id?: string): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
-    const nodes = await client.service<any>('OmnitronNodes');
+    const nodes = await client.service<NodesService>('OmnitronNodes');
     if (id) {
-      const status = await nodes.checkNodeStatus({ id });
+      const node = await resolveRegisteredNode(nodes, id);
+      if (!node) return;
+
+      // The whole address, daemon port included — the one place the CLI
+      // prints it, and the port the direct dial goes to.
+      log.info(`${node.name} (${node.id}) — ${node.host}, SSH port ${node.sshPort}, daemon port ${node.daemonPort}`);
+      const status = await nodes.checkNodeStatus({ id: node.id });
       log.info(`SSH: ${formatSsh(status.sshConnected, 'long')}${status.sshLatencyMs != null ? ` (${status.sshLatencyMs}ms)` : ''}`);
-      log.info(`Omnitron: ${status.omnitronConnected ? `● v${status.omnitronVersion}` : '○ offline'}`);
+      log.info(`Omnitron: ${formatDaemon(status)}`);
       if (status.os) {
         log.info(`OS: ${status.os.platform} ${status.os.arch} (${status.os.hostname})`);
       }
@@ -237,32 +364,44 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
       if (status.omnitronError) {
         log.warn(`Omnitron error: ${status.omnitronError}`);
       }
+      log.info(`Checked ${formatCheckedAt(status.checkedAt)}`);
     } else {
+      // The registry decides what is printed, and each line says how old its
+      // reading is. The statuses came back keyed by id, and a status whose id
+      // the registry no longer held was printed as that bare id with two
+      // green dots — measured 2026-09-23 for a node removed 82 minutes
+      // earlier, its reading as old as that and its age shown nowhere.
+      const registered = await nodes.listNodes();
       const statuses = await nodes.checkAllNodes();
-      for (const s of statuses) {
-        const node = await nodes.getNode({ id: s.nodeId });
-        const name = node?.name ?? s.nodeId;
-        const ssh = formatSsh(s.sshConnected, 'dot');
-        const omn = s.omnitronConnected ? '●' : '○';
-        log.info(`${name}: SSH ${ssh}  Omnitron ${omn}`);
+      const byId = new Map(statuses.map((s) => [s.nodeId, s]));
+      for (const node of registered) {
+        const s = byId.get(node.id);
+        if (!s) {
+          log.info(`${node.name}: not checked in this round`);
+          continue;
+        }
+        log.info(
+          `${node.name}: SSH ${formatSsh(s.sshConnected, 'dot')}  Omnitron ${formatDaemon(s, 'dot')}  checked ${formatCheckedAt(s.checkedAt)}`,
+        );
+      }
+      const orphans = statuses.filter((s) => !registered.some((n) => n.id === s.nodeId));
+      if (orphans.length > 0) {
+        log.warn(`Ignored ${orphans.length} status(es) for nodes no longer in the registry: ${orphans.map((s) => s.nodeId).join(', ')}`);
       }
     }
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }
 }
 
 export async function nodeSshKeysCommand(): Promise<void> {
-  const client = createDaemonClient();
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
+  const client = await openDaemon();
+  if (!client) return;
 
   try {
-    const nodes = await client.service<any>('OmnitronNodes');
+    const nodes = await client.service<NodesService>('OmnitronNodes');
     const keys = await nodes.listSshKeys();
 
     if (keys.length === 0) {
@@ -272,7 +411,7 @@ export async function nodeSshKeysCommand(): Promise<void> {
 
     table({
       width: 'auto',
-      data: keys.map((k: any) => ({ name: k.name, type: k.type, path: k.path })),
+      data: keys.map((k) => ({ name: k.name, type: k.type, path: k.path })),
       columns: [
         { key: 'name', header: 'Name', width: 24 },
         { key: 'type', header: 'Type', width: 12 },
@@ -280,7 +419,7 @@ export async function nodeSshKeysCommand(): Promise<void> {
       ],
     });
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    fail(err);
   } finally {
     await client.disconnect();
   }

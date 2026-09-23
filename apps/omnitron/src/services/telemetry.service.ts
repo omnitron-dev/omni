@@ -4,8 +4,10 @@
  * In single-node (dev) mode: role='both' — records and stores locally.
  * In cluster mode: leader=aggregator, followers=producers via Netron TCP.
  *
- * Aggregator stores telemetry in omnitron-pg via LogCollectorService (logs)
- * and will store metrics in metrics_raw table when Phase 2 is complete.
+ * Aggregator stores telemetry in omnitron-pg via LogCollectorService (logs).
+ * Metrics go to titan-metrics' store, which the console reads; the master's
+ * `metrics_raw` table this once promised was never read and is dropped
+ * (migration 010).
  */
 
 import type { Kysely } from 'kysely';

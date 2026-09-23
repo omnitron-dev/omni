@@ -191,7 +191,6 @@ export const REQUIRED_TABLES = [
   'omnitron_users',
   'omnitron_sessions',
   'logs',
-  'metrics_raw',
   'alert_rules',
   'alert_events',
   'deployments',

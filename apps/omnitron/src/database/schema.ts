@@ -31,7 +31,6 @@ export interface OmnitronDatabase {
   /** Structured logs — partitioned by day in production */
   logs: LogsTable;
   /** Time-series metrics — CPU, memory, request rates, custom gauges */
-  metrics_raw: MetricsRawTable;
   /** Alert rules — metric/log/health alert definitions */
   alert_rules: AlertRulesTable;
   /** Alert events — fired/resolved alert instances */
@@ -123,20 +122,6 @@ export interface LogsTable {
   traceId: string | null;
   spanId: string | null;
   metadata: JsonB | null;
-}
-
-// =============================================================================
-// Metrics Raw — Time-Series Data
-// =============================================================================
-
-export interface MetricsRawTable {
-  id: Generated<string>;
-  timestamp: Timestamp;
-  nodeId: string | null;
-  app: string;
-  name: string; // metric name: 'cpu', 'memory', 'rpc_requests', 'event_loop_lag', etc.
-  value: number;
-  labels: JsonB | null; // additional dimensions: { instance: '0', method: 'getUser' }
 }
 
 // =============================================================================

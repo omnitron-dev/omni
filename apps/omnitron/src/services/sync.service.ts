@@ -164,18 +164,6 @@ function statementsOf<R extends object>(rows: R[]): R[][] {
 
 type IngestEntry = SyncBatch['entries'][number];
 
-/** One remote metric sample, for `metrics_raw`. See `recordMetrics` for the other half. */
-function metricRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['metrics_raw']> {
-  return {
-    timestamp: entry.createdAt,
-    nodeId,
-    app: (entry.payload['app'] as string) ?? 'unknown',
-    name: (entry.payload['name'] as string) ?? 'unknown',
-    value: Number(entry.payload['value'] ?? 0),
-    labels: JSON.stringify(entry.payload['labels'] ?? {}) as any,
-  };
-}
-
 function logRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['logs']> {
   return {
     timestamp: (entry.payload['timestamp'] as string) ?? entry.createdAt,
@@ -417,10 +405,11 @@ export class SyncService {
   /**
    * Where ingested remote metrics are recorded, on a master.
    *
-   * Set by the daemon to `MetricsService.recordTyped`. Without it, remote
-   * metrics only reach `metrics_raw` — a table nothing in this repository
-   * reads, and the console's charts query titan-metrics storage instead. A
-   * remote node's readings would arrive, persist, and be invisible.
+   * Set by the daemon to `MetricsService.recordTyped` — the store the
+   * console's charts read, with the node as a label. It is the only place a
+   * remote metric goes: the `metrics_raw` table it was also written to had
+   * no reader and no pruning (migration 010). Without a sink, remote metrics
+   * are claimed and go nowhere.
    *
    * A sink rather than a constructor dependency: this service is built by
    * hand in `daemon.ts` with five positional arguments, and a sixth is a
@@ -1119,7 +1108,6 @@ export class SyncService {
    * so an entry lands as the same row whichever one took it.
    */
   private async writeRows(db: SyncExecutor, nodeId: string, entries: SyncBatch['entries']): Promise<void> {
-    const metrics: Insertable<OmnitronDatabase['metrics_raw']>[] = [];
     const logs: Insertable<OmnitronDatabase['logs']>[] = [];
     const alerts: Insertable<OmnitronDatabase['alert_events']>[] = [];
     const traces: Insertable<OmnitronDatabase['traces']>[] = [];
@@ -1128,7 +1116,9 @@ export class SyncService {
     for (const entry of entries) {
       switch (entry.category) {
         case 'metrics':
-          metrics.push(metricRow(nodeId, entry));
+          // No row: a metric's only store is the sink, after the claim
+          // commits (`recordMetrics`). Its claim is what stops a retry from
+          // recording it twice.
           break;
         case 'logs':
           logs.push(logRow(nodeId, entry));
@@ -1152,7 +1142,6 @@ export class SyncService {
       }
     }
 
-    for (const part of statementsOf(metrics)) await db.insertInto('metrics_raw').values(part).execute();
     for (const part of statementsOf(logs)) await db.insertInto('logs').values(part).execute();
     for (const part of statementsOf(alerts)) await db.insertInto('alert_events').values(part).execute();
     for (const part of statementsOf(traces)) await db.insertInto('traces').values(part).execute();
@@ -1175,16 +1164,17 @@ export class SyncService {
   }
 
   /**
-   * Hand stored remote metrics to the store the console reads.
+   * Hand claimed remote metrics to the store the console reads.
    *
-   * Two destinations while the second is being proven. `metrics_raw` is where
-   * these always went — and nothing in this repository reads that table, so a
-   * connected pipeline would have filled it invisibly. The sink records the
-   * same sample into titan-metrics, which is what the console's `getSnapshot`
-   * and `querySeries` actually read, tagged with `node` so a remote reading
-   * is a label dimension rather than a second table. The `metrics_raw` write
-   * stays until the console is observed showing the label. Removing the old
-   * path before the new one is seen working is how you end up with neither.
+   * The sink records each sample into titan-metrics, which is what the
+   * console's `getSnapshot` and `querySeries` read, tagged with `node` so a
+   * remote reading is a label dimension rather than a second table. The
+   * `metrics_raw` table these were also written to was kept «until the
+   * console is observed showing the label»; it was observed (2026-09-23: 19
+   * series labelled with the test node), and the table — written ~0.93
+   * million rows a day, read and pruned by nothing — is gone (migration 010).
+   * History now lives in titan-metrics' store (in memory, 7 days, lost with a
+   * master restart); how long it should be kept is that store's question.
    *
    * AFTER the commit. The sink is not part of the transaction, and it used to
    * be called inside it, before the row was written: an entry whose write

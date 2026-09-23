@@ -196,6 +196,7 @@ describe('carrying it out', () => {
     const { host, calls } = recordingHost({
       'systemctl disable bitcoin.service': '',
       'chown -R bitcoin:bitcoin /var/lib/bitcoind': '',
+      'chmod 750 /var/lib/bitcoind': '',
     });
 
     expect((await applyBareMetal(planned, host, logger, 'bitcoin')).failed).toBeNull();

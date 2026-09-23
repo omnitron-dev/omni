@@ -235,6 +235,24 @@ stack
   });
 
 stack
+  .command('account <project> <stack>')
+  .description("Make a named account with a platform role on a remote stack — its password goes to this daemon's vault")
+  .requiredOption('--username <name>', "The account's name")
+  .option('--role <role>', "Its platform role — which exist, and the default, are the project's tool's to say")
+  .option('--display-name <text>', 'Its display name (default: the username)')
+  .option('--vault-key <key>', 'Where the password is kept (default: <project>.<stack>.account.<username>.password)')
+  .action(
+    async (
+      projectName: string,
+      stackName: string,
+      options: { username: string; role?: string; displayName?: string; vaultKey?: string },
+    ) => {
+      const { stackAccountCommand } = await import('../commands/stack.js');
+      await stackAccountCommand(projectName, stackName, options);
+    },
+  );
+
+stack
   .command('runtime <project> <stack>')
   .description('Show stack runtime status as JSON')
   .action(async (projectName, stackName) => {

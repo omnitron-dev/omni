@@ -20,6 +20,7 @@ import type {
   IProjectAppStatus,
   StackRuntime,
   IProjectRequirements,
+  IStackAccount,
 } from '../shared/dto/project.js';
 
 @Service({ name: 'OmnitronProject' })
@@ -235,5 +236,47 @@ export class ProjectRpcService {
   async deleteStack(data: { project: string; stack: string }): Promise<{ success: boolean }> {
     await this.projectService.deleteStack(data.project, data.stack);
     return { success: true };
+  }
+
+  /**
+   * A named account with a platform role on a remote stack; its password goes
+   * to the vault and never into the answer. Admin: it can hand out a stand's
+   * highest role. Recorded both ways — who was made, where, by which commit's
+   * tool, and where the password is kept; a refusal with its words.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async createStackAccount(data: {
+    project: string;
+    stack: string;
+    username: string;
+    role?: string;
+    displayName?: string;
+    vaultKey?: string;
+  }): Promise<IStackAccount> {
+    const row = { action: 'stack.account.create', resourceType: 'stack', resourceId: `${data.project}/${data.stack}` };
+    try {
+      const made = await this.projectService.createOperatorAccount(data.project, data.stack, {
+        username: data.username,
+        role: data.role,
+        displayName: data.displayName,
+        vaultKey: data.vaultKey,
+      });
+      await this.audit?.record({
+        ...row,
+        // `vault`, not `vaultKey`: the value is a key's NAME, and the row's
+        // scrub would take anything called a key for the secret itself.
+        details: { username: made.username, role: made.role, id: made.id, node: made.node, vault: made.vaultKey, commit: made.commit },
+        outcome: 'ok',
+      });
+      return made;
+    } catch (err) {
+      await this.audit?.record({
+        ...row,
+        details: { username: data.username, ...(data.role !== undefined ? { role: data.role } : {}) },
+        outcome: 'failed',
+        error: err,
+      });
+      throw err;
+    }
   }
 }

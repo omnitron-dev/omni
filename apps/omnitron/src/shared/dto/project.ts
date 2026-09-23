@@ -42,6 +42,22 @@ export interface IProjectInfo {
 // Stack DTOs
 // =============================================================================
 
+/**
+ * An account `createStackAccount` made on a stand. Its password is not here:
+ * it is in the daemon's vault under `vaultKey`, and nowhere else.
+ */
+export interface IStackAccount {
+  username: string;
+  /** The role the stand reports it holds — read back, not the one asked for. */
+  role: string;
+  id: string;
+  /** `host:port` of the node it was made on. */
+  node: string;
+  vaultKey: string;
+  /** The project commit whose tool made it. */
+  commit: string;
+}
+
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error';
 
 export interface IStackInfo {

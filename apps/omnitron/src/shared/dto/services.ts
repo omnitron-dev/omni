@@ -251,6 +251,7 @@ import type {
   IProjectAppStatus,
   IStackInfraStatus,
   IProjectRequirements,
+  IStackAccount,
 } from './project.js';
 
 export type {
@@ -334,6 +335,18 @@ export interface IProjectRpcService {
   }): Promise<IStackInfo>;
 
   deleteStack(data: { project: string; stack: string }): Promise<{ success: boolean }>;
+  /**
+   * A named account with a platform role, made on a remote stack's node by the
+   * project's own tool. The password goes to the vault, never into the answer.
+   */
+  createStackAccount(data: {
+    project: string;
+    stack: string;
+    username: string;
+    role?: string;
+    displayName?: string;
+    vaultKey?: string;
+  }): Promise<IStackAccount>;
 }
 
 // ============================================================================

@@ -231,6 +231,7 @@ The CLI is organized into command groups:
 - `omnitron stack stop <project> <stack>` -- Stop stack
 - `omnitron stack status <project> <stack>` -- Stack detail
 - `omnitron stack runtime <project> <stack>` -- Runtime status JSON
+- `omnitron stack account <project> <stack> --username <name> [--role <role>] [--display-name <text>] [--vault-key <key>]` -- Make a named account with a platform role on a remote stack's node (the project's `scripts/operator-account.mjs` at its HEAD commit, under the node's deploy lease); the password goes to the daemon's vault only — read it with `omnitron secret get <key>`
 
 ### Infrastructure
 - `omnitron infra up` -- Provision Docker containers

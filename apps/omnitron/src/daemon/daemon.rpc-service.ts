@@ -621,19 +621,7 @@ export class DaemonRpcService implements IDaemonService {
     if (handle.status !== 'online') throw Errors.conflict(`App '${data.name}' is not online`);
 
     if (handle.mode === 'bootstrap' && handle.supervisor) {
-      const childNames = handle.supervisor.getChildNames();
-      if (childNames.length === 0) throw Errors.conflict(`No running children for app '${data.name}'`);
-
-      const proxy = await handle.supervisor.getChildProxy(childNames[0]!);
-      if (!proxy) throw Errors.internal(`Cannot get proxy for app '${data.name}'`);
-
-      const service = (proxy as any)[data.service];
-      if (!service) throw Errors.notFound('Service', `${data.service}@${data.name}`);
-
-      const fn = service[data.method];
-      if (typeof fn !== 'function') throw Errors.notFound('Method', `${data.service}.${data.method}`);
-
-      return fn.call(service, ...data.args);
+      return this.execInBootstrapApp(handle.supervisor, data);
     }
 
     if (!handle.port) throw Errors.conflict(`App '${data.name}' has no port configured`);
@@ -653,6 +641,54 @@ export class DaemonRpcService implements IDaemonService {
         // connection cleanup is best-effort
       }
     }
+  }
+
+  /**
+   * Call a service method on whichever of the app's processes exposes it.
+   *
+   * This asked the FIRST child's process proxy for `proxy[service][method]`.
+   * The proxy answers a remote-call function for ANY property name, so
+   * `proxy[service]` was a function and `[method]` on it undefined: `omnitron
+   * exec main NotificationWorker getStatus` answered «Method with id
+   * NotificationWorker.getStatus not found» for a method that exists — in the
+   * notification-worker process, which the first child is not. The working
+   * path is the one `ServiceRouter` uses: each process lists the services it
+   * exposes (`getExposedServices`) and runs a call on one of them
+   * (`callExposedService`).
+   */
+  private async execInBootstrapApp(
+    supervisor: NonNullable<ReturnType<OrchestratorService['getHandle']>>['supervisor'] & object,
+    data: { name: string; service: string; method: string; args: unknown[] },
+  ): Promise<unknown> {
+    const childNames = supervisor.getChildNames();
+    if (childNames.length === 0) throw Errors.conflict(`No running children for app '${data.name}'`);
+
+    const wanted = data.service.split('@')[0];
+    const offered: string[] = [];
+    for (const child of childNames) {
+      const proxy = (await supervisor.getChildProxy(child)) as {
+        getExposedServices?: () => Promise<Array<{ name: string; version?: string; methods: string[] }>>;
+        callExposedService?: (service: string, method: string, args: unknown[]) => Promise<unknown>;
+      } | null;
+      if (!proxy?.getExposedServices || !proxy.callExposedService) continue;
+      const services = await proxy.getExposedServices();
+      const match = services.find((svc) => svc.name === wanted || svc.name.split('@')[0] === wanted);
+      if (!match) {
+        offered.push(...services.map((svc) => `${svc.name} (${child})`));
+        continue;
+      }
+      if (!match.methods.includes(data.method)) {
+        throw Errors.notFound(
+          'Method',
+          `${data.service}.${data.method} — ${match.name} in ${child} offers: ${match.methods.join(', ') || 'no public methods'}`,
+        );
+      }
+      return proxy.callExposedService(data.service, data.method, data.args);
+    }
+    throw Errors.notFound(
+      'Service',
+      `${data.service} in ${data.name} — its processes expose: ${offered.join(', ') || 'no services'}`,
+    );
   }
 
   /**

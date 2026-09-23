@@ -348,6 +348,11 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.getEnv(data);
   }
 
+  async revealEnv(data: { name: string }): Promise<Record<string, string>> {
+    await this.ensureConnected();
+    return this.proxy!.revealEnv(data);
+  }
+
   async enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }> {
     await this.ensureConnected();
     return this.proxy!.enableWatch(data);

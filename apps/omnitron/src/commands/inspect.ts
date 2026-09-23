@@ -149,10 +149,10 @@ export async function inspectCommand(appName: string): Promise<void> {
       const env = await client.getEnv({ name: appName });
       if (env && Object.keys(env).length > 0) {
         lines.push('', prism.bold('Environment:'));
+        // Already redacted by the daemon (`redactEnv`) — by key name AND the
+        // password inside a URL, which this loop's own key-name mask missed.
         for (const [key, value] of Object.entries(env)) {
-          // Mask sensitive values
-          const masked = /secret|password|token|key/i.test(key) ? '***' : value;
-          lines.push(`  ${key}=${prism.dim(masked)}`);
+          lines.push(`  ${key}=${prism.dim(value)}`);
         }
       }
     } catch {

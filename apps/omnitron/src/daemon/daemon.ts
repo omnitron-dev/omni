@@ -853,6 +853,8 @@ export class OmnitronDaemon {
         audit = await container.resolveAsync<import('../services/audit.service.js').AuditService>(
           AUDIT_SERVICE_TOKEN,
         );
+        // Revealing an app's secrets is recorded (`revealEnv`).
+        rpcService.setAudit(audit);
         const { AuditRpcService } = await import('../services/audit.rpc-service.js');
         await this.app.netron.peer.exposeService(new AuditRpcService(audit));
       } catch (err) {

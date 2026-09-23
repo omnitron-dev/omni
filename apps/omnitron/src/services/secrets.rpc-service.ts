@@ -52,6 +52,41 @@ export class SecretsRpcService implements IOmnitronSecretsService {
   }
 
   /**
+   * Make a secret here and keep it — random bytes of the given length, in the
+   * given encoding — and answer with its name only.
+   *
+   * For a key nobody should have to type or paste: a secret set with `set`
+   * has passed through a terminal, an argument list and a clipboard first. A
+   * key that already exists is refused rather than replaced — it is somebody's
+   * secret, and whatever it protects would be lost with it; `delete` first,
+   * on purpose, if that is the intent.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async generate(data: {
+    key: string;
+    bytes?: number;
+    encoding?: 'base64' | 'base64url' | 'hex';
+  }): Promise<{ key: string; bytes: number; encoding: 'base64' | 'base64url' | 'hex' }> {
+    const key = data.key?.trim();
+    if (!key) throw new Error('A secret needs a key');
+    const bytes = data.bytes ?? 32;
+    if (!Number.isInteger(bytes) || bytes < 16 || bytes > 1024) {
+      throw new Error(`--bytes must be a whole number from 16 to 1024, not ${String(data.bytes)}`);
+    }
+    const encoding = data.encoding ?? 'base64';
+    if (!['base64', 'base64url', 'hex'].includes(encoding)) {
+      throw new Error(`--encoding must be base64, base64url or hex, not ${String(data.encoding)}`);
+    }
+    if ((await this.secrets.get(key)) !== null) {
+      throw new Error(`The vault already holds '${key}' — nothing was generated. Delete it first if replacing it is the intent`);
+    }
+    const { randomBytes } = await import('node:crypto');
+    await this.secrets.set(key, randomBytes(bytes).toString(encoding));
+    await this.audit?.record({ action: 'secret.generate', resourceType: 'secret', resourceId: key, details: { bytes, encoding } });
+    return { key, bytes, encoding };
+  }
+
+  /**
    * Delete a secret by key.
    */
   @Public({ auth: { roles: ADMIN_ROLES } })

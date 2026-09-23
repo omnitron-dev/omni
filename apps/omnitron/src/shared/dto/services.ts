@@ -561,6 +561,12 @@ export interface IOmnitronSecretsService {
   set(data: { key: string; value: string }): Promise<{ success: boolean }>;
   delete(data: { key: string }): Promise<{ success: boolean; existed: boolean }>;
   list(): Promise<{ keys: string[] }>;
+  /** Random bytes made and kept by the daemon; the answer names the key, never the value. */
+  generate(data: {
+    key: string;
+    bytes?: number;
+    encoding?: 'base64' | 'base64url' | 'hex';
+  }): Promise<{ key: string; bytes: number; encoding: 'base64' | 'base64url' | 'hex' }>;
 }
 
 /**

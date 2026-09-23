@@ -672,6 +672,16 @@ secret
   });
 
 secret
+  .command('generate <key>')
+  .description('Make a random secret where it is kept — nothing printed but its name')
+  .option('--bytes <n>', 'How many random bytes (16–1024)', '32')
+  .option('--encoding <enc>', 'base64, base64url or hex', 'base64')
+  .action(async (key: string, opts: { bytes?: string; encoding?: string }) => {
+    const { secretGenerateCommand } = await import('../commands/secret.js');
+    await secretGenerateCommand(key, opts);
+  });
+
+secret
   .command('rotate-rpcauth <passwordKey>')
   .description('A new RPC password and its bitcoind rpcauth value, as a pair — nothing printed but key names')
   .requiredOption('--user-key <key>', 'The secret holding the RPC user')

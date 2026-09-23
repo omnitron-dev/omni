@@ -242,6 +242,47 @@ export async function secretRotateRpcauthCommand(
   }
 }
 
+/**
+ * `omnitron secret generate <key> [--bytes 32] [--encoding base64]`
+ *
+ * A key nobody should type or paste — a master key, a signing seed — made
+ * where it is kept and never shown: by the daemon when it is running, by this
+ * process against the same store when it is not. What is printed is the key
+ * name, the length and the encoding. `secret get` reads it, on purpose, later.
+ *
+ * A key the vault already holds is refused, not replaced.
+ */
+export async function secretGenerateCommand(key: string, opts: { bytes?: string; encoding?: string }): Promise<void> {
+  const bytes = opts.bytes === undefined ? 32 : Number(opts.bytes);
+  const encoding = (opts.encoding ?? 'base64') as 'base64' | 'base64url' | 'hex';
+  const client = createDaemonClient();
+  let reachable = false;
+  try {
+    reachable = await client.isReachable();
+    if (reachable) {
+      const made = await (await secretsRpc(client)).generate({ key, bytes, encoding });
+      log.success(`Generated '${made.key}': ${made.bytes} random bytes, ${made.encoding} — kept in the vault, not shown`);
+      return;
+    }
+    // The daemon's own rules, here: the same refusal, the same bounds.
+    if (!Number.isInteger(bytes) || bytes < 16 || bytes > 1024) throw new Error(`--bytes must be a whole number from 16 to 1024`);
+    if (!['base64', 'base64url', 'hex'].includes(encoding)) throw new Error('--encoding must be base64, base64url or hex');
+    const direct = await createDirectService();
+    if ((await direct.get(key)) !== null) {
+      throw new Error(`The vault already holds '${key}' — nothing was generated. Delete it first if replacing it is the intent`);
+    }
+    const { randomBytes } = await import('node:crypto');
+    await direct.set(key, randomBytes(bytes).toString(encoding));
+    log.success(`Generated '${key}': ${bytes} random bytes, ${encoding} — kept in the vault (direct mode), not shown`);
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
+    log.error(`Could not generate '${key}': ${(err as Error).message}`);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
 async function secretsRpc(
   client: ReturnType<typeof createDaemonClient>,
 ): Promise<IOmnitronSecretsService> {

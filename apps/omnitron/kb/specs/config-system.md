@@ -321,11 +321,19 @@ interface IStackConfig {
 interface IStackSettings {
   redisDbOffset?: number;    // Non-overlapping DB ranges per stack
   containerPrefix?: string;  // Docker name prefix (default: ${project}-${stack})
-  env?: Record<string, string>;  // Stack-wide env vars
+  env?: Record<string, StackEnvValue>;                          // every app, local and remote
+  appEnv?: Record<string, Record<string, StackEnvValue>>;       // one app, by name; wins over env
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   portOffsets?: { postgres?, redis?, minio? };
 }
+type StackEnvValue = string | { secret: string };  // written, or a key in the daemon's vault
 ```
+
+`env` and `appEnv` reach local and remote stacks alike; a `{ secret }` value is resolved from the
+daemon's vault when the stack starts (`project/stack-env.ts`). Refused before anything is touched:
+a vault key the vault does not hold or holds empty, an `appEnv` for an app the stack does not run,
+a malformed name or value. A secret only one app should hold (a KMS master key) goes in `appEnv`;
+make it with `omnitron secret generate <key>` so it never passes through a terminal.
 
 ## Daemon Config (IDaemonConfig)
 

@@ -575,10 +575,14 @@ release
 
 release
   .command('prune')
-  .description('Remove all but the newest releases (they are ~35 MB each)')
+  .description('Remove all but the newest releases, never one a stack runs')
   .option('--keep <n>', 'How many to keep (default: 5)', (v: string) => Number(v))
   .option('--yes', 'Remove them; without this it only says what it would remove')
-  .action(async (options: { keep?: number; yes?: boolean }) => {
+  .option(
+    '--allow-unprotected',
+    'Remove even when the daemon cannot say which releases the stacks run (stopped daemon, no audit trail)',
+  )
+  .action(async (options: { keep?: number; yes?: boolean; allowUnprotected?: boolean }) => {
     const { releasePruneCommand } = await import('../commands/release.js');
     await releasePruneCommand(options);
   });

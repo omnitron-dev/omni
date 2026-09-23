@@ -473,6 +473,15 @@ export interface IBareMetalServiceConfig {
   validateCommand?: string;
 
   /**
+   * How to ask the service on the node how it is — over
+   * `IServiceRequirement.healthCheck`, which a container may have to answer
+   * otherwise: paysys checks its Bitcoin container with `bitcoin-cli
+   * -regtest`, the image carrying no HTTP client, and that says nothing of a
+   * mainnet unit.
+   */
+  healthCheck?: IServiceHealthCheck;
+
+  /**
    * The systemd unit, when the host has none to adopt.
    *
    * A package that ships its own unit needs nothing here — omnitron adopts
@@ -551,7 +560,14 @@ export interface IServiceHealthCheck {
     method: string;
     /** URL path for JSON-RPC endpoint. Default '/json_rpc' (Monero). Set '' for root '/' (some daemons). */
     path?: string;
-    auth?: { user: string; password: string; type?: 'digest' | 'basic' };
+    /**
+     * `digest`/`basic` name the declaration's own credentials, which a stack
+     * replaces with its own of the same name. `cookie` names the file a
+     * daemon writes into its data directory while it runs — Bitcoin Core's
+     * `.cookie`, `__cookie__:<64 hex>`, 0600, written beside `rpcauth` and
+     * removed when it stops (measured on 31.0) — read on the node only.
+     */
+    auth?: { user: string; password: string; type?: 'digest' | 'basic' } | { type: 'cookie'; file: string };
     /**
      * The fields of the answer that say how far the service is — what
      * `infra inspect` prints of it, in this order; `--json` has them all.

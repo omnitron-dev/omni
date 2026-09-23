@@ -211,6 +211,102 @@ describe('a service the stack runs on the node', () => {
   });
 });
 
+describe('a service the stack runs on the node, asked how far it is', () => {
+  // As paysys declares it for mainnet: its container's check is `bitcoin-cli
+  // -regtest`; on the node it is asked over JSON-RPC with the cookie the
+  // daemon writes beside `rpcauth`.
+  const COOKIE_SECRET = 'c0'.repeat(32);
+  const onNode = (file = '.cookie') =>
+    ({
+      networkMode: 'regtest',
+      ports: { rpc: 18443 },
+      env: {},
+      healthCheck: { type: 'command', target: 'bitcoin-cli -regtest getblockchaininfo' },
+      bareMetal: {
+        systemdUnit: 'bitcoind',
+        dataDir: '/var/lib/bitcoind',
+        variants: {
+          mainnet: {
+            ports: { rpc: 8332 },
+            healthCheck: {
+              type: 'jsonrpc',
+              target: 'getblockchaininfo',
+              jsonrpc: {
+                port: 'rpc',
+                method: 'getblockchaininfo',
+                path: '',
+                auth: { type: 'cookie', file },
+                report: ['chain', 'blocks', 'headers', 'initialblockdownload'],
+              },
+            },
+          },
+        },
+      },
+    }) as never;
+  const stack = { bitcoin: { networkMode: 'mainnet', provisioning: 'bareMetal' as const } };
+  const asked = (listening: boolean, files: Record<string, string>) => {
+    const calls: Array<{ url: string; auth: RpcAuth | null }> = [];
+    return {
+      calls,
+      deps: {
+        host: fakeHost({}, files).host,
+        interfaces,
+        reach: async (h: string, port: number) => listening && h === '127.0.0.1' && port === 8332,
+        jsonRpc: async (url: string, method: string, auth: RpcAuth | null) => {
+          calls.push({ url, auth });
+          return {
+            method,
+            ok: true,
+            result: { chain: 'main', blocks: 915_402, headers: 915_402, initialblockdownload: false },
+          };
+        },
+      } satisfies InspectionDeps,
+    };
+  };
+
+  it('on loopback, with its cookie, which no reading carries', async () => {
+    const { deps: d, calls } = asked(true, { '/var/lib/bitcoind/.cookie': `__cookie__:${COOKIE_SECRET}\n` });
+    const reading = await inspectHost({ services: { bitcoin: onNode() }, overrides: stack }, d);
+
+    expect(reading.services[0]!.onHost!.probe).toMatchObject({
+      method: 'getblockchaininfo',
+      ok: true,
+      result: { chain: 'main', blocks: 915_402 },
+      report: ['chain', 'blocks', 'headers', 'initialblockdownload'],
+    });
+    expect(calls).toEqual([
+      { url: 'http://127.0.0.1:8332', auth: { type: 'basic', user: '__cookie__', password: COOKIE_SECRET } },
+    ]);
+    expect(JSON.stringify(reading)).not.toContain(COOKIE_SECRET);
+  });
+
+  it('says the daemon is not running when it has written no cookie, and asks nothing', async () => {
+    const { deps: d, calls } = asked(true, {});
+    const reading = await inspectHost({ services: { bitcoin: onNode() }, overrides: stack }, d);
+
+    expect(reading.services[0]!.onHost!.probe?.error).toBe(
+      'no /var/lib/bitcoind/.cookie — the daemon writes it while it runs'
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it('says nothing listens rather than read a cookie for nobody', async () => {
+    const { deps: d, calls } = asked(false, { '/var/lib/bitcoind/.cookie': `__cookie__:${COOKIE_SECRET}` });
+    const reading = await inspectHost({ services: { bitcoin: onNode() }, overrides: stack }, d);
+
+    expect(reading.services[0]!.onHost!.probe?.error).toBe('nothing listens on 127.0.0.1:8332');
+    expect(calls).toEqual([]);
+  });
+
+  it('reads a cookie only from inside the data directory', async () => {
+    const { deps: d, calls } = asked(true, { '/etc/shadow': 'root:x' });
+    const reading = await inspectHost({ services: { bitcoin: onNode('../../../etc/shadow') }, overrides: stack }, d);
+
+    expect(reading.services[0]!.onHost!.probe?.error).toContain('inside the data directory');
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('host facts for a decision the declaration does not cover', () => {
   const host = fakeHost(
     {

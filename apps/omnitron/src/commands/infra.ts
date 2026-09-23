@@ -338,6 +338,9 @@ function printInspection(
             `${h.dataDir.disk ? `${h.dataDir.disk.mount} free ${bytes(h.dataDir.disk.availBytes)} of ${bytes(h.dataDir.disk.sizeBytes)}` : 'disk unknown'}`,
         );
       }
+      if (h.probe) {
+        log.info(`  ${h.probe.method}: ${h.probe.ok ? formatProbe(h.probe) : prism.red(h.probe.error ?? 'failed')}`);
+      }
       for (const action of h.actions) log.info(`  would ${action}`);
       for (const refusal of h.refusals) log.warn(`  refuses: ${refusal}`);
     } else {

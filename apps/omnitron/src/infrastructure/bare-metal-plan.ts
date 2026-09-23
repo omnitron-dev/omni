@@ -24,7 +24,7 @@
  */
 
 import { bindService, secretValues } from './service-binding.js';
-import type { IServiceOverride, SecretRef } from './types.js';
+import type { IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
 
 /** A declared bare-metal service, with its `networkMode` variant applied. */
 export interface BareMetalSpec {
@@ -52,6 +52,8 @@ export interface BareMetalSpec {
    * off it.
    */
   unresolved?: string[] | undefined;
+  /** How to ask the service on the node how it is (`IBareMetalServiceConfig.healthCheck`). */
+  healthCheck?: IServiceHealthCheck | undefined;
   /** A chain on the host to take over as `dataDir` — the stack's word, never the application's. */
   adopt?: { from: string; replaces?: string | undefined } | undefined;
 }
@@ -445,6 +447,8 @@ export function selectBareMetal(
   if (merged.dataDir) spec.dataDir = merged.dataDir;
   if (merged.user) spec.user = merged.user;
   if (merged.validateCommand) spec.validateCommand = merged.validateCommand;
+  const { healthCheck } = merged as { healthCheck?: IServiceHealthCheck };
+  if (healthCheck) spec.healthCheck = healthCheck;
   // A chain to take over is the node's own history: the stack's word only.
   const adopt = override?.bareMetal?.adopt;
   if (adopt) spec.adopt = { from: adopt.from, replaces: adopt.replaces };

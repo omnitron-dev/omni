@@ -440,7 +440,10 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
       const port = ports?.[portName] ?? portName;
       const method = check.jsonrpc?.method ?? check.target;
       const auth = check.jsonrpc?.auth;
-      const authStr = auth ? `-u ${auth.user}:${auth.password} ${auth.type === 'digest' ? '--digest' : ''}` : '';
+      const authStr =
+        auth && auth.type !== 'cookie'
+          ? `-u ${auth.user}:${auth.password} ${auth.type === 'digest' ? '--digest' : ''}`
+          : '';
       const rpcPath = check.jsonrpc?.path ?? '/json_rpc';
       return {
         test: ['CMD-SHELL', `curl -sf ${authStr} -X POST http://localhost:${port}${rpcPath} -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"health","method":"${method}"}' || exit 1`],

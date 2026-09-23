@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { verdictOf, firstReason, isMeasured, clusterDisagreement } from './node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, isMeasured, clusterDisagreement } from './node-diagnosis';
 
 describe('an absence is not a failure', () => {
   it('reads a null layer as not measured', () => {
@@ -175,5 +175,38 @@ describe('a split brain is only visible across nodes', () => {
     expect(d.kind).toBe('leaders');
     if (d.kind !== 'leaders') return;
     expect(d.groups.map(([l]) => l)).toEqual(['a', '(none)']);
+  });
+});
+
+describe('the omnitron layer, read the way the dot and the strip read it', () => {
+  const reached = (omnitronConnected: boolean | null, omnitronError: string | null) =>
+    omnitronVerdict({ sshConnected: true, omnitronConnected, omnitronError });
+
+  it('does not call a check that could not read the answer «failed»', () => {
+    // `verdictOf` did: an error meant failed, and failed on this layer reads
+    // as «omnitron is down».
+    expect(reached(false, 'Command timed out after 15000ms: command -v omnitron …')).toBe('unknown');
+    expect(reached(false, 'omnitron status did not return JSON')).toBe('unknown');
+    // Since 66dae3dc: no path answered.
+    expect(omnitronVerdict({ sshConnected: null, omnitronConnected: null, omnitronError: 'the mesh and :9700 both refused' })).toBe(
+      'unknown',
+    );
+  });
+
+  it('calls «not running» and «not installed» failed: the node answered', () => {
+    expect(reached(false, 'omnitron status reported no running daemon')).toBe('failed');
+    expect(reached(false, 'omnitron: command not found')).toBe('failed');
+  });
+
+  it('did not look when SSH was refused, or when nothing tried this layer', () => {
+    expect(omnitronVerdict({ sshConnected: false, omnitronConnected: false, omnitronError: 'SSH unavailable — omnitron state unknown' })).toBe(
+      'unmeasured',
+    );
+    expect(reached(null, null)).toBe('unmeasured');
+  });
+
+  it('calls a running daemon reachable, and counts only answers as measurements', () => {
+    expect(reached(true, null)).toBe('ok');
+    expect(isMeasured({ pingReachable: null, sshConnected: null, omnitronConnected: null, omnitronError: 'no path answered' })).toBe(false);
   });
 });

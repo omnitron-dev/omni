@@ -30,6 +30,10 @@
     "./release-reading": {
       "types": "./src/shared/release-reading.ts",
       "default": "./dist/shared/release-reading.js"
+    },
+    "./node-check": {
+      "types": "./src/shared/node-check.ts",
+      "default": "./dist/shared/node-check.js"
     }
   },
   "scripts": {

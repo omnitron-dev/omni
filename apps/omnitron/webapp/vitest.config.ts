@@ -13,7 +13,12 @@ import path from 'node:path';
  */
 export default defineConfig({
   resolve: {
-    alias: { src: path.resolve(import.meta.dirname, 'src') },
+    alias: {
+      src: path.resolve(import.meta.dirname, 'src'),
+      // The shared readings, as `vite.config.ts` resolves them.
+      '@omnitron-dev/omnitron/node-check': path.resolve(import.meta.dirname, '../src/shared/node-check.ts'),
+      '@omnitron-dev/omnitron/release-reading': path.resolve(import.meta.dirname, '../src/shared/release-reading.ts'),
+    },
   },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],

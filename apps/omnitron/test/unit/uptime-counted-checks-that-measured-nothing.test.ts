@@ -23,6 +23,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { assembleBuckets, type UptimeAggregateRow } from '../../src/services/node-health.repository.js';
+import { NOT_INSTALLED, NOT_RUNNING, omnitronFinding } from '../../src/shared/node-check.js';
 
 const START = Date.parse('2026-09-14T00:00:00Z');
 const HOUR = 3_600_000;
@@ -35,6 +36,7 @@ function row(counts: Partial<UptimeAggregateRow> & { checks: number }): UptimeAg
     omni_up: 0,
     omni_measured: 0,
     omni_absent: 0,
+    omni_unreachable: 0,
     omni_unread: 0,
     ...counts,
   };
@@ -154,5 +156,34 @@ describe('a check that read nothing is not a check that read «stopped»', () =>
     const bucket = only(row({ checks: 316, omni_up: 15, omni_measured: 16, omni_unread: 300 }));
 
     expect(bucket.omnitron).toBeCloseTo(15 / 16);
+  });
+});
+
+describe('what one check found, for the strip and the dot alike', () => {
+  const ssh = (omnitronConnected: boolean | null, omnitronError: string | null) =>
+    omnitronFinding({ sshConnected: true, omnitronConnected, omnitronError });
+  // The checker's timeout echoes the command, and the command says «omnitron:
+  // command not found» — 19 rows on the master read as not installed.
+  const TIMEOUT = `Command timed out after 15000ms: command -v omnitron >/dev/null 2>&1 || { echo "${NOT_INSTALLED}" >&2; exit 127; }; omnitron status --json`;
+
+  it('measures only «running» and «not running»', () => {
+    expect(ssh(true, null)).toBe('running');
+    expect(ssh(false, NOT_RUNNING)).toBe('not-running');
+  });
+
+  it.each([
+    ['a timeout', TIMEOUT],
+    ['output that was not JSON', 'omnitron status did not return JSON'],
+    ['an exec that failed', "Adapter 'ssh' failed during 'execute': Unable to exec"],
+    ['the old reader’s NULL', null],
+  ])('reads %s as unread, not as «not running» or «not installed»', (_what, error) => {
+    expect(ssh(error === null ? null : false, error)).toBe('unread');
+  });
+
+  it('knows «not installed» by the answer, and «unreachable» by the session', () => {
+    expect(ssh(false, NOT_INSTALLED)).toBe('not-installed');
+    expect(omnitronFinding({ sshConnected: false, omnitronConnected: false, omnitronError: 'SSH unavailable — omnitron state unknown' })).toBe(
+      'unreachable',
+    );
   });
 });

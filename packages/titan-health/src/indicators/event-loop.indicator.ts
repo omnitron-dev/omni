@@ -1,277 +1,158 @@
 /**
  * Event Loop Health Indicator
  *
- * Monitors event loop lag to detect performance issues.
+ * How the event loop has run over the last minute.
+ *
+ * This used to ask at the moment of the check: a 50 ms timer, and how late it
+ * fired. An event loop that can answer a health check is not blocked at that
+ * moment, so the answer was always the same — «lag: 0.00ms» on the omnitron
+ * test node while its event-loop watch measured p99 20.9 ms beside it, and on
+ * the master 139 stalls of 1 to 4.6 s in forty minutes read «responsive». It
+ * measured the one instant in which nothing could be wrong.
+ *
+ * Now `monitorEventLoopDelay` runs all the time, and the check reads what it
+ * recorded over the last minute — six buckets of ten seconds, each reset as it
+ * rolls: p99 for a loop that is slow, max for one that stopped. A stall is ONE
+ * sample in that histogram (the timer that should have fired many times fires
+ * once, late), so it moves the maximum and not the percentile; each has its
+ * own threshold.
+ *
+ * There was a second class here, `HighResEventLoopIndicator`, reading the
+ * same histogram since the process started and never resetting it — a p99
+ * since boot, which no stall of this minute can move. Nothing used it. One
+ * concept, one indicator.
  *
  * @module titan/modules/health/indicators
  */
 
+import { monitorEventLoopDelay } from 'node:perf_hooks';
+
 import { HealthIndicator } from '../health.indicator.js';
 import type { HealthIndicatorResult, EventLoopThresholds } from '../health.types.js';
-import { monitorEventLoopDelay } from 'perf_hooks';
 
-/**
- * Default event loop thresholds
- */
 const DEFAULT_THRESHOLDS: Required<EventLoopThresholds> = {
   lagDegradedThreshold: 50,
   lagUnhealthyThreshold: 100,
+  stallThreshold: 1_000,
 };
 
-/**
- * Event Loop Health Indicator
- *
- * Measures event loop lag to detect when the event loop is blocked
- * or running slowly due to CPU-intensive operations.
- *
- * @example
- * ```typescript
- * const eventLoopIndicator = new EventLoopHealthIndicator({
- *   lagDegradedThreshold: 50,  // 50ms lag triggers degraded
- *   lagUnhealthyThreshold: 100, // 100ms lag triggers unhealthy
- * });
- *
- * const result = await eventLoopIndicator.check();
- * // Returns health status based on event loop responsiveness
- * ```
- */
+/** The part of `IntervalHistogram` this reads — nanoseconds, like the original. */
+export interface EventLoopDelayHistogram {
+  percentile(percentile: number): number;
+  readonly max: number;
+  readonly count: number;
+  reset(): void;
+  enable(): boolean;
+  disable(): boolean;
+}
+
+export interface EventLoopIndicatorOptions {
+  /** The width of one bucket. */
+  bucketMs?: number;
+  /** How many buckets make the window, the live one included. */
+  buckets?: number;
+  /** The histogram to read — a court cannot stall a loop at every percentile it needs. */
+  histogram?: EventLoopDelayHistogram;
+  /** The clock the window is measured on. */
+  now?: () => number;
+}
+
+interface Bucket {
+  from: number;
+  p99: number;
+  max: number;
+  samples: number;
+}
+
+const ms = (value: number) => `${value.toFixed(1)}ms`;
+
 export class EventLoopHealthIndicator extends HealthIndicator {
   readonly name = 'event-loop';
   private thresholds: Required<EventLoopThresholds>;
-  private lastCheckTime: number = 0;
-  private measurementInterval: number = 50; // ms
+  private readonly histogram: EventLoopDelayHistogram;
+  private readonly keep: number;
+  private readonly now: () => number;
+  private readonly timer: NodeJS.Timeout;
+  private closed: Bucket[] = [];
+  private liveFrom: number;
 
-  constructor(thresholds: EventLoopThresholds = {}) {
+  constructor(thresholds: EventLoopThresholds = {}, options: EventLoopIndicatorOptions = {}) {
     super();
     this.thresholds = {
       lagDegradedThreshold: thresholds.lagDegradedThreshold ?? DEFAULT_THRESHOLDS.lagDegradedThreshold,
       lagUnhealthyThreshold: thresholds.lagUnhealthyThreshold ?? DEFAULT_THRESHOLDS.lagUnhealthyThreshold,
+      stallThreshold: thresholds.stallThreshold ?? DEFAULT_THRESHOLDS.stallThreshold,
     };
+    this.keep = Math.max(1, options.buckets ?? 6);
+    this.now = options.now ?? Date.now;
+    this.histogram = options.histogram ?? monitorEventLoopDelay({ resolution: 20 });
+    this.histogram.enable();
+    this.liveFrom = this.now();
+    this.timer = setInterval(() => this.roll(), options.bucketMs ?? 10_000);
+    // A health indicator must never be the reason a process stays up.
+    this.timer.unref?.();
   }
 
-  /**
-   * Perform the event loop health check
-   */
-  async check(): Promise<HealthIndicatorResult> {
-    const checkStart = Date.now();
-    const lag = await this.measureEventLoopLag();
-    const latency = Date.now() - checkStart;
+  /** Close the live bucket and open the next. Public so a court can roll without waiting. */
+  roll(): void {
+    this.closed.push(this.read());
+    if (this.closed.length > this.keep - 1) this.closed.shift();
+    this.histogram.reset();
+    this.liveFrom = this.now();
+  }
 
+  async check(): Promise<HealthIndicatorResult> {
+    const start = Date.now();
+    const buckets = [...this.closed, this.read()];
+    const samples = buckets.reduce((n, b) => n + b.samples, 0);
+    const p99 = Math.max(...buckets.map((b) => b.p99));
+    const max = Math.max(...buckets.map((b) => b.max));
+    const windowS = Math.max(1, Math.round((this.now() - buckets[0]!.from) / 1000));
+    const over = `over the last ${windowS} s`;
     const details = {
-      lag: lag.toFixed(2) + 'ms',
+      window: `${windowS}s`,
+      samples,
+      p99: ms(p99),
+      max: ms(max),
       thresholds: {
         degraded: this.thresholds.lagDegradedThreshold + 'ms',
         unhealthy: this.thresholds.lagUnhealthyThreshold + 'ms',
+        stall: this.thresholds.stallThreshold + 'ms',
       },
-      measurementInterval: this.measurementInterval + 'ms',
     };
-
-    if (lag >= this.thresholds.lagUnhealthyThreshold) {
-      return {
-        ...this.unhealthy('Event loop lag (' + lag.toFixed(2) + 'ms) exceeds unhealthy threshold', details),
-        latency,
-      };
-    }
-
-    if (lag >= this.thresholds.lagDegradedThreshold) {
-      return {
-        ...this.degraded('Event loop lag (' + lag.toFixed(2) + 'ms) exceeds degraded threshold', details),
-        latency,
-      };
-    }
-
-    return {
-      ...this.healthy('Event loop is responsive (lag: ' + lag.toFixed(2) + 'ms)', details),
-      latency,
-    };
+    const result = (() => {
+      if (samples === 0) return this.healthy(`No event loop samples yet ${over}`, details);
+      if (p99 >= this.thresholds.lagUnhealthyThreshold) {
+        return this.unhealthy(`Event loop p99 ${ms(p99)} ${over} exceeds the unhealthy threshold`, details);
+      }
+      if (p99 >= this.thresholds.lagDegradedThreshold) {
+        return this.degraded(`Event loop p99 ${ms(p99)} ${over} exceeds the degraded threshold`, details);
+      }
+      if (max >= this.thresholds.stallThreshold) {
+        return this.degraded(`The event loop stood still for ${ms(max)} ${over} (p99 ${ms(p99)})`, details);
+      }
+      return this.healthy(`Event loop ${over}: p99 ${ms(p99)}, max ${ms(max)}`, details);
+    })();
+    return { ...result, latency: Date.now() - start };
   }
 
-  /**
-   * Measure event loop lag
-   *
-   * This works by scheduling a timer and measuring how long it actually
-   * takes to execute. The difference between expected and actual time
-   * indicates event loop congestion.
-   */
-  private measureEventLoopLag(): Promise<number> {
-    return new Promise((resolve) => {
-      const start = Date.now();
-      const expected = this.measurementInterval;
-
-      setTimeout(() => {
-        const actual = Date.now() - start;
-        const lag = Math.max(0, actual - expected);
-        resolve(lag);
-      }, expected);
-    });
+  /** Stop measuring. The timer is unref'd, so this is for tests and orderly shutdowns. */
+  dispose(): void {
+    clearInterval(this.timer);
+    this.histogram.disable();
   }
 
-  /**
-   * Get the current thresholds
-   */
   getThresholds(): Required<EventLoopThresholds> {
     return { ...this.thresholds };
   }
 
-  /**
-   * Update the thresholds
-   */
   setThresholds(thresholds: Partial<EventLoopThresholds>): void {
-    this.thresholds = {
-      ...this.thresholds,
-      ...thresholds,
-    };
+    this.thresholds = { ...this.thresholds, ...thresholds };
   }
 
-  /**
-   * Set the measurement interval
-   */
-  setMeasurementInterval(interval: number): void {
-    this.measurementInterval = Math.max(10, interval); // Minimum 10ms
-  }
-
-  /**
-   * Get the measurement interval
-   */
-  getMeasurementInterval(): number {
-    return this.measurementInterval;
-  }
-}
-
-/**
- * High-resolution event loop monitor using perf_hooks
- *
- * Provides more accurate event loop lag measurements using Node.js
- * performance hooks when available.
- *
- * @experimental
- * This indicator uses the `monitorEventLoopDelay` API from perf_hooks
- * for more precise lag measurements. It provides percentile-based metrics
- * (p50, p99) which can be more useful for detecting performance issues.
- *
- * Use this instead of EventLoopHealthIndicator when you need:
- * - More accurate lag measurements
- * - Percentile-based metrics (p50, p99)
- * - Continuous monitoring with histogram statistics
- *
- * @example
- * ```typescript
- * // Register in custom indicators
- * HealthModule.forRoot({
- *   enableEventLoopIndicator: false, // Disable standard indicator
- *   indicators: [HighResEventLoopIndicator],
- * })
- * ```
- */
-export class HighResEventLoopIndicator extends HealthIndicator {
-  readonly name = 'event-loop-hr';
-  private thresholds: Required<EventLoopThresholds>;
-  private histogram: any = null;
-
-  constructor(thresholds: EventLoopThresholds = {}) {
-    super();
-    this.thresholds = {
-      lagDegradedThreshold: thresholds.lagDegradedThreshold ?? DEFAULT_THRESHOLDS.lagDegradedThreshold,
-      lagUnhealthyThreshold: thresholds.lagUnhealthyThreshold ?? DEFAULT_THRESHOLDS.lagUnhealthyThreshold,
-    };
-
-    this.initHistogram();
-  }
-
-  /**
-   * Initialize the event loop lag histogram
-   */
-  private initHistogram(): void {
-    try {
-      this.histogram = monitorEventLoopDelay({ resolution: 20 });
-      this.histogram.enable();
-    } catch {
-      // perf_hooks not available, will fall back to basic measurement
-      this.histogram = null;
-    }
-  }
-
-  /**
-   * Perform the event loop health check
-   */
-  async check(): Promise<HealthIndicatorResult> {
-    const checkStart = Date.now();
-
-    if (!this.histogram) {
-      // Fall back to basic measurement
-      const fallbackIndicator = new EventLoopHealthIndicator(this.thresholds);
-      return fallbackIndicator.check();
-    }
-
-    // Get histogram statistics
-    const min = this.histogram.min / 1e6; // Convert nanoseconds to milliseconds
-    const max = this.histogram.max / 1e6;
-    const mean = this.histogram.mean / 1e6;
-    const p50 = this.histogram.percentile(50) / 1e6;
-    const p99 = this.histogram.percentile(99) / 1e6;
-
-    const latency = Date.now() - checkStart;
-
-    const details = {
-      min: min.toFixed(2) + 'ms',
-      max: max.toFixed(2) + 'ms',
-      mean: mean.toFixed(2) + 'ms',
-      p50: p50.toFixed(2) + 'ms',
-      p99: p99.toFixed(2) + 'ms',
-      thresholds: {
-        degraded: this.thresholds.lagDegradedThreshold + 'ms',
-        unhealthy: this.thresholds.lagUnhealthyThreshold + 'ms',
-      },
-    };
-
-    // Use p99 for health determination (worst-case performance)
-    if (p99 >= this.thresholds.lagUnhealthyThreshold) {
-      return {
-        ...this.unhealthy('Event loop p99 lag (' + p99.toFixed(2) + 'ms) exceeds unhealthy threshold', details),
-        latency,
-      };
-    }
-
-    if (p99 >= this.thresholds.lagDegradedThreshold) {
-      return {
-        ...this.degraded('Event loop p99 lag (' + p99.toFixed(2) + 'ms) exceeds degraded threshold', details),
-        latency,
-      };
-    }
-
-    return {
-      ...this.healthy(
-        'Event loop is responsive (p99: ' + p99.toFixed(2) + 'ms, mean: ' + mean.toFixed(2) + 'ms)',
-        details
-      ),
-      latency,
-    };
-  }
-
-  /**
-   * Reset the histogram statistics
-   */
-  reset(): void {
-    if (this.histogram) {
-      this.histogram.reset();
-    }
-  }
-
-  /**
-   * Disable the histogram monitoring
-   */
-  disable(): void {
-    if (this.histogram) {
-      this.histogram.disable();
-    }
-  }
-
-  /**
-   * Enable the histogram monitoring
-   */
-  enable(): void {
-    if (this.histogram) {
-      this.histogram.enable();
-    }
+  private read(): Bucket {
+    const h = this.histogram;
+    const any = h.count > 0;
+    return { from: this.liveFrom, p99: any ? h.percentile(99) / 1e6 : 0, max: any ? h.max / 1e6 : 0, samples: h.count };
   }
 }

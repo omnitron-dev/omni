@@ -16,7 +16,7 @@ export { MemoryHealthIndicator } from './memory.indicator.js';
 // Event Loop Indicators
 // ============================================================================
 
-export { EventLoopHealthIndicator, HighResEventLoopIndicator } from './event-loop.indicator.js';
+export { EventLoopHealthIndicator } from './event-loop.indicator.js';
 
 // ============================================================================
 // Disk Indicator

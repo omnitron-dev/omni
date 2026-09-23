@@ -330,6 +330,7 @@ export class DaemonRpcService implements IDaemonService {
               errors: t.serverErrors,
               clientErrors: t.clientErrors,
               probes: t.probes,
+              ...(t.held !== undefined ? { held: t.held } : {}),
               latency: t.latency
                 ? {
                     p50: t.latency.p50,

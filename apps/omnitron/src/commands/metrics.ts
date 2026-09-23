@@ -43,6 +43,9 @@ export async function metricsCommand(appName?: string): Promise<void> {
         cpu: formatCpu(m.cpu),
         memory: formatMemoryColored(m.memory),
         requests: measured ? String(m.requests ?? 0) : NOT_REPORTED,
+        // A long poll's wait is not in the latency columns; this says how
+        // many requests were such waits. `-`: the runtime does not count them.
+        held: !measured ? NOT_REPORTED : m.held !== undefined ? String(m.held) : prism.dim('-'),
         errors: measured ? formatErrors(m.errors) : NOT_REPORTED,
         mean: !measured ? NOT_REPORTED : latency ? formatLatency(latency.mean) : prism.dim('-'),
         p95: !measured ? NOT_REPORTED : latency ? formatLatency(latency.p95) : prism.dim('-'),
@@ -58,6 +61,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
         { key: 'cpu', header: 'CPU', align: 'right' },
         { key: 'memory', header: 'MEMORY', align: 'right' },
         { key: 'requests', header: 'REQUESTS', align: 'right' },
+        { key: 'held', header: 'HELD', align: 'right' },
         { key: 'errors', header: 'ERRORS', align: 'right' },
         { key: 'mean', header: 'MEAN', align: 'right' },
         { key: 'p95', header: 'P95', align: 'right' },
@@ -69,7 +73,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
     log.info(`Totals: CPU ${formatCpu(metrics.totals.cpu)}, Memory ${formatMemory(metrics.totals.memory)}`);
     log.info(
       prism.dim(
-        `REQUESTS and ERRORS (5xx) since each process started, probes excluded; latency over the last minute${
+        `REQUESTS and ERRORS (5xx) since each process started, probes excluded; HELD = of REQUESTS, long polls, whose wait is kept out of the latency; latency over the last minute${
           anyNotReported ? '; n/r = the app did not report traffic (no server process, or an older runtime)' : ''
         }`,
       ),

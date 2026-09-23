@@ -43,6 +43,7 @@ import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transpor
 import { isAsyncGenerator } from '@omnitron-dev/common';
 import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
 import { LatencyWindow, type LatencySnapshot } from './latency-window.js';
+import { METADATA_KEYS } from '../../../decorators/core.js';
 
 /** What `HttpServer.getTrafficSnapshot()` answers. */
 export interface HttpTrafficSnapshot {
@@ -54,9 +55,28 @@ export interface HttpTrafficSnapshot {
   clientErrors: number;
   /** `GET /health` and `GET /metrics` — counted apart from traffic. */
   probes: number;
+  /**
+   * Of `requests`, those to a method that holds its caller until something
+   * happens (`@Public({ holds: true })`, a long poll). Their duration is a
+   * wait, and is kept out of `latency`.
+   */
+  held: number;
   /** In flight right now. */
   active: number;
+  /** The last minute of requests that were not held. */
   latency: LatencySnapshot | null;
+}
+
+/**
+ * Whether a method holds its caller — `@Public({ holds: true })`, read from
+ * the instance's own decoration.
+ */
+function holdsItsCaller(instance: object | undefined, methodName: string): boolean {
+  if (!instance) return false;
+  const options = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, Object.getPrototypeOf(instance), methodName) as
+    | { holds?: unknown }
+    | undefined;
+  return options?.holds === true;
 }
 
 /**
@@ -120,6 +140,8 @@ interface MethodDescriptor<TInput = unknown, TOutput = unknown> {
   cacheTags?: string[];
   description?: string;
   deprecated?: boolean;
+  /** The method holds its caller — see `MethodOptions.holds`. */
+  holds?: boolean;
 }
 
 /**
@@ -272,12 +294,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     clientErrors: 0,
     /** `GET /health` and `GET /metrics`: a monitor polling, not traffic. */
     probeRequests: 0,
+    /** Requests to a method that holds its caller — kept out of `latency`. */
+    heldRequests: 0,
     statusCounts: new Map<number, number>(),
     methodCounts: new Map<string, number>(),
     startTime: Date.now(),
   };
 
   private readonly latency = new LatencyWindow();
+
+  /** Requests in flight to a method that holds its caller. */
+  private readonly heldRequests = new WeakSet<Request>();
 
   // OPTIMIZATION: Request timeout configuration
   private requestTimeoutMs: number;
@@ -665,6 +692,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           cacheable: methodMeta.cacheable,
           cacheMaxAge: methodMeta.cacheMaxAge,
           cacheTags: methodMeta.cacheTags,
+          holds: holdsItsCaller(stub.instance, methodName),
         });
       }
 
@@ -793,6 +821,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         cacheable: methodMeta.cacheable,
         cacheMaxAge: methodMeta.cacheMaxAge,
         cacheTags: methodMeta.cacheTags,
+        holds: holdsItsCaller(stub.instance, methodName),
       });
     }
 
@@ -946,8 +975,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       return response;
     } finally {
       this.metrics.activeRequests--;
-      this.updateMetrics(startTime, status, probe);
+      this.updateMetrics(startTime, status, probe, this.heldRequests.delete(request));
     }
+  }
+
+  /** Say that this request waits on a method that holds its caller. */
+  private noteHeld(method: MethodDescriptor, request: Request): void {
+    if (method.holds) this.heldRequests.add(request);
   }
 
   /** Which handler answers this request — the dispatch `handleRequest` measures. */
@@ -1041,6 +1075,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           message: `Method ${message.method} not found in service ${message.service}`,
         });
       }
+      this.noteHeld(method, request);
 
       // Validate input using consolidated helper and get transformed data
       const validatedInput = this.validateMethodInput(message.input, method.contract);
@@ -1375,6 +1410,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           message: `Method ${message.method} not found in service ${message.service}`,
         });
       }
+      this.noteHeld(method, request);
 
       // Surface the live service instance to PRE_INVOKE middleware.
       // NetronAuthMiddleware reads `@Public` decoration metadata via
@@ -1696,6 +1732,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (!service || !method) {
       throw NetronErrors.methodNotFound(req.service, req.method);
     }
+    this.noteHeld(method, request);
 
     const requestContext = req.context || fallbackContext || {};
     const metadata = new Map<string, unknown>();
@@ -2519,7 +2556,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * OPTIMIZATION: O(1) time complexity vs O(n) for array-based averaging
    * Expected improvement: ~95% reduction in metrics overhead for high-traffic servers
    */
-  private updateMetrics(startTime: number, status: number, probe: boolean): void {
+  private updateMetrics(startTime: number, status: number, probe: boolean, held = false): void {
     const duration = performance.now() - startTime;
 
     this.metrics.statusCounts.set(status, (this.metrics.statusCounts.get(status) || 0) + 1);
@@ -2527,9 +2564,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       this.metrics.probeRequests++;
       return;
     }
-    this.latency.record(duration);
     if (status >= 500) this.metrics.totalErrors++;
     else if (status >= 400) this.metrics.clientErrors++;
+    // A long poll's duration is how long nothing happened. In the window it
+    // was the p95 of a whole application: 25 s, one per connected client.
+    if (held) {
+      this.metrics.heldRequests++;
+      return;
+    }
+    this.latency.record(duration);
 
     // OPTIMIZATION: Use EMA instead of array-based average
     // EMA formula: new_avg = alpha * new_value + (1 - alpha) * old_avg
@@ -2558,6 +2601,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       serverErrors: this.metrics.totalErrors,
       clientErrors: this.metrics.clientErrors,
       probes: this.metrics.probeRequests,
+      held: this.metrics.heldRequests,
       active: this.metrics.activeRequests,
       latency: this.latency.snapshot(),
     };

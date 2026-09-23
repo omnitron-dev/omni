@@ -987,7 +987,13 @@ export interface AggregatedMetricsDto {
       clientErrors?: number;
       /** `/health` and `/metrics` polls. */
       probes?: number;
-      /** Over the last `windowMs`; `null` when nothing finished in it. */
+      /**
+       * Of `requests`, those to a method that holds its caller (a long poll):
+       * their duration is a wait, and is not in `latency`. Absent when the
+       * app's runtime does not count them.
+       */
+      held?: number;
+      /** Over the last `windowMs`, held requests excluded; `null` when nothing finished in it. */
       latency?: { p50: number; p95: number; p99: number; mean: number; max: number; count: number; windowMs: number } | null;
     }
   >;

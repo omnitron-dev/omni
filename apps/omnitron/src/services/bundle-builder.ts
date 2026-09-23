@@ -1095,6 +1095,17 @@ export function installSteps(layout: InstallLayout, archivePath: string): readon
       timeoutMs: 300_000,
     },
     {
+      what: 'make the entry point executable',
+      // The steps below run `dist/cli/omnitron.js` directly and `bin/omnitron`
+      // links to it, so its mode is part of whether this version runs — and it
+      // came from whatever built the dist on the master. Measured 2026-09-23:
+      // a dist compiled by plain `tsc --outDir` has the file 0644, and the
+      // upgrade of daos-test stopped here with «omnitron.js: Permission
+      // denied», the node unchanged. The mode is set where it is needed.
+      command: `chmod 755 ${q(`${dir}/dist/cli/omnitron.js`)}`,
+      timeoutMs: 30_000,
+    },
+    {
       what: 'install dependencies for this machine',
       // `--omit=dev` because a node runs the daemon, it does not build it.
       // `--no-audit --no-fund` because neither says anything about whether

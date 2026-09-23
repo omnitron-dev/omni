@@ -62,6 +62,20 @@ describe('installing beside what is running', () => {
     expect(check!.command).not.toMatch(/^\s*omnitron /);
   });
 
+  it('makes the entry point executable before anything runs it', () => {
+    // Measured 2026-09-23: a dist compiled by plain `tsc --outDir` had
+    // `dist/cli/omnitron.js` at 0644, and the upgrade of daos-test stopped at
+    // the check below with «Permission denied», the node unchanged. The mode
+    // is set on the node, where it is needed, whatever the builder left.
+    const steps = installSteps(layout, '/tmp/b.tgz');
+    const chmod = steps.findIndex((s) => /chmod 755 .*\/dist\/cli\/omnitron\.js/.test(s.command));
+    const check = steps.findIndex((s) => s.what.includes('runs'));
+
+    expect(chmod, 'no step makes the entry point executable').toBeGreaterThan(-1);
+    expect(chmod).toBeLessThan(check);
+    expect(steps[chmod]!.command).toContain(versionDir(layout));
+  });
+
   it('checks last, after the install it is checking', () => {
     const steps = installSteps(layout, '/tmp/b.tgz');
 

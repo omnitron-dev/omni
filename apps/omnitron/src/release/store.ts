@@ -40,7 +40,12 @@ export interface ReleaseSummary {
   readonly omniRepo: string | null;
   /** Whether each commit is on a remote branch: `null` — there was no remote to ask. */
   readonly onRemote: { project: boolean | null; omni: boolean | null };
-  readonly gates: { total: number; passed: number; failed: number; notRun: number };
+  /**
+   * One count per outcome word. `timedOut` and `killed` are optional in the
+   * TYPE only: the console reads daemons that predate them through a
+   * `Partial` of this shape. This side always writes them.
+   */
+  readonly gates: { total: number; passed: number; failed: number; notRun: number; timedOut?: number; killed?: number };
   /**
    * Every gate, in the order the build recorded them.
    *
@@ -171,7 +176,16 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
       total: gates.length,
       passed: gates.filter((g) => g.status === 'passed').length,
       failed: gates.filter((g) => g.status === 'failed').length,
-      notRun: gates.filter((g) => g.status !== 'passed' && g.status !== 'failed').length,
+      // Only a gate that did not run. `notRun` counted everything that was
+      // neither passed nor failed, so a gate that RAN and did not answer in
+      // time was reported as one that never started: daos-202609230557's
+      // `unit:paysys` timed out («ETIMEDOUT», 0 tests failed) and the list
+      // said `notRun: 1`. `manifest.ts` keeps the three apart on purpose — a
+      // timeout and a kill are the machine's verdict, an absence is nobody's —
+      // and a count that merges them undoes that for every reader of JSON.
+      notRun: gates.filter((g) => g.status === 'not-run').length,
+      timedOut: gates.filter((g) => g.status === 'timed-out').length,
+      killed: gates.filter((g) => g.status === 'killed').length,
     },
     gateList: gates,
     artifacts: {
@@ -218,9 +232,25 @@ export function listReleases(root: string = releasesRoot()): ReleaseSummary[] {
     .sort((a, b) => (a.builtAt ?? '') < (b.builtAt ?? '') ? 1 : (a.builtAt ?? '') > (b.builtAt ?? '') ? -1 : a.id < b.id ? 1 : -1);
 }
 
+/** A release id names a directory under the root, and nothing outside it. */
+function isReleaseId(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes('..');
+}
+
+/**
+ * One release's manifest, unchecked — or null when there is none: not built
+ * here, pruned, or a build that did not finish.
+ *
+ * For comparing what a release says with what another one says, which needs
+ * neither the sizes of the directory nor a sha256 of its tarballs.
+ */
+export function readReleaseManifest(id: string, root: string = releasesRoot()): ReleaseManifest | null {
+  return isReleaseId(id) ? readManifest(path.join(root, id)) : null;
+}
+
 /** One release, with its manifest and the logs its build left. */
 export function readReleaseDetail(id: string, root: string = releasesRoot()): ReleaseDetail {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) || id.includes('..')) throw new Error(`'${id}' is not a release id`);
+  if (!isReleaseId(id)) throw new Error(`'${id}' is not a release id`);
   const dir = path.join(root, id);
   if (!fs.existsSync(dir)) throw new Error(`No release '${id}' on this machine — ${dir} does not exist`);
   const manifest = readManifest(dir);
@@ -267,6 +297,12 @@ export interface PruneResult {
   readonly removed: readonly string[];
   readonly kept: number;
   readonly freedBytes: number;
+  /**
+   * Old enough to go, and kept because the caller protected it. Said apart
+   * from `kept` so the one who pruned sees WHY the release a stack runs is
+   * still here — and sees it at all.
+   */
+  readonly spared: readonly string[];
 }
 
 /**
@@ -276,7 +312,7 @@ export interface PruneResult {
  * release a stack is running — the `stack.start` rows do — so it never
  * decides that for itself, and it deletes nothing unless told to
  * (`apply`). `protect` is how a caller that DOES know keeps one: the console
- * passes the releases its stacks last deployed.
+ * and `omnitron release prune` pass the releases their stacks last deployed.
  */
 export function pruneReleases(
   options: { keep?: number; apply?: boolean; protect?: readonly string[]; root?: string } = {},
@@ -286,7 +322,9 @@ export function pruneReleases(
   const root = options.root ?? releasesRoot();
   const protect = new Set(options.protect ?? []);
   const all = listReleases(root);
-  const doomed = all.slice(keep).filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes }));
+  const old = all.slice(keep);
+  const spared = old.filter((r) => protect.has(r.id)).map((r) => r.id);
+  const doomed = old.filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes }));
   const removed: string[] = [];
   if (options.apply) {
     for (const d of doomed) {
@@ -299,5 +337,6 @@ export function pruneReleases(
     removed,
     kept: all.length - doomed.length,
     freedBytes: doomed.reduce((sum, d) => sum + d.bytes, 0),
+    spared,
   };
 }

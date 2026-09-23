@@ -19,6 +19,7 @@ import {
   inspectHost,
   digestAuthorization,
   jsonRpcCall,
+  probeFields,
   fileState,
   redactArgv,
   type InspectionDeps,
@@ -73,6 +74,7 @@ const monerod = {
       port: 'rpc',
       method: 'get_info',
       auth: { user: 'omni_stagenet', password: 'omni_stagenet_dev_password', type: 'digest' },
+      report: ['nettype', 'height', 'target_height', 'synchronized'],
     },
   },
 } as never;
@@ -134,6 +136,7 @@ describe('a service the stack reaches elsewhere', () => {
     const external = reading.services[0]!.external!;
     expect(external).toMatchObject({ host: '192.168.100.2', port: 28082, local: true, reachable: true });
     expect(external.probe?.result).toMatchObject({ synchronized: true, nettype: 'mainnet' });
+    expect(external.probe?.report).toEqual(['nettype', 'height', 'target_height', 'synchronized']);
     // As the stack's credentials, not the laptop's the declaration's check names.
     expect(calls).toEqual([
       {
@@ -281,6 +284,30 @@ describe('the pieces', () => {
       '0a4f113b'
     );
     expect(header).toContain('response="6629fae49393a05397450978507c4ef1"');
+  });
+
+  it('prints the fields a declaration reads its answer by, in its order, and counts the rest', () => {
+    // monerod's get_info as it comes: the fields the probe was sent for are
+    // not among the first twelve.
+    const result = Object.fromEntries([
+      ...'abcdefghijklmn'.split('').map((letter) => [`${letter}_field`, 1] as const),
+      ['height', 3_768_823],
+      ['nettype', 'mainnet'],
+      ['synchronized', true],
+    ]);
+    const reading = { method: 'get_info', ok: true, result };
+
+    expect(probeFields({ ...reading, report: ['nettype', 'height', 'synchronized', 'target_height'] })).toEqual({
+      fields: [
+        ['nettype', 'mainnet'],
+        ['height', 3_768_823],
+        ['synchronized', true],
+        ['target_height', undefined],
+      ],
+      more: 14,
+    });
+    expect(probeFields(reading).fields).toHaveLength(12);
+    expect(probeFields(reading).more).toBe(5);
   });
 
   it('tells a file it wrote from one a person wrote, and a match from a difference', () => {

@@ -14,7 +14,7 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import type { BareMetalAction, BareMetalObservation, BareMetalSpec } from './bare-metal-plan.js';
+import type { AdoptionObservation, BareMetalAction, BareMetalObservation, BareMetalSpec } from './bare-metal-plan.js';
 
 export interface CommandResult {
   ok: boolean;
@@ -31,6 +31,11 @@ export interface HostRunner {
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string, options: { mode: string; owner?: string | undefined }): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /**
+   * rename(2): on one filesystem, and never a copy — across two it fails. A
+   * directory replaces an empty one at `to`, and never lands inside it.
+   */
+  rename(from: string, to: string): Promise<void>;
 }
 
 export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): Promise<BareMetalObservation> {
@@ -47,6 +52,8 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
 
   const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
   const unitContent = spec.unitContent !== undefined && unitPath ? await host.readFile(unitPath) : null;
+  const adoption =
+    spec.adopt && spec.dataDir ? await observeAdoption(spec.adopt, spec.dataDir, spec.configFile, host) : undefined;
 
   return {
     installed,
@@ -57,7 +64,35 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     unitEnabled: unit.enabled,
     configContent,
     unitContent,
+    ...(adoption ? { adoption } : {}),
   };
+}
+
+/** Both ends of a takeover, whether they share a filesystem, and the unit that ran the chain. */
+async function observeAdoption(
+  adopt: NonNullable<BareMetalSpec['adopt']>,
+  dataDir: string,
+  configFile: string | undefined,
+  host: HostRunner,
+): Promise<AdoptionObservation> {
+  // One entry, not a listing: a chain directory holds thousands.
+  const holds = (path: string) =>
+    host.run(['find', path, '-mindepth', '1', '-maxdepth', '1', '-print', '-quit']).then((r) => r.ok && r.stdout.trim() !== '');
+  const device = (path: string) => host.run(['stat', '-c', '%d', path]).then((r) => (r.ok ? r.stdout.trim() : null));
+  const config = configFile?.slice(configFile.lastIndexOf('/') + 1);
+
+  const [sourceHeld, targetHeld, fromDevice, toDevice, configBeside, replaced] = await Promise.all([
+    holds(adopt.from),
+    holds(dataDir),
+    device(adopt.from),
+    // Where the chain would land: the data directory, which may be a mount
+    // of its own, or — not there yet — the directory it goes in.
+    device(dataDir).then((d) => d ?? device(dataDir.slice(0, dataDir.lastIndexOf('/')) || '/')),
+    config ? host.exists(`${adopt.from}/${config}`) : Promise.resolve(false),
+    adopt.replaces ? observeUnit(adopt.replaces, host) : Promise.resolve(null),
+  ]);
+
+  return { sourceHeld, targetHeld, sameFilesystem: fromDevice !== null && fromDevice === toDevice, configBeside, replaced };
 }
 
 async function observeUnit(
@@ -132,6 +167,29 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       return;
     }
 
+    case 'disable-unit': {
+      const r = await host.run(['systemctl', 'disable', action.unit]);
+      if (!r.ok) throw new Error(`could not disable ${action.unit}: ${firstLine(r.stderr)}`);
+      return;
+    }
+
+    case 'adopt-data-dir': {
+      // A rename or nothing: across filesystems it fails, rather than start
+      // copying a chain inside a reconcile pass.
+      await host.rename(action.from, action.to);
+      if (action.setAside) {
+        await host.rename(`${action.to}/${action.setAside.file}`, `${action.to}/${action.setAside.as}`);
+      }
+      if (action.owner) {
+        const owned = await host.run(['chown', '-R', `${action.owner}:${action.owner}`, action.to], {
+          timeoutMs: 5 * 60_000,
+        });
+        if (!owned.ok) throw new Error(`could not give ${action.to} to ${action.owner}: ${firstLine(owned.stderr)}`);
+      }
+      await host.run(['chmod', '750', action.to]);
+      return;
+    }
+
     case 'create-data-dir': {
       const made = await host.run(['mkdir', '-p', action.path]);
       if (!made.ok) throw new Error(`could not create ${action.path}: ${firstLine(made.stderr)}`);
@@ -194,6 +252,13 @@ export function describe(action: BareMetalAction): string {
     case 'write-unit': return `write unit ${action.path}`;
     case 'daemon-reload': return 'reload systemd';
     case 'create-user': return `create service account ${action.user}`;
+    case 'disable-unit': return `disable ${action.unit} — ${action.because}`;
+    case 'adopt-data-dir':
+      return (
+        `take over ${action.from} as ${action.to}` +
+        (action.setAside ? `, its ${action.setAside.file} kept as ${action.setAside.as}` : '') +
+        (action.owner ? `, owned by ${action.owner}` : '')
+      );
     case 'create-data-dir': return `create ${action.path}`;
     case 'write-config': return `write ${action.path} (${action.mode})`;
     case 'enable-unit': return `enable ${action.unit}`;
@@ -300,6 +365,11 @@ export function localHost(): HostRunner {
       } catch {
         return false;
       }
+    },
+
+    async rename(from, to) {
+      const fs = await import('node:fs/promises');
+      await fs.rename(from, to);
     },
   };
 }

@@ -52,6 +52,8 @@ export interface BareMetalSpec {
    * off it.
    */
   unresolved?: string[] | undefined;
+  /** A chain on the host to take over as `dataDir` — the stack's word, never the application's. */
+  adopt?: { from: string; replaces?: string | undefined } | undefined;
 }
 
 /** What the host looks like right now. */
@@ -67,11 +69,35 @@ export interface BareMetalObservation {
   configContent: string | null;
   /** Current contents of `unitFile`, or null when it is not there. */
   unitContent?: string | null | undefined;
+  /** Both ends of a takeover — observed only when the stack declares one. */
+  adoption?: AdoptionObservation | undefined;
+}
+
+export interface AdoptionObservation {
+  /** `adopt.from` holds something: it is neither absent nor an empty directory. */
+  sourceHeld: boolean;
+  /** `dataDir` holds something — a second chain, or a sync already begun there. */
+  targetHeld: boolean;
+  /** `adopt.from` is on the filesystem the chain would land on, so moving it is a rename. */
+  sameFilesystem: boolean;
+  /** `adopt.from` holds a file named as the declared config file is: a second configuration. */
+  configBeside: boolean;
+  /** The unit `adopt.replaces` names, or null when it names none. */
+  replaced: { known: boolean; active: boolean; enabled: boolean } | null;
 }
 
 export type BareMetalAction =
   | { type: 'install'; command: string }
   | { type: 'create-user'; user: string }
+  | { type: 'disable-unit'; unit: string; because: string }
+  | {
+      type: 'adopt-data-dir';
+      from: string;
+      to: string;
+      owner: string | undefined;
+      /** The old daemon's configuration, renamed in place: kept for a person, out of the new daemon's way. */
+      setAside: { file: string; as: string } | undefined;
+    }
   | { type: 'create-data-dir'; path: string; owner: string | undefined }
   | { type: 'write-config'; path: string; content: string; owner: string | undefined; mode: string }
   | { type: 'write-unit'; path: string; content: string }
@@ -127,8 +153,14 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
   }
 
   // 3. Where its data lives. Never touched when it is already there: the
-  //    directory may hold hundreds of gigabytes of chain.
-  if (spec.dataDir && !observed.dataDirExists) {
+  //    directory may hold hundreds of gigabytes of chain. And never made
+  //    empty beside a chain the stack says the host holds already — that is
+  //    the same chain synced twice.
+  const adoption = planAdoption(spec, observed);
+  actions.push(...adoption.actions);
+  refusals.push(...adoption.refusals);
+  const dataRefused = adoption.refusals.length > 0;
+  if (spec.dataDir && !observed.dataDirExists && !adoption.adopts && !dataRefused) {
     actions.push({ type: 'create-data-dir', path: spec.dataDir, owner: spec.user });
   }
 
@@ -184,8 +216,9 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
   // 6. Its state — not with a template unfilled. The comment above promises
   //    a placeholder stops everything, and this still enabled and started a
   //    unit systemd already knew: a service brought up on whatever config was
-  //    lying on the disk, or none, because its credential was missing.
-  if (spec.systemdUnit && !hasUnfilled) {
+  //    lying on the disk, or none, because its credential was missing. Nor
+  //    with its data refused: started, it would sync from nothing.
+  if (spec.systemdUnit && !hasUnfilled && !dataRefused) {
     if (!observed.unitKnown && !unitChanged) {
       refusals.push(
         `systemd does not know a unit called \`${spec.systemdUnit}\`, and this declaration provides no \`unitTemplate\` — nothing here can create it.`,
@@ -214,6 +247,82 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
 /** True when the host already matches the declaration. */
 export function isSettled(plan: BareMetalPlan): boolean {
   return plan.actions.length === 0 && plan.refusals.length === 0;
+}
+
+/** What the old daemon's configuration is renamed to when its directory is taken over. */
+export const SET_ASIDE_SUFFIX = '.before-omnitron';
+
+/**
+ * Taking over a chain the host already holds (`IBareMetalAdoption`).
+ *
+ * The unit that ran it is disabled first, so a reboot never starts it on a
+ * directory that has gone; the directory is renamed to `dataDir`; the old
+ * daemon's config file is set aside, because Bitcoin Core refuses to start on
+ * a data directory holding a `bitcoin.conf` that `-conf` makes it ignore
+ * (measured on 31.0).
+ *
+ * Refused, and the host left as it is, while that unit runs (a chain moved
+ * from under its daemon is a corrupt one), when `dataDir` already holds
+ * something (two chains, and which to keep is a person's call), across
+ * filesystems (the rename becomes a copy of the whole chain), and when
+ * `replaces` names a unit systemd does not know (the real one would stay
+ * enabled). With nothing at `from` and no `dataDir` either it is refused as
+ * well: the stack declared a chain to keep, and syncing one from nothing is
+ * another decision.
+ */
+function planAdoption(
+  spec: BareMetalSpec,
+  observed: BareMetalObservation,
+): { actions: BareMetalAction[]; refusals: string[]; adopts: boolean } {
+  const adopt = spec.adopt;
+  const seen = observed.adoption;
+  const none = { actions: [], refusals: [], adopts: false };
+  if (!adopt || !spec.dataDir || !seen || adopt.from === spec.dataDir) return none;
+  const refused = (why: string) => ({ actions: [], refusals: [why], adopts: false });
+
+  if (!seen.sourceHeld) {
+    // Taken over already — or never there.
+    return observed.dataDirExists
+      ? none
+      : refused(
+          `there is no chain at ${adopt.from} to take over, and no ${spec.dataDir} — ` +
+            `syncing ${spec.name} from nothing is not what this stack declares; drop \`adopt\` to do that.`,
+        );
+  }
+  if (adopt.replaces && seen.replaced && !seen.replaced.known) {
+    return refused(
+      `systemd knows no unit \`${adopt.replaces}\` — \`replaces\` names the unit that runs the chain at ${adopt.from}, ` +
+        'and the real one would be left enabled.',
+    );
+  }
+  if (seen.replaced?.active) {
+    return refused(
+      `${adopt.replaces} is running the chain at ${adopt.from} — stop it first: ` +
+        'a chain moved from under its daemon is a corrupt one.',
+    );
+  }
+  if (seen.targetHeld) {
+    return refused(`${adopt.from} and ${spec.dataDir} both hold data — which to keep is not a deployment's decision.`);
+  }
+  if (!seen.sameFilesystem) {
+    return refused(
+      `${adopt.from} is not on ${spec.dataDir}'s filesystem — taking it over would copy the whole chain, not rename it.`,
+    );
+  }
+
+  const actions: BareMetalAction[] = [];
+  if (adopt.replaces && seen.replaced?.enabled) {
+    actions.push({ type: 'disable-unit', unit: adopt.replaces, because: `it ran the chain at ${adopt.from}` });
+  }
+  const config = spec.configFile?.slice(spec.configFile.lastIndexOf('/') + 1);
+  actions.push({
+    type: 'adopt-data-dir',
+    from: adopt.from,
+    to: spec.dataDir,
+    owner: spec.user,
+    setAside: seen.configBeside && config ? { file: config, as: `${config}${SET_ASIDE_SUFFIX}` } : undefined,
+  });
+  return { actions, refusals: [], adopts: true };
 }
 
 function withMarker(content: string): string {
@@ -336,6 +445,9 @@ export function selectBareMetal(
   if (merged.dataDir) spec.dataDir = merged.dataDir;
   if (merged.user) spec.user = merged.user;
   if (merged.validateCommand) spec.validateCommand = merged.validateCommand;
+  // A chain to take over is the node's own history: the stack's word only.
+  const adopt = override?.bareMetal?.adopt;
+  if (adopt) spec.adopt = { from: adopt.from, replaces: adopt.replaces };
 
   // Ports and credentials as this stack runs the service: the declaration's
   // only for the network the declaration names.

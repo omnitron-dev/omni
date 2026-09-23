@@ -420,9 +420,11 @@ export interface IDockerServiceConfig {
 
   /**
    * Variants keyed by networkMode. When IServiceRequirement.networkMode
-   * matches a key, the variant is deep-merged over the base config.
+   * matches a key, the variant is deep-merged over the base config. Its
+   * `ports` are the ones the service listens on in that network, over
+   * `IServiceRequirement.ports` (`bindService`).
    */
-  variants?: Record<string, Partial<Omit<IDockerServiceConfig, 'variants'>>>;
+  variants?: Record<string, Partial<Omit<IDockerServiceConfig, 'variants'>> & { ports?: Record<string, number> }>;
 }
 
 export interface IVolumeMount {
@@ -488,8 +490,12 @@ export interface IBareMetalServiceConfig {
   /** Where the unit goes. Default: `/etc/systemd/system/${systemdUnit}.service`. */
   unitFile?: string;
 
-  /** Variants keyed by networkMode. */
-  variants?: Record<string, Partial<Omit<IBareMetalServiceConfig, 'variants'>>>;
+  /**
+   * Variants keyed by networkMode. A variant's `ports` are the ones the
+   * service listens on in that network, over `IServiceRequirement.ports`
+   * (`bindService`).
+   */
+  variants?: Record<string, Partial<Omit<IBareMetalServiceConfig, 'variants'>> & { ports?: Record<string, number> }>;
 }
 
 /**

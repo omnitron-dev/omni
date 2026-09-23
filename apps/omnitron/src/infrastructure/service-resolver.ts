@@ -284,7 +284,8 @@ export function resolveServiceRequirement(
   // A container only for a service this stack runs as one — not one it
   // disables, reaches elsewhere, or runs on the node as a system service
   // (`bindService`).
-  if (bindService(requirement, override).provisioning !== 'docker') return null;
+  const binding = bindService(requirement, override);
+  if (binding.provisioning !== 'docker') return null;
 
   const baseDocker = requirement.docker;
   if (!baseDocker) return null;
@@ -306,8 +307,9 @@ export function resolveServiceRequirement(
   // Resolve image
   const image = docker.image ?? docker.build?.tag ?? `${serviceName}:latest`;
 
-  // Map ports: requirement.ports defines container ports, docker.portMappings overrides host ports
-  const ports = Object.entries(requirement.ports).map(([name, containerPort]) => ({
+  // The ports the service listens on in this stack's network are the
+  // container's (`bindService`); `docker.portMappings` says where each is published.
+  const ports = Object.entries(binding.ports).map(([name, containerPort]) => ({
     host: docker.portMappings?.[name] ?? containerPort,
     container: containerPort,
   }));
@@ -327,7 +329,7 @@ export function resolveServiceRequirement(
   });
 
   // Convert IServiceHealthCheck → ContainerHealthCheck
-  const healthCheck = docker.healthCheck ?? convertHealthCheck(requirement.healthCheck, requirement.ports);
+  const healthCheck = docker.healthCheck ?? convertHealthCheck(requirement.healthCheck, binding.ports);
 
   return applyManagedDefaults({
     name: containerName(serviceName),

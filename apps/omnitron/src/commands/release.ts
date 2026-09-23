@@ -28,7 +28,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-clien
 import { describeAbsence } from './daemon-required.js';
 import { emitError, emitJson } from './output.js';
 import { runReleaseBuild, type ReleaseBuildOptions } from '../release/build-run.js';
-import type { GateOutcome, ReleaseArtifact, ReleaseManifest } from '../release/manifest.js';
+import type { ReleaseArtifact, ReleaseManifest } from '../release/manifest.js';
 import {
   listReleases,
   projectOfId,
@@ -37,9 +37,17 @@ import {
   readReleaseManifest,
   releasesRoot,
   type ReleaseDetail,
-  type ReleaseSummary,
 } from '../release/store.js';
 import type { IOmnitronAuditService, IOmnitronReleaseService, ReleaseDeploymentDto } from '../shared/dto/services.js';
+import {
+  deploymentsAnswer,
+  noGateRan,
+  pruneBlindness,
+  readGates,
+  stacksByRelease,
+  unnamedStacks,
+  type DeploymentsAnswer,
+} from '../shared/release-reading.js';
 
 export type { ReleaseBuildOptions };
 
@@ -72,10 +80,6 @@ function size(bytes: number): string {
  * release». A prune that took either for an empty answer would delete the
  * release a stack is running.
  */
-type DeploymentsAnswer =
-  | { readonly known: true; readonly deployments: readonly ReleaseDeploymentDto[] }
-  | { readonly known: false; readonly why: string };
-
 async function readDeployments(): Promise<DeploymentsAnswer> {
   const client = createDaemonClient();
   try {
@@ -92,65 +96,15 @@ async function readDeployments(): Promise<DeploymentsAnswer> {
       trail = false;
     }
     if (!trail) {
-      return { known: false, why: 'the daemon has no audit trail, and its `stack.start` rows are what say which release a stack runs' };
+      return deploymentsAnswer(false, []);
     }
     const releases = await client.service<IOmnitronReleaseService>('OmnitronRelease');
-    return { known: true, deployments: (await releases.deployments({ limit: DEPLOYMENT_ROWS })) ?? [] };
+    return deploymentsAnswer(true, (await releases.deployments({ limit: DEPLOYMENT_ROWS })) ?? []);
   } catch (err) {
     return { known: false, why: `the daemon could not say which release a stack runs: ${(err as Error)?.message ?? String(err)}` };
   } finally {
     await client.disconnect();
   }
-}
-
-/** Release id → every stack whose last start took it. */
-function stacksByRelease(deployments: readonly ReleaseDeploymentDto[]): Map<string, ReleaseDeploymentDto[]> {
-  const out = new Map<string, ReleaseDeploymentDto[]>();
-  for (const d of deployments) {
-    if (!d.release) continue;
-    out.set(d.release, [...(out.get(d.release) ?? []), d]);
-  }
-  return out;
-}
-
-/**
- * Stacks whose last start recorded a release and not its name (rows from
- * before the trail flattened the field). No row on this disk can be marked
- * as theirs, and none can be protected for them.
- */
-function unnamedStacks(deployments: readonly ReleaseDeploymentDto[]): string[] {
-  return deployments.filter((d) => d.releaseUnnamed).map((d) => `${d.project}/${d.stack}`);
-}
-
-// ---------------------------------------------------------------------------
-// Gates, in words where a count would mislead
-// ---------------------------------------------------------------------------
-
-/**
- * The single outcome a build records when it ran no gate at all — `gates:
- * not-run`, with the reason — or null.
- */
-function noGateRan(gates: readonly GateOutcome[]): GateOutcome | null {
-  const only = gates.length === 1 ? gates[0]! : null;
-  return only && only.name === 'gates' && only.status === 'not-run' ? only : null;
-}
-
-/**
- * The Gates column.
- *
- * A build that ran no gate records one outcome, and as `passed/total` that
- * is «0/1» — which is also what one failed gate reads as. Measured on this
- * master: daos-202609221438, built with `--skip-gates`, sat in the list as
- * «0/1» with nothing to tell it from a red build. The builder records the
- * flag only as that outcome's reason, `skipped by --skip-gates`, so the
- * reason is what is read; any other — no gates script at the commit, a
- * script that printed nothing — is «not run», which is true of all of them.
- */
-function gatesCell(r: ReleaseSummary): string {
-  if (!r.complete) return 'no manifest';
-  const none = noGateRan(r.gateList);
-  if (none) return /--skip-gates/.test(none.detail ?? '') ? 'skipped' : 'not run';
-  return `${r.gates.passed}/${r.gates.total}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +193,7 @@ export async function releaseListCommand(): Promise<void> {
     built: r.builtAt ? r.builtAt.slice(0, 16).replace('T', ' ') : '—',
     // A build that failed leaves its logs and no manifest. Listed as such
     // rather than hidden: it is taking up the disk either way.
-    gates: gatesCell(r),
+    gates: readGates(r).text,
     artifacts: r.complete ? String(r.artifacts.count) : '—',
     statics: r.statics ? r.statics.stack : '—',
     // `?` when the daemon could not be asked, said under the table.
@@ -557,12 +511,7 @@ export async function releasePruneCommand(
     const keep = options.keep ?? 5;
     const answer = await readDeployments();
     const byRelease = answer.known ? stacksByRelease(answer.deployments) : new Map<string, ReleaseDeploymentDto[]>();
-    const unnamed = answer.known ? unnamedStacks(answer.deployments) : [];
-    const blind = !answer.known
-      ? answer.why
-      : unnamed.length > 0
-        ? `${unnamed.join(', ')} last took a release whose name the trail did not record`
-        : null;
+    const blind = pruneBlindness(answer);
     const refused = options.yes === true && blind !== null && options.allowUnprotected !== true;
     const apply = options.yes === true && !refused;
     const result = pruneReleases({ keep, apply, protect: [...byRelease.keys()] });

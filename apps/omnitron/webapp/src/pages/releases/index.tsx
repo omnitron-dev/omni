@@ -25,6 +25,7 @@ import Typography from '@mui/material/Typography';
 import { Alert, AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 
 import type { BuildRecord, ReleaseDeploymentDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import { pruneBlindness, stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
@@ -43,7 +44,8 @@ interface PageData {
   root: string;
   builds: BuildRecord[];
   preflight: ReleasePreflightView | null;
-  deployments: ReleaseDeploymentDto[];
+  /** Which release each stack runs — or why that cannot be said, which is not «none». */
+  deployments: DeploymentsAnswer;
   /** What could not be read, when the rest could. */
   partial: string | null;
 }
@@ -73,7 +75,10 @@ async function loadPage(): Promise<PageData> {
     root: list.value.root,
     builds: builds.status === 'fulfilled' ? builds.value : [],
     preflight: preflight.status === 'fulfilled' ? preflight.value : null,
-    deployments: deployments.status === 'fulfilled' ? deployments.value : [],
+    deployments:
+      deployments.status === 'fulfilled'
+        ? deployments.value
+        : { known: false, why: `the daemon could not say which release a stack runs: ${(deployments.reason as Error)?.message ?? 'unavailable'}` },
     partial: failures.length > 0 ? failures.join(' · ') : null,
   };
 }
@@ -118,16 +123,10 @@ export default function ReleasesPage() {
   );
 
   /** Which stacks last deployed each release — «test», «prod» on the row. */
-  const deployedBy = useMemo(() => {
-    const map = new Map<string, ReleaseDeploymentDto[]>();
-    for (const d of data?.deployments ?? []) {
-      if (!d.release) continue;
-      const list = map.get(d.release) ?? [];
-      list.push(d);
-      map.set(d.release, list);
-    }
-    return map;
-  }, [data?.deployments]);
+  const deployedBy = useMemo(
+    () => (data?.deployments.known ? stacksByRelease(data.deployments.deployments) : new Map<string, ReleaseDeploymentDto[]>()),
+    [data?.deployments],
+  );
 
   const handleStop = useCallback(
     async (buildId: string) => {
@@ -209,7 +208,7 @@ export default function ReleasesPage() {
       render: (r) => (
         <Stack spacing={0.5}>
           <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
-            <GateCount gates={r.gates} />
+            <GateCount release={r} />
             {r.machine && ranLoaded(r.machine) && (
               <Tooltip
                 title={`The machine was carrying more than its cores while the gates ran — ${loadWords(r.machine)}. A red gate here is evidence about the machine before it is evidence about the code.`}
@@ -338,6 +337,13 @@ export default function ReleasesPage() {
         </Alert>
       )}
 
+      {data && !data.deployments.known && (
+        <Alert severity="warning" variant="outlined">
+          Which release each stack runs is unknown — {data.deployments.why}. No release below is marked as deployed
+          for that reason, not because none is, and pruning is refused until it can be told.
+        </Alert>
+      )}
+
       {builds.length > 0 && (
         <Stack spacing={1.5}>
           {builds.slice(0, 3).map((record) => (
@@ -407,6 +413,7 @@ export default function ReleasesPage() {
         open={pruneOpen}
         onClose={() => setPruneOpen(false)}
         protect={[...deployedBy.keys()]}
+        blind={data ? pruneBlindness(data.deployments) : 'the release list has not been read yet'}
         onPruned={() => void refresh()}
       />
 

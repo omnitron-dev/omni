@@ -58,6 +58,9 @@ export default defineConfig({
       // The alert grammar, shared so the form can reject an expression the
       // evaluator cannot read — before the rule exists.
       '@omnitron-dev/omnitron/alerts': path.resolve(here, '../src/shared/alert-expression.ts'),
+      // How a release reads — its gates and which stacks run it — in the
+      // same words as the CLI.
+      '@omnitron-dev/omnitron/release-reading': path.resolve(here, '../src/shared/release-reading.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),
     },

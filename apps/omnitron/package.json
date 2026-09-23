@@ -26,6 +26,10 @@
     "./alerts": {
       "types": "./src/shared/alert-expression.ts",
       "default": "./dist/shared/alert-expression.js"
+    },
+    "./release-reading": {
+      "types": "./src/shared/release-reading.ts",
+      "default": "./dist/shared/release-reading.js"
     }
   },
   "scripts": {

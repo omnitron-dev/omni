@@ -9,6 +9,12 @@
  * Releases a stack has deployed are protected whatever their age. The daemon
  * does not know which release is running — the audit rows do — so the page
  * that read them passes them down, and the prune keeps them.
+ *
+ * When they could not be read — no audit trail, or a stack whose last start
+ * recorded a release and not its name — there is nothing to protect with,
+ * and this dialog does not remove anything: it would have been an empty
+ * list, which protects nothing. The CLI refuses the same way, and names the
+ * flag that removes without knowing.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,11 +39,14 @@ export default function PruneReleasesDialog({
   open,
   onClose,
   protect,
+  blind,
   onPruned,
 }: {
   open: boolean;
   onClose: () => void;
   protect: string[];
+  /** Why which releases the stacks run cannot be told, or `null` when it can. */
+  blind: string | null;
   onPruned: () => void;
 }) {
   const [keep, setKeep] = useState(5);
@@ -95,6 +104,13 @@ export default function PruneReleasesDialog({
             disabled={busy}
             sx={{ width: 180 }}
           />
+
+          {blind && (
+            <Alert severity="warning">
+              Which of these a stack is running cannot be told — {blind}. Nothing will be removed from here until it
+              can; <code>omnitron release prune --yes --allow-unprotected</code> removes them without knowing.
+            </Alert>
+          )}
 
           {protect.length > 0 && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -161,7 +177,7 @@ export default function PruneReleasesDialog({
             variant="contained"
             color="error"
             size="small"
-            disabled={busy || !plan || plan.doomed.length === 0}
+            disabled={busy || !plan || plan.doomed.length === 0 || blind !== null}
             onClick={apply}
           >
             Remove {plan?.doomed.length ?? 0}

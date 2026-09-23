@@ -36,7 +36,7 @@ import { releaseApi } from 'src/netron/release-wire';
 import { isRpcTimeout, useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
 
-import { CommitPair, GateStrip, gateSentence } from './release-bits';
+import { CommitPair, GateCount, GateStrip, gateSentence } from './release-bits';
 
 export interface DeployReleaseDialogProps {
   open: boolean;
@@ -188,15 +188,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                       {r.id}
                     </Typography>
                     <Box sx={{ flex: 1 }} />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        fontFamily: 'monospace',
-                        color: r.gates.failed > 0 ? 'error.main' : r.gates.notRun > 0 ? 'warning.main' : 'success.main',
-                      }}
-                    >
-                      {r.gates.passed}/{r.gates.total}
-                    </Typography>
+                    <GateCount release={r} variant="caption" />
                     {r.statics && (
                       <Chip label={r.statics.stack} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                     )}

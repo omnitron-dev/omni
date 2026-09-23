@@ -81,9 +81,37 @@ export function bindService(requirement: Requirement, override?: IServiceOverrid
     provisioning,
     networkMode,
     declaredNetwork,
-    ports: { ...(requirement.ports ?? {}), ...(override?.ports ?? {}) },
+    // The declaration's, the network's, the stack's.
+    ports: {
+      ...(requirement.ports ?? {}),
+      ...networkPorts(requirement, provisioning, networkMode),
+      ...(override?.ports ?? {}),
+    },
     secrets: { ...own, ...(override?.secrets ?? {}) },
   };
+}
+
+/**
+ * The ports a network's variant of the provisioning block names —
+ * `docker.variants.mainnet.ports`, `bareMetal.variants.mainnet.ports`.
+ *
+ * paysys declares Bitcoin's per network (testnet 18332/18333, mainnet
+ * 8332/8333) and monerod's for mainnet (18081/18080) in its docker variants,
+ * and nothing read them (2026-09-23): a stack running Bitcoin on mainnet in
+ * a container would have published, addressed and health-checked regtest's
+ * 18443 while the daemon listened on 8332, and a stack running it on the
+ * node had to repeat 8332 in its own override.
+ */
+function networkPorts(
+  requirement: Requirement,
+  provisioning: Provisioning,
+  networkMode: string | undefined
+): Record<string, number> {
+  const block =
+    provisioning === 'docker' ? requirement.docker : provisioning === 'bareMetal' ? requirement.bareMetal : undefined;
+  if (!networkMode || !block || typeof block !== 'object') return {};
+  const variants = (block as { variants?: Record<string, { ports?: Record<string, number> } | undefined> }).variants;
+  return { ...(variants?.[networkMode]?.ports ?? {}) };
 }
 
 /**

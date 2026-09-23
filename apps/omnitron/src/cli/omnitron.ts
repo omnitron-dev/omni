@@ -714,11 +714,11 @@ program
 
 // Top-level `tor` command — quick access to onion addresses.
 program
-  .command('tor')
-  .description('Show Tor hidden service onion addresses')
-  .action(async () => {
+  .command('tor [project] [stack]')
+  .description('Show Tor hidden service onion addresses (every tor container on this machine, or one stack\'s)')
+  .action(async (project?: string, stack?: string) => {
     const { torCommand } = await import('../commands/tor.js');
-    await torCommand();
+    await torCommand(project, stack);
   });
 
 const infra = program.command('infra').description('Manage infrastructure containers (PostgreSQL, Redis, MinIO, etc.)');
@@ -743,10 +743,11 @@ infra
 infra
   .command('status')
   .aliases(['ps'])
-  .description('Show infrastructure container status')
-  .action(async () => {
+  .description('Show infrastructure container status (this machine, or one stack\'s wherever it runs)')
+  .option('--stack <project/stack>', 'One stack\'s containers; a remote stack is asked of its node')
+  .action(async (opts: { stack?: string }) => {
     const { infraStatusCommand } = await import('../commands/infra.js');
-    await infraStatusCommand();
+    await infraStatusCommand(opts.stack ? { stack: opts.stack } : {});
   });
 
 infra
@@ -754,6 +755,7 @@ infra
   .description('View infrastructure service logs')
   .option('-f, --follow', 'Follow log output')
   .option('-n, --lines <N>', 'Number of lines', '50')
+  .option('--stack <project/stack>', 'Only this stack\'s containers')
   .action(async (serviceName, opts) => {
     const { infraLogsCommand } = await import('../commands/infra.js');
     await infraLogsCommand(serviceName, opts);

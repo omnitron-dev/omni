@@ -12,7 +12,6 @@ import { Link as RouterLink } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   Panel,
   useNodesState,
@@ -471,17 +470,6 @@ export default function TopologyPage() {
                 gap={24}
                 size={1}
                 color="rgba(255,255,255,0.04)"
-              />
-
-              {/* Controls */}
-              <Controls
-                position="bottom-left"
-                showInteractive={false}
-                style={{
-                  background: 'rgba(15, 15, 25, 0.9)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 8,
-                }}
               />
 
               {/* MiniMap */}

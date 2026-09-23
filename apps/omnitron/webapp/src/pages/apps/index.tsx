@@ -14,11 +14,11 @@ import { daemon, project as projectRpc } from 'src/netron/client';
 import { formatUptime, formatMemoryMb } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { useActiveProject } from 'src/stores/project.store';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { deploymentsIn, detailHref, isLocal } from 'src/utils/app-address';
 
-import type { ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // Apps List Page
@@ -26,41 +26,19 @@ import type { ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
 export default function AppsListPage() {
   const navigate = useNavigate();
-  const [allApps, setAllApps] = useState<ProcessInfoDto[]>([]);
+  const [allApps, setAllApps] = useState<IProjectAppStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const activeProject = useActiveProject();
-  const { filterApps, displayName } = useStackContext();
+  // The route is behind ProjectRoute: there is always a project here.
+  const { activeProject, activeStack } = useStackContext();
 
   const fetchApps = useCallback(async () => {
+    if (!activeProject) return;
     try {
-      if (activeProject) {
-        // In project workspace: get configured apps (includes stopped)
-        const stackApps = await projectRpc.getProjectApps({ project: activeProject });
-        // Map IStackAppStatus → ProcessInfoDto shape. Every field below comes
-        // from the orchestrator; none may be defaulted to a placeholder, or the
-        // table silently reports a healthy zero for a value it never asked for.
-        const mapped: ProcessInfoDto[] = stackApps.map((a) => ({
-          name: a.name,
-          pid: a.pid,
-          status: a.status,
-          cpu: a.cpu,
-          memory: a.memory,
-          uptime: a.uptime,
-          restarts: a.restarts,
-          instances: a.instances,
-          port: a.port,
-          mode: 'bootstrap' as const,
-          critical: false,
-        }));
-        setAllApps(mapped);
-      } else {
-        // Omnitron workspace: show running daemon processes
-        const list = await daemon.list();
-        setAllApps(list);
-      }
+      // Every deployment, stopped ones included, each with its stack.
+      setAllApps(await projectRpc.getProjectApps({ project: activeProject }));
       setError(null);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to fetch applications');
@@ -69,8 +47,10 @@ export default function AppsListPage() {
     }
   }, [activeProject]);
 
-  // In project mode, no namespace filtering needed — getProjectApps returns clean names
-  const apps = activeProject ? allApps : filterApps(allApps);
+  // One row per deployment. With a stack selected, that stack's; with all of
+  // them, the same app appears once per stack and the Stack column tells the
+  // rows apart.
+  const apps = deploymentsIn(allApps, activeStack);
 
   // Subscribe to the realtime WS — same pattern as Dashboard. The
   // store's refcount keeps the shared socket alive across page
@@ -144,27 +124,51 @@ export default function AppsListPage() {
 
   // Columns are data, so they live outside the JSX. `render` gets the whole
   // row, which is what every cell here needs.
-  const columns: TableColumn<ProcessInfoDto>[] = [
+  const columns: TableColumn<IProjectAppStatus>[] = [
     {
       id: 'name',
       label: 'Name',
-      render: (app) => (
-        // A real link, not just a clickable row. The row's onClick is a
-        // convenience for a pointer; it is not reachable by keyboard and
-        // announces nothing, so it was the only way into an app's detail page
-        // and a keyboard user had none.
-        <Link
-          component={RouterLink}
-          to={`/apps/${app.name}`}
-          variant="body2"
-          underline="hover"
-          sx={{ fontWeight: 600, color: 'text.primary' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {app.name}
-        </Link>
-      ),
+      render: (app) =>
+        isLocal(app) ? (
+          // A real link, not just a clickable row. The row's onClick is a
+          // convenience for a pointer; it is not reachable by keyboard and
+          // announces nothing, so it was the only way into an app's detail
+          // page and a keyboard user had none.
+          <Link
+            component={RouterLink}
+            to={detailHref(app)}
+            variant="body2"
+            underline="hover"
+            sx={{ fontWeight: 600, color: 'text.primary' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {app.name}
+          </Link>
+        ) : (
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {app.name}
+          </Typography>
+        ),
     },
+    ...(activeStack
+      ? []
+      : [
+          {
+            id: 'stack',
+            label: 'Stack',
+            render: (app: IProjectAppStatus) => (
+              <Link
+                component={RouterLink}
+                to={`/stacks/${encodeURIComponent(app.stack)}`}
+                variant="body2"
+                underline="hover"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {isLocal(app) ? app.stack : `${app.stack} · ${app.stackType}`}
+              </Link>
+            ),
+          },
+        ]),
     {
       id: 'status',
       label: 'Status',
@@ -205,50 +209,59 @@ export default function AppsListPage() {
       id: 'actions',
       label: 'Actions',
       align: 'center',
-      render: (app) => (
-        <Stack
-          direction="row"
-          spacing={0.5}
-          sx={{ justifyContent: 'center' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
-            <Tooltip title="Start">
-              <IconButton
-                size="small"
-                color="success"
-                disabled={actionLoading === app.name}
-                onClick={() => handleStart(app.name)}
-              >
-                <PlayIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <>
-              <Tooltip title="Restart">
+      render: (app) =>
+        !isLocal(app) ? (
+          <Tooltip title="Runs on a node — started and stopped with its stack">
+            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+              on node
+            </Typography>
+          </Tooltip>
+        ) : (
+          // The handle, not the bare name: two local stacks running `main`
+          // make `main` ambiguous, and the daemon refuses it.
+          <Stack
+            direction="row"
+            spacing={0.5}
+            sx={{ justifyContent: 'center' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
+              <Tooltip title="Start">
                 <IconButton
                   size="small"
-                  color="warning"
-                  disabled={actionLoading === app.name}
-                  onClick={() => handleRestart(app.name)}
+                  color="success"
+                  disabled={actionLoading === app.handleKey}
+                  onClick={() => handleStart(app.handleKey)}
                 >
-                  <RestartIcon sx={{ fontSize: 18 }} />
+                  <PlayIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Stop">
-                <IconButton
-                  size="small"
-                  color="error"
-                  disabled={actionLoading === app.name}
-                  onClick={() => handleStop(app.name)}
-                >
-                  <StopIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
-        </Stack>
-      ),
+            ) : (
+              <>
+                <Tooltip title="Restart">
+                  <IconButton
+                    size="small"
+                    color="warning"
+                    disabled={actionLoading === app.handleKey}
+                    onClick={() => handleRestart(app.handleKey)}
+                  >
+                    <RestartIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Stop">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    disabled={actionLoading === app.handleKey}
+                    onClick={() => handleStop(app.handleKey)}
+                  >
+                    <StopIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Stack>
+        ),
     },
   ];
 
@@ -273,13 +286,13 @@ export default function AppsListPage() {
         row styling, the empty state and the loading placeholders are the
         design system's, so this page describes its COLUMNS and nothing else.
       */}
-      <Table<ProcessInfoDto>
+      <Table<IProjectAppStatus>
         columns={columns}
         data={apps}
-        rowKey={(app) => app.name}
+        rowKey={(app) => `${app.stack}/${app.name}`}
         loading={loading}
         loadingRows={3}
-        onRowClick={(app) => navigate(`/apps/${app.name}`)}
+        onRowClick={(app) => navigate(isLocal(app) ? detailHref(app) : `/stacks/${encodeURIComponent(app.stack)}`)}
         emptyContent={
           <Stack spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>

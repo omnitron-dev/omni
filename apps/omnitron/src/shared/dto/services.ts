@@ -245,6 +245,7 @@ import type {
   StackRuntime,
   StackStatus,
   IStackAppStatus,
+  IProjectAppStatus,
   IStackInfraStatus,
   IProjectRequirements,
 } from './project.js';
@@ -257,6 +258,7 @@ export type {
   StackRuntime,
   StackStatus,
   IStackAppStatus,
+  IProjectAppStatus,
   IStackInfraStatus,
   IProjectRequirements,
 };
@@ -297,7 +299,7 @@ export interface IProjectRpcService {
   removeProject(data: { name: string }): Promise<{ success: boolean }>;
 
   // --- Apps (Viewer) ---
-  getProjectApps(data: { project: string }): Promise<IStackAppStatus[]>;
+  getProjectApps(data: { project: string }): Promise<IProjectAppStatus[]>;
 
   // --- Stacks (Viewer) ---
   listStacks(data: { project: string }): Promise<IStackInfo[]>;

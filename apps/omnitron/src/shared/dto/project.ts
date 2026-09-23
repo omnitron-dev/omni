@@ -141,6 +141,17 @@ export interface IStackAppStatus {
   port: number | null;
 }
 
+/**
+ * One deployment of an app, as `getProjectApps` lists them: an app that two
+ * stacks run appears twice, once with each stack.
+ */
+export interface IProjectAppStatus extends IStackAppStatus {
+  /** The stack this deployment belongs to. */
+  stack: string;
+  /** Where that stack runs — only a `local` stack's apps are this daemon's own. */
+  stackType: IStackInfo['type'];
+}
+
 export interface IStackInfraStatus {
   /** Whether infrastructure is provisioned and healthy */
   ready: boolean;

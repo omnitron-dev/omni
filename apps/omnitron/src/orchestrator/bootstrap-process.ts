@@ -21,7 +21,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
-import type { IAppDefinition, IProcessEntry } from '../config/types.js';
+import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
 import { pathToFileURL } from 'node:url';
 import { queryTopologyService } from './topology-query.js';
 
@@ -536,18 +536,25 @@ class BootstrapProcess {
   }
 
   /**
-   * Health check — delegates to definition hook if present.
+   * Health check — the app's own hook, handed the running Application so it
+   * has something to ask. Without an Application there is nothing to be
+   * healthy: the hook is not called, and the answer says why.
    */
   @HealthCheck()
-  async checkHealth(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy' }> {
-    const hooks = this.entry?.hooks ?? this.definition?.hooks;
-    if (hooks?.onHealthCheck) {
-      return hooks.onHealthCheck();
+  async checkHealth(): Promise<AppHealthAnswer> {
+    if (!this.app) {
+      return {
+        status: 'unhealthy',
+        checks: [{ name: 'application', status: 'fail', message: 'the application has not started in this process' }],
+      };
     }
 
-    return {
-      status: this.app ? 'healthy' : 'unhealthy',
-    };
+    const hooks = this.entry?.hooks ?? this.definition?.hooks;
+    if (hooks?.onHealthCheck) {
+      return hooks.onHealthCheck(this.app);
+    }
+
+    return { status: 'healthy' };
   }
 
   /**

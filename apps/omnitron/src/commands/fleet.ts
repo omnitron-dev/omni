@@ -157,6 +157,13 @@ export async function fleetHealthCommand(): Promise<void> {
       `${statusIcon} ${server.alias} (${server.host}:${server.port})${answer.via === 'mesh' ? ' (mesh)' : ''} — ${health.overall}`,
     );
 
+    // A daemon on a build older than the split answers its own indicators
+    // under `apps` and has no `daemon` section; its lines print as before.
+    for (const indicator of health.daemon?.indicators ?? []) {
+      if (indicator.status === 'pass') continue;
+      const mark = indicator.status === 'warn' ? prism.yellow('warn') : prism.red('fail');
+      log.info(`  ${mark} daemon ${indicator.name}${indicator.message ? `: ${indicator.message}` : ''}`);
+    }
     for (const [appName, appHealth] of Object.entries(health.apps)) {
       const appStatus =
         appHealth.status === 'healthy'
@@ -165,6 +172,10 @@ export async function fleetHealthCommand(): Promise<void> {
             ? prism.yellow('warn')
             : prism.red('fail');
       log.info(`  ${appStatus} ${appName}: ${appHealth.status}`);
+      for (const check of appHealth.checks) {
+        if (check.status === 'pass') continue;
+        log.info(`      ${check.status === 'warn' ? prism.yellow('!') : prism.red('x')} ${check.name}${check.message ? ` — ${check.message}` : ''}`);
+      }
     }
   }
   await mesh.close();

@@ -20,7 +20,7 @@ export async function healthCommand(appName?: string): Promise<void> {
   try {
     const health = await client.getHealth(appName ? { name: appName } : {});
 
-    if (emitJson({ overall: health.overall, apps: health.apps })) {
+    if (emitJson({ overall: health.overall, ...(health.daemon ? { daemon: health.daemon } : {}), apps: health.apps })) {
       await client.disconnect();
       return;
     }
@@ -38,6 +38,19 @@ export async function healthCommand(appName?: string): Promise<void> {
       `Overall:  ${overallColor(`[${overallIcon}] ${health.overall.toUpperCase()}`)}`,
       `Apps:     ${prism.green(String(healthyCount))} healthy${degradedCount ? `, ${prism.yellow(String(degradedCount))} degraded` : ''}${unhealthyCount ? `, ${prism.red(String(unhealthyCount))} unhealthy` : ''}`,
     ];
+
+    // The daemon's own indicators, under their own heading: they were
+    // printed as apps, and counted as apps in the line above.
+    if (health.daemon) {
+      const daemonColor =
+        health.daemon.status === 'healthy' ? prism.green : health.daemon.status === 'degraded' ? prism.yellow : prism.red;
+      lines.push('', `  ${prism.bold('Daemon')} — ${daemonColor(health.daemon.status)}`);
+      for (const indicator of health.daemon.indicators) {
+        const color = indicator.status === 'pass' ? prism.green : indicator.status === 'warn' ? prism.yellow : prism.red;
+        const icon = indicator.status === 'pass' ? '+' : indicator.status === 'warn' ? '!' : 'x';
+        lines.push(`      ${color(icon)} ${indicator.name}${indicator.message ? ` ${prism.dim(`— ${indicator.message}`)}` : ''}`);
+      }
+    }
 
     for (const [name, appHealth] of appEntries) {
       const statusColor =

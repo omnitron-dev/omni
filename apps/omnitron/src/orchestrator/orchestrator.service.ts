@@ -44,6 +44,7 @@ import {
   type ISupervisorChildConfig,
   type IProcessMetrics,
   type IHealthStatus,
+  type IPoolMetrics,
   type IProcessPool,
   type IProcessPoolOptions,
   type ProcessPool,
@@ -109,6 +110,7 @@ import { execFile } from 'node:child_process';
 import { ProcessJanitor } from './process-janitor.js';
 import { addressInUse, holderCommand, parseHolders, explainConflict } from './port-conflict.js';
 import { collectOwnedPids } from './owned-pids.js';
+import { combineProcessHealth, notRunningHealth, poolHealth } from './app-health.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import type { Netron } from '@omnitron-dev/titan/netron';
@@ -1503,21 +1505,40 @@ export class OrchestratorService extends EventEmitter {
     return result;
   }
 
+  /**
+   * Each app's health, asked of every process it runs — its supervisor
+   * children and its worker pools — and combined (`app-health.ts`).
+   *
+   * `name` is resolved like every other per-app question: `main` finds
+   * `daos/dev/main`. It was compared verbatim, so `omnitron health main`
+   * matched nothing and the answer was empty. An unknown name answers `{}`,
+   * and the caller says so.
+   */
   async getHealth(name?: string): Promise<Record<string, IHealthStatus | null>> {
+    const wanted = name === undefined ? undefined : this.resolveAppName(name);
+    if (name !== undefined && wanted === undefined) return {};
+
     const result: Record<string, IHealthStatus | null> = {};
 
     for (const [appName, handle] of this.handles) {
-      if (name && appName !== name) continue;
+      if (wanted && appName !== wanted) continue;
+
+      if (handle.status !== 'online') {
+        result[appName] = notRunningHealth(handle.status);
+        continue;
+      }
 
       if (handle.mode === 'bootstrap' && handle.supervisor) {
-        const childNames = handle.supervisor.getChildNames();
-        if (childNames.length > 0) {
-          const health = await handle.supervisor.getChildHealth(childNames[0]!);
-          handle.lastHealth = health;
-          result[appName] = health;
-        } else {
-          result[appName] = handle.lastHealth;
+        const supervisor = handle.supervisor;
+        const answers: Array<readonly [string, IHealthStatus | null]> = await Promise.all(
+          supervisor.getChildNames().map(async (child) => [child, await supervisor.getChildHealth(child)] as const),
+        );
+        for (const [pool, instance] of handle.topologyPools) {
+          answers.push([pool, poolHealth((instance as unknown as { metrics?: IPoolMetrics }).metrics)] as const);
         }
+        const health = answers.length > 0 ? combineProcessHealth(answers) : handle.lastHealth;
+        handle.lastHealth = health;
+        result[appName] = health;
       } else {
         result[appName] = handle.lastHealth;
       }

@@ -11,6 +11,27 @@ import type { CorsOptions } from '@omnitron-dev/titan/netron';
 // App Definition (per-app declarative config)
 // ============================================================================
 
+/**
+ * What an app says about its own health, through the daemon's channel to it.
+ *
+ * `checks` names what was measured, so a verdict other than `healthy` says
+ * WHAT is wrong; the process manager carries them through unchanged
+ * (`classifyWorkerHealth`), and `omnitron health <app>` prints them.
+ */
+export interface AppHealthAnswer {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  checks?: Array<{ name: string; status: 'pass' | 'warn' | 'fail'; message?: string }>;
+}
+
+/**
+ * The app's readiness hook. It is handed the running Application, so it can
+ * ask the app's own health indicators (database, redis, the services it
+ * cannot serve without) — it was called with no arguments, which left a
+ * hook nothing to ask, and every daos app answered a literal
+ * `{ status: 'healthy' }`.
+ */
+export type AppHealthHook = (app: any) => Promise<AppHealthAnswer>;
+
 export interface IAppDefinition {
   name: string;
   version: string;
@@ -60,7 +81,7 @@ export interface IAppDefinition {
     afterStart?: (app: any) => Promise<void>;
     beforeStop?: (app: any) => Promise<void>;
     afterStop?: () => Promise<void>;
-    onHealthCheck?: () => Promise<{ status: 'healthy' | 'degraded' | 'unhealthy' }>;
+    onHealthCheck?: AppHealthHook;
   };
 
   /** Infrastructure config read from app's config/default.json omnitron section */
@@ -473,7 +494,7 @@ export interface IProcessEntry {
     afterStart?: (app: any) => Promise<void>;
     beforeStop?: (app: any) => Promise<void>;
     afterStop?: () => Promise<void>;
-    onHealthCheck?: () => Promise<{ status: 'healthy' | 'degraded' | 'unhealthy' }>;
+    onHealthCheck?: AppHealthHook;
   };
 
   /** Observability config for this process */
@@ -960,7 +981,21 @@ export interface AggregatedMetricsDto {
 
 export interface AggregatedHealthDto {
   timestamp: number;
+  /** The worst of the daemon's own verdict and every app's. */
   overall: 'healthy' | 'degraded' | 'unhealthy';
+  /**
+   * The daemon's own indicators — memory, docker, apps, event-loop stalls.
+   *
+   * These were returned AS `apps`, one «app» per indicator, and the apps
+   * themselves were never asked: `omnitron health` printed «Apps: 5 healthy»
+   * beside six apps, and `omnitron health main` printed the daemon's memory.
+   * Absent when the question named one app.
+   */
+  daemon?: {
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    indicators: Array<{ name: string; status: 'pass' | 'warn' | 'fail'; message?: string }>;
+  };
+  /** Each managed app, as the app itself answered — every child process, not the first. */
   apps: Record<
     string,
     {

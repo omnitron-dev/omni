@@ -12,6 +12,7 @@ import type { NetronClient } from './netron-client.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { ServiceProxy, IProcessMetrics, IHealthStatus } from './types.js';
 import { classifyWorkerHealth } from './worker-health.js';
+import { readTrafficField } from './worker-traffic.js';
 
 /**
  * Options for the service proxy handler
@@ -359,7 +360,34 @@ export class ServiceProxyHandler<T> {
       const m = result as Partial<IProcessMetrics> | null | undefined;
       const numeric = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
       if (m && numeric(m.cpu) && numeric(m.memory) && numeric(m.requests) && numeric(m.errors)) {
-        return { cpu: m.cpu, memory: m.memory, requests: m.requests, errors: m.errors };
+        // The traffic the process reported travels on. This rebuilt the
+        // answer from four fields and dropped `traffic` and `latency` — so a
+        // process that reported its HTTP traffic (2c671dc9) reached the daemon
+        // as «not reported», one hop after it was measured.
+        const traffic = readTrafficField(m.traffic);
+        return {
+          cpu: m.cpu,
+          memory: m.memory,
+          requests: m.requests,
+          errors: m.errors,
+          ...(traffic
+            ? {
+                traffic,
+                ...(traffic.latency
+                  ? {
+                      latency: {
+                        p50: traffic.latency.p50,
+                        p75: traffic.latency.p75,
+                        p90: traffic.latency.p90,
+                        p95: traffic.latency.p95,
+                        p99: traffic.latency.p99,
+                        mean: traffic.latency.mean,
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
+        };
       }
       // Same event as a failed call, so the same answer: the -1 sentinels the
       // catch branch below documents as "collection failure". Anything else

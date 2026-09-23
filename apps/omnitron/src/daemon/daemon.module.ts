@@ -48,7 +48,6 @@ import {
   FLEET_SELF_NODE_ID_TOKEN,
   SECRETS_PASSPHRASE_TOKEN,
   SECRETS_LEGACY_PATH_TOKEN,
-  INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN,
   INFRA_STATE_ACCESSOR_TOKEN,
 } from '../shared/tokens.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
@@ -417,20 +416,15 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ],
 
-      // Health check service (composable checks for apps + infra).
-      // T-2 part 2 — useClass via @Injectable + @Inject. The infra-
-      // service accessor lambda is wired below as a useValue token
-      // (INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN).
+      // Health check service (apps + the stacks' containers, knocked on).
+      // It reads the containers through the project service; the accessor
+      // it used to take here answered `null` on every call.
       [
         HEALTH_CHECK_SERVICE_TOKEN,
         {
           useClass: HealthCheckService,
           scope: Scope.Singleton,
         },
-      ],
-      [
-        INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN,
-        { useValue: () => null },
       ],
 
       // Kubernetes management (no DB dependency).

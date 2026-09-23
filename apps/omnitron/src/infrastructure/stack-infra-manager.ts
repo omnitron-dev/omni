@@ -266,6 +266,14 @@ export class StackInfrastructureManager {
     return this.instances.get(`${project}/${stack}`) ?? null;
   }
 
+  /** Every stack with infrastructure on this machine. */
+  listInstances(): Array<{ project: string; stack: string; infra: InfrastructureService }> {
+    return [...this.instances.entries()].map(([key, infra]) => {
+      const slash = key.indexOf('/');
+      return { project: key.slice(0, slash), stack: key.slice(slash + 1), infra };
+    });
+  }
+
   /**
    * Get the port allocation for a stack.
    */

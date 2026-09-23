@@ -18,7 +18,6 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import IconButton from '@mui/material/IconButton';
-import LinearProgress from '@mui/material/LinearProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -36,6 +35,7 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
+import { inSync, syncFinding, syncWords } from '@omnitron-dev/omnitron/sync-reading';
 
 const STATUS_COLORS: Record<string, string> = {
   running: '#22c55e',
@@ -319,10 +319,7 @@ export default function StackDetailPage() {
               <Typography variant="caption" sx={{
                 color: "text.secondary"
               }}>
-                {stack.type === 'remote' ? 'SSH' : 'Cluster'} deployment —
-                {stack.nodes.some((n) => n.syncStatus?.pendingItems)
-                  ? ` ${stack.nodes.reduce((sum, n) => sum + (n.syncStatus?.pendingItems ?? 0), 0)} items pending sync`
-                  : ' all synced'}
+                {stack.type === 'remote' ? 'SSH' : 'Cluster'} deployment — {replicationWords(stack.nodes)}
               </Typography>
             </Box>
             {stack.nodes.some((n) => !n.connected) && (
@@ -454,8 +451,26 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   );
 }
 
+/**
+ * The stack's replication in a line. It summed `pendingItems` into «258 items
+ * pending sync» — entries the next 15-second pull takes, on a node keeping
+ * up — so the line read as a backlog whenever the node was busy.
+ */
+function replicationWords(nodes: IStackNodeStatus[]): string {
+  const findings = nodes.map((n) => (n.syncStatus ? syncFinding(n.syncStatus) : null));
+  const behind = findings.filter((f) => f && !inSync(f)).length;
+  const silent = findings.filter((f) => f === null).length;
+  if (behind === 0 && silent === 0) return 'replication in sync';
+  return [behind > 0 && `${behind} of ${nodes.length} behind`, silent > 0 && `${silent} not reporting`]
+    .filter(Boolean)
+    .join(', ');
+}
+
 function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
   const sync = node.syncStatus;
+  // Read off `pendingItems` and `lastSyncAt`. `sync.connected` is the push
+  // channel no production code opens: read, it made every node «Buffering».
+  const finding = sync ? syncFinding(sync) : null;
 
   return (
     <Box sx={{ py: 0.75 }}>
@@ -480,26 +495,12 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
           </Box>
         </Box>
 
-        {sync ? (
+        {sync && finding ? (
           <Box sx={{ textAlign: 'right' }}>
             <Chip
-              label={
-                sync.connected && sync.pendingItems === 0
-                  ? 'Synced'
-                  : sync.connected
-                    ? `${sync.pendingItems} pending`
-                    : sync.failedAttempts > 0
-                      ? `Failed (${sync.failedAttempts}x)`
-                      : 'Buffering'
-              }
+              label={syncWords(finding)}
               size="small"
-              color={
-                sync.connected && sync.pendingItems === 0
-                  ? 'success'
-                  : sync.failedAttempts > 0
-                    ? 'error'
-                    : 'warning'
-              }
+              color={inSync(finding) ? 'success' : 'error'}
               variant="outlined"
               sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600 }}
             />
@@ -520,14 +521,6 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
         )}
       </Box>
 
-      {/* Sync progress bar for nodes with pending items */}
-      {sync && sync.pendingItems > 0 && (
-        <LinearProgress
-          variant="indeterminate"
-          color="warning"
-          sx={{ mt: 0.5, height: 2, borderRadius: 1, opacity: 0.6 }}
-        />
-      )}
 
       {/* Error message */}
       {sync?.lastError && (

@@ -34,6 +34,7 @@ import {
   useActiveProjectStacks,
 } from '../../stores/project.store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
+import { inSync, syncFinding } from '@omnitron-dev/omnitron/sync-reading';
 import { formatUptime } from '../../utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
@@ -305,7 +306,9 @@ function StackCard({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <SyncIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {stack.nodes.filter((n) => n.connected).length}/{stack.nodes.length} synced
+                {/* Nodes whose replication keeps up — not those whose daemon answered, which this counted. */}
+                {stack.nodes.filter((n) => n.syncStatus && inSync(syncFinding(n.syncStatus))).length}/
+                {stack.nodes.length} in sync
               </Typography>
             </Box>
           )}

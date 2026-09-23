@@ -38,6 +38,10 @@
     "./audit-outcome": {
       "types": "./src/shared/audit-outcome.ts",
       "default": "./dist/shared/audit-outcome.js"
+    },
+    "./sync-reading": {
+      "types": "./src/shared/sync-reading.ts",
+      "default": "./dist/shared/sync-reading.js"
     }
   },
   "scripts": {

@@ -23,6 +23,7 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import type { GateOutcome, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import { readGates, type GatesReading } from '@omnitron-dev/omnitron/release-reading';
 
 // ---------------------------------------------------------------------------
 // Numbers, as measurements
@@ -164,12 +165,22 @@ export function GateStrip({
   );
 }
 
-/** `19/21` with the colour of the worst outcome in it. */
-export function GateCount({ gates }: { gates: ReleaseSummary['gates'] }) {
-  const tone = gates.total === 0 ? 'text.disabled' : gates.failed > 0 ? 'error.main' : gates.notRun > 0 ? 'warning.main' : 'success.main';
+const READING_COLOR: Record<GatesReading['tone'], string> = {
+  passed: 'success.main',
+  failed: 'error.main',
+  unfinished: 'warning.main',
+  none: 'text.disabled',
+};
+
+/**
+ * `19/21`, `skipped` or `not run`, in the colour of what it means for
+ * deploying — the words the CLI's list uses, from the same reading.
+ */
+export function GateCount({ release, variant = 'body2' }: { release: ReleaseSummary; variant?: 'body2' | 'caption' }) {
+  const reading = readGates(release);
   return (
-    <Typography variant="body2" sx={{ fontWeight: 600, color: tone, fontFamily: 'monospace' }}>
-      {gates.total === 0 ? '—' : `${gates.passed}/${gates.total}`}
+    <Typography variant={variant} sx={{ fontWeight: 600, color: READING_COLOR[reading.tone], fontFamily: 'monospace' }}>
+      {reading.text}
     </Typography>
   );
 }

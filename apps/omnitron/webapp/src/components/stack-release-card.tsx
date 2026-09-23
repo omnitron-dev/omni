@@ -53,9 +53,14 @@ export function StackReleaseCard({
   );
 
   const last = useMemo(
-    () => (data?.deployments ?? []).find((d) => d.project === project && d.stack === stack) ?? null,
+    () =>
+      data?.deployments.known
+        ? (data.deployments.deployments.find((d) => d.project === project && d.stack === stack) ?? null)
+        : null,
     [data?.deployments, project, stack],
   );
+  /** Why this card cannot say which release the stack runs — not the same as «none». */
+  const unknown = data && !data.deployments.known ? data.deployments.why : null;
   const deployed = useMemo(
     () => (last?.release ? (data?.releases ?? []).find((r) => r.id === last.release) ?? null : null),
     [data?.releases, last?.release],
@@ -93,7 +98,13 @@ export function StackReleaseCard({
           </Typography>
         )}
 
-        {!last && !error && (
+        {unknown && !error && (
+          <Typography variant="body2" sx={{ color: 'warning.main' }}>
+            Which release this stack runs is unknown — {unknown}.
+          </Typography>
+        )}
+
+        {data && !last && !unknown && !error && (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             No recorded deployment of this stack yet.
           </Typography>
@@ -123,7 +134,7 @@ export function StackReleaseCard({
                   <Chip label="working tree" size="small" color="warning" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
                 </Tooltip>
               )}
-              {deployed && <GateCount gates={deployed.gates} />}
+              {deployed && <GateCount release={deployed} />}
               {deployed && <GateStrip gates={deployed.gateList} size={8} columns={11} />}
             </Stack>
             {deployed && (

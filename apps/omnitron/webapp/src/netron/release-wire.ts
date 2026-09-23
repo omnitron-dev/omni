@@ -26,7 +26,9 @@ import type {
   StoredAttestation,
 } from '@omnitron-dev/omnitron/dto/services';
 
-import { releases } from './client';
+import { deploymentsAnswer, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
+
+import { audit, releases } from './client';
 
 /** A summary with every later field present — `null` / empty meaning «this daemon did not report it». */
 export type ReleaseSummaryView = ReleaseSummary;
@@ -124,7 +126,15 @@ export const releaseApi = {
     };
   },
 
-  async deployments(limit = 200): Promise<ReleaseDeploymentDto[]> {
-    return ((await releases.deployments({ limit })) ?? []).map((d) => ({ ...d, releaseUnnamed: d.releaseUnnamed ?? false }));
+  /**
+   * Which release each stack runs, or why this daemon cannot say. The
+   * answer is its `stack.start` audit rows, and a daemon without its audit
+   * trail serves them as `[]` — the shape of «no stack has taken a release».
+   * The CLI asks the trail first (70b988a6); so does this.
+   */
+  async deployments(limit = 200): Promise<DeploymentsAnswer> {
+    const [trail, rows] = await Promise.all([audit.available().catch(() => null), releases.deployments({ limit })]);
+    const deployments: ReleaseDeploymentDto[] = (rows ?? []).map((d) => ({ ...d, releaseUnnamed: d.releaseUnnamed ?? false }));
+    return deploymentsAnswer(trail?.available === true, deployments);
   },
 };

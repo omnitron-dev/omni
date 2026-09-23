@@ -58,6 +58,34 @@ export interface IStackAccount {
   commit: string;
 }
 
+/** An account as a stand holds it — no secret in it. */
+export interface IStackAccountShown {
+  username: string;
+  id: string;
+  role: string;
+  status: string | null;
+  createdAt: string | null;
+  /** `null`: nobody has signed in with it. */
+  lastActiveAt: string | null;
+}
+
+/** What `showStackAccount` found: the account, or `null` when the stand holds none by that name. */
+export interface IStackAccountLookup {
+  node: string;
+  commit: string;
+  account: IStackAccountShown | null;
+}
+
+/** An account `removeStackAccount` took away. */
+export interface IStackAccountRemoved {
+  username: string;
+  id: string;
+  node: string;
+  commit: string;
+  /** The vault key of its password, removed with it — `null` when the vault kept none. */
+  vaultKeyRemoved: string | null;
+}
+
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error';
 
 export interface IStackInfo {

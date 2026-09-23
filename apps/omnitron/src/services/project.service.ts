@@ -1436,9 +1436,11 @@ export class ProjectService extends EventEmitter {
    * its password in this daemon's vault — never in the answer.
    *
    * The project's own tool makes it (`scripts/operator-account.mjs` at the
-   * project's HEAD commit), run on the stack's node over the attestation's
-   * transport and under the node's deploy lease: an account is never made
-   * while a deployment is restarting the application that signs it up.
+   * project's HEAD commit), on the stack's node, under its deploy lease
+   * (`withOperatorTool`). The password comes back sealed to a key made for
+   * this run and is opened only to go into the vault — the SSH layer masks
+   * anything that looks like a password on its way back (see
+   * `project/operator-account.ts`).
    *
    * Two steps that must both happen or neither: the account on the stand and
    * its password in the vault. The vault is asked first whether the key is
@@ -1446,11 +1448,9 @@ export class ProjectService extends EventEmitter {
    * replace it — and if the write still fails, the account just made is taken
    * away again, by its name AND the id the tool printed: an account whose
    * password nobody holds is a privileged row under a name every later run
-   * refuses as taken.
-   *
-   * One node only, like the attestation: the tool reaches the node's
-   * containers, and which of several nodes holds the stack's database is not
-   * decided here.
+   * refuses as taken. When the run's outcome is not known at all, the stand is
+   * asked what it holds, and the answer says it — with the command that takes
+   * the account away if it is there.
    */
   async createOperatorAccount(
     projectName: string,
@@ -1468,6 +1468,161 @@ export class ProjectService extends EventEmitter {
     }
     const username = input.username?.trim();
     if (!username) throw new Error('An account needs a name (--username)');
+    const tool = await import('../project/operator-account.js');
+    const vaultKey = input.vaultKey?.trim() || tool.accountVaultKey(projectName, stackName, username);
+    // Before the node is touched.
+    if ((await secrets.get(vaultKey)) !== null) {
+      throw new Error(
+        `The vault already holds '${vaultKey}' — somebody's secret, which a new password would replace. ` +
+          'Name another key with --vault-key; nothing was made',
+      );
+    }
+    const key = await tool.sealingKey();
+
+    return this.withOperatorTool(projectName, stackName, `operator account ${username}`, async (on) => {
+      const facts = { project: projectName, stack: stackName, node: on.machine, username };
+      const run = await on.run(
+        (remoteDir, containerPrefix) =>
+          tool.operatorAccountCommand({
+            remoteDir,
+            containerPrefix,
+            username,
+            role: input.role,
+            displayName: input.displayName,
+            sealTo: key.spki,
+          }),
+        180_000,
+      );
+      const outcome = tool.readAccountRun(run, username, (sealed) => key.open(sealed));
+      if (!outcome.made) {
+        this.logger.error({ ...facts, code: run.code, uncertain: outcome.uncertain }, 'No operator account was made');
+        // Not known whether it exists: ask the stand, so the answer can say
+        // what is there and how to take it away.
+        let holds = '';
+        if (outcome.uncertain) {
+          const shown = tool.readShowRun(
+            await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ remoteDir, containerPrefix, username }), 60_000),
+          );
+          holds = !shown.ok
+            ? ` What the stand holds could not be read either: ${shown.because}`
+            : shown.account
+              ? ` The stand holds ${username}: id ${shown.account.id}, role ${shown.account.role}, made ${shown.account.createdAt ?? '(unknown)'}, ` +
+                `${shown.account.lastActiveAt ? `last active ${shown.account.lastActiveAt}` : 'never signed in'}. Nobody holds its password; ` +
+                `take it away with \`omnitron stack account ${projectName} ${stackName} --remove ${username} --id ${shown.account.id}\``
+              : ` The stand holds no ${username} — nothing was made.`;
+        }
+        throw new Error(`${on.where}: ${outcome.because}.${holds}`);
+      }
+      const { account } = outcome;
+      try {
+        await secrets.set(vaultKey, account.password);
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        const undo = tool.readRemoveRun(
+          await on.run(
+            (remoteDir, containerPrefix) =>
+              tool.operatorAccountRemoveCommand({ remoteDir, containerPrefix, username, id: account.id }),
+            120_000,
+          ),
+          username,
+          account.id,
+        );
+        this.logger.error(
+          { ...facts, id: account.id, vaultKey, undone: undo.removed, error: why },
+          'The vault refused an operator account\'s password',
+        );
+        throw new Error(
+          undo.removed
+            ? `${on.where}: the vault refused the password of ${username} (${why}) — the account was taken away again; nothing is left on the stand`
+            : `${on.where}: the vault refused the password of ${username} (${why}), and taking the account away failed too ` +
+                `(${undo.because}): ${username} (id ${account.id}) is on the stand with a password nobody holds`,
+          { cause: err },
+        );
+      }
+      this.logger.info(
+        { ...facts, role: account.role, id: account.id, vaultKey, commit: on.commit },
+        'Operator account made — its password is in the vault',
+      );
+      return { username, role: account.role, id: account.id, node: on.machine, vaultKey, commit: on.commit };
+    });
+  }
+
+  /** What a remote stack's stand holds under a name — never a secret. */
+  async showOperatorAccount(
+    projectName: string,
+    stackName: string,
+    username: string,
+  ): Promise<import('../shared/dto/project.js').IStackAccountLookup> {
+    const name = username?.trim();
+    if (!name) throw new Error('Which account? (--show <name>)');
+    const tool = await import('../project/operator-account.js');
+    return this.withOperatorTool(projectName, stackName, `reading operator account ${name}`, async (on) => {
+      const shown = tool.readShowRun(
+        await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ remoteDir, containerPrefix, username: name }), 60_000),
+      );
+      if (!shown.ok) throw new Error(`${on.where}: could not read ${name}: ${shown.because}`);
+      return { node: on.machine, commit: on.commit, account: shown.account };
+    });
+  }
+
+  /**
+   * Take an account away from a remote stack's stand — the row with this
+   * name AND this id, or nothing — and the password this daemon keeps for it,
+   * if it keeps one: a password for an account that is gone is not a secret
+   * worth keeping, and a vault that still lists it says the account exists.
+   */
+  async removeOperatorAccount(
+    projectName: string,
+    stackName: string,
+    input: { username: string; id: string; vaultKey?: string | undefined },
+  ): Promise<import('../shared/dto/project.js').IStackAccountRemoved> {
+    const username = input.username?.trim();
+    const id = input.id?.trim();
+    if (!username || !id) throw new Error('Taking an account away needs its name and its id (--remove <name> --id <uuid>)');
+    const tool = await import('../project/operator-account.js');
+    const vaultKey = input.vaultKey?.trim() || tool.accountVaultKey(projectName, stackName, username);
+    const removed = await this.withOperatorTool(projectName, stackName, `removing operator account ${username}`, async (on) => {
+      const outcome = tool.readRemoveRun(
+        await on.run((remoteDir, containerPrefix) => tool.operatorAccountRemoveCommand({ remoteDir, containerPrefix, username, id }), 120_000),
+        username,
+        id,
+      );
+      if (!outcome.removed) throw new Error(`${on.where}: ${username} (id ${id}) was not removed: ${outcome.because}`);
+      return { node: on.machine, commit: on.commit };
+    });
+    // After the stand, never before: a key removed for an account that stayed
+    // would be a password lost.
+    const dropped = (await this.secrets?.delete(vaultKey)) === true;
+    this.logger.info(
+      { project: projectName, stack: stackName, node: removed.node, username, id, vaultKey: dropped ? vaultKey : null },
+      'Operator account removed',
+    );
+    return { username, id, node: removed.node, commit: removed.commit, vaultKeyRemoved: dropped ? vaultKey : null };
+  }
+
+  /**
+   * What every operator-account action shares: a remote stack of one node,
+   * the project's tool staged from its HEAD commit, the node's deploy lease,
+   * and the stage taken away again on both sides, whatever `work` did.
+   *
+   * One node, like the attestation: the tool reaches the node's containers,
+   * and which of several nodes holds the stack's database is not decided
+   * here.
+   */
+  private async withOperatorTool<T>(
+    projectName: string,
+    stackName: string,
+    purpose: string,
+    work: (on: {
+      run: (
+        command: (remoteDir: string, containerPrefix: string) => string,
+        timeoutMs: number,
+      ) => Promise<{ stdout: string; stderr: string; code: number }>;
+      machine: string;
+      where: string;
+      commit: string;
+    }) => Promise<T>,
+  ): Promise<T> {
     const config = await this.loadProjectConfig(projectName);
     const stackConfig = this.resolveStacks(config, projectName)[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
@@ -1475,11 +1630,11 @@ export class ProjectService extends EventEmitter {
     if (stackConfig.type === 'local') {
       throw new Error(
         `${projectName}/${stackName} is local: its containers are on this machine — run ` +
-          `\`node ${tool.OPERATOR_ACCOUNT_TOOL} --username=${username}\` in the project`,
+          `\`node ${tool.OPERATOR_ACCOUNT_TOOL}\` in the project`,
       );
     }
     const nodes = stackConfig.nodes ?? [];
-    if (nodes.length === 0) throw new Error(`${projectName}/${stackName} has no node to make the account on`);
+    if (nodes.length === 0) throw new Error(`${projectName}/${stackName} has no node to reach its stand on`);
     if (nodes.length > 1) {
       throw new Error(
         `${projectName}/${stackName} has ${nodes.length} nodes. The tool reaches one node's containers, and which of them ` +
@@ -1489,66 +1644,21 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
 
-    const vaultKey = input.vaultKey?.trim() || tool.accountVaultKey(projectName, stackName, username);
-    // Before the node is touched.
-    if ((await secrets.get(vaultKey)) !== null) {
-      throw new Error(
-        `The vault already holds '${vaultKey}' — somebody's secret, which a new password would replace. ` +
-          'Name another key with --vault-key; nothing was made',
-      );
-    }
-
     const staged = await tool.stageOperatorTool(fs.realpathSync(project.path));
     const target = await this.targetForStackNode(nodes[0]!);
     const machine = `${target.host}:${target.sshPort ?? 22}`;
     const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
-    const where = `${projectName}/${stackName} on ${machine}`;
-    const facts = { project: projectName, stack: stackName, node: machine, username };
     const { shellEscape } = await import('../shared/shell-escape.js');
     try {
-      return await this.deployer.underLease(target, `operator account ${username} on ${projectName}/${stackName}`, async () => {
+      return await this.deployer.underLease(target, `${purpose} on ${projectName}/${stackName}`, async () => {
         const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/operator');
         try {
-          const run = await this.deployer.runOnNode(
-            target,
-            tool.operatorAccountCommand({ remoteDir, containerPrefix, username, role: input.role, displayName: input.displayName }),
-            180_000,
-          );
-          const outcome = tool.readAccountRun(run, username);
-          if (!outcome.made) {
-            this.logger.error({ ...facts, code: run.code, uncertain: outcome.uncertain }, 'No operator account was made');
-            throw new Error(`${where}: ${outcome.because}`);
-          }
-          const { account } = outcome;
-          try {
-            await secrets.set(vaultKey, account.password);
-          } catch (err) {
-            const why = err instanceof Error ? err.message : String(err);
-            const undo = await this.deployer
-              .runOnNode(
-                target,
-                tool.operatorAccountUndoCommand({ remoteDir, containerPrefix, username, id: account.id }),
-                120_000,
-              )
-              .catch((e: unknown) => ({ stdout: '', stderr: e instanceof Error ? e.message : String(e), code: -1 }));
-            this.logger.error(
-              { ...facts, id: account.id, vaultKey, undone: undo.code === 0, error: why },
-              'The vault refused an operator account\'s password',
-            );
-            throw new Error(
-              undo.code === 0
-                ? `${where}: the vault refused the password of ${username} (${why}) — the account was taken away again; nothing is left on the stand`
-                : `${where}: the vault refused the password of ${username} (${why}), and taking the account away failed too ` +
-                    `(${undo.stderr.trim().split('\n').slice(-2).join(' | ') || `exit ${undo.code}`}): ` +
-                    `${username} (id ${account.id}) is on the stand with a password nobody holds`,
-              { cause: err },
-            );
-          }
-          this.logger.info(
-            { ...facts, role: account.role, id: account.id, vaultKey, commit: staged.commit },
-            'Operator account made — its password is in the vault',
-          );
-          return { username, role: account.role, id: account.id, node: machine, vaultKey, commit: staged.commit };
+          return await work({
+            run: (command, timeoutMs) => this.deployer.runOnNode(target, command(remoteDir, containerPrefix), timeoutMs),
+            machine,
+            where: `${projectName}/${stackName} on ${machine}`,
+            commit: staged.commit,
+          });
         } finally {
           // The tool leaves the node with its run, as the attestation's stage
           // does, and a removal the node refused is said rather than swallowed.
@@ -1557,7 +1667,14 @@ export class ProjectService extends EventEmitter {
             .catch((err: unknown) => ({ stdout: '', stderr: err instanceof Error ? err.message : String(err), code: -1 }));
           if (removed.code !== 0) {
             this.logger.warn(
-              { ...facts, remoteDir, code: removed.code, reason: removed.stderr.trim().split('\n').slice(-3).join(' | ') || `exit ${removed.code}` },
+              {
+                project: projectName,
+                stack: stackName,
+                node: machine,
+                remoteDir,
+                code: removed.code,
+                reason: removed.stderr.trim().split('\n').slice(-3).join(' | ') || `exit ${removed.code}`,
+              },
               'The operator tool is still on the node after its run, and nothing else removes it',
             );
           }

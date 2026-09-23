@@ -252,6 +252,8 @@ import type {
   IStackInfraStatus,
   IProjectRequirements,
   IStackAccount,
+  IStackAccountLookup,
+  IStackAccountRemoved,
 } from './project.js';
 
 export type {
@@ -347,6 +349,16 @@ export interface IProjectRpcService {
     displayName?: string;
     vaultKey?: string;
   }): Promise<IStackAccount>;
+  /** What a remote stack's stand holds under a name — never a secret. */
+  showStackAccount(data: { project: string; stack: string; username: string }): Promise<IStackAccountLookup>;
+  /** Take an account away — the one with this name AND id — and the password the vault keeps for it. */
+  removeStackAccount(data: {
+    project: string;
+    stack: string;
+    username: string;
+    id: string;
+    vaultKey?: string;
+  }): Promise<IStackAccountRemoved>;
 }
 
 // ============================================================================

@@ -21,6 +21,8 @@ import type {
   StackRuntime,
   IProjectRequirements,
   IStackAccount,
+  IStackAccountLookup,
+  IStackAccountRemoved,
 } from '../shared/dto/project.js';
 
 @Service({ name: 'OmnitronProject' })
@@ -276,6 +278,52 @@ export class ProjectRpcService {
         outcome: 'failed',
         error: err,
       });
+      throw err;
+    }
+  }
+
+  /**
+   * What a remote stack's stand holds under a name — never a secret. Admin:
+   * it runs the project's code on the node.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async showStackAccount(data: { project: string; stack: string; username: string }): Promise<IStackAccountLookup> {
+    return this.projectService.showOperatorAccount(data.project, data.stack, data.username);
+  }
+
+  /**
+   * Take an account away from a remote stack's stand — by name AND id — with
+   * the password the vault keeps for it. Recorded both ways.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async removeStackAccount(data: {
+    project: string;
+    stack: string;
+    username: string;
+    id: string;
+    vaultKey?: string;
+  }): Promise<IStackAccountRemoved> {
+    const row = { action: 'stack.account.remove', resourceType: 'stack', resourceId: `${data.project}/${data.stack}` };
+    try {
+      const removed = await this.projectService.removeOperatorAccount(data.project, data.stack, {
+        username: data.username,
+        id: data.id,
+        vaultKey: data.vaultKey,
+      });
+      await this.audit?.record({
+        ...row,
+        details: {
+          username: removed.username,
+          id: removed.id,
+          node: removed.node,
+          commit: removed.commit,
+          vault: removed.vaultKeyRemoved,
+        },
+        outcome: 'ok',
+      });
+      return removed;
+    } catch (err) {
+      await this.audit?.record({ ...row, details: { username: data.username, id: data.id }, outcome: 'failed', error: err });
       throw err;
     }
   }

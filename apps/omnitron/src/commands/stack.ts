@@ -332,24 +332,98 @@ export async function stackStopCommand(projectName: string, stackName: string): 
   }
 }
 
+/** Why these `stack account` options say no one thing to do — or `null`. */
+export function accountOptionsRefusal(options: {
+  username?: string;
+  show?: string;
+  remove?: string;
+  id?: string;
+  role?: string;
+  displayName?: string;
+  vaultKey?: string;
+}): string | null {
+  const modes = (['username', 'show', 'remove'] as const).filter((m) => options[m] !== undefined);
+  if (modes.length !== 1) return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>';
+  if (options.remove !== undefined && !options.id) return '--remove needs --id <uuid> — the id --show prints';
+  if (options.remove === undefined && options.id !== undefined) return '--id goes with --remove';
+  if (options.username === undefined && (options.role !== undefined || options.displayName !== undefined)) {
+    return '--role and --display-name go with --username';
+  }
+  if (options.show !== undefined && options.vaultKey !== undefined) return '--vault-key goes with --username or --remove';
+  return null;
+}
+
 /**
- * `omnitron stack account` — a named account with a platform role on a
- * remote stack. The password never reaches this terminal: it is in the
- * daemon's vault, and the command that reads it is printed instead.
+ * `omnitron stack account` — accounts on a remote stack's stand, by the
+ * project's own tool on the node:
+ *
+ *   --username <name>          make one; its password goes to the daemon's
+ *                              vault, and the command that reads it is
+ *                              printed — never the password
+ *   --show <name>              what the stand holds under a name
+ *   --remove <name> --id <id>  take one away, with its password in the vault
  */
 export async function stackAccountCommand(
   projectName: string,
   stackName: string,
-  options: { username: string; role?: string; displayName?: string; vaultKey?: string },
+  options: {
+    username?: string;
+    show?: string;
+    remove?: string;
+    id?: string;
+    role?: string;
+    displayName?: string;
+    vaultKey?: string;
+  },
 ): Promise<void> {
+  const refusal = accountOptionsRefusal(options);
+  if (refusal) {
+    emitError(refusal, { project: projectName, stack: stackName });
+    process.exitCode = 1;
+    return;
+  }
+
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  const name = options.username ?? options.show ?? options.remove!;
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
-    emitStep(`Making ${options.username} on ${projectName}/${stackName} — the project's tool, on the node, under its deploy lease…`);
+    if (options.show !== undefined) {
+      emitStep(`Reading ${name} on ${projectName}/${stackName} — the project's tool, on the node…`);
+      const found = await svc.showStackAccount({ project: projectName, stack: stackName, username: name });
+      if (emitJson(found)) return;
+      const a = found.account;
+      if (!a) {
+        emitInfo(`${projectName}/${stackName} (${found.node}) holds no ${name}`);
+        return;
+      }
+      emitSuccess(`${a.username} on ${projectName}/${stackName} at ${found.node}: ${a.role}, ${a.status ?? 'no status'}`);
+      emitInfo(`  id ${a.id}`);
+      emitInfo(`  made ${a.createdAt ?? '(unknown)'}; ${a.lastActiveAt ? `last active ${a.lastActiveAt}` : 'never signed in'}`);
+      return;
+    }
+    if (options.remove !== undefined) {
+      emitStep(`Taking ${name} (id ${options.id}) away from ${projectName}/${stackName}…`);
+      const removed = await svc.removeStackAccount({
+        project: projectName,
+        stack: stackName,
+        username: name,
+        id: options.id!,
+        ...(options.vaultKey !== undefined ? { vaultKey: options.vaultKey } : {}),
+      });
+      if (emitJson(removed)) return;
+      emitSuccess(`Removed ${removed.username} (id ${removed.id}) from ${projectName}/${stackName} at ${removed.node}`);
+      emitInfo(
+        removed.vaultKeyRemoved
+          ? `  and its password from the vault (${removed.vaultKeyRemoved})`
+          : '  the vault kept no password for it',
+      );
+      return;
+    }
+    emitStep(`Making ${name} on ${projectName}/${stackName} — the project's tool, on the node, under its deploy lease…`);
     const made = await svc.createStackAccount({
       project: projectName,
       stack: stackName,
-      username: options.username,
+      username: name,
       ...(options.role !== undefined ? { role: options.role } : {}),
       ...(options.displayName !== undefined ? { displayName: options.displayName } : {}),
       ...(options.vaultKey !== undefined ? { vaultKey: options.vaultKey } : {}),
@@ -360,10 +434,11 @@ export async function stackAccountCommand(
     emitInfo(`omnitron secret get ${made.vaultKey}`);
     emitInfo(`  id ${made.id}; made by the project's tool at ${made.commit.slice(0, 8)}`);
   } catch (err) {
-    emitError(`Could not make ${options.username} on ${projectName}/${stackName}: ${(err as Error).message}`, {
+    const verb = options.show !== undefined ? 'read' : options.remove !== undefined ? 'remove' : 'make';
+    emitError(`Could not ${verb} ${name} on ${projectName}/${stackName}: ${(err as Error).message}`, {
       project: projectName,
       stack: stackName,
-      username: options.username,
+      username: name,
     });
     process.exitCode = 1;
   } finally {

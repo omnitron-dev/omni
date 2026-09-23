@@ -1,0 +1,57 @@
+diff --git a/dist/utils/process-tree.d.ts b/dist/utils/process-tree.d.ts
+index 48f7dbf4a64664f15550ae39004ad4a414997e30..68720d7c352e8d4e9fb1c74af12db4ceea34dd02 100644
+--- a/dist/utils/process-tree.d.ts
++++ b/dist/utils/process-tree.d.ts
+@@ -1,2 +1,3 @@
+ export declare function killProcessTree(pid: number, signal?: NodeJS.Signals): void;
+-export declare function listDescendants(pid: number): number[];
++/** The descendants of `pid`, or `null` when `ps` did not answer in time or failed — unknown, which is not none. */
++export declare function listDescendants(pid: number): number[] | null;
+diff --git a/dist/utils/process-tree.js b/dist/utils/process-tree.js
+index bb1dd4e21fa98e74d95c96bb9e3175ad458fe1e3..65cf50f438c727664c9cb860c86e5c7cd8fceb7c 100644
+--- a/dist/utils/process-tree.js
++++ b/dist/utils/process-tree.js
+@@ -1,5 +1,12 @@
+ import { platform } from 'node:os';
+ import { spawnSync } from 'node:child_process';
++// omni patch (patches/@xec-sh__core@0.11.1.patch). `ps` is asked with a
++// deadline: a synchronous spawn holds the caller's thread — in a daemon, its
++// whole event loop — and without one a `ps` that did not answer held it for
++// as long as it liked. And a `ps` that did not answer, or failed, makes the
++// descendants UNKNOWN (`null`), not «none»: `[]` was a statement about the
++// process tree that nothing had established.
++const PS_DEADLINE_MS = 2000;
+ export function killProcessTree(pid, signal = 'SIGTERM') {
+     if (!Number.isInteger(pid) || pid <= 0) {
+         throw new Error(`Invalid pid for killProcessTree: ${pid}`);
+@@ -16,8 +23,14 @@ export function killProcessTree(pid, signal = 'SIGTERM') {
+         }
+     };
+     kill(-pid);
+-    for (const descendant of listDescendants(pid)) {
+-        kill(descendant);
++    const descendants = listDescendants(pid);
++    if (descendants === null) {
++        process.emitWarning(`could not list the descendants of ${pid}: ps did not answer within ${PS_DEADLINE_MS} ms, or failed — signalled its process group and the process itself only`, { code: 'XEC_DESCENDANTS_UNKNOWN' });
++    }
++    else {
++        for (const descendant of descendants) {
++            kill(descendant);
++        }
+     }
+     kill(pid);
+ }
+@@ -26,9 +39,11 @@ export function listDescendants(pid) {
+         encoding: 'utf8',
+         windowsHide: true,
+         maxBuffer: 16 * 1024 * 1024,
++        timeout: PS_DEADLINE_MS,
++        killSignal: 'SIGKILL',
+     });
+-    if (result.status !== 0 || !result.stdout) {
+-        return [];
++    if (result.error || result.status !== 0 || !result.stdout) {
++        return null;
+     }
+     const childrenOf = new Map();
+     for (const line of result.stdout.split('\n')) {

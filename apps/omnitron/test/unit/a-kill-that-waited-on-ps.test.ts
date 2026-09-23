@@ -1,0 +1,111 @@
+/**
+ * A kill that waited on `ps`, for as long as `ps` liked.
+ *
+ * @xec-sh/core terminates a timed-out or aborted child — its local and docker
+ * adapters, and omnitron drives Docker through the second — by killing its
+ * process tree, and finds the tree with
+ *
+ *     spawnSync('ps', ['-eo', 'pid=,ppid='])
+ *
+ * with no timeout. A synchronous spawn holds the caller's thread, which in the
+ * daemon is the event loop: every RPC and every heartbeat waits for `ps`,
+ * unbounded — the class of the daemon's `execSync('ps')` wedge of 2026-09-14.
+ * And a `ps` that failed answered `[]`: «this process has no descendants», a
+ * statement about the process tree that nothing had established.
+ *
+ * Patched in omni (patches/@xec-sh__core@0.11.1.patch; xec is its own
+ * project): `ps` gets a deadline, and a `ps` that did not answer makes the
+ * descendants UNKNOWN — `null` — which the kill says out loud while it still
+ * signals the process group and the process itself.
+ *
+ * Run against the copy installed in node_modules, stand-in `ps` first on PATH.
+ */
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { describe, it, expect, afterEach } from 'vitest';
+
+const xecRoot = path.dirname(createRequire(import.meta.url).resolve('@xec-sh/core/package.json'));
+const tree = (await import(pathToFileURL(path.join(xecRoot, 'dist/utils/process-tree.js')).href)) as {
+  killProcessTree(pid: number, signal?: NodeJS.Signals): void;
+  listDescendants(pid: number): number[] | null;
+};
+
+const PATH = process.env['PATH'];
+const cleanup: string[] = [];
+afterEach(() => {
+  process.env['PATH'] = PATH;
+  for (const dir of cleanup.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** Put a `ps` that behaves as `script` in front of the real one. */
+function standInPs(script: string): void {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'xec-ps-'));
+  cleanup.push(bin);
+  fs.writeFileSync(path.join(bin, 'ps'), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+  process.env['PATH'] = `${bin}:${PATH}`;
+}
+
+const timed = <T>(f: () => T) => {
+  const t0 = Date.now();
+  const value = f();
+  return { value, ms: Date.now() - t0 };
+};
+
+describe('a kill that waited on ps', () => {
+  it('lists a process\'s children when ps answers', async () => {
+    const parent = spawn('/bin/sh', ['-c', '/bin/sleep 30 & wait'], { stdio: 'ignore' });
+    try {
+      let found: number[] | null = [];
+      for (let i = 0; i < 50 && found !== null && found.length === 0; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        found = tree.listDescendants(parent.pid!);
+      }
+      expect(found?.length).toBeGreaterThan(0);
+    } finally {
+      tree.killProcessTree(parent.pid!, 'SIGKILL');
+    }
+  });
+
+  it('answers «unknown», within its deadline, when ps does not answer', () => {
+    standInPs('exec /bin/sleep 8');
+
+    const { value, ms } = timed(() => tree.listDescendants(process.pid));
+
+    expect(value, 'not «no descendants»: nothing was read').toBeNull();
+    expect(ms, 'the event loop waited this long').toBeLessThan(4_000);
+  });
+
+  it('answers «unknown» when ps fails', () => {
+    standInPs('echo "ps: cannot allocate memory" >&2; exit 1');
+
+    expect(tree.listDescendants(process.pid)).toBeNull();
+  });
+
+  it('still kills the process, and says its descendants were unknown', async () => {
+    const child = spawn('/bin/sleep', ['30'], { stdio: 'ignore', detached: true });
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    const warnings: Array<{ code?: string; message: string }> = [];
+    const onWarning = (w: Error & { code?: string }) => void warnings.push({ code: w.code, message: w.message });
+    process.on('warning', onWarning);
+    try {
+      standInPs('exec /bin/sleep 8');
+
+      const { ms } = timed(() => tree.killProcessTree(child.pid!, 'SIGKILL'));
+      await exited;
+      await new Promise((r) => setImmediate(r));
+
+      expect(ms).toBeLessThan(4_000);
+      expect(warnings.map((w) => w.code)).toContain('XEC_DESCENDANTS_UNKNOWN');
+      expect(warnings.find((w) => w.code === 'XEC_DESCENDANTS_UNKNOWN')?.message).toMatch(
+        new RegExp(`descendants of ${child.pid}`),
+      );
+    } finally {
+      process.off('warning', onWarning);
+    }
+  });
+});

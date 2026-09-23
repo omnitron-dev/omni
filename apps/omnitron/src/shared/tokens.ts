@@ -105,12 +105,6 @@ export const FLEET_SELF_NODE_ID_TOKEN: Token<string | undefined> =
 export const SECRETS_PASSPHRASE_TOKEN: Token<string> = createToken<string>('SecretsPassphrase');
 export const SECRETS_LEGACY_PATH_TOKEN: Token<string | undefined> =
   createToken<string | undefined>('SecretsLegacyPath');
-/**
- * Late-binding accessor for the live infra state snapshot used by
- * AlertService's evaluation loop. Returns `Record<service, {status, health}>`.
- */
-export const INFRA_STATE_ACCESSOR_TOKEN: Token<() => Record<string, { status: string; health: string }>> =
-  createToken<() => Record<string, { status: string; health: string }>>('InfraStateAccessor');
 
 /** SQLite storage for slave daemons (replaces OMNITRON_DB_TOKEN on slaves) */
 export { SlaveStorageService } from '../services/slave-storage.service.js';

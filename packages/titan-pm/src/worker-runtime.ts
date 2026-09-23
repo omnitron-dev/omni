@@ -15,7 +15,7 @@ import { LifecycleController } from '@omnitron-dev/titan/lifecycle';
 import type { ILogger, LogLevel } from '@omnitron-dev/titan/module/logger';
 import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
-import { classifyWorkerHealth } from './worker-health.js';
+import { classifyWorkerHealth, combineHealthMethods } from './worker-health.js';
 import { lifecycleWindows, childShutdownWindowMs } from './shutdown-windows.js';
 
 // Worker configuration from parent
@@ -559,44 +559,16 @@ async function initialize() {
         }
       }
 
-      // Call health check methods
-      const checks = [];
-      let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
-
+      // Every method's answer, checks and all — see `combineHealthMethods`.
+      const answers: Array<readonly [string, { value: unknown } | { error: unknown }]> = [];
       for (const methodName of healthCheckMethods) {
         try {
-          const result = await (processInstance as any)[methodName]();
-          if (result) {
-            if (result.status === 'unhealthy') overallStatus = 'unhealthy';
-            else if (result.status === 'degraded' && overallStatus === 'healthy') {
-              overallStatus = 'degraded';
-            }
-            checks.push({
-              name: methodName,
-              status:
-                result.status === 'unhealthy'
-                  ? ('fail' as const)
-                  : result.status === 'degraded'
-                    ? ('warn' as const)
-                    : ('pass' as const),
-              message: result.message,
-            });
-          }
-        } catch (error: any) {
-          overallStatus = 'unhealthy';
-          checks.push({
-            name: methodName,
-            status: 'fail' as const,
-            message: error.message,
-          });
+          answers.push([methodName, { value: await (processInstance as any)[methodName]() }]);
+        } catch (error: unknown) {
+          answers.push([methodName, { error }]);
         }
       }
-
-      return {
-        status: overallStatus,
-        checks,
-        timestamp: Date.now(),
-      };
+      return combineHealthMethods(answers);
     };
 
     serviceWrapper.__shutdown = async () => {

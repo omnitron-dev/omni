@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { classifyWorkerHealth } from '../../src/worker-health.js';
+import { classifyWorkerHealth, combineHealthMethods } from '../../src/worker-health.js';
 
 describe('classifyWorkerHealth', () => {
   it('passes through a well-formed result', () => {
@@ -51,5 +51,59 @@ describe('classifyWorkerHealth', () => {
     const health = classifyWorkerHealth({ status: 'healthy' });
     expect(health.status).toBe('healthy');
     expect(health.checks).toEqual([]);
+  });
+});
+
+/**
+ * The class-worker path: every omnitron app answers through it
+ * (`BootstrapProcess.checkHealth`), and it kept one check per method — the
+ * method's name and verdict — dropping the checks the method returned.
+ */
+describe('combineHealthMethods', () => {
+  it('keeps the checks a method measured, not just its verdict', () => {
+    const health = combineHealthMethods([
+      [
+        'checkHealth',
+        {
+          value: {
+            status: 'unhealthy',
+            checks: [
+              { name: 'database', status: 'fail', message: 'connection refused' },
+              { name: 'redis', status: 'pass' },
+            ],
+          },
+        },
+      ],
+    ]);
+    expect(health.status).toBe('unhealthy');
+    expect(health.checks).toEqual([
+      { name: 'database', status: 'fail', message: 'connection refused' },
+      { name: 'redis', status: 'pass' },
+    ]);
+  });
+
+  it('names the method when there is more than one to tell apart', () => {
+    const health = combineHealthMethods([
+      ['ownHealth', { value: { status: 'healthy', checks: [{ name: 'db', status: 'pass' }] } }],
+      ['peerHealth', { value: { status: 'degraded', checks: [{ name: 'feed', status: 'warn' }] } }],
+    ]);
+    expect(health.status).toBe('degraded');
+    expect(health.checks.map((c) => c.name)).toEqual(['ownHealth: db', 'peerHealth: feed']);
+  });
+
+  it('a method that returned nothing is not healthy', () => {
+    const health = combineHealthMethods([['checkHealth', { value: undefined }]]);
+    expect(health.status).toBe('unhealthy');
+  });
+
+  it('a method that threw is a failed check that says why', () => {
+    const health = combineHealthMethods([['checkHealth', { error: new Error('pool exhausted') }]]);
+    expect(health.status).toBe('unhealthy');
+    expect(health.checks).toEqual([{ name: 'checkHealth', status: 'fail', message: 'pool exhausted' }]);
+  });
+
+  it('a verdict with no checks is one check under the method\'s name', () => {
+    const health = combineHealthMethods([['checkHealth', { value: { status: 'healthy' } }]]);
+    expect(health).toMatchObject({ status: 'healthy', checks: [{ name: 'checkHealth', status: 'pass' }] });
   });
 });

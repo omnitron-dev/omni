@@ -23,7 +23,7 @@ import type { NetworkInterfaceInfo } from 'node:os';
 import { bindService, secretValues, type Provisioning } from './service-binding.js';
 import { selectBareMetal, planBareMetal, OMNITRON_CONFIG_MARKER, type BareMetalSpec } from './bare-metal-plan.js';
 import { observeBareMetal, describe as describeAction, type HostRunner } from './bare-metal-runner.js';
-import type { IServiceOverride, IServiceRequirement } from './types.js';
+import type { IServiceHealthCheck, IServiceOverride, IServiceRequirement } from './types.js';
 
 // =============================================================================
 // What is asked, and what comes back
@@ -115,6 +115,8 @@ export interface HostServiceReading {
     unitFile: FileState;
     actions: string[];
     refusals: string[];
+    /** Its declared health check, asked on loopback — where its applications reach it. */
+    probe?: ProbeReading | undefined;
   };
 }
 
@@ -190,17 +192,37 @@ async function readService(
       port,
       local: isLocal(binding.host, own),
       reachable,
-      probe: reachable && port !== null ? await probe(requirement, binding, binding.host, port, deps) : undefined,
+      probe:
+        reachable && port !== null
+          ? await probe(requirement.healthCheck, requirement, binding, binding.host, port, deps)
+          : undefined,
     };
     return reading;
   }
 
   if (binding.provisioning === 'bareMetal') {
     const spec = selectBareMetal(name, requirement, override);
-    if (spec) reading.onHost = await readOnHost(spec, deps.host);
+    if (spec) {
+      reading.onHost = await readOnHost(spec, deps.host);
+      const check = spec.healthCheck ?? requirement.healthCheck;
+      if (check?.type === 'jsonrpc') {
+        const method = check.jsonrpc?.method ?? check.target;
+        const portName = check.jsonrpc?.port ?? 'rpc';
+        const port = binding.ports[portName];
+        reading.onHost.probe =
+          port === undefined
+            ? { method, ok: false, error: `no \`${portName}\` port in this stack's network` }
+            : !(await deps.reach(LOOPBACK, port))
+              ? { method, ok: false, error: `nothing listens on ${LOOPBACK}:${port}` }
+              : await probe(check, requirement, binding, LOOPBACK, port, deps, spec.dataDir);
+      }
+    }
   }
   return reading;
 }
+
+/** Where a service on the node is asked, as its applications reach it (`LOCAL_INFRA_HOST`). */
+const LOOPBACK = '127.0.0.1';
 
 async function readOnHost(spec: BareMetalSpec, host: HostRunner): Promise<NonNullable<HostServiceReading['onHost']>> {
   const observed = await observeBareMetal(spec, host);
@@ -248,29 +270,35 @@ export function isLocal(host: string, own: ReadonlySet<string>): boolean {
 }
 
 /**
- * The service's own declared health check, asked of the address the stack
- * gives, as the credentials the stack gives.
+ * A declared health check, asked of the address the stack gives, as the
+ * credentials the stack gives.
  *
  * A declaration's `jsonrpc` check authenticates as its own credentials —
  * monerod's as `omni_stagenet`, the laptop's. On a stack those are the
  * stack's: each is found by the value it has in the declaration and
- * replaced with the stack's value under the same name.
+ * replaced with the stack's value under the same name. A `cookie` is read
+ * from the service's data directory, on the node — never a reading's.
  */
 async function probe(
+  check: IServiceHealthCheck | undefined,
   requirement: IServiceRequirement,
   binding: ReturnType<typeof bindService>,
   host: string,
   port: number,
-  deps: InspectionDeps
+  deps: InspectionDeps,
+  dataDir?: string | undefined
 ): Promise<ProbeReading | undefined> {
-  const check = requirement.healthCheck;
   if (check?.type !== 'jsonrpc') return undefined;
   const method = check.jsonrpc?.method ?? check.target;
   const path = check.jsonrpc?.path ?? '/json_rpc';
   const declared = check.jsonrpc?.auth;
 
   let auth: RpcAuth | null = null;
-  if (declared) {
+  if (declared?.type === 'cookie') {
+    const cookie = await readCookie(declared.file, dataDir, deps.host);
+    if ('error' in cookie) return { method, ok: false, error: cookie.error };
+    auth = { type: 'basic', ...cookie };
+  } else if (declared) {
     const values = secretValues(binding);
     const stackValue = (literal: string) => {
       const key = Object.entries(requirement.secrets ?? {}).find(([, v]) => v === literal)?.[0];
@@ -531,6 +559,27 @@ export function digestAuthorization(
     ...(qop ? [`qop=${qop}`, `nc=${nc}`, `cnonce="${cnonce}"`] : []),
     `response="${response}"`,
   ].join(', ');
+}
+
+/**
+ * A daemon's cookie, `user:secret`, from inside its data directory. Used for
+ * one call to loopback on the node it was read on.
+ */
+async function readCookie(
+  file: string,
+  dataDir: string | undefined,
+  host: HostRunner
+): Promise<{ user: string; password: string } | { error: string }> {
+  if (!dataDir) return { error: 'a cookie is read from the data directory, and the service on the node declares none' };
+  if (file.startsWith('/') || file.split('/').includes('..')) {
+    return { error: `a cookie is named inside the data directory, and \`${file}\` is not` };
+  }
+  const path = `${dataDir.replace(/\/+$/, '')}/${file}`;
+  const content = (await host.readFile(path))?.trim();
+  if (!content) return { error: `no ${path} — the daemon writes it while it runs` };
+  const colon = content.indexOf(':');
+  if (colon <= 0) return { error: `${path} holds no \`user:secret\`` };
+  return { user: content.slice(0, colon), password: content.slice(colon + 1) };
 }
 
 function scalars(result: unknown): Record<string, string | number | boolean> {

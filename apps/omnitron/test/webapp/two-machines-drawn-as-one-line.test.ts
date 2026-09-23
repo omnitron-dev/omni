@@ -56,4 +56,13 @@ describe('naming a chart line', () => {
   it('survives a series with no labels at all', () => {
     expect(seriesLabel({ app: 'payments' }, NAMES)).toBe('payments');
   });
+
+  it('keeps the app of a child process, so four http processes are four names', () => {
+    expect(seriesLabel({ app: 'daos/dev/main/http', labels: {} }, NAMES)).toBe('main/http');
+    expect(seriesLabel({ app: 'daos/dev/storage/http', labels: {} }, NAMES)).toBe('storage/http');
+    expect(seriesLabel({ app: 'daos/dev/main', labels: {} }, NAMES)).toBe('main');
+    expect(
+      seriesLabel({ app: 'daos/deployed/main/http', labels: { node: '16f3dd5a-2727-49e5-90a2-d762b57073f6' } }, NAMES),
+    ).toBe('main/http · daos-test');
+  });
 });

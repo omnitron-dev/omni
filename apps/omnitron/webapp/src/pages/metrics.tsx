@@ -163,12 +163,19 @@ const METRICS_POLL_MS = 10_000;
  * The master's own readings keep the bare app name. A remote node's are
  * suffixed with the node, resolved to the name an operator gave it — a uuid
  * in a legend identifies nothing to a person.
+ *
+ * A child process keeps its app: `daos/dev/main/http` is `main/http`. Named
+ * by its last segment alone it was `http`, and main's, storage's,
+ * priceverse's and paysys's http processes were four lines with one name —
+ * six more on the node (measured on the master, 2026-09-23).
  */
 export function seriesLabel(
   series: { app: string; labels?: Record<string, string> | undefined },
   nodeNames: Record<string, string>,
 ): string {
-  const app = series.app.includes('/') ? series.app.split('/').pop()! : series.app;
+  const parts = series.app.split('/');
+  // project/stack/app/child → app/child; otherwise the last segment.
+  const app = parts.length >= 4 ? parts.slice(2).join('/') : parts[parts.length - 1]!;
   const node = series.labels?.['node'];
   if (!node) return app;
   return `${app} · ${nodeNames[node] ?? node}`;

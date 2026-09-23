@@ -83,6 +83,18 @@ import { ExecutionService, type SSHTarget } from '../execution/execution.service
 
 
 
+/** Whether two paths name one directory — symlinks and `..` resolved. */
+function samePath(a: string, b: string): boolean {
+  const real = (p: string) => {
+    try {
+      return fs.realpathSync(path.resolve(p));
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  return real(a) === real(b);
+}
+
 /**
  * The infrastructure a stack actually gets: the ecosystem's, plus its own.
  *
@@ -359,11 +371,63 @@ export class ProjectService extends EventEmitter {
     return this.toProjectInfo(project);
   }
 
-  addProject(name: string, projectPath: string): IProjectInfo {
+  async addProject(name: string, projectPath: string): Promise<IProjectInfo & { reread?: { redefined: number } }> {
+    // Already registered AT THIS PATH: read it again rather than refuse.
+    //
+    // A deployment registers a node's project after writing its config, on
+    // every deployment. The node answered «Project 'daos' already registered»
+    // to every one after the first (four in two days, measured), the
+    // deployer's SSH step failed on the exit code, and the node never read
+    // the config it had just been given — a redeployment that changed an
+    // app's environment restarted the app on the old one (paysys on
+    // daos/test, pointed at the chain's previous address, 2026-09-23). A
+    // different path under the same name is still refused: that is another
+    // project, not the same one again.
+    const existing = this.registry.get(name);
+    if (existing && samePath(existing.path, projectPath)) {
+      const redefined = await this.rereadProject(name);
+      return { ...this.toProjectInfo(existing), reread: { redefined } };
+    }
     const project = this.registry.add(name, projectPath);
     this.logger.info({ project: name, path: projectPath }, 'Project registered');
     this.emit('project:added', name, projectPath);
     return this.toProjectInfo(project);
+  }
+
+  /**
+   * Read a registered project's config again, and give every app its running
+   * local stacks supervise the definition that config now describes.
+   *
+   * The processes are not restarted here: each takes its new definition on
+   * its next start (`AppHandle.redefine`) — which a deployment asks for per
+   * app, only where something changed (`decideRedeploy`). Returns how many
+   * running apps were redefined.
+   */
+  async rereadProject(name: string): Promise<number> {
+    this.configRegistry.delete(name);
+    const config = await this.loadProjectConfig(name);
+    const stacks = this.resolveStacks(config, name);
+
+    let redefined = 0;
+    for (const [key, state] of this.stackStates) {
+      if (!key.startsWith(`${name}/`) || state.status === 'stopped' || state.status === 'error') continue;
+      const stackConfig = stacks[state.stack];
+      // A remote stack's apps run on its nodes; they are redefined there.
+      if (!stackConfig || stackConfig.type !== 'local') continue;
+      const definitions = await this.loadAppDefinitions(name, stackConfig, config);
+      const build = this.stackEntryBuilder(name, state.stack, stackConfig, config, definitions);
+      for (const entry of this.resolveStackApps(stackConfig, config)) {
+        const built = build(entry);
+        if (this.orchestrator.redefineApp(built.name, built)) redefined += 1;
+      }
+    }
+
+    this.logger.info(
+      { project: name, redefined },
+      'Project read again — running apps take the new definition on their next start',
+    );
+    this.emit('project:updated', name, {});
+    return redefined;
   }
 
   updateProject(name: string, data: { path?: string }): IProjectInfo {
@@ -2046,19 +2110,10 @@ export class ProjectService extends EventEmitter {
       await this.runStackMigrations(projectName, stackName, effectiveInfra as InfrastructureConfig, appEntries, project.path);
     }
 
-    // 3. Resolve per-app infrastructure config via stack resolver
-    const portAllocation = this.infraManager.getPortAllocation(projectName, stackName);
-    const normalizedSvcs = this.infraManager.getNormalizedServices(projectName, stackName);
-    const resolvedStack = resolveStack(
-      ecosystemConfig,
-      projectName,
-      stackName,
-      stackConfig,
-      appDefinitions,
-      portAllocation ?? undefined,
-      undefined,
-      normalizedSvcs ?? undefined,
-    );
+    // 3. How each app is started: its entry, built from the stack's resolved
+    //    configuration (`stackEntryBuilder` — the same builder a re-read of
+    //    the project uses to redefine running apps).
+    const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions);
 
     // 4. Start apps in dependency-aware parallel batches.
     //
@@ -2077,46 +2132,6 @@ export class ProjectService extends EventEmitter {
     // parallel, and a wave can't start until every member of the
     // previous wave is online. Same skip-on-failed-dep semantics
     // as startAll.
-    const appConfigBuilder = (entry: IEcosystemAppEntry) => {
-      const appConfig = resolvedStack.appConfigs.get(entry.name);
-      const infraEnv = appConfig ? resolvedConfigToEnv(appConfig, entry.name, stackName) : {};
-      return {
-        ...entry,
-        name: ProjectService.handleKey(projectName, stackName, entry.name),
-        ...(entry.bootstrap && project
-          ? { bootstrap: path.resolve(project.path, entry.bootstrap) }
-          : {}),
-        ...(project ? { cwd: project.path } : {}),
-        env: {
-          // Derived first, stated second. `infraEnv` is COMPUTED from the
-          // stack's configuration; `entry.env` is WRITTEN — by a developer
-          // in the project config, or, on a node, by the master that
-          // provisioned the services and read their credentials back from
-          // the machine they run on.
-          //
-          // The other order made the computed value win, and on a node the
-          // computation has nothing to compute from: the generated config
-          // carries no `infrastructure` block, so `resolveStackAddresses`
-          // ends at its literal and overwrote a correct
-          // `postgres://postgres:<43-char secret>@…` with
-          // `postgres://postgres:postgres@…`. The apps then failed with
-          // `password authentication failed for user "postgres" (28P01)`
-          // against credentials that had been handed to them correctly and
-          // thrown away one line later.
-          //
-          // It also meant an operator could not override a computed address
-          // at all, which is not a thing a config system should refuse.
-          // `stackConfig.settings.env` still wins over both, as it did.
-          ...infraEnv,
-          ...entry.env,
-          ...stackConfig.settings?.env,
-          OMNITRON_PROJECT: projectName,
-          OMNITRON_STACK: stackName,
-          OMNITRON_STACK_TYPE: 'local',
-        },
-      };
-    };
-
     const failed = new Set<string>();
     const blocked = new Set<string>();
 
@@ -3350,6 +3365,77 @@ export class ProjectService extends EventEmitter {
     }
 
     return configStacks;
+  }
+
+  /**
+   * How each app of a local stack is started: the entry handed to the
+   * orchestrator — named into its stack, its environment computed from the
+   * stack's resolved configuration and then the project config's own.
+   *
+   * One builder for the start and for a re-read of the project
+   * (`rereadProject`), so a running app is redefined exactly as it would be
+   * started.
+   */
+  private stackEntryBuilder(
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    ecosystemConfig: IEcosystemConfig,
+    appDefinitions: Map<string, IAppDefinition>,
+  ): (entry: IEcosystemAppEntry) => IEcosystemAppEntry {
+    const project = this.registry.get(projectName);
+    const portAllocation = this.infraManager.getPortAllocation(projectName, stackName);
+    const normalizedSvcs = this.infraManager.getNormalizedServices(projectName, stackName);
+    const resolvedStack = resolveStack(
+      ecosystemConfig,
+      projectName,
+      stackName,
+      stackConfig,
+      appDefinitions,
+      portAllocation ?? undefined,
+      undefined,
+      normalizedSvcs ?? undefined,
+    );
+
+    return (entry: IEcosystemAppEntry): IEcosystemAppEntry => {
+      const appConfig = resolvedStack.appConfigs.get(entry.name);
+      const infraEnv = appConfig ? resolvedConfigToEnv(appConfig, entry.name, stackName) : {};
+      return {
+        ...entry,
+        name: ProjectService.handleKey(projectName, stackName, entry.name),
+        ...(entry.bootstrap && project
+          ? { bootstrap: path.resolve(project.path, entry.bootstrap) }
+          : {}),
+        ...(project ? { cwd: project.path } : {}),
+        env: {
+          // Derived first, stated second. `infraEnv` is COMPUTED from the
+          // stack's configuration; `entry.env` is WRITTEN — by a developer
+          // in the project config, or, on a node, by the master that
+          // provisioned the services and read their credentials back from
+          // the machine they run on.
+          //
+          // The other order made the computed value win, and on a node the
+          // computation has nothing to compute from: the generated config
+          // carries no `infrastructure` block, so `resolveStackAddresses`
+          // ends at its literal and overwrote a correct
+          // `postgres://postgres:<43-char secret>@…` with
+          // `postgres://postgres:postgres@…`. The apps then failed with
+          // `password authentication failed for user "postgres" (28P01)`
+          // against credentials that had been handed to them correctly and
+          // thrown away one line later.
+          //
+          // It also meant an operator could not override a computed address
+          // at all, which is not a thing a config system should refuse.
+          // `stackConfig.settings.env` still wins over both, as it did.
+          ...infraEnv,
+          ...entry.env,
+          ...stackConfig.settings?.env,
+          OMNITRON_PROJECT: projectName,
+          OMNITRON_STACK: stackName,
+          OMNITRON_STACK_TYPE: 'local',
+        },
+      };
+    };
   }
 
   /**

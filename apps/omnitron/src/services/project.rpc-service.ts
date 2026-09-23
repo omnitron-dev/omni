@@ -78,7 +78,8 @@ export class ProjectRpcService {
       action: 'project.add',
       resourceType: 'project',
       resourceId: data.name,
-      details: { path: data.path },
+      // Said, because a re-read changes what the next restart runs.
+      details: { path: data.path, ...(project.reread ? { reread: true, redefined: project.reread.redefined } : {}) },
     });
     return project;
   }

@@ -139,10 +139,42 @@ export class AppHandle {
    */
   public lastExit: LastExitInfo | null = null;
 
+  private definition: IEcosystemAppEntry;
+
   constructor(
-    public readonly entry: IEcosystemAppEntry,
+    entry: IEcosystemAppEntry,
     public readonly mode: 'classic' | 'bootstrap'
-  ) {}
+  ) {
+    this.definition = entry;
+  }
+
+  /**
+   * The definition this app is started with — and, after `redefine`, the one
+   * its NEXT start uses. A running process keeps the environment it was
+   * started with; `restartAppNow` starts from this.
+   */
+  get entry(): IEcosystemAppEntry {
+    return this.definition;
+  }
+
+  /**
+   * Take a new definition for the next start.
+   *
+   * The handle captured its entry once, at the first start, and every restart
+   * reused it — so a deployment that rewrote an app's environment and then
+   * restarted it restarted it on the old one. Measured on daos/test,
+   * 2026-09-23: paysys came back pointed at the chain's old address after a
+   * deployment had written the new one to the node.
+   *
+   * Refused for another name: a handle is keyed by its app's name, and a
+   * definition that renames it would orphan the key.
+   */
+  redefine(entry: IEcosystemAppEntry): void {
+    if (entry.name !== this.definition.name) {
+      throw new Error(`A definition for '${entry.name}' cannot redefine '${this.definition.name}'`);
+    }
+    this.definition = entry;
+  }
 
   get name(): string {
     return this.entry.name;

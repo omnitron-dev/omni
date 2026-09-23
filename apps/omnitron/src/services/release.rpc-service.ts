@@ -14,11 +14,11 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 
 import { buildEnv, missingTools } from '../release/build-run.js';
-import type { PruneResult, ReleaseDetail, ReleaseSummary } from '../release/store.js';
+import type { ReleaseDetail, ReleaseSummary } from '../release/store.js';
 import { ADMIN_ROLES, OPERATOR_ROLES, VIEWER_ROLES } from '../shared/roles.js';
 import type { AuditService } from './audit.service.js';
 import type { BuildRecord, ReleaseService } from './release.service.js';
-import type { IOmnitronReleaseService, ReleaseDeploymentDto, ReleasePreflightDto } from '../shared/dto/services.js';
+import type { IOmnitronReleaseService, ReleaseDeploymentDto, ReleasePreflightDto, ReleasePruneAnswer } from '../shared/dto/services.js';
 
 /** The most builds or rows one call may ask for. */
 const MAX_DEPLOYMENTS = 200;
@@ -145,18 +145,40 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   }
 
   /**
-   * Remove all but the newest `keep`.
+   * Remove all but the newest `keep`, and never a release a stack runs.
    *
    * `apply` is what deletes; without it this answers what WOULD go, which is
-   * what the console shows before asking. `protect` keeps named releases
-   * whatever their age — the console passes the ones its stacks are running.
+   * what the console shows before asking.
+   *
+   * Which releases the stacks run is decided HERE, from this daemon's own
+   * audit trail (`deploymentProtection`). It used to be whatever the caller
+   * sent as `protect`: the console built that list from `deployments()`,
+   * which answers `[]` on a daemon with no audit trail — so the console sent
+   * `protect: []` and its second click removed the release a stack was
+   * running; a direct call with admin rights and no `protect` did the same.
+   * `protect` from the caller now only ADDS to the daemon's list. When the
+   * daemon cannot know — no trail, or a stack that took a release whose name
+   * was not recorded — `apply` is refused unless the caller says, with
+   * `allowUnprotected`, that it accepts removing without knowing.
    */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async prune(data: { keep?: number; apply?: boolean; protect?: string[] }): Promise<PruneResult> {
+  async prune(data: {
+    keep?: number;
+    apply?: boolean;
+    protect?: string[];
+    allowUnprotected?: boolean;
+  }): Promise<ReleasePruneAnswer> {
+    const known = await this.deploymentProtection();
+    if (data?.apply && known.unknown && data.allowUnprotected !== true) {
+      throw new Error(
+        `Refusing to remove releases: ${known.unknown}. Pass allowUnprotected to remove them without knowing which a stack runs.`,
+      );
+    }
+    const protect = [...new Set([...known.protect, ...(data?.protect ?? [])])];
     const result = this.releases.prune({
       ...(data?.keep !== undefined ? { keep: data.keep } : {}),
       ...(data?.apply ? { apply: true } : {}),
-      ...(data?.protect ? { protect: data.protect } : {}),
+      protect,
     });
     if (data?.apply && result.removed.length > 0) {
       await this.audit?.record({
@@ -166,7 +188,27 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
         details: { removed: result.removed.join(','), kept: result.kept, megabytes: Math.round(result.freedBytes / 1024 / 1024) },
       });
     }
-    return result;
+    return { ...result, protectedByDeployment: known.protect, unknown: known.unknown };
+  }
+
+  /**
+   * The releases the stacks run, by this daemon's own trail — and, when it
+   * cannot say, why not.
+   */
+  private async deploymentProtection(): Promise<{ protect: string[]; unknown: string | null }> {
+    if (!this.audit?.available) {
+      return { protect: [], unknown: 'this daemon has no audit trail, so it cannot say which releases the stacks run' };
+    }
+    const protect: string[] = [];
+    const unnamed: string[] = [];
+    for (const d of await this.deployments()) {
+      if (d.release) protect.push(d.release);
+      else if (d.releaseUnnamed) unnamed.push(`${d.project}/${d.stack}`);
+    }
+    return {
+      protect,
+      unknown: unnamed.length > 0 ? `${unnamed.join(', ')} took a release whose name was not recorded` : null,
+    };
   }
 
   /**
@@ -260,10 +302,12 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
    * exactly that rather than implying it read the node.
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]> {
+  async deployments(_data?: { limit?: number }): Promise<ReleaseDeploymentDto[]> {
     if (!this.audit) return [];
-    const limit = Math.min(MAX_DEPLOYMENTS, Math.max(1, Math.floor(data?.limit ?? MAX_DEPLOYMENTS)));
-    const rows = await this.audit.list({ action: 'stack.start', limit });
+    // The newest `stack.start` of EVERY stack, however long ago — not the
+    // newest 200 rows (see `AuditService.latestPerResource`). `limit` is
+    // kept for callers that still send it; one row per stack needs none.
+    const rows = await this.audit.latestPerResource('stack.start');
     const latest = new Map<string, ReleaseDeploymentDto>();
     for (const row of rows) {
       const details = row.details ?? {};

@@ -11,6 +11,10 @@
  *
  * The handling existed, read as correct, and could not fire. An operator
  * clicked Stop, saw no error, and the app kept running.
+ *
+ * The page lists the selected project's deployments (0fbce281) and acts on a
+ * local one by its handle; the router never shows it without a project, so
+ * the court selects one, as the console always has.
  */
 
 import type { ReactNode } from 'react';
@@ -23,21 +27,40 @@ import { MemoryRouter } from 'react-router-dom';
 import { SnackbarProvider } from '@omnitron-dev/prism';
 import '@testing-library/jest-dom/vitest';
 
+import { useProjectStore } from '../../webapp/src/stores/project.store.js';
+
 const stopApp = vi.fn();
+/** The page's one read: `main`, running in the project's local dev stack. */
 const list = vi.fn(async () => [
-  { name: 'main', pid: 4242, status: 'online', cpu: 1, memory: 100, uptime: 1000, restarts: 0, port: 3001 },
+  {
+    name: 'main',
+    handleKey: 'daos/dev/main',
+    stack: 'dev',
+    stackType: 'local',
+    pid: 4242,
+    status: 'online',
+    cpu: 1,
+    memory: 100,
+    uptime: 1000,
+    restarts: 0,
+    instances: 1,
+    port: 3001,
+  },
 ]);
 
 vi.mock('src/netron/client', () => ({
   daemon: {
-    list: (...a: unknown[]) => list(...a),
     stopApp: (...a: unknown[]) => stopApp(...a),
     startApp: vi.fn(async () => ({})),
     restartApp: vi.fn(async () => ({})),
   },
   logs: {},
   alerts: {},
-  project: { listProjects: vi.fn(async () => []), listStacks: vi.fn(async () => []) },
+  project: {
+    listProjects: vi.fn(async () => []),
+    listStacks: vi.fn(async () => []),
+    getProjectApps: (...a: unknown[]) => list(...a),
+  },
 }));
 
 const theme = createTheme();
@@ -67,6 +90,7 @@ function hideDocument(): void {
 beforeEach(() => {
   stopApp.mockReset();
   list.mockClear();
+  useProjectStore.setState({ activeProject: 'daos', activeStack: null });
   Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
 });
 
@@ -83,6 +107,8 @@ describe('stopping an app that will not stop', () => {
     await user.click(screen.getByRole('button', { name: /stop/i }));
 
     expect(await screen.findByText(/child ignored SIGTERM/i)).toBeInTheDocument();
+    // By its handle: a bare `main` is ambiguous once two local stacks run it.
+    expect(stopApp).toHaveBeenCalledWith({ name: 'daos/dev/main' });
   });
 
   it('does not refresh the list on a failed stop', async () => {

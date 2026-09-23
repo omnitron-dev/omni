@@ -1598,6 +1598,30 @@ export class ProjectService extends EventEmitter {
     return this.configRegistry.get(projectName)?.config ?? null;
   }
 
+  /** In-flight loads, so callers arriving together load a project once. */
+  private readonly configLoads = new Map<string, Promise<IEcosystemConfig>>();
+
+  /**
+   * The project's config, loaded now if the daemon has not got to it yet.
+   *
+   * A reader that arrived in the first seconds after a daemon start found no
+   * config and was answered with an error: measured on the master restarted
+   * at 12:07:48 UTC, 20 ERROR lines «Project 'daos' config not loaded» from
+   * the console's `getStack` polls, logged as server failures and counted by
+   * `doctor` — for a project that loads a moment later, which is what the
+   * reconciler already does for itself (`loadProjectConfig` when absent).
+   */
+  async ensureConfig(projectName: string): Promise<IEcosystemConfig> {
+    const loaded = this.getLoadedConfig(projectName);
+    if (loaded) return loaded;
+    let pending = this.configLoads.get(projectName);
+    if (!pending) {
+      pending = this.loadProjectConfig(projectName).finally(() => this.configLoads.delete(projectName));
+      this.configLoads.set(projectName, pending);
+    }
+    return pending;
+  }
+
   async reloadConfig(projectName?: string): Promise<void> {
     if (projectName) {
       await this.loadProjectConfig(projectName);

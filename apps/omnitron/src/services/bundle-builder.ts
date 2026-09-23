@@ -26,6 +26,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { resolvePnpm } from '../shared/pnpm.js';
+import { readBuildStamp } from '../shared/build-stamp.js';
 
 import {
   planBundle,
@@ -930,6 +931,55 @@ export interface OwnBundle {
 }
 
 /**
+ * Why omnitron's own build may not travel under the tree's commit — or null.
+ *
+ * The bundle copies `dist` and `webapp/dist` as they are on disk and names
+ * itself after the working tree's HEAD, and nothing compared the two.
+ * Measured 2026-09-23: a node installed as `0.2.0+local.f1715106…` received a
+ * console build older than f1715106, whose only change was that console. A
+ * `dist` compiled before the last commit ships the code before it under the
+ * commit's name, and the node's version is the record everyone reads
+ * afterwards. Each build now carries its own stamp (`BUILD.json`, written by
+ * `scripts/stamp-build.mjs`), and it must name the commit the tree is on,
+ * from a clean tree.
+ */
+export function ownBuildRefusal(input: {
+  packageDir: string;
+  tree: { commit: string; dirty: boolean };
+}): string | null {
+  const short = (sha: string) => sha.slice(0, 8);
+  for (const rel of ['dist', 'webapp/dist']) {
+    const dir = path.join(input.packageDir, rel);
+    const name = `${path.basename(input.packageDir)}/${rel}`;
+    if (!fs.existsSync(dir)) {
+      if (rel === 'dist') return `${name} does not exist: there is no build to ship. Build omnitron first.`;
+      continue;
+    }
+    const stamp = readBuildStamp(dir);
+    if (!stamp) {
+      return (
+        `${name} carries no build stamp, so nothing says which commit it was compiled from. ` +
+        `Rebuild it (\`pnpm --filter ${rel === 'dist' ? OMNITRON_PACKAGE : '@omnitron/console'} build\`), which stamps it.`
+      );
+    }
+    if (stamp.dirty) {
+      return (
+        `${name} was compiled from a tree with uncommitted changes (${stamp.builtAt}): what it holds is no commit ` +
+        `at all. Rebuild it from a clean tree.`
+      );
+    }
+    if (stamp.commit !== input.tree.commit) {
+      return (
+        `${name} was compiled from ${short(stamp.commit)} (${stamp.builtAt}) and the tree is at ` +
+        `${short(input.tree.commit)}: a node would run ${short(stamp.commit)} under ${short(input.tree.commit)}'s ` +
+        `name. Rebuild it.`
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * Build omnitron from a working tree, for installing on a node.
  *
  * Two callers do this — `omnitron fleet upgrade` from a terminal, and the
@@ -949,6 +999,14 @@ export async function buildOwnBundle(options: {
   readonly label: string;
   readonly logger?: { info(message: string): void };
 }): Promise<OwnBundle> {
+  const own = readWorkspaces([path.resolve(options.workspaceRoot)]).get(OMNITRON_PACKAGE);
+  if (own) {
+    const refusal = ownBuildRefusal({
+      packageDir: directoryOf(own),
+      tree: await describeTree(path.resolve(options.workspaceRoot)),
+    });
+    if (refusal) throw new Error(refusal);
+  }
   const staging = ownBundleStaging(options.label);
   const archivePath = `${staging}.tar.gz`;
   const built = await buildBundle({

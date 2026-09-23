@@ -36,6 +36,7 @@ import type { IHealthService } from '@omnitron-dev/titan-health';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { IEcosystemConfig } from '../config/types.js';
 import { CLI_VERSION, DAEMON_SERVICE_ID } from '../config/defaults.js';
+import { OWN_BUILD } from '../shared/build-stamp.js';
 import { loadEcosystemConfig } from '../config/loader.js';
 import type { OmnitronDaemon } from './daemon.js';
 import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
@@ -280,6 +281,8 @@ export class DaemonRpcService implements IDaemonService {
 
     return {
       version: CLI_VERSION,
+      // Which commit is running: the package version is 0.2.0 on every build.
+      build: OWN_BUILD,
       pid: process.pid,
       uptime: Date.now() - this.startedAt,
       apps,

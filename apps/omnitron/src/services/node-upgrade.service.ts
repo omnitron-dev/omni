@@ -455,6 +455,7 @@ export class NodeUpgradeService {
   private async buildInChild(workspace: string, label: string): Promise<BuiltBundle> {
     const { execFile } = await import('node:child_process');
     const { ownBundleStaging } = await import('./bundle-builder.js');
+    const { failureReason } = await import('./bundle-worker-protocol.js');
     const worker = fileURLToPath(new URL('./bundle-build-worker.js', import.meta.url));
     const staging = ownBundleStaging(label);
     const cleanup = async () => {
@@ -468,8 +469,10 @@ export class NodeUpgradeService {
         { maxBuffer: 16 * 1024 * 1024, timeout: 15 * 60_000 },
         (err, out, errOut) => {
           if (err) {
-            const tail = String(errOut).trim().split('\n').slice(-4).join(' | ');
-            reject(new Error(`the bundle build failed: ${tail || err.message}`));
+            // The child's own sentence when it gave one; the tail of its
+            // output only when it died before it could (a crash, a kill).
+            const reason = failureReason(String(errOut)) ?? String(errOut).trim().split('\n').slice(-4).join(' | ');
+            reject(new Error(`the bundle build failed: ${reason || err.message}`));
           } else resolve(String(out));
         },
       );

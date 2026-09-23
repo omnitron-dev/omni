@@ -2181,18 +2181,15 @@ export class OrchestratorService extends EventEmitter {
     // Create supervisor WITHOUT starting — wire events first to avoid race condition
     const supervisor = this.pm.createSupervisor(supervisorConfig);
 
-    supervisor.on('child:started', (childName: string) => {
-      const processId = supervisor.getChildProcessId(childName);
-      if (processId) {
-        const workerHandle = this.pm.getWorkerHandle(processId);
-        const info = this.pm.getProcess(processId);
-        const childPid = workerHandle?.pid ?? info?.pid;
-        handle.markOnline(childPid ?? process.pid);
-      }
-      this.persistState();
-      this.startPostOnlineCooldown(entry.name);
-      this.emit('app:online', entry.name);
-    });
+    // The app's pid is its server's: the single process with a transport, the
+    // one `handle.port` names. A topology with none has no pid to give.
+    const server =
+      singleEntries.find((p) => p.transports?.http) ?? singleEntries.find((p) => p.transports) ?? null;
+    handle.declareChildren(
+      children.map((child) => child.name),
+      server ? `${entry.name}/${server.name}` : null,
+    );
+    this.onChildStarted(entry, handle, supervisor);
 
     // Set supervisor on handle BEFORE start so attachLogCapture can access it
     handle.supervisor = supervisor;
@@ -2408,20 +2405,10 @@ export class OrchestratorService extends EventEmitter {
     // Create supervisor WITHOUT starting — wire events first to avoid race condition
     const supervisor = this.pm.createSupervisor(supervisorConfig);
 
-    // Wire supervisor events BEFORE start so we catch the initial child:started
-    supervisor.on('child:started', (childName: string) => {
-      const processId = supervisor.getChildProcessId(childName);
-      if (processId) {
-        // Prefer WorkerHandle.pid (actual child OS PID), fallback to IProcessInfo.pid
-        const workerHandle = this.pm.getWorkerHandle(processId);
-        const info = this.pm.getProcess(processId);
-        const childPid = workerHandle?.pid ?? info?.pid;
-        handle.markOnline(childPid ?? process.pid);
-      }
-      this.persistState();
-      this.startPostOnlineCooldown(entry.name);
-      this.emit('app:online', entry.name);
-    });
+    // Wire supervisor events BEFORE start so we catch the initial child:started.
+    // One child, and it is the whole app — so it is the server too.
+    handle.declareChildren([childConfig.name], childConfig.name);
+    this.onChildStarted(entry, handle, supervisor);
 
     // Set supervisor on handle BEFORE start so attachLogCapture can access it
     handle.supervisor = supervisor;
@@ -2431,6 +2418,38 @@ export class OrchestratorService extends EventEmitter {
 
     // Now start — events will be captured correctly
     await supervisor.start();
+  }
+
+  /**
+   * A child's start, for both launch paths: the app is online when the start
+   * completes it, and not before (`AppHandle.childStarted`).
+   *
+   * Each path had its own copy of this handler, and both marked the app
+   * online — with that child's pid — on every child's start. `app:online`
+   * went out once per child with it: three STARTED events for one boot of a
+   * three-process app, the first two about an app still coming up.
+   */
+  private onChildStarted(
+    entry: IEcosystemAppEntry,
+    handle: AppHandle,
+    supervisor: { on(event: 'child:started', fn: (childName: string) => void): unknown; getChildProcessId(name: string): unknown },
+  ): void {
+    supervisor.on('child:started', (childName: string) => {
+      // A pool child's proxy answers every property with a function —
+      // `__processId` included — so only a string is a process id. The old
+      // handler took that function for one, found no worker behind it, and
+      // gave such an app the DAEMON's pid.
+      const processId = supervisor.getChildProcessId(childName);
+      const pid =
+        typeof processId === 'string'
+          ? (this.pm.getWorkerHandle(processId)?.pid ?? this.pm.getProcess(processId)?.pid ?? null)
+          : null;
+      const whole = handle.childStarted(childName, pid);
+      this.persistState();
+      if (!whole) return;
+      this.startPostOnlineCooldown(entry.name);
+      this.emit('app:online', entry.name);
+    });
   }
 
   /**
@@ -2446,7 +2465,12 @@ export class OrchestratorService extends EventEmitter {
       handle.clearLastExit();
     });
 
+    // A child that is down leaves the app partial until it is back — a
+    // sibling's restart must not bring the app `online` around it.
+    supervisor.on('child:stopped', (childName: string) => handle.childGone(childName));
+
     supervisor.on('child:crash', (childName: string, error: Error) => {
+      handle.childGone(childName);
       // If app never reached 'online', mark as errored (not crashed — it never ran)
       if (handle.status === 'starting') {
         handle.markErrored();
@@ -2537,6 +2561,13 @@ export class OrchestratorService extends EventEmitter {
         expected: false,
         message: error.message,
       });
+      // The supervisor gives up on a non-critical child whose start failed (a
+      // critical one throws, and `startApp` says so). That went unseen while
+      // the first child's start made the app `online`; now the app would wait
+      // for a child that is not coming, in `starting` — which `omnitron start`
+      // takes for a start in progress and leaves alone. A declared process
+      // that did not start is an app that did not start.
+      if (handle.status === 'starting') handle.markErrored();
       this.logger.error(
         { app: entry.name, child: childName, err: error.message },
         'Process failed to start',

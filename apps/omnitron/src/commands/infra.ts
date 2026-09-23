@@ -314,6 +314,12 @@ function printInspection(
       .map((i) => `${i.name} ${i.address}`)
       .join(' · ')}`,
   );
+  if (inspection.memory) {
+    const m = inspection.memory;
+    log.info(
+      `memory: available ${bytes(m.availableBytes)} of ${bytes(m.totalBytes)} · swap free ${bytes(m.swapFreeBytes)} of ${bytes(m.swapTotalBytes)}`
+    );
+  }
 
   for (const service of inspection.services) {
     const head = `${prism.bold(service.name)} ${service.provisioning}${service.networkMode ? ` · ${service.networkMode}` : ''}`;

@@ -307,6 +307,26 @@ describe('a service the stack runs on the node, asked how far it is', () => {
   });
 });
 
+describe("the host's memory", () => {
+  it('is what the kernel says can be taken without swapping, not what is free', async () => {
+    const meminfo =
+      'MemTotal:       65756092 kB\nMemFree:          812344 kB\nMemAvailable:   40123456 kB\n' +
+      'Buffers:          102400 kB\nCached:         38000000 kB\nSwapTotal:       8388604 kB\nSwapFree:        8388000 kB\n';
+    const reading = await inspectHost({ services: {} }, deps(fakeHost({}, { '/proc/meminfo': meminfo }).host));
+
+    expect(reading.memory).toEqual({
+      totalBytes: 65_756_092 * 1024,
+      availableBytes: 40_123_456 * 1024,
+      swapTotalBytes: 8_388_604 * 1024,
+      swapFreeBytes: 8_388_000 * 1024,
+    });
+  });
+
+  it('is unknown, not zero, where there is no /proc/meminfo', async () => {
+    expect((await inspectHost({ services: {} }, deps(fakeHost({}).host))).memory).toBeNull();
+  });
+});
+
 describe('host facts for a decision the declaration does not cover', () => {
   const host = fakeHost(
     {

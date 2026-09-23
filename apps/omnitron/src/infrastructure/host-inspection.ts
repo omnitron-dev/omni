@@ -144,6 +144,8 @@ export interface HostServiceReading {
 
 export interface HostInspection {
   interfaces: Array<{ name: string; address: string; family: string; internal: boolean }>;
+  /** The machine's memory as its kernel counts it; null where there is no `/proc/meminfo`. */
+  memory: MemoryReading | null;
   services: HostServiceReading[];
   units: UnitReading[];
   paths: Array<{
@@ -155,6 +157,14 @@ export interface HostInspection {
   }>;
   snaps: Array<{ name: string; installed: boolean; version: string | null; revision: string | null }>;
   configKeys: Array<{ path: string; exists: boolean; values: Record<string, string | null>; refused: string[] }>;
+}
+
+export interface MemoryReading {
+  totalBytes: number;
+  /** `MemAvailable`: what can be taken without swapping, reclaimable cache counted in — the kernel's estimate. */
+  availableBytes: number;
+  swapTotalBytes: number;
+  swapFreeBytes: number;
 }
 
 /** What the inspection needs of the machine, so a court can be one. */
@@ -188,11 +198,39 @@ export async function inspectHost(request: HostInspectionRequest, deps: Inspecti
 
   return {
     interfaces,
+    memory: await readMemory(deps.host),
     services,
     units: await Promise.all((request.units ?? []).map((unit) => readUnit(unit, deps.host))),
     paths: await Promise.all((request.paths ?? []).map((path) => readPath(path, deps.host))),
     snaps: await Promise.all((request.snaps ?? []).map((snap) => readSnap(snap, deps.host))),
     configKeys: await Promise.all((request.configKeys ?? []).map((wanted) => readConfigKeys(wanted, deps.host))),
+  };
+}
+
+/**
+ * The host's memory, from `/proc/meminfo` — read, never a command run.
+ *
+ * Nothing said it before: bitcoind's first run on the test node logged a
+ * 25.7 GB «memory peak» (2026-09-23), a figure that counts the page cache of
+ * a chain it had just read, and whether the host had room left beside monerod
+ * could be asked of no reading. `MemAvailable` answers that; `MemFree` does
+ * not, since the kernel keeps free memory filled with reclaimable cache.
+ */
+async function readMemory(host: HostRunner): Promise<MemoryReading | null> {
+  const content = await host.readFile('/proc/meminfo');
+  if (!content) return null;
+  const bytes = (key: string) => {
+    const kib = new RegExp(`^${key}:\\s+(\\d+) kB$`, 'm').exec(content)?.[1];
+    return kib === undefined ? null : Number(kib) * 1024;
+  };
+  const total = bytes('MemTotal');
+  const available = bytes('MemAvailable');
+  if (total === null || available === null) return null;
+  return {
+    totalBytes: total,
+    availableBytes: available,
+    swapTotalBytes: bytes('SwapTotal') ?? 0,
+    swapFreeBytes: bytes('SwapFree') ?? 0,
   };
 }
 

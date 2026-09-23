@@ -6,7 +6,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, ADMIN_ROLES } from '../shared/roles.js';
-import type { BackupService, BackupInfo } from './backup.service.js';
+import type { BackupService, BackupInfo, BackupStatus } from './backup.service.js';
 
 import type { IOmnitronBackupsService } from '../shared/dto/services.js';
 
@@ -68,5 +68,15 @@ export class BackupRpcService implements IOmnitronBackupsService {
   async removeSchedule(data: { database: string }): Promise<{ success: boolean }> {
     await this.backups.removeSchedule(data.database);
     return { success: true };
+  }
+
+  /**
+   * Each schedule's last pass and next run, and which stacks this host backs
+   * up at all. `backup schedules` and `backup list` printed «unknown» in their
+   * place: the service computed it and no call reached it.
+   */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getBackupStatus(): Promise<BackupStatus> {
+    return this.backups.getStatus();
   }
 }

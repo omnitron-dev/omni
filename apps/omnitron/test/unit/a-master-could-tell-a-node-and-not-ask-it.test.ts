@@ -57,6 +57,7 @@ const CONTROL_PLANE_CALLS: ReadonlyArray<{ service: string; method: string; why:
   { service: 'OmnitronInfra', method: 'getConnectionInfo', why: 'what the node provisioned' },
   { service: 'OmnitronInfra', method: 'getState', why: 'infrastructure status for the console' },
   { service: 'OmnitronInfra', method: 'listContainers', why: 'container list for the console' },
+  { service: 'OmnitronDaemon', method: 'ping', why: 'the daemon\'s own node check, over the mesh, before a direct dial' },
   { service: 'OmnitronDaemon', method: 'status', why: 'what the node is running' },
   { service: 'OmnitronDaemon', method: 'getHealth', why: 'node health for the console' },
   { service: 'OmnitronDaemon', method: 'getMetrics', why: 'node metrics for the console' },

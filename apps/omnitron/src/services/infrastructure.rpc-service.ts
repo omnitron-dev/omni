@@ -519,10 +519,16 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * `omnitron.managed` label, so it answers the same in a fresh daemon as in
    * one that did the provisioning — and it is the same call the CLI makes,
    * which is what stops the two from disagreeing again.
+   *
+   * A runtime that cannot be asked is an error, not an empty list. Asked
+   * without `orThrow`, a Docker that did not answer came back as `[]` — the
+   * same empty state this comment describes, one layer down: the console's
+   * containers page said «No containers found» with 0 running, and the
+   * topology read no container's health, while every container ran.
    */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async listContainers(): Promise<ContainerState[]> {
-    return listManagedContainers();
+    return listManagedContainers({ orThrow: true });
   }
 
   /**

@@ -34,6 +34,7 @@ export async function execCommand(appName: string, service: string, method: stri
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     log.error((err as Error).message);
+    process.exitCode = 1;
   }
 
   await client.disconnect();

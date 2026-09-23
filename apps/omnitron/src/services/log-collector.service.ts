@@ -12,12 +12,14 @@ import { randomUUID } from 'node:crypto';
 import { type Kysely, type ExpressionBuilder, type Expression, type SqlBool } from 'kysely';
 
 import { planRetention, batchesPerPass } from './log-retention.js';
-import { jsonContains } from '../database/dialect.js';
+import { jsonContains, dialectOf, type SqlDialect } from '../database/dialect.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { EventEmitter } from 'node:events';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { OMNITRON_DB_TOKEN } from '../shared/tokens.js';
 import type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
+import type { LogEntryDto } from '../config/types.js';
+import { LineAssembler, type LogRecord } from '../monitoring/log-line.js';
 
 // =============================================================================
 // Types
@@ -26,17 +28,32 @@ import type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } 
 export type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
 
 // =============================================================================
-// Pino Level Map (numeric → string)
+// Capture order within a millisecond
 // =============================================================================
 
-const PINO_LEVELS: Record<number, string> = {
-  10: 'trace',
-  20: 'debug',
-  30: 'info',
-  40: 'warn',
-  50: 'error',
-  60: 'fatal',
-};
+/**
+ * A millisecond's capture sequence, written as its microseconds.
+ *
+ * Records captured in one millisecond were stored with equal timestamps and
+ * read back in whatever order the database chose for the tie — on the master
+ * a uuid's, which is to say none — so the lines of one dump, and bursts of
+ * records, came back shuffled. The column is `timestamptz`, which keeps
+ * microseconds, and no source stamps finer than a millisecond: so the
+ * microseconds carry the order the records were captured in, 0–999 within
+ * their millisecond. `ORDER BY timestamp` then IS capture order, with no
+ * migration and no second sort key — and the string travels to the master
+ * inside the replicated entry, whose ingest passes it through unchanged.
+ *
+ * The millisecond itself stays the record's own. Past 999 records in one
+ * millisecond the rest share .999 — a tie, never a later time.
+ */
+export function timestampWithSequence(ms: number, sequence: number): string {
+  const iso = new Date(ms).toISOString();
+  return `${iso.slice(0, -1)}${String(Math.min(sequence, 999)).padStart(3, '0')}Z`;
+}
+
+/** Milliseconds whose sequence is remembered — far more than one flush spans. */
+const SEQUENCED_MILLISECONDS = 4096;
 
 // =============================================================================
 // Log Collector Service
@@ -45,6 +62,16 @@ const PINO_LEVELS: Record<number, string> = {
 /** Escape LIKE pattern metacharacters to prevent injection */
 function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/** A JSON column read back as text (SQLite), or nothing if it is not an object. */
+function safeJson(text: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 
@@ -144,6 +171,12 @@ export class LogCollectorService extends EventEmitter {
     info?: (obj: object, msg?: string) => void;
     error?: (obj: object, msg?: string) => void;
   } | null = null;
+
+  /** Lines become records here exactly as they do for the files — `log-line.ts`. */
+  private readonly assembler = new LineAssembler((app, record) => this.ingestRecord(app, record));
+  /** Next capture sequence per millisecond — see `timestampWithSequence`. */
+  private readonly sequenceByMs = new Map<number, number>();
+  private dialect: SqlDialect | null = null;
 
   constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
     super();
@@ -309,49 +342,63 @@ export class LogCollectorService extends EventEmitter {
   }
 
   /**
-   * Parse a raw pino JSON log line from a child process and ingest it.
+   * Take one line of an app's output (or of the daemon's own, as `omnitron`).
    * This is the primary integration point with orchestrator.onAppLog().
+   *
+   * The line is read by the one classifier (`log-line.ts`) and joined into a
+   * record there. What the table held before: a line that was not JSON became
+   * a row at level `info`, and every indented line of a dump a row of its own
+   * — on the master, paysys from the test node: 3 `error` rows, 1 264 995
+   * `info`, 1 216 292 of those dump fragments.
    */
   ingestPinoLine(appName: string, line: string): void {
-    try {
-      const parsed = JSON.parse(line);
+    if (this.disposed) return;
+    this.assembler.push(appName, line);
+  }
 
-      const level = typeof parsed.level === 'number'
-        ? (PINO_LEVELS[parsed.level] ?? 'info')
-        : (parsed.level ?? 'info');
+  /** One record, as a row. */
+  private ingestRecord(appName: string, record: LogRecord): void {
+    const timestamp = this.sequenced(record.time);
 
-      const message = parsed.msg ?? parsed.message ?? '';
-
-      // Extract well-known fields, put the rest into metadata
-      const { level: _l, msg: _m, message: _msg, time, pid: _pid, hostname: _hostname, ...rest } = parsed;
-
-      // Extract labels if present
-      const labels = parsed.labels ?? undefined;
-      const traceId = parsed.traceId ?? parsed.trace_id ?? undefined;
-      const spanId = parsed.spanId ?? parsed.span_id ?? undefined;
-
-      // Everything else goes into metadata
-      const metadata = Object.keys(rest).length > 0 ? rest : undefined;
-
-      this.ingestLog({
-        app: appName,
-        level,
-        message: String(message),
-        timestamp: time ? new Date(time) : new Date(),
-        labels,
-        traceId,
-        spanId,
-        metadata,
-      });
-    } catch {
-      // Not valid JSON — ingest as raw text
-      this.ingestLog({
-        app: appName,
-        level: 'info',
-        message: line,
-        timestamp: new Date(),
-      });
+    if (record.kind !== 'json' || !record.data) {
+      this.ingestLog({ app: appName, level: record.level, message: record.message, timestamp });
+      return;
     }
+
+    const parsed = record.data;
+    // Extract well-known fields, put the rest into metadata
+    const { level: _l, msg: _m, message: _msg, time: _t, pid: _pid, hostname: _hostname, ...rest } = parsed;
+
+    // Extract labels if present
+    const labels = (parsed['labels'] as Record<string, unknown> | undefined) ?? undefined;
+    const traceId = (parsed['traceId'] ?? parsed['trace_id'] ?? undefined) as string | undefined;
+    const spanId = (parsed['spanId'] ?? parsed['span_id'] ?? undefined) as string | undefined;
+
+    // Everything else goes into metadata
+    const metadata = Object.keys(rest).length > 0 ? rest : undefined;
+
+    this.ingestLog({
+      app: appName,
+      level: record.level,
+      message: record.message,
+      timestamp,
+      ...(labels !== undefined ? { labels } : {}),
+      ...(traceId !== undefined ? { traceId } : {}),
+      ...(spanId !== undefined ? { spanId } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
+    });
+  }
+
+  /** The record's millisecond, and its place among the records captured in it. */
+  private sequenced(ms: number): string {
+    const at = Number.isFinite(ms) ? Math.floor(ms) : Date.now();
+    const next = this.sequenceByMs.get(at) ?? 0;
+    this.sequenceByMs.set(at, next + 1);
+    if (this.sequenceByMs.size > SEQUENCED_MILLISECONDS) {
+      const oldest = this.sequenceByMs.keys().next().value;
+      if (oldest !== undefined) this.sequenceByMs.delete(oldest);
+    }
+    return timestampWithSequence(at, next);
   }
 
   // ===========================================================================
@@ -560,6 +607,29 @@ export class LogCollectorService extends EventEmitter {
     return (entries as unknown as LogEntryRow[]).reverse();
   }
 
+  /**
+   * The last `lines` stored records of one app, as the daemon's `getLogs`
+   * answers — oldest first, each saying which machine it came from.
+   *
+   * `sourceNode` is the row's `nodeId`: the node that synced it, or `null` for
+   * a line this machine captured itself. Under its own key in `data` because
+   * the rest of `data` is the record's fields, and records carry `nodeId`s of
+   * their own (the daemon logs them).
+   */
+  async storedEntries(app: string, lines: number): Promise<LogEntryDto[]> {
+    const rows = await this.getRecentLogs({ app, tail: Math.max(1, Math.min(lines, 10_000)) });
+    return rows.map((row) => {
+      const metadata = typeof row.metadata === 'string' ? safeJson(row.metadata) : row.metadata;
+      return {
+        timestamp: new Date(row.timestamp as unknown as string).getTime(),
+        app: row.app,
+        level: row.level,
+        message: row.message,
+        data: { ...(metadata ?? {}), sourceNode: row.nodeId ?? null },
+      };
+    });
+  }
+
   // ===========================================================================
   // Buffer Flush
   // ===========================================================================
@@ -577,10 +647,21 @@ export class LogCollectorService extends EventEmitter {
     try {
       if (batch.length === 0) return;
 
+      // Postgres keeps the microseconds that carry capture order, so it gets
+      // the string as sequenced. SQLite (a slave) stores this column as TEXT
+      // and compares it as text, where `.123004Z` sorts BEFORE `.123Z` — its
+      // rows keep the millisecond form every other writer and every bound
+      // there uses. The order still reaches the master: the replicated entry
+      // carries the sequenced string, not this row.
+      this.dialect ??= dialectOf(this.db);
+      const keepsSequence = this.dialect === 'postgres';
+
       const rows = batch.map((entry) => ({
         id: randomUUID(),
         timestamp: entry.timestamp
-          ? (typeof entry.timestamp === 'string' ? new Date(entry.timestamp) : entry.timestamp)
+          ? (typeof entry.timestamp === 'string'
+              ? (keepsSequence ? entry.timestamp : new Date(entry.timestamp))
+              : entry.timestamp)
           : new Date(),
         nodeId: entry.nodeId ?? null,
         app: entry.app,
@@ -643,6 +724,9 @@ export class LogCollectorService extends EventEmitter {
   }
 
   async dispose(): Promise<void> {
+    // Held records (a dump waiting for its last lines) go into the buffer
+    // before the final flush, not out with the process.
+    this.assembler.dispose();
     this.disposed = true;
 
     if (this.flushTimer) {

@@ -49,10 +49,21 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
     // operator to different places.
     whyUnreachable: async () => null,
     isReachable: async () => true,
+    // The daemon names the file of an app it runs; for anything else it
+    // refuses, as `inspect` does.
+    inspect: async ({ name }: { name: string }) => {
+      if (!runs.has(name)) throw new Error(`App '${name}' not found`);
+      const [project, stack, ...rest] = name.split('/');
+      const dir = path.join(TMP, 'projects', project!, stack!, 'logs', rest.join('/'));
+      return { name, logPaths: { app: path.join(dir, 'app.log'), error: path.join(dir, 'error.log') } };
+    },
     getLogs: async () => daemonEntries.value,
     disconnect: async () => { disconnected.count++; },
   }),
 }));
+
+/** The apps the mocked daemon runs. */
+const runs = new Set<string>();
 
 const printed: string[] = [];
 vi.mock('@xec-sh/kit', () => ({
@@ -127,18 +138,38 @@ describe('omnitron logs, daemon up and buffer empty', () => {
     expect(printed.join('\n')).toMatch(/No log file found|No log entries found|No log directory/);
   });
 
-  it('uses the daemon while its buffer still has the run', async () => {
-    daemonEntries.value = [
-      { app: 'acme/dev/main', level: 'info', timestamp: Date.now(), message: 'live from the buffer' },
-    ];
+  it('uses the daemon while its records hold as many as were asked for', async () => {
+    runs.add('acme/dev/main');
+    daemonEntries.value = [1, 2, 3].map((n) => ({
+      app: 'acme/dev/main',
+      level: 'info',
+      timestamp: Date.now(),
+      message: `live from the buffer ${n}`,
+    }));
+    writeAppLog('acme/dev/main', [JSON.stringify({ level: 30, time: Date.now() - 60_000, msg: 'older, from the file' })]);
+
+    await logsCommand('acme/dev/main', { lines: 2 });
+
+    const out = consoleLines.join('\n');
+    expect(out).toMatch(/live from the buffer 3/);
+    expect(out, 'the last two, not all three').not.toMatch(/live from the buffer 1/);
+    expect(out, 'and the file is not read on top of them').not.toMatch(/from the file/);
+    runs.delete('acme/dev/main');
+  });
+
+  it('reads the file the daemon names when its records hold fewer than asked for', async () => {
+    // The daemon's records are the live end of the file; the file is the
+    // record. `-n 20` with one record in memory is a question the file answers.
+    runs.add('acme/dev/main');
+    daemonEntries.value = [{ app: 'acme/dev/main', level: 'info', timestamp: Date.now(), message: 'live from the buffer' }];
     writeAppLog('acme/dev/main', [
-      JSON.stringify({ level: 30, time: Date.now() - 60_000, msg: 'stale from the file' }),
+      JSON.stringify({ level: 30, time: Date.now() - 60_000, msg: 'older, from the file' }),
+      JSON.stringify({ level: 30, time: Date.now(), msg: 'live from the buffer' }),
     ]);
 
     await logsCommand('acme/dev/main', { lines: 20 });
 
-    const out = consoleLines.join('\n');
-    expect(out, 'a live buffer is still preferred').toMatch(/live from the buffer/);
-    expect(out, 'and the file is not read on top of it').not.toMatch(/stale from the file/);
+    expect(consoleLines.join('\n')).toMatch(/older, from the file/);
+    runs.delete('acme/dev/main');
   });
 });

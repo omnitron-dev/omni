@@ -830,6 +830,9 @@ export class OmnitronDaemon {
     // Logs RPC service (works on both master and slave — uses PG or SQLite)
     const logsRpcService = new LogsRpcService(logCollector);
     await this.app.netron.peer.exposeService(logsRpcService);
+    // `getLogs` answers an app this daemon does not run from the stored rows —
+    // where a node's synced logs are.
+    rpcService.setLogStore(logCollector);
 
     // Metrics RPC service — provided by TitanMetricsModule
     const metricsService = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);

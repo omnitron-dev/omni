@@ -1,86 +1,78 @@
 /**
- * T#76 — offline-fallback path resolution for `omnitron logs <app>`.
+ * Where `omnitron logs <app>` reads when the daemon cannot answer.
  *
- * The CLI's file-based fallback (used when the daemon is unreachable)
- * historically only looked at the legacy flat layout
- * `~/.omnitron/logs/<app>.log`. Modern LogManager writes to:
+ * T#76 pinned a probe ORDER — project, standalone, legacy flat `<app>.log`,
+ * then the daemon's own log — and the last two were the trouble: on this
+ * host `~/.omnitron/logs/main/app.log` exists, last written Sep 7, while
+ * `main` writes under `projects/daos/dev/logs/main/`. `logs main -l error`
+ * printed May's errors as the answer; with no file for an app, it printed
+ * the DAEMON's log under the app's name.
  *
- *   - ~/.omnitron/logs/<app>/app.log          (standalone)
- *   - ~/.omnitron/projects/{project}/{stack}/logs/{app}/app.log (project mode)
- *
- * These tests pin the layered probe order — project → standalone-dir →
- * legacy-flat → daemon-log — so future LogManager refactors don't
- * silently break offline diagnostics.
- *
- * Test scope: just the path resolver. The full file-reader path is
- * covered by integration tests against real log files.
+ * The file is now derived the way `LogManager.getLogDir` writes it: a
+ * qualified name under its project and stack only; a bare name under the one
+ * project stack that has it — refused when several do — and only failing
+ * that the standalone directory. Never the legacy flat file, never the
+ * daemon's log.
  */
 
-import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 
-// Import the internal resolver via the same module under test.
-// `logs.ts` doesn't export it currently — we re-import from a
-// known-stable internal path. If the resolver becomes private,
-// these tests need a small `__test` re-export.
-import * as logsCommand from '../../src/commands/logs.js';
+import { __test } from '../../src/commands/logs.js';
 
-// Re-export `resolveCandidateLogPaths` from logs.ts so tests can
-// reach it. The implementation already exists — we just need a
-// public hook. This shape mirrors how `process-janitor.ts`
-// exports `__test`.
-const candidates = (
-  logsCommand as unknown as {
-    __test?: { resolveCandidateLogPaths: (name: string) => string[] };
-  }
-).__test?.resolveCandidateLogPaths;
+const made: string[] = [];
+const home = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logs-home-'));
+  made.push(dir);
+  return { projects: path.join(dir, 'projects'), logs: path.join(dir, 'logs') };
+};
+const writeLog = (dir: string) => {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'app.log'), '{"msg":"x"}\n');
+};
 
-describe('logs offline fallback — T#76 path probing', () => {
-  it('exposes the resolver helper', () => {
-    // Hard, and deliberately the first assertion in the file.
-    //
-    // This used to warn and return when the export was missing, and the two
-    // tests below opened with `if (!candidates) return;`. Between them, a
-    // removed export left three green tests that checked nothing — with a
-    // console warning nobody reads in a passing run, which is worse than
-    // silence because it looks like diligence.
-    //
-    // The export exists (`logs.ts` line ~155). If it is ever removed, this
-    // fails and names what to put back.
-    expect(
-      candidates,
-      'logs.ts must export __test.resolveCandidateLogPaths for these tests to mean anything'
-    ).toBeTypeOf('function');
+afterEach(() => {
+  for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+describe('the file an app writes, derived from its name', () => {
+  it('reads a qualified name under its project and stack', () => {
+    const roots = home();
+    writeLog(path.join(roots.projects, 'daos', 'dev', 'logs', 'main'));
+
+    expect(__test.derivedLogFile('daos/dev/main', 'error', roots)).toEqual({
+      file: path.join(roots.projects, 'daos', 'dev', 'logs', 'main', 'error.log'),
+    });
   });
 
-  it('probes project mode first, then standalone, then legacy, then the daemon log', () => {
-    const result = candidates!('omni/dev/messaging');
-    expect(result.length).toBeGreaterThanOrEqual(3);
+  it('prefers the project stack that has a bare name over a stale standalone file', () => {
+    const roots = home();
+    writeLog(path.join(roots.logs, 'main')); // the decoy: last written weeks ago
+    writeLog(path.join(roots.projects, 'daos', 'dev', 'logs', 'main'));
 
-    // Project-mode path comes first (most specific).
-    expect(result[0]).toMatch(/projects[/\\]omni[/\\]dev[/\\]logs[/\\]messaging[/\\]app\.log$/);
-    // Standalone directory layout.
-    expect(result[1]).toMatch(/logs[/\\]omni\/dev\/messaging[/\\]app\.log$/);
-    // Legacy flat layout.
-    expect(result[2]).toMatch(/logs[/\\]omni\/dev\/messaging\.log$/);
-    // Daemon log fallback last.
-    expect(result[result.length - 1]).toMatch(/omnitron\.log$/);
+    expect(__test.derivedLogFile('main', 'app', roots)).toEqual({
+      file: path.join(roots.projects, 'daos', 'dev', 'logs', 'main', 'app.log'),
+    });
   });
 
-  it('standalone-only app gets standalone + legacy candidates (no project prefix)', () => {
-    const result = candidates!('messaging');
-    // Three parts not present → no project-mode candidate.
-    expect(result.some((p) => p.includes('/projects/'))).toBe(false);
-    // Standalone-dir layout present.
-    expect(result.some((p) => p.match(/logs[/\\]messaging[/\\]app\.log$/))).toBe(true);
-    // Legacy flat present.
-    expect(result.some((p) => p.endsWith('logs/messaging.log'))).toBe(true);
+  it('refuses a bare name two stacks have, rather than picking one', () => {
+    const roots = home();
+    writeLog(path.join(roots.projects, 'daos', 'dev', 'logs', 'main'));
+    writeLog(path.join(roots.projects, 'acme', 'dev', 'logs', 'main'));
+
+    const answer = __test.derivedLogFile('main', 'app', roots);
+    expect(answer && 'ambiguous' in answer ? answer.ambiguous.length : 0).toBe(2);
   });
 
-  it('all candidate paths are absolute (no relative drift)', () => {
-    const result = candidates!('omni/dev/messaging');
-    for (const p of result) {
-      expect(path.isAbsolute(p)).toBe(true);
-    }
+  it('never answers with the legacy flat file or the daemon log', () => {
+    const roots = home();
+    fs.mkdirSync(roots.logs, { recursive: true });
+    fs.writeFileSync(path.join(roots.logs, 'main.log'), 'legacy\n');
+    fs.writeFileSync(path.join(roots.logs, 'omnitron.log'), 'daemon\n');
+
+    expect(__test.derivedLogFile('main', 'app', roots)).toBeNull();
+    expect(__test.derivedLogFile('daos/dev/main', 'app', roots)).toBeNull();
   });
 });

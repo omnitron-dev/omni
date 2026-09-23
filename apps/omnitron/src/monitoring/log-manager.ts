@@ -19,6 +19,7 @@ import { pipeline } from 'node:stream/promises';
 import type { LogEntryDto } from '../config/types.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { expandPath } from '../shared/paths.js';
+import { LineAssembler, fileLineOf, type LogRecord } from './log-line.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +47,20 @@ export type LegacyLogManagerConfig = {
 
 type LogType = 'app' | 'error';
 
+/**
+ * How much of an app's captured output `getLogs` can answer from. The file is
+ * the record; this is the live end of it. Count-bounded like the ring buffer it
+ * replaces, and size-bounded because a record is now a whole dump — the largest
+ * measured is 7 KB — rather than one line of it.
+ */
+const CAPTURED_RECORDS_PER_APP = 1000;
+const CAPTURED_CHARS_PER_APP = 2 * 1024 * 1024;
+
+interface CapturedRing {
+  entries: Array<{ seq: number; entry: LogEntryDto; chars: number }>;
+  chars: number;
+}
+
 // ---------------------------------------------------------------------------
 // LogManager
 // ---------------------------------------------------------------------------
@@ -67,6 +82,22 @@ export class LogManager {
    * callers can pause or queue). P1-K.
    */
   private readonly writeStreams = new Map<string, fs.WriteStream>();
+
+  /**
+   * An app's lines become records here, once, at capture — see `log-line.ts`.
+   *
+   * `getLogs` used to re-read the orchestrator's ring of raw lines on every
+   * call and date each non-JSON line `Date.now()` at that moment: `omnitron
+   * logs paysys -f` printed 26 distinct lines 304 times in 7 s, because every
+   * poll made the same old lines new again. A record is dated when it is
+   * captured and never again.
+   */
+  private readonly assembler = new LineAssembler((app, record) => this.persist(app, record));
+
+  /** Records as captured, per app, in the order they arrived. */
+  private readonly captured = new Map<string, CapturedRing>();
+  /** Arrival order across apps — how `getLogs()` with no name interleaves them. */
+  private captureSeq = 0;
 
   constructor(
     config: LogManagerConfig | LegacyLogManagerConfig,
@@ -100,6 +131,9 @@ export class LogManager {
       clearInterval(this.rotationCheckTimer);
       this.rotationCheckTimer = null;
     }
+    // A record still waiting for its continuation lines is written before the
+    // streams close, not dropped with them.
+    this.assembler.dispose();
     // Flush + close every active write stream so no buffered log
     // lines are lost on daemon shutdown. `end()` is idempotent.
     for (const stream of this.writeStreams.values()) {
@@ -174,22 +208,68 @@ export class LogManager {
   // -------------------------------------------------------------------------
 
   /**
-   * Append a log line to the app's log files.
+   * Take one line of an app's output.
    *
-   * - Always writes to `app.log` (all levels).
-   * - If the line is error or fatal, also writes to `error.log`.
+   * The line is joined into a record (`LineAssembler`): a JSON line is one
+   * record and is written at once; a pino-pretty header or a plain line waits
+   * for the indented lines that continue it, briefly. `persist` writes the
+   * record — this is the moment of capture, and the only one.
    */
   appendToFile(appName: string, line: string): void {
+    this.assembler.push(appName, line);
+  }
+
+  /**
+   * Write one record: `app.log` always, `error.log` too at error or fatal.
+   *
+   * Which records reach `error.log` used to be decided by looking for
+   * `"level":` in the raw line — so a pino-pretty `ERROR` never did: paysys's
+   * `app.log` held 95 «Monero chain has not advanced» errors and `error.log`
+   * none. The level is now the classifier's, whatever the line looked like.
+   */
+  private persist(appName: string, record: LogRecord): void {
+    const line = fileLineOf(record);
+
     // All levels → app.log (async stream, native backpressure)
     const appPath = this.getLogFilePath(appName, 'app');
     this.writeLine(appPath, line);
     this.checkAndRotate(appName, 'app', appPath);
 
     // error + fatal → error.log
-    if (this.isErrorOrFatal(line)) {
+    if (record.level === 'error' || record.level === 'fatal') {
       const errorPath = this.getLogFilePath(appName, 'error');
       this.writeLine(errorPath, line);
       this.checkAndRotate(appName, 'error', errorPath);
+    }
+
+    this.remember(appName, record);
+  }
+
+  /** Keep a record for `getLogs`, dropping the oldest past either bound. */
+  private remember(appName: string, record: LogRecord): void {
+    const data = record.data ?? (record.source ? { source: record.source } : undefined);
+    const entry: LogEntryDto = {
+      timestamp: record.time,
+      app: appName,
+      level: record.level,
+      // A JSON record with no message of its own shows as the line it was.
+      message: record.message || record.raw || '',
+      ...(data ? { data } : {}),
+    };
+    const chars = (record.raw ?? record.message).length;
+
+    let ring = this.captured.get(appName);
+    if (!ring) {
+      ring = { entries: [], chars: 0 };
+      this.captured.set(appName, ring);
+    }
+    ring.entries.push({ seq: ++this.captureSeq, entry, chars });
+    ring.chars += chars;
+    while (
+      ring.entries.length > CAPTURED_RECORDS_PER_APP ||
+      (ring.chars > CAPTURED_CHARS_PER_APP && ring.entries.length > 1)
+    ) {
+      ring.chars -= ring.entries.shift()!.chars;
     }
   }
 
@@ -230,22 +310,6 @@ export class LogManager {
     if (!stream) return;
     this.writeStreams.delete(filePath);
     stream.end();
-  }
-
-  /**
-   * Fast level extraction from pino JSON without full parse.
-   * Pino levels: 50=error, 60=fatal.
-   */
-  private isErrorOrFatal(line: string): boolean {
-    // Fast path: look for "level":50 or "level":60 in raw JSON
-    const idx = line.indexOf('"level":');
-    if (idx === -1) return false;
-    const numStart = idx + 8;
-    // Skip whitespace
-    let i = numStart;
-    while (i < line.length && line[i] === ' ') i++;
-    const num = parseInt(line.slice(i), 10);
-    return num >= 50;
   }
 
   // -------------------------------------------------------------------------
@@ -397,21 +461,48 @@ export class LogManager {
   }
 
   // -------------------------------------------------------------------------
-  // Query helpers (from ring buffer via orchestrator)
+  // Query helpers (records as captured)
   // -------------------------------------------------------------------------
 
+  /**
+   * The last `lines` records captured for an app — or across all apps — in
+   * the order they arrived.
+   *
+   * Arrival order, not a sort by time: the records of an app's processes
+   * interleave in the pipe (a JSON record stamped .528 is followed by a
+   * pino-pretty one stamped .516 in `main`'s file), and the order they were
+   * captured in is the one order every reader can agree on.
+   */
   getLogs(appName?: string, lines = 100): LogEntryDto[] {
-    const rawLogs = this.orchestrator.getLogs(appName, lines);
-    const entries: LogEntryDto[] = [];
+    const take = <T>(items: T[]): T[] => (lines > 0 ? items.slice(-lines) : []);
 
-    for (const { app, lines: logLines } of rawLogs) {
-      for (const line of logLines) {
-        entries.push(this.parseLine(app, line));
-      }
+    if (appName !== undefined) {
+      const key = this.capturedKey(appName);
+      const ring = key !== undefined ? this.captured.get(key) : undefined;
+      return ring ? take(ring.entries).map((e) => e.entry) : [];
     }
 
-    entries.sort((a, b) => a.timestamp - b.timestamp);
-    return entries.slice(-lines);
+    const all = [...this.captured.values()].flatMap((ring) => ring.entries);
+    all.sort((a, b) => a.seq - b.seq);
+    return take(all).map((e) => e.entry);
+  }
+
+  /**
+   * Which captured app a name means.
+   *
+   * The orchestrator's answer first: bare `main` is `daos/dev/main` while that
+   * handle exists, and an ambiguous bare name is refused there rather than
+   * guessed here. A handle that is gone (a stopped stack) still leaves what was
+   * captured under its name, reachable by that name — or by its last segment,
+   * when exactly one captured app ends with it.
+   */
+  private capturedKey(name: string): string | undefined {
+    const resolved = this.orchestrator.resolveAppName?.(name);
+    if (resolved !== undefined) return resolved;
+    if (this.captured.has(name)) return name;
+    if (name.includes('/')) return undefined;
+    const matches = [...this.captured.keys()].filter((key) => key.slice(key.lastIndexOf('/') + 1) === name);
+    return matches.length === 1 ? matches[0] : undefined;
   }
 
   // -------------------------------------------------------------------------
@@ -488,29 +579,5 @@ export class LogManager {
       b: 1, kb: 1024, mb: 1024 * 1024, gb: 1024 * 1024 * 1024, tb: 1024 * 1024 * 1024 * 1024,
     };
     return Math.floor(value * (multipliers[unit] ?? 1024 * 1024));
-  }
-
-  private parseLine(app: string, line: string): LogEntryDto {
-    try {
-      const parsed = JSON.parse(line);
-      return {
-        timestamp: parsed.time ? new Date(parsed.time).getTime() : Date.now(),
-        app,
-        level: this.pinoLevelToString(parsed.level ?? 30),
-        message: parsed.msg ?? line,
-        data: parsed,
-      };
-    } catch {
-      return { timestamp: Date.now(), app, level: 'info', message: line };
-    }
-  }
-
-  private pinoLevelToString(level: number): string {
-    if (level <= 10) return 'trace';
-    if (level <= 20) return 'debug';
-    if (level <= 30) return 'info';
-    if (level <= 40) return 'warn';
-    if (level <= 50) return 'error';
-    return 'fatal';
   }
 }

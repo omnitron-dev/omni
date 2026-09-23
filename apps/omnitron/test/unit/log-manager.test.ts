@@ -89,25 +89,62 @@ describe('LogManager', () => {
   });
 
   // Per-app log layout is now {baseDir}/logs/{app}/app.log (was a flat {app}.log).
+  //
+  // A JSON line is written as the app wrote it. Anything else is written as a
+  // JSON line of its own carrying the time it was captured — a raw line in a
+  // file carries no time a later reader could recover (`log-line.ts`).
   describe('appendToFile', () => {
-    it('creates and appends to log file', async () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
-      lm.appendToFile('main', 'hello world');
-      lm.appendToFile('main', 'second line');
-      lm.dispose(); // flush + close the async write streams before reading
+    const linesOf = async (file: string, count: number) => {
+      const start = Date.now();
+      let lines: string[] = [];
+      while (Date.now() - start < 2000) {
+        try {
+          lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
+          if (lines.length >= count) break;
+        } catch {
+          /* not created yet */
+        }
+        await new Promise((r) => setTimeout(r, 15));
+      }
+      return lines;
+    };
 
-      const content = await readWhenReady(path.join(tmpDir, 'logs', 'main', 'app.log'), 'hello world\nsecond line\n');
-      expect(content).toBe('hello world\nsecond line\n');
+    it('writes a JSON line as written, and a plain one with the time it was captured', async () => {
+      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      const json = '{"level":30,"time":1790000000000,"msg":"started"}';
+      const before = Date.now();
+      lm.appendToFile('main', json);
+      lm.appendToFile('main', 'hello world');
+      lm.dispose(); // seals held records, then flushes and closes the streams
+
+      const [first, second] = await linesOf(path.join(tmpDir, 'logs', 'main', 'app.log'), 2);
+      expect(first).toBe(json);
+      const envelope = JSON.parse(second!);
+      expect(envelope).toMatchObject({ msg: 'hello world', format: 'text' });
+      // Nothing in the line says its level, so none is claimed.
+      expect(envelope).not.toHaveProperty('level');
+      expect(Date.parse(envelope.time)).toBeGreaterThanOrEqual(before - 1);
+    });
+
+    it('puts a pino-pretty ERROR in error.log — 95 of them never reached it', async () => {
+      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      lm.appendToFile('paysys', '[2026-09-23 08:49:07.229] ERROR (paysys/41 on host): Monero chain has not advanced');
+      lm.appendToFile('paysys', '[2026-09-23 08:49:08.000] INFO (paysys/41 on host): scanning');
+      lm.dispose();
+
+      const errors = await linesOf(path.join(tmpDir, 'logs', 'paysys', 'error.log'), 1);
+      expect(errors).toHaveLength(1);
+      expect(JSON.parse(errors[0]!)).toMatchObject({ level: 50, msg: 'Monero chain has not advanced', format: 'pretty' });
     });
 
     it('creates separate files per app', async () => {
       const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
-      lm.appendToFile('main', 'main log');
-      lm.appendToFile('storage', 'storage log');
+      lm.appendToFile('main', '{"level":30,"msg":"main log"}');
+      lm.appendToFile('storage', '{"level":30,"msg":"storage log"}');
       lm.dispose();
 
-      expect(await readWhenReady(path.join(tmpDir, 'logs', 'main', 'app.log'), 'main log\n')).toBe('main log\n');
-      expect(await readWhenReady(path.join(tmpDir, 'logs', 'storage', 'app.log'), 'storage log\n')).toBe('storage log\n');
+      expect(await linesOf(path.join(tmpDir, 'logs', 'main', 'app.log'), 1)).toEqual(['{"level":30,"msg":"main log"}']);
+      expect(await linesOf(path.join(tmpDir, 'logs', 'storage', 'app.log'), 1)).toEqual(['{"level":30,"msg":"storage log"}']);
     });
   });
 
@@ -164,41 +201,39 @@ describe('LogManager', () => {
     });
   });
 
+  // `getLogs` answers from the records as captured — dated once, when they
+  // were captured, never again by the time of the question.
   describe('getLogs', () => {
-    it('delegates to orchestrator and parses lines', () => {
-      const orch = createMockOrchestrator([
-        { app: 'main', lines: ['plain text line', '{"time":"2024-01-01T00:00:00Z","level":30,"msg":"json line"}'] },
-      ]);
-      const lm = new LogManager(config, orch);
+    it('reads captured records: a JSON one by its own fields, a plain one as unknown', () => {
+      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      lm.appendToFile('main', '{"time":"2024-01-01T00:00:00Z","level":30,"msg":"json line"}');
+      lm.appendToFile('main', 'plain text line');
+      lm.dispose();
 
       const logs = lm.getLogs('main', 10);
-      expect(logs).toHaveLength(2);
-      // Both lines are from 'main'
-      expect(logs.every((l) => l.app === 'main')).toBe(true);
-      // One is plain text, one is parsed JSON
-      const jsonLog = logs.find((l) => l.message === 'json line');
-      expect(jsonLog).toBeDefined();
-      expect(jsonLog!.level).toBe('info');
+      expect(logs.map((l) => `${l.level}:${l.message}`)).toEqual(['info:json line', 'unknown:plain text line']);
+      expect(logs[0]!.timestamp).toBe(Date.parse('2024-01-01T00:00:00Z'));
     });
 
     it('handles pino log levels', () => {
-      const orch = createMockOrchestrator([
-        {
-          app: 'test',
-          lines: [
-            '{"level":10,"msg":"trace"}',
-            '{"level":20,"msg":"debug"}',
-            '{"level":30,"msg":"info"}',
-            '{"level":40,"msg":"warn"}',
-            '{"level":50,"msg":"error"}',
-            '{"level":60,"msg":"fatal"}',
-          ],
-        },
-      ]);
-      const lm = new LogManager(config, orch);
-      const logs = lm.getLogs('test', 10);
+      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      for (const [level, name] of [[10, 'trace'], [20, 'debug'], [30, 'info'], [40, 'warn'], [50, 'error'], [60, 'fatal']] as const) {
+        lm.appendToFile('test', JSON.stringify({ level, msg: name }));
+      }
+      lm.dispose();
 
-      expect(logs.map((l) => l.level)).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
+      expect(lm.getLogs('test', 10).map((l) => l.level)).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
+    });
+
+    it('dates a record once — a second question gets the same time', async () => {
+      // `omnitron logs -f` printed 26 lines 304 times in 7 s: every poll
+      // re-dated the same non-JSON lines to the moment of the poll.
+      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      lm.appendToFile('paysys', 'Monero chain has not advanced');
+      lm.dispose();
+      const first = lm.getLogs('paysys', 10).map((l) => l.timestamp);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(lm.getLogs('paysys', 10).map((l) => l.timestamp)).toEqual(first);
     });
   });
 

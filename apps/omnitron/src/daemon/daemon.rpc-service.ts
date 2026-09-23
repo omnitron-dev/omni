@@ -398,9 +398,35 @@ export class DaemonRpcService implements IDaemonService {
   }
 
 
+  /**
+   * An app's latest records: from this daemon's capture when it runs the app,
+   * otherwise from the rows stored in the log table — which is where the
+   * nodes' synced logs live.
+   *
+   * This read the local capture only, so every app on another machine had no
+   * logs: `omnitron logs daos/deployed/main` answered «No log entries found»
+   * while `OmnitronLogs.queryLogs` on this same daemon returned that app's
+   * rows from node 16f3dd5a. Each stored entry says where it came from in
+   * `data.sourceNode` — the node's id, or `null` for this machine's own.
+   *
+   * Nodes name what they run `<project>/deployed/<app>`; that is the name
+   * their rows carry and the one this answers to. Mapping a stack's name
+   * (`daos/test/main`) onto it needs the stack's nodes, which this service
+   * cannot see — `omnitron logs` asks the project for them and comes back
+   * with the node's name.
+   */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getLogs(data: { name?: string; lines?: number }): Promise<LogEntryDto[]> {
-    return this.logManager.getLogs(data.name, data.lines);
+    const local = this.logManager.getLogs(data.name, data.lines);
+    if (data.name === undefined || local.length > 0 || this.orchestrator.getHandle(data.name)) return local;
+    return this.logStore ? this.logStore.storedEntries(data.name, data.lines ?? 100) : local;
+  }
+
+  /** Where the stored rows are — the daemon hands it over once it has one (`daemon.ts`). */
+  private logStore: { storedEntries(app: string, lines: number): Promise<LogEntryDto[]> } | null = null;
+
+  setLogStore(store: { storedEntries(app: string, lines: number): Promise<LogEntryDto[]> }): void {
+    this.logStore = store;
   }
 
   // ============================================================================

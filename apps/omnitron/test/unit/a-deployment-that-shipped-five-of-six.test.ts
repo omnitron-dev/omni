@@ -187,15 +187,23 @@ describe('every start is recorded, and says who asked', () => {
     expect((record.mock.calls[0]![0] as any).details.source).toBe('unknown');
   });
 
-  it('records nothing when the start fails', async () => {
+  it('records a failed start as a failure, never as a deployment', async () => {
     // A trail that lists attempts as deployments is a different lie from the
-    // one this fixes.
+    // one this fixes — which is why this used to record nothing at all, and
+    // that was a lie too: 178 rows on the master and not one failure, while
+    // the log held eight operator starts that threw. The row now says how it
+    // ended, under an action no reader takes for a deployment. Driven in full
+    // in `a-start-that-failed-left-no-row.test.ts`.
     const svc = startableService();
     svc.startLocalStack = vi.fn(async () => {
       throw new Error('infra did not come up');
     });
     await expect(svc.startStack('daos', 'test', { source: 'operator' })).rejects.toThrow(/infra/);
-    expect(record).not.toHaveBeenCalled();
+    expect(record).toHaveBeenCalledTimes(1);
+    const row = record.mock.calls[0]![0] as any;
+    expect(row.action).toBe('stack.start.failed');
+    expect(row.outcome).toBe('failed');
+    expect(row.details.source).toBe('operator');
   });
 });
 

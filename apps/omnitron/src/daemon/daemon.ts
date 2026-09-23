@@ -567,6 +567,16 @@ export class OmnitronDaemon {
         // value was never supplied. Same number as `CLI_REQUEST_TIMEOUT`,
         // which the daemon's own client uses over this same socket.
         requestTimeout: DAEMON_SOCKET_REQUEST_TIMEOUT,
+        // The same bridge the HTTP and WebSocket servers below have: it puts
+        // the context the guard admitted a call with — here the implicit
+        // `omnitron-local` set just after this — where the services read
+        // who is calling. This server had none, so for every CLI call the
+        // guard saw `omnitron-local` and the services saw nobody: the audit
+        // trail recorded `system` for 171 of the master's 178 rows, and an
+        // operator's deployment read exactly like the daemon's own boot
+        // autostart. No proxy stands in front of a unix socket, so the
+        // wrapper trusts no forwarded address — its default.
+        invocationWrapper: createAuthContextWrapper(),
       },
     });
 

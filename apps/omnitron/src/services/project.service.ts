@@ -136,6 +136,19 @@ interface StackRuntimeState {
  */
 export type StackStartSource = 'operator' | 'boot' | 'auto-resume' | 'unknown';
 
+/**
+ * What a stack start has learned about itself so far — what its audit row
+ * can say if it ends in a throw. Filled in by `runStackStart` as it goes and
+ * read by `startStackOnce`, which is the one place every ending passes.
+ */
+interface StackStartKnown {
+  /** A restart re-attaching a remote stack: it deploys nothing and writes no row. */
+  attach: boolean;
+  type?: IStackConfig['type'];
+  /** The project tree's commit once it was read; `null` when it could not be. */
+  commit?: string | null;
+}
+
 // =============================================================================
 // ProjectService
 // =============================================================================
@@ -675,6 +688,31 @@ export class ProjectService extends EventEmitter {
     return started;
   }
 
+  /**
+   * One start of a stack, recorded however it ends.
+   *
+   * The row was written on the success path only — inside the `try` at the
+   * end of `runStackStart` — so a start that was refused or failed left
+   * nothing in the trail. Measured on the master 2026-09-23: 178 rows since
+   * the trail began (2026-09-20 15:37Z), not one of them a failure, against
+   * the log's eight operator starts that threw — five dirty-tree refusals
+   * (09-22 04:37:24 … 08:27:49), a release refused for a failed gate
+   * (15:12:41), «daos/test takes releases only» (15:32:43), and the
+   * deployment of 21:19:02 that failed on 6 of 6 apps, followed at 21:20:37
+   * by the redeploy the trail DID record, alone, as if it had been the only
+   * attempt.
+   *
+   * Written as `stack.start.failed`, not as `stack.start` with a flag. Two
+   * readers take every `stack.start` row as a deployment that happened —
+   * `ReleaseRpcService.deployments` (the console's «last deployed») and
+   * `lastDeployedAt` (the attestation freshness refusal) — and a refused
+   * deployment is not one; filed under the same action it would become the
+   * stack's «last deployment». Same shape as `node.upgrade.failed`.
+   *
+   * A remote stack that a restart re-attaches is left out both ways: it
+   * deploys nothing, and the reconciler re-asks a node that does not answer
+   * every few minutes — rows about looking, not about changing anything.
+   */
   private async startStackOnce(
     projectName: string,
     stackName: string,
@@ -682,14 +720,47 @@ export class ProjectService extends EventEmitter {
     allowDirty: boolean,
     releaseId?: string,
   ): Promise<IStackInfo> {
+    const known: StackStartKnown = { attach: false };
+    try {
+      return await this.runStackStart(projectName, stackName, source, allowDirty, releaseId, known);
+    } catch (err) {
+      if (!known.attach) {
+        await this.audit?.record({
+          action: 'stack.start.failed',
+          resourceType: 'stack',
+          resourceId: `${projectName}/${stackName}`,
+          outcome: 'failed',
+          error: err,
+          details: {
+            source,
+            ...(known.type ? { type: known.type } : {}),
+            ...(releaseId ? { release: releaseId } : {}),
+            ...(known.commit !== undefined ? { commit: known.commit } : {}),
+          },
+        });
+      }
+      throw err;
+    }
+  }
+
+  private async runStackStart(
+    projectName: string,
+    stackName: string,
+    source: StackStartSource,
+    allowDirty: boolean,
+    releaseId: string | undefined,
+    known: StackStartKnown,
+  ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+    known.type = stackConfig.type;
 
     // A restart of this daemon re-attaches a remote stack; it never deploys
     // one. See `attachRemoteStack`.
     if (stackConfig.type !== 'local' && (source === 'boot' || source === 'auto-resume')) {
+      known.attach = true;
       return this.attachRemoteStack(projectName, stackName, stackConfig, source);
     }
 
@@ -749,6 +820,7 @@ export class ProjectService extends EventEmitter {
           },
         ];
     const tree = trees[0]?.tree ?? { checked: false as const, why: 'no tree to read', dirty: [] };
+    known.commit = tree.checked ? (tree.head ?? null) : null;
 
     // With a release the disk has already been held to the release's commit
     // (`admitRelease`) — stricter than HEAD, and the artifacts are not built
@@ -872,6 +944,8 @@ export class ProjectService extends EventEmitter {
         action: 'stack.start',
         resourceType: 'stack',
         resourceId: `${projectName}/${stackName}`,
+        // Said, now that the other ending is recorded too (`startStackOnce`).
+        outcome: 'ok',
         // The commit, so the trail answers what went out and not only when.
         // A node's artifacts carry no revision (every app is version `0.0.1`
         // forever, and `BUNDLE.json` is excluded from the checksum and read

@@ -205,9 +205,10 @@ describe('the actions worth recording are recorded', () => {
     // the daemon log of eight.
     //
     // So the row moved down to where every caller passes, and this file
-    // follows it rather than dropping the claim. What the row CONTAINS, and
-    // that a failed start records nothing, are driven for real in
-    // `a-deployment-that-shipped-five-of-six.test.ts`.
+    // follows it rather than dropping the claim. What the row CONTAINS is
+    // driven for real in `a-deployment-that-shipped-five-of-six.test.ts`,
+    // and that a failed start is recorded as `stack.start.failed` in
+    // `a-start-that-failed-left-no-row.test.ts`.
     const rpc = sourceOf('project.rpc-service.ts');
     expect(bodyOf(rpc, 'startStack'), 'the RPC layer no longer records it').not.toContain(
       "action: 'stack.start'"

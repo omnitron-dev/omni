@@ -8,27 +8,54 @@
  * stack, who added a node, or who read a secret out of the vault, and the
  * only account of any of it was a log line that rotates.
  *
- * The actor comes from the same AsyncLocalStorage the RPC guards read, so a
- * row cannot claim an identity the request did not carry. A call that
- * carried no token is `system` — which is what a local CLI call over the
- * unix socket is, where the trust is the socket's permissions rather than a
- * session — and never an invented user.
+ * The actor is the identity the call was ADMITTED with: the auth context the
+ * RPC guard enforced, carried into an AsyncLocalStorage by the transport's
+ * invocation wrapper — so a row cannot claim an identity the request did not
+ * carry, and never invents one.
  *
- * Recorded at the RPC boundary, so this is an account of what was ASKED of
- * this daemon. What the daemon does on its own — a boot-time autostart, a
- * supervisor restarting a crashed app — is in its log, not here: an audit
- * trail answers WHO, and for those there is no who.
+ *   user     a console session's account — or `omnitron-local`, the context
+ *            the daemon grants every connection on its owner-only unix
+ *            socket, which is where the CLI (and an MCP tool) arrives. The
+ *            trust there is the socket's permissions rather than a session,
+ *            and the id says so.
+ *   service  another omnitron acting as the control plane: `service_role`,
+ *            no account behind it.
+ *   system   nothing asked. The daemon acting on its own — a boot autostart,
+ *            the enabled-stacks reconciler.
  *
- * Best-effort by design: the action has already happened when this is
- * called, and failing it afterwards would turn an unrecorded change into a
- * broken one. A write that fails is reported at error with the action it
- * could not record, which is the state an operator needs to know about.
+ * This said a CLI call was `system`, and for a reason that was no design: the
+ * unix transport was registered without the invocation wrapper the HTTP and
+ * WebSocket ones have, so the store was empty on every CLI call while the
+ * guard, one layer down, was admitting it as `omnitron-local`. Measured on
+ * the master 2026-09-23: 171 of 178 rows `system`, `omnitron audit --actor
+ * system` answering «nothing recorded», and a deployment the operator typed
+ * indistinguishable from one the daemon started at boot.
+ *
+ * Not only what was asked of this daemon, either — this also said a boot
+ * autostart was in the log and not here, and 44 of the master's 79
+ * `stack.start` rows were exactly that. A stack start is recorded for every
+ * caller, with `details.source` naming which (`operator`, `boot`,
+ * `auto-resume`). What is in the log only: a supervisor restarting a crashed
+ * app, and a remote stack a restart re-attaches, which deploys nothing.
+ *
+ * How it ended. Most writers record after their action succeeded and write no
+ * outcome — the row IS the action. A writer that records both endings passes
+ * `outcome`, and a failure keeps the first line of its error (see
+ * `describeFailure`). `outcomeOf` reads either convention, including the
+ * older one of naming the failure in the action (`node.upgrade.failed`).
+ *
+ * Best-effort by design: the action has already happened — or already failed
+ * — when this is called, and failing it afterwards would turn an unrecorded
+ * change into a broken one. A write that fails is reported at error with the
+ * action it could not record, which is the state an operator needs to know
+ * about.
  */
 
 import type { Kysely } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 import type { OmnitronDatabase } from '../database/schema.js';
+import { redactTokens } from '../release/publish.js';
 import { getCurrentAuth, getRequestContext } from './auth-context.js';
 
 /** One thing that happened, as the caller knows it. */
@@ -47,7 +74,25 @@ export interface AuditEntry {
    * copy of the vault is worse than no audit trail.
    */
   readonly details?: Record<string, unknown> | null | undefined;
+  /**
+   * How it ended — from a writer that records both endings. Kept in
+   * `details.outcome`: the table has no column for it, and every reader
+   * already reads `details`.
+   */
+  readonly outcome?: AuditOutcome | undefined;
+  /** For `failed`: what went wrong. Kept as `details.error`, via `describeFailure`. */
+  readonly error?: unknown;
 }
+
+/** How an action ended, where its writer recorded both endings. */
+export type AuditOutcome = 'ok' | 'failed';
+
+/**
+ * Who an actor can be, as `currentActor` answers it — and the words `omnitron
+ * audit --actor` takes as a KIND of actor rather than an id.
+ */
+export const ACTOR_TYPES = ['user', 'service', 'system'] as const;
+export type ActorType = (typeof ACTOR_TYPES)[number];
 
 export interface AuditRow {
   id: string;
@@ -67,6 +112,13 @@ export interface AuditQuery {
   readonly action?: string | undefined;
   readonly resourceType?: string | undefined;
   readonly actorId?: string | undefined;
+  /**
+   * `user`, `service` or `system` — what the ACTOR column prints for a row
+   * with no id. `actorId` alone could not select those: 171 of the master's
+   * 178 rows had a null id, and `--actor system` compared `system` with it
+   * and found nothing.
+   */
+  readonly actorType?: string | undefined;
   /** Keyset: rows strictly older than this ISO timestamp. */
   readonly before?: string | undefined;
 }
@@ -100,8 +152,51 @@ export function scrubDetails(
   return out;
 }
 
+/** The longest failure a row keeps. The whole error is in the daemon log. */
+const MAX_FAILURE_TEXT = 300;
+
+/**
+ * A failure as a row keeps it: the first line of what the error said, with a
+ * credential a connection string carried taken out, and bounded.
+ *
+ * The first line because the rest is for a terminal — the dirty-tree refusal
+ * goes on to list ten file names. Redacted because an error is not a detail
+ * a caller chose: it is whatever the failing layer wrote, and a
+ * `redis://user:pass@host` has reached the daemon log that way before (see
+ * `redactTokens`).
+ */
+export function describeFailure(err: unknown): string {
+  // An error that crossed a transport arrives as a plain `{ message }`.
+  const message =
+    err instanceof Error
+      ? err.message
+      : err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
+        ? (err as { message: string }).message
+        : String(err);
+  const first =
+    message
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? '(the error said nothing)';
+  const clean = redactTokens(first);
+  return clean.length > MAX_FAILURE_TEXT ? `${clean.slice(0, MAX_FAILURE_TEXT - 1)}…` : clean;
+}
+
+/**
+ * How a row's action ended, as far as the row says: its recorded outcome, or
+ * `failed` for an action named as a failure (`node.upgrade.failed`). `null`
+ * for a row that records neither — most rows, written after an action that
+ * worked by a writer that records nothing else; `null` says that without
+ * claiming more.
+ */
+export function outcomeOf(row: Pick<AuditRow, 'action' | 'details'>): AuditOutcome | null {
+  const recorded = row.details?.['outcome'];
+  if (recorded === 'ok' || recorded === 'failed') return recorded;
+  return row.action.endsWith('.failed') ? 'failed' : null;
+}
+
 /** Who is calling, as the request proved rather than as it claimed. */
-export function currentActor(): { actorId: string | null; actorType: string } {
+export function currentActor(): { actorId: string | null; actorType: ActorType } {
   const auth = getCurrentAuth();
   if (!auth) return { actorId: null, actorType: 'system' };
 
@@ -130,6 +225,17 @@ export class AuditService {
     const { actorId, actorType } = currentActor();
     const ipAddress = getRequestContext()?.ipAddress ?? null;
 
+    // After the scrub, so neither can be mistaken for something to redact;
+    // the error is made safe by `describeFailure` instead.
+    const scrubbed = scrubDetails(entry.details);
+    const details = entry.outcome
+      ? {
+          ...(scrubbed ?? {}),
+          outcome: entry.outcome,
+          ...(entry.outcome === 'failed' && entry.error !== undefined ? { error: describeFailure(entry.error) } : {}),
+        }
+      : scrubbed;
+
     try {
       await this.db
         .insertInto('omnitron_audit_log')
@@ -139,7 +245,7 @@ export class AuditService {
           actorType,
           resourceType: entry.resourceType,
           resourceId: entry.resourceId ?? null,
-          details: scrubDetails(entry.details) as never,
+          details: details as never,
           ipAddress,
         } as never)
         .execute();
@@ -153,7 +259,19 @@ export class AuditService {
 
   async list(query: AuditQuery = {}): Promise<AuditRow[]> {
     if (!this.db) return [];
-    const limit = Math.min(MAX_AUDIT_PAGE, Math.max(1, Math.floor(query.limit ?? 100)));
+    // Refused by name before the database sees it. `Math.floor(NaN)` is NaN,
+    // which `min`/`max` pass straight through, so `omnitron audit -n abc`
+    // reached Postgres as `LIMIT NaN` and came back as «invalid input syntax
+    // for type bigint: "NaN"» — an error about SQL, for a typo in a flag.
+    const asked = query.limit == null ? 100 : Number(query.limit);
+    if (Number.isNaN(asked)) {
+      throw new Error(`limit is a number of entries, 1 to ${MAX_AUDIT_PAGE} — not "${String(query.limit)}"`);
+    }
+    const limit = Math.min(MAX_AUDIT_PAGE, Math.max(1, Math.floor(asked)));
+    const before = query.before ? new Date(query.before) : null;
+    if (before && Number.isNaN(before.getTime())) {
+      throw new Error(`before is an ISO timestamp such as 2026-09-22T21:20:37Z — not "${String(query.before)}"`);
+    }
 
     let q = this.db
       .selectFrom('omnitron_audit_log')
@@ -164,7 +282,8 @@ export class AuditService {
     if (query.action) q = q.where('action', '=', query.action);
     if (query.resourceType) q = q.where('resourceType', '=', query.resourceType);
     if (query.actorId) q = q.where('actorId', '=', query.actorId);
-    if (query.before) q = q.where('createdAt', '<', new Date(query.before) as never);
+    if (query.actorType) q = q.where('actorType', '=', query.actorType);
+    if (before) q = q.where('createdAt', '<', before as never);
 
     const rows = await q.execute();
     return rows.map((r) => ({

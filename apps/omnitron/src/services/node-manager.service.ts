@@ -57,6 +57,16 @@ export interface NodeHealthTransition {
   previousStatus: NodeHealthStatus | null;
 }
 
+/**
+ * The one thing a node check needs of the mesh: a call to a service on a node.
+ *
+ * `SlaveConnector` is the implementation. Narrowed to this so the check path
+ * can be judged without a connector, and so it cannot reach for anything else.
+ */
+export interface NodeMeshCaller {
+  invokeOnSlave(host: string, port: number, service: string, method: string, args: unknown[]): Promise<unknown>;
+}
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -95,6 +105,8 @@ export class NodeManagerService extends EventEmitter {
    * report a perfectly reachable node as unreachable.
    */
   private pendingSecrets = new Map<string, string>();
+  /** The master's mesh — see `setSlaveConnector`. */
+  private mesh: NodeMeshCaller | null = null;
 
   constructor(
     private readonly logger: ILogger,
@@ -164,6 +176,24 @@ export class NodeManagerService extends EventEmitter {
 
   getHistoryConfig(): FleetHistoryConfig {
     return { ...this.historyConfig };
+  }
+
+  /**
+   * The master's mesh, so a check asks a node's daemon over the connection
+   * the master already holds to it.
+   *
+   * Without it this service could only dial `tcp://<host>:<daemonPort>`, and
+   * a hardened node's daemon port is closed to the master — that is why the
+   * mesh tunnels over SSH. Measured 2026-09-23 with the health worker
+   * detached: `omnitron node check` on daos-test printed `Omnitron: ○
+   * offline` / `Connection timeout to tcp://37.27.130.185:9700` while the
+   * mesh held that node `connected via ssh-tunnel, authenticated` and
+   * `fleet status` read six apps from it through that connection. The
+   * comment above the probe said the SlaveConnector was asked first; the
+   * code never asked it.
+   */
+  setSlaveConnector(connector: NodeMeshCaller | null): void {
+    this.mesh = connector;
   }
 
   // ===========================================================================
@@ -525,7 +555,9 @@ export class NodeManagerService extends EventEmitter {
         release: os.release(),
       };
     } else {
-      // Remote node — ping + Netron TCP (no SSH — SSH is manual-only via UI)
+      // Remote node — ping, then the daemon itself (no SSH — SSH is
+      // manual-only via UI, and the health worker's round is the one that
+      // opens a session).
 
       // 1. Ping (ICMP) — lightweight reachability check
       if (this.checkConfig.pingEnabled) {
@@ -538,63 +570,105 @@ export class NodeManagerService extends EventEmitter {
         status.pingLatencyMs = null;
       }
 
-      // 2. Netron TCP ping — check if omnitron daemon is running and responsive
-      //    Master connects to slave via SlaveConnector; if already connected,
-      //    the heartbeat confirms status. Otherwise try a quick TCP connect + ping.
-      const port = node.daemonPort ?? 9700;
-      let probeNetron: { stop(): Promise<void> } | null = null;
-      try {
-        const { Netron } = await import('@omnitron-dev/titan/netron');
-        const { TcpTransport } = await import('@omnitron-dev/titan/netron/transport/tcp');
-        const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
-
-        const probe = new Netron(createNullLogger(), { id: `probe-${node.host}` });
-        probeNetron = probe;
-        probe.registerTransport('tcp', () => new TcpTransport());
-
-        const connectStart = Date.now();
-        const peer = await withTimeout(
-          probe.connect(`tcp://${node.host}:${port}`, false),
-          this.checkConfig.omnitronCheckTimeout,
-        );
-
-        // Ping via OmnitronDaemon service
-        const daemon = await (peer as any).queryInterface('OmnitronDaemon');
-        const info = await daemon.ping();
-        const latency = Date.now() - connectStart;
-
+      // 2. The daemon: asked over the mesh first, dialled directly second.
+      const answer = await this.askDaemon(node);
+      if (answer.ok) {
         status.omnitronConnected = true;
-        status.sshLatencyMs = null;
-        if (info?.version) status.omnitronVersion = info.version;
-        if (info?.pid) status.omnitronPid = info.pid;
-        if (info?.uptime) status.omnitronUptime = info.uptime;
-
-        this.logger.debug(
-          { node: node.name, host: node.host, latencyMs: latency, version: info?.version },
-          'Node check: Netron TCP ping OK'
-        );
-      } catch (err) {
-        status.omnitronConnected = false;
-        status.omnitronError = (err as Error).message;
-        this.logger.debug(
-          { node: node.name, host: node.host, port, error: (err as Error).message },
-          'Node check: Netron TCP ping failed'
-        );
-      } finally {
-        // Stop the probe on EVERY path. It only ran on success, so each
-        // failed check — the common case for an offline node, once a minute,
-        // for ever — left a Netron instance with a registered TCP transport
-        // behind in the daemon.
-        if (probeNetron) {
-          try {
-            await probeNetron.stop();
-          } catch { /* the probe is being discarded either way */ }
-        }
+        if (answer.info?.version) status.omnitronVersion = answer.info.version;
+        if (answer.info?.pid) status.omnitronPid = answer.info.pid;
+        if (answer.info?.uptime) status.omnitronUptime = answer.info.uptime;
+      } else {
+        // `null`, not `false`. Neither path reached the daemon, and that says
+        // nothing about whether it runs: a closed daemon port is the normal
+        // state of a hardened node, and a mesh link can be down while every
+        // app on the node serves. `false` reads as "the daemon is down" to
+        // every consumer — `node list`, `node check`, the console's dot —
+        // and that is the claim this check had no evidence for. The reasons
+        // travel in `omnitronError`, each naming its path.
+        status.omnitronConnected = null;
+        status.omnitronError = `Neither path reached the daemon — ${answer.reasons.join('; ')}`;
       }
     }
 
     this.recordStatus(node, status);
     return status;
+  }
+
+  /**
+   * Ask a node's daemon to answer `ping`, the way the master can reach it.
+   *
+   * The mesh first: it is the connection the master already holds, and for
+   * a node whose daemon port is firewalled it is the only one that works —
+   * over an SSH tunnel. The direct dial second, for a node outside the mesh
+   * (just added, or on a master whose mesh did not start) whose port IS open.
+   * Each failure is kept with the name of its path, because «connection
+   * timeout» alone does not say which door was shut.
+   */
+  private async askDaemon(node: INode): Promise<
+    | { ok: true; via: 'mesh' | 'direct'; info: { version?: string; pid?: number; uptime?: number } | null }
+    | { ok: false; reasons: string[] }
+  > {
+    const port = node.daemonPort ?? 9700;
+    const reasons: string[] = [];
+
+    if (this.mesh) {
+      try {
+        const info = (await withTimeout(
+          this.mesh.invokeOnSlave(node.host, port, 'OmnitronDaemon', 'ping', []),
+          this.checkConfig.omnitronCheckTimeout,
+        )) as { version?: string; pid?: number; uptime?: number } | null;
+        this.logger.debug({ node: node.name, host: node.host, version: info?.version }, 'Node check: daemon answered over the mesh');
+        return { ok: true, via: 'mesh', info };
+      } catch (err) {
+        reasons.push(`mesh: ${(err as Error).message}`);
+      }
+    } else {
+      reasons.push('mesh: this daemon has no mesh connector');
+    }
+
+    let probeNetron: { stop(): Promise<void> } | null = null;
+    try {
+      const { Netron } = await import('@omnitron-dev/titan/netron');
+      const { TcpTransport } = await import('@omnitron-dev/titan/netron/transport/tcp');
+      const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
+
+      const probe = new Netron(createNullLogger(), { id: `probe-${node.host}` });
+      probeNetron = probe;
+      probe.registerTransport('tcp', () => new TcpTransport());
+
+      const connectStart = Date.now();
+      const peer = await withTimeout(
+        probe.connect(`tcp://${node.host}:${port}`, false),
+        this.checkConfig.omnitronCheckTimeout,
+      );
+
+      // Ping via OmnitronDaemon service
+      const daemon = await (peer as any).queryInterface('OmnitronDaemon');
+      const info = await daemon.ping();
+
+      this.logger.debug(
+        { node: node.name, host: node.host, latencyMs: Date.now() - connectStart, version: info?.version },
+        'Node check: daemon answered a direct dial',
+      );
+      return { ok: true, via: 'direct', info };
+    } catch (err) {
+      reasons.push(`direct dial to ${node.host}:${port}: ${(err as Error).message}`);
+      this.logger.debug(
+        { node: node.name, host: node.host, port, reasons },
+        'Node check: no path reached the daemon',
+      );
+      return { ok: false, reasons };
+    } finally {
+      // Stop the probe on EVERY path. It only ran on success, so each
+      // failed check — the common case for an offline node, once a minute,
+      // for ever — left a Netron instance with a registered TCP transport
+      // behind in the daemon.
+      if (probeNetron) {
+        try {
+          await probeNetron.stop();
+        } catch { /* the probe is being discarded either way */ }
+      }
+    }
   }
 
   /** Convert node to SSH target — used for manual SSH checks from UI */

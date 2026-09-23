@@ -91,7 +91,13 @@ describe('a check that opened no SSH session', () => {
     // reaches the host and the daemon port, and both answers are real.
     expect(status.pingReachable).toBe(true);
     expect(status.pingLatencyMs).toBe(12);
-    expect(status.omnitronConnected).toBe(false);
+    // `null`, not `false`: a dial that timed out against a port the node's
+    // firewall drops is not an answer about the daemon. This line pinned
+    // `false` until 2026-09-23, when that `false` printed «○ offline» about a
+    // node serving six apps — see
+    // a-node-called-offline-by-a-check-that-never-asked-the-mesh.test.ts.
+    // What the check DID learn is the reason, and it is still reported.
+    expect(status.omnitronConnected).toBeNull();
     expect(status.omnitronError).toBeTruthy();
   });
 

@@ -461,7 +461,9 @@ describe('the id a replicated row is stored under', () => {
 describe('what the console is told about the mesh', () => {
   async function rpc(nodes: Array<{ id: string; host: string; daemonPort: number }>, connections: unknown[]) {
     const { NodeManagerRpcService } = await import('../../src/services/node-manager.rpc-service.js');
-    const service = new NodeManagerRpcService({ listNodes: () => nodes } as never);
+    // `setSlaveConnector` hands the connector on to the registry too — its
+    // own node check asks the daemon over it — so the fake takes it.
+    const service = new NodeManagerRpcService({ listNodes: () => nodes, setSlaveConnector: () => {} } as never);
     service.setSlaveConnector({ getConnections: () => connections } as never);
     return service.getMeshStatus();
   }

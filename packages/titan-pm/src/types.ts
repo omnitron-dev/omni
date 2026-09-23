@@ -674,7 +674,54 @@ export interface IProcessMetrics {
   requests?: number;
   errors?: number;
   latency?: ILatencyMetrics;
+  /**
+   * What the process's OWN transports answered — present only when the
+   * process reports it (`IProcessTrafficReporter`). When it is present,
+   * `requests`, `errors` and `latency` above are taken from it; when it is
+   * absent they count calls to the process wrapper itself, which for an app
+   * process are the supervisor's own health and metrics calls, not traffic.
+   * Absent means «not reported», never «zero requests».
+   */
+  traffic?: IProcessTraffic;
   custom?: Record<string, any>;
+}
+
+/** What a process's transports answered since it started; latency over a recent window. */
+export interface IProcessTraffic {
+  /** Requests answered, monitor probes excluded. */
+  requests: number;
+  /** Answered with a 5xx. */
+  serverErrors: number;
+  /** Answered with a 4xx. */
+  clientErrors: number;
+  /** `/health` and `/metrics` polls, counted apart. */
+  probes: number;
+  /** In flight at the moment of the report. */
+  active: number;
+  /** `null` when nothing finished inside the window. */
+  latency: {
+    windowMs: number;
+    coveredMs: number;
+    count: number;
+    mean: number;
+    p50: number;
+    p75: number;
+    p90: number;
+    p95: number;
+    p99: number;
+    max: number;
+  } | null;
+}
+
+/**
+ * A process instance that can say what its own transports answered.
+ *
+ * The runtime asks `reportTraffic()` inside `__getProcessMetrics`; `null`
+ * means the process has no transport to report on (a worker with no
+ * server), which is reported as absent traffic, not as zero.
+ */
+export interface IProcessTrafficReporter {
+  reportTraffic(): Promise<IProcessTraffic | null> | IProcessTraffic | null;
 }
 
 /**

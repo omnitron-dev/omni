@@ -18,10 +18,11 @@ import path from 'node:path';
 import { Application } from '@omnitron-dev/titan';
 import { createToken } from '@omnitron-dev/titan/nexus';
 import { Errors } from '@omnitron-dev/titan/errors';
-import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
+import { HttpTransport, type HttpTrafficSnapshot } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
 import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
+import type { IProcessTraffic } from '@omnitron-dev/titan-pm';
 import { pathToFileURL } from 'node:url';
 import { queryTopologyService } from './topology-query.js';
 
@@ -587,6 +588,42 @@ class BootstrapProcess {
         /* ignore */
       }
     }
+  }
+
+  /**
+   * What this process's own transports answered — the app's traffic.
+   *
+   * The process manager asks this inside `__getProcessMetrics`
+   * (`IProcessTrafficReporter`). Before, it reported the call counters of
+   * THIS wrapper's methods, which the supervisor calls for health and
+   * metrics: `omnitron metrics` counted its own questions as the app's
+   * requests and never saw one real one.
+   *
+   * HTTP servers answer a traffic snapshot; a process with several sums the
+   * counts and reports the latency of its busiest server. A process with no
+   * HTTP server (a queue worker) has no traffic to report: `null`, which the
+   * daemon shows as «not reported», not as zero.
+   */
+  reportTraffic(): IProcessTraffic | null {
+    const servers = this.app?.netron?.transportServers;
+    if (!servers) return null;
+
+    let traffic: IProcessTraffic | null = null;
+    for (const server of servers.values()) {
+      const snapshot = (server as { getTrafficSnapshot?: () => HttpTrafficSnapshot }).getTrafficSnapshot?.();
+      if (!snapshot) continue;
+      if (!traffic) {
+        traffic = { ...snapshot };
+        continue;
+      }
+      traffic.requests += snapshot.requests;
+      traffic.serverErrors += snapshot.serverErrors;
+      traffic.clientErrors += snapshot.clientErrors;
+      traffic.probes += snapshot.probes;
+      traffic.active += snapshot.active;
+      if ((snapshot.latency?.count ?? 0) > (traffic.latency?.count ?? 0)) traffic.latency = snapshot.latency;
+    }
+    return traffic;
   }
 
   /**

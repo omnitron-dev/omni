@@ -968,9 +968,22 @@ export interface AggregatedMetricsDto {
     {
       cpu: number;
       memory: number;
+      /**
+       * Whether the app's processes reported what their transports answered.
+       * `not-reported` — no server process, or a runtime that does not say —
+       * is not zero traffic, and the fields below are then absent.
+       */
+      traffic: 'measured' | 'not-reported';
+      /** Requests answered since the process started, monitor probes excluded. */
       requests?: number;
+      /** Of those, 5xx. */
       errors?: number;
-      latency?: { p50: number; p95: number; p99: number; mean: number };
+      /** Of those, 4xx — the caller's. */
+      clientErrors?: number;
+      /** `/health` and `/metrics` polls. */
+      probes?: number;
+      /** Over the last `windowMs`; `null` when nothing finished in it. */
+      latency?: { p50: number; p95: number; p99: number; mean: number; max: number; count: number; windowMs: number } | null;
     }
   >;
   totals: {

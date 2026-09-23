@@ -131,6 +131,8 @@ export type {
 
   // Metrics & monitoring
   IProcessMetrics,
+  IProcessTraffic,
+  IProcessTrafficReporter,
   IPoolMetrics,
   ILatencyMetrics,
   IHealthStatus,

@@ -329,7 +329,7 @@ function printInspection(
       const h = service.onHost;
       log.info(
         `${head} · installed ${yes(h.installed)} · user ${yes(h.userExists)} · unit ` +
-          (h.unit ? `${h.unit.name} ${h.unit.known ? (h.unit.active ? 'active' : 'inactive') : 'unknown'}` : '-') +
+          (h.unit ? `${h.unit.name} ${h.unit.known ? h.unit.state : 'unknown'}` : '-') +
           ` · config ${h.config} · unit file ${h.unitFile}`,
       );
       if (h.dataDir) {
@@ -349,10 +349,22 @@ function printInspection(
   }
 
   for (const unit of inspection.units) {
+    if (!unit.known) {
+      log.info(`unit ${unit.unit}: unknown`);
+      continue;
+    }
     log.info(
-      `unit ${unit.unit}: ${unit.known ? `${unit.active ? 'active' : 'inactive'}, ${unit.enabled ? 'enabled' : 'disabled'}, ${unit.fragmentPath}` : 'unknown'}` +
+      `unit ${unit.unit}: ${unit.state}${unit.result && unit.result !== 'success' ? ` · last ended ${unit.result}` : ''} · ` +
+        `${unit.enabled ? 'enabled' : 'disabled'} · pid ${unit.mainPid ?? '-'} · restarts ${unit.restarts ?? '-'}` +
+        `${unit.since ? ` · active since ${unit.since}` : ''} · ${unit.fragmentPath}` +
         (unit.execStart ? ` · ${unit.execStart}` : ''),
     );
+    for (const p of unit.processes) {
+      const where = `pid ${p.pid} in ${p.cgroup ?? 'an unknown cgroup'}`;
+      log[p.inUnit ? 'info' : 'warn'](`  ${where}${p.inUnit ? '' : ` — outside ${unit.unit}`}`);
+    }
+    for (const job of unit.jobs) log.info(`  job ${job}`);
+    for (const line of unit.journal) log.info(prism.dim(`  ${line}`));
   }
   for (const path of inspection.paths) {
     log.info(

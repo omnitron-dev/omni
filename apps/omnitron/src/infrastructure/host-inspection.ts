@@ -57,9 +57,30 @@ export interface UnitReading {
   known: boolean;
   active: boolean;
   enabled: boolean;
+  /**
+   * systemd's own words — `active (running)`, `activating (start)`,
+   * `failed (exit-code)` — where `active` above is one bit of them. The test
+   * node's bitcoind read «inactive» while its chain advanced, and a bit
+   * could not say which of five states it was in (2026-09-23).
+   */
+  state: string;
+  /** `Result`: `success`, or how it last ended — `exit-code`, `timeout`, `signal`… */
+  result: string;
+  mainPid: number | null;
+  restarts: number | null;
+  /** When it last entered `active`. */
+  since: string | null;
+  /** Its cgroup, which every process it runs is inside. */
+  cgroup: string | null;
   fragmentPath: string | null;
   /** The command line, with the value after any `password=`, `login=` or `auth=` struck out. */
   execStart: string | null;
+  /** Jobs systemd has pending — this unit's, and those it waits on — as `systemctl list-jobs` prints them. */
+  jobs: string[];
+  /** Its last journal lines, with every credential struck out as a command line's is. */
+  journal: string[];
+  /** Processes running its program, and whether each is inside it. */
+  processes: Array<{ pid: number; cgroup: string | null; inUnit: boolean }>;
 }
 
 export interface ProbeReading {
@@ -110,7 +131,8 @@ export interface HostServiceReading {
     installed: boolean;
     userExists: boolean;
     dataDir: { path: string; exists: boolean; owner: string | null; disk: DiskReading | null } | null;
-    unit: { name: string; known: boolean; active: boolean; enabled: boolean } | null;
+    /** `active` is the plan's bit — up, or on its way; `state` is systemd's words for it. */
+    unit: { name: string; known: boolean; active: boolean; enabled: boolean; state: string } | null;
     config: FileState;
     unitFile: FileState;
     actions: string[];
@@ -246,6 +268,7 @@ async function readOnHost(spec: BareMetalSpec, host: HostRunner): Promise<NonNul
           known: observed.unitKnown,
           active: observed.unitActive,
           enabled: observed.unitEnabled,
+          state: await stateOf(spec.systemdUnit, host),
         }
       : null,
     config: fileState(spec.configFile ? spec.configContent : undefined, observed.configContent),
@@ -323,32 +346,94 @@ async function probe(
 
 const CREDENTIAL = /pass|auth|secret|login|token|key/i;
 
-async function readUnit(unit: string, host: HostRunner): Promise<UnitReading> {
-  const shown = await host.run([
-    'systemctl',
-    'show',
-    unit,
-    '-p',
-    'LoadState',
-    '-p',
-    'ActiveState',
-    '-p',
-    'UnitFileState',
-    '-p',
-    'FragmentPath',
-    '-p',
-    'ExecStart',
-  ]);
+/** systemd's words for where a unit is: `active (running)`, `activating (start)`… */
+async function stateOf(unit: string, host: HostRunner): Promise<string> {
+  const shown = await host.run(['systemctl', 'show', unit, '-p', 'ActiveState', '-p', 'SubState']);
   const read = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(shown.stdout)?.[1]?.trim() ?? '';
+  return `${read('ActiveState') || 'unknown'} (${read('SubState') || '?'})`;
+}
+
+const UNIT_PROPERTIES = [
+  'LoadState',
+  'ActiveState',
+  'SubState',
+  'Result',
+  'UnitFileState',
+  'FragmentPath',
+  'ExecStart',
+  'MainPID',
+  'NRestarts',
+  'ActiveEnterTimestamp',
+  'ControlGroup',
+];
+
+async function readUnit(unit: string, host: HostRunner): Promise<UnitReading> {
+  const shown = await host.run(['systemctl', 'show', unit, ...UNIT_PROPERTIES.flatMap((p) => ['-p', p])]);
+  const read = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(shown.stdout)?.[1]?.trim() ?? '';
+  const count = (key: string) => (/^\d+$/.test(read(key)) ? Number(read(key)) : null);
   const argv = /argv\[\]=([^;]*)/.exec(read('ExecStart'))?.[1]?.trim() ?? '';
+  const cgroup = read('ControlGroup') || null;
+
+  const [jobs, journal, processes] = await Promise.all([
+    host.run(['systemctl', 'list-jobs', '--no-legend', '--no-pager']).then((r) => lines(r.stdout).slice(0, 20)),
+    host
+      .run(['journalctl', '-u', unit, '-n', '30', '--no-pager', '-o', 'short-iso'])
+      .then((r) => lines(r.stdout).map((line) => redactArgv(line).slice(0, 300))),
+    argv ? processesOf(argv.split(/\s+/)[0]!, cgroup, host) : Promise.resolve([]),
+  ]);
+
   return {
     unit,
     known: read('LoadState') === 'loaded',
     active: read('ActiveState') === 'active',
     enabled: ['enabled', 'enabled-runtime', 'static', 'indirect'].includes(read('UnitFileState')),
+    state: `${read('ActiveState') || 'unknown'} (${read('SubState') || '?'})`,
+    result: read('Result'),
+    mainPid: count('MainPID') || null,
+    restarts: count('NRestarts'),
+    since: read('ActiveEnterTimestamp') || null,
+    cgroup,
     fragmentPath: read('FragmentPath') || null,
     execStart: argv ? redactArgv(argv) : null,
+    jobs,
+    journal,
+    processes,
   };
+}
+
+const lines = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+/**
+ * The processes running a unit's program, each placed by its cgroup: one
+ * outside the unit is not the unit's, whatever systemd says of the unit.
+ * Only `/proc/<pid>/cgroup` is read — never a command line, which may hold
+ * a credential.
+ */
+async function processesOf(
+  program: string,
+  unitCgroup: string | null,
+  host: HostRunner
+): Promise<UnitReading['processes']> {
+  const name = program.slice(program.lastIndexOf('/') + 1).slice(0, 15);
+  const found = await host.run(['pgrep', '-x', name]);
+  const pids = lines(found.stdout)
+    .filter((pid) => /^\d+$/.test(pid))
+    .slice(0, 10)
+    .map(Number);
+  return Promise.all(
+    pids.map(async (pid) => {
+      const content = (await host.readFile(`/proc/${pid}/cgroup`)) ?? '';
+      // cgroup v2 is one `0::<path>` line; v1 names systemd's hierarchy.
+      const cgroup = /^0::(.*)$/m.exec(content)?.[1] ?? /name=systemd:(.*)$/m.exec(content)?.[1] ?? null;
+      const inUnit =
+        cgroup !== null && unitCgroup !== null && (cgroup === unitCgroup || cgroup.startsWith(`${unitCgroup}/`));
+      return { pid, cgroup, inUnit };
+    })
+  );
 }
 
 /**

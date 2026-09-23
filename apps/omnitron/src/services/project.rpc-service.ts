@@ -107,7 +107,10 @@ export class ProjectRpcService {
   async listStacks(data: { project: string }): Promise<IStackInfo[]> {
     // A remote stack's apps run on its nodes, and `listStacks` reads this
     // daemon's own handles — so every one of them came back `stopped`. The
-    // nodes are asked here, where the call can be awaited.
+    // nodes are asked here, where the call can be awaited. And the config is
+    // loaded if the daemon has not got to it yet: `listStacks` answers [] for
+    // a project not loaded, which read as «this project has no stacks».
+    await this.projectService.ensureConfig(data.project);
     return Promise.all(
       this.projectService
         .listStacks(data.project)
@@ -117,6 +120,9 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getStack(data: { project: string; stack: string }): Promise<IStackInfo> {
+    // Loaded on demand in the first seconds after a daemon start rather than
+    // refused (`ensureConfig`).
+    await this.projectService.ensureConfig(data.project);
     return this.projectService.withRemoteAppStatuses(
       data.project,
       this.projectService.getStack(data.project, data.stack),

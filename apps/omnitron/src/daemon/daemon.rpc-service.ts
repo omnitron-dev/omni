@@ -275,7 +275,8 @@ export class DaemonRpcService implements IDaemonService {
   async status(): Promise<DaemonStatusDto> {
     const apps = this.orchestrator.list();
     const totalCpu = apps.reduce((sum, a) => sum + a.cpu, 0);
-    const totalMemory = apps.reduce((sum, a) => sum + a.memory, 0) + process.memoryUsage.rss();
+    const appsMemory = apps.reduce((sum, a) => sum + a.memory, 0);
+    const daemonMemory = process.memoryUsage.rss();
 
     return {
       version: CLI_VERSION,
@@ -283,7 +284,13 @@ export class DaemonRpcService implements IDaemonService {
       uptime: Date.now() - this.startedAt,
       apps,
       totalCpu,
-      totalMemory,
+      // Kept for older readers: apps AND daemon. `omnitron status` printed
+      // it in the «Omnitron Daemon» box as the daemon's memory — 2.4 GB for a
+      // daemon whose own RSS was 254 MB (2,808,774,656 = apps 2,555,019,264 +
+      // daemon 253,755,392, byte for byte). The two parts are named below.
+      totalMemory: appsMemory + daemonMemory,
+      daemonMemory,
+      appsMemory,
     };
   }
 

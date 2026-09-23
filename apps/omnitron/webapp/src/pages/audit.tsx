@@ -28,6 +28,7 @@ import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism'
 import { audit } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useAuthStore } from 'src/auth/store';
+import { actorWords } from 'src/utils/audit-actor';
 
 /**
  * The resource kinds this daemon records, as the actions name them.
@@ -78,30 +79,20 @@ function Actor({ actorId, actorType }: { actorId: string | null; actorType: stri
       </Tooltip>
     );
   }
-  if (actorId) {
+  const words = actorWords(actorId, actorType);
+  if (words.id) {
     // A UUID wrapped onto five lines in a narrow column; eight characters
-    // tell rows apart, and the whole id is one hover away.
+    // tell rows apart, and the whole id is one hover away. A named account —
+    // `omnitron-local`, the CLI — is shown whole.
     return (
-      <Tooltip title={actorId} arrow>
+      <Tooltip title={words.title} arrow>
         <Typography variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-          {actorId.length > 12 ? `${actorId.slice(0, 8)}…` : actorId}
+          {words.text}
         </Typography>
       </Tooltip>
     );
   }
-  return (
-    <Chip
-      size="small"
-      variant="outlined"
-      label={actorType}
-      sx={{ height: 20, fontSize: 11 }}
-      title={
-        actorType === 'system'
-          ? 'A local call over the unix socket — the trust is the socket, not a session'
-          : 'Another omnitron acting as the control plane'
-      }
-    />
-  );
+  return <Chip size="small" variant="outlined" label={words.text} sx={{ height: 20, fontSize: 11 }} title={words.title} />;
 }
 
 export default function AuditPage() {

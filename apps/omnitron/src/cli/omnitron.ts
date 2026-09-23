@@ -984,17 +984,22 @@ node
 program
   .command('audit')
   .description('Who changed this control plane, and what they changed')
-  .option('-n, --limit <N>', 'How many entries (newest first)', '50')
-  .option('--action <action>', 'Only this action, e.g. stack.start')
+  .option('-n, --limit <N>', 'How many entries, newest first (1 to 500)', '50')
+  .option('--action <action>', 'Only this action, e.g. stack.start or stack.start.failed')
   .option('--resource <type>', 'Only this resource type, e.g. node')
-  .option('--actor <id>', 'Only this actor')
+  .option('--actor <who>', 'Only this actor: user, service or system — or an id, e.g. omnitron-local')
+  .option('--before <time>', 'Only entries older than this ISO time, e.g. 2026-09-22T21:20:37Z')
   .action(async (opts: any) => {
     const { auditListCommand } = await import('../commands/audit.js');
+    // As typed. `parseInt` here turned `-n abc` into NaN, which reached
+    // Postgres as `LIMIT NaN`, and `-n 0` into a request for one row; the
+    // command checks them, and can refuse in JSON when --json was asked for.
     await auditListCommand({
-      limit: parseInt(opts.limit, 10),
+      limit: opts.limit,
       action: opts.action,
       resource: opts.resource,
       actor: opts.actor,
+      before: opts.before,
     });
   });
 

@@ -35,6 +35,7 @@ function row(counts: Partial<UptimeAggregateRow> & { checks: number }): UptimeAg
     omni_up: 0,
     omni_measured: 0,
     omni_absent: 0,
+    omni_unread: 0,
     ...counts,
   };
 }
@@ -134,5 +135,24 @@ describe('the rest of the series still holds', () => {
 
     expect(buckets).toHaveLength(2);
     expect(buckets.every((b) => b.checks === 0)).toBe(true);
+  });
+});
+
+describe('a check that read nothing is not a check that read «stopped»', () => {
+  // Migration 009 sets `omnitronConnected` NULL where the old reader answered
+  // «no running daemon» for a daemon it could not read. A day of those,
+  // SSH connected throughout, used to count as 1 440 measurements of
+  // «stopped» and paint the day 0%.
+  it('reports no figure for a day that read nothing, and says it was reached', () => {
+    const bucket = only(row({ checks: 1_440, omni_measured: 0, omni_unread: 1_440 }));
+
+    expect(bucket.omnitron).toBe(-1);
+    expect(bucket.omnitronUnmeasured).toBe('unread');
+  });
+
+  it('divides by what was read when a bucket mixes the two', () => {
+    const bucket = only(row({ checks: 316, omni_up: 15, omni_measured: 16, omni_unread: 300 }));
+
+    expect(bucket.omnitron).toBeCloseTo(15 / 16);
   });
 });

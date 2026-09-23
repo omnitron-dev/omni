@@ -144,7 +144,7 @@ interface UptimeBucket {
    * machine to look. Optional so a daemon that predates the field renders as
    * it did before rather than throwing.
    */
-  omnitronUnmeasured?: 'absent' | 'unreachable';
+  omnitronUnmeasured?: 'absent' | 'unreachable' | 'unread';
 }
 
 // =============================================================================
@@ -220,10 +220,11 @@ function StatusDot({ state, label, tooltip }: { state: DotState; label: string; 
  * `checks` is what separates them: a bucket that ran checks and still reports
  * `-1` is the "not installed" case.
  */
-function uptimeColor(pct: number, theme: Theme, unmeasured?: 'absent' | 'unreachable'): string {
+function uptimeColor(pct: number, theme: Theme, unmeasured?: 'absent' | 'unreachable' | 'unread'): string {
   if (pct < 0) {
     if (unmeasured === 'absent') return alpha(theme.palette.info.main, 0.35); // nothing installed here
     if (unmeasured === 'unreachable') return alpha(theme.palette.warning.main, 0.3); // could not look
+    if (unmeasured === 'unread') return alpha(theme.palette.text.disabled, 0.25); // looked, read nothing
     return theme.palette.action.disabledBackground; // nothing recorded
   }
 
@@ -317,7 +318,7 @@ function UptimeStrip<T extends Record<string, any>>({
   }, [segWidth, gap]);
 
   // Pad data to fill visible area: take last N from data, pad front with empty
-  const segments: Array<{ val: number; time: string; iso?: string; checks?: number; unmeasured?: 'absent' | 'unreachable' }> = [];
+  const segments: Array<{ val: number; time: string; iso?: string; checks?: number; unmeasured?: 'absent' | 'unreachable' | 'unread' }> = [];
   if (visibleCount > 0) {
     const tail = data.slice(-visibleCount);
     // Left-pad with empty (no-data) segments so the strip is always full width
@@ -334,7 +335,7 @@ function UptimeStrip<T extends Record<string, any>>({
         checks: entry.checks as number | undefined,
         // Only the omnitron metric has a reason to give; ping either ran or
         // it did not.
-        unmeasured: entry['omnitronUnmeasured'] as 'absent' | 'unreachable' | undefined,
+        unmeasured: entry['omnitronUnmeasured'] as 'absent' | 'unreachable' | 'unread' | undefined,
       });
     }
   }
@@ -417,7 +418,9 @@ function UptimeStrip<T extends Record<string, any>>({
               ? `${seg.time} — omnitron not installed${checked}`
               : seg.unmeasured === 'unreachable'
                 ? `${seg.time} — could not reach the node${checked}`
-                : (seg.time ? `${seg.time} — no data` : 'No data')
+                : seg.unmeasured === 'unread'
+                  ? `${seg.time} — not measured: the node was reached and nothing could be read${checked}`
+                  : (seg.time ? `${seg.time} — no data` : 'No data')
             : `${seg.time} — ${Math.round(seg.val * 100)}% up${checked}`;
           return (
             <Tooltip key={i} title={tip} arrow>
@@ -540,7 +543,8 @@ interface HealthCheckRow {
   sshConnected: boolean;
   sshLatencyMs: number | null;
   sshError: string | null;
-  omnitronConnected: boolean;
+  /** `null` when the check measured nothing about omnitron. */
+  omnitronConnected: boolean | null;
   omnitronVersion: string | null;
   omnitronPid: number | null;
   omnitronUptime: number | null;

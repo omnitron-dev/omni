@@ -18,7 +18,8 @@ export interface HealthCheckRow {
   sshConnected: boolean;
   sshLatencyMs: number | null;
   sshError: string | null;
-  omnitronConnected: boolean;
+  /** `null` when the check measured nothing about omnitron — see migration 009. */
+  omnitronConnected: boolean | null;
   omnitronVersion: string | null;
   omnitronPid: number | null;
   omnitronUptime: number | null;
@@ -54,8 +55,11 @@ export interface UptimeBucket {
   omnitron: number;
   /** Total checks in this bucket, measurements or not. */
   checks: number;
-  /** When `omnitron` is -1 and checks ran, what those checks actually found. */
-  omnitronUnmeasured?: 'absent' | 'unreachable';
+  /**
+   * When `omnitron` is -1 and checks ran, what those checks actually found:
+   * no omnitron installed, no way in, or a way in and nothing read.
+   */
+  omnitronUnmeasured?: 'absent' | 'unreachable' | 'unread';
 }
 
 /** Min 5min, max 24h, must be multiple of 5min */
@@ -78,6 +82,8 @@ export interface UptimeAggregateRow {
   omni_up: number | string;
   omni_measured: number | string;
   omni_absent: number | string;
+  /** Checks that reached the node and read nothing — `omnitronConnected` NULL. */
+  omni_unread: number | string;
 }
 
 export function clampUptimeInterval(ms: number): number {
@@ -138,14 +144,16 @@ export class NodeHealthRepository {
         -- it either did, or it reached the machine and found omnitron absent
         -- from it in the "not running" sense rather than the "not installed"
         -- one. A check whose SSH was refused reached nothing and measured
-        -- nothing.
+        -- nothing, and neither did one that read nothing (NULL).
         count(*) FILTER (
-          WHERE "omnitronConnected"
-             OR ("sshConnected" AND coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN})
+          WHERE "omnitronConnected" IS NOT NULL
+            AND ("omnitronConnected"
+                 OR ("sshConnected" AND coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN}))
         ) AS omni_measured,
         count(*) FILTER (
           WHERE coalesce("omnitronError", '') ~* ${NOT_INSTALLED_PATTERN}
-        ) AS omni_absent
+        ) AS omni_absent,
+        count(*) FILTER (WHERE "omnitronConnected" IS NULL) AS omni_unread
       FROM node_health_checks
       WHERE "nodeId" = ${nodeId}
         AND "checkedAt" >= ${cutoff}::timestamptz
@@ -212,7 +220,8 @@ export function assembleBuckets(
       // Nothing was measured, and which kind of nothing is the whole
       // difference between "there is no omnitron here" and "we could not get
       // to this machine".
-      bucket.omnitronUnmeasured = Number(row.omni_absent) > 0 ? 'absent' : 'unreachable';
+      bucket.omnitronUnmeasured =
+        Number(row.omni_absent) > 0 ? 'absent' : Number(row.omni_unread) > 0 ? 'unread' : 'unreachable';
     }
   }
 
@@ -230,7 +239,7 @@ function mapRow(row: any): HealthCheckRow {
     sshConnected: !!row.sshConnected,
     sshLatencyMs: row.sshLatencyMs != null ? Number(row.sshLatencyMs) : null,
     sshError: row.sshError ?? null,
-    omnitronConnected: !!row.omnitronConnected,
+    omnitronConnected: row.omnitronConnected == null ? null : !!row.omnitronConnected,
     omnitronVersion: row.omnitronVersion ?? null,
     omnitronPid: row.omnitronPid != null ? Number(row.omnitronPid) : null,
     omnitronUptime: row.omnitronUptime != null ? Number(row.omnitronUptime) : null,

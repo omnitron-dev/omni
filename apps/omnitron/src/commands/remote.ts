@@ -2,12 +2,22 @@
  * omnitron remote add|remove|list|status — Manage remote daemon servers
  *
  * Remote communication uses TCP transport (cross-server fleet RPC).
+ *
+ * `add` and `remove` edit `servers.json`, the registry this command owns.
+ * `list` and `status` read BOTH registries, as `fleet` does: they read
+ * `servers.json` alone until 2026-09-23, and on an installation whose remote
+ * machine lives in the node registry — daos-test, running six apps — `remote
+ * list` printed «No remote servers registered» and `remote status daos-test`
+ * printed «Server 'daos-test' not found», exit 0.
  */
 
 import { log, table } from '@xec-sh/kit';
 import { ServerRegistry } from '../infrastructure/server-registry.js';
+import { NO_MACHINES_MESSAGE, type KnownMachine } from '../infrastructure/known-machines.js';
 import { createRemoteDaemonClient } from '../daemon/daemon-client.js';
 import { formatStatus, formatUptime } from '../shared/format.js';
+import { MeshAsker, askMachine, knownMachines } from './fleet-asking.js';
+import { formatCheckedAt, formatDaemon } from './node.js';
 
 export async function remoteAddCommand(
   alias: string,
@@ -36,35 +46,76 @@ export async function remoteRemoveCommand(alias: string): Promise<void> {
 
   if (removed) {
     log.success(`Removed remote server '${alias}'`);
-  } else {
-    log.warn(`Server '${alias}' not found`);
+    return;
   }
+  // Not ours to remove — but if it is the other registry's, say where it is.
+  const { machines } = await knownMachines();
+  const elsewhere = findMachine(alias, machines);
+  log.error(
+    elsewhere?.nodeId
+      ? `'${alias}' is in the node registry, not servers.json — remove it with \`omnitron node remove ${elsewhere.nodeId}\`.`
+      : `Server '${alias}' not found in servers.json.`,
+  );
+  process.exitCode = 1;
+}
+
+/**
+ * Which known machine a name refers to: its name exactly, its name ignoring
+ * case, then its address — `host` or `host:port` — when that is unique.
+ */
+export function findMachine(name: string, machines: readonly KnownMachine[]): KnownMachine | null {
+  const wanted = name.trim();
+  const steps: Array<(m: KnownMachine) => boolean> = [
+    (m) => m.name === wanted,
+    (m) => m.name.toLowerCase() === wanted.toLowerCase(),
+    (m) => `${m.host}:${m.port}` === wanted,
+    (m) => m.host === wanted,
+  ];
+  for (const matches of steps) {
+    const found = machines.filter(matches);
+    if (found.length === 1) return found[0]!;
+    if (found.length > 1) return null;
+  }
+  return null;
 }
 
 export async function remoteListCommand(): Promise<void> {
-  const registry = new ServerRegistry();
-  const servers = registry.list();
+  const { machines, nodes, servers, nodesUnavailable } = await knownMachines();
+  if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
 
-  if (servers.length === 0) {
-    log.info('No remote servers registered');
+  if (machines.length === 0) {
+    log.info(NO_MACHINES_MESSAGE);
+    if (nodesUnavailable) process.exitCode = 1;
     return;
   }
 
   table({
     width: 'auto',
-    data: servers.map((s) => ({
-      alias: s.alias,
-      host: `${s.host}:${s.port}`,
-      tags: s.tags.join(', ') || '-',
-      status: formatStatus(s.status),
-      lastSeen: s.lastSeen ? new Date(s.lastSeen).toLocaleString() : 'never',
-    })),
+    data: machines.map((m) => {
+      // The freshest reading each registry has: the health monitor's for a
+      // node, the last `fleet status` probe for a `servers.json` entry.
+      const node = m.nodeId ? nodes.find((n) => n.id === m.nodeId) : undefined;
+      const server = servers.find((s) => s.host === m.host && s.port === m.port);
+      return {
+        alias: m.name,
+        host: `${m.host}:${m.port}`,
+        registry: m.sources.join(' + '),
+        tags: m.tags.join(', ') || '-',
+        status: node ? formatDaemon(node.status) : formatStatus(server?.status ?? 'unknown'),
+        checked: node
+          ? formatCheckedAt(node.status?.checkedAt)
+          : server?.lastSeen
+            ? formatCheckedAt(new Date(server.lastSeen).toISOString())
+            : 'never',
+      };
+    }),
     columns: [
-      { key: 'alias', header: 'ALIAS' },
+      { key: 'alias', header: 'NAME' },
       { key: 'host', header: 'HOST' },
+      { key: 'registry', header: 'REGISTERED IN' },
       { key: 'tags', header: 'TAGS' },
-      { key: 'status', header: 'STATUS' },
-      { key: 'lastSeen', header: 'LAST SEEN' },
+      { key: 'status', header: 'DAEMON' },
+      { key: 'checked', header: 'CHECKED' },
     ],
   });
 }
@@ -80,13 +131,26 @@ export async function remoteListCommand(): Promise<void> {
  *
  * Deployment — building an artifact, shipping it, installing it — is a STACK
  * operation: `omnitron stack start <project> <stack>`.
+ *
+ * `servers.json` entries only, dialled directly: the master relays reads to a
+ * node over the mesh (`getNodeDaemonStatus` and its two siblings) and, by
+ * design, no writes — so a node reachable only through the mesh cannot be
+ * restarted from here, and is told so rather than timed out against.
  */
 export async function remoteRestartCommand(alias: string, app: string): Promise<void> {
   const registry = new ServerRegistry();
   const server = registry.get(alias);
 
   if (!server) {
-    log.error(`Server '${alias}' is not registered. Add it with \`omnitron remote add\`.`);
+    const { machines } = await knownMachines();
+    const elsewhere = findMachine(alias, machines);
+    log.error(
+      elsewhere?.nodeId
+        ? `'${alias}' is in the node registry, not servers.json. \`remote restart\` dials a servers.json entry's ` +
+            'daemon directly; nothing relays a restart to a node through the mesh.'
+        : `Server '${alias}' is not registered. Add it with \`omnitron remote add\`.`,
+    );
+    process.exitCode = 1;
     return;
   }
 
@@ -101,43 +165,50 @@ export async function remoteRestartCommand(alias: string, app: string): Promise<
     log.success(`'${app}' restarted on ${alias} — ${result.status}${result.pid ? ` (PID: ${result.pid})` : ''}`);
   } catch (err) {
     log.error(`Failed to restart '${app}' on ${alias}: ${(err as Error).message}`);
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }
 }
 
+/**
+ * Ask one known machine's daemon what it is running.
+ *
+ * The same asking as `fleet status` — direct, or over the master's mesh for
+ * a node whose daemon port is shut to this master — and a READ: it used to
+ * write `servers.json` with the result, which for a node-registry name
+ * created the duplicate entry `known-machines.ts` exists to prevent, and it
+ * dialled only directly, so a hardened node was always «offline».
+ */
 export async function remoteStatusCommand(alias: string): Promise<void> {
-  const registry = new ServerRegistry();
-  const server = registry.get(alias);
+  const { machines, nodesUnavailable } = await knownMachines();
+  const machine = findMachine(alias, machines);
 
-  if (!server) {
-    log.error(`Server '${alias}' not found`);
+  if (!machine) {
+    log.error(`No machine '${alias}' in servers.json or the node registry.`);
+    if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
+    if (machines.length > 0) log.info(`Known: ${machines.map((m) => `${m.name} (${m.host}:${m.port})`).join(', ')}`);
+    process.exitCode = 1;
     return;
   }
 
-  const client = createRemoteDaemonClient(server.host, server.port);
-
+  const mesh = new MeshAsker();
   try {
-    const ping = await client.ping();
-
-    // Update registry with last seen
-    server.status = 'online';
-    server.lastSeen = Date.now();
-    registry.add(server);
-
-    log.success(`${alias} (${server.host}:${server.port}) — online`);
-    log.info(`  PID: ${ping.pid}  |  Version: ${ping.version}  |  Uptime: ${formatUptime(ping.uptime)}`);
-
-    // Get app list from remote
-    const rd = await client.service<import("../shared/dto/services.js").IDaemonService>("OmnitronDaemon"); const apps = await rd.list();
-    if (apps.length > 0) {
-      log.info(`  Apps: ${apps.map((a) => `${a.name}(${a.status})`).join(', ')}`);
+    const answer = await askMachine<import('../shared/dto/services.js').DaemonStatusDto>(machine, 'status', mesh);
+    const where = `${machine.name} (${machine.host}:${machine.port})`;
+    if (!answer.value) {
+      log.error(`${where} — no answer: ${answer.error ?? 'unknown reason'}`);
+      process.exitCode = 1;
+      return;
     }
-  } catch {
-    server.status = 'offline';
-    registry.add(server);
-    log.error(`${alias} (${server.host}:${server.port}) — offline`);
-  }
 
-  await client.disconnect();
+    const status = answer.value;
+    log.success(`${where} — online${answer.via === 'mesh' ? ', through the master\'s mesh' : ''}`);
+    log.info(`  PID: ${status.pid}  |  Version: ${status.version}  |  Uptime: ${formatUptime(status.uptime)}`);
+    if (status.apps.length > 0) {
+      log.info(`  Apps: ${status.apps.map((a) => `${a.name}(${a.status})`).join(', ')}`);
+    }
+  } finally {
+    await mesh.close();
+  }
 }

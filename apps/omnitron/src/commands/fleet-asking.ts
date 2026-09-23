@@ -23,8 +23,10 @@
  */
 
 import { createRemoteDaemonClient, createDaemonClient } from '../daemon/daemon-client.js';
-import type { IDaemonService, IOmnitronNodesService } from '../shared/dto/services.js';
-import type { IMeshNodeStatus } from '../shared/dto/nodes.js';
+import { ServerRegistry } from '../infrastructure/server-registry.js';
+import { mergeKnownMachines, type KnownMachine, type NodeLike } from '../infrastructure/known-machines.js';
+import type { IDaemonService, IOmnitronNodesService, ServerInfoDto } from '../shared/dto/services.js';
+import type { INodeWithStatus, IMeshNodeStatus } from '../shared/dto/nodes.js';
 
 export type FleetQuestion = 'status' | 'health' | 'metrics';
 
@@ -33,6 +35,54 @@ export interface MachineAnswer<T> {
   /** How it was reached — `null` when it was not. */
   readonly via: 'direct' | 'mesh' | null;
   readonly error: string | null;
+}
+
+/**
+ * Every remote machine this installation knows, from both registries.
+ *
+ * The fleet commands read `servers.json` alone, which is why they reported
+ * "No remote servers registered" on an installation with two machines in the
+ * console's registry — and `remote list` / `remote status` still did until
+ * 2026-09-23, about daos-test running six apps. See `known-machines.ts` for
+ * what was measured. One function for both commands, so they cannot drift
+ * apart again.
+ *
+ * The node registry is reached through the daemon, because it lives in the
+ * daemon's SQLite. A daemon that cannot be asked is not an error here — the
+ * `servers.json` half still answers, and saying so is better than failing a
+ * status command because one of two sources is quiet.
+ *
+ * `nodes` and `servers` are the two registries as read, for a command that
+ * has more to say about a machine than its address.
+ */
+export async function knownMachines(
+  open: () => ReturnType<typeof createDaemonClient> = createDaemonClient,
+  readServers: () => ServerInfoDto[] = () => new ServerRegistry().list(),
+): Promise<{
+  machines: KnownMachine[];
+  nodes: INodeWithStatus[];
+  servers: ServerInfoDto[];
+  nodesUnavailable: string | null;
+}> {
+  const servers = readServers();
+
+  let nodes: INodeWithStatus[] = [];
+  let nodesUnavailable: string | null = null;
+  const client = open();
+  try {
+    if (await client.isReachable()) {
+      const svc = await client.service<IOmnitronNodesService>('OmnitronNodes');
+      nodes = await svc.listNodes();
+    } else {
+      nodesUnavailable = 'the daemon did not answer, so machines registered in the console are not listed';
+    }
+  } catch (err) {
+    nodesUnavailable = `could not read the node registry: ${(err as Error).message}`;
+  } finally {
+    await client.disconnect();
+  }
+
+  return { machines: mergeKnownMachines(servers, nodes as unknown as NodeLike[]), nodes, servers, nodesUnavailable };
 }
 
 /** Opened at most once per command, for every machine that needs the mesh. */

@@ -1,12 +1,14 @@
 /**
- * omnitron health-check [app] — Detailed composable health report
+ * omnitron health-check [app] — knock on what runs on this machine
  *
- * Unlike `omnitron health` which uses the daemon's internal HealthService
- * (PM-based process health), this command uses HealthCheckService which
- * performs actual HTTP/TCP connectivity checks and infrastructure probes.
+ * `omnitron health` reports what the apps say about themselves (their
+ * indicators). This asks from outside: is each process up, does its HTTP
+ * server take a request on its port, does every container of every stack on
+ * this machine run and accept a connection on the ports it publishes.
  *
- * Without arguments: full platform report (apps + infrastructure)
- * With app name: detailed health report for that specific app
+ * Without arguments: every app and every container on this machine.
+ * With an app name: that app — refused when this daemon does not run it.
+ * Exits 1 unless everything checked is healthy.
  */
 
 import { box, log, prism } from '@xec-sh/kit';
@@ -48,6 +50,9 @@ export async function healthCheckCommand(appName?: string): Promise<void> {
       const report = await health.checkApp({ appName });
 
       renderHealthReport(`Health Check: ${appName}`, report);
+      // A script asks `health-check && deploy`; it used to get 0 whatever
+      // the report said.
+      if (report.overall !== 'healthy') process.exitCode = 1;
     } else {
       // Full platform health check via OmnitronHealth.checkAll
       const result = await health.checkAll();
@@ -71,10 +76,12 @@ export async function healthCheckCommand(appName?: string): Promise<void> {
       lines.push(prism.bold('Infrastructure'));
       renderChecks(lines, result.infra);
 
-      box(lines.join('\n'), 'Platform Health Check');
+      box(lines.join('\n'), 'Health Check — this machine');
+      if (result.overall !== 'healthy') process.exitCode = 1;
     }
   } catch (err) {
     log.error(`Health check failed: ${(err as Error).message}`);
+    process.exitCode = 1;
   }
 
   await client.disconnect();
@@ -114,6 +121,6 @@ function renderChecks(lines: string[], report: any): void {
   }
 
   if (report.checks.length === 0) {
-    lines.push(prism.dim('  No checks configured'));
+    lines.push(prism.dim('  Nothing of this kind runs on this machine'));
   }
 }

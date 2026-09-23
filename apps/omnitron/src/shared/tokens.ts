@@ -106,17 +106,6 @@ export const SECRETS_PASSPHRASE_TOKEN: Token<string> = createToken<string>('Secr
 export const SECRETS_LEGACY_PATH_TOKEN: Token<string | undefined> =
   createToken<string | undefined>('SecretsLegacyPath');
 /**
- * Late-binding accessor for InfrastructureService. AlertService and
- * HealthCheckService consumed an `() => InfrastructureService | null`
- * lambda historically to avoid a circular module dependency
- * (alerts + health-check live in daemon-core; infrastructure-service
- * depends on the orchestrator which depends on log-manager which
- * may reach back into telemetry). The lambda is now an injectable
- * token that resolves to a getter callable.
- */
-export const INFRASTRUCTURE_SERVICE_ACCESSOR_TOKEN: Token<() => InfrastructureService | null> =
-  createToken<() => InfrastructureService | null>('InfrastructureServiceAccessor');
-/**
  * Late-binding accessor for the live infra state snapshot used by
  * AlertService's evaluation loop. Returns `Record<service, {status, health}>`.
  */

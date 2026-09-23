@@ -77,6 +77,22 @@ export function registerDaemonJobs(
         metricsService.record({ name: 'app_status', value: app.status === 'online' ? 1 : 0, timestamp: now, labels });
         metricsService.record({ name: 'app_restarts', value: app.restarts, timestamp: now, labels });
         metricsService.record({ name: 'app_instances', value: app.instances, timestamp: now, labels });
+
+        // The app's traffic, as its processes reported it (the poller keeps
+        // the last reading on the handle). Recorded only when reported: an
+        // app with no server process has no request series, rather than a
+        // series of zeros that reads as «no traffic».
+        const traffic = orchestrator.getHandle(app.name)?.lastMetrics?.traffic;
+        if (traffic) {
+          metricsService.record({ name: 'requests_total', value: traffic.requests, timestamp: now, labels });
+          metricsService.record({ name: 'errors_5xx_total', value: traffic.serverErrors, timestamp: now, labels });
+          metricsService.record({ name: 'errors_4xx_total', value: traffic.clientErrors, timestamp: now, labels });
+          if (traffic.latency) {
+            metricsService.record({ name: 'latency_p50_ms', value: traffic.latency.p50, timestamp: now, labels });
+            metricsService.record({ name: 'latency_p95_ms', value: traffic.latency.p95, timestamp: now, labels });
+            metricsService.record({ name: 'latency_p99_ms', value: traffic.latency.p99, timestamp: now, labels });
+          }
+        }
       }
 
       // Drain rich MetricSample[] from child MetricsCollectors (push-via-pull)

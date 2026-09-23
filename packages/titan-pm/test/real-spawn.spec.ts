@@ -285,6 +285,35 @@ class Worker {
     expect(health.status).toBe('degraded');
   }, 60_000);
 
+  it('reports the traffic the process says it answered, not the calls made to it', async () => {
+    // `requests` counted calls to the process wrapper — for an omnitron app,
+    // the supervisor's own health and metrics calls — and latency was the
+    // constant `{ last: 0 }`.
+    const file = writeWorker('trafficked', `
+class Worker {
+  static __public = ['ping'];
+  async ping() { return 'pong'; }
+  reportTraffic() {
+    return {
+      requests: 250, serverErrors: 4, clientErrors: 9, probes: 30, active: 0,
+      latency: { windowMs: 60000, coveredMs: 60000, count: 250, mean: 21, p50: 12, p75: 20, p90: 33, p95: 40, p99: 90, max: 310 },
+    };
+  }
+}`);
+
+    const proc = await manager().spawn(file, { name: 'trafficked' });
+    await (proc as unknown as { ping(): Promise<string> }).ping();
+
+    const metrics = (await (proc as unknown as {
+      __getProcessMetrics(): Promise<{ requests?: number; errors?: number; latency?: { p95: number }; traffic?: { probes: number } }>;
+    }).__getProcessMetrics());
+
+    expect(metrics.requests).toBe(250);
+    expect(metrics.errors).toBe(4);
+    expect(metrics.latency?.p95).toBe(40);
+    expect(metrics.traffic?.probes).toBe(30);
+  }, 60_000);
+
   it('reports the checks a @HealthCheck method measured, not only its verdict', async () => {
     // Every omnitron app answers through this path (`BootstrapProcess
     // .checkHealth`), and it kept one check per method — name and verdict —

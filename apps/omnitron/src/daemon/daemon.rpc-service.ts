@@ -288,19 +288,51 @@ export class DaemonRpcService implements IDaemonService {
   // Monitoring (Viewer: admin + operator + viewer)
   // ============================================================================
 
+  /**
+   * Each app's resources and traffic.
+   *
+   * Traffic is what the app's processes reported their transports answered
+   * (`reportTraffic`). This used to pass `requests`/`errors` through with
+   * `?? 0` and drop `latency`: the counts were the supervisor's own calls to
+   * the process wrapper (one more for every `omnitron inspect --graph`), an
+   * app that reported nothing read as zero, and MEAN/P95/P99 were never
+   * filled. An unknown name is refused rather than answered with nothing.
+   */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getMetrics(data: { name?: string }): Promise<AggregatedMetricsDto> {
     const raw = await this.orchestrator.getMetrics(data.name);
+    if (data.name !== undefined && Object.keys(raw).length === 0) {
+      throw Errors.notFound('App', data.name);
+    }
     const apps: AggregatedMetricsDto['apps'] = {};
     let totalCpu = 0;
     let totalMemory = 0;
 
     for (const [name, m] of Object.entries(raw)) {
+      const t = m?.traffic;
       apps[name] = {
         cpu: m?.cpu ?? 0,
         memory: m?.memory ?? 0,
-        requests: m?.requests ?? 0,
-        errors: m?.errors ?? 0,
+        traffic: t ? 'measured' : 'not-reported',
+        ...(t
+          ? {
+              requests: t.requests,
+              errors: t.serverErrors,
+              clientErrors: t.clientErrors,
+              probes: t.probes,
+              latency: t.latency
+                ? {
+                    p50: t.latency.p50,
+                    p95: t.latency.p95,
+                    p99: t.latency.p99,
+                    mean: t.latency.mean,
+                    max: t.latency.max,
+                    count: t.latency.count,
+                    windowMs: t.latency.windowMs,
+                  }
+                : null,
+            }
+          : {}),
       };
       totalCpu += m?.cpu ?? 0;
       totalMemory += m?.memory ?? 0;

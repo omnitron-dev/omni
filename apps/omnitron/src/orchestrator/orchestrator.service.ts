@@ -111,6 +111,7 @@ import { ProcessJanitor } from './process-janitor.js';
 import { addressInUse, holderCommand, parseHolders, explainConflict } from './port-conflict.js';
 import { collectOwnedPids } from './owned-pids.js';
 import { combineProcessHealth, notRunningHealth, poolHealth } from './app-health.js';
+import { combineProcessTraffic } from './app-traffic.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import type { Netron } from '@omnitron-dev/titan/netron';
@@ -1484,11 +1485,18 @@ export class OrchestratorService extends EventEmitter {
     return null;
   }
 
+  /**
+   * `name` is resolved like every other per-app question (`main` finds
+   * `daos/dev/main`); it was compared verbatim, so `omnitron metrics main`
+   * printed «(no data)». An unknown name answers `{}`, and the caller says so.
+   */
   async getMetrics(name?: string): Promise<Record<string, IProcessMetrics | null>> {
+    const wanted = name === undefined ? undefined : this.resolveAppName(name);
+    if (name !== undefined && wanted === undefined) return {};
     const result: Record<string, IProcessMetrics | null> = {};
 
     for (const [appName, handle] of this.handles) {
-      if (name && appName !== name) continue;
+      if (wanted && appName !== wanted) continue;
 
       if (handle.mode === 'bootstrap' && handle.supervisor) {
         // Same sampler the poller uses, so `omnitron metrics` and `omnitron
@@ -3071,17 +3079,19 @@ export class OrchestratorService extends EventEmitter {
       memory += sample.memory;
     }
 
-    // Request and error counters can only come from inside the child; `ps`
-    // knows nothing about them. Its CPU and memory figures are deliberately
-    // NOT used — see the note on this method.
-    let requests = 0;
-    let errors = 0;
+    // Traffic can only come from inside the child; `ps` knows nothing about
+    // it. Its CPU and memory figures are deliberately NOT used — see the note
+    // on this method. Only what a child reports as TRAFFIC is summed: the
+    // `requests`/`errors` a child on an older runtime reports are the call
+    // counters of its wrapper — the supervisor's own health and metrics
+    // calls — and adding them up counted this daemon's questions as the
+    // app's requests (`combineProcessTraffic`).
+    const reports: Array<IProcessMetrics['traffic']> = [];
     for (const childName of childNames) {
       const reported = await handle.supervisor?.getChildMetrics(childName);
-      if (!reported) continue;
-      requests += reported.requests ?? 0;
-      errors += reported.errors ?? 0;
+      reports.push(reported?.traffic);
     }
+    const traffic = combineProcessTraffic(reports);
 
     // A sample that produced nothing for an app that HAS live processes is a
     // failed sample, not a measurement of zero — `ps` can time out under load,
@@ -3095,7 +3105,27 @@ export class OrchestratorService extends EventEmitter {
     }
 
     handle.childMetrics = sampled;
-    return { cpu, memory, requests, errors };
+    return traffic
+      ? {
+          cpu,
+          memory,
+          requests: traffic.requests,
+          errors: traffic.serverErrors,
+          traffic,
+          ...(traffic.latency
+            ? {
+                latency: {
+                  p50: traffic.latency.p50,
+                  p75: traffic.latency.p75,
+                  p90: traffic.latency.p90,
+                  p95: traffic.latency.p95,
+                  p99: traffic.latency.p99,
+                  mean: traffic.latency.mean,
+                },
+              }
+            : {}),
+        }
+      : { cpu, memory };
   }
 
   /**
@@ -3181,12 +3211,12 @@ export class OrchestratorService extends EventEmitter {
           }
         } else if (handle.mode === 'bootstrap') {
           // Every process the app owns, not just the one on the handle.
-          const m = await this.sampleAppMetrics(handle);
-          handle.lastMetrics = {
-            ...m,
-            requests: m.requests || (handle.lastMetrics?.requests ?? 0),
-            errors: m.errors || (handle.lastMetrics?.errors ?? 0),
-          };
+          // As sampled. The counts used to fall back to the previous reading
+          // whenever a sample said 0 — which kept a stale figure alive
+          // across a process restart (traffic counts restart from zero with
+          // the process) and, while `requests` was the wrapper's call count,
+          // mixed the two meanings in one field.
+          handle.lastMetrics = await this.sampleAppMetrics(handle);
         }
       }
     }, interval);

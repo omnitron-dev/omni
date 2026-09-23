@@ -16,6 +16,7 @@ import type { ILogger, LogLevel } from '@omnitron-dev/titan/module/logger';
 import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
 import { classifyWorkerHealth, combineHealthMethods } from './worker-health.js';
+import { readProcessTraffic, trafficFields } from './worker-traffic.js';
 import { lifecycleWindows, childShutdownWindowMs } from './shutdown-windows.js';
 
 // Worker configuration from parent
@@ -236,10 +237,8 @@ async function initializeModuleWorker(ModuleClass: any, workerConfig: WorkerConf
       memoryExternal: mem.external,
       heapLimit: heap.heap_size_limit,
       heapUsedRatio: mem.heapUsed / heap.heap_size_limit,
-      requests: rpcState.requestCount,
-      errors: rpcState.errorCount,
       uptime: process.uptime(),
-      latency: { last: 0 },
+      ...trafficFields(await readProcessTraffic(workerService), rpcState),
     };
   };
 
@@ -531,10 +530,8 @@ async function initialize() {
         memoryExternal: memUsage.external,
         heapLimit: v8HeapStats.heap_size_limit,
         heapUsedRatio,
-        requests: legacyRpcState.requestCount,
-        errors: legacyRpcState.errorCount,
         uptime: process.uptime(),
-        latency: { last: 0 },
+        ...trafficFields(await readProcessTraffic(processInstance), legacyRpcState),
       };
     };
 

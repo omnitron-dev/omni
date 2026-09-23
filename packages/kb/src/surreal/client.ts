@@ -415,7 +415,18 @@ export class SurrealKbStore implements IKbStore {
       return Number(rows[0]?.count ?? 0);
     };
 
-    const [modules, symbols, specs, chunks, gotchas, patterns, dependencies] = await Promise.all([
+    // Rows that carry a vector, in the five tables whose schema has an
+    // `embedding` field. `NONE` is what an unset option field holds — the
+    // upserts pass `embedding ?? undefined` — so this counts exactly the rows
+    // an embedding provider filled in.
+    const EMBEDDED_TABLES = ['symbol', 'spec', 'chunk', 'gotcha', 'pattern'] as const;
+    const countEmbedded = async (table: string): Promise<number> => {
+      const r = await this.db.query(`SELECT count() FROM ${table} WHERE embedding != NONE GROUP ALL`);
+      const rows = this.extractRows(r);
+      return Number(rows[0]?.count ?? 0);
+    };
+
+    const [modules, symbols, specs, chunks, gotchas, patterns, dependencies, ...embedded] = await Promise.all([
       countTable('module'),
       countTable('symbol'),
       countTable('spec'),
@@ -423,6 +434,7 @@ export class SurrealKbStore implements IKbStore {
       countTable('gotcha'),
       countTable('pattern'),
       countTable('depends_on'),
+      ...EMBEDDED_TABLES.map(countEmbedded),
     ]);
 
     return {
@@ -433,7 +445,16 @@ export class SurrealKbStore implements IKbStore {
       gotchas,
       patterns,
       dependencies,
-      embeddingsIndexed: 0,
+      // Counted. This was the constant 0 — true only while nothing embedded,
+      // and `KnowledgeBaseService` (titan) indexes with Voyage, OpenAI or
+      // Ollama when configured, which is exactly when the number is worth
+      // reading.
+      embeddingsIndexed: embedded.reduce((sum, n) => sum + n, 0),
+      // Still `null`, and now said to be: nothing records WHEN an index ran —
+      // the indexer writes rows, not a time, and `manifest.extractedAt` is when
+      // `kb-extract` generated its JSON, not when it was indexed. `null` is
+      // «not recorded», never «never indexed»; `omnitron kb status` no longer
+      // has a line for it.
       lastIndexedAt: null,
       byPackage: {},
     };

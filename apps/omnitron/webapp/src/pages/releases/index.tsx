@@ -25,7 +25,7 @@ import Typography from '@mui/material/Typography';
 import { Alert, AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
 
 import type { BuildRecord, ReleaseDeploymentDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { pruneBlindness, stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
+import { stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
@@ -412,8 +412,6 @@ export default function ReleasesPage() {
       <PruneReleasesDialog
         open={pruneOpen}
         onClose={() => setPruneOpen(false)}
-        protect={[...deployedBy.keys()]}
-        blind={data ? pruneBlindness(data.deployments) : 'the release list has not been read yet'}
         onPruned={() => void refresh()}
       />
 

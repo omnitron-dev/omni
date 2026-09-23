@@ -77,9 +77,16 @@ export async function inspectCommand(appName: string): Promise<void> {
       }
     }
 
-    // Memory section
+    // Memory section. The daemon sums every process the app runs; say how
+    // many, since this line used to be one process presented as the app.
+    const processCount =
+      (diag.children?.length ?? 0) + (diag.pools ?? []).reduce((n, pool) => n + pool.workers.length, 0);
     lines.push('', prism.bold('Memory:'));
-    lines.push(`  RSS:          ${formatBytes(diag.memory.rss)}`);
+    lines.push(
+      `  RSS:          ${formatBytes(diag.memory.rss)}${
+        diag.pools && processCount > 1 ? prism.dim(`  (all ${processCount} processes)`) : ''
+      }`,
+    );
     if (diag.memory.heapUsed > 0) lines.push(`  Heap Used:    ${formatBytes(diag.memory.heapUsed)}`);
     if (diag.memory.heapTotal > 0) lines.push(`  Heap Total:   ${formatBytes(diag.memory.heapTotal)}`);
     if (diag.memory.external > 0) lines.push(`  External:     ${formatBytes(diag.memory.external)}`);
@@ -96,8 +103,7 @@ export async function inspectCommand(appName: string): Promise<void> {
         const svc = child.serviceName
           ? `${child.serviceName}@${child.serviceVersion ?? '?'}`
           : prism.dim('(no service)');
-        const up = child.uptimeSeconds != null ? ` ${prism.dim('up')} ${formatUptime(child.uptimeSeconds)}` : '';
-        lines.push(`  ${prism.green('+')} ${prism.bold(child.name)}  pid=${pid}  ${prism.dim(svc)}${up}`);
+        lines.push(`  ${prism.green('+')} ${prism.bold(child.name)}  pid=${pid}  ${prism.dim(svc)}${processTail(child)}`);
       }
     } else if (diag.services.length > 0) {
       // Backwards-compatible fallback for older daemons that only
@@ -105,6 +111,22 @@ export async function inspectCommand(appName: string): Promise<void> {
       lines.push('', prism.bold('Services:'));
       for (const s of diag.services) {
         lines.push(`  ${prism.green('+')} ${s}`);
+      }
+    }
+
+    // Pools — workers the supervisor does not know about, so the section
+    // above never listed them.
+    if (diag.pools && diag.pools.length > 0) {
+      lines.push('', prism.bold('Pools:'));
+      for (const pool of diag.pools) {
+        const count = `${pool.workers.length}/${pool.declaredInstances} workers`;
+        const rss = pool.rss != null ? `  ${prism.dim('rss')} ${formatBytes(pool.rss)}` : '';
+        const countColor = pool.workers.length === pool.declaredInstances ? prism.dim : prism.yellow;
+        lines.push(`  ${prism.green('+')} ${prism.bold(pool.name)}  ${countColor(count)}${rss}`);
+        for (const worker of pool.workers) {
+          const pid = worker.pid != null ? prism.cyan(String(worker.pid)) : prism.dim('-');
+          lines.push(`      pid=${pid}${processTail(worker)}`);
+        }
       }
     }
 
@@ -140,9 +162,23 @@ export async function inspectCommand(appName: string): Promise<void> {
     box(lines.join('\n'), `Inspect: ${appName}`);
   } catch (err) {
     emitError((err as Error).message, { app: appName });
+    process.exitCode = 1;
   }
 
   await client.disconnect();
+}
+
+/**
+ * « up 1h 7m  rss 267.1MB» for one process.
+ *
+ * `uptimeSeconds` is seconds and `formatUptime` takes milliseconds: passed
+ * straight through, a process up 1 h 7 m printed «up 4s», and one up 1 h
+ * 30 m «up 5s».
+ */
+function processTail(proc: { uptimeSeconds?: number; rss?: number }): string {
+  const up = proc.uptimeSeconds != null ? ` ${prism.dim('up')} ${formatUptime(proc.uptimeSeconds * 1000)}` : '';
+  const rss = proc.rss != null ? `  ${prism.dim('rss')} ${formatBytes(proc.rss)}` : '';
+  return `${up}${rss}`;
 }
 
 function formatConfigValue(key: string, value: unknown): string {

@@ -47,7 +47,7 @@ import {
 import { Breadcrumbs, FormAlert, Skeleton } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
-import { daemonMemoryOf } from 'src/utils/daemon-memory';
+import { appsMemoryOf, daemonMemoryOf } from 'src/utils/daemon-memory';
 
 import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
 import { readStoredJson, writeStoredJson } from '../utils/storage';
@@ -352,8 +352,13 @@ function StatPanel({ data, config }: { data: DaemonData; config: Record<string, 
   let color = theme.palette.primary.main;
 
   const onlineApps = data.apps.filter((a) => a.status === 'online').length;
+  // The apps', both of them. `totalMemory` is the apps' memory plus the
+  // daemon's own RSS, while `totalCpu` is the apps' alone: on the master
+  // (2026-09-23) the default dashboard read «CPU 41.9%» — six apps — beside
+  // «Memory 2074.8 MB», six apps' 1781.8 and the daemon's 293.0, which its
+  // own Daemon card shows again.
   const totalCpu = data.status?.totalCpu ?? data.apps.reduce((s, a) => s + a.cpu, 0);
-  const totalMem = data.status?.totalMemory ?? data.apps.reduce((s, a) => s + a.memory, 0);
+  const totalMem = data.status ? appsMemoryOf(data.status) : data.apps.reduce((s, a) => s + a.memory, 0);
 
   switch (metric) {
     case 'total_apps':
@@ -579,8 +584,8 @@ const STAT_METRICS = [
   { value: 'total_apps', label: 'Total Apps' },
   { value: 'online_apps', label: 'Online Apps' },
   { value: 'errored_apps', label: 'Errored Apps' },
-  { value: 'total_cpu', label: 'Total CPU' },
-  { value: 'total_memory', label: 'Total Memory' },
+  { value: 'total_cpu', label: "Apps' CPU" },
+  { value: 'total_memory', label: "Apps' memory" },
   { value: 'uptime', label: 'Daemon Uptime' },
   { value: 'restarts', label: 'Total Restarts' },
 ];

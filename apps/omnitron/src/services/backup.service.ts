@@ -21,7 +21,7 @@ import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitro
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
-import { dumpToFile, restoreFromFile } from './backup-pipeline.js';
+import { dumpToFile, restoreFromFile, formatBackupSize } from './backup-pipeline.js';
 import {
   parseSchedule,
   nextCronDelay,
@@ -78,6 +78,127 @@ const TOR_REGENERABLE_STATE = [
   './unverified-*',
   './lock',
 ] as const;
+
+/** SQLite leaves these beside a database it opens (`-journal` in rollback mode). */
+const SQLITE_SIDECARS = ['-shm', '-wal', '-journal'] as const;
+
+/** Scratch directories `createStorageBackup` and `restoreStorageBackup` remove in a `finally`. */
+const STORAGE_STAGING_DIR = /^\.storage-(stage|restore)-[0-9a-f]{8}$/;
+
+/** The database file a SQLite sidecar belongs to, or null for any other file. */
+function sidecarOwner(name: string): string | null {
+  for (const suffix of SQLITE_SIDECARS) {
+    if (name.endsWith(suffix)) return name.slice(0, -suffix.length);
+  }
+  return null;
+}
+
+function bytesUnder(target: string): number {
+  try {
+    const stat = fs.lstatSync(target);
+    if (!stat.isDirectory()) return stat.size;
+    let total = 0;
+    for (const child of fs.readdirSync(target)) total += bytesUnder(path.join(target, child));
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+export interface LeftoverSweep {
+  removed: Array<{ name: string; bytes: number; reason: string }>;
+  /** Sidecars left alone because the database they belong to is still there. */
+  besideBackups: { files: number; bytes: number };
+  /** Orphaned sidecars left alone because their WAL still holds frames. */
+  keptOrphans: string[];
+}
+
+/**
+ * Remove what an interrupted pass leaves in the backup directory.
+ *
+ * Measured on the master, 2026-09-23: 28 files, 79 300 253 B (75.6 MiB), that
+ * no index row names — so `backup list` never showed them and retention never
+ * pruned them:
+ *
+ *     23 zero-byte files               22 `tor-keys`, 1 `storage` (July–September)
+ *      2 `main_…sql.gz.partial`         7 150 144 B and 70 477 299 B — the daemon
+ *                                      restarted mid-dump at 13:15:43Z and
+ *                                      21:15:47Z on 09-21, and no catch of ours
+ *                                      runs in a process that is gone
+ *      3 truncated archives            the ones named on `execToFile`
+ *
+ * A `.partial` is by construction not a backup (`dumpToFile`, `execToFile`
+ * write under it and rename only a finished file), and a zero-byte file
+ * restores nothing, so both go. Nothing is in flight when this runs: it is
+ * called from the constructor, once, before any schedule is armed.
+ *
+ * The SQLite sidecars are more careful, because something may have a
+ * database open. Measured: 102 of them (51 `-shm` of 32 768 B, 51 `-wal` of
+ * 0 B). Apple's `sqlite3` keeps both files after it closes a WAL database, and
+ * a `daemon-state_*.db` backup IS one — `.backup` copies the WAL flag in the
+ * header from the live store. So every open of a backup left a pair: 3 pairs
+ * `….db.partial-shm/-wal` from our own integrity check, which ran on the
+ * staging name and then renamed the file away from them; 4 pairs whose `.db`
+ * retention had deleted, because `deleteBackup` removed only the named file;
+ * and 44 pairs beside backups that still exist, written by bulk opens at
+ * 2026-09-11 23:50 and 09-14 15:27 local — not by this code.
+ *
+ * Only an ORPHAN pair is removed — its database is gone, so nothing can open
+ * it — and only while its WAL holds no frames. A pair beside a live database
+ * is counted and kept: that one is not provably idle.
+ */
+export function sweepBackupLeftovers(dir: string): LeftoverSweep {
+  const report: LeftoverSweep = { removed: [], besideBackups: { files: 0, bytes: 0 }, keptOrphans: [] };
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return report;
+  }
+  const present = new Set(entries.map((e) => e.name));
+  const sizeOf = (name: string): number => {
+    try { return fs.statSync(path.join(dir, name)).size; } catch { return 0; }
+  };
+  const remove = (name: string, reason: string): void => {
+    const target = path.join(dir, name);
+    const bytes = bytesUnder(target);
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+    } catch {
+      return; // not ours to remove — it stays, and stays out of the count
+    }
+    present.delete(name);
+    report.removed.push({ name, bytes, reason });
+  };
+
+  // Files first: removing a `.partial` is what orphans the sidecars beside it.
+  for (const e of entries) {
+    if (e.isDirectory()) {
+      if (STORAGE_STAGING_DIR.test(e.name)) remove(e.name, 'the scratch directory of an interrupted storage pass');
+      continue;
+    }
+    if (!e.isFile() || sidecarOwner(e.name) !== null) continue;
+    if (e.name.endsWith('.partial')) remove(e.name, 'an interrupted dump');
+    else if (sizeOf(e.name) === 0) remove(e.name, 'empty');
+  }
+
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    const owner = sidecarOwner(e.name);
+    if (owner === null) continue;
+    if (present.has(owner)) {
+      report.besideBackups.files++;
+      report.besideBackups.bytes += sizeOf(e.name);
+      continue;
+    }
+    if (present.has(`${owner}-wal`) && sizeOf(`${owner}-wal`) > 0) {
+      report.keptOrphans.push(e.name);
+      continue;
+    }
+    remove(e.name, 'the SQLite sidecar of a database that is gone');
+  }
+  return report;
+}
 
 /**
  * Which databases a sweep should bound, given what is scheduled and what
@@ -144,6 +265,63 @@ export class BackupService {
         { dir: this.backupDir, files: tightened },
         'Backup files were readable beyond their owner — permissions tightened',
       );
+    }
+    this.clearLeftovers();
+  }
+
+  /**
+   * Once per start: remove what interrupted passes left behind, and name what
+   * is still on disk without an index row. See `sweepBackupLeftovers`.
+   */
+  private clearLeftovers(): void {
+    const swept = sweepBackupLeftovers(this.backupDir);
+    if (swept.removed.length > 0) {
+      const bytes = swept.removed.reduce((sum, r) => sum + r.bytes, 0);
+      this.logger.warn(
+        {
+          dir: this.backupDir,
+          files: swept.removed.length,
+          bytes,
+          removed: swept.removed.map((r) => `${r.name} (${r.reason}, ${r.bytes} B)`),
+        },
+        `Removed ${swept.removed.length} leftover file(s) from the backup directory, ${formatBackupSize(bytes)}`,
+      );
+    }
+    if (swept.keptOrphans.length > 0) {
+      this.logger.warn(
+        { dir: this.backupDir, files: swept.keptOrphans },
+        'SQLite sidecars of a deleted database still hold WAL frames — left in place',
+      );
+    }
+    if (swept.besideBackups.files > 0) {
+      this.logger.info(
+        { dir: this.backupDir, files: swept.besideBackups.files, bytes: swept.besideBackups.bytes },
+        'SQLite sidecars sit beside backups that still exist — left in place; retention removes them with their database',
+      );
+    }
+
+    // What is left and still in no index: a file restore cannot name, no
+    // listing shows and retention never prunes. Not removed — a file with
+    // content may be a good backup whose row was lost — but not silent either.
+    try {
+      this.migrateLegacyMetaIfPresent();
+      const indexed = new Set(this.store.selectBackupsSync().map((r) => path.basename(r.path)));
+      const stray: Array<{ name: string; bytes: number }> = [];
+      for (const e of fs.readdirSync(this.backupDir, { withFileTypes: true })) {
+        if (!e.isFile() || indexed.has(e.name)) continue;
+        if (sidecarOwner(e.name) !== null || e.name.endsWith('.meta.json')) continue;
+        stray.push({ name: e.name, bytes: bytesUnder(path.join(this.backupDir, e.name)) });
+      }
+      if (stray.length > 0) {
+        const bytes = stray.reduce((sum, s) => sum + s.bytes, 0);
+        this.logger.warn(
+          { dir: this.backupDir, files: stray.length, bytes, names: stray.map((s) => `${s.name} (${s.bytes} B)`) },
+          `${stray.length} file(s) in the backup directory are in no index (${formatBackupSize(bytes)}) — ` +
+            'not listed, not restorable by id, never pruned',
+        );
+      }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, 'Could not compare the backup directory with its index');
     }
   }
 
@@ -405,9 +583,31 @@ export class BackupService {
     if (finalPath.endsWith('.db')) {
       // `.backup` produces a consistent snapshot, but a disk that filled
       // during the copy produces a short file that sqlite still opens.
-      const out = await this.execShell(`sqlite3 "${staging}" "PRAGMA integrity_check;"`, 300_000);
-      if (out.trim() !== 'ok') {
-        throw new Error(`backup failed its integrity check: ${out.trim().slice(0, 200)}`);
+      //
+      // The copy is switched out of WAL mode first. `.backup` carries the
+      // live store's WAL flag into the copy's header, and Apple's `sqlite3`
+      // keeps `-shm` and `-wal` after it closes a WAL database — so this very
+      // check left `<name>.db.partial-shm` (32 768 B) and `-wal` (0 B) on
+      // every `full` pass, named after a staging file the rename then took
+      // away: three such pairs on the master, from 09-17, 09-18 and 09-19.
+      // In rollback mode a backup is one file, whoever opens it later. The
+      // store puts it back into WAL itself when a restored copy is opened.
+      try {
+        const out = await this.execShell(
+          `sqlite3 "${staging}" "PRAGMA journal_mode=DELETE;" "PRAGMA integrity_check;"`,
+          300_000,
+        );
+        const verdict = out.trim().split('\n').pop()?.trim();
+        if (verdict !== 'ok') {
+          throw new Error(`backup failed its integrity check: ${out.trim().slice(0, 200)}`);
+        }
+      } finally {
+        // Leaving WAL mode checkpoints and removes the WAL, but Apple's build
+        // keeps the `-shm`, which means nothing to a rollback-mode database.
+        // A WAL that is still there is removed only if it holds no frames.
+        fs.rmSync(`${staging}-shm`, { force: true });
+        const wal = `${staging}-wal`;
+        if (fs.existsSync(wal) && fs.statSync(wal).size === 0) fs.rmSync(wal, { force: true });
       }
     }
   }
@@ -640,6 +840,12 @@ export class BackupService {
     // file just means the operator already removed it.
     this.store.deleteBackupSync(backup.id);
     try { fs.unlinkSync(filepath); } catch { /* ignore */ }
+    // And whatever SQLite left beside it. Removing only the named file is how
+    // four `daemon-state_*.db-shm/-wal` pairs on the master came to outlive
+    // the backups retention had pruned — belonging to nothing, in no listing.
+    for (const suffix of SQLITE_SIDECARS) {
+      try { fs.unlinkSync(filepath + suffix); } catch { /* none, or not ours */ }
+    }
 
     this.logger.info({ database: backup.database, filename: backup.filename }, 'Backup deleted');
   }

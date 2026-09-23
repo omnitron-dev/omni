@@ -5,7 +5,7 @@
  */
 
 import { log } from '@xec-sh/kit';
-import { formatBackupSize } from '../services/backup-pipeline.js';
+import { formatBackupSize, formatUtc } from '../services/backup-pipeline.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 async function invokeRpc(method: string, data?: any): Promise<any> {
@@ -61,13 +61,14 @@ export async function backupListCommand(): Promise<void> {
     }
 
     log.info(`Found ${backups.length} backup(s):\n`);
-    const header = ['Database', 'Filename', 'Size', 'Created'].map((h) => h.padEnd(25)).join('');
+    const header = ['Database', 'Filename', 'Size', 'Created (UTC)'].map((h) => h.padEnd(25)).join('');
     log.info(header);
     log.info('-'.repeat(100));
 
     for (const b of backups) {
       const sizeMB = formatBackupSize(b.size);
-      const created = new Date(b.createdAt).toLocaleString();
+      // UTC, as the filenames are — see `formatUtc`.
+      const created = formatUtc(b.createdAt);
       log.info([
         b.database.padEnd(25),
         b.filename.slice(0, 24).padEnd(25),

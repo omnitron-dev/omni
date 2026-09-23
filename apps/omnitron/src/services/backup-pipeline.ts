@@ -58,6 +58,22 @@ export function formatBackupSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/**
+ * A moment as UTC, to the second, with the zone written on it.
+ *
+ * `backup list` printed `new Date(createdAt).toLocaleString()` — the daemon
+ * host's local time with no zone at all — beside filenames that carry UTC.
+ * Measured on the master: `geo_2026-09-23T08-19-04-…` listed as
+ * `9/23/2026, 11:19:04 AM`, three hours apart and nothing saying which of the
+ * two was right. Lives here, beside `formatBackupSize`, because this is the
+ * one module both the daemon and the CLI load without the service's graph.
+ */
+export function formatUtc(moment: string | number | Date): string {
+  const d = new Date(moment);
+  if (Number.isNaN(d.getTime())) return String(moment);
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
 export interface PipelineOptions {
   /** Milliseconds before both processes are killed. */
   timeoutMs?: number;

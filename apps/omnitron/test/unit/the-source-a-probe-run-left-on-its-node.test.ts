@@ -68,9 +68,15 @@ function attestation(rm: (command: string) => { stdout: string; stderr: string; 
   const execution: any = {
     ssh: async (_target: unknown, command: string) => {
       sent.push(command);
-      return command.startsWith('rm -rf')
-        ? { ...rm(command), duration: 1 }
-        : { stdout: '{"passed":3,"failed":0}', stderr: '', exitCode: 0, duration: 1 };
+      if (command.startsWith('rm -rf')) return { ...rm(command), duration: 1 };
+      // The probes' line, as the node sends it back through the data channel.
+      const probes = '{"passed":3,"failed":0}';
+      return {
+        stdout: command.startsWith('out=$(sh -c ') ? Buffer.from(probes).toString('hex') : probes,
+        stderr: '',
+        exitCode: 0,
+        duration: 1,
+      };
     },
   };
   const deployer: any = new RemoteDeployer(logger, execution);
@@ -121,6 +127,9 @@ describe('the source a probe run left on its node', () => {
     const result = await a.run();
 
     expect(result, 'the probes measured this; the rm measured none of it').toEqual(measured);
+    // The producer's line is evidence: it comes back through the data
+    // channel, past the transport's masker (a-record-the-transport-rewrote).
+    expect(a.sent.find((c) => !c.startsWith('rm -rf'))).toMatch(/^out=\$\(sh -c /);
     const line = left(a.said);
     expect(line).toHaveLength(1);
     expect(line[0]!.level).toBe('warn');

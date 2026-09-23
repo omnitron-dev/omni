@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { constants, createPublicKey, generateKeyPairSync, publicEncrypt } from 'node:crypto';
+import { constants, createPublicKey, publicEncrypt } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -269,12 +269,17 @@ describe('the service', () => {
           uploaded = { dir, tool: fs.readFileSync(path.join(dir, 'scripts', 'operator-account.mjs'), 'utf8') };
           return { remoteDir: '/opt/omnitron/operator/abc', bytes: 1 };
         }),
-        runOnNode: vi.fn(async (_target: unknown, command: string) => {
+        // The tool's runs are data (`readFromNode`); the stage's removal is not.
+        readFromNode: vi.fn(async (_target: unknown, command: string) => {
           commands.push(command);
-          if (command.startsWith('rm -rf')) return { stdout: '', stderr: '', code: 0 };
           if (command.includes("'--show=")) return showRun;
           if (command.includes("'--remove=")) return removeRun;
           return make(/'--seal-to=([^']+)'/.exec(command)?.[1]);
+        }),
+        runOnNode: vi.fn(async (_target: unknown, command: string) => {
+          commands.push(command);
+          if (command.startsWith('rm -rf')) return { stdout: '', stderr: '', code: 0 };
+          return { stdout: '', stderr: `not a command this court expects on runOnNode: ${command.slice(0, 60)}`, code: 127 };
         }),
       },
     });
@@ -301,6 +306,9 @@ describe('the service', () => {
     // The stage is taken away on both sides.
     expect(removedTheStage()).toBe(true);
     expect(fs.existsSync(uploaded!.dir)).toBe(false);
+    // The tool's answer is data, read past the transport's masker.
+    expect(svc.deployer.readFromNode).toHaveBeenCalledTimes(1);
+    expect(svc.deployer.runOnNode.mock.calls.map((c: unknown[]) => String(c[1]).split(' ')[0])).toEqual(['rm']);
   });
 
   it('runs the committed tool, not the working tree', async () => {

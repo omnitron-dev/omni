@@ -80,6 +80,7 @@ import {
 import crypto from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
+import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 
 
@@ -1698,7 +1699,10 @@ export class RemoteDeployer {
    * scripts, the deployer owns the SSH. See `node-deploy-lease.ts`.
    */
   leaseRunner(target: DeployTarget): LeaseRunner {
-    return (script) => this.sshExec(target, script, 30_000);
+    // Through the data channel: a lease answer carries the holder's record,
+    // `{"token":…}`, which the masker rewrote into `"token": [REDACTED]` on
+    // every read — a refusal could never say who held the node.
+    return (script) => this.sshExecData(target, script, 30_000);
   }
 
   /**
@@ -1731,6 +1735,15 @@ export class RemoteDeployer {
     return result.stdout.trim();
   }
 
+  /** `sshExec` for a command whose stdout is data — see `readFromNode`. */
+  private async sshExecData(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
+    const result = await this.readFromNode(target, command, timeout);
+    if (result.code !== 0) {
+      throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${result.stderr || result.stdout || `exit ${result.code}`}`);
+    }
+    return result.stdout.trim();
+  }
+
   /**
    * Run a command on a node and hand back what it said, exit code included.
    *
@@ -1747,6 +1760,30 @@ export class RemoteDeployer {
   ): Promise<{ stdout: string; stderr: string; code: number }> {
     const result = await this.execution.ssh(sshTargetOf(target), command, { timeout: timeoutMs });
     return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode ?? -1 };
+  }
+
+  /**
+   * `runOnNode` for a command whose stdout is DATA — a record to parse, a
+   * line to store — carried past the transport's masker
+   * (`execution/data-channel.ts`). Its callers are named there and here: the
+   * lease runner (holder records), the attestation (the producer's line), the
+   * operator tool (its answer line). What it returns is unmasked; none of
+   * them logs it whole.
+   *
+   * A channel that came back as something other than its encoding is a
+   * failure with its own code, -2, and its words on stderr — never data.
+   */
+  async readFromNode(
+    target: DeployTarget,
+    command: string,
+    timeoutMs = 600_000,
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    const result = await this.execution.ssh(sshTargetOf(target), throughDataChannel(command), { timeout: timeoutMs });
+    const data = fromDataChannel(result.stdout);
+    if (!data.ok) {
+      return { stdout: '', stderr: [data.because, result.stderr].filter(Boolean).join(' | '), code: result.exitCode === 0 ? -2 : (result.exitCode ?? -1) };
+    }
+    return { stdout: data.text, stderr: result.stderr, code: result.exitCode ?? -1 };
   }
 
   private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {

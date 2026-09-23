@@ -51,6 +51,17 @@ async function readBackupStatus(): Promise<{ status?: any; unavailable?: string 
   }
 }
 
+/** A span as an operator reads it: `3 d 15 h`, `5 h 43 min`, `12 min`, `40 s`. */
+function formatAge(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const min = Math.floor(s / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ${min % 60} min`;
+  return `${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
 /**
  * One recorded pass, in UTC, with the reason of everything that failed.
  * `EMPTY` is spelled out: a pass that found nothing did not succeed.
@@ -209,9 +220,17 @@ export async function backupSchedulesCommand(): Promise<void> {
     for (const s of schedules) {
       const how = s.schedule ?? `UNREADABLE — ${s.error ?? 'not armed'}`;
       log.info(`  ${String(s.target).padEnd(10)} ${String(s.spec).padEnd(12)} ${how}${s.armed ? '' : '  (not armed)'}`);
-      const line = `      last pass  ${describePass(s.lastPass)}`;
+      let line = `      last pass  ${describePass(s.lastPass)}`;
+      // Before any pass was recorded, the index still knows when this target
+      // last produced a backup — which is what its next run is measured from.
+      if (!s.lastPass && s.lastBackupAt) {
+        line += ` — newest backup ${formatUtc(s.lastBackupAt)}, ${formatAge(Date.now() - Date.parse(s.lastBackupAt))} ago`;
+      }
       if (s.lastPass && s.lastPass.outcome !== 'ok') log.warn(line);
       else log.info(line);
+      if (s.nextRunAt) {
+        log.info(`      next run   ${formatUtc(s.nextRunAt)} (in ${formatAge(Date.parse(s.nextRunAt) - Date.now())})`);
+      }
     }
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);

@@ -366,7 +366,27 @@ export default function StackDetailPage() {
           {stack.portRange && (
             <InfoRow label="Port Range" value={`${stack.portRange.start}–${stack.portRange.end}`} mono />
           )}
-          {stack.startedAt && <InfoRow label="Started" value={new Date(stack.startedAt).toLocaleString()} />}
+          {/* A remote stack's start is its nodes' — the longest-running app they
+              report online — and when this master took it over is another
+              moment: it read «Started 16:03» beside apps up 68 minutes, the
+              master's restart presented as the stack's. */}
+          {stack.type === 'local' ? (
+            stack.startedAt && <InfoRow label="Started" value={new Date(stack.startedAt).toLocaleString()} />
+          ) : (
+            <>
+              <InfoRow
+                label="Started"
+                value={
+                  stack.startedAt
+                    ? `${new Date(stack.startedAt).toLocaleString()}, as its nodes report`
+                    : 'unknown — no node reported an app of it running'
+                }
+              />
+              {stack.attachedAt && (
+                <InfoRow label="Attached" value={`${new Date(stack.attachedAt).toLocaleString()} — by this master`} />
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
       {/* Infrastructure cards */}

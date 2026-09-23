@@ -17,6 +17,7 @@
  */
 
 import { buildOwnBundle } from './bundle-builder.js';
+import { failureOutput } from './bundle-worker-protocol.js';
 
 async function main(): Promise<void> {
   const [workspaceRoot, label] = process.argv.slice(2);
@@ -34,6 +35,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
+  // The stack for the log, and the reason as the last line — which is what
+  // the daemon reports (`bundle-worker-protocol.ts`).
+  process.stderr.write(failureOutput(err));
   process.exit(1);
 });

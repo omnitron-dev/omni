@@ -172,8 +172,9 @@ describe('the failure is written down where it happens', () => {
     expect(all?.lastPass?.outcome).toBe('partial');
     expect(all?.lastPass?.trigger).toBe('schedule');
     expect(all?.lastPass?.ok).toBe(5);
+    // Named with its stack: two stacks can each have a `main`.
     expect(all?.lastPass?.failures).toEqual([
-      { target: 'main', error: expect.stringContaining('did not finish within 600 s') },
+      { target: 'daos/dev/main', error: expect.stringContaining('did not finish within 600 s') },
     ]);
     after.dispose();
   });

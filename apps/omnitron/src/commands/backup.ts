@@ -87,12 +87,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
         log.warn('No databases found to back up — is a stack running?');
         return;
       }
-      for (const r of results) {
-        if (r.ok) log.success(`  ✓ ${r.database} — ${formatBackupSize(r.size)} [${r.id.slice(0, 8)}]`);
-        else log.error(`  ✗ ${r.database}: ${r.error}`);
-      }
-      const ok = results.filter((r) => r.ok).length;
-      log.info(`Done: ${ok}/${results.length} database(s) backed up`);
+      printPassResults(results, (r) => qualifiedName(r, r.database), 'database(s)');
       return;
     }
 
@@ -123,20 +118,25 @@ export async function backupListCommand(): Promise<void> {
     const idLength = uniqueIdPrefixLength(backups.map((b) => String(b.id)));
     const rows = backups.map((b) => [
       String(b.id).slice(0, idLength),
+      // Whose database this is: two stacks can both have a `main`.
+      stackLabel(b),
       b.database,
       formatBackupSize(b.size),
       // UTC, as the filenames are — see `formatUtc`.
       formatUtc(b.createdAt),
       b.filename,
     ]);
-    for (const line of renderTable(['ID', 'Database', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
+    for (const line of renderTable(['ID', 'Stack', 'Database', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
+    if (backups.some((b) => stackLabel(b) === '—')) {
+      log.info('(Stack — : taken before backups recorded their stack)');
+    }
     log.info('\nRestore one with: omnitron backup restore <ID>');
 
     // A pass that lost a database leaves a listing that looks complete — the
     // missing row is the only trace. Say so here, where people look.
     const { status, unavailable } = await readBackupStatus();
     if (!status) {
-      log.warn(`Last pass of each schedule: unknown — ${unavailable}`);
+      log.warn(`Which stacks are backed up, and how each schedule last ran: unknown — ${unavailable}`);
       return;
     }
     for (const s of status.schedules ?? []) {
@@ -144,9 +144,53 @@ export async function backupListCommand(): Promise<void> {
         log.warn(`Last '${s.target}' pass: ${describePass(s.lastPass)}`);
       }
     }
+    reportCoverage(status.stacks);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }
+}
+
+/** `project/stack`, `control-plane`, or `—` for a row from before the stack was recorded. */
+function stackLabel(b: any): string {
+  if (b.project && b.stack) return `${b.project}/${b.stack}`;
+  return b.scope === 'control-plane' ? 'control-plane' : '—';
+}
+
+/** A database named with its stack when the daemon said which one. */
+function qualifiedName(r: any, name: string): string {
+  return r.project && r.stack && !r.skipped ? `${r.project}/${r.stack}/${name}` : name;
+}
+
+/**
+ * Which running stacks this daemon backs up — and, as a warning, which it
+ * does not. «Found 380 backup(s)» and «all hourly» read as «everything is
+ * covered» on the master, while the test stack's databases — on another
+ * machine — were in none of them.
+ */
+function reportCoverage(stacks: any[] | undefined): void {
+  const list = stacks ?? [];
+  if (list.length === 0) return;
+  log.info('\nRunning stacks:');
+  for (const s of list) {
+    const name = `${s.project}/${s.stack}`;
+    if (s.notBackedUp) log.warn(`  ${name}: not backed up — ${s.notBackedUp}`);
+    else if (s.databases?.length) log.info(`  ${name}: backed up — ${s.databases.join(', ')}`);
+    else log.info(`  ${name}: no databases`);
+  }
+}
+
+/** The per-entry lines of an `all` or `full` pass, and its tally. */
+function printPassResults(results: any[], nameOf: (r: any) => string, unit: string): void {
+  const skipped = results.filter((r) => r.skipped);
+  const attempted = results.filter((r) => !r.skipped);
+  for (const r of attempted) {
+    if (r.ok) log.success(`  ✓ ${nameOf(r)} — ${formatBackupSize(r.size ?? 0)} [${String(r.id ?? '').slice(0, 8)}]`);
+    else log.error(`  ✗ ${nameOf(r)}: ${r.error}`);
+  }
+  for (const r of skipped) log.warn(`  – ${nameOf(r)}: ${r.error}`);
+  const ok = attempted.filter((r) => r.ok).length;
+  log.info(`Done: ${ok}/${attempted.length} ${unit} backed up`);
+  if (skipped.length > 0) log.warn(`Not backed up: ${skipped.map(nameOf).join(', ')}`);
 }
 
 /**
@@ -163,18 +207,13 @@ function renderTable(header: string[], rows: string[][]): string[] {
 
 export async function backupFullCommand(): Promise<void> {
   try {
-    log.info('Creating FULL backup (all DBs + storage + tor keys + daemon-state)...');
+    log.info('Creating FULL backup (all DBs + control-plane DB + storage + tor keys + daemon-state)...');
     const results: any[] = await invokeRpc('createFullBackup');
     if (!results || results.length === 0) {
       log.warn('Nothing to back up — is a stack running?');
       return;
     }
-    for (const r of results) {
-      if (r.ok) log.success(`  ✓ ${r.target} — ${formatBackupSize(r.size ?? 0)} [${(r.id || '').slice(0, 8)}]`);
-      else log.error(`  ✗ ${r.target}: ${r.error}`);
-    }
-    const ok = results.filter((r) => r.ok).length;
-    log.info(`Done: ${ok}/${results.length} target(s) backed up`);
+    printPassResults(results, (r) => qualifiedName(r, r.target), 'target(s)');
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }
@@ -232,6 +271,7 @@ export async function backupSchedulesCommand(): Promise<void> {
         log.info(`      next run   ${formatUtc(s.nextRunAt)} (in ${formatAge(Date.parse(s.nextRunAt) - Date.now())})`);
       }
     }
+    reportCoverage(status.stacks);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }
@@ -255,9 +295,11 @@ export async function backupRestoreCommand(id: string): Promise<void> {
     const target = resolveBackupId(
       backups,
       id,
-      (b) => `${b.id} (${b.database}, ${formatUtc(b.createdAt)})`,
+      (b) => `${b.id} (${qualifiedName(b, b.database)}, ${formatUtc(b.createdAt)})`,
     );
-    log.info(`Restoring ${target.id} — ${target.database}, taken ${formatUtc(target.createdAt)} (${target.filename})...`);
+    log.info(
+      `Restoring ${target.id} — ${qualifiedName(target, target.database)}, taken ${formatUtc(target.createdAt)} (${target.filename})...`,
+    );
     await invokeRpc('restoreBackup', { backupId: target.id });
     log.success('Backup restored successfully');
   } catch (err) {

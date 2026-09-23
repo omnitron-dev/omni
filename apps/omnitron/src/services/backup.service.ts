@@ -20,6 +20,8 @@ import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
+import { getEnv } from '../shared/env-config.js';
+import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
 import { dumpToFile, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId } from './backup-pipeline.js';
 import {
@@ -88,6 +90,39 @@ export interface BackupPassEntry {
   id?: string;
   size?: number;
   error?: string;
+  /**
+   * A running stack this pass could not reach at all — its databases are not
+   * on this host. Reported with the pass, and left out of its outcome: it is
+   * a gap in what the master can do, not a dump that failed.
+   */
+  skipped?: boolean;
+}
+
+/**
+ * Where a backup came from. The index row used to hold id, database,
+ * filename, size, createdAt, compressed — no stack — so a listing could not
+ * say whose `main` a row was, and a restore went to whichever stack happened
+ * to be first.
+ */
+export type BackupOrigin = { project: string; stack: string } | 'control-plane';
+
+/** A backup as listed: the wire DTO, plus where it came from. */
+export interface BackupRecord extends BackupInfo {
+  /** The project and stack a stack database belongs to. Absent on rows written before it was recorded. */
+  project?: string;
+  stack?: string;
+  /** `control-plane` for the daemon's own state (`omnitron`, `daemon-state`). */
+  scope?: 'stack' | 'control-plane';
+}
+
+/** A running stack, and whether `all` can reach its databases from this host. */
+export interface BackupStackCoverage {
+  project: string;
+  stack: string;
+  /** The databases `all` dumps for it; empty when it has none this host can reach. */
+  databases: string[];
+  /** Why its databases are not backed up from here; absent when they are. */
+  notBackedUp?: string;
 }
 
 /** What the last pass of one target did — persisted, so it outlives a restart. */
@@ -100,6 +135,8 @@ export interface BackupPassRecord {
   ok: number;
   total: number;
   failures: Array<{ target: string; error: string }>;
+  /** Running stacks the pass could not reach, and why. */
+  notBackedUp?: Array<{ stack: string; reason: string }>;
 }
 
 /** A configured schedule, and what it last did. */
@@ -123,7 +160,12 @@ export interface BackupScheduleStatus {
 /** Everything `backup schedules` and `backup list` need beyond the index rows. */
 export interface BackupStatus {
   schedules: BackupScheduleStatus[];
+  /** Every running stack, and whether this host backs its databases up. */
+  stacks: BackupStackCoverage[];
 }
+
+/** The daemon's own control-plane database: the audit log, deployments, runs. */
+const CONTROL_PLANE_DB = 'omnitron';
 
 /** A failure's own words, without the "Backup failed for 'x':" every wrapper adds. */
 function reasonOf(err: unknown): string {
@@ -136,11 +178,44 @@ function reasonOf(err: unknown): string {
  * The outcome of a pass, from its entries. No entries is `empty`, never `ok`:
  * «0 of 0 backed up» is a pass that protected nothing.
  */
-export function passOutcome(entries: Array<{ ok: boolean }>): BackupPassOutcome {
-  if (entries.length === 0) return 'empty';
-  const ok = entries.filter((e) => e.ok).length;
-  if (ok === entries.length) return 'ok';
+export function passOutcome(entries: Array<{ ok: boolean; skipped?: boolean }>): BackupPassOutcome {
+  const attempted = entries.filter((e) => !e.skipped);
+  if (attempted.length === 0) return 'empty';
+  const ok = attempted.filter((e) => e.ok).length;
+  if (ok === attempted.length) return 'ok';
   return ok === 0 ? 'failed' : 'partial';
+}
+
+/** What an index row's metadata column holds; every field is absent on some rows. */
+interface BackupMetadata {
+  filename?: string;
+  compressed?: boolean;
+  type?: string;
+  project?: string;
+  stack?: string;
+  scope?: 'stack' | 'control-plane';
+}
+
+function metadataOf(raw: string | null): BackupMetadata {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as BackupMetadata;
+  } catch {
+    return {};
+  }
+}
+
+/** A pass entry named so that two stacks' `main` cannot be taken for each other. */
+function qualifiedEntry(e: BackupPassEntry & { project?: string; stack?: string }): BackupPassEntry {
+  const { project, stack, ...rest } = e;
+  return project && stack && !e.skipped ? { ...rest, target: `${project}/${stack}/${e.target}` } : rest;
+}
+
+/** The index/listing fields that say where a backup came from. */
+function originFields(origin: BackupOrigin): Pick<BackupRecord, 'project' | 'stack' | 'scope'> {
+  return origin === 'control-plane'
+    ? { scope: 'control-plane' }
+    : { project: origin.project, stack: origin.stack, scope: 'stack' };
 }
 
 /**
@@ -461,17 +536,20 @@ export class BackupService {
   // Create backup
   // ===========================================================================
 
-  async createBackup(database: string, options?: { compress?: boolean }): Promise<BackupInfo> {
+  async createBackup(database: string, options?: { compress?: boolean }): Promise<BackupRecord> {
     const compress = options?.compress !== false;
+    // Resolved before the file is named: the name is the database's, never
+    // the `<project>/<stack>/<db>` key, whose slashes would be directories.
+    const { dbConfig, isDocker, containerName, origin } = this.resolveDbTarget(database);
+    const name = origin === 'control-plane' ? CONTROL_PLANE_DB : dbConfig.database;
+    const from = originFields(origin);
     const id = randomUUID();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const ext = compress ? '.sql.gz' : '.sql';
-    const filename = `${database}_${timestamp}_${id.slice(0, 8)}${ext}`;
+    const filename = `${name}_${timestamp}_${id.slice(0, 8)}${ext}`;
     const filepath = path.join(this.backupDir, filename);
 
-    this.logger.info({ database, filename, compress }, 'Creating backup');
-
-    const { dbConfig, isDocker, containerName } = this.resolveDbConfig(database);
+    this.logger.info({ database: name, ...from, filename, compress }, 'Creating backup');
 
     try {
       if (isDocker) {
@@ -486,29 +564,30 @@ export class BackupService {
       sealFile(filepath);
       const stats = fs.statSync(filepath);
 
-      const info: BackupInfo = {
+      const info: BackupRecord = {
         id,
-        database,
+        database: name,
         filename,
         size: stats.size,
         createdAt: new Date().toISOString(),
         compressed: compress,
+        ...from,
       };
 
       // Persist metadata transactionally to SQLite. Pre-T-7 this
       // was a side-car .meta.json fs.writeFileSync — torn-write
       // risk if the daemon was SIGKILL'd between the dump and the
-      // meta write.
+      // meta write. The stack travels with the row — see `BackupOrigin`.
       this.store.insertBackupSync({
         id: info.id,
-        app: info.database,
+        app: name,
         path: filepath,
         size_bytes: stats.size,
         created_at: info.createdAt,
-        metadata: { filename: info.filename, compressed: info.compressed },
+        metadata: { filename: info.filename, compressed: info.compressed, type: 'postgres', ...from },
       });
 
-      this.logger.info({ database, filename, size: stats.size }, 'Backup created');
+      this.logger.info({ database: name, ...from, filename, size: stats.size }, 'Backup created');
       return info;
     } catch (err) {
       // Cleanup failed backup
@@ -540,7 +619,7 @@ export class BackupService {
   }
 
   /** Index a already-written backup file into the SQLite backups table. */
-  private indexBackupFile(app: string, filepath: string, type: string): BackupInfo {
+  private indexBackupFile(app: string, filepath: string, type: string, origin: BackupOrigin): BackupRecord {
     // Every non-DB target — storage objects, tor keys, daemon-state — finishes
     // here, which makes this the one place their mode can be set once.
     sealFile(filepath);
@@ -548,11 +627,12 @@ export class BackupService {
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     const filename = path.basename(filepath);
+    const from = originFields(origin);
     this.store.insertBackupSync({
       id, app, path: filepath, size_bytes: stats.size, created_at: createdAt,
-      metadata: { filename, compressed: filename.endsWith('.gz'), type },
+      metadata: { filename, compressed: filename.endsWith('.gz'), type, ...from },
     });
-    return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz') };
+    return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz'), ...from };
   }
 
   /**
@@ -763,7 +843,7 @@ export class BackupService {
     } finally {
       await this.execShell(`rm -rf "${stage}"`).catch(() => { /* best-effort */ });
     }
-    return this.indexBackupFile('storage-objects', filepath, 'storage-objects');
+    return this.indexBackupFile('storage-objects', filepath, 'storage-objects', { project: running.project, stack: running.stack });
   }
 
   /**
@@ -786,7 +866,7 @@ export class BackupService {
   async createTorKeysBackup(): Promise<BackupInfo> {
     const running = this.getRunningInfra();
     const container = running?.infra.getResolvedContainerName('tor');
-    if (!container) throw new Error('tor not found in any running stack');
+    if (!running || !container) throw new Error('tor not found in any running stack');
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `tor-keys_${ts}_${randomUUID().slice(0, 8)}.tar.gz`);
     this.logger.info({ container }, 'Backing up tor hidden-service keys');
@@ -795,7 +875,7 @@ export class BackupService {
       `docker exec ${container} tar czf - ${excludes} -C /var/lib/tor . > "${filepath}"`,
       filepath,
     );
-    return this.indexBackupFile('tor-keys', filepath, 'tor-keys');
+    return this.indexBackupFile('tor-keys', filepath, 'tor-keys', { project: running.project, stack: running.stack });
   }
 
   /** Online snapshot of the daemon-state DB (encrypted secrets + backup index). */
@@ -808,23 +888,28 @@ export class BackupService {
     // holds the DB open in WAL mode.
     this.logger.info({}, 'Backing up daemon-state.db (secrets + backup index)');
     await this.execToFile(`sqlite3 "${src}" ".backup '${filepath}'"`, filepath);
-    return this.indexBackupFile('daemon-state', filepath, 'daemon-state');
+    return this.indexBackupFile('daemon-state', filepath, 'daemon-state', 'control-plane');
   }
 
   /**
-   * Full backup: every stack DB + minio storage objects + tor keys +
-   * daemon-state (secrets). Per-target failures are captured, not fatal.
+   * Full backup: every stack DB + the control-plane DB + minio storage
+   * objects + tor keys + daemon-state (secrets). Per-target failures are
+   * captured, not fatal.
    */
   async createFullBackup(
     trigger: BackupPassRecord['trigger'] = 'manual',
   ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
     const startedAt = new Date();
-    const results: Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
+    const results: Array<BackupPassEntry & { project?: string; stack?: string }> = [];
     for (const r of await this.backUpStackDatabases()) {
       const { database, ...rest } = r;
       results.push({ target: database, ...rest });
     }
     const extras: Array<[string, () => Promise<BackupInfo>]> = [
+      // The control plane — the audit log among it. Neither `all` nor `full`
+      // took it: its one copy on the master, 2026-09-05T07:39Z, was made by
+      // hand. `omnitron-pg` names it whatever the stacks' databases are called.
+      [CONTROL_PLANE_DB, () => this.createBackup('omnitron-pg', { compress: true })],
       ['storage-objects', () => this.createStorageBackup()],
       ['tor-keys', () => this.createTorKeysBackup()],
       ['daemon-state', () => this.createSecretsBackup()],
@@ -838,7 +923,7 @@ export class BackupService {
         this.logger.error({ target, error: reasonOf(err) }, 'Backup failed');
       }
     }
-    this.finishPass('full', trigger, startedAt, results);
+    this.finishPass('full', trigger, startedAt, results.map(qualifiedEntry));
     return results;
   }
 
@@ -858,21 +943,33 @@ export class BackupService {
     startedAt: Date,
     entries: BackupPassEntry[],
   ): BackupPassRecord {
-    const failures = entries
+    const attempted = entries.filter((e) => !e.skipped);
+    const failures = attempted
       .filter((e) => !e.ok)
       .map((e) => ({ target: e.target, error: (e.error ?? 'failed').slice(0, 500) }));
+    const notBackedUp = entries.filter((e) => e.skipped).map((e) => ({ stack: e.target, reason: e.error ?? 'not backed up' }));
     const record: BackupPassRecord = {
       target,
       trigger,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       outcome: passOutcome(entries),
-      ok: entries.length - failures.length,
-      total: entries.length,
+      ok: attempted.length - failures.length,
+      total: attempted.length,
       failures,
+      ...(notBackedUp.length > 0 ? { notBackedUp } : {}),
     };
     const summary = { target, trigger, total: record.total, ok: record.ok, outcome: record.outcome };
     const msg = target === 'full' ? 'createFullBackup complete' : target === 'all' ? 'createAllBackups complete' : 'Backup pass complete';
+    // Every pass says which running stacks it could not reach. «all» reading
+    // as «every stack» is how the test stack went unbacked-up with nothing
+    // anywhere saying so.
+    if (notBackedUp.length > 0) {
+      this.logger.warn(
+        { target, notBackedUp: notBackedUp.map((n) => n.stack) },
+        `Running stacks this pass could not back up: ${notBackedUp.map((n) => `${n.stack} (${n.reason})`).join('; ')}`,
+      );
+    }
     if (record.outcome === 'ok') {
       this.logger.info(summary, msg);
     } else if (record.outcome === 'empty') {
@@ -929,17 +1026,17 @@ export class BackupService {
         nextRunAt: this.schedules.get(target)?.nextRunAt ?? null,
       };
     });
-    return { schedules };
+    return { schedules, stacks: this.surveyStacks().stacks };
   }
 
   // ===========================================================================
   // List backups
   // ===========================================================================
 
-  async listBackups(database?: string): Promise<BackupInfo[]> {
+  async listBackups(database?: string): Promise<BackupRecord[]> {
     this.migrateLegacyMetaIfPresent();
     const rows = this.store.selectBackupsSync(database);
-    const backups: BackupInfo[] = [];
+    const backups: BackupRecord[] = [];
     for (const row of rows) {
       // The .sql.gz bytes still live on disk; if they were deleted
       // externally, drop the row (self-cleaning index) so a stale
@@ -948,10 +1045,7 @@ export class BackupService {
         try { this.store.deleteBackupSync(row.id); } catch { /* best-effort */ }
         continue;
       }
-      let meta: { filename?: string; compressed?: boolean } = {};
-      if (row.metadata) {
-        try { meta = JSON.parse(row.metadata); } catch { /* */ }
-      }
+      const meta = metadataOf(row.metadata);
       const filename = meta.filename ?? path.basename(row.path);
       backups.push({
         id: row.id,
@@ -960,6 +1054,9 @@ export class BackupService {
         size: row.size_bytes,
         createdAt: row.created_at,
         compressed: meta.compressed ?? filename.endsWith('.gz'),
+        // Where it came from, when the row recorded it — see `BackupOrigin`.
+        ...(meta.project && meta.stack ? { project: meta.project, stack: meta.stack } : {}),
+        ...(meta.scope ? { scope: meta.scope } : {}),
       });
     }
     return backups;
@@ -980,8 +1077,7 @@ export class BackupService {
     );
     if (!fs.existsSync(row.path)) throw new Error(`Backup file not found: ${row.path}`);
 
-    let meta: { type?: string; compressed?: boolean } = {};
-    if (row.metadata) { try { meta = JSON.parse(row.metadata); } catch { /* */ } }
+    const meta = metadataOf(row.metadata);
     const type = meta.type ?? 'postgres';
 
     this.logger.info({ app: row.app, type, path: row.path }, 'Restoring backup');
@@ -999,8 +1095,10 @@ export class BackupService {
           `copy ${row.path} to ~/.omnitron/data/daemon-state.db, then start it (\`omnitron up\`).`,
         );
       default: {
-        // Postgres — resolve the live target and pg_restore.
-        const { dbConfig, isDocker, containerName } = this.resolveDbConfig(row.app);
+        // Postgres — into the database it was TAKEN from. By its name alone
+        // that was whichever running stack came first, so a `main` of one
+        // stack could be restored over another's.
+        const { dbConfig, isDocker, containerName } = this.restoreTargetOf(row.app, meta);
         const compressed = meta.compressed ?? row.path.endsWith('.gz');
         if (isDocker) await this.pgRestoreDocker(containerName, dbConfig, row.path, compressed);
         else await this.pgRestoreLocal(dbConfig, row.path, compressed);
@@ -1210,15 +1308,21 @@ export class BackupService {
       return null;
     }
     const fullOnly = new Set<string>(FULL_BACKUP_ARTEFACTS);
-    const name = target.includes('/') ? target.slice(target.lastIndexOf('/') + 1) : target;
+    // `<project>/<stack>/<db>` counts that stack's rows, and rows from before
+    // the stack was recorded; a bare name counts every row of that name.
+    const parts = target.split('/');
+    const name = parts[parts.length - 1]!;
+    const stackOf = parts.length === 3 ? { project: parts[0], stack: parts[1] } : null;
     let newest: number | null = null;
     for (const row of rows) {
-      let type: string | undefined;
-      try { type = row.metadata ? (JSON.parse(row.metadata) as { type?: string }).type : undefined; } catch { /* */ }
+      const meta = metadataOf(row.metadata);
       const counts =
         target === 'full' ? fullOnly.has(row.app)
-        : target === 'all' ? (type === undefined || type === 'postgres') && !fullOnly.has(row.app) && row.app !== 'omnitron'
-        : row.app === name;
+        : target === 'all'
+          ? (meta.type === undefined || meta.type === 'postgres') && meta.scope !== 'control-plane' &&
+            !fullOnly.has(row.app) && row.app !== CONTROL_PLANE_DB
+        : row.app === name &&
+          (!stackOf || !meta.project || (meta.project === stackOf.project && meta.stack === stackOf.stack));
       if (!counts) continue;
       const at = Date.parse(row.created_at);
       if (Number.isFinite(at) && (newest === null || at > newest)) newest = at;
@@ -1260,8 +1364,15 @@ export class BackupService {
   /**
    * Retention: keep the most recent `keep` backups per database, delete older.
    * Bounds unbounded growth from hourly schedules (~168/week/db otherwise).
+   *
+   * Per database OF EACH STACK, now that a row says which stack it came from:
+   * two stacks' `main` are two histories, and one count across both would
+   * keep half of each. A row from before the stack was recorded is pruned as
+   * rows always were — once `keep` newer rows of its database name exist —
+   * so the history already on disk is bounded exactly as before.
    */
   private async pruneOldBackups(database: string, keep = 48): Promise<void> {
+    const rows = await this.listBackups();
     let dbs: string[];
     if (database === 'all' || database === 'full') {
       // Union of what is scheduled and what is ON DISK.
@@ -1276,15 +1387,30 @@ export class BackupService {
       //
       // Reading the backup index instead means a sweep bounds everything it
       // finds, including the leftovers of a schedule someone removed.
-      const scheduled = [...this.buildStackDbMap().keys()].filter((k) => !k.includes('/'));
-      const onDisk = (await this.listBackups()).map((b) => b.database);
-      dbs = databasesToPrune(scheduled, onDisk);
+      const scheduled = [...new Set(this.surveyStacks().databases.map((d) => d.database))];
+      dbs = databasesToPrune(scheduled, rows.map((b) => b.database));
     } else {
-      dbs = [database];
+      dbs = [database.slice(database.lastIndexOf('/') + 1)];
     }
+    const newestFirst = (a: BackupRecord, b: BackupRecord): number => b.createdAt.localeCompare(a.createdAt);
     for (const db of dbs) {
-      const backups = (await this.listBackups(db)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      for (const old of backups.slice(keep)) {
+      const ofName = rows.filter((r) => r.database === db).sort(newestFirst);
+      const byOrigin = new Map<string, BackupRecord[]>();
+      for (const r of ofName) {
+        const origin = r.project && r.stack ? `${r.project}/${r.stack}` : r.scope === 'control-plane' ? 'control-plane' : '';
+        byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), r]);
+      }
+      const doomed: BackupRecord[] = [];
+      for (const [origin, group] of byOrigin) {
+        if (origin === '') {
+          // Unrecorded: judged against every row of the name, as before.
+          const rank = new Map(ofName.map((r, i) => [r.id, i]));
+          doomed.push(...group.filter((r) => (rank.get(r.id) ?? 0) >= keep));
+        } else {
+          doomed.push(...group.slice(keep));
+        }
+      }
+      for (const old of doomed) {
         try { await this.deleteBackup(old.id); } catch { /* best-effort */ }
       }
     }
@@ -1363,71 +1489,126 @@ export class BackupService {
   // Private — helpers
   // ===========================================================================
 
-  private resolveDbConfig(database: string): { dbConfig: DbConfig; isDocker: boolean; containerName: string } {
-    // 1. Stack databases — resolved LIVE from the running stacks' real
-    //    infrastructure (container, credentials, DB list) via ProjectService.
-    //    This is the primary path for project/app databases (main, storage,
-    //    pricing, payments, messaging, geo, …). Accepts either the bare DB
-    //    name ("main") or a fully-qualified "<project>/<stack>/<db>" key.
-    const stackMap = this.buildStackDbMap();
-    const stackEntry = stackMap.get(database);
-    if (stackEntry) {
-      return {
-        dbConfig: {
-          host: stackEntry.host,
-          port: stackEntry.port,
-          user: stackEntry.user,
-          password: stackEntry.password,
-          database: stackEntry.database,
-        },
-        isDocker: !!stackEntry.container,
-        containerName: stackEntry.container ?? '',
-      };
-    }
+  /**
+   * The database a backup target names, resolved LIVE from the running
+   * stacks' real infrastructure (container, credentials, DB list):
+   *
+   *   `<project>/<stack>/<db>`  that database of that stack;
+   *   `omnitron-pg`             the control plane, always;
+   *   a bare name               the one running stack that has it — and a
+   *                             refusal naming every candidate when more than
+   *                             one does. It was "first stack wins", which
+   *                             dumps, and restores into, whichever stack the
+   *                             iteration happened to reach first;
+   *   `omnitron`                the control plane, when no stack has one.
+   */
+  private resolveDbTarget(database: string): ResolvedDb {
+    const { databases } = this.surveyStacks();
+    const keyOf = (d: StackDbResolution): string => `${d.project}/${d.stack}/${d.database}`;
+    const fromStack = (d: StackDbResolution): ResolvedDb => ({
+      dbConfig: { host: d.host, port: d.port, user: d.user, password: d.password, database: d.database },
+      isDocker: !!d.container,
+      containerName: d.container ?? '',
+      origin: { project: d.project, stack: d.stack },
+    });
 
-    // 2. Omnitron's own control-plane database (daemon state DB).
-    if (database === 'omnitron' || database === 'omnitron-pg') {
-      return {
-        dbConfig: { host: 'localhost', port: 5480, user: 'omnitron', password: 'omnitron', database: 'omnitron' },
-        isDocker: true,
-        containerName: 'omnitron-pg',
-      };
-    }
+    const exact = databases.find((d) => keyOf(d) === database);
+    if (exact) return fromStack(exact);
+    if (database === 'omnitron-pg') return this.controlPlaneTarget();
 
-    // 3. Unknown — fail loudly rather than silently dumping the wrong DB
-    //    (the pre-fix behaviour that made `backup create main` hit the wrong
-    //    database entirely).
-    const known = [...new Set([...stackMap.keys()].filter((k) => !k.includes('/')))];
+    const named = databases.filter((d) => d.database === database);
+    if (named.length === 1) return fromStack(named[0]!);
+    if (named.length > 1) {
+      throw new Error(
+        `'${database}' is a database of ${named.length} running stacks — name one: ${named.map(keyOf).join(', ')}`,
+      );
+    }
+    if (database === CONTROL_PLANE_DB) return this.controlPlaneTarget();
+
+    // Unknown — fail loudly rather than silently dumping the wrong DB (the
+    // pre-fix behaviour that made `backup create main` hit the wrong database
+    // entirely).
+    const known = [...new Set(databases.map((d) => d.database))];
     throw new Error(
       `Unknown backup target '${database}'. Known databases: ${known.length ? known.join(', ') : '(no running stack)'}, omnitron`,
     );
   }
 
   /**
-   * Resolve every database of every running stack to its real connection
-   * (container, credentials) straight from the provisioned InfrastructureService
-   * — so the backup set is always in lock-step with what omnitron provisioned.
-   * Registers both the bare DB name and a "<project>/<stack>/<db>" key.
+   * The control-plane database, from the resolver the daemon itself connects
+   * with rather than a second copy of its credentials — `localhost:5480`,
+   * `omnitron`/`omnitron` were written out here by hand. Dumped through the
+   * `omnitron-pg` container unless OMNITRON_DATABASE_URL points elsewhere.
    */
-  private buildStackDbMap(): Map<string, StackDbResolution> {
-    const map = new Map<string, StackDbResolution>();
+  private controlPlaneTarget(): ResolvedDb {
+    const pg = resolveOmnitronPgConfig();
+    const elsewhere = !!getEnv().OMNITRON_DATABASE_URL;
+    return {
+      dbConfig: { host: pg.host, port: pg.port, user: pg.user, password: pg.password, database: pg.database },
+      isDocker: !elsewhere,
+      containerName: elsewhere ? '' : 'omnitron-pg',
+      origin: 'control-plane',
+    };
+  }
+
+  /** Where a backup being restored goes: where it was taken from. */
+  private restoreTargetOf(app: string, meta: BackupMetadata): ResolvedDb {
+    if (meta.scope === 'control-plane') return this.controlPlaneTarget();
+    if (meta.project && meta.stack) {
+      const key = `${meta.project}/${meta.stack}/${app}`;
+      if (this.surveyStacks().databases.some((d) => `${d.project}/${d.stack}/${d.database}` === key)) {
+        return this.resolveDbTarget(key);
+      }
+      throw new Error(
+        `This backup of '${app}' was taken from ${meta.project}/${meta.stack}, ` +
+          `which has no running database '${app}' on this host — refusing to restore it anywhere else`,
+      );
+    }
+    // Taken before the stack was recorded: the one running stack that has a
+    // database of this name, or a refusal naming them all.
+    return this.resolveDbTarget(app);
+  }
+
+  /**
+   * Every running stack, and every database of it this host can reach — from
+   * the provisioned InfrastructureService, so the backup set is always in
+   * lock-step with what omnitron provisioned.
+   *
+   * A stack whose infrastructure is not on this host used to be skipped with
+   * `if (!infra) continue`, and nothing else ever mentioned it. On the master
+   * that is daos/test, whose database container runs on 37.27.130.185: every
+   * `all` pass was `{"total":6}` — daos/dev's six — while `backup list`
+   * printed «Found 380 backup(s)» and `backup schedules` «all hourly».
+   * Remote stacks are still not dumped from here; they are now named.
+   */
+  private surveyStacks(): { databases: StackDbResolution[]; stacks: BackupStackCoverage[] } {
+    const databases: StackDbResolution[] = [];
+    const stacks: BackupStackCoverage[] = [];
     const projects = this.projects;
-    if (!projects) return map;
+    if (!projects) return { databases, stacks };
     try {
       const infraManager = projects.getInfraManager();
       for (const p of projects.listProjects()) {
-        let stacks: string[] = [];
-        try { stacks = projects.getRunningStacks(p.name); } catch { continue; }
-        for (const stack of stacks) {
+        let running: string[] = [];
+        try { running = projects.getRunningStacks(p.name); } catch { continue; }
+        for (const stack of running) {
           const infra = infraManager.getInstance(p.name, stack);
-          if (!infra) continue;
+          if (!infra) {
+            stacks.push({ project: p.name, stack, databases: [], notBackedUp: this.whyNotHere(p.name, stack) });
+            continue;
+          }
           const conn = infra.getConnectionInfo('postgres') as
             | { host?: string; port?: number; user?: string; password?: string }
             | null;
-          if (!conn) continue;
+          if (!conn) {
+            // No postgres in this stack: nothing to dump, and nothing missed.
+            stacks.push({ project: p.name, stack, databases: [] });
+            continue;
+          }
           const container = infra.getResolvedContainerName('postgres') ?? undefined;
-          for (const db of infra.getPostgresDatabases()) {
-            const res: StackDbResolution = {
+          const names = infra.getPostgresDatabases();
+          for (const db of names) {
+            databases.push({
               container,
               host: String(conn.host ?? 'localhost'),
               port: Number(conn.port ?? 5432),
@@ -1436,52 +1617,92 @@ export class BackupService {
               database: db,
               project: p.name,
               stack,
-            };
-            if (!map.has(db)) map.set(db, res); // bare name: first stack wins
-            map.set(`${p.name}/${stack}/${db}`, res); // fully-qualified: unambiguous
+            });
           }
+          stacks.push({ project: p.name, stack, databases: [...names] });
         }
       }
     } catch (err) {
       this.logger.warn({ err: (err as Error).message }, 'Failed to resolve stack DB topology for backup');
     }
-    return map;
+    return { databases, stacks };
+  }
+
+  /** Why a running stack's databases cannot be reached from this host. */
+  private whyNotHere(project: string, stack: string): string {
+    try {
+      const info = this.projects!.getStack(project, stack);
+      if (info.type === 'local') return 'its infrastructure is not provisioned on this host';
+      const hosts = [...new Set((info.nodes ?? []).map((n) => n.host).filter(Boolean))];
+      if (hosts.length > 0) return `its databases are on ${hosts.join(', ')}`;
+    } catch { /* its configuration is not loaded — say what is known */ }
+    return 'its infrastructure is not on this host';
   }
 
   /**
    * Back up every database of every running stack. A single DB failure is
-   * captured per-entry and does not abort the rest. Returns per-DB results.
+   * captured per-entry and does not abort the rest. Returns per-DB results,
+   * and — marked `skipped` — every running stack it could not reach.
    */
   async createAllBackups(
     trigger: BackupPassRecord['trigger'] = 'manual',
   ): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
     const startedAt = new Date();
     const results = await this.backUpStackDatabases();
-    this.finishPass('all', trigger, startedAt, results.map(({ database, ...rest }) => ({ target: database, ...rest })));
+    this.finishPass('all', trigger, startedAt, results.map(({ database, ...rest }) => qualifiedEntry({ target: database, ...rest })));
     return results;
   }
 
   /**
-   * The database half of `all` and `full`. Each failure is logged where it
-   * happens, with the database and its reason: the 06:04Z pass on the
-   * master lost `main` to the 600 s dump timeout, and the only trace was a
-   * database missing from the next listing.
+   * The database half of `all` and `full`, stack by stack. Each failure is
+   * logged where it happens, with the database and its reason: the 06:04Z
+   * pass on the master lost `main` to the 600 s dump timeout, and the only
+   * trace was a database missing from the next listing.
+   *
+   * Every database of every stack, by its `<project>/<stack>/<db>` key: by
+   * bare name, a second stack's `main` was never dumped at all.
    */
-  private async backUpStackDatabases(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
-    const bareNames = [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))];
-    const results: Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
-    for (const db of bareNames) {
+  private async backUpStackDatabases(): Promise<
+    Array<{ database: string; project?: string; stack?: string; ok: boolean; skipped?: boolean; id?: string; size?: number; error?: string }>
+  > {
+    const { databases, stacks } = this.surveyStacks();
+    const results: Array<{
+      database: string; project?: string; stack?: string; ok: boolean; skipped?: boolean; id?: string; size?: number; error?: string;
+    }> = [];
+    for (const d of databases) {
+      const where = { project: d.project, stack: d.stack };
       try {
-        const info = await this.createBackup(db, { compress: true });
-        results.push({ database: db, ok: true, id: info.id, size: info.size });
+        const info = await this.createBackup(`${d.project}/${d.stack}/${d.database}`, { compress: true });
+        results.push({ database: d.database, ...where, ok: true, id: info.id, size: info.size });
       } catch (err) {
-        results.push({ database: db, ok: false, error: (err as Error).message });
-        this.logger.error({ database: db, error: reasonOf(err) }, 'Backup failed');
+        results.push({ database: d.database, ...where, ok: false, error: (err as Error).message });
+        this.logger.error({ database: d.database, ...where, error: reasonOf(err) }, 'Backup failed');
       }
+    }
+    // The stacks nothing here reaches, in the results as well: a caller that
+    // counts `ok` has to see that «all» did not mean every stack.
+    for (const s of stacks) {
+      if (!s.notBackedUp) continue;
+      results.push({
+        database: `${s.project}/${s.stack}`,
+        project: s.project,
+        stack: s.stack,
+        ok: false,
+        skipped: true,
+        error: `not backed up — ${s.notBackedUp}`,
+      });
     }
     return results;
   }
 
+}
+
+/** A database a backup target resolved to, and where a row of it will say it came from. */
+interface ResolvedDb {
+  dbConfig: DbConfig;
+  isDocker: boolean;
+  containerName: string;
+  origin: BackupOrigin;
 }
 
 interface DbConfig {

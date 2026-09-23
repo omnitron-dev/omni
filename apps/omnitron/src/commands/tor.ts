@@ -172,14 +172,16 @@ export async function torCommand(project?: string, stack?: string): Promise<void
   }
 
   for (const [i, c] of found.entries()) {
-    const title = `Tor Hidden Services — ${c.container}, stack ${stackOf(chosen[i]!)}, this machine (${machine})`;
+    // Short enough for the box border, which cuts a long title: the host
+    // name goes in the body.
+    const title = `Tor · stack ${stackOf(chosen[i]!)} · ${c.container} · this machine`;
     if (c.services.length === 0) {
-      log.warn(`${title}: running, but no hidden services have been published yet.`);
+      log.warn(`${title} (${machine}): running, but no hidden services have been published yet.`);
       log.info('Tor needs ~30-90s after first start to generate keys and publish HSes.');
       log.info(`Try 'docker logs ${c.container}' to see bootstrap progress.`);
       continue;
     }
-    const lines: string[] = [];
+    const lines: string[] = [prism.dim(`on ${machine}`)];
     for (const e of c.services) {
       if (!e.onion) {
         lines.push(`${prism.yellow('?')} ${prism.bold(e.service)}: ${prism.dim('not yet generated')}`);

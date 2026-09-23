@@ -3078,8 +3078,16 @@ export class ProjectService extends EventEmitter {
       while (attempt < maxAttempts) {
         attempt++;
         try {
-          const { execFileSync } = await import('node:child_process');
-          execFileSync(
+          // Asynchronously. This was `execFileSync`, and a synchronous spawn
+          // holds the daemon's whole event loop for as long as the child runs
+          // — no RPC answered, no heartbeat, no mesh — which the event-loop
+          // watch caught at a master boot on 2026-09-23: six migrations back
+          // to back, 1 539 / 871 / 727 / 941 / 740 / 782 ms, 5.6 s of a daemon
+          // that answered nothing, on every restart. And with the retries
+          // below, a migration that hangs held it up to 60 s per attempt.
+          const { execFile } = await import('node:child_process');
+          const { promisify } = await import('node:util');
+          const running = promisify(execFile)(
             process.execPath,
             ['--import', 'tsx/esm', migrateScript],
             {
@@ -3095,9 +3103,12 @@ export class ProjectService extends EventEmitter {
                 [`${dbName.toUpperCase()}__DATABASE__PASSWORD`]: password,
               },
               timeout: 60_000,
-              stdio: ['ignore', 'pipe', 'pipe'],
+              maxBuffer: 16 * 1024 * 1024,
             },
           );
+          // Nothing to read from us, as `stdio: 'ignore'` said before.
+          running.child.stdin?.end();
+          await running;
           this.logger.info({ database: dbName, attempts: attempt }, 'Migrations applied');
           lastErr = null;
           break;

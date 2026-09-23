@@ -205,7 +205,11 @@ export default function ContainersPage() {
       const result = await infra.listContainers();
       return Array.isArray(result) ? result : [];
     },
-    { intervalMs: 10_000 }
+    {
+      intervalMs: 10_000,
+      describeError: (err) =>
+        `Could not ask the container runtime: ${err instanceof Error ? err.message : String(err)}`,
+    }
   );
 
   // Filter containers by stack context (container names: project-stack-service)
@@ -228,6 +232,10 @@ export default function ContainersPage() {
   const [logModalContainer, setLogModalContainer] = useState('');
   const [logModalLines, setLogModalLines] = useState<string[]>([]);
 
+  // A count is of containers the runtime listed. Before its first answer, or
+  // when it could not be asked, there is nothing to count — «—», not 0.
+  const counted = allContainers !== null;
+  const count = (n: number) => (counted ? n : '—');
   const totalCount = containers.length;
   const runningCount = containers.filter((c) => c.status === 'running').length;
   const stoppedCount = containers.filter((c) => c.status === 'exited').length;
@@ -415,7 +423,7 @@ export default function ContainersPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Total"
-            value={totalCount}
+            value={count(totalCount)}
             icon={<ContainersIcon />}
             color="primary"
             loading={loading}
@@ -424,7 +432,7 @@ export default function ContainersPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Running"
-            value={runningCount}
+            value={count(runningCount)}
             icon={<ContainersIcon />}
             color="success"
             loading={loading}
@@ -433,7 +441,7 @@ export default function ContainersPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Stopped"
-            value={stoppedCount}
+            value={count(stoppedCount)}
             icon={<ContainersIcon />}
             color={stoppedCount > 0 ? 'error' : 'info'}
             loading={loading}
@@ -442,7 +450,7 @@ export default function ContainersPage() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Unhealthy"
-            value={unhealthyCount}
+            value={count(unhealthyCount)}
             icon={<ContainersIcon />}
             color={unhealthyCount > 0 ? 'error' : 'success'}
             loading={loading}

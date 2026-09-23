@@ -25,7 +25,7 @@ import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { countedTraffic, daemonNameFor, measuredProcess } from 'src/utils/app-address';
+import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess } from 'src/utils/app-address';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type {
@@ -56,7 +56,6 @@ function TabPanel({ children, value, index }: { children: React.ReactNode; value
 // ---------------------------------------------------------------------------
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
-  const theme = useTheme();
   return (
     <Card
       variant="outlined"
@@ -732,8 +731,10 @@ const baseChartOptions: ApexCharts.ApexOptions = {
   dataLabels: { enabled: false },
 };
 
-function MetricsGaugeCard({ title, value, suffix, color, loading }: {
+function MetricsGaugeCard({ title, value, suffix, caption, color, loading }: {
   title: string; value: string | number; suffix?: string;
+  /** What the figure counts over, where cards beside it count over something else. */
+  caption?: string;
   color: 'success' | 'warning' | 'error' | 'info' | 'primary'; loading?: boolean;
 }) {
   return (
@@ -767,6 +768,11 @@ function MetricsGaugeCard({ title, value, suffix, color, loading }: {
                 color: "text.secondary",
                 ml: 0.5
               }}>{suffix}</Typography>}
+          </Typography>
+        )}
+        {caption && !loading && (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: 10 }}>
+            {caption}
           </Typography>
         )}
       </CardContent>
@@ -877,10 +883,17 @@ function MetricsTab({ appName }: { appName: string }) {
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
         <MetricsGaugeCard title="CPU" value={loading ? '—' : `${cpu}%`} color={cpu > 80 ? 'error' : cpu > 60 ? 'warning' : 'success'} loading={loading} />
         <MetricsGaugeCard title="Memory" value={loading ? '—' : formatMemory(memory)} color={memory > 512 * 1024 * 1024 ? 'warning' : 'primary'} loading={loading} />
-        <MetricsGaugeCard title="Requests" value={loading ? '—' : counted ? String(counted.requests ?? 0) : 'not collected'} color="info" loading={loading} />
+        <MetricsGaugeCard
+          title="Requests"
+          value={loading ? '—' : counted ? String(counted.requests ?? 0) : 'not collected'}
+          {...(counted && { caption: 'since the process started' })}
+          color="info"
+          loading={loading}
+        />
         <MetricsGaugeCard
           title="Errors (5xx)"
           value={loading ? '—' : counted ? String(counted.errors ?? 0) : 'not collected'}
+          {...(counted && { caption: 'since the process started' })}
           color={!counted ? 'info' : (counted.errors ?? 0) > 0 ? 'error' : 'success'}
           loading={loading}
         />
@@ -888,6 +901,7 @@ function MetricsTab({ appName }: { appName: string }) {
           title="Latency p95"
           value={loading ? '—' : !counted ? 'not collected' : counted.latency ? Math.round(counted.latency.p95) : 'none in window'}
           {...(counted?.latency ? { suffix: 'ms' } : {})}
+          {...(counted && { caption: latencyCaption(counted.latency) })}
           color="info"
           loading={loading}
         />

@@ -714,6 +714,17 @@ export interface ReleaseDeploymentDto {
 }
 
 /**
+ * What `OmnitronRelease.prune` answers: the store's result, plus what the
+ * daemon protected on its own and, when it could not tell, why.
+ */
+export type ReleasePruneAnswer = import('../../release/store.js').PruneResult & {
+  /** Releases a stack runs, by the daemon's audit trail — never removed. */
+  readonly protectedByDeployment: readonly string[];
+  /** Why the daemon cannot say which releases the stacks run; `null` when it can. */
+  readonly unknown: string | null;
+};
+
+/**
  * Releases: what was built on this master, and the builds themselves.
  *
  * A build takes a quarter of an hour, so `build` starts one and returns its
@@ -738,7 +749,7 @@ export interface IOmnitronReleaseService {
     env?: Record<string, string>;
   }): Promise<import('../../services/release.service.js').BuildRecord>;
   stopBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord>;
-  prune(data: { keep?: number; apply?: boolean; protect?: string[] }): Promise<import('../../release/store.js').PruneResult>;
+  prune(data: { keep?: number; apply?: boolean; protect?: string[]; allowUnprotected?: boolean }): Promise<ReleasePruneAnswer>;
   deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
   /** Take what a stack measured about this release, or refuse it by name. */
   attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }>;

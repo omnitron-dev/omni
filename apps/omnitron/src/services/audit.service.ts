@@ -286,16 +286,54 @@ export class AuditService {
     if (before) q = q.where('createdAt', '<', before as never);
 
     const rows = await q.execute();
-    return rows.map((r) => ({
-      id: String(r.id),
-      action: r.action,
-      actorId: r.actorId ?? null,
-      actorType: r.actorType,
-      resourceType: r.resourceType,
-      resourceId: r.resourceId ?? null,
-      details: (r.details as Record<string, unknown> | null) ?? null,
-      ipAddress: r.ipAddress ?? null,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
-    }));
+    return rows.map(toAuditRow);
   }
+
+  /**
+   * The newest row for each resource, for one action — «what each stack last
+   * did», over the whole trail.
+   *
+   * `OmnitronRelease.deployments()` read the newest 200 `stack.start` rows and
+   * took the first per stack. Measured on the master: 80 such rows in three
+   * days, 57 of them on one day — every daemon start writes one for the local
+   * stack — so the window was about 3.5 days. A stack left running longer read
+   * as never deployed, and `prune` did not protect the release it runs.
+   */
+  async latestPerResource(action: string): Promise<AuditRow[]> {
+    if (!this.db) return [];
+    const rows = await this.db
+      .selectFrom('omnitron_audit_log')
+      .distinctOn('resourceId')
+      .selectAll()
+      .where('action', '=', action)
+      .where('resourceId', 'is not', null)
+      .orderBy('resourceId')
+      .orderBy('createdAt', 'desc')
+      .execute();
+    return rows.map(toAuditRow);
+  }
+}
+
+function toAuditRow(r: {
+  id: unknown;
+  action: string;
+  actorId: string | null;
+  actorType: string;
+  resourceType: string;
+  resourceId: string | null;
+  details: unknown;
+  ipAddress: string | null;
+  createdAt: unknown;
+}): AuditRow {
+  return {
+    id: String(r.id),
+    action: r.action,
+    actorId: r.actorId ?? null,
+    actorType: r.actorType,
+    resourceType: r.resourceType,
+    resourceId: r.resourceId ?? null,
+    details: (r.details as Record<string, unknown> | null) ?? null,
+    ipAddress: r.ipAddress ?? null,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+  };
 }

@@ -225,7 +225,20 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
   return lines.join('\n');
 }
 
-/** A launchd job — LaunchAgent for `user` scope, LaunchDaemon for `system`. */
+/**
+ * A launchd job — LaunchAgent for `user` scope, LaunchDaemon for `system`.
+ *
+ * `ProcessType` is `Interactive`. Without the key a job is `Standard`, which
+ * launchd.plist(5) describes as «light resource limits» on CPU and I/O —
+ * while anything started from a terminal has none. On a machine that also
+ * compiles, the control plane is the first thing the scheduler starves: on
+ * 2026-09-23 the dev master logged 139 stalls in 40 min at load 120 (another
+ * project's `rustc` and Python jobs), every one `off-cpu` — 1 to 4.6 s of a
+ * daemon that answered nothing, at 0 to 93 ms of CPU — and its mesh
+ * connection to the test node dropped under them. `Interactive` runs a job
+ * with the limits of an app, which is to say none. Not `Adaptive`: that moves
+ * a job between classes by its XPC transactions, and this daemon has none.
+ */
 export function renderLaunchdPlist(inputs: UnitInputs): string {
   const args = [inputs.execPath, '--import', 'tsx/esm', inputs.entryPath];
   const argsXml = args.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
@@ -273,6 +286,8 @@ ${homeEnv}    <key>OMNITRON_CWD</key>
   <integer>10</integer>
   <key>ExitTimeOut</key>
   <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Interactive</string>
   <key>StandardOutPath</key>
   <string>/dev/null</string>
   <key>StandardErrorPath</key>

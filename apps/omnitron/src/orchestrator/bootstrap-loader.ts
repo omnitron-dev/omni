@@ -88,6 +88,8 @@ export async function loadBootstrapConfig(
 
   let importUrl: string;
   let tempOutputPath: string | undefined;
+  /** The source already went through `compileTypeScript`; a failure then is not the tsconfig's. */
+  let compiledHere = false;
 
   if (canLoadTypeScript()) {
     // Child process with tsx or Bun: load source directly
@@ -101,6 +103,7 @@ export async function loadBootstrapConfig(
       const { compileTypeScript } = await import('./ts-compiler.js');
       const result = await compileTypeScript(resolved);
       importUrl = `${result.outputUrl}?t=${Date.now()}`;
+      compiledHere = true;
       if (!result.fromCache) {
         tempOutputPath = result.outputPath;
       }
@@ -117,14 +120,35 @@ export async function loadBootstrapConfig(
     importUrl = pathToFileURL(importPath).href;
   }
 
-  const mod = await import(importUrl);
+  let mod: Record<string, unknown>;
+  try {
+    mod = await import(importUrl);
+  } catch (err) {
+    // A .ts source imported through the process's own TypeScript loader
+    // (tsx) is transformed with the tsconfig of the process's WORKING
+    // DIRECTORY. The daemon runs from apps/omnitron, whose tsconfig does not
+    // include a project's files, so they were transformed without
+    // `experimentalDecorators` — measured 2026-09-23 on the master: every
+    // paysys and messaging definition failed with «Parameter decorators only
+    // work when experimental decorators are enabled» as soon as a bootstrap
+    // imported a file with a constructor `@Inject`, and both apps fell into
+    // single-process mode and crashed there. A child runs from its app's
+    // directory and never saw it. The esbuild path below states the
+    // decorator settings titan apps are written for, instead of inheriting
+    // whichever tsconfig the importer happens to stand in.
+    if (!resolved.endsWith('.ts') || compiledHere) throw err;
+    const { compileTypeScript } = await import('./ts-compiler.js');
+    const result = await compileTypeScript(resolved);
+    mod = await import(`${result.outputUrl}?t=${Date.now()}`);
+    if (!result.fromCache) tempOutputPath = result.outputPath;
+  }
 
   // Clean up temp compiled file AFTER import completes (no more setTimeout race)
   if (tempOutputPath) {
     try { fs.unlinkSync(tempOutputPath); } catch { /* already deleted */ }
   }
 
-  const definition: IAppDefinition = mod['default'] ?? mod;
+  const definition = (mod['default'] ?? mod) as IAppDefinition;
 
   if (!definition || !definition.name || !Array.isArray(definition.processes) || definition.processes.length === 0) {
     throw new Error(

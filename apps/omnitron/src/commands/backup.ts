@@ -5,7 +5,12 @@
  */
 
 import { log } from '@xec-sh/kit';
-import { formatBackupSize, formatUtc } from '../services/backup-pipeline.js';
+import {
+  formatBackupSize,
+  formatUtc,
+  resolveBackupId,
+  uniqueIdPrefixLength,
+} from '../services/backup-pipeline.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 
 async function invokeRpc(method: string, data?: any): Promise<any> {
@@ -61,24 +66,36 @@ export async function backupListCommand(): Promise<void> {
     }
 
     log.info(`Found ${backups.length} backup(s):\n`);
-    const header = ['Database', 'Filename', 'Size', 'Created (UTC)'].map((h) => h.padEnd(25)).join('');
-    log.info(header);
-    log.info('-'.repeat(100));
-
-    for (const b of backups) {
-      const sizeMB = formatBackupSize(b.size);
+    // The id is the first column because it is what `backup restore` takes —
+    // the list used to print everything except it. A prefix, as long as it
+    // needs to be to stay unique and never shorter than `backup create`'s
+    // eight characters, so the same token works from either.
+    const idLength = uniqueIdPrefixLength(backups.map((b) => String(b.id)));
+    const rows = backups.map((b) => [
+      String(b.id).slice(0, idLength),
+      b.database,
+      formatBackupSize(b.size),
       // UTC, as the filenames are — see `formatUtc`.
-      const created = formatUtc(b.createdAt);
-      log.info([
-        b.database.padEnd(25),
-        b.filename.slice(0, 24).padEnd(25),
-        sizeMB.padEnd(25),
-        created.padEnd(25),
-      ].join(''));
-    }
+      formatUtc(b.createdAt),
+      b.filename,
+    ]);
+    for (const line of renderTable(['ID', 'Database', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
+    log.info('\nRestore one with: omnitron backup restore <ID>');
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }
+}
+
+/**
+ * Columns as wide as what they hold. The fixed 25 characters are how the
+ * filename was cut at `geo_2026-09-23T08-19-04-` — one character before the
+ * part that identified the backup.
+ */
+function renderTable(header: string[], rows: string[][]): string[] {
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)));
+  const line = (cells: string[]): string =>
+    cells.map((c, i) => (i === cells.length - 1 ? c : c.padEnd(widths[i]!))).join('  ');
+  return [line(header), widths.map((w) => '-'.repeat(w)).join('  '), ...rows.map(line)];
 }
 
 export async function backupFullCommand(): Promise<void> {
@@ -136,8 +153,17 @@ export async function backupUnscheduleCommand(target: string): Promise<void> {
 
 export async function backupRestoreCommand(id: string): Promise<void> {
   try {
-    log.info(`Restoring backup '${id}'...`);
-    await invokeRpc('restoreBackup', { backupId: id });
+    // Resolved here as well as in the daemon, so the operator sees WHICH
+    // backup a prefix named before anything is overwritten — and the daemon
+    // is then handed the full id, which every daemon version accepts.
+    const backups: any[] = await invokeRpc('listBackups');
+    const target = resolveBackupId(
+      backups,
+      id,
+      (b) => `${b.id} (${b.database}, ${formatUtc(b.createdAt)})`,
+    );
+    log.info(`Restoring ${target.id} — ${target.database}, taken ${formatUtc(target.createdAt)} (${target.filename})...`);
+    await invokeRpc('restoreBackup', { backupId: target.id });
     log.success('Backup restored successfully');
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);

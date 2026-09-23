@@ -1073,6 +1073,25 @@ export interface ChildDiagnosticsDto {
   uptimeSeconds?: number;
   /** Titan-PM internal processId — useful for cross-referencing daemon logs. */
   processId?: string;
+  /** Resident memory in bytes, from the sample the app's total is summed from; absent when not sampled. */
+  rss?: number;
+}
+
+/**
+ * A topology entry that runs as a pool (`instances > 1`), and its workers.
+ *
+ * Pool workers are not supervisor children, so `children` never had them:
+ * `omnitron inspect storage` listed the http process and neither of the two
+ * transform workers.
+ */
+export interface PoolDiagnosticsDto {
+  /** Topology entry name, e.g. "transform". */
+  name: string;
+  /** Workers the topology declares. */
+  declaredInstances: number;
+  /** Resident memory of all the pool's workers together, bytes; absent when not sampled. */
+  rss?: number;
+  workers: Array<{ pid: number | null; processId: string; uptimeSeconds?: number }>;
 }
 
 /**
@@ -1100,6 +1119,7 @@ export interface AppDiagnosticsDto {
     heapTotal: number;
     external: number;
     arrayBuffers: number;
+    /** The app's: every process it runs, children and pool workers, as `list` sums it. */
     rss: number;
   };
   uptime: number;
@@ -1117,6 +1137,8 @@ export interface AppDiagnosticsDto {
    * supervisor child.
    */
   children: ChildDiagnosticsDto[];
+  /** The app's worker pools; absent from daemons that predate the field. */
+  pools?: PoolDiagnosticsDto[];
   /**
    * Absolute log paths (T#66). Surfaces the on-disk diagnostic
    * layout so operators don't need to memorise the project-mode

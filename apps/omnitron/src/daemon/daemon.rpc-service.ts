@@ -24,6 +24,7 @@ import type {
   LogEntryDto,
   AppDiagnosticsDto,
   ChildDiagnosticsDto,
+  PoolDiagnosticsDto,
   LogPathsDto,
 } from '../config/types.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
@@ -467,22 +468,28 @@ export class DaemonRpcService implements IDaemonService {
     const handle = this.orchestrator.getHandle(data.name);
     if (!handle) throw Errors.notFound('App', data.name);
 
-    const metricsMap = await this.orchestrator.getMetrics(data.name);
-    const appMetrics = metricsMap[data.name];
-
-    const memory = { heapUsed: 0, heapTotal: 0, external: 0, arrayBuffers: 0, rss: 0 };
-    if (handle.pid && handle.status === 'online') {
-      // P1-G — async + cached. Pre-fix this issued `execSync('ps')`
-      // on every inspect RPC, blocking the daemon event loop for
-      // ~5-50 ms per call. The webapp polls inspect every ~5s and
-      // multiple panels can fire concurrent inspects → daemon stalls
-      // visibly on tab switches.
-      const rss = await this.readProcessRss(handle.pid);
-      if (rss != null) memory.rss = rss;
-    }
-    if (memory.rss === 0 && appMetrics?.memory) {
-      memory.rss = appMetrics.memory;
-    }
+    // The app's resident memory is every process it runs — supervisor
+    // children and pool workers — sampled in one `ps` by the code `list`
+    // reads (`sampleAppMetrics`), which also leaves each entry's share in
+    // `handle.childMetrics`. This used to `ps` the single pid on the handle:
+    // one process, and the app's last child rather than its server —
+    // «Memory RSS 157.2MB» for a priceverse of ~508 MB. Keyed by the
+    // handle's own name, because `data.name` is what the operator typed and
+    // `main` is not a key of the answer. A stopped app has no processes; its
+    // last sample is history, not memory.
+    const metricsMap = await this.orchestrator.getMetrics(handle.name);
+    const appMetrics = metricsMap[handle.name];
+    const memory = {
+      heapUsed: 0,
+      heapTotal: 0,
+      external: 0,
+      arrayBuffers: 0,
+      rss: handle.status === 'stopped' ? 0 : (appMetrics?.memory ?? 0),
+    };
+    const sampledRss = (entryName: string): number | undefined =>
+      handle.status === 'stopped' ? undefined : handle.childMetrics.get(entryName)?.memory;
+    const secondsSince = (startTime: unknown): number | undefined =>
+      typeof startTime === 'number' ? Math.floor((Date.now() - startTime) / 1000) : undefined;
 
     // T#66: per-child diagnostic surface. The legacy `services`
     // flat list collapsed every child's service name into a single
@@ -497,13 +504,16 @@ export class DaemonRpcService implements IDaemonService {
     if (handle.mode === 'bootstrap' && handle.supervisor) {
       const childNames = handle.supervisor.getChildNames();
       for (const childName of childNames) {
-        const processId = handle.supervisor.getChildProcessId(childName);
+        // A pool child's proxy answers `__processId` with a function.
+        const rawId: unknown = handle.supervisor.getChildProcessId(childName);
+        const processId = typeof rawId === 'string' ? rawId : undefined;
         const workerHandle = processId ? this.orchestrator.getWorkerHandle(processId) : undefined;
         const procInfo = processId ? this.orchestrator.getChildProcessInfo(processId) : undefined;
-        const uptimeSeconds =
-          typeof procInfo?.startTime === 'number'
-            ? Math.floor((Date.now() - procInfo.startTime) / 1000)
-            : undefined;
+        const uptimeSeconds = secondsSince(procInfo?.startTime);
+        // `childMetrics` is keyed by topology entry; a supervisor child is
+        // named `${app}/${entry}`, or by the app alone when it has no topology.
+        const prefix = `${handle.name}/`;
+        const rss = sampledRss(childName.startsWith(prefix) ? childName.slice(prefix.length) : childName);
         const entry: ChildDiagnosticsDto = {
           name: childName,
           pid: workerHandle?.pid ?? null,
@@ -511,12 +521,34 @@ export class DaemonRpcService implements IDaemonService {
           ...(workerHandle?.serviceName && { serviceName: workerHandle.serviceName }),
           ...(workerHandle?.serviceVersion && { serviceVersion: workerHandle.serviceVersion }),
           ...(uptimeSeconds !== undefined && { uptimeSeconds }),
+          ...(rss !== undefined && { rss }),
         };
         children.push(entry);
         if (workerHandle?.serviceName) {
           services.push(`${workerHandle.serviceName}@${workerHandle.serviceVersion}`);
         }
       }
+    }
+
+    // Pools are not supervisor children, so the walk above never saw them —
+    // storage's two transform workers were in no section of this answer.
+    const pools: PoolDiagnosticsDto[] = [];
+    for (const [poolName, pool] of handle.topologyPools) {
+      const workers = pool.getWorkerIds().map((workerId) => {
+        const uptimeSeconds = secondsSince(this.orchestrator.getChildProcessInfo(workerId)?.startTime);
+        return {
+          pid: this.orchestrator.getWorkerHandle(workerId)?.pid ?? null,
+          processId: workerId,
+          ...(uptimeSeconds !== undefined && { uptimeSeconds }),
+        };
+      });
+      const rss = sampledRss(poolName);
+      pools.push({
+        name: poolName,
+        declaredInstances: handle.topologyProcesses?.find((p) => p.name === poolName)?.instances ?? workers.length,
+        workers,
+        ...(rss !== undefined && { rss }),
+      });
     }
 
     // T#66: log paths. Project-mode apps live under
@@ -542,15 +574,17 @@ export class DaemonRpcService implements IDaemonService {
       error: this.logManager.getLogFilePath(handle.name, 'error'),
     };
 
-    const appConfig: Record<string, unknown> = {};
-    const entry = this.config?.apps?.find((a) => a.name === data.name);
-    if (entry) {
-      appConfig['mode'] = handle.mode;
-      appConfig['instances'] = handle.instanceCount ?? 1;
-      appConfig['critical'] = entry.critical ?? false;
-      if (handle.port) appConfig['port'] = handle.port;
-      if (entry.bootstrap) appConfig['bootstrap'] = entry.bootstrap;
-    }
+    // From the entry the app was started with. This looked the name up in
+    // the daemon's own config, which holds bare names and none of a
+    // project's apps — `config: {}` for `main` and `daos/dev/main` alike.
+    const entry = handle.entry;
+    const appConfig: Record<string, unknown> = {
+      mode: handle.mode,
+      instances: handle.instanceCount ?? 1,
+      critical: entry.critical ?? false,
+      ...(handle.port && { port: handle.port }),
+      ...(entry.bootstrap && { bootstrap: entry.bootstrap }),
+    };
 
     return {
       name: handle.name,
@@ -561,6 +595,7 @@ export class DaemonRpcService implements IDaemonService {
       restarts: handle.restarts,
       services,
       children,
+      pools,
       logPaths,
       config: appConfig,
       // Surface the crash context when the app is dead so
@@ -637,40 +672,5 @@ export class DaemonRpcService implements IDaemonService {
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
     return this.daemon.getWatchStatus();
-  }
-
-  /**
-   * Async RSS lookup for an inspect-call. Cached per-pid for
-   * `RSS_TTL_MS` so concurrent / repeated inspects in a tight
-   * window (typical UI poll behaviour) share a single `ps` spawn
-   * instead of fanning out — under load the cache reduces a 5-tab
-   * inspect storm from N×ps to 1×ps.
-   */
-  private readonly rssCache = new Map<number, { rss: number; at: number }>();
-  private static readonly RSS_TTL_MS = 2_000;
-
-  private async readProcessRss(pid: number): Promise<number | null> {
-    const now = Date.now();
-    const cached = this.rssCache.get(pid);
-    if (cached && now - cached.at < DaemonRpcService.RSS_TTL_MS) return cached.rss;
-    try {
-      const { execFile } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      const exec = promisify(execFile);
-      const { stdout } = await exec('ps', ['-p', String(pid), '-o', 'rss='], { timeout: 1_000 });
-      const rssKb = parseInt(stdout.trim(), 10);
-      if (Number.isNaN(rssKb)) return null;
-      const rss = rssKb * 1024;
-      this.rssCache.set(pid, { rss, at: now });
-      // Bound the cache so it doesn't grow past the active-pid set.
-      if (this.rssCache.size > 200) {
-        for (const [k, v] of this.rssCache) {
-          if (now - v.at > DaemonRpcService.RSS_TTL_MS) this.rssCache.delete(k);
-        }
-      }
-      return rss;
-    } catch {
-      return null;
-    }
   }
 }

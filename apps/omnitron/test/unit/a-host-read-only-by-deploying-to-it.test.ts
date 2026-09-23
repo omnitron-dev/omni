@@ -10,11 +10,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createHash, randomBytes } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo, Socket } from 'node:net';
 import type { NetworkInterfaceInfo } from 'node:os';
 
 import {
   inspectHost,
   digestAuthorization,
+  jsonRpcCall,
   fileState,
   redactArgv,
   type InspectionDeps,
@@ -302,5 +306,75 @@ describe('the pieces', () => {
     expect(redactArgv('monerod --rpc-login=daos:pw --data-dir=/x --rpcauth=u:s$h')).toBe(
       'monerod --rpc-login=… --data-dir=/x --rpcauth=…'
     );
+  });
+});
+
+/**
+ * A JSON-RPC server that authenticates as monerod does (measured against the
+ * dev stack's, 2026-09-23): two challenges, MD5 then MD5-sess, in two
+ * headers — and the nonce belongs to the connection that was challenged.
+ */
+async function monerodLike(user: string, password: string) {
+  const md5 = (text: string) => createHash('md5').update(text).digest('hex');
+  const nonces = new WeakMap<Socket, string>();
+  const server = createServer((req, res) => {
+    req.resume();
+    const nonce = nonces.get(req.socket);
+    const answer = Object.fromEntries(
+      [...(req.headers.authorization ?? '').matchAll(/(\w+)=(?:"([^"]*)"|([^\s,]*))/g)].map(([, k, q, b]) => [
+        k,
+        q ?? b,
+      ])
+    );
+    const ha1 = md5(`${user}:monero-rpc:${password}`);
+    const expected = md5(`${ha1}:${nonce}:${answer['nc']}:${answer['cnonce']}:auth:${md5(`POST:${req.url}`)}`);
+    if (nonce !== undefined && answer['nonce'] === nonce && answer['response'] === expected) {
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: 'inspect', result: { height: 3_500_000, synchronized: true } }));
+      return;
+    }
+    const fresh = randomBytes(16).toString('base64');
+    nonces.set(req.socket, fresh);
+    res.statusCode = 401;
+    res.setHeader('www-authenticate', [
+      `Digest qop="auth",algorithm=MD5,realm="monero-rpc",nonce="${fresh}",stale=false`,
+      `Digest qop="auth",algorithm=MD5-sess,realm="monero-rpc",nonce="${fresh}",stale=false`,
+    ]);
+    res.end('<html><body><h1>401 Unauthorized</h1></body></html>');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/json_rpc`,
+    close: () => {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
+}
+
+describe("a health check that speaks monerod's digest", () => {
+  it('answers the challenge on the connection that was challenged', async () => {
+    const monerod = await monerodLike('daos', 'pw');
+    try {
+      expect(await jsonRpcCall(monerod.url, 'get_info', { type: 'digest', user: 'daos', password: 'pw' })).toEqual({
+        method: 'get_info',
+        ok: true,
+        result: { height: 3_500_000, synchronized: true },
+      });
+    } finally {
+      monerod.close();
+    }
+  });
+
+  it('reads a wrong password as the refusal it is', async () => {
+    const monerod = await monerodLike('daos', 'pw');
+    try {
+      expect(await jsonRpcCall(monerod.url, 'get_info', { type: 'digest', user: 'daos', password: 'pv' })).toEqual({
+        method: 'get_info',
+        ok: false,
+        error: 'HTTP 401',
+      });
+    } finally {
+      monerod.close();
+    }
   });
 });

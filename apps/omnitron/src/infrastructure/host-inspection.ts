@@ -17,6 +17,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+import { Agent, request } from 'node:http';
 import type { NetworkInterfaceInfo } from 'node:os';
 
 import { bindService, secretValues, type Provisioning } from './service-binding.js';
@@ -404,6 +405,13 @@ export async function reachTcp(host: string, port: number, timeoutMs = 3_000): P
  * Digest because monerod speaks nothing else, and implemented here rather
  * than by running `curl --digest -u user:password`: a password on a command
  * line is in the node's process table for as long as the call takes.
+ *
+ * The answer goes on the connection the challenge came on: monerod keeps a
+ * nonce per connection, and `fetch` sent the two requests on two — the first
+ * `infra inspect` of the test node read HTTP 401 from its daemon and its
+ * wallet (2026-09-23). Measured against the dev stack's monerod and
+ * wallet-rpc, the same answer is 200 on the challenge's socket, 401 on
+ * another.
  */
 export async function jsonRpcCall(
   url: string,
@@ -416,21 +424,53 @@ export async function jsonRpcCall(
   if (auth?.type === 'basic') {
     headers['authorization'] = `Basic ${Buffer.from(`${auth.user}:${auth.password}`).toString('base64')}`;
   }
+  const connection = new Agent({ keepAlive: true, maxSockets: 1 });
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
-    let response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(timeoutMs) });
+    let response = await post(url, headers, body, connection, signal);
     if (response.status === 401 && auth?.type === 'digest') {
-      const challenge = response.headers.get('www-authenticate');
-      if (!challenge) return { method, ok: false, error: 'HTTP 401 with no challenge' };
-      headers['authorization'] = digestAuthorization(challenge, auth, 'POST', new URL(url).pathname);
-      response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(timeoutMs) });
+      if (!response.challenge) return { method, ok: false, error: 'HTTP 401 with no challenge' };
+      headers['authorization'] = digestAuthorization(response.challenge, auth, 'POST', new URL(url).pathname);
+      response = await post(url, headers, body, connection, signal);
     }
-    if (!response.ok) return { method, ok: false, error: `HTTP ${response.status}` };
-    const answer = (await response.json()) as { result?: unknown; error?: { message?: string } };
+    if (response.status !== 200) return { method, ok: false, error: `HTTP ${response.status}` };
+    const answer = JSON.parse(response.text) as { result?: unknown; error?: { message?: string } };
     if (answer.error) return { method, ok: false, error: answer.error.message ?? 'error' };
     return { method, ok: true, result: scalars(answer.result) };
   } catch (err) {
-    return { method, ok: false, error: (err as Error).message };
+    return { method, ok: false, error: signal.aborted ? `no answer in ${timeoutMs} ms` : (err as Error).message };
+  } finally {
+    connection.destroy();
   }
+}
+
+function post(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  agent: Agent,
+  signal: AbortSignal
+): Promise<{ status: number; challenge: string | undefined; text: string }> {
+  return new Promise((resolve, reject) => {
+    const sent = request(
+      url,
+      { method: 'POST', agent, signal, headers: { ...headers, 'content-length': String(Buffer.byteLength(body)) } },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('error', reject);
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            challenge: response.headers['www-authenticate'],
+            text: Buffer.concat(chunks).toString('utf8'),
+          })
+        );
+      }
+    );
+    sent.on('error', reject);
+    sent.end(body);
+  });
 }
 
 /** RFC 7616 with MD5 or MD5-sess and `qop=auth` — what monerod offers. */

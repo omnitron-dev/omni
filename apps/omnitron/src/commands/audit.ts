@@ -168,7 +168,9 @@ function cellsOf(row: AuditRow): Record<ColumnKey, Cell> {
         ? { text: outcome, shown: prism.red(outcome) }
         : outcome === 'ok'
           ? { text: outcome, shown: prism.green(outcome) }
-          : { text: '-', shown: prism.dim('-') },
+          : outcome === 'partial'
+            ? { text: outcome, shown: prism.yellow(outcome) }
+            : { text: '-', shown: prism.dim('-') },
     from: plain(row.ipAddress ?? '-'),
   };
 }

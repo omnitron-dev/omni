@@ -85,7 +85,8 @@ export interface AuditEntry {
 }
 
 /** How an action ended, where its writer recorded both endings. */
-export type AuditOutcome = 'ok' | 'failed';
+/** `partial`: the action happened, and not all of it — a stack start where some apps did not come up. */
+export type AuditOutcome = 'ok' | 'partial' | 'failed';
 
 /**
  * Who an actor can be, as `currentActor` answers it — and the words `omnitron
@@ -191,7 +192,7 @@ export function describeFailure(err: unknown): string {
  */
 export function outcomeOf(row: Pick<AuditRow, 'action' | 'details'>): AuditOutcome | null {
   const recorded = row.details?.['outcome'];
-  if (recorded === 'ok' || recorded === 'failed') return recorded;
+  if (recorded === 'ok' || recorded === 'partial' || recorded === 'failed') return recorded;
   return row.action.endsWith('.failed') ? 'failed' : null;
 }
 

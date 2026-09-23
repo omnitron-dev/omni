@@ -297,10 +297,15 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         isGlobal: true,
       }),
 
-      // Health — built-in memory + event loop indicators + custom indicators
+      // Health — built-in memory indicator + custom indicators
       TitanHealthModule.forRoot({
         enableMemoryIndicator: true,
-        enableEventLoopIndicator: true,
+        // Not titan-health's `event-loop`: the daemon has `event-loop-stalls`
+        // (monitoring/event-loop-watch.ts), which reads the same histogram and
+        // also logs each stall with its phase and CPU. Both on one page are one
+        // concept said twice — and until 2026-09-23 they disagreed, «lag:
+        // 0.00ms» beside a measured p99 of 20.9 ms.
+        enableEventLoopIndicator: false,
         enableCaching: true,
         cacheTtl: 5_000,
         isGlobal: true,

@@ -14,6 +14,7 @@
  * loop past the threshold, they require the warning instead: then it is true.
  */
 
+import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { Worker } from 'node:worker_threads';
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -277,3 +278,14 @@ describe('what the process was doing while its loop stood still', () => {
     }
   });
 });
+
+describe('one indicator of the concept in the daemon', () => {
+  it('turns titan-health\'s event-loop off and registers its own', () => {
+    const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+    // Two indicators of one concept on one page disagreed: «lag: 0.00ms» from
+    // titan-health beside this watch's p99 of 20.9 ms on the same node.
+    expect(read('../../src/daemon/daemon.module.ts')).toMatch(/enableEventLoopIndicator: false,/);
+    expect(read('../../src/daemon/daemon.ts')).toContain('new EventLoopStallIndicator(this.eventLoopWatch)');
+  });
+});
+

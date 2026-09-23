@@ -72,7 +72,7 @@ async function withProjectService<T>(
 
 export async function projectAddCommand(name: string, projectPath: string): Promise<void> {
   try {
-    const project = await withProjectService(
+    const project = await withProjectService<IProjectInfo>(
       (svc) => svc.addProject({ name, path: projectPath }),
       () => {
         const added = ProjectRegistry.open().add(name, projectPath);
@@ -87,7 +87,11 @@ export async function projectAddCommand(name: string, projectPath: string): Prom
         } satisfies IProjectInfo;
       },
     );
-    log.success(`Project '${project.name}' registered at ${project.path}`);
+    log.success(
+      project.reread
+        ? `Project '${project.name}' at ${project.path} read again — ${project.reread.redefined} running app(s) take the new definition on their next start`
+        : `Project '${project.name}' registered at ${project.path}`,
+    );
   } catch (err) {
     log.error((err as Error).message);
     // All three commands here printed the error and exited 0, so a

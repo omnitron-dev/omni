@@ -30,6 +30,12 @@ export interface IProjectInfo {
   runningStacks: number;
   /** Total number of configured stacks */
   totalStacks: number;
+  /**
+   * Set only on the answer to an add of a project already registered at that
+   * path: its config was read again, and this many running apps took the new
+   * definition for their next start.
+   */
+  reread?: { redefined: number };
 }
 
 // =============================================================================

@@ -1011,6 +1011,19 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /**
+   * Give a supervised app the definition its next start will use — its
+   * environment, its command. The running process is not touched; the next
+   * `restartApp` starts from this. `false` when nothing by that name runs
+   * here. See `AppHandle.redefine`.
+   */
+  redefineApp(name: string, entry: IEcosystemAppEntry): boolean {
+    const handle = this.handles.get(this.resolveAppName(name) ?? name);
+    if (!handle) return false;
+    handle.redefine(entry);
+    return true;
+  }
+
+  /**
    * Restart an app, coalescing concurrent triggers.
    *
    * The dev-mode hot-reload path can deliver many restart triggers per

@@ -31,6 +31,8 @@ import fs from 'node:fs';
 
 const ORCHESTRATOR = new URL('../../src/orchestrator/orchestrator.service.ts', import.meta.url);
 const HANDLE = new URL('../../src/orchestrator/app-handle.ts', import.meta.url);
+/** The one reader of `config/default.json` (5f5d0a42): the section and the level, from one parse. */
+const DECLARED = new URL('../../src/project/declared-config.ts', import.meta.url);
 
 /** Source with comments stripped — the prose names every symbol it discusses. */
 function codeOf(url: URL): string {
@@ -49,12 +51,22 @@ describe('the app’s level reaches its children', () => {
   });
 
   it('it is read from the config file the orchestrator already opens', () => {
-    // Not a second read of the same file, and not a new config key: the block
-    // that takes `json.omnitron` takes this too.
+    // Not a second read of the same file, and not a new config key: the one
+    // parse that takes `json.omnitron` takes this too. That parse is now
+    // `readDeclaredConfig`, read on every start rather than written onto the
+    // loader's cached definition once (a-template-read-once-for-the-daemons-life).
     const at = orchestrator.indexOf('handle.appLogLevel =');
     expect(at, 'nothing assigns it').toBeGreaterThan(0);
     const around = orchestrator.slice(Math.max(0, at - 900), at);
-    expect(around, 'read somewhere other than the config parse').toContain('JSON.parse(content)');
+    expect(around, 'read somewhere other than the declared-config read').toContain('readDeclaredConfig(');
+    expect(around).toContain('declared.loggerLevel');
+
+    const declared = codeOf(DECLARED);
+    const parse = declared.indexOf('JSON.parse(content)');
+    expect(parse, 'the reader parses the file once').toBeGreaterThan(0);
+    const after = declared.slice(parse, parse + 600);
+    expect(after).toContain('json.omnitron');
+    expect(after).toContain('json.logger?.level');
   });
 
   it('validates the level instead of handing an arbitrary string to a logger', () => {

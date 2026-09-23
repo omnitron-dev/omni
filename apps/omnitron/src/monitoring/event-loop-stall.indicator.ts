@@ -14,7 +14,7 @@
 
 import { HealthIndicator, type HealthIndicatorResult } from '@omnitron-dev/titan-health';
 
-import type { EventLoopWatch } from './event-loop-watch.js';
+import { describeCpu, type EventLoopWatch } from './event-loop-watch.js';
 
 export class EventLoopStallIndicator extends HealthIndicator {
   readonly name = 'event-loop-stalls';
@@ -42,7 +42,7 @@ export class EventLoopStallIndicator extends HealthIndicator {
     if (last && Date.now() - Date.parse(last.to) < this.recentMs) {
       const during = last.phases.length > 0 ? `, during ${last.phases.join('; ')}` : '';
       return this.degraded(
-        `The event loop stood still for ${last.stalledMs} ms at ${last.to}${during} — ${s.stalls} stall(s) over ${s.thresholdMs} ms since start; ${window}`,
+        `The event loop stood still for ${last.stalledMs} ms at ${last.to}${during}, ${describeCpu(last)} — ${s.stalls} stall(s) over ${s.thresholdMs} ms since start; ${window}`,
         details,
       );
     }

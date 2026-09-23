@@ -237,6 +237,13 @@ export async function fleetUpgradeCommand(
 
   try {
     const nodes = await client.service<import('../shared/dto/services.js').IOmnitronNodesService>('OmnitronNodes');
+
+    // Before anything is built — see `printUnbuiltPlan`.
+    if (options.dryRun) {
+      await printUnbuiltPlan(nodes, nodeNames, options.allowDirty === true);
+      return;
+    }
+
     const registered = await nodes.listNodes();
 
     const candidates = registered.map((n) => ({
@@ -305,10 +312,6 @@ export async function fleetUpgradeCommand(
       log.info('\nNothing to do.');
       return;
     }
-    if (options.dryRun) {
-      log.info('\nDry run — nothing was shipped.');
-      return;
-    }
 
     const archive = await bundle.pack();
 
@@ -349,9 +352,72 @@ export async function fleetUpgradeCommand(
     log.error(`Fleet upgrade failed: ${(err as Error).message}`);
     process.exitCode = 1;
   } finally {
-    // Both of them, and on every path out: a dry run returns before it ships
-    // anything and a failure throws, and the tree is there either way.
+    // Both of them, and on every path out: nothing to ship and a failure
+    // both return early, and the tree is there either way.
     await bundle?.cleanup();
     await client.disconnect();
   }
+}
+
+/**
+ * `--dry-run`: the plan, with nothing built.
+ *
+ * Documented as «print the plan and ship nothing», and it built first: the
+ * version to compare against comes from a build, so `buildOwnBundle` ran
+ * before the plan was printed — and `bundle-builder` rebuilds every stale
+ * workspace package IN THE WORKING TREE (`pnpm --dir <pkg> run build`). On
+ * 2026-09-23 at 08:53Z two of fourteen packages were stale, so a dry run
+ * would have rebuilt them in the live tree; on a dirty tree it refused
+ * before printing any plan at all.
+ *
+ * The daemon's own planner answers without a build (`planUpgrade` with
+ * `build: false`, measured at 36 ms): which nodes are local, which refused
+ * SSH, which would be attempted — everything except «already on it», which
+ * needs a version to compare, and each row says so rather than pretending
+ * the comparison happened. What a real run would refuse about the working
+ * tree is said as well, from `git status` alone.
+ */
+async function printUnbuiltPlan(
+  nodes: import('../shared/dto/services.js').IOmnitronNodesService,
+  nodeNames: string[],
+  allowDirty: boolean,
+): Promise<void> {
+  // Explicit on the wire, though it is the planner's default: a dry run that
+  // builds is the defect this path exists to remove.
+  const request: { nodeIds?: string[]; build: false } = {
+    ...(nodeNames.length > 0 ? { nodeIds: nodeNames } : {}),
+    build: false,
+  };
+  const plan = await nodes.planUpgrade(request);
+  if (plan.refusal) {
+    log.error(plan.refusal);
+    process.exitCode = 1;
+    return;
+  }
+
+  log.info(`\nTarget: ${prism.dim('not built — a dry run builds nothing, so no versions were compared')}`);
+  for (const row of plan.rows) {
+    const mark =
+      row.action === 'upgrade' ? prism.green('upgrade') : row.action === 'skip' ? prism.dim('skip') : prism.yellow('refuse');
+    const why =
+      row.action === 'upgrade'
+        ? `from ${row.currentVersion ?? 'unknown'}${row.because ? ` (${row.because})` : ''}`
+        : row.because;
+    log.info(`  ${mark}  ${row.label} — ${why}`);
+  }
+
+  const { findWorkspaceRoot, readWorkspace, describeTree, upgradeWorkspaceRefusal, OMNITRON_PACKAGE } = await import(
+    '../services/bundle-builder.js'
+  );
+  const workspaceRoot = findWorkspaceRoot(process.cwd());
+  const refusal = upgradeWorkspaceRefusal({
+    cwd: process.cwd(),
+    root: workspaceRoot,
+    hasOmnitron: workspaceRoot ? readWorkspace(workspaceRoot).has(OMNITRON_PACKAGE) : false,
+    dirty: workspaceRoot ? (await describeTree(workspaceRoot)).dirty : false,
+    allowDirty,
+  });
+  if (refusal) log.warn(`A real run would refuse: ${refusal}`);
+
+  log.info('\nDry run — nothing was built or shipped.');
 }

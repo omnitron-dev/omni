@@ -262,7 +262,23 @@ export async function stackStartCommand(
       online,
       total: stack.apps.length,
       infrastructure: stack.infrastructure,
-    })) return;
+      ...(stack.notUp?.length ? { notUp: stack.notUp } : {}),
+    })) {
+      if (stack.notUp?.length || online < stack.apps.length) process.exitCode = 1;
+      return;
+    }
+
+    // Beyond the apps: a node skipped, infrastructure not up. bitcoind failed
+    // to start on the test node and this printed «6/6 apps online», exit 0.
+    const notUp = stack.notUp ?? [];
+    if (notUp.length > 0) {
+      emitError(
+        `Stack ${projectName}/${stackName}: started with parts not up — ${notUp.join('; ')}. ` +
+          `Check \`omnitron infra inspect ${projectName}/${stackName}\`.`,
+        { project: projectName, stack: stackName, notUp },
+      );
+      process.exitCode = 1;
+    }
 
     if (online < stack.apps.length) {
       // Reporting a partial start as success is how a dead stack passes for a

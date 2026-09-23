@@ -72,6 +72,13 @@ export interface IStackInfo {
    * neither deployed nor attached.
    */
   attachedAt: string | null;
+  /**
+   * Set only on the answer to a start of a remote or cluster stack: what the
+   * start did not bring up beyond its app list — `node <host:port>` it could
+   * not reach, `infrastructure on <host:port>: <the node's words>` not up.
+   * Absent when everything came up.
+   */
+  notUp?: string[];
 }
 
 export interface IStackNodeStatus {

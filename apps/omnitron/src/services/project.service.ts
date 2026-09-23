@@ -30,6 +30,8 @@ interface NodeReach {
   readonly nodes: number;
   readonly reached: number;
   readonly skipped: readonly string[];
+  /** Nodes that took it with infrastructure not up: `host:port: <the node's words>`. */
+  readonly notReady: readonly string[];
 }
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
@@ -947,7 +949,10 @@ export class ProjectService extends EventEmitter {
       const notUp =
         stackConfig.type === 'local'
           ? info.apps.filter((a) => a.status !== 'online').map((a) => `${a.name} (${a.status})`)
-          : (reach?.skipped ?? []).map((n) => `node ${typeof n === 'string' ? n : JSON.stringify(n)}`);
+          : [
+              ...(reach?.skipped ?? []).map((n) => `node ${typeof n === 'string' ? n : JSON.stringify(n)}`),
+              ...(reach?.notReady ?? []).map((n) => `infrastructure on ${n}`),
+            ];
       // Recorded for every caller, and saying WHICH one. `source: 'unknown'`
       // is deliberate rather than a default of `'operator'`: a caller that
       // has not been taught to identify itself should be visible in the
@@ -977,6 +982,7 @@ export class ProjectService extends EventEmitter {
           source,
           ...(reach ? { nodes: reach.nodes, reached: reach.reached } : {}),
           ...(reach && reach.skipped.length > 0 ? { skipped: reach.skipped } : {}),
+          ...(reach && (reach.notReady?.length ?? 0) > 0 ? { notReady: reach.notReady } : {}),
           ...(tree.checked ? { commit: tree.head, dirty: tree.dirty.length } : { commit: null }),
           // Every tree the artifacts were built from, not only the project's:
           // the omni checkout's packages are vendored into them, and the
@@ -1001,7 +1007,9 @@ export class ProjectService extends EventEmitter {
           })),
         },
       });
-      return info;
+      // For a remote stack, what did not come up is not in its app list — a
+      // node skipped, infrastructure not up — so the answer says it too.
+      return stackConfig.type !== 'local' && notUp.length > 0 ? { ...info, notUp } : info;
     } catch (err) {
       state.status = 'error';
       this.emit('stack:error', projectName, stackName, (err as Error).message);
@@ -2214,6 +2222,8 @@ export class ProjectService extends EventEmitter {
     // later, recorded a deployment that never touched the machine.
     const reached: string[] = [];
     const skipped: string[] = [];
+    /** Nodes that took the deployment with infrastructure not up, in the node's words. */
+    const notReady: string[] = [];
 
     // What the applications in this stack declare they need.
     //
@@ -2435,7 +2445,7 @@ export class ProjectService extends EventEmitter {
           if (nodeInfra || Object.keys(declaredServices).length > 0) {
             await leases.confirm(nodeKey, `bringing up infrastructure on ${node.host}`);
             phases.enter(`bringing up infrastructure on ${node.host}`);
-            const ready = await this.provisionNodeInfrastructure(
+            const provisioned = await this.provisionNodeInfrastructure(
               connector,
               node,
               (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
@@ -2452,15 +2462,18 @@ export class ProjectService extends EventEmitter {
               project?.path,
               release?.staticsDir ?? undefined,
             );
-            if (!ready) {
+            if (!provisioned.ready) {
               // Not fatal: a node whose infrastructure is incomplete can still
               // be looked at, and stopping here would leave the fleet in a state
-              // no command describes. It is said at error level with the node,
-              // and the applications will say the rest.
+              // no command describes. It is said at error level with the node —
+              // and carried to the start's answer and its audit row, where it
+              // used to stop: bitcoind failed to start on the test node and the
+              // deployment reported «6/6 apps online», exit 0, `outcome: ok`.
               this.logger.error(
-                { node: nodeKey, stack: stackName },
+                { node: nodeKey, stack: stackName, detail: provisioned.detail },
                 'Node infrastructure is not ready — deploying anyway, applications may not reach their databases',
               );
+              notReady.push(`${nodeKey}: ${provisioned.detail}`);
             }
           }
 
@@ -2570,7 +2583,7 @@ export class ProjectService extends EventEmitter {
           );
         }
 
-        return { nodes: nodes.length, reached: reached.length, skipped };
+        return { nodes: nodes.length, reached: reached.length, skipped, notReady };
       },
     );
   }
@@ -2997,7 +3010,7 @@ export class ProjectService extends EventEmitter {
     projectRoot?: string | undefined,
     /** A release's static bundle, shipped as it was built — see `shipStackStatics`. */
     releasedStatics?: string | undefined,
-  ): Promise<boolean> {
+  ): Promise<{ ready: boolean; detail: string }> {
     const host = node.host;
     const port = node.port ?? 9700;
 
@@ -3011,7 +3024,7 @@ export class ProjectService extends EventEmitter {
         { node: `${host}:${port}` },
         'This node did not join the mesh within a minute — its infrastructure cannot be brought up from here',
       );
-      return false;
+      return { ready: false, detail: 'the node did not join the mesh within a minute' };
     }
 
     try {
@@ -3048,7 +3061,9 @@ export class ProjectService extends EventEmitter {
         },
         report?.detail ?? 'Node infrastructure provisioned',
       );
-      return report?.ready === true;
+      // The node's own words travel with the verdict: «not ready» without
+      // them is a sentence nobody downstream can act on.
+      return { ready: report?.ready === true, detail: report?.detail ?? 'the node did not say' };
     } catch (err) {
       // Not «infrastructure incomplete, deploying anyway»: the node was not
       // touched, and going on would put new backends behind the old frontend.
@@ -3057,7 +3072,7 @@ export class ProjectService extends EventEmitter {
         { node: `${host}:${port}`, error: (err as Error).message },
         'Could not bring up this node\'s infrastructure',
       );
-      return false;
+      return { ready: false, detail: `could not ask the node: ${(err as Error).message}` };
     }
   }
 

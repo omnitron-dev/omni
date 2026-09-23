@@ -10,7 +10,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
-import { summariseProvisioning, describeProvisioning } from '../infrastructure/provisioning-outcome.js';
+import { summariseProvisioning, provisioningVerdict } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
 import { duringPhase } from '../project/deploy-phases.js';
 import { containerEndpoint, REDIS_CONTAINER_PORT } from '../infrastructure/service-resolver.js';
@@ -325,12 +325,11 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // is the same `provisionStack` call because it is the same question:
     // bring this node to what the stack declares.
     const hosted = await this.reconcileHostServices(declared, data.overrides ?? {});
+    const verdict = provisioningVerdict(outcome, hosted);
 
     return {
-      ready: outcome.ready && hosted.refusals.length === 0,
-      detail: hosted.refusals.length > 0
-        ? `${describeProvisioning(outcome)}; host services: ${hosted.refusals.join(' ')}`
-        : describeProvisioning(outcome),
+      ready: verdict.ready,
+      detail: verdict.detail,
       running: [...outcome.running.map((s) => s.name), ...hosted.settled],
       failed: [
         ...outcome.failed.map((s) => ({ name: s.name, status: String(s.status), error: s.error ?? null })),

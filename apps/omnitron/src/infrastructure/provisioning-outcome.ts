@@ -130,3 +130,31 @@ export function describeProvisioning(outcome: ProvisioningOutcome): string {
   if (outcome.failed.length > 0) parts.push(`${outcome.failed.length} not running (${outcome.failed.map((s) => s.name).join(', ')})`);
   return `Infrastructure is NOT ready — ${parts.join('; ')}`;
 }
+
+/** What the node did about services that are not containers (`reconcileHostServices`). */
+export interface HostServicesOutcome {
+  settled: readonly string[];
+  /** Refused by the plan, or failed while it was carried out. */
+  failed: ReadonlyArray<{ name: string; status: string; error: string | null }>;
+}
+
+/**
+ * The node's verdict on everything it was asked to bring up.
+ *
+ * Readiness counted the containers and the host services' REFUSALS, and not a
+ * host service that failed while its plan was carried out. Measured on the
+ * test node, 2026-09-23: bitcoind's start failed — `could not start bitcoind: `
+ * — and the node answered `ready: true` with «Infrastructure provisioned and
+ * healthy (5 services)», the failure sitting in `failed` beside it; the master
+ * logged that sentence and the deployment reported `6/6 apps online`.
+ */
+export function provisioningVerdict(
+  outcome: ProvisioningOutcome,
+  hosted: HostServicesOutcome,
+): { ready: boolean; detail: string } {
+  if (hosted.failed.length === 0) return { ready: outcome.ready, detail: describeProvisioning(outcome) };
+  const notUp = hosted.failed.map((f) => `${f.name} ${f.status}: ${f.error?.replace(/:\s*$/, '').trim() || 'no reason given'}`);
+  const containers = outcome.ready || outcome.empty ? '' : `${describeProvisioning(outcome)}; `;
+  return { ready: false, detail: `${containers}host services NOT up — ${notUp.join('; ')}` };
+}
+

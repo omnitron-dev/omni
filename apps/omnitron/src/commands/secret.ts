@@ -175,6 +175,73 @@ function printKeys(keys: string[]): void {
  * it says can disagree with what the console and the MCP tools see — and six
  * writes made that way in one sequence landed as none.
  */
+/**
+ * `omnitron secret rotate-rpcauth <passwordKey> --user-key <key> --auth-key <key>`
+ *
+ * A new RPC password, and the `rpcauth` value bitcoind keeps in its place,
+ * written as a pair — the one writer of both, so the two cannot disagree.
+ *
+ * The password is born in this process and goes to the vault and nowhere
+ * else: not on a command line (`secret set` takes its value as an argument,
+ * which puts it in the shell history and the process table), not on the
+ * terminal. What is printed is the key names and the user.
+ */
+export async function secretRotateRpcauthCommand(
+  passwordKey: string,
+  opts: { userKey: string; authKey: string },
+): Promise<void> {
+  const { randomBytes } = await import('node:crypto');
+  const { rpcauth, rpcauthAccepts } = await import('../shared/rpcauth.js');
+
+  const client = createDaemonClient();
+  let reachable = false;
+  try {
+    reachable = await client.isReachable();
+    const vault = reachable
+      ? await (async () => {
+          const rpc = await secretsRpc(client);
+          return {
+            get: async (key: string) => (await rpc.get({ key })).value,
+            set: async (key: string, value: string) => void (await rpc.set({ key, value })),
+          };
+        })()
+      : await (async () => {
+          const direct = await createDirectService();
+          return { get: (key: string) => direct.get(key), set: (key: string, value: string) => direct.set(key, value) };
+        })();
+
+    const user = await vault.get(opts.userKey);
+    if (!user) {
+      log.error(`'${opts.userKey}' is not in the vault — the rpcauth value names a user, and there is none to name.`);
+      process.exitCode = 1;
+      return;
+    }
+
+    // 32 random bytes, URL-safe: it may travel in a URL's userinfo.
+    const password = randomBytes(32).toString('base64url');
+    const auth = rpcauth(user, password);
+    await vault.set(passwordKey, password);
+    await vault.set(opts.authKey, auth);
+
+    const [storedPassword, storedAuth] = [await vault.get(passwordKey), await vault.get(opts.authKey)];
+    if (storedPassword !== password || !storedAuth || !rpcauthAccepts(storedAuth, user, password)) {
+      log.error(`The vault did not keep the pair: '${passwordKey}' and '${opts.authKey}' may disagree — rotate again.`);
+      process.exitCode = 1;
+      return;
+    }
+    log.success(
+      `Rotated '${passwordKey}' for user ${user}; '${opts.authKey}' holds its rpcauth value${reachable ? '' : ' (direct mode)'}. ` +
+        'A deployment writes both where they go.',
+    );
+  } catch (err) {
+    warnIfHidingAFailure(err, reachable);
+    log.error(`Could not rotate '${passwordKey}': ${(err as Error).message}`);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
 async function secretsRpc(
   client: ReturnType<typeof createDaemonClient>,
 ): Promise<IOmnitronSecretsService> {

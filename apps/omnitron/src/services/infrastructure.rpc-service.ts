@@ -280,7 +280,9 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       // the service's desired set, and adding them twice gives one container
       // two entries and the reconciler two opinions about it.
       const { resolveAppInfrastructure } = await import('../infrastructure/service-resolver.js');
-      const containers = resolveAppInfrastructure(data.services ?? {});
+      // With the stack's overrides: without them a service the stack runs
+      // on the node as a system service came up as a container as well.
+      const containers = resolveAppInfrastructure(data.services ?? {}, data.overrides);
       if (containers.length > 0) service.addAppContainers(containers);
     }
 
@@ -495,6 +497,28 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     }
 
     return { settled, failed, refusals };
+  }
+
+  /**
+   * What `provisionStack` would find and do on this host for the services a
+   * stack declares — asked, not done (`host-inspection.ts`).
+   *
+   * It reads this machine's units, paths and addresses, and is asked by the
+   * master that drives it: the roles that may provision here, no wider.
+   */
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async inspectHostServices(
+    data: import('../infrastructure/host-inspection.js').HostInspectionRequest,
+  ): Promise<import('../infrastructure/host-inspection.js').HostInspection> {
+    const { inspectHost, reachTcp, jsonRpcCall } = await import('../infrastructure/host-inspection.js');
+    const { localHost } = await import('../infrastructure/bare-metal-runner.js');
+    const os = await import('node:os');
+    return inspectHost(data, {
+      host: localHost(),
+      interfaces: () => os.networkInterfaces(),
+      reach: reachTcp,
+      jsonRpc: jsonRpcCall,
+    });
   }
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })

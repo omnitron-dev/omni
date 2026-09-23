@@ -18,7 +18,8 @@
 import os from 'node:os';
 import { log, table, prism } from '@xec-sh/kit';
 import { loadEcosystemConfig } from '../config/loader.js';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
+import { emitError, emitJson } from './output.js';
 import type { IStackInfo } from '../shared/dto/project.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
@@ -237,6 +238,128 @@ export async function infraStatusCommand(opts: { stack?: string } = {}): Promise
   log.info(prism.bold(`Containers on this machine (${machine})`));
   printContainers(containers);
   log.info(prism.dim('A remote stack\'s containers run on its node: omnitron infra status --stack <project>/<stack>'));
+}
+
+/**
+ * `omnitron infra inspect <project>/<stack>` — what each node of a remote
+ * stack would find and do on its host for the services the stack declares,
+ * read and never changed (`host-inspection.ts`).
+ *
+ * `--unit`, `--path`, `--snap` and `--config <file>:<key>,<key>` add host
+ * facts for a decision the declaration does not cover — a unit a person
+ * wrote, a chain directory to adopt. No file's content is printed, and a
+ * config key naming a credential is refused.
+ */
+export async function infraInspectCommand(
+  target: string,
+  opts: { unit?: string[]; path?: string[]; snap?: string[]; config?: string[] } = {},
+): Promise<void> {
+  const wanted = parseStack(target);
+  if (typeof wanted === 'string') {
+    emitError(wanted.replace('--stack takes', 'Takes'));
+    process.exitCode = 1;
+    return;
+  }
+  const configKeys = (opts.config ?? []).map((spec) => {
+    const at = spec.lastIndexOf(':');
+    return { path: spec.slice(0, at), keys: spec.slice(at + 1).split(',').filter(Boolean) };
+  });
+
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const projects = await client.service<import('../shared/dto/services.js').IProjectRpcService>('OmnitronProject');
+    const readings = await projects.inspectStackHost({
+      ...wanted,
+      ...(opts.unit?.length ? { units: opts.unit } : {}),
+      ...(opts.path?.length ? { paths: opts.path } : {}),
+      ...(opts.snap?.length ? { snaps: opts.snap } : {}),
+      ...(configKeys.length ? { configKeys } : {}),
+    });
+    if (emitJson({ stack: target, nodes: readings })) return;
+    for (const reading of readings) printInspection(target, reading);
+    if (readings.some((r) => r.error)) process.exitCode = 1;
+  } catch (err) {
+    emitError(`Could not inspect ${target}: ${(err as Error).message}`);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
+const bytes = (n: number | null | undefined) =>
+  n === null || n === undefined ? '-' : n >= 1e12 ? `${(n / 1e12).toFixed(2)} TB` : `${(n / 1e9).toFixed(1)} GB`;
+const yes = (flag: boolean) => (flag ? prism.green('yes') : prism.red('no'));
+
+function printInspection(
+  target: string,
+  reading: { node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string },
+): void {
+  if (!reading.inspection) {
+    log.error(`${target} on ${reading.node}: ${reading.error ?? 'no answer'}`);
+    return;
+  }
+  const inspection = reading.inspection;
+  log.info(prism.bold(`${target} on ${reading.node} — read, nothing changed`));
+  log.info(
+    `interfaces: ${inspection.interfaces
+      .filter((i) => i.family === 'IPv4')
+      .map((i) => `${i.name} ${i.address}`)
+      .join(' · ')}`,
+  );
+
+  for (const service of inspection.services) {
+    const head = `${prism.bold(service.name)} ${service.provisioning}${service.networkMode ? ` · ${service.networkMode}` : ''}`;
+    if (service.external) {
+      const e = service.external;
+      const answer = e.probe
+        ? e.probe.ok
+          ? `${e.probe.method}: ${Object.entries(e.probe.result ?? {})
+              .filter(([, v]) => typeof v !== 'string' || v.length <= 24)
+              .slice(0, 12)
+              .map(([k, v]) => `${k}=${v}`)
+              .join(' ')}`
+          : `${e.probe.method}: ${prism.red(e.probe.error ?? 'failed')}`
+        : '';
+      log.info(`${head} → ${e.host}:${e.port ?? '-'} · on this node ${yes(e.local)} · reachable ${yes(e.reachable)} ${answer}`);
+    } else if (service.onHost) {
+      const h = service.onHost;
+      log.info(
+        `${head} · installed ${yes(h.installed)} · user ${yes(h.userExists)} · unit ` +
+          (h.unit ? `${h.unit.name} ${h.unit.known ? (h.unit.active ? 'active' : 'inactive') : 'unknown'}` : '-') +
+          ` · config ${h.config} · unit file ${h.unitFile}`,
+      );
+      if (h.dataDir) {
+        log.info(
+          `  data ${h.dataDir.path} · ${h.dataDir.exists ? `owner ${h.dataDir.owner}` : 'absent'} · ` +
+            `${h.dataDir.disk ? `${h.dataDir.disk.mount} free ${bytes(h.dataDir.disk.availBytes)} of ${bytes(h.dataDir.disk.sizeBytes)}` : 'disk unknown'}`,
+        );
+      }
+      for (const action of h.actions) log.info(`  would ${action}`);
+      for (const refusal of h.refusals) log.warn(`  refuses: ${refusal}`);
+    } else {
+      log.info(head);
+    }
+  }
+
+  for (const unit of inspection.units) {
+    log.info(
+      `unit ${unit.unit}: ${unit.known ? `${unit.active ? 'active' : 'inactive'}, ${unit.enabled ? 'enabled' : 'disabled'}, ${unit.fragmentPath}` : 'unknown'}` +
+        (unit.execStart ? ` · ${unit.execStart}` : ''),
+    );
+  }
+  for (const path of inspection.paths) {
+    log.info(
+      `path ${path.path}: ${path.exists ? `owner ${path.owner} · ${bytes(path.sizeBytes)}` : 'absent'}` +
+        (path.disk ? ` · ${path.disk.mount} free ${bytes(path.disk.availBytes)} of ${bytes(path.disk.sizeBytes)}` : ''),
+    );
+  }
+  for (const snap of inspection.snaps) {
+    log.info(`snap ${snap.name}: ${snap.installed ? `${snap.version} (rev ${snap.revision})` : 'not installed'}`);
+  }
+  for (const file of inspection.configKeys) {
+    const values = Object.entries(file.values).map(([k, v]) => `${k}=${v ?? '(unset)'}`).join(' ');
+    log.info(`config ${file.path}: ${file.exists ? values : 'absent'}${file.refused.length ? ` · refused ${file.refused.join(', ')}` : ''}`);
+  }
 }
 
 function colourStatus(status: string | undefined): string {

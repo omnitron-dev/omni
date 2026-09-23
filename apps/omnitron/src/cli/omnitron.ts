@@ -641,6 +641,16 @@ secret
   });
 
 secret
+  .command('rotate-rpcauth <passwordKey>')
+  .description('A new RPC password and its bitcoind rpcauth value, as a pair — nothing printed but key names')
+  .requiredOption('--user-key <key>', 'The secret holding the RPC user')
+  .requiredOption('--auth-key <key>', 'The secret to hold the rpcauth value')
+  .action(async (passwordKey: string, opts: { userKey: string; authKey: string }) => {
+    const { secretRotateRpcauthCommand } = await import('../commands/secret.js');
+    await secretRotateRpcauthCommand(passwordKey, opts);
+  });
+
+secret
   .command('delete <key>')
   .description('Delete a secret')
   .action(async (key: string) => {
@@ -748,6 +758,19 @@ infra
   .action(async (opts: { stack?: string }) => {
     const { infraStatusCommand } = await import('../commands/infra.js');
     await infraStatusCommand(opts.stack ? { stack: opts.stack } : {});
+  });
+
+const collect = (value: string, previous: string[] = []) => [...previous, value];
+infra
+  .command('inspect <project/stack>')
+  .description('What each node of a remote stack would find and do on its host — read, never changed')
+  .option('--unit <name>', 'Also read this systemd unit (repeatable)', collect)
+  .option('--path <path>', 'Also measure this path: owner, size, free space (repeatable)', collect)
+  .option('--snap <name>', 'Also read this snap package (repeatable)', collect)
+  .option('--config <file:key,key>', 'Also read these keys of a key=value file; credentials refused (repeatable)', collect)
+  .action(async (target: string, opts: { unit?: string[]; path?: string[]; snap?: string[]; config?: string[] }) => {
+    const { infraInspectCommand } = await import('../commands/infra.js');
+    await infraInspectCommand(target, opts);
   });
 
 infra

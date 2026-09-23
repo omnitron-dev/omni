@@ -434,21 +434,29 @@ export class LogCollectorService extends EventEmitter {
     };
 
     const query = this.db.selectFrom('logs').selectAll().where(matching);
-    const countQuery = this.db
+    // The total and its breakdown by level, counted by one query: the total
+    // is their sum. The console printed the total beside `getLogStats`'s
+    // levels — the whole table's, filtered by nothing — so on the master
+    // (2026-09-23) «Showing 100 of 48 991» sat beside «error: 42 650» for an
+    // hour that held 149 errors among 9 159 730 rows since 09-09.
+    const levelsQuery = this.db
       .selectFrom('logs')
-      .select(this.db.fn.countAll<string>().as('count'))
-      .where(matching);
+      .select(['level', this.db.fn.countAll<string>().as('count')])
+      .where(matching)
+      .groupBy('level');
 
-    const [entries, countResult] = await Promise.all([
+    const [entries, levels] = await Promise.all([
       query.orderBy('timestamp', 'desc').limit(limit).offset(offset).execute(),
-      countQuery.executeTakeFirst(),
+      levelsQuery.execute(),
     ]);
 
-    const total = Number(countResult?.count ?? 0);
+    const byLevel = levels.map((r) => ({ level: r.level, count: Number(r.count) }));
+    const total = byLevel.reduce((sum, { count }) => sum + count, 0);
 
     return {
       entries: entries as unknown as LogEntryRow[],
       total,
+      byLevel,
       hasMore: offset + limit < total,
     };
   }

@@ -30,13 +30,27 @@ import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
 import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 
-import type { LogEntryRow, LogStats } from '@omnitron-dev/omnitron/dto/services';
+import type { LogEntryRow, LevelCount } from '@omnitron-dev/omnitron/dto/services';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
 const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
+
+/**
+ * The known levels in severity order, then any other a writer recorded, as
+ * recorded — `medium`, `None`: an app that logs its own `level` field
+ * overwrites the record's. Dropping those made the breakdown fall short of
+ * the total beside it.
+ */
+function inLevelOrder(counts: readonly LevelCount[]): LevelCount[] {
+  const rank = (level: string) => {
+    const known = (LEVELS as readonly string[]).indexOf(level);
+    return known === -1 ? LEVELS.length : known;
+  };
+  return [...counts].sort((a, b) => rank(a.level) - rank(b.level));
+}
 
 const LEVEL_LABELS: Record<string, string> = {
   trace: 'TRC',
@@ -334,7 +348,7 @@ export default function LogsPage() {
 
   // ---- Data ----
   const [logRows, setLogRows] = useState<LogEntryRow[]>([]);
-  const [stats, setStats] = useState<LogStats | null>(null);
+  const [levelCounts, setLevelCounts] = useState<LevelCount[]>([]);
   // The app filter has two sources, kept apart because they mean different
   // things: what is RUNNING in the active project, and what has LOGGED at any
   // point. Both hold fully-namespaced names — the value the daemon actually
@@ -436,22 +450,25 @@ export default function LogsPage() {
     })();
   }, []);
 
-  // ---- Fetch stats ----
-  const fetchStats = useCallback(async () => {
+  // ---- Apps that have logged ----
+  //
+  // `getLogStats` groups the whole table, so it is asked when the page opens
+  // and on Refresh — not on every change of filter, which it answers nothing
+  // about.
+  const fetchLoggedApps = useCallback(async () => {
     try {
-      const s: LogStats = await logs.getLogStats();
-      setStats(s);
+      const s = await logs.getLogStats();
       // Replaced, not unioned: `byApp` is the complete grouping of the log
       // table, so a union only ever accumulated names that had already gone.
       setLoggedApps(s.byApp.map((a) => a.app));
     } catch {
-      /* stats optional */
+      /* the running apps still fill the filter */
     }
   }, []);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    fetchLoggedApps();
+  }, [fetchLoggedApps]);
 
   // ---- App filter options ----
   //
@@ -527,6 +544,7 @@ export default function LogsPage() {
       const result = await logs.queryLogs(buildFilter(0) as any);
       setLogRows(result.entries);
       setTotal(result.total);
+      setLevelCounts(result.byLevel);
       setHasMore(result.hasMore);
       setError(null);
       newIdsRef.current.clear();
@@ -714,32 +732,17 @@ export default function LogsPage() {
     debouncedSearch !== '' ||
     labelInput !== '';
 
-  // ---- Stats breakdown (filtered) ----
-  const filteredStats = useMemo(() => {
-    if (!stats) return null;
-
-    // Build level breakdown from stats or current log set
-    const levelMap = new Map<string, number>();
-    if (isLive) {
-      for (const log of logRows) {
-        levelMap.set(log.level, (levelMap.get(log.level) ?? 0) + 1);
-      }
-    } else {
-      for (const entry of stats.byLevel) {
-        levelMap.set(entry.level, entry.count);
-      }
-    }
-
-    return LEVELS.filter((l) => levelMap.has(l)).map((l) => ({
-      level: l,
-      count: levelMap.get(l)!,
-    }));
-  }, [stats, logRows, isLive]);
-
-  // ---- Refresh stats on filter change (non-live) ----
-  useEffect(() => {
-    if (!isLive) fetchStats();
-  }, [buildFilter, isLive, fetchStats]);
+  // ---- Level breakdown ----
+  //
+  // Of the rows the count beside it counts: the query's own breakdown, or,
+  // live, the entries on screen. It was the whole table's levels, refetched
+  // on every change of filter and narrowed by none of them.
+  const levelBreakdown = useMemo(() => {
+    if (!isLive) return inLevelOrder(levelCounts);
+    const onScreen = new Map<string, number>();
+    for (const row of logRows) onScreen.set(row.level, (onScreen.get(row.level) ?? 0) + 1);
+    return inLevelOrder([...onScreen].map(([level, count]) => ({ level, count })));
+  }, [isLive, levelCounts, logRows]);
 
   // ==========================================================================
   // Render
@@ -805,7 +808,7 @@ export default function LogsPage() {
                       lastTimestampRef.current = null;
                     }
                     fetchLogs();
-                    fetchStats();
+                    fetchLoggedApps();
                   }}
                 >
                   <RefreshIcon />
@@ -1068,12 +1071,12 @@ export default function LogsPage() {
                 : `Showing ${logRows.length.toLocaleString()} of ${total.toLocaleString()}`}
           </Typography>
 
-          {filteredStats && filteredStats.length > 0 && (
+          {!loading && levelBreakdown.length > 0 && (
             <Stack direction="row" spacing={1.5} sx={{
               alignItems: "center"
             }}>
               <Box sx={{ width: 1, height: 12, bgcolor: alpha('#fff', 0.06) }} />
-              {filteredStats.map((entry) => (
+              {levelBreakdown.map((entry) => (
                 <Stack key={entry.level} direction="row" spacing={0.5} sx={{
                   alignItems: "center"
                 }}>

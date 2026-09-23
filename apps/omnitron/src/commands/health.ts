@@ -20,6 +20,11 @@ export async function healthCommand(appName?: string): Promise<void> {
   try {
     const health = await client.getHealth(appName ? { name: appName } : {});
 
+    // Not healthy is a non-zero exit, in both modes: a script that asks
+    // `omnitron health && deploy` was told «fine» by the exit code whatever
+    // the report said.
+    if (health.overall !== 'healthy') process.exitCode = 1;
+
     if (emitJson({ overall: health.overall, ...(health.daemon ? { daemon: health.daemon } : {}), apps: health.apps })) {
       await client.disconnect();
       return;
@@ -71,6 +76,7 @@ export async function healthCommand(appName?: string): Promise<void> {
     box(lines.join('\n'), 'Health Report');
   } catch (err) {
     emitError((err as Error).message, appName ? { app: appName } : undefined);
+    process.exitCode = 1;
   }
 
   await client.disconnect();

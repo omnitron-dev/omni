@@ -54,6 +54,18 @@ export class AppHealthIndicator extends HealthIndicator {
       );
     }
 
+    // Starting, stopping and stopped are neither online nor crashed, and fell
+    // through to «All N apps online» with N the TOTAL: seen right after a
+    // daemon restart as «All 3 apps online» while three of them were still
+    // starting. What is not online is said as what it is.
+    const notOnline = apps.filter((a) => a.status !== 'online');
+    if (notOnline.length > 0) {
+      const byStatus = new Map<string, string[]>();
+      for (const a of notOnline) byStatus.set(a.status, [...(byStatus.get(a.status) ?? []), a.name]);
+      const said = [...byStatus].map(([status, names]) => `${status}: ${names.join(', ')}`).join('; ');
+      return this.degraded(`${online.length} of ${apps.length} apps online — ${said}`, details);
+    }
+
     return this.healthy(`All ${apps.length} apps online`, details);
   }
 }

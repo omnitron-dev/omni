@@ -131,6 +131,20 @@ export interface PipelineOptions {
 const DEFAULT_TIMEOUT_MS = 600_000;
 
 /**
+ * What to say about a child our own timer killed.
+ *
+ * It closes with `code === null`, and the only message this produced was
+ * "docker exited with code null". Measured on the master, 2026-09-23:
+ * «Creating backup main» at 06:04:08Z, the next line 603 s later, and a pass
+ * summary of `{"total":6,"ok":5}` — the one reason anybody needed, that the
+ * 600 s timeout had fired, was never written down in words.
+ */
+function killedByTimer(command: string, timeoutMs: number, stderr: string): string {
+  const limit = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)} s` : `${timeoutMs} ms`;
+  return `${command} did not finish within ${limit} and was killed` + (stderr ? `: ${stderr.trim()}` : '');
+}
+
+/**
  * Run `command args…`, sending stdout to `outputPath`, optionally gzipped.
  *
  * @throws when the command exits non-zero, carrying its stderr — which the
@@ -159,7 +173,12 @@ export async function dumpToFile(
     if (stderr.length < 8192) stderr += String(chunk);
   });
 
-  const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, timeoutMs);
 
   // Attached before anything is awaited, so neither event can be missed and
   // no 'error' arrives without a listener.
@@ -199,6 +218,7 @@ export async function dumpToFile(
     const [, code] = await Promise.all([pumping, exited]);
 
     if (code !== 0) {
+      if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr));
       throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
     }
 
@@ -247,7 +267,12 @@ export async function restoreFromFile(
     if (stderr.length < 8192) stderr += String(chunk);
   });
 
-  const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, timeoutMs);
 
   const started = new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve);
@@ -279,10 +304,14 @@ export async function restoreFromFile(
     const [, code] = await Promise.all([pumping, exited]);
 
     if (code !== 0) {
+      if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr));
       throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
     }
   } catch (err) {
     if (pumping) await pumping.catch(() => undefined);
+    // Killing the reader breaks the pipe into it, and that EPIPE can reach
+    // here before the exit code does — the timeout is still the reason.
+    if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr), { cause: err });
     throw err;
   } finally {
     clearTimeout(timer);

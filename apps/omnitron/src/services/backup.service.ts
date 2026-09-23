@@ -57,7 +57,69 @@ interface ScheduleEntry {
   cancelled?: boolean;
 }
 
+/**
+ * How one pass ended. `empty` is its own word: a pass that found nothing to
+ * back up did not succeed, and must not read as if it had.
+ */
+export type BackupPassOutcome = 'ok' | 'partial' | 'failed' | 'empty';
 
+/** One entry of a pass: a database, or a `full`-only artefact. */
+export interface BackupPassEntry {
+  target: string;
+  ok: boolean;
+  id?: string;
+  size?: number;
+  error?: string;
+}
+
+/** What the last pass of one target did — persisted, so it outlives a restart. */
+export interface BackupPassRecord {
+  target: string;
+  trigger: 'schedule' | 'manual';
+  startedAt: string;
+  finishedAt: string;
+  outcome: BackupPassOutcome;
+  ok: number;
+  total: number;
+  failures: Array<{ target: string; error: string }>;
+}
+
+/** A configured schedule, and what it last did. */
+export interface BackupScheduleStatus {
+  target: string;
+  /** The specification as stored — cron, preset, or ms. */
+  spec: string;
+  /** `describeSchedule` of it, or null when the stored spec cannot be read. */
+  schedule: string | null;
+  /** Why the stored spec cannot be read: configured, and not running. */
+  error?: string;
+  armed: boolean;
+  /** The last pass this target ran, from any daemon run; null if none was recorded. */
+  lastPass: BackupPassRecord | null;
+}
+
+/** Everything `backup schedules` and `backup list` need beyond the index rows. */
+export interface BackupStatus {
+  schedules: BackupScheduleStatus[];
+}
+
+/** A failure's own words, without the "Backup failed for 'x':" every wrapper adds. */
+function reasonOf(err: unknown): string {
+  const e = err as Error & { cause?: unknown };
+  const inner = e?.cause instanceof Error ? e.cause.message : undefined;
+  return (inner ?? e?.message ?? String(err)).slice(0, 500);
+}
+
+/**
+ * The outcome of a pass, from its entries. No entries is `empty`, never `ok`:
+ * «0 of 0 backed up» is a pass that protected nothing.
+ */
+export function passOutcome(entries: Array<{ ok: boolean }>): BackupPassOutcome {
+  if (entries.length === 0) return 'empty';
+  const ok = entries.filter((e) => e.ok).length;
+  if (ok === entries.length) return 'ok';
+  return ok === 0 ? 'failed' : 'partial';
+}
 
 /**
  * Non-database artefacts that only a `full` pass produces, and therefore
@@ -220,6 +282,8 @@ export function databasesToPrune(scheduled: string[], onDisk: string[]): string[
 @Injectable()
 export class BackupService {
   private static readonly SCHEDULES_KV_KEY = 'backup:schedules';
+  /** Target → the last pass it ran. Beside the schedules, in the same store. */
+  private static readonly PASSES_KV_KEY = 'backup:last-pass';
   private readonly backupDir: string;
   private readonly logger: ILogger;
   private schedules = new Map<string, ScheduleEntry>();
@@ -727,9 +791,12 @@ export class BackupService {
    * Full backup: every stack DB + minio storage objects + tor keys +
    * daemon-state (secrets). Per-target failures are captured, not fatal.
    */
-  async createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+  async createFullBackup(
+    trigger: BackupPassRecord['trigger'] = 'manual',
+  ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    const startedAt = new Date();
     const results: Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
-    for (const r of await this.createAllBackups()) {
+    for (const r of await this.backUpStackDatabases()) {
       const { database, ...rest } = r;
       results.push({ target: database, ...rest });
     }
@@ -744,10 +811,98 @@ export class BackupService {
         results.push({ target, ok: true, id: info.id, size: info.size });
       } catch (err) {
         results.push({ target, ok: false, error: (err as Error).message });
+        this.logger.error({ target, error: reasonOf(err) }, 'Backup failed');
       }
     }
-    this.logger.info({ total: results.length, ok: results.filter((r) => r.ok).length }, 'createFullBackup complete');
+    this.finishPass('full', trigger, startedAt, results);
     return results;
+  }
+
+  /**
+   * Close a pass: one summary line at a level that matches what happened, and
+   * a persisted record `backup schedules` shows.
+   *
+   * The summary was always `info` — `createAllBackups complete
+   * {"total":6,"ok":5}` for the 06:04Z pass on the master that lost `main`,
+   * the same level and message as a pass that lost nothing — and
+   * `runScheduledBackup` discarded the results, its `error` reachable only by
+   * a throw that a per-entry catch never let happen.
+   */
+  private finishPass(
+    target: string,
+    trigger: BackupPassRecord['trigger'],
+    startedAt: Date,
+    entries: BackupPassEntry[],
+  ): BackupPassRecord {
+    const failures = entries
+      .filter((e) => !e.ok)
+      .map((e) => ({ target: e.target, error: (e.error ?? 'failed').slice(0, 500) }));
+    const record: BackupPassRecord = {
+      target,
+      trigger,
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      outcome: passOutcome(entries),
+      ok: entries.length - failures.length,
+      total: entries.length,
+      failures,
+    };
+    const summary = { target, trigger, total: record.total, ok: record.ok, outcome: record.outcome };
+    const msg = target === 'full' ? 'createFullBackup complete' : target === 'all' ? 'createAllBackups complete' : 'Backup pass complete';
+    if (record.outcome === 'ok') {
+      this.logger.info(summary, msg);
+    } else if (record.outcome === 'empty') {
+      this.logger.warn(summary, `${msg} — nothing was backed up: no database or artefact was found`);
+    } else {
+      this.logger.error(
+        { ...summary, failed: failures.map((f) => f.target) },
+        `${msg} — ${failures.length} of ${record.total} failed: ${failures.map((f) => f.target).join(', ')}`,
+      );
+    }
+    try {
+      const passes = this.store.kvGetSync<Record<string, BackupPassRecord>>(BackupService.PASSES_KV_KEY) ?? {};
+      passes[target] = record;
+      this.store.kvSetSync(BackupService.PASSES_KV_KEY, passes);
+    } catch (err) {
+      this.logger.warn({ target, err: (err as Error).message }, 'Could not record the backup pass');
+    }
+    return record;
+  }
+
+  /** The last recorded pass of every target. */
+  private lastPasses(): Record<string, BackupPassRecord> {
+    try {
+      return this.store.kvGetSync<Record<string, BackupPassRecord>>(BackupService.PASSES_KV_KEY) ?? {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * What the schedules are and what each last did — what `backup schedules`
+   * prints, and what `backup list` warns from.
+   */
+  async getStatus(): Promise<BackupStatus> {
+    const specs = await this.listSchedules();
+    const passes = this.lastPasses();
+    const schedules: BackupScheduleStatus[] = Object.entries(specs).map(([target, spec]) => {
+      let schedule: string | null = null;
+      let error: string | undefined;
+      try {
+        schedule = describeSchedule(parseSchedule(spec));
+      } catch (err) {
+        error = (err as Error).message;
+      }
+      return {
+        target,
+        spec,
+        schedule,
+        ...(error ? { error } : {}),
+        armed: this.schedules.has(target),
+        lastPass: passes[target] ?? null,
+      };
+    });
+    return { schedules };
   }
 
   // ===========================================================================
@@ -971,9 +1126,22 @@ export class BackupService {
    */
   private async runScheduledBackup(database: string): Promise<void> {
     try {
-      if (database === 'full') await this.createFullBackup();
-      else if (database === 'all') await this.createAllBackups();
-      else await this.createBackup(database, { compress: true });
+      if (database === 'full') await this.createFullBackup('schedule');
+      else if (database === 'all') await this.createAllBackups('schedule');
+      else {
+        // A single database is a pass of one, recorded like the others; its
+        // failure is caught here rather than thrown past the record.
+        const startedAt = new Date();
+        let entry: BackupPassEntry;
+        try {
+          const info = await this.createBackup(database, { compress: true });
+          entry = { target: database, ok: true, id: info.id, size: info.size };
+        } catch (err) {
+          entry = { target: database, ok: false, error: (err as Error).message };
+          this.logger.error({ database, error: reasonOf(err) }, 'Backup failed');
+        }
+        this.finishPass(database, 'schedule', startedAt, [entry]);
+      }
       await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
     } catch (err) {
       this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
@@ -1175,7 +1343,22 @@ export class BackupService {
    * Back up every database of every running stack. A single DB failure is
    * captured per-entry and does not abort the rest. Returns per-DB results.
    */
-  async createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+  async createAllBackups(
+    trigger: BackupPassRecord['trigger'] = 'manual',
+  ): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+    const startedAt = new Date();
+    const results = await this.backUpStackDatabases();
+    this.finishPass('all', trigger, startedAt, results.map(({ database, ...rest }) => ({ target: database, ...rest })));
+    return results;
+  }
+
+  /**
+   * The database half of `all` and `full`. Each failure is logged where it
+   * happens, with the database and its reason: the 06:04Z pass on the
+   * master lost `main` to the 600 s dump timeout, and the only trace was a
+   * database missing from the next listing.
+   */
+  private async backUpStackDatabases(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
     const bareNames = [...new Set([...this.buildStackDbMap().keys()].filter((k) => !k.includes('/')))];
     const results: Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }> = [];
     for (const db of bareNames) {
@@ -1184,9 +1367,9 @@ export class BackupService {
         results.push({ database: db, ok: true, id: info.id, size: info.size });
       } catch (err) {
         results.push({ database: db, ok: false, error: (err as Error).message });
+        this.logger.error({ database: db, error: reasonOf(err) }, 'Backup failed');
       }
     }
-    this.logger.info({ total: results.length, ok: results.filter((r) => r.ok).length }, 'createAllBackups complete');
     return results;
   }
 

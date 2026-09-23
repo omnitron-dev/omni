@@ -15,8 +15,11 @@
  *   omnitron infra reset      — DESTRUCTIVE: wipe volumes, recreate
  */
 
+import os from 'node:os';
 import { log, table, prism } from '@xec-sh/kit';
 import { loadEcosystemConfig } from '../config/loader.js';
+import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { IStackInfo } from '../shared/dto/project.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
@@ -121,21 +124,133 @@ export async function infraDownCommand(opts?: { volumes?: boolean }): Promise<vo
   log.info(`Stopped ${containers.length} container(s).`);
 }
 
-export async function infraStatusCommand(): Promise<void> {
+/** `project/stack` as a container's labels say, or `-` when it carries none. */
+function stackLabel(c: ContainerState): string {
+  return c.project && c.stack ? `${c.project}/${c.stack}` : '-';
+}
+
+/**
+ * `--stack <project>/<stack>`, split — or the reason it cannot be.
+ */
+function parseStack(value: string): { project: string; stack: string } | string {
+  const [project, stack, ...rest] = value.split('/');
+  if (!project || !stack || rest.length > 0) return `--stack takes <project>/<stack>, e.g. daos/test — got '${value}'`;
+  return { project, stack };
+}
+
+/**
+ * Ask the daemon about a stack this machine holds no containers of.
+ *
+ * The same read `omnitron stack status` makes: for a remote stack,
+ * `getStack` asks the node itself for its containers (`remoteInfraStatus`
+ * in the project service, over the master's mesh). A string is the reason
+ * the daemon could not answer.
+ */
+async function askStack(project: string, stack: string): Promise<IStackInfo | string> {
+  const client = createDaemonClient();
+  try {
+    if (!(await client.isReachable())) return 'the daemon did not answer, so where the stack runs is unknown';
+    const projects = await client.service<import('../shared/dto/services.js').IProjectRpcService>('OmnitronProject');
+    return await projects.getStack({ project, stack });
+  } catch (err) {
+    return (err as Error).message;
+  } finally {
+    await client.disconnect();
+  }
+}
+
+/**
+ * `omnitron infra status [--stack <project>/<stack>]`.
+ *
+ * What `listManagedContainers` returns is THIS machine's containers, and the
+ * table said so nowhere: measured 2026-09-23 on the master, twelve
+ * `daos-dev-*` / `omnitron-*` rows with no host and no stack column, and the
+ * six containers of the test stack — on 37.27.130.185 — invisible, with
+ * nothing to say they exist. Now the header names the machine, each row its
+ * stack, and `--stack` reaches a remote stack's containers the way `stack
+ * status` does: by asking its node.
+ */
+export async function infraStatusCommand(opts: { stack?: string } = {}): Promise<void> {
   const containers = await listManagedContainers();
+  const machine = os.hostname();
+
+  if (opts.stack) {
+    const wanted = parseStack(opts.stack);
+    if (typeof wanted === 'string') {
+      log.error(wanted);
+      process.exitCode = 1;
+      return;
+    }
+    const here = containers.filter((c) => c.project === wanted.project && c.stack === wanted.stack);
+    if (here.length > 0) {
+      log.info(prism.bold(`Containers of ${opts.stack} on this machine (${machine})`));
+      printContainers(here);
+      return;
+    }
+
+    const info = await askStack(wanted.project, wanted.stack);
+    if (typeof info === 'string') {
+      log.error(`No containers of ${opts.stack} on this machine (${machine}), and ${info}.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (info.type === 'local') {
+      log.error(`No containers of ${opts.stack} on this machine (${machine}) — the stack is local and has none running.`);
+      process.exitCode = 1;
+      return;
+    }
+    const hosts = info.nodes.map((n) => n.host).join(', ') || 'its node';
+    const services = Object.entries(info.infrastructure.services);
+    if (services.length === 0) {
+      log.warn(
+        `${opts.stack} runs on ${hosts}, and no infrastructure was reported for it — the node may not have answered. ` +
+          `\`omnitron stack status ${wanted.project} ${wanted.stack}\` shows what the master knows.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    log.info(prism.bold(`Containers of ${opts.stack} on ${hosts} — asked of the node through the daemon`));
+    table({
+      width: 'auto',
+      data: services.map(([name, svc]) => ({
+        service: name,
+        container: svc.containerName,
+        status: colourStatus(svc.status),
+        port: svc.port ?? '-',
+      })),
+      columns: [
+        { key: 'service', header: 'Service' },
+        { key: 'container', header: 'Container' },
+        { key: 'status', header: 'Status' },
+        { key: 'port', header: 'Port' },
+      ],
+    });
+    return;
+  }
 
   if (containers.length === 0) {
-    log.info('No Omnitron-managed containers found.');
+    log.info(`No Omnitron-managed containers on this machine (${machine}).`);
     log.info('Run: omnitron infra up');
     return;
   }
 
+  log.info(prism.bold(`Containers on this machine (${machine})`));
+  printContainers(containers);
+  log.info(prism.dim('A remote stack\'s containers run on its node: omnitron infra status --stack <project>/<stack>'));
+}
+
+function colourStatus(status: string | undefined): string {
+  return status === 'running' ? prism.green(status) : status === 'exited' || status === 'error' ? prism.red(status) : prism.yellow(status ?? 'unknown');
+}
+
+function printContainers(containers: readonly ContainerState[]): void {
   table({
     width: 'auto',
     data: containers.map((c) => ({
       name: c.name,
+      stack: stackLabel(c),
       image: c.image,
-      status: c.status === 'running' ? prism.green(c.status) : c.status === 'exited' ? prism.red(c.status) : prism.yellow(c.status ?? 'unknown'),
+      status: colourStatus(c.status),
       health: c.health === 'healthy' ? prism.green(c.health) : c.health === 'unhealthy' ? prism.red(c.health) : prism.dim(c.health ?? 'n/a'),
     })),
     // No fixed widths: with `width: 'auto'` the table sizes to its content,
@@ -144,6 +259,7 @@ export async function infraStatusCommand(): Promise<void> {
     // half of an image name anyone reads this column for.
     columns: [
       { key: 'name', header: 'Name' },
+      { key: 'stack', header: 'Stack' },
       { key: 'image', header: 'Image' },
       { key: 'status', header: 'Status' },
       { key: 'health', header: 'Health' },
@@ -151,25 +267,76 @@ export async function infraStatusCommand(): Promise<void> {
   });
 }
 
-export async function infraLogsCommand(service?: string, opts?: { follow?: boolean; lines?: string }): Promise<void> {
-  const containers = await listManagedContainers();
-  const target = service
-    ? containers.find((c) => c.name.includes(service))
-    : null;
-
-  if (service && !target) {
-    log.error(`Container matching '${service}' not found.`);
-    log.info(`Available: ${containers.map((c) => c.name).join(', ')}`);
-    return;
-  }
-
-  const targets = target ? [target] : containers.filter((c) => c.status === 'running');
+/**
+ * `omnitron infra logs [service] [--stack <project>/<stack>]`.
+ *
+ * Every container is named with its stack and machine before its logs.
+ * `infra logs tor` printed `daos-dev-tor`'s log bare — the first container
+ * whose name contained «tor» — to an operator who may have meant the test
+ * stack's, on another machine. Several matches are now listed rather than
+ * the first one taken; a remote stack's logs are on its node, and no daemon
+ * RPC relays a node's container logs to this CLI, so that is said instead
+ * of printing this machine's.
+ */
+export async function infraLogsCommand(
+  service?: string,
+  opts?: { follow?: boolean; lines?: string; stack?: string },
+): Promise<void> {
+  const all = await listManagedContainers();
+  const machine = os.hostname();
   const tail = parseInt(opts?.lines ?? '50', 10);
 
-  for (const t of targets) {
-    if (targets.length > 1) {
-      process.stdout.write(`\n${prism.cyan(`─── ${t.name} ───`)}\n`);
+  let containers = all;
+  if (opts?.stack) {
+    const wanted = parseStack(opts.stack);
+    if (typeof wanted === 'string') {
+      log.error(wanted);
+      process.exitCode = 1;
+      return;
     }
+    containers = all.filter((c) => c.project === wanted.project && c.stack === wanted.stack);
+    if (containers.length === 0) {
+      const info = await askStack(wanted.project, wanted.stack);
+      if (typeof info !== 'string' && info.type !== 'local') {
+        const hosts = info.nodes.map((n) => n.host).join(', ') || 'its node';
+        const named = service ? info.infrastructure.services[service]?.containerName : undefined;
+        log.error(
+          `The containers of ${opts.stack} run on ${hosts}, not on this machine (${machine}), ` +
+            'and no daemon RPC relays a node\'s container logs to this command.',
+        );
+        log.info(`  On the node: docker logs --tail ${tail} ${named ?? '<container>'}`);
+      } else {
+        log.error(`No containers of ${opts.stack} on this machine (${machine})${typeof info === 'string' ? `, and ${info}` : ''}.`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  let targets: ContainerState[];
+  if (service) {
+    // The service label first — `tor` is a service; `daos-dev-tor` a name.
+    const byLabel = containers.filter((c) => c.service === service);
+    const matches = byLabel.length > 0 ? byLabel : containers.filter((c) => c.name.includes(service));
+    if (matches.length === 0) {
+      log.error(`Container matching '${service}' not found on this machine (${machine}).`);
+      log.info(`Available: ${containers.map((c) => c.name).join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (matches.length > 1) {
+      log.error(`'${service}' matches ${matches.length} containers on this machine — choose one with --stack <project>/<stack>:`);
+      for (const c of matches) log.info(`  ${c.name}  (stack ${stackLabel(c)})`);
+      process.exitCode = 1;
+      return;
+    }
+    targets = matches;
+  } else {
+    targets = containers.filter((c) => c.status === 'running');
+  }
+
+  for (const t of targets) {
+    process.stdout.write(`\n${prism.cyan(`─── ${t.name} — stack ${stackLabel(t)}, this machine (${machine}) ───`)}\n`);
     try {
       const logs = await getContainerLogs(t.name, tail);
       process.stdout.write(logs + '\n');

@@ -236,16 +236,29 @@ stack
 
 stack
   .command('account <project> <stack>')
-  .description("Make a named account with a platform role on a remote stack — its password goes to this daemon's vault")
-  .requiredOption('--username <name>', "The account's name")
+  .description(
+    "Accounts on a remote stack's stand: make one (its password goes to this daemon's vault), show one, or take one away",
+  )
+  .option('--username <name>', "Make an account with this name")
   .option('--role <role>', "Its platform role — which exist, and the default, are the project's tool's to say")
   .option('--display-name <text>', 'Its display name (default: the username)')
+  .option('--show <name>', 'What the stand holds under this name — id, role, when made, last active; never a secret')
+  .option('--remove <name>', 'Take the account with this name away — with --id, and its password from the vault')
+  .option('--id <uuid>', 'The id of the account --remove takes away (as --show prints it)')
   .option('--vault-key <key>', 'Where the password is kept (default: <project>.<stack>.account.<username>.password)')
   .action(
     async (
       projectName: string,
       stackName: string,
-      options: { username: string; role?: string; displayName?: string; vaultKey?: string },
+      options: {
+        username?: string;
+        show?: string;
+        remove?: string;
+        id?: string;
+        role?: string;
+        displayName?: string;
+        vaultKey?: string;
+      },
     ) => {
       const { stackAccountCommand } = await import('../commands/stack.js');
       await stackAccountCommand(projectName, stackName, options);

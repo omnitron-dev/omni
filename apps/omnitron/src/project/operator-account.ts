@@ -12,18 +12,28 @@
  * node's own credentials, under the node's deploy lease, the transport the
  * on-node attestation already uses.
  *
- * The password is generated ON the node and crosses once: the last line of
- * the tool's stdout, into this daemon's vault. Never a command line (the
- * node's process table, this daemon's exec log), never the answer to the
- * caller, a log line or an audit row. `omnitron secret get <key>` reads it,
- * in the operator's own terminal.
+ * The password is generated ON the node and comes back SEALED — RSA-OAEP to a
+ * key this daemon makes for the one run and never writes down (`sealingKey`)
+ * — and is opened only to go into the vault. `omnitron secret get <key>`
+ * reads it, in the operator's own terminal.
  *
- * So stdout is never quoted, by anything here: on a transport failure it may
- * hold the password, and an error is a thing that gets logged. The tool's
- * words for a refusal are on stderr.
+ * Sealed because the transport rewrites what looks like a secret. Every
+ * stdout the SSH layer returns passes through its masker, and
+ * `"password":"…"` comes back as `"password": [REDACTED]` — measured on
+ * daos/test, 2026-09-23: the first account made this way was made, the tool
+ * said so with exit 0, and the line carrying its password arrived as a line
+ * that was no longer JSON. It was refused, rightly — a masker that had kept
+ * the JSON valid would have put the string `[REDACTED]` in the vault — and
+ * the account stayed on the stand with a password nobody could ever read.
+ * A sealed password is nothing a masker recognises, and nothing any log that
+ * kept the line could use.
+ *
+ * Even so, a make's stdout is never quoted here: an answer this side cannot
+ * read is described by its shape, not its content.
  */
 
 import { execFile } from 'node:child_process';
+import { constants, generateKeyPair, privateDecrypt } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,6 +52,30 @@ export function accountVaultKey(project: string, stack: string, username: string
 }
 
 /**
+ * A key for one run: its public half goes to the tool as `--seal-to`, its
+ * private half stays in this process and opens the one value sealed to it.
+ * Generated asynchronously — a 3072-bit key takes long enough to notice on
+ * the daemon's event loop.
+ */
+export interface SealingKey {
+  /** Base64 SPKI DER — what `--seal-to` takes. Public. */
+  readonly spki: string;
+  open(sealed: string): string;
+}
+
+export async function sealingKey(): Promise<SealingKey> {
+  const { publicKey, privateKey } = await promisify(generateKeyPair)('rsa', { modulusLength: 3072 });
+  return {
+    spki: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    open: (sealed) =>
+      privateDecrypt(
+        { key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+        Buffer.from(sealed, 'base64'),
+      ).toString('utf8'),
+  };
+}
+
+/**
  * The containers the tool reaches, by the names they have on the node —
  * `<prefix>-postgres`, not the developer's `daos-dev-postgres` the tool
  * defaults to.
@@ -55,9 +89,17 @@ function containerEnv(containerPrefix: string): string {
     .join(' ');
 }
 
+function toolCommand(remoteDir: string, containerPrefix: string, flags: readonly string[]): string {
+  return (
+    `cd ${shellEscape(remoteDir)} && ${containerEnv(containerPrefix)} ` +
+    `node ${OPERATOR_ACCOUNT_TOOL} ${flags.map((f) => shellEscape(f)).join(' ')}`
+  );
+}
+
 /**
  * The make. `--role` and `--display-name` only when the operator gave them:
  * which roles exist, and which one is the default, are the project's to say.
+ * `--seal-to` always.
  */
 export function operatorAccountCommand(input: {
   remoteDir: string;
@@ -65,29 +107,29 @@ export function operatorAccountCommand(input: {
   username: string;
   role?: string | undefined;
   displayName?: string | undefined;
+  sealTo: string;
 }): string {
-  const flags = [
+  return toolCommand(input.remoteDir, input.containerPrefix, [
     `--username=${input.username}`,
     ...(input.role !== undefined ? [`--role=${input.role}`] : []),
     ...(input.displayName !== undefined ? [`--display-name=${input.displayName}`] : []),
-  ];
-  return (
-    `cd ${shellEscape(input.remoteDir)} && ${containerEnv(input.containerPrefix)} ` +
-    `node ${OPERATOR_ACCOUNT_TOOL} ${flags.map((f) => shellEscape(f)).join(' ')}`
-  );
+    `--seal-to=${input.sealTo}`,
+  ]);
 }
 
-/** The undo: the row with this name AND this id, or nothing. */
-export function operatorAccountUndoCommand(input: {
+/** What the stand holds under a name — read, never a secret. */
+export function operatorAccountShowCommand(input: { remoteDir: string; containerPrefix: string; username: string }): string {
+  return toolCommand(input.remoteDir, input.containerPrefix, [`--show=${input.username}`]);
+}
+
+/** The row with this name AND this id, or nothing. */
+export function operatorAccountRemoveCommand(input: {
   remoteDir: string;
   containerPrefix: string;
   username: string;
   id: string;
 }): string {
-  return (
-    `cd ${shellEscape(input.remoteDir)} && ${containerEnv(input.containerPrefix)} ` +
-    `node ${OPERATOR_ACCOUNT_TOOL} ${shellEscape(`--remove=${input.username}`)} ${shellEscape(`--id=${input.id}`)}`
-  );
+  return toolCommand(input.remoteDir, input.containerPrefix, [`--remove=${input.username}`, `--id=${input.id}`]);
 }
 
 export interface MadeAccount {
@@ -105,54 +147,99 @@ export type AccountRun =
       readonly because: string;
       /**
        * The account may exist on the stand: the run's outcome is not known
-       * (the transport failed, or the tool said nothing this side can read).
+       * (the transport failed, or the tool said something this side cannot
+       * read). The caller asks the stand (`--show`) before it says anything
+       * more.
        */
       readonly uncertain: boolean;
     };
 
-/** The last lines of what the tool said on stderr — never stdout. */
+/** The last lines of what the tool said on stderr. */
 function wordsOf(stderr: string): string {
   return stderr.trim().split('\n').slice(-4).join(' | ');
 }
 
 /**
- * A run, read as the tool defines it.
+ * The last line of stdout that is a JSON object with this key, searched from
+ * the end — as `parseAttestation` reads a producer: the answer is one object
+ * on one line, and a line after it (a transport's, a runtime's warning) does
+ * not hide it.
+ */
+function answerLine(stdout: string, key: string): Record<string, unknown> | undefined {
+  const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i]!.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(lines[i]!) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && key in parsed) return parsed;
+    } catch {
+      // Not this line.
+    }
+  }
+  return undefined;
+}
+
+/**
+ * What stdout looked like, without what it said: how many lines, and of the
+ * last whether it is JSON. A make's stdout is never quoted — see the head of
+ * this file.
+ */
+export function describeStdout(stdout: string): string {
+  const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return 'stdout was empty';
+  const last = lines[lines.length - 1]!;
+  let what: string;
+  try {
+    const parsed = JSON.parse(last) as unknown;
+    what = parsed && typeof parsed === 'object' ? `is a JSON object with ${Object.keys(parsed).join(', ') || 'no keys'}` : 'is JSON, not an object';
+  } catch {
+    what = last.startsWith('{') ? 'starts like JSON and does not parse' : 'is not JSON';
+  }
+  return `stdout had ${lines.length} line(s); the last, ${last.length} characters, ${what}`;
+}
+
+/**
+ * A run of the make, read as the tool defines it.
  *
- *   0 — made: the last line of stdout is `{"operatorAccount": {…}}`.
+ *   0 — made: the answer line is `{"operatorAccount": {username, id, role,
+ *       sealed}}`, and `sealed` opens with this run's key.
  *   1 — refused, with the reason on stderr (the name is taken, the stand
  *       would not sign it up, the role did not stick).
- *   2 — the tool refused its arguments.
+ *   2 — the tool refused its arguments — among them a tool too old to know
+ *       `--seal-to`, which refuses before it makes anything.
  *
  * Anything else is the transport — a signal, ssh's own 255 — and says
- * nothing about whether the account was made.
+ * nothing about whether the account was made. A `password` on the line is
+ * never read: through this transport it is `[REDACTED]` at best.
  */
-export function readAccountRun(run: { stdout: string; stderr: string; code: number }, username: string): AccountRun {
+export function readAccountRun(
+  run: { stdout: string; stderr: string; code: number },
+  username: string,
+  open: (sealed: string) => string,
+): AccountRun {
   if (run.code === 0) {
-    const last = run.stdout.trim().split('\n').pop() ?? '';
-    let account: Partial<MadeAccount> | undefined;
-    try {
-      account = (JSON.parse(last) as { operatorAccount?: Partial<MadeAccount> }).operatorAccount;
-    } catch {
-      account = undefined;
-    }
-    const whole =
-      account &&
-      typeof account.password === 'string' &&
-      account.password.length > 0 &&
-      typeof account.id === 'string' &&
-      typeof account.role === 'string' &&
-      account.username === username;
-    if (whole) {
-      const { password, id, role } = account as MadeAccount;
-      return { made: true, account: { username, password, id, role } };
-    }
-    return {
+    const account = answerLine(run.stdout, 'operatorAccount')?.['operatorAccount'] as
+      | { username?: unknown; id?: unknown; role?: unknown; sealed?: unknown }
+      | undefined;
+    const unknownOutcome = (why: string): AccountRun => ({
       made: false,
       uncertain: true,
-      because:
-        `the tool exited 0 without the account line this side reads — ${username} may exist on the stand ` +
-        'with a password nobody holds',
-    };
+      because: `the tool exited 0, but ${why} — ${username} may be on the stand with a password nobody holds`,
+    });
+    if (!account || typeof account !== 'object') return unknownOutcome(`no account line could be read (${describeStdout(run.stdout)})`);
+    if (account.username !== username) return unknownOutcome('its account line names another account');
+    if (typeof account.id !== 'string' || typeof account.role !== 'string') return unknownOutcome('its account line has no id or role');
+    if (typeof account.sealed !== 'string' || account.sealed.length === 0) {
+      return unknownOutcome('its account line carries no sealed password');
+    }
+    let password: string;
+    try {
+      password = open(account.sealed);
+    } catch {
+      return unknownOutcome("the sealed password does not open with this run's key");
+    }
+    if (password.length === 0) return unknownOutcome('the sealed password opened to nothing');
+    return { made: true, account: { username, password, id: account.id, role: account.role } };
   }
   if (run.code === 1) {
     return { made: false, uncertain: false, because: `the stand refused: ${wordsOf(run.stderr) || '(the tool said nothing)'}` };
@@ -171,6 +258,72 @@ export function readAccountRun(run: { stdout: string; stderr: string; code: numb
       `exit ${run.code} is the transport, not the tool — whether ${username} was made is not known: ` +
       `${wordsOf(run.stderr) || '(no words)'}`,
   };
+}
+
+/** An account as the stand holds it — no secret in it. */
+export interface StandAccount {
+  readonly username: string;
+  readonly id: string;
+  readonly role: string;
+  readonly status: string | null;
+  readonly createdAt: string | null;
+  /** `null`: nobody has signed in with it. */
+  readonly lastActiveAt: string | null;
+}
+
+/**
+ * A run of `--show`. Its stdout carries no secret, so an answer this side
+ * cannot read is quoted — the one place here that does.
+ */
+export function readShowRun(
+  run: { stdout: string; stderr: string; code: number },
+): { readonly ok: true; readonly account: StandAccount | null } | { readonly ok: false; readonly because: string } {
+  if (run.code === 0) {
+    const answer = answerLine(run.stdout, 'operatorAccountShown');
+    if (answer) {
+      const shown = answer['operatorAccountShown'] as {
+        username?: unknown;
+        id?: unknown;
+        role?: unknown;
+        status?: unknown;
+        createdAt?: unknown;
+        lastActiveAt?: unknown;
+      } | null;
+      if (shown === null) return { ok: true, account: null };
+      if (shown && typeof shown.id === 'string' && typeof shown.username === 'string') {
+        const text = (v: unknown) => (typeof v === 'string' ? v : null);
+        return {
+          ok: true,
+          account: {
+            username: shown.username,
+            id: shown.id,
+            role: text(shown.role) ?? '(none)',
+            status: text(shown.status),
+            createdAt: text(shown.createdAt),
+            lastActiveAt: text(shown.lastActiveAt),
+          },
+        };
+      }
+    }
+    return { ok: false, because: `the tool exited 0 with nothing this side can read: ${run.stdout.trim().slice(-300) || '(empty)'}` };
+  }
+  return { ok: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
+}
+
+/** A run of `--remove`: removed, or why not. */
+export function readRemoveRun(
+  run: { stdout: string; stderr: string; code: number },
+  username: string,
+  id: string,
+): { readonly removed: true } | { readonly removed: false; readonly because: string } {
+  if (run.code === 0) {
+    const answer = answerLine(run.stdout, 'operatorAccountRemoved')?.['operatorAccountRemoved'] as
+      | { username?: unknown; id?: unknown }
+      | undefined;
+    if (answer?.username === username && answer.id === id) return { removed: true };
+    return { removed: false, because: `the tool exited 0 without saying it removed ${username} (${describeStdout(run.stdout)})` };
+  }
+  return { removed: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
 }
 
 /**

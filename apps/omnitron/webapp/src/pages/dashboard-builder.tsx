@@ -47,6 +47,7 @@ import {
 import { Breadcrumbs, FormAlert, Skeleton } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
+import { daemonMemoryOf } from 'src/utils/daemon-memory';
 
 import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
 import { readStoredJson, writeStoredJson } from '../utils/storage';
@@ -176,7 +177,7 @@ function DaemonInfoPanel({ data }: { data: DaemonData }) {
     { label: 'PID', value: String(status.pid) },
     { label: 'Version', value: status.version },
     { label: 'Uptime', value: formatUptime(status.uptime) },
-    { label: 'Memory', value: formatMemory(status.totalMemory) },
+    { label: 'Memory', value: formatMemory(daemonMemoryOf(status)) },
     { label: 'Apps', value: `${onlineApps} / ${data.apps.length}` },
   ];
 

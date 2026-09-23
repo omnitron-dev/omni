@@ -43,6 +43,7 @@ import type {
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
+import { appsMemoryOf } from 'src/utils/daemon-memory';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
@@ -749,7 +750,7 @@ function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null })
     <Box sx={{ py: 0.5 }}>
       <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
         {status.apps.length} app(s) · {status.totalCpu.toFixed(1)}% CPU ·{' '}
-        {(status.totalMemory / 1024 / 1024).toFixed(0)} MB
+        {(appsMemoryOf(status) / 1024 / 1024).toFixed(0)} MB
       </Typography>
       {status.apps.map((app) => (
         <Stack

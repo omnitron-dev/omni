@@ -41,8 +41,9 @@
  * How it ended. Most writers record after their action succeeded and write no
  * outcome — the row IS the action. A writer that records both endings passes
  * `outcome`, and a failure keeps the first line of its error (see
- * `describeFailure`). `outcomeOf` reads either convention, including the
- * older one of naming the failure in the action (`node.upgrade.failed`).
+ * `describeFailure`). `outcomeOf` (`shared/audit-outcome.ts`, which the
+ * console reads too) reads either convention, including the older one of
+ * naming the failure in the action (`node.upgrade.failed`).
  *
  * Best-effort by design: the action has already happened — or already failed
  * — when this is called, and failing it afterwards would turn an unrecorded
@@ -56,6 +57,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 import type { OmnitronDatabase } from '../database/schema.js';
 import { redactTokens } from '../release/publish.js';
+import type { AuditOutcome } from '../shared/audit-outcome.js';
 import { getCurrentAuth, getRequestContext } from './auth-context.js';
 
 /** One thing that happened, as the caller knows it. */
@@ -83,10 +85,6 @@ export interface AuditEntry {
   /** For `failed`: what went wrong. Kept as `details.error`, via `describeFailure`. */
   readonly error?: unknown;
 }
-
-/** How an action ended, where its writer recorded both endings. */
-/** `partial`: the action happened, and not all of it — a stack start where some apps did not come up. */
-export type AuditOutcome = 'ok' | 'partial' | 'failed';
 
 /**
  * Who an actor can be, as `currentActor` answers it — and the words `omnitron
@@ -181,19 +179,6 @@ export function describeFailure(err: unknown): string {
       .find((line) => line.length > 0) ?? '(the error said nothing)';
   const clean = redactTokens(first);
   return clean.length > MAX_FAILURE_TEXT ? `${clean.slice(0, MAX_FAILURE_TEXT - 1)}…` : clean;
-}
-
-/**
- * How a row's action ended, as far as the row says: its recorded outcome, or
- * `failed` for an action named as a failure (`node.upgrade.failed`). `null`
- * for a row that records neither — most rows, written after an action that
- * worked by a writer that records nothing else; `null` says that without
- * claiming more.
- */
-export function outcomeOf(row: Pick<AuditRow, 'action' | 'details'>): AuditOutcome | null {
-  const recorded = row.details?.['outcome'];
-  if (recorded === 'ok' || recorded === 'partial' || recorded === 'failed') return recorded;
-  return row.action.endsWith('.failed') ? 'failed' : null;
 }
 
 /** Who is calling, as the request proved rather than as it claimed. */

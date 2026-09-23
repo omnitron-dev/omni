@@ -9,7 +9,8 @@ import { log, table, prism } from '@xec-sh/kit';
 
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronAuditService } from '../shared/dto/services.js';
-import { ACTOR_TYPES, MAX_AUDIT_PAGE, outcomeOf, type AuditQuery, type AuditRow } from '../services/audit.service.js';
+import { ACTOR_TYPES, MAX_AUDIT_PAGE, type AuditQuery, type AuditRow } from '../services/audit.service.js';
+import { outcomeOf } from '../shared/audit-outcome.js';
 import { emitError, emitJson } from './output.js';
 
 export interface AuditListOptions {

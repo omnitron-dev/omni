@@ -18,6 +18,7 @@ export default defineConfig({
       // The shared readings, as `vite.config.ts` resolves them.
       '@omnitron-dev/omnitron/node-check': path.resolve(import.meta.dirname, '../src/shared/node-check.ts'),
       '@omnitron-dev/omnitron/release-reading': path.resolve(import.meta.dirname, '../src/shared/release-reading.ts'),
+      '@omnitron-dev/omnitron/audit-outcome': path.resolve(import.meta.dirname, '../src/shared/audit-outcome.ts'),
     },
   },
   test: {

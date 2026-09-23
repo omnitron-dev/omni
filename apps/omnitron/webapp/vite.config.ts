@@ -64,6 +64,8 @@ export default defineConfig({
       // What one omnitron check found — the node dot and the uptime strip
       // read it alike.
       '@omnitron-dev/omnitron/node-check': path.resolve(here, '../src/shared/node-check.ts'),
+      // How an audit row's action ended — the page and `omnitron audit` alike.
+      '@omnitron-dev/omnitron/audit-outcome': path.resolve(here, '../src/shared/audit-outcome.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),
     },

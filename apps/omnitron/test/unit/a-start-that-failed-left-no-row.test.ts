@@ -29,7 +29,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { ProjectService } from '../../src/services/project.service.js';
-import { AuditService, outcomeOf, type AuditRow } from '../../src/services/audit.service.js';
+import { AuditService, type AuditRow } from '../../src/services/audit.service.js';
+import { outcomeOf } from '../../src/shared/audit-outcome.js';
 import { ReleaseRpcService } from '../../src/services/release.rpc-service.js';
 
 const logger: Record<string, unknown> = {

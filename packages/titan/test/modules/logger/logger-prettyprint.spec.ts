@@ -12,12 +12,19 @@
  * installs a process-exit flush hook; the pino-pretty branch does not (pretty
  * manages its own stdout writer). So a missing flush hook under prettyPrint is
  * proof the pino-pretty branch was taken instead of the JSON async-stdout path.
+ *
+ * Pretty is for a terminal only (`prettyDecision`, and
+ * `a-record-the-collector-cut-into-lines`), so the pretty cases here run with
+ * stdout standing in for one.
  */
 
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { LoggerService } from '../../../src/modules/logger/logger.service.js';
 import type { ILoggerModuleOptions } from '../../../src/modules/logger/logger.types.js';
+
+const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+const atATerminal = () => Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
 
 describe('LoggerService — prettyPrint branch routing', () => {
   beforeEach(() => {
@@ -27,9 +34,12 @@ describe('LoggerService — prettyPrint branch routing', () => {
     process.removeAllListeners('beforeExit');
     process.removeAllListeners('SIGTERM');
     process.removeAllListeners('SIGINT');
+    if (stdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', stdoutIsTTY);
+    else delete (process.stdout as { isTTY?: boolean }).isTTY;
   });
 
-  it('takes the pino-pretty branch (no async-stdout flush hook) when enabled', () => {
+  it('takes the pino-pretty branch (no async-stdout flush hook) when enabled at a terminal', () => {
+    atATerminal();
     const before = process.listenerCount('beforeExit');
     const svc = new LoggerService({ prettyPrint: true } as unknown as ILoggerModuleOptions);
     void svc;
@@ -46,6 +56,7 @@ describe('LoggerService — prettyPrint branch routing', () => {
   });
 
   it('logging through prettyPrint does not throw', () => {
+    atATerminal();
     const svc = new LoggerService({ prettyPrint: true } as unknown as ILoggerModuleOptions);
     expect(() => {
       svc.logger.info('pretty-line');

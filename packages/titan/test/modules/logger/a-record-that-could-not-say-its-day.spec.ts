@@ -30,6 +30,9 @@
  * `prettyPrint: false`, paysys sets `true`, main states nothing and takes the
  * development default — and this does not take that choice away. What it
  * fixes is what the pretty branch WRITES when nobody is watching a terminal.
+ * (2026-09-23: that choice is now taken away where no terminal reads —
+ * `a-record-the-collector-cut-into-lines`. What pretty writes still matters
+ * at a terminal.)
  *
  * The cost of not fixing it, measured: a sweep over the stand's warnings that
  * read only the JSON records saw 8% of main's and 4% of paysys's, and missed

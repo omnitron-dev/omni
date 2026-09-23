@@ -44,6 +44,28 @@ export function prettyStreamOptions(
   };
 }
 
+/**
+ * Whether records go out through pino-pretty, and whether a request for it was
+ * turned down.
+ *
+ * Pretty is for a person at a terminal, and the terminal is what says so.
+ * Under omnitron an app's stdout is a pipe to the daemon, which takes every
+ * LINE as one pino record — and a pretty record is dozens of lines. On the
+ * test node, 2026-09-23, paysys's deposit worker (no `prettyPrint` of its own,
+ * so the development default) wrote each failed poll as ~195 lines; the
+ * collector stored 1 216 292 such fragments in a day, each as `info`, beside
+ * 3 error records. So no pretty on a stream no terminal reads, asked for or
+ * not; when it was asked for, the service says once why it did not.
+ */
+export function prettyDecision(
+  config: { prettyPrint?: boolean; pretty?: boolean; environment?: string },
+  isTTY: boolean = process.stdout.isTTY === true,
+): { pretty: boolean; refused: boolean } {
+  const asked = config.prettyPrint === true || config.pretty === true;
+  const byDefault = config.environment === 'development' && config.prettyPrint !== false && config.pretty !== false;
+  return { pretty: isTTY && (asked || byDefault), refused: asked && !isTTY };
+}
+
 function wrapAsyncStream(dest: NodeJS.WritableStream): NodeJS.WritableStream {
   if (!dest || (dest as any)[ASYNC_WRAPPED]) return dest;
   const wrapper = new Writable({
@@ -280,12 +302,9 @@ export class LoggerService implements ILoggerModule {
       },
     } as ILoggerOptions;
 
-    // Pretty (human-readable) output for development — pino-pretty as a
-    // destination stream. Production stays on structured JSON.
-    const prettyPrint =
-      config.prettyPrint === true ||
-      config.pretty === true ||
-      (config.environment === 'development' && config.prettyPrint !== false && config.pretty !== false);
+    // Pretty (human-readable) output for a terminal — pino-pretty as a
+    // destination stream. Everything else is one JSON record per line.
+    const { pretty: prettyPrint, refused: prettyRefused } = prettyDecision(config);
     const makeStdoutStream = (): NodeJS.WritableStream =>
       prettyPrint
         ? (prettyStream(prettyStreamOptions()) as unknown as NodeJS.WritableStream)
@@ -353,6 +372,9 @@ export class LoggerService implements ILoggerModule {
 
     // Create global logger
     this.globalLogger = new LoggerImpl(this.rootLogger);
+    if (prettyRefused) {
+      this.rootLogger.warn('prettyPrint is on, but no terminal reads stdout — writing one JSON record per line');
+    }
 
     // Apply initial context if provided
     if (this.options.context) {

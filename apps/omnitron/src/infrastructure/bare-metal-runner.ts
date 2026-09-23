@@ -110,7 +110,10 @@ async function observeUnit(
 
   return {
     known: read('LoadState') === 'loaded',
-    active: read('ActiveState') === 'active',
+    // Up, or on its way: another `start` changes neither. Read as down, a
+    // unit still `activating` — a daemon loading a chain's index — or
+    // mid-`reload` was planned to start again on every pass.
+    active: ['active', 'activating', 'reloading'].includes(read('ActiveState')),
     // `static` and `enabled-runtime` are both "it will come up"; only
     // `disabled` and `masked` are not.
     enabled: ['enabled', 'enabled-runtime', 'static', 'indirect'].includes(read('UnitFileState')),
@@ -226,14 +229,19 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       return;
     }
 
+    // Queued, not waited for. A start waits for everything the unit is
+    // ordered after and, for some types, for the daemon to say it is ready;
+    // the test node's bitcoind start was cut at this pass's 120 s with no
+    // reason given (2026-09-23), while systemd went on starting it. Whether
+    // it came up is the next observation's question, and its health check's.
     case 'start-unit': {
-      const r = await host.run(['systemctl', 'start', action.unit], { timeoutMs: 120_000 });
+      const r = await host.run(['systemctl', 'start', '--no-block', action.unit]);
       if (!r.ok) throw new Error(`could not start ${action.unit}: ${firstLine(r.stderr)}`);
       return;
     }
 
     case 'restart-unit': {
-      const r = await host.run(['systemctl', 'restart', action.unit], { timeoutMs: 120_000 });
+      const r = await host.run(['systemctl', 'restart', '--no-block', action.unit]);
       if (!r.ok) throw new Error(`could not restart ${action.unit}: ${firstLine(r.stderr)}`);
       return;
     }
@@ -280,6 +288,20 @@ function firstLine(text: string): string {
 // =============================================================================
 
 /**
+ * A command that did not succeed, with words for why.
+ *
+ * `stderr ?? message` kept a killed command's empty stderr — `''` is not
+ * nullish — and every step built on it said «could not start bitcoind: »
+ * and stopped there (the test node, 2026-09-23, at exactly the 120 s the
+ * command was given).
+ */
+function failed(err: unknown, timeoutMs: number): CommandResult {
+  const e = err as { stdout?: string; stderr?: string; message?: string; killed?: boolean };
+  const why = e.killed ? `no answer in ${timeoutMs} ms, stopped` : e.stderr?.trim() || e.message?.trim() || 'failed';
+  return { ok: false, stdout: String(e.stdout ?? ''), stderr: why };
+}
+
+/**
  * A `HostRunner` for the machine this process is on.
  *
  * `provisionStack` executes on the node, so "the host" is local: no SSH, no
@@ -298,15 +320,12 @@ export function localHost(): HostRunner {
       const execFileAsync = promisify(execFile);
       const [command, ...args] = argv;
       if (!command) return { ok: false, stdout: '', stderr: 'no command' };
+      const timeoutMs = options?.timeoutMs ?? 30_000;
       try {
-        const { stdout, stderr } = await execFileAsync(command, args, {
-          encoding: 'utf-8',
-          timeout: options?.timeoutMs ?? 30_000,
-        });
+        const { stdout, stderr } = await execFileAsync(command, args, { encoding: 'utf-8', timeout: timeoutMs });
         return { ok: true, stdout: String(stdout), stderr: String(stderr) };
       } catch (err) {
-        const e = err as { stdout?: string; stderr?: string; message?: string };
-        return { ok: false, stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? e.message ?? '') };
+        return failed(err, timeoutMs);
       }
     },
 
@@ -314,15 +333,12 @@ export function localHost(): HostRunner {
       const { exec } = await import('node:child_process');
       const { promisify } = await import('node:util');
       const execAsync = promisify(exec);
+      const timeoutMs = options?.timeoutMs ?? 30_000;
       try {
-        const { stdout, stderr } = await execAsync(command, {
-          encoding: 'utf-8',
-          timeout: options?.timeoutMs ?? 30_000,
-        });
+        const { stdout, stderr } = await execAsync(command, { encoding: 'utf-8', timeout: timeoutMs });
         return { ok: true, stdout: String(stdout), stderr: String(stderr) };
       } catch (err) {
-        const e = err as { stdout?: string; stderr?: string; message?: string };
-        return { ok: false, stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? e.message ?? '') };
+        return failed(err, timeoutMs);
       }
     },
 

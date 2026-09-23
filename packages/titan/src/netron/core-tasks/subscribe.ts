@@ -67,6 +67,7 @@ export function subscribe(peer: RemotePeer, eventName: string): void {
   // and not implemented. Denying by name keeps the default secure without
   // touching application events.
   if (RESERVED_EVENTS.has(eventName) && !peer.netron.options?.allowServiceEvents) {
+    peer.logger.warn({ event: eventName, peerId: peer.id }, 'Subscription refused: the event is internal to Netron');
     throw Errors.forbidden(
       `Event '${eventName}' is internal to Netron. Set the Netron option ` +
         `'allowServiceEvents: true' to let remote peers observe service and peer lifecycle.`,
@@ -82,6 +83,7 @@ export function subscribe(peer: RemotePeer, eventName: string): void {
 
   const limit = peer.netron.options?.maxSubscriptionsPerPeer ?? DEFAULT_MAX_SUBSCRIPTIONS_PER_PEER;
   if (peer.remoteSubscriptions.size >= limit) {
+    peer.logger.warn({ event: eventName, peerId: peer.id, limit }, 'Subscription refused: the peer is at its subscription limit');
     throw Errors.tooManyRequests().withDetails({
       reason: 'subscription_limit_exceeded',
       peerId: peer.id,

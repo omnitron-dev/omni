@@ -18,7 +18,7 @@ import { ServiceStub } from './service-stub.js';
 import { AbstractPeer, type DefinitionCacheOptions } from './abstract-peer.js';
 import { StreamReference, NetronReadableStream, NetronWritableStream } from './streams/index.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
-import { NetronErrors, Errors } from '../errors/index.js';
+import { NetronErrors, Errors, TitanError, isClientError } from '../errors/index.js';
 import { TransportError } from '../errors/netron.js';
 import { REQUEST_TIMEOUT } from './constants.js';
 import {
@@ -149,6 +149,27 @@ function isPeerGone(err: unknown): boolean {
   if (err instanceof TransportError) return true;
   const code = (err as { code?: unknown })?.code;
   return typeof code === 'string' && PEER_GONE_CODES.has(code);
+}
+
+/**
+ * Did the task refuse its caller, rather than fail?
+ *
+ * A core task answers «no» with a 4xx — the service is not there (yet), or
+ * this peer may not have it — and that answer IS the reply, sent back to the
+ * caller below. Every task that refuses writes its own reason first, at warn
+ * where it matters (`query_interface`: «service not found in registry»,
+ * «Access denied to service»; `authenticate`: the failed attempt), so the
+ * peer's line was the same event said a second time, at ERROR.
+ *
+ * Measured on the master 2026-09-23: 36 of 36 «Failed to run task» were
+ * `query_interface` 404s for priceverse's `CollectorWorker`, each paired with
+ * that warn, all within four seconds of a daemon start — the server process
+ * asks before its sibling has registered, and asks again on use. `omnitron
+ * doctor` read them as «a loop that cannot make progress»: 270 in a day, half
+ * of all the errors it saw.
+ */
+function isRefusal(err: unknown): boolean {
+  return TitanError.isTitanError(err) && isClientError(err.code);
 }
 
 export class RemotePeer extends AbstractPeer {
@@ -1169,6 +1190,8 @@ export class RemotePeer extends AbstractPeer {
         } catch (err: unknown) {
           if (isPeerGone(err)) {
             this.logger.debug({ err, task: name }, 'Peer disconnected while its task was running');
+          } else if (isRefusal(err)) {
+            this.logger.debug({ err, task: name }, 'Task refused the peer — the reason is in the task\'s own line');
           } else {
             this.logger.error({ err, task: name }, 'Failed to run task');
           }

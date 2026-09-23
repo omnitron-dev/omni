@@ -23,6 +23,10 @@
  * `enforceOwnership()` covers the orthogonal hardening for the
  * unexpose / unref paths: even when remote exposure IS allowed, a
  * peer must only mutate definitions whose `peerId` matches its own.
+ *
+ * Each refusal writes its own reason at warn before it throws: the peer
+ * that runs the task logs a 4xx at debug, because the task is where the
+ * reason is known (see `isRefusal` in remote-peer.ts).
  */
 
 import { Errors } from '../../errors/index.js';
@@ -31,6 +35,7 @@ import type { Definition } from '../definition.js';
 
 export function enforceRemoteExposureAllowed(peer: RemotePeer, taskName: string): void {
   if (!peer.netron.options?.allowRemoteServiceExposure) {
+    peer.logger.warn({ task: taskName, peerId: peer.id }, 'Core task refused: remote service exposure is disabled');
     throw Errors.forbidden(
       `Core task '${taskName}' is disabled for remote peers. Set Netron option ` +
         `'allowRemoteServiceExposure: true' to allow federated peers to publish or ` +
@@ -42,9 +47,14 @@ export function enforceRemoteExposureAllowed(peer: RemotePeer, taskName: string)
 
 export function enforceOwnership(peer: RemotePeer, def: Definition | undefined, taskName: string): void {
   if (!def) {
+    peer.logger.warn({ task: taskName, peerId: peer.id }, 'Core task refused: no such service definition');
     throw Errors.notFound('Service', taskName);
   }
   if (def.peerId !== peer.id) {
+    peer.logger.warn(
+      { task: taskName, peerId: peer.id, ownerPeerId: def.peerId, definitionId: def.id },
+      'Core task refused: the peer does not own this service definition',
+    );
     throw Errors.forbidden(`Peer ${peer.id} does not own service definition ${def.id}`, {
       task: taskName,
       peerId: peer.id,

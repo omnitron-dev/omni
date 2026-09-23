@@ -65,7 +65,7 @@ afterAll(async () => {
 beforeEach(async () => {
   if (!testPg.ok) return;
   // `alert_rules` too: its names are unique, and two tests make a rule.
-  await sql`TRUNCATE sync_ingested, logs, metrics_raw, alert_events, alert_rules, traces`.execute(db);
+  await sql`TRUNCATE sync_ingested, logs, alert_events, alert_rules, traces`.execute(db);
   statements.length = 0;
 });
 
@@ -92,7 +92,7 @@ function master(sink?: (sample: { node: string; name: string; value: number }) =
   return svc;
 }
 
-async function count(table: 'sync_ingested' | 'logs' | 'metrics_raw' | 'alert_events' | 'traces'): Promise<number> {
+async function count(table: 'sync_ingested' | 'logs' | 'alert_events' | 'traces'): Promise<number> {
   const r = await sql<{ n: string }>`SELECT count(*) AS n FROM ${sql.table(table)}`.execute(db);
   return Number(r.rows[0]!.n);
 }
@@ -125,8 +125,9 @@ async function makeRule(): Promise<string> {
 describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
   it('takes a thousand entries in a handful of statements, not a thousand transactions', async () => {
     const entries = mixed(1_000);
+    const recorded: string[] = [];
 
-    const result = await master().receiveBatch(batch(entries));
+    const result = await master((s) => recorded.push(s.node)).receiveBatch(batch(entries));
 
     expect(result.accepted).toBe(1_000);
     expect(result.failedIds).toEqual([]);
@@ -135,12 +136,16 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     const writes = statements.filter((s) => /^insert into/i.test(s)).length;
     // Measured on the per-entry path: 1 000 claims and 1 000 data inserts.
     expect(claims, 'claim statements for 1 000 entries').toBeLessThanOrEqual(2);
-    expect(writes, 'insert statements for 1 000 entries in four tables').toBeLessThanOrEqual(8);
+    expect(writes, 'insert statements for 1 000 entries in three tables').toBeLessThanOrEqual(6);
+    // A metric is recorded where the console reads it, under the node — and
+    // written to no table: `metrics_raw` had no reader (migration 010).
+    expect(statements.some((s) => /metrics_raw/i.test(s)), 'a statement naming metrics_raw').toBe(false);
 
     // And every entry landed where it belongs, under the node's name.
     expect(await count('sync_ingested')).toBe(1_000);
     expect(await count('logs')).toBe(600); // 400 logs + 200 events
-    expect(await count('metrics_raw')).toBe(300);
+    expect(recorded).toHaveLength(300);
+    expect(new Set(recorded)).toEqual(new Set([NODE]));
     expect(await count('traces')).toBe(100);
     const foreign = await sql<{ n: string }>`
       SELECT count(*) AS n FROM logs WHERE "nodeId" IS DISTINCT FROM ${NODE}::uuid
@@ -149,7 +154,8 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
   });
 
   it('delivers the same batch twice without applying it twice', async () => {
-    const svc = master();
+    const recorded: number[] = [];
+    const svc = master((s) => recorded.push(s.value));
     const entries = mixed(200);
 
     await svc.receiveBatch(batch(entries));
@@ -158,7 +164,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     expect(again.accepted).toBe(0);
     expect(again.duplicateIds).toHaveLength(200);
     expect(await count('logs')).toBe(120);
-    expect(await count('metrics_raw')).toBe(60);
+    expect(recorded, 'metrics recorded once, not again for the duplicate').toHaveLength(60);
   });
 
   it('takes an entry that appears twice in one batch once', async () => {
@@ -204,17 +210,18 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     await svc.receiveBatch(batch(metrics));
     expect(recorded.sort()).toEqual([1, 2, 3]);
 
-    // A metric the database could not store this time is retried later — and
-    // recording it now would count it twice once the retry succeeds.
+    // A metric whose claim could not be stored this time is retried later —
+    // and recording it now would count it twice once the retry succeeds. Its
+    // claim is the only thing the master stores for it.
     recorded.length = 0;
-    await sql`ALTER TABLE metrics_raw RENAME TO metrics_raw_away`.execute(db);
+    await sql`ALTER TABLE sync_ingested RENAME TO sync_ingested_away`.execute(db);
     try {
       const later = entry('metrics', { app: 'main', name: 'cpu', value: 4 });
       const result = await svc.receiveBatch(batch([later]));
       expect(result.failedIds).toEqual([later.id]);
-      expect(recorded, 'recorded while the row it describes was never stored').toEqual([]);
+      expect(recorded, 'recorded while its claim was never stored').toEqual([]);
     } finally {
-      await sql`ALTER TABLE metrics_raw_away RENAME TO metrics_raw`.execute(db);
+      await sql`ALTER TABLE sync_ingested_away RENAME TO sync_ingested`.execute(db);
     }
   });
 });

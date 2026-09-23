@@ -33,16 +33,18 @@ const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 let db: Kysely<unknown>;
 
-/** Tables migrations 001–005 are expected to create. */
+/** Tables the migrations are expected to leave. */
 const EXPECTED_TABLES = [
   'nodes',
   'omnitron_users',
   'omnitron_sessions',
   'alert_rules',
-  'metrics_raw',
   'pipelines',
   'traces',
 ];
+
+/** Tables a later migration removes: 002 made `metrics_raw`, 010 drops it (no reader, no pruning). */
+const DROPPED_TABLES = ['metrics_raw'];
 
 async function listTables(handle: Kysely<unknown>): Promise<string[]> {
   const { sql } = await import('kysely');
@@ -94,6 +96,9 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     const tables = await listTables(db);
     for (const table of EXPECTED_TABLES) {
       expect(tables, `expected table ${table}`).toContain(table);
+    }
+    for (const table of DROPPED_TABLES) {
+      expect(tables, `table ${table} should have been dropped`).not.toContain(table);
     }
   });
 

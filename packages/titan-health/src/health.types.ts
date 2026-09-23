@@ -347,6 +347,15 @@ export interface EventLoopThresholds {
    * @default 100
    */
   lagUnhealthyThreshold?: number;
+
+  /**
+   * A single delay in ms, anywhere in the window, that reads as a STALL —
+   * degraded, because the loop ran nothing for that long. Separate from the
+   * lag thresholds, which are read off p99: one stall is one sample in the
+   * histogram and does not move a percentile.
+   * @default 1000
+   */
+  stallThreshold?: number;
 }
 
 /**

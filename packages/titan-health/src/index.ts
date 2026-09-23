@@ -103,7 +103,6 @@ export {
   // System indicators
   MemoryHealthIndicator,
   EventLoopHealthIndicator,
-  HighResEventLoopIndicator,
   DiskHealthIndicator,
   // Infrastructure indicators
   DatabaseHealthIndicator,

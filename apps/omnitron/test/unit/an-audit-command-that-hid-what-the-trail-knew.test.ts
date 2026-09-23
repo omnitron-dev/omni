@@ -135,6 +135,22 @@ describe('a boot autostart does not read like a deployment', () => {
     expect(out).toContain('Deployment to 37.27.130.185:9700 failed for 6 of 6 app(s)');
   });
 
+  it('names the apps a partial start did not bring up, in the words the console uses', async () => {
+    // `partial` was coloured and then said nothing: which apps did not come
+    // up sat in `notUp`, printed only under --json.
+    rows = [
+      row({
+        action: 'stack.start',
+        resourceType: 'stack',
+        resourceId: 'daos/dev',
+        details: { source: 'boot', outcome: 'partial', notUp: 'paysys (errored), messaging (errored)' },
+      }),
+    ];
+    const { out } = await run({});
+    expect(lineWith(out, 'stack.start')).toMatch(/\bpartial\b/);
+    expect(out).toContain('not up: paysys (errored), messaging (errored)');
+  });
+
   it('reads an older failure named in its action as a failure — `node.upgrade.failed`', async () => {
     rows = [row({ action: 'node.upgrade.failed', resourceType: 'node', resourceId: '16f3dd5a', details: { version: '0.4.1', message: 'bundle checksum mismatch' } })];
     const { out } = await run({});

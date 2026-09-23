@@ -415,8 +415,10 @@ export class ProjectService extends EventEmitter {
       // A remote stack's apps run on its nodes; they are redefined there.
       if (!stackConfig || stackConfig.type !== 'local') continue;
       const definitions = await this.loadAppDefinitions(name, stackConfig, config);
-      const build = this.stackEntryBuilder(name, state.stack, stackConfig, config, definitions);
-      for (const entry of this.resolveStackApps(stackConfig, config)) {
+      const entries = this.resolveStackApps(stackConfig, config);
+      const stackEnv = await this.stackEnvFor(name, state.stack, stackConfig, entries.map((e) => e.name));
+      const build = this.stackEntryBuilder(name, state.stack, stackConfig, config, definitions, stackEnv);
+      for (const entry of entries) {
         const built = build(entry);
         if (this.orchestrator.redefineApp(built.name, built)) redefined += 1;
       }
@@ -2271,6 +2273,10 @@ export class ProjectService extends EventEmitter {
 
     // 1. Load bootstrap definitions (needed for both infra provisioning and config resolution)
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
+    // What the stack gives its apps, vault references resolved — now, before
+    // anything is provisioned: a key the vault does not hold refuses the
+    // start here (project/stack-env.ts).
+    const stackEnv = await this.stackEnvFor(projectName, stackName, stackConfig, appEntries.map((e) => e.name));
     const project = this.registry.get(projectName);
     const appDefinitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
 
@@ -2372,7 +2378,7 @@ export class ProjectService extends EventEmitter {
     // 3. How each app is started: its entry, built from the stack's resolved
     //    configuration (`stackEntryBuilder` — the same builder a re-read of
     //    the project uses to redefine running apps).
-    const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions);
+    const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
 
     // 4. Start apps in dependency-aware parallel batches.
     //
@@ -2512,6 +2518,11 @@ export class ProjectService extends EventEmitter {
 
     // Build artifacts for apps in this stack
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
+    // What the stack gives its apps, vault references resolved — before any
+    // node is touched: a key the vault does not hold refuses the deployment
+    // here, not after a node was provisioned (project/stack-env.ts). A remote
+    // stack's `settings.env` reached no app before this; a local one's did.
+    const stackEnv = await this.stackEnvFor(projectName, stackName, stackConfig, appEntries.map((e) => e.name));
     const project = this.registry.get(projectName);
     let artifacts: import('../project/artifact-builder.js').ArtifactInfo[] = [];
 
@@ -2801,6 +2812,9 @@ export class ProjectService extends EventEmitter {
             appEntries,
             deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
           );
+          // The stack's own, over the computed — as on a local stack, where
+          // `settings.env` wins over both.
+          for (const [app, env] of Object.entries(stackEnv)) appEnv[app] = { ...(appEnv[app] ?? {}), ...env };
 
           // 3. Deploy app artifacts via SSH
           if (artifacts.length > 0) {
@@ -3627,6 +3641,28 @@ export class ProjectService extends EventEmitter {
   }
 
   /**
+   * The environment a stack gives its apps, vault references resolved
+   * (`project/stack-env.ts`). Throws — the start is refused — for a key the
+   * vault does not hold, an `appEnv` for an app the stack does not run, or a
+   * malformed entry. Values never leave this call except into the apps' env.
+   */
+  private async stackEnvFor(
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    apps: readonly string[],
+  ): Promise<import('../project/stack-env.js').StackEnv> {
+    const { resolveStackEnv } = await import('../project/stack-env.js');
+    const secrets = this.secrets;
+    return resolveStackEnv({
+      settings: stackConfig.settings,
+      apps,
+      getSecret: secrets ? (key) => secrets.get(key) : undefined,
+      where: `${projectName}/${stackName}`,
+    });
+  }
+
+  /**
    * How each app of a local stack is started: the entry handed to the
    * orchestrator — named into its stack, its environment computed from the
    * stack's resolved configuration and then the project config's own.
@@ -3641,6 +3677,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     appDefinitions: Map<string, IAppDefinition>,
+    stackEnv: Readonly<Record<string, Readonly<Record<string, string>>>>,
   ): (entry: IEcosystemAppEntry) => IEcosystemAppEntry {
     const project = this.registry.get(projectName);
     const portAllocation = this.infraManager.getPortAllocation(projectName, stackName);
@@ -3685,10 +3722,11 @@ export class ProjectService extends EventEmitter {
           //
           // It also meant an operator could not override a computed address
           // at all, which is not a thing a config system should refuse.
-          // `stackConfig.settings.env` still wins over both, as it did.
+          // The stack's own (`settings.env`, then `settings.appEnv[app]`,
+          // vault references resolved by `stackEnvFor`) still wins over both.
           ...infraEnv,
           ...entry.env,
-          ...stackConfig.settings?.env,
+          ...stackEnv[entry.name],
           OMNITRON_PROJECT: projectName,
           OMNITRON_STACK: stackName,
           OMNITRON_STACK_TYPE: 'local',

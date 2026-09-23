@@ -305,13 +305,29 @@ export interface ISSHConfig {
   port?: number;
 }
 
+/**
+ * A stack-given environment value: written, or the name of a key in the
+ * daemon's vault, resolved when the stack starts.
+ */
+export type StackEnvValue = string | { readonly secret: string };
+
 export interface IStackSettings {
   /** Redis DB offset for this stack (stacks get non-overlapping DB ranges) */
   redisDbOffset?: number;
   /** Docker container name prefix (default: `${project}-${stack}`) */
   containerPrefix?: string;
-  /** Custom environment variables injected into all apps in this stack */
-  env?: Record<string, string>;
+  /**
+   * Environment variables every app in this stack is given, local or remote.
+   * A value is written, or names a key in the daemon's vault. See
+   * `project/stack-env.ts`.
+   */
+  env?: Record<string, StackEnvValue>;
+  /**
+   * Environment variables ONE app is given, by its name — a secret only that
+   * app should hold (a KMS master key) goes here, not in `env`. Wins over
+   * `env`. Naming an app the stack does not run refuses the start.
+   */
+  appEnv?: Record<string, Record<string, StackEnvValue>>;
   /** Override log level for all apps in this stack */
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   /** Override infrastructure ports for this stack (avoids port conflicts between stacks) */

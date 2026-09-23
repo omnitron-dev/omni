@@ -258,6 +258,7 @@ The CLI is organized into command groups:
 
 ### Other
 - `omnitron secret set/get/list/delete` -- Secrets management
+- `omnitron secret generate <key> [--bytes 32] [--encoding base64|base64url|hex]` -- Random bytes made and kept by the daemon; prints the key name only; refuses a key the vault already holds
 - `omnitron discover` -- Docker + SSH auto-discovery
 - `omnitron health-check [app]` -- Composable health probes
 - `omnitron pipeline list/run/status` -- CI/CD pipelines

@@ -70,7 +70,11 @@ describe('stated beats computed', () => {
 
   it('still lets the stack settings win over both', () => {
     const order = spreadOrder();
-    const settings = order.findIndex((k) => k.includes('settings'));
+    // `settings.env` and `settings.appEnv[app]`, resolved from the vault
+    // before the builder runs, arrive as `stackEnv[entry.name]`
+    // (a-secret-a-stack-could-not-give-one-app).
+    const settings = order.findIndex((k) => k.includes('stackEnv'));
+    expect(settings, 'the stack env is in the spread').toBeGreaterThan(-1);
 
     expect(settings).toBeGreaterThan(order.findIndex((k) => k.includes('infraEnv')));
     expect(settings).toBeGreaterThan(order.findIndex((k) => k.includes('entry.env')));

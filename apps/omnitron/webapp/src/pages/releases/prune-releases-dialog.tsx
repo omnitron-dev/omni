@@ -6,14 +6,15 @@
  * A release is two gigabytes of artifacts and the only copy of a gate run,
  * so the list is shown in full rather than as a count.
  *
- * Releases a stack has deployed are protected whatever their age. The daemon
- * does not know which release is running — the audit rows do — so the page
- * that read them passes them down, and the prune keeps them.
+ * Releases a stack has deployed are protected whatever their age, and the
+ * daemon decides which (f19b16b0): it reads each stack's last start from its
+ * own audit trail. It used to take the list from this dialog, which built it
+ * from `deployments()` — and a daemon without its trail serves that as `[]`,
+ * so the second press would have removed the release a stack runs.
  *
- * When they could not be read — no audit trail, or a stack whose last start
- * recorded a release and not its name — there is nothing to protect with,
- * and this dialog does not remove anything: it would have been an empty
- * list, which protects nothing. The CLI refuses the same way, and names the
+ * When the daemon cannot tell — no trail, or a stack whose last start
+ * recorded a release and not its name — its answer says why (`unknown`), it
+ * refuses to remove anything, and so does this dialog. The CLI names the
  * flag that removes without knowing.
  */
 
@@ -30,7 +31,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { PruneResult } from '@omnitron-dev/omnitron/dto/services';
+import type { ReleasePruneAnswer } from '@omnitron-dev/omnitron/dto/services';
 import { releases as releaseRpc } from 'src/netron/client';
 
 import { bytes } from 'src/components/release-bits';
@@ -38,35 +39,30 @@ import { bytes } from 'src/components/release-bits';
 export default function PruneReleasesDialog({
   open,
   onClose,
-  protect,
-  blind,
   onPruned,
 }: {
   open: boolean;
   onClose: () => void;
-  protect: string[];
-  /** Why which releases the stacks run cannot be told, or `null` when it can. */
-  blind: string | null;
   onPruned: () => void;
 }) {
   const [keep, setKeep] = useState(5);
-  const [plan, setPlan] = useState<PruneResult | null>(null);
+  const [plan, setPlan] = useState<ReleasePruneAnswer | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [removed, setRemoved] = useState<PruneResult | null>(null);
+  const [removed, setRemoved] = useState<ReleasePruneAnswer | null>(null);
 
   const dryRun = useCallback(async () => {
     setBusy(true);
     setFailure(null);
     try {
-      setPlan(await releaseRpc.prune({ keep, protect }));
+      setPlan(await releaseRpc.prune({ keep }));
     } catch (err) {
       setFailure((err as Error).message);
       setPlan(null);
     } finally {
       setBusy(false);
     }
-  }, [keep, protect]);
+  }, [keep]);
 
   useEffect(() => {
     if (open) {
@@ -79,7 +75,7 @@ export default function PruneReleasesDialog({
     setBusy(true);
     setFailure(null);
     try {
-      const result = await releaseRpc.prune({ keep, apply: true, protect });
+      const result = await releaseRpc.prune({ keep, apply: true });
       setRemoved(result);
       onPruned();
     } catch (err) {
@@ -105,17 +101,16 @@ export default function PruneReleasesDialog({
             sx={{ width: 180 }}
           />
 
-          {blind && (
+          {plan?.unknown && (
             <Alert severity="warning">
-              Which of these a stack is running cannot be told — {blind}. Nothing will be removed from here until it
-              can; <code>omnitron release prune --yes --allow-unprotected</code> removes them without knowing.
+              Which of these a stack is running cannot be told — {plan.unknown}. The daemon will not remove anything
+              until it can; <code>omnitron release prune --yes --allow-unprotected</code> removes them without knowing.
             </Alert>
           )}
 
-          {protect.length > 0 && (
+          {plan && plan.protectedByDeployment.length > 0 && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {protect.length} release{protect.length === 1 ? '' : 's'} deployed to a stack {protect.length === 1 ? 'is' : 'are'} kept
-              whatever their age.
+              Kept whatever their age, because a stack runs them: {plan.protectedByDeployment.join(', ')}.
             </Typography>
           )}
 
@@ -177,7 +172,7 @@ export default function PruneReleasesDialog({
             variant="contained"
             color="error"
             size="small"
-            disabled={busy || !plan || plan.doomed.length === 0 || blind !== null}
+            disabled={busy || !plan || plan.doomed.length === 0 || plan.unknown !== null}
             onClick={apply}
           >
             Remove {plan?.doomed.length ?? 0}

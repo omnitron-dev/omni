@@ -41,7 +41,8 @@ import type {
   INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
   INodeDaemonAnswer, DaemonStatusDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
-import { verdictOf, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
+import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
@@ -165,15 +166,15 @@ const pulse = keyframes`
 // Status Dot
 // =============================================================================
 
-type DotState = 'online' | 'offline' | 'unchecked' | 'checking' | 'not-installed';
+type DotState = 'online' | 'offline' | 'unknown' | 'unchecked' | 'checking' | 'not-installed';
 
 function StatusDot({ state, label, tooltip }: { state: DotState; label: string; tooltip?: string }) {
   const colors: Record<DotState, string> = {
-    online: 'success.main', offline: 'error.main', unchecked: 'text.disabled',
+    online: 'success.main', offline: 'error.main', unknown: 'warning.light', unchecked: 'text.disabled',
     checking: 'warning.main', 'not-installed': 'text.disabled',
   };
   const texts: Record<DotState, string> = {
-    online: 'Connected', offline: 'Offline', unchecked: 'Not checked',
+    online: 'Connected', offline: 'Offline', unknown: 'Unknown', unchecked: 'Not checked',
     checking: 'Checking...', 'not-installed': 'Not installed',
   };
 
@@ -498,21 +499,35 @@ function getOmnitronDotState(status: INodeStatus | null, isLocal: boolean): { st
       ? { state: 'online', tooltip: `v${status.omnitronVersion ?? '?'} PID ${status.omnitronPid ?? '?'}` }
       : { state: 'offline', tooltip: status.omnitronError ?? 'Not running' };
   }
-  if (status.omnitronConnected) return { state: 'online', tooltip: `v${status.omnitronVersion ?? '?'} (${status.omnitronRole ?? '?'})` };
-  // An SSH session that was REFUSED is the one case where the omnitron state
-  // is genuinely unknown: the check never got far enough to look. `null` is
-  // not that — it means this round did not use SSH, which is how the daemon's
-  // own fallback check works, and it still probed the Netron port and has an
-  // answer in `omnitronError`. Testing the field for falsiness conflated the
-  // two, so a node whose SSH works read "Waiting for SSH connection" for ever
-  // and the reason it had was never shown.
-  if (status.sshConnected === false) {
-    return { state: 'unchecked', tooltip: status.sshError ? `SSH refused: ${status.sshError}` : 'SSH refused' };
+  // The uptime strip reads the same check the same way (`omnitronFinding`):
+  // «offline» only when the node said omnitron is not running. A timeout,
+  // output that was not JSON, an exec that failed were read as offline
+  // here — and a timeout, whose text echoes «omnitron: command not found»,
+  // as «Not installed on this node».
+  const finding = omnitronFinding(status);
+  switch (finding) {
+    case 'running':
+      return { state: 'online', tooltip: `v${status.omnitronVersion ?? '?'} (${status.omnitronRole ?? '?'})` };
+    case 'not-running':
+      return { state: 'offline', tooltip: status.omnitronError ?? 'Not running' };
+    case 'not-installed':
+      return { state: 'not-installed', tooltip: 'Not installed on this node' };
+    case 'unreachable':
+      // An SSH session that was REFUSED: the check never got far enough to
+      // look. `null` is not that — it means this round did not use SSH.
+      return { state: 'unchecked', tooltip: status.sshError ? `SSH refused: ${status.sshError}` : 'SSH refused' };
+    case 'unread':
+      // Asked, and nothing could be read — a timeout, output that was not
+      // JSON, no path answering (`null`, 66dae3dc). Not «offline».
+      return status.omnitronError
+        ? { state: 'unknown', tooltip: `Unknown — ${status.omnitronError}` }
+        : { state: 'unchecked', tooltip: 'Not checked yet' };
+    default: {
+      // Exhaustive at compile time; a finding added later fails to build here.
+      const unexpected: never = finding;
+      return { state: 'unchecked', tooltip: String(unexpected) };
+    }
   }
-  const err = status.omnitronError ?? '';
-  if (/not found|command not found|no such file|ENOENT/i.test(err)) return { state: 'not-installed', tooltip: 'Not installed on this node' };
-  if (err) return { state: 'offline', tooltip: err };
-  return { state: 'unchecked', tooltip: 'Not checked yet' };
 }
 
 // =============================================================================
@@ -553,17 +568,22 @@ interface HealthCheckRow {
   os: { platform: string; arch: string; hostname: string; release: string } | null;
 }
 
-const VERDICT_TONE: Record<LayerVerdict, 'success' | 'error' | 'default'> = {
+const VERDICT_TONE: Record<LayerVerdict, 'success' | 'error' | 'warning' | 'default'> = {
   ok: 'success',
   failed: 'error',
+  unknown: 'warning',
   unmeasured: 'default',
 };
 
 const VERDICT_WORD: Record<LayerVerdict, string> = {
   ok: 'reachable',
   failed: 'failed',
+  unknown: 'unknown',
   unmeasured: 'not measured',
 };
+
+/** No result to show: nothing asked, or nothing read. */
+const hollow = (verdict: LayerVerdict) => verdict === 'unmeasured' || verdict === 'unknown';
 
 /**
  * One layer of the diagnosis, with its reason as CONTENT.
@@ -591,7 +611,7 @@ function DiagnosisLayer({
           size="small"
           label={VERDICT_WORD[verdict]}
           color={VERDICT_TONE[verdict]}
-          variant={verdict === 'unmeasured' ? 'outlined' : 'filled'}
+          variant={hollow(verdict) ? 'outlined' : 'filled'}
           sx={{ height: 20, fontSize: 11 }}
         />
         {latencyMs != null && (
@@ -624,7 +644,7 @@ function DiagnosisLayer({
 function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean }) {
   const ping = verdictOf(row.pingReachable, row.pingError);
   const ssh = verdictOf(row.sshConnected, row.sshError);
-  const omn = verdictOf(row.omnitronConnected, row.omnitronError);
+  const omn = omnitronVerdict(row);
   const reason = firstReason(row);
   const layers: Array<[string, LayerVerdict]> = isLocal
     ? [['OMNITRON', omn]]
@@ -642,7 +662,7 @@ function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean })
             size="small"
             label={name}
             color={VERDICT_TONE[v]}
-            variant={v === 'unmeasured' ? 'outlined' : 'filled'}
+            variant={hollow(v) ? 'outlined' : 'filled'}
             sx={{ height: 18, fontSize: 10 }}
           />
         ))}
@@ -1214,7 +1234,7 @@ function NodeDiagnosisDialog({
             )}
             <DiagnosisLayer
               label="OMNITRON"
-              verdict={verdictOf(s.omnitronConnected, s.omnitronError)}
+              verdict={omnitronVerdict(s)}
               error={s.omnitronError ?? null}
               detail={s.omnitronConnected
                 ? [s.omnitronVersion && `v${s.omnitronVersion}`, s.omnitronPid && `pid ${s.omnitronPid}`,

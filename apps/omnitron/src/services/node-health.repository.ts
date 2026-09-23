@@ -7,6 +7,7 @@
 
 import { sql, type Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
+import { NOT_INSTALLED, NOT_RUNNING } from '../shared/node-check.js';
 
 export interface HealthCheckRow {
   nodeId: string;
@@ -44,8 +45,10 @@ export interface UptimeBucket {
    * could.
    *
    * Not every check is a measurement. One that found no omnitron installed is
-   * not evidence of downtime — there is nothing there to be down — and one
-   * whose SSH was refused did not get far enough to look. Both used to sit in
+   * not evidence of downtime — there is nothing there to be down — one whose
+   * SSH was refused did not get far enough to look, and one that looked and
+   * could not read the answer (a timeout, output that was not JSON) learnt
+   * nothing either. Both used to sit in
    * the denominator, where they pulled the figure towards zero in proportion
    * to how many of them there were, and the console painted the result red.
    * Observed: a node with 60 "not installed" checks and 13 SSH failures in one
@@ -67,13 +70,6 @@ const MIN_INTERVAL_MS = 5 * 60_000;
 const MAX_INTERVAL_MS = 24 * 60 * 60_000;
 const STEP_MS = 5 * 60_000;
 
-/**
- * The errors that mean "omnitron is not installed here" rather than
- * "omnitron is not running". Kept as one string so the SQL aggregate and the
- * console's dot state test the same thing.
- */
-const NOT_INSTALLED_PATTERN = 'not found|command not found|no such file|ENOENT';
-
 /** One row of the per-bucket aggregate. Postgres returns counts as strings. */
 export interface UptimeAggregateRow {
   idx: number | string;
@@ -82,7 +78,9 @@ export interface UptimeAggregateRow {
   omni_up: number | string;
   omni_measured: number | string;
   omni_absent: number | string;
-  /** Checks that reached the node and read nothing — `omnitronConnected` NULL. */
+  /** Checks with no SSH session: nothing was asked. */
+  omni_unreachable: number | string;
+  /** Checks that reached the node and could not read its answer. */
   omni_unread: number | string;
 }
 
@@ -132,31 +130,36 @@ export class NodeHealthRepository {
     const bucketStart = now - totalSpanMs;
     const cutoff = new Date(bucketStart).toISOString();
 
+    // `finding` is `omnitronFinding` (shared/node-check.ts) line for line —
+    // the reading the console's dot uses. Only `running` and `not-running`
+    // are measurements of omnitron; the rest say why nothing was measured.
     const { rows } = await sql<UptimeAggregateRow>`
       SELECT
-        floor(
-          (extract(epoch from "checkedAt") * 1000 - ${bucketStart}) / ${interval}
-        )::int AS idx,
+        idx,
         count(*) AS checks,
         count(*) FILTER (WHERE "pingReachable") AS ping_up,
-        count(*) FILTER (WHERE "omnitronConnected") AS omni_up,
-        -- A measurement is a check that could have seen omnitron running:
-        -- it either did, or it reached the machine and found omnitron absent
-        -- from it in the "not running" sense rather than the "not installed"
-        -- one. A check whose SSH was refused reached nothing and measured
-        -- nothing, and neither did one that read nothing (NULL).
-        count(*) FILTER (
-          WHERE "omnitronConnected" IS NOT NULL
-            AND ("omnitronConnected"
-                 OR ("sshConnected" AND coalesce("omnitronError", '') !~* ${NOT_INSTALLED_PATTERN}))
-        ) AS omni_measured,
-        count(*) FILTER (
-          WHERE coalesce("omnitronError", '') ~* ${NOT_INSTALLED_PATTERN}
-        ) AS omni_absent,
-        count(*) FILTER (WHERE "omnitronConnected" IS NULL) AS omni_unread
-      FROM node_health_checks
-      WHERE "nodeId" = ${nodeId}
-        AND "checkedAt" >= ${cutoff}::timestamptz
+        count(*) FILTER (WHERE finding = 'running') AS omni_up,
+        count(*) FILTER (WHERE finding IN ('running', 'not-running')) AS omni_measured,
+        count(*) FILTER (WHERE finding = 'not-installed') AS omni_absent,
+        count(*) FILTER (WHERE finding = 'unreachable') AS omni_unreachable,
+        count(*) FILTER (WHERE finding = 'unread') AS omni_unread
+      FROM (
+        SELECT
+          floor(
+            (extract(epoch from "checkedAt") * 1000 - ${bucketStart}) / ${interval}
+          )::int AS idx,
+          "pingReachable",
+          CASE
+            WHEN "omnitronConnected" IS TRUE THEN 'running'
+            WHEN starts_with(coalesce("omnitronError", ''), ${NOT_INSTALLED}) THEN 'not-installed'
+            WHEN "sshConnected" IS FALSE THEN 'unreachable'
+            WHEN "omnitronConnected" IS FALSE AND "omnitronError" = ${NOT_RUNNING} THEN 'not-running'
+            ELSE 'unread'
+          END AS finding
+        FROM node_health_checks
+        WHERE "nodeId" = ${nodeId}
+          AND "checkedAt" >= ${cutoff}::timestamptz
+      ) AS checks
       GROUP BY idx
     `.execute(this.db);
 
@@ -220,8 +223,14 @@ export function assembleBuckets(
       // Nothing was measured, and which kind of nothing is the whole
       // difference between "there is no omnitron here" and "we could not get
       // to this machine".
+      // «Not installed» is a finding in its own right; between «no way in»
+      // and «no answer read», the one that happened more.
       bucket.omnitronUnmeasured =
-        Number(row.omni_absent) > 0 ? 'absent' : Number(row.omni_unread) > 0 ? 'unread' : 'unreachable';
+        Number(row.omni_absent) > 0
+          ? 'absent'
+          : Number(row.omni_unread) > Number(row.omni_unreachable)
+            ? 'unread'
+            : 'unreachable';
     }
   }
 

@@ -9,8 +9,13 @@
  * differently by the next component that needs them.
  */
 
-/** One layer's conclusion. Three answers, never two. */
-export type LayerVerdict = 'ok' | 'failed' | 'unmeasured';
+import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
+
+/**
+ * One layer's conclusion. `unknown` is the omnitron layer's alone: asked,
+ * and no answer could be read — see `omnitronVerdict`.
+ */
+export type LayerVerdict = 'ok' | 'failed' | 'unknown' | 'unmeasured';
 
 /**
  * What one layer concluded.
@@ -49,6 +54,41 @@ export interface CheckLayers {
 }
 
 /**
+ * What the omnitron layer concluded: the same reading as the node's dot and
+ * the uptime strip (`omnitronFinding`).
+ *
+ * `verdictOf` calls an error `failed`, which for this layer reads as «omnitron
+ * is down». A timeout, output that was not JSON and an exec that failed are
+ * not that, and since 66dae3dc neither is `null` with a reason — no path
+ * answered. Those are `unknown`. A refused SSH session looked at nothing
+ * (`unmeasured`, the SSH layer says why); a node that said omnitron is not
+ * running, or is not installed, did answer (`failed`).
+ */
+export function omnitronVerdict(check: CheckLayers): LayerVerdict {
+  const finding = omnitronFinding({
+    sshConnected: check.sshConnected ?? null,
+    omnitronConnected: check.omnitronConnected ?? null,
+    omnitronError: check.omnitronError ?? null,
+  });
+  switch (finding) {
+    case 'running':
+      return 'ok';
+    case 'not-running':
+    case 'not-installed':
+      return 'failed';
+    case 'unreachable':
+      return 'unmeasured';
+    case 'unread':
+      // Nothing asked and nothing said — a check that did not try this layer.
+      return check.omnitronConnected == null && !check.omnitronError ? 'unmeasured' : 'unknown';
+    default: {
+      const unexpected: never = finding;
+      return unexpected;
+    }
+  }
+}
+
+/**
  * The reason to show for a failed check: the FIRST failing layer.
  *
  * Ordered, not arbitrary. An unreachable host has no SSH answer to give and a
@@ -70,10 +110,12 @@ export function firstReason(check: CheckLayers): string | null {
  * folding those into the denominator and pulling the figure towards zero.
  */
 export function isMeasured(check: CheckLayers): boolean {
+  // An answer nobody could read is not a measurement either.
+  const answered = (verdict: LayerVerdict) => verdict === 'ok' || verdict === 'failed';
   return (
-    verdictOf(check.pingReachable, check.pingError) !== 'unmeasured' ||
-    verdictOf(check.sshConnected, check.sshError) !== 'unmeasured' ||
-    verdictOf(check.omnitronConnected, check.omnitronError) !== 'unmeasured'
+    answered(verdictOf(check.pingReachable, check.pingError)) ||
+    answered(verdictOf(check.sshConnected, check.sshError)) ||
+    answered(omnitronVerdict(check))
   );
 }
 

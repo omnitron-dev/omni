@@ -12,6 +12,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionService, type SSHTarget, type ExecResult } from '../execution/execution.service.js';
 import type { NodeCheckConfig } from '../shared/dto/nodes.js';
 import { readNodeStatus } from '../project/node-app-health.js';
+import { NOT_INSTALLED, NOT_RUNNING } from '../shared/node-check.js';
 
 export type { NodeCheckConfig } from '../shared/dto/nodes.js';
 
@@ -291,7 +292,7 @@ export class RemoteOpsService {
     try {
       const result = await this.exec.ssh(
         target,
-        'command -v omnitron >/dev/null 2>&1 || { echo "omnitron: command not found" >&2; exit 127; }; omnitron status --json',
+        `command -v omnitron >/dev/null 2>&1 || { echo "${NOT_INSTALLED}" >&2; exit 127; }; omnitron status --json`,
         { timeout: timeoutMs }
       );
 
@@ -317,7 +318,9 @@ export class RemoteOpsService {
       // No `os` here: this answer has never carried one — `data` holds
       // version, pid, uptime, memoryBytes, appsTotal, appsOnline, errors and
       // apps. The node's OS comes from the SSH check, which measures it.
-      if (!status.connected) status.error = 'omnitron status reported no running daemon';
+      // The one answer that says omnitron is not running — the uptime strip
+      // counts nothing else as «down» (shared/node-check.ts).
+      if (!status.connected) status.error = NOT_RUNNING;
       return status;
     } catch (err) {
       return { connected: false, error: (err as Error).message };

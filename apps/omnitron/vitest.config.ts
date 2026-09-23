@@ -15,6 +15,8 @@ export default defineConfig({
       // subpath first, because vite matches aliases by prefix and the bare
       // entry would otherwise swallow `/netron`.
       '@omnitron-dev/omnitron/alerts': path.resolve(import.meta.dirname, 'src/shared/alert-expression.ts'),
+      '@omnitron-dev/omnitron/release-reading': path.resolve(import.meta.dirname, 'src/shared/release-reading.ts'),
+      '@omnitron-dev/omnitron/node-check': path.resolve(import.meta.dirname, 'src/shared/node-check.ts'),
       '@omnitron-dev/prism/netron': path.resolve(import.meta.dirname, '../../packages/prism/src/netron/index.ts'),
       '@omnitron-dev/prism': path.resolve(import.meta.dirname, '../../packages/prism/src/index.ts'),
     },

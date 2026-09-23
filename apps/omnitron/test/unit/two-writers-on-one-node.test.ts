@@ -333,8 +333,17 @@ describe('fleet upgrade is a writer too', () => {
   // to do underneath somebody else's deployment.
   async function deployerOn(runScript: (script: string) => Promise<string>) {
     const { RemoteDeployer } = await import('../../src/services/remote-deployer.service.js');
+    // The node's side of the data channel the lease runner reads through
+    // (a-record-the-transport-rewrote): the script inside the wrapper is what
+    // runs, and its answer goes back hex-encoded.
+    const DATA = /^out=\$\(sh -c ('(?:[^']|'\\'')*')\); code=\$\?; /;
+    const unquote = (word: string) => word.slice(1, -1).replace(/'\\''/g, "'");
     const execution = {
-      ssh: async (_target: unknown, command: string) => ({ stdout: await runScript(command), stderr: '', exitCode: 0, duration: 1 }),
+      ssh: async (_target: unknown, command: string) => {
+        const wrapped = DATA.exec(command);
+        const stdout = await runScript(wrapped ? unquote(wrapped[1]!) : command);
+        return { stdout: wrapped ? Buffer.from(stdout).toString('hex') : stdout, stderr: '', exitCode: 0, duration: 1 };
+      },
       uploadFile: async () => undefined,
     };
     return new RemoteDeployer(silentLogger, execution as never);

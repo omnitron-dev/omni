@@ -1386,7 +1386,10 @@ export class ProjectService extends EventEmitter {
           'Running the release\'s probes on its node',
         );
         try {
-          const run = await this.deployer.runOnNode(
+          // Through the data channel: the producer's line is evidence to
+          // store, and a probe's output that said `password=…` was cut by
+          // the transport's masker through its closing quote.
+          const run = await this.deployer.readFromNode(
             target,
             attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix, provision: accounts === 'provisioned' }),
           );
@@ -1654,7 +1657,9 @@ export class ProjectService extends EventEmitter {
         const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/operator');
         try {
           return await work({
-            run: (command, timeoutMs) => this.deployer.runOnNode(target, command(remoteDir, containerPrefix), timeoutMs),
+            // The tool's answer line is data; the sealed password needs no
+            // help past the masker, and the rest of the line gets it here.
+            run: (command, timeoutMs) => this.deployer.readFromNode(target, command(remoteDir, containerPrefix), timeoutMs),
             machine,
             where: `${projectName}/${stackName} on ${machine}`,
             commit: staged.commit,

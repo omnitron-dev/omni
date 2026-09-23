@@ -216,14 +216,24 @@ describe('a start that failed is in the trail, as a failure', () => {
 });
 
 describe('a failure does not become the last deployment', () => {
-  /** What `AuditService.list` answers for this table: exact action, newest first. */
+  /**
+   * What `AuditService` answers for this table: `list` — exact action, newest
+   * first — and `latestPerResource`, the newest row of an exact action per
+   * resource, which `deployments()` reads since f19b16b0.
+   */
   function readerOver(rows: Array<Record<string, any>>) {
+    const newestFirst = (action?: string) =>
+      rows
+        .filter((r) => !action || r.action === action)
+        .reverse()
+        .map((r) => ({ ...r, id: r.createdAt, ipAddress: null }));
     return {
-      list: async (q: { action?: string }) =>
-        rows
-          .filter((r) => !q.action || r.action === q.action)
-          .reverse()
-          .map((r) => ({ ...r, id: r.createdAt, ipAddress: null })),
+      available: true,
+      list: async (q: { action?: string }) => newestFirst(q.action),
+      latestPerResource: async (action: string) => {
+        const seen = new Set<string>();
+        return newestFirst(action).filter((r) => !seen.has(r.resourceId) && (seen.add(r.resourceId), true));
+      },
     };
   }
 

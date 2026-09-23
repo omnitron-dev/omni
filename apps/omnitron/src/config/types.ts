@@ -958,7 +958,12 @@ export interface DaemonStatusDto {
   uptime: number;
   apps: ProcessInfoDto[];
   totalCpu: number;
+  /** Apps and daemon together — `appsMemory + daemonMemory`. */
   totalMemory: number;
+  /** The daemon process's own RSS, bytes. Absent from daemons on older builds. */
+  daemonMemory?: number;
+  /** Every managed app's memory, summed, bytes. Absent from daemons on older builds. */
+  appsMemory?: number;
 }
 
 export interface AggregatedMetricsDto {

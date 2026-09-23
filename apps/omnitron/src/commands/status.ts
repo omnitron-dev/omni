@@ -57,6 +57,8 @@ export async function statusCommand(): Promise<void> {
         pid: status.pid,
         uptime: status.uptime,
         memoryBytes: status.totalMemory,
+        ...(status.daemonMemory !== undefined ? { daemonMemoryBytes: status.daemonMemory } : {}),
+        ...(status.appsMemory !== undefined ? { appsMemoryBytes: status.appsMemory } : {}),
         appsTotal: status.apps.length,
         appsOnline: onlineApps.length,
         errors: erroredApps.map((a: any) => a.name),
@@ -72,8 +74,15 @@ export async function statusCommand(): Promise<void> {
       `Version:    ${prism.bold(status.version)}`,
       `PID:        ${status.pid}`,
       `Uptime:     ${formatUptime(status.uptime)}`,
-      `Memory:     ${formatMemoryColored(status.totalMemory)}`,
-      `Apps:       ${prism.green(String(onlineApps.length))} online / ${status.apps.length} total`,
+      // The daemon's own memory and the apps' apart; a daemon on an older
+      // build answers only the sum, and says so.
+      ...(status.daemonMemory !== undefined && status.appsMemory !== undefined
+        ? [
+            `Memory:     ${formatMemoryColored(status.daemonMemory)} daemon (RSS)`,
+            `Apps:       ${formatMemoryColored(status.appsMemory)} across ${status.apps.length} app(s)`,
+          ]
+        : [`Memory:     ${formatMemoryColored(status.totalMemory)} (daemon and apps together)`]),
+      `Online:     ${prism.green(String(onlineApps.length))} of ${status.apps.length} app(s)`,
       ...(erroredApps.length > 0
         ? [`Errors:     ${prism.red(String(erroredApps.length))} (${erroredApps.map((a: any) => a.name).join(', ')})`]
         : []),

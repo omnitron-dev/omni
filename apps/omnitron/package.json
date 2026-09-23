@@ -34,6 +34,10 @@
     "./node-check": {
       "types": "./src/shared/node-check.ts",
       "default": "./dist/shared/node-check.js"
+    },
+    "./audit-outcome": {
+      "types": "./src/shared/audit-outcome.ts",
+      "default": "./dist/shared/audit-outcome.js"
     }
   },
   "scripts": {

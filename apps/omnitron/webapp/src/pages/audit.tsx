@@ -25,10 +25,14 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
+import { outcomeOf, outcomeReason, type AuditOutcome } from '@omnitron-dev/omnitron/audit-outcome';
+import type { IOmnitronAuditService } from '@omnitron-dev/omnitron/dto/services';
 import { audit } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useAuthStore } from 'src/auth/store';
 import { actorWords } from 'src/utils/audit-actor';
+
+type AuditRow = Awaited<ReturnType<IOmnitronAuditService['list']>>[number];
 
 /**
  * The resource kinds this daemon records, as the actions name them.
@@ -65,6 +69,64 @@ function detailValue(v: unknown): string {
       .join(' ')}}`;
   }
   return String(v);
+}
+
+/** The colours `omnitron audit` gives an outcome. */
+const OUTCOME_TONE: Record<AuditOutcome, 'success' | 'warning' | 'error'> = {
+  ok: 'success',
+  partial: 'warning',
+  failed: 'error',
+};
+
+/**
+ * What was done, to what, how it ended, and with which particulars.
+ *
+ * How it ended is the chip, and — when the row says why — a line in its
+ * colour under it. The page read no outcome at all: `outcome=partial` was one
+ * more `key=value` among the particulars, so a stack start in which two apps
+ * never came up read like any other. The keys the ending was read from are
+ * not repeated among them.
+ */
+function Event({ row }: { row: AuditRow }) {
+  const outcome = outcomeOf(row);
+  const reason = outcomeReason(row);
+  const particulars = Object.entries(row.details ?? {}).filter(
+    ([k, v]) => !(k === 'outcome' && v === outcome) && k !== reason?.key
+  );
+  return (
+    <Stack spacing={0.25}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+          {row.action}
+        </Typography>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}>
+          {row.resourceId ? `${row.resourceType}:${row.resourceId}` : row.resourceType}
+        </Typography>
+        {outcome && (
+          <Chip
+            size="small"
+            variant="outlined"
+            color={OUTCOME_TONE[outcome]}
+            label={outcome}
+            sx={{ height: 18, fontSize: 10 }}
+          />
+        )}
+      </Stack>
+      {outcome && reason && (
+        <Typography variant="caption" sx={{ color: `${OUTCOME_TONE[outcome]}.main`, overflowWrap: 'anywhere' }}>
+          {reason.text}
+        </Typography>
+      )}
+      {particulars.length > 0 && (
+        <Typography
+          variant="caption"
+          sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}
+        >
+          {particulars.map(([k, v]) => `${k}=${detailValue(v)}`).join(' · ')}
+        </Typography>
+      )}
+    </Stack>
+  );
 }
 
 /** `user` is a person; everything else is the machine, and says which. */
@@ -187,29 +249,7 @@ export default function AuditPage() {
                     {when(row.createdAt)}
                   </TableCell>
                   <TableCell>
-                    <Stack spacing={0.25}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                          {row.action}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}
-                        >
-                          {row.resourceId ? `${row.resourceType}:${row.resourceId}` : row.resourceType}
-                        </Typography>
-                      </Stack>
-                      {row.details && Object.keys(row.details).length > 0 && (
-                        <Typography
-                          variant="caption"
-                          sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}
-                        >
-                          {Object.entries(row.details)
-                            .map(([k, v]) => `${k}=${detailValue(v)}`)
-                            .join(' · ')}
-                        </Typography>
-                      )}
-                    </Stack>
+                    <Event row={row} />
                   </TableCell>
                   <TableCell>
                     <Actor actorId={row.actorId} actorType={row.actorType} />

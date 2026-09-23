@@ -7,7 +7,8 @@
 export { HttpTransport } from './http-transport.js';
 
 // Native implementations (v1.0)
-export { HttpServer as HttpNativeServer } from './server.js';
+export { HttpServer as HttpNativeServer, type HttpTrafficSnapshot } from './server.js';
+export { LatencyWindow, type LatencySnapshot } from './latency-window.js';
 export { HttpRemotePeer } from './peer.js';
 export { HttpConnection } from './connection.js';
 

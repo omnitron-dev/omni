@@ -10,6 +10,8 @@ export { defineEcosystem } from './config/define-ecosystem.js';
 
 export type {
   IAppDefinition,
+  AppHealthAnswer,
+  AppHealthHook,
   IProcessEntry,
   /** @deprecated Use IProcessEntry instead */
   IProcessTopologyEntry,

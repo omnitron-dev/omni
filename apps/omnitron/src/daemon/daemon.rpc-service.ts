@@ -27,6 +27,7 @@ import type {
   LogPathsDto,
 } from '../config/types.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
+import { worstVerdict } from '../orchestrator/app-health.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { IHealthService } from '@omnitron-dev/titan-health';
 import type { LogManager } from '../monitoring/log-manager.js';
@@ -308,27 +309,48 @@ export class DaemonRpcService implements IDaemonService {
     return { timestamp: Date.now(), apps, totals: { cpu: totalCpu, memory: totalMemory } };
   }
 
+  /**
+   * The daemon's own indicators, and each app as the app answered.
+   *
+   * This returned the daemon's titan-health indicators under `apps` — one
+   * «app» per indicator — and never asked an app anything: `omnitron health`
+   * read «Apps: 5 healthy» beside six apps, and `omnitron health main`
+   * printed the daemon's memory for a question about `main`.
+   */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async getHealth(_data: { name?: string }): Promise<AggregatedHealthDto> {
-    const result = await this.titanHealth.check();
-
-    // Map TitanHealth indicators to AggregatedHealthDto
-    const apps: AggregatedHealthDto['apps'] = {};
-    for (const [name, indicator] of Object.entries(result.indicators)) {
-      const check: { name: string; status: 'pass' | 'warn' | 'fail'; message?: string } = {
-        name,
-        status: indicator.status === 'healthy' ? 'pass' : indicator.status === 'degraded' ? 'warn' : 'fail',
-      };
-      if (indicator.message) check.message = indicator.message;
-      apps[name] = { status: indicator.status, checks: [check] };
+  async getHealth(data: { name?: string }): Promise<AggregatedHealthDto> {
+    const answered = await this.orchestrator.getHealth(data.name);
+    if (data.name !== undefined && Object.keys(answered).length === 0) {
+      throw Errors.notFound('App', data.name);
     }
 
-    return {
-      timestamp: Date.now(),
-      overall: result.status,
-      apps,
-    };
+    const apps: AggregatedHealthDto['apps'] = {};
+    for (const [name, health] of Object.entries(answered)) {
+      apps[name] = health
+        ? {
+            status: health.status,
+            checks: health.checks.map((c) => ({ name: c.name, status: c.status, ...(c.message ? { message: c.message } : {}) })),
+          }
+        : { status: 'degraded', checks: [{ name: 'health', status: 'warn', message: 'this app has not answered a health question yet' }] };
+    }
+
+    let daemon: AggregatedHealthDto['daemon'];
+    if (data.name === undefined) {
+      const result = await this.titanHealth.check();
+      daemon = {
+        status: result.status,
+        indicators: Object.entries(result.indicators).map(([name, indicator]) => ({
+          name,
+          status: indicator.status === 'healthy' ? 'pass' : indicator.status === 'degraded' ? 'warn' : 'fail',
+          ...(indicator.message ? { message: indicator.message } : {}),
+        })),
+      };
+    }
+
+    const overall = worstVerdict([...(daemon ? [daemon.status] : []), ...Object.values(apps).map((a) => a.status)]);
+    return { timestamp: Date.now(), overall, ...(daemon ? { daemon } : {}), apps };
   }
+
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getLogs(data: { name?: string; lines?: number }): Promise<LogEntryDto[]> {

@@ -25,7 +25,10 @@ import {
 } from 'src/assets/icons';
 import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
+import { Link as RouterLink } from 'react-router-dom';
+import Link from '@mui/material/Link';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { useActiveProjectStacks } from 'src/stores/project.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
@@ -180,6 +183,14 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
 
 export default function ContainersPage() {
   const { activeProject, activeStack } = useStackContext();
+  // This page lists THIS machine's Docker. A remote stack's containers run on
+  // its node: with «daos / test» selected the table held only omnitron's own
+  // two, as though the stack had none, and with all stacks selected test's
+  // five were simply not there. Its stack page shows them, as its node
+  // reports them.
+  const remoteStacks = useActiveProjectStacks().filter(
+    (s) => s.type !== 'local' && (!activeStack || s.name === activeStack),
+  );
   // One shared polling loop (see `use-polled-resource`): no overlapping
   // requests when the daemon is slow, no polling from a hidden tab, and a
   // failed poll no longer blanks the table — it used to set `[]`, so the view
@@ -382,6 +393,21 @@ export default function ContainersPage() {
       {(error || actionError) && (
         <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError ?? error}
+        </Alert>
+      )}
+      {remoteStacks.length > 0 && (
+        <Alert severity="info" variant="outlined">
+          These are this machine&apos;s containers.{' '}
+          {remoteStacks.map((s, i) => (
+            <span key={s.name}>
+              {i > 0 && ', '}
+              <Link component={RouterLink} to={`/stacks/${encodeURIComponent(s.name)}`}>
+                {s.name}
+              </Link>
+            </span>
+          ))}{' '}
+          {remoteStacks.length === 1 ? 'runs' : 'run'} on {remoteStacks.length === 1 ? 'its node' : 'their nodes'}; its
+          infrastructure is on its stack page, as the node reports it.
         </Alert>
       )}
       {/* Summary Cards */}

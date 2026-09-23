@@ -62,7 +62,7 @@ export function createMonitoringTools(client: DaemonClient): IMcpToolDef[] {
           search: { type: 'string', description: 'Substring to match in the message' },
           traceId: { type: 'string', description: 'Correlate one request across apps' },
           from: { type: 'string', description: 'ISO timestamp — inclusive lower bound' },
-          to: { type: 'string', description: 'ISO timestamp — exclusive upper bound' },
+          to: { type: 'string', description: 'ISO timestamp — inclusive upper bound (rows at exactly this time are returned)' },
           limit: { type: 'number', description: 'Max rows', default: 100 },
           offset: { type: 'number', description: 'Rows to skip', default: 0 },
         },

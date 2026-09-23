@@ -37,21 +37,37 @@ const APP = `log-filter-probe-${process.pid}`;
  * shape of vacuous green this repository keeps finding. A skip has to be
  * declared at collection time to be reported as a skip.
  */
-const probe = await createOmnitronDb({ max: 1, connectionTimeoutMillis: 5_000 });
-const reachable = await sql`SELECT 1`
-  .execute(probe)
-  .then(() => true)
-  .catch((err) => {
-    console.warn(`[log-filters] no database: ${(err as Error).message}`);
-    return false;
-  });
-await probe.destroy().catch(() => undefined);
+/**
+ * Only a database named for this file. It WRITES probe rows and deletes them
+ * afterwards, and the default connection is the master's own omnitron-pg —
+ * the `logs` table the console reads — so a run that died between the insert
+ * and the delete left its probes in the live table. Pointed at nothing, it
+ * skips and says why.
+ */
+const TEST_URL = process.env['OMNITRON_TEST_DATABASE_URL'];
+const connect = () => createOmnitronDb({ connectionString: TEST_URL, max: 1, connectionTimeoutMillis: 5_000 });
+
+const reachable = TEST_URL
+  ? await (async () => {
+      const probe = await connect();
+      const ok = await sql`SELECT 1`
+        .execute(probe)
+        .then(() => true)
+        .catch((err) => {
+          console.warn(`[log-filters] no database at OMNITRON_TEST_DATABASE_URL: ${(err as Error).message}`);
+          return false;
+        });
+      await probe.destroy().catch(() => undefined);
+      return ok;
+    })()
+  : (console.warn('[log-filters] OMNITRON_TEST_DATABASE_URL is not set — not writing probe rows into the live database'),
+    false);
 
 let db: Awaited<ReturnType<typeof createOmnitronDb>>;
 let collector: LogCollectorService;
 
 beforeAll(async () => {
-  db = await createOmnitronDb({ max: 1, connectionTimeoutMillis: 5_000 });
+  db = await connect();
   collector = new LogCollectorService(db as never, undefined as never);
 
   await sql`

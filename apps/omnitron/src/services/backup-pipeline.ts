@@ -74,6 +74,53 @@ export function formatUtc(moment: string | number | Date): string {
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+/** Shortest id prefix of at least `min` characters that still tells every id apart. */
+export function uniqueIdPrefixLength(ids: string[], min = 8): number {
+  const longest = ids.reduce((n, id) => Math.max(n, id.length), 0);
+  for (let len = min; len < longest; len++) {
+    if (new Set(ids.map((id) => id.slice(0, len))).size === ids.length) return len;
+  }
+  return Math.max(min, longest);
+}
+
+/** Below this, a prefix names a handful of backups at random rather than one on purpose. */
+export const MIN_BACKUP_ID_PREFIX = 4;
+
+/**
+ * The one backup an id — or an unambiguous prefix of one — names.
+ *
+ * `restoreBackup` compared the argument with `===` against a full UUID, and
+ * nothing the CLI printed carried one: `backup list` showed Database,
+ * Filename cut to 24 characters (`geo_2026-09-23T08-19-04-`, the id is after
+ * the cut) and Size; `backup create` printed `[a63dbcf4]`, eight characters
+ * that restore then refused as "not found". Shared by the daemon and the CLI,
+ * so both sides read a prefix the same way.
+ *
+ * @throws naming every candidate when the prefix matches more than one, and
+ *         saying so when it matches none — never a guess.
+ */
+export function resolveBackupId<T extends { id: string }>(
+  rows: T[],
+  idOrPrefix: string,
+  describe: (row: T) => string = (row) => row.id,
+): T {
+  const wanted = String(idOrPrefix ?? '').trim().toLowerCase();
+  const exact = rows.find((r) => r.id.toLowerCase() === wanted);
+  if (exact) return exact;
+  if (wanted.length < MIN_BACKUP_ID_PREFIX) {
+    throw new Error(
+      `Backup '${idOrPrefix}' not found — an id prefix needs at least ${MIN_BACKUP_ID_PREFIX} characters`,
+    );
+  }
+  const matches = rows.filter((r) => r.id.toLowerCase().startsWith(wanted));
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0) throw new Error(`Backup '${idOrPrefix}' not found`);
+  throw new Error(
+    `Backup id prefix '${idOrPrefix}' matches ${matches.length} backups: ` +
+      `${matches.map(describe).join('; ')} — give more of the id`,
+  );
+}
+
 export interface PipelineOptions {
   /** Milliseconds before both processes are killed. */
   timeoutMs?: number;

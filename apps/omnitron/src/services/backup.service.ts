@@ -21,7 +21,7 @@ import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitro
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
 import { expandPath } from '../shared/paths.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
-import { dumpToFile, restoreFromFile, formatBackupSize } from './backup-pipeline.js';
+import { dumpToFile, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId } from './backup-pipeline.js';
 import {
   parseSchedule,
   nextCronDelay,
@@ -789,8 +789,13 @@ export class BackupService {
 
   async restoreBackup(backupId: string): Promise<void> {
     this.migrateLegacyMetaIfPresent();
-    const row = this.store.selectBackupsSync().find((r) => r.id === backupId);
-    if (!row) throw new Error(`Backup '${backupId}' not found`);
+    // The full id, or a prefix of it that names one backup — what the CLI
+    // prints. An ambiguous prefix is refused with every candidate named.
+    const row = resolveBackupId(
+      this.store.selectBackupsSync(),
+      backupId,
+      (r) => `${r.id} (${r.app}, ${formatUtc(r.created_at)})`,
+    );
     if (!fs.existsSync(row.path)) throw new Error(`Backup file not found: ${row.path}`);
 
     let meta: { type?: string; compressed?: boolean } = {};

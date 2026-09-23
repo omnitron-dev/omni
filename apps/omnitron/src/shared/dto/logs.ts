@@ -52,15 +52,27 @@ export interface LogEntryRow {
   metadata: Record<string, unknown> | null;
 }
 
+/** How many rows hold one level. */
+export interface LevelCount {
+  level: string;
+  count: number;
+}
+
 export interface LogQueryResult {
   entries: LogEntryRow[];
+  /** The rows the filter matches: the sum of `byLevel`. */
   total: number;
+  /**
+   * The same rows by level, from the query that counts `total` — so a
+   * breakdown shown beside the total adds up to it.
+   */
+  byLevel: LevelCount[];
   hasMore: boolean;
 }
 
 export interface LogStats {
   byApp: Array<{ app: string; count: number }>;
-  byLevel: Array<{ level: string; count: number }>;
+  byLevel: LevelCount[];
   totalCount: number;
   oldestEntry: Date | null;
   newestEntry: Date | null;

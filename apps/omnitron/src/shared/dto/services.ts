@@ -130,10 +130,10 @@ export type { DeployResult, DeploymentRecord };
 export type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput };
 export type { AlertSeverity, AlertRuleType, AlertEventStatus } from './alerts.js';
 
-import type { LogQueryResult, LogStats, LogEntryRow } from './logs.js';
+import type { LogQueryResult, LogStats, LogEntryRow, LevelCount } from './logs.js';
 
 export type { OmnitronSignInResult, OmnitronAuthUser, OmnitronActiveSession };
-export type { LogQueryResult, LogStats, LogEntryRow };
+export type { LogQueryResult, LogStats, LogEntryRow, LevelCount };
 
 export interface IOmnitronAuthService {
   signIn(data: {

@@ -65,7 +65,7 @@ async function renderPage() {
       <MemoryRouter>
         <AuditPage />
       </MemoryRouter>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
   await screen.findByText('stack:daos/dev');
   return (resource: string) => within(screen.getByText(resource).closest('tr')!);

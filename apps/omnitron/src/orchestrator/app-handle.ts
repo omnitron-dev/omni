@@ -223,6 +223,62 @@ export class AppHandle {
     this.pid = pid;
   }
 
+  /**
+   * The supervisor children a bootstrap app runs, and which of them is its
+   * server — the one process with a transport.
+   *
+   * A bootstrap app used to take every child's start as its own: each
+   * `child:started` called `markOnline(childPid)`, so the app was `online`
+   * from its FIRST child, and its pid was that of its LAST. Measured on
+   * daos/dev/main: pid 58130, the notification-worker, while port 3001 was
+   * held by the http process, 57952 — four of six apps the same way. That
+   * pid is what `list` prints, what the console calls «the app's PID», what
+   * `inspect` measured (181.9 MB of the app's 661.8 MB), and what the ghost
+   * check asks the OS about — so an app whose http process died stayed
+   * `online` for as long as its notification-worker lived. And `inspect`
+   * answered `online` at 08:49:0x with two of three processes up; «App
+   * started» came at 08:49:09.691Z.
+   *
+   * `serverChild` is `null` for an app with no server process, and then the
+   * app has no pid: no single process answers for it.
+   */
+  private declaredChildren: readonly string[] = [];
+  private serverChild: string | null = null;
+  private readonly startedChildren = new Set<string>();
+
+  declareChildren(children: readonly string[], serverChild: string | null): void {
+    this.declaredChildren = [...children];
+    this.serverChild = serverChild;
+    this.startedChildren.clear();
+    this.pid = null;
+  }
+
+  /**
+   * One declared child is up. The server child's pid becomes the app's.
+   *
+   * Returns whether the app is now whole — every declared child started —
+   * which is the only state in which it is `online`. Until then it stays
+   * where it was (`starting` during a boot, `crashed` while a sibling is
+   * still down), because a partial app is not an online one.
+   */
+  childStarted(child: string, pid: number | null): boolean {
+    this.startedChildren.add(child);
+    if (child === this.serverChild) this.pid = pid;
+    if (!this.declaredChildren.every((name) => this.startedChildren.has(name))) return false;
+    this.status = 'online';
+    return true;
+  }
+
+  /**
+   * One declared child is down — crashed, or stopped. The app is no longer
+   * whole, and if it was the server, the app has no pid until it is back:
+   * holding the dead one would let the liveness check vouch for nothing.
+   */
+  childGone(child: string): void {
+    this.startedChildren.delete(child);
+    if (child === this.serverChild) this.pid = null;
+  }
+
   markStopping(): void {
     this.status = 'stopping';
   }

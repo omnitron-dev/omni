@@ -493,6 +493,25 @@ export interface IBareMetalServiceConfig {
 }
 
 /**
+ * A chain the node already holds, taken over rather than synced again.
+ *
+ * The test node keeps mainnet Bitcoin — 149 GB, pruned — in a snap's home
+ * (`/root/snap/bitcoin-core/common/.bitcoin`), run by a unit a person wrote
+ * (`bitcoin.service`). Declared as a system service, its `dataDir` did not
+ * exist, so a deployment would have created it empty and started the daemon
+ * on it: the same chain synced a second time, for days, beside the first.
+ *
+ * A node's own history, so a stack's to say (`serviceOverrides.<name>.bareMetal`)
+ * and never an application's.
+ */
+export interface IBareMetalAdoption {
+  /** Where the chain is now. Renamed to `dataDir` — on one filesystem, never copied — and given to `user`. */
+  from: string;
+  /** The unit that ran it, disabled before the move so it never starts on a directory that has gone. */
+  replaces?: string;
+}
+
+/**
  * Health check definition — provisioner-agnostic.
  */
 export interface IServiceHealthCheck {
@@ -545,8 +564,8 @@ export interface IServiceOverride {
   /** Override Docker config for this stack. Deep-merged over app declaration. */
   docker?: Partial<IDockerServiceConfig>;
 
-  /** Override bare-metal config. */
-  bareMetal?: Partial<IBareMetalServiceConfig>;
+  /** Override bare-metal config — and, the node's own history, a chain to take over. */
+  bareMetal?: Partial<IBareMetalServiceConfig> & { adopt?: IBareMetalAdoption };
 
   /**
    * How this stack runs the service: as a container (`docker`) or as a

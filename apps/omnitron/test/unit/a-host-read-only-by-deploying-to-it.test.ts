@@ -47,6 +47,7 @@ function fakeHost(answers: Record<string, string | null>, files: Record<string, 
     readFile: async (path) => files[path] ?? null,
     writeFile: async (path) => void writes.push(path),
     exists: async (path) => path in files || dirs.includes(path),
+    rename: async (from, to) => void writes.push(`${from} → ${to}`),
   };
   return { host, writes };
 }

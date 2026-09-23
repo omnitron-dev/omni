@@ -212,7 +212,6 @@ export default function ContainersPage() {
     }
   );
 
-  // Filter containers by stack context (container names: project-stack-service)
   const [actionError, setActionError] = useState<string | null>(null);
   // Removing a container used to happen on one click. These are the project's
   // Postgres, Redis and MinIO: the container goes, and with it anything not on
@@ -221,10 +220,14 @@ export default function ContainersPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
+  // The selection's containers, by the labels a container carries about
+  // itself (`omnitron.project`, `omnitron.stack`). The name only happens to
+  // start with the same words: `daos-` also began every container of a
+  // project called `daos-x`. The daemon's own carry no project, and are
+  // listed in every scope.
   const containers = (allContainers ?? []).filter((c: Container) => {
-    if (!activeProject) return true;
-    const prefix = activeStack ? `${activeProject}-${activeStack}-` : `${activeProject}-`;
-    return c.name.startsWith(prefix) || c.name.startsWith('omnitron-');
+    if (!activeProject || !c.project) return true;
+    return c.project === activeProject && (!activeStack || c.stack === activeStack);
   });
 
   // Log modal state

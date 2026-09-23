@@ -82,7 +82,10 @@ describe('what an onion is printed with', () => {
     await torCommand();
 
     expect(boxes).toHaveLength(1);
-    expect(boxes[0]!.title).toMatch(/daos-dev-tor, stack daos\/dev, this machine/);
+    expect(boxes[0]!.title).toBe('Tor · stack daos/dev · daos-dev-tor · this machine');
+    // The host name in the body: a long title is cut by the box border, and
+    // on the master it was — `this machine (MacBook...`.
+    expect(boxes[0]!.body).toMatch(/^on .+\n/);
     expect(boxes[0]!.body).toContain(DEV_PORTAL);
   });
 

@@ -954,6 +954,12 @@ export interface SubProcessInfoDto {
 
 export interface DaemonStatusDto {
   version: string;
+  /**
+   * What this daemon's `dist` was compiled from (`dist/BUILD.json`); `null`
+   * when it runs from source or from a build nobody stamped. Absent from
+   * daemons on older builds. `version` is the package's and names no commit.
+   */
+  build?: { commit: string; dirty: boolean; builtAt: string } | null;
   pid: number;
   uptime: number;
   apps: ProcessInfoDto[];

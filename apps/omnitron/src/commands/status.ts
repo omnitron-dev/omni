@@ -54,6 +54,7 @@ export async function statusCommand(): Promise<void> {
       const { emitJson } = await import('./output.js');
       if (emitJson({
         version: status.version,
+        ...(status.build !== undefined ? { build: status.build } : {}),
         pid: status.pid,
         uptime: status.uptime,
         memoryBytes: status.totalMemory,
@@ -71,7 +72,7 @@ export async function statusCommand(): Promise<void> {
 
     // Daemon status only — no app table (use `omnitron list` for apps)
     const headerLines = [
-      `Version:    ${prism.bold(status.version)}`,
+      `Version:    ${prism.bold(status.version)}${describeBuild(status.build)}`,
       `PID:        ${status.pid}`,
       `Uptime:     ${formatUptime(status.uptime)}`,
       // The daemon's own memory and the apps' apart; a daemon on an older
@@ -94,4 +95,15 @@ export async function statusCommand(): Promise<void> {
   }
 
   await client.disconnect();
+}
+
+/**
+ * Which commit the daemon runs. The package version is `0.2.0` on every
+ * build, so `Version: 0.2.0` said nothing about what was running.
+ */
+export function describeBuild(build: { commit: string; dirty: boolean; builtAt: string } | null | undefined): string {
+  if (build === undefined) return prism.dim(' · build not reported (older daemon)');
+  if (build === null) return prism.dim(' · unstamped build (running from source, or built without a stamp)');
+  const at = build.builtAt.replace('T', ' ').slice(0, 16);
+  return ` · ${build.commit.slice(0, 8)}${build.dirty ? prism.yellow(' + uncommitted changes') : ''} ${prism.dim(`built ${at} UTC`)}`;
 }

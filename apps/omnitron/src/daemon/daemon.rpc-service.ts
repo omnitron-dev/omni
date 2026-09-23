@@ -29,6 +29,8 @@ import type {
 } from '../config/types.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import { worstVerdict } from '../orchestrator/app-health.js';
+import { redactEnv } from '../shared/redact-env.js';
+import type { AuditService } from '../services/audit.service.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { IHealthService } from '@omnitron-dev/titan-health';
 import type { LogManager } from '../monitoring/log-manager.js';
@@ -646,11 +648,43 @@ export class DaemonRpcService implements IDaemonService {
     }
   }
 
+  /**
+   * An app's environment with its secrets replaced (`redactEnv`): by key name,
+   * and the password inside a URL-shaped value. This returned every value in
+   * clear to anyone with the operator role — `omnitron env main` printed
+   * JWT_SECRET and the database password — and `inspect` masked by key name
+   * alone, which left the password in `DATABASE_URL` on the screen.
+   */
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async getEnv(data: { name: string }): Promise<Record<string, string>> {
     const handle = this.orchestrator.getHandle(data.name);
     if (!handle) throw Errors.notFound('App', data.name);
-    return handle.entry.env ?? {};
+    return redactEnv(handle.entry.env ?? {});
+  }
+
+  /**
+   * The clear values — admin only, and recorded in the audit trail with who
+   * asked, because once shown they cannot be taken back.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async revealEnv(data: { name: string }): Promise<Record<string, string>> {
+    const handle = this.orchestrator.getHandle(data.name);
+    if (!handle) throw Errors.notFound('App', data.name);
+    const env = handle.entry.env ?? {};
+    await this.audit?.record({
+      action: 'app.env.reveal',
+      resourceType: 'app',
+      resourceId: handle.name,
+      details: { keys: Object.keys(env).length },
+    });
+    return { ...env };
+  }
+
+  private audit: AuditService | undefined;
+
+  /** Wired once the audit trail is up; a daemon without one reveals nothing it could not record. */
+  setAudit(audit: AuditService): void {
+    this.audit = audit;
   }
 
   // ============================================================================

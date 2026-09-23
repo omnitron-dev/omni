@@ -69,7 +69,10 @@ export interface IDaemonService {
     edges: Array<{ from: string; to: string; type?: 'dependency' | 'parent' }>;
   } | null>;
   exec(data: { name: string; service: string; method: string; args: unknown[] }): Promise<unknown>;
+  /** Secrets replaced — see `redactEnv`. */
   getEnv(data: { name: string }): Promise<Record<string, string>>;
+  /** Clear values: admin only, audited as `app.env.reveal`. */
+  revealEnv(data: { name: string }): Promise<Record<string, string>>;
 
   // --- Watch Mode ---
   enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }>;

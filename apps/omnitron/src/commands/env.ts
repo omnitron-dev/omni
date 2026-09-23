@@ -7,7 +7,12 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { emitJson, emitError } from './output.js';
 import { requireDaemon } from './daemon-required.js';
 
-export async function envCommand(appName: string): Promise<void> {
+/**
+ * The daemon replaces secrets before they leave it (`redactEnv`); `--reveal`
+ * asks for the clear values, which only an admin may have and which the
+ * daemon records in its audit trail.
+ */
+export async function envCommand(appName: string, options: { reveal?: boolean } = {}): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await requireDaemon(client))) {
@@ -16,7 +21,8 @@ export async function envCommand(appName: string): Promise<void> {
   }
 
   try {
-    const envVars = await client.getEnv({ name: appName });
+    const envVars = options.reveal ? await client.revealEnv({ name: appName }) : await client.getEnv({ name: appName });
+    if (options.reveal) log.warn('Secrets shown in clear — this reveal is recorded in the audit trail.');
 
     if (emitJson({ app: appName, env: envVars })) {
       await client.disconnect();
@@ -33,6 +39,7 @@ export async function envCommand(appName: string): Promise<void> {
     }
   } catch (err) {
     emitError((err as Error).message, { app: appName });
+    process.exitCode = 1;
   }
 
   await client.disconnect();

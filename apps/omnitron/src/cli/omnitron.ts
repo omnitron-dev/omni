@@ -406,10 +406,11 @@ program
 
 program
   .command('env <app>')
-  .description('Show resolved environment variables')
-  .action(async (app) => {
+  .description('Show resolved environment variables, secrets replaced')
+  .option('--reveal', 'Show secrets in clear (admin only; recorded in the audit trail)')
+  .action(async (app, options: { reveal?: boolean }) => {
     const { envCommand } = await import('../commands/env.js');
-    await envCommand(app);
+    await envCommand(app, options);
   });
 
 // ============================================================================

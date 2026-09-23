@@ -65,15 +65,10 @@ function dbWith(rules: Array<Record<string, unknown>>) {
 }
 
 const orchestrator = { list: () => [] };
-const infraState = () => ({});
 
 function service(db: unknown) {
-  return new AlertService(
-    { logger } as never,
-    db as never,
-    orchestrator as never,
-    infraState as never
-  );
+  // No project service: no stacks, so no containers.
+  return new AlertService({ logger } as never, db as never, orchestrator as never);
 }
 
 beforeEach(() => {

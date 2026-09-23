@@ -15,12 +15,14 @@
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
-import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable } from '../shared/alert-expression.js';
 
 export { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable };
-import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, INFRA_STATE_ACCESSOR_TOKEN } from '../shared/tokens.js';
+import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
+import type { ProjectService } from './project.service.js';
+import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 
 // =============================================================================
@@ -118,6 +120,24 @@ function evaluateExpression(
   return { firing: false, value: 'unparseable expression', unparseable: true };
 }
 
+/**
+ * One word for a container's health, as an `infra.<name>.health` rule reads
+ * it: `healthy`, `starting`, `unhealthy` or `stopped`.
+ *
+ * A container without a healthcheck reports `none`; running is then the only
+ * sign there is, and it reads `healthy` — otherwise `infra.*.health !=
+ * healthy` would fire for ever on tor and every other image that declares no
+ * check. One that is running but detached from every network serves nothing
+ * and reads `unhealthy`.
+ */
+export function containerHealth(state: Pick<ContainerState, 'status' | 'health' | 'networkAttached'>): string {
+  if (state.status !== 'running') return 'stopped';
+  if (state.networkAttached === false) return 'unhealthy';
+  if (state.health === 'unhealthy') return 'unhealthy';
+  if (state.health === 'starting') return 'starting';
+  return 'healthy';
+}
+
 // =============================================================================
 // Service
 // =============================================================================
@@ -126,23 +146,30 @@ function evaluateExpression(
 export class AlertService {
   private evaluationTimer: NodeJS.Timeout | null = null;
 
-  // T-2 part 2 — @Inject + useClass. The infra-state getter is
-  // injected via INFRA_STATE_ACCESSOR_TOKEN (useValue) so the
-  // circular dep with InfrastructureService stays late-bound, but
-  // the framework still validates every position via decorator
-  // metadata. Pre-fix the lambda was the third ctor arg with no
-  // type tag — silent swap risk with the orchestrator (also a ref-
-  // typed dep) was real.
   private readonly logger: ILogger;
 
   constructor(
     @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
     @Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>,
     @Inject(ORCHESTRATOR_TOKEN) private readonly orchestrator: OrchestratorService,
-    @Inject(INFRA_STATE_ACCESSOR_TOKEN)
-    private readonly infraState: () => Record<string, { status: string; health: string }>,
+    // The containers are the stacks', and the stacks are the project
+    // service's. This was an accessor token wired to `() => ({})`: every
+    // `infra.…` rule — which the console's form accepts as supported — was
+    // evaluated against no containers at all and could never fire.
+    @Optional() @Inject(PROJECT_SERVICE_TOKEN) private readonly projects?: Pick<ProjectService, 'getInfraManager'>,
   ) {
     this.logger = loggerModule.logger;
+  }
+
+  /** Every container of every stack on this machine, by container name. */
+  private infraState(): Record<string, { status: string; health: string }> {
+    const out: Record<string, { status: string; health: string }> = {};
+    for (const { infra } of this.projects?.getInfraManager().listInstances() ?? []) {
+      for (const [name, state] of Object.entries(infra.getState().services)) {
+        out[name] = { status: state.status, health: containerHealth(state) };
+      }
+    }
+    return out;
   }
 
   /**

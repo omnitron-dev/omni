@@ -48,7 +48,6 @@ import {
   FLEET_SELF_NODE_ID_TOKEN,
   SECRETS_PASSPHRASE_TOKEN,
   SECRETS_LEGACY_PATH_TOKEN,
-  INFRA_STATE_ACCESSOR_TOKEN,
 } from '../shared/tokens.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
 import { AuthService } from '../services/auth.service.js';
@@ -591,20 +590,15 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any]),
 
-      // Alert evaluation engine (master only).
-      // T-2 part 2 — useClass; infraState accessor lambda lives
-      // behind INFRA_STATE_ACCESSOR_TOKEN (useValue), late-bound to
-      // avoid the circular dep with InfrastructureService.
+      // Alert evaluation engine (master only). It reads the stacks'
+      // containers through the project service; the accessor it used to
+      // take here answered `{}` on every call.
       ...(!isSlave ? [[
         ALERT_SERVICE_TOKEN,
         {
           useClass: AlertService,
           scope: Scope.Singleton,
         },
-      ] as any] : []),
-      ...(!isSlave ? [[
-        INFRA_STATE_ACCESSOR_TOKEN,
-        { useValue: () => ({}) },
       ] as any] : []),
 
       // The audit trail (master only — the table is in the omnitron

@@ -44,7 +44,7 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 const alerts = (rows: unknown[]) =>
-  new AlertService(loggerModule, dbReturning(rows) as never, undefined as never, (() => ({})) as never)
+  new AlertService(loggerModule, dbReturning(rows) as never, undefined as never)
     .getActiveAlerts();
 
 describe('what an alert says', () => {

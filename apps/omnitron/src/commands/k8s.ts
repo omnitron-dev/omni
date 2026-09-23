@@ -5,24 +5,25 @@
 
 import { log } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { IOmnitronKubernetesService } from '../shared/dto/services.js';
 
-async function invokeRpc(method: string, data?: any): Promise<any> {
+/**
+ * One call to the daemon's Kubernetes service, through `client.service()`.
+ *
+ * The same walk `pipeline.ts` had, with the same end: it asked
+ * `netron.getPeers`, which Netron does not have (its peers are the `peers`
+ * Map), walked the `[]` the guard substituted, and printed
+ *
+ *     ■  Failed: OmnitronKubernetes service not available
+ *
+ * with exit 0. Measured 2026-09-23 on the development daemon: through
+ * `client.service()` the same daemon answered `listPods()` with 9 pods of its
+ * kind cluster.
+ */
+async function withKubernetes<T>(call: (svc: IOmnitronKubernetesService) => Promise<T>): Promise<T> {
   const client = createDaemonClient();
   try {
-    await (client as any).ensureConnected();
-    const netron = (client as any).netron;
-    const peers = netron.getPeers ? netron.getPeers() : [];
-    for (const peer of peers) {
-      try {
-        const svc = await peer.queryInterface('OmnitronKubernetes');
-        if (svc && typeof svc[method] === 'function') {
-          return data ? await svc[method](data) : await svc[method]();
-        }
-      } catch {
-        continue;
-      }
-    }
-    throw new Error('OmnitronKubernetes service not available');
+    return await call(await client.service<IOmnitronKubernetesService>('OmnitronKubernetes'));
   } finally {
     await client.disconnect();
   }
@@ -30,7 +31,7 @@ async function invokeRpc(method: string, data?: any): Promise<any> {
 
 export async function k8sPodsCommand(namespace?: string): Promise<void> {
   try {
-    const pods: any[] = await invokeRpc('listPods', namespace ? { namespace } : undefined);
+    const pods = await withKubernetes((svc) => svc.listPods(namespace ? { namespace } : undefined));
 
     if (pods.length === 0) {
       log.info('No pods found');
@@ -57,6 +58,9 @@ export async function k8sPodsCommand(namespace?: string): Promise<void> {
     }
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
+    // Printed «Failed» and left with exit 0; a failure has to say so to the
+    // shell as well.
+    process.exitCode = 1;
   }
 }
 
@@ -64,14 +68,19 @@ export async function k8sDeployScaleCommand(name: string, replicas: string, name
   const count = parseInt(replicas, 10);
   if (isNaN(count) || count < 0) {
     log.error(`Invalid replicas count: '${replicas}'`);
+    // A refused argument is a failed command — it scaled nothing.
+    process.exitCode = 1;
     return;
   }
 
   try {
     log.info(`Scaling deployment '${name}' to ${count} replicas...`);
-    await invokeRpc('scaleDeployment', { name, replicas: count, namespace });
+    await withKubernetes((svc) =>
+      svc.scaleDeployment({ name, replicas: count, ...(namespace ? { namespace } : {}) }),
+    );
     log.success(`Deployment '${name}' scaled to ${count} replicas`);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
+    process.exitCode = 1;
   }
 }

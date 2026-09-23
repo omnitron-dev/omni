@@ -8,6 +8,7 @@ import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import type { IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
+import { syncFinding, syncWords, inSync } from '../shared/sync-reading.js';
 
 // =============================================================================
 // Helpers
@@ -152,10 +153,16 @@ export async function stackStatusCommand(projectName: string, stackName: string)
           // path has no production caller — replication runs the other way,
           // with the master pulling — so it is false on every healthy node
           // and this cell could never print «synced».
+          // Read by the console's reading (`sync-reading.ts`): «N pending»
+          // was the batch waiting for the next pull on a node keeping up —
+          // nearly always non-zero — and a node falling behind (entries
+          // waiting, `lastSyncAt` standing still) printed exactly the same.
           sync: n.syncStatus
-            ? n.syncStatus.pendingItems === 0
-              ? prism.green('synced')
-              : `${n.syncStatus.pendingItems} pending`
+            ? (() => {
+                const finding = syncFinding(n.syncStatus);
+                const words = syncWords(finding);
+                return inSync(finding) ? prism.green(words) : prism.red(words);
+              })()
             : '',
         })),
         columns: [

@@ -155,12 +155,27 @@ export const countedTraffic = (
  * first since the process started, the second over the last 60 s, where six
  * requests had finished. Three of the six were daos main's notification
  * long-poll, which holds a request for 25 s by design; the p50 of the same
- * six was 261 ms.
+ * six was 261 ms. A runtime that counts long polls apart (`held`) keeps
+ * their waits out of the figure, and the caption says so.
  */
-export const latencyCaption = (latency: AggregatedMetricsDto['apps'][string]['latency'] | undefined): string =>
-  latency
+export const latencyCaption = ({ latency, held }: Pick<AggregatedMetricsDto['apps'][string], 'latency' | 'held'>): string => {
+  const over = latency
     ? `p50 ${Math.round(latency.p50)} ms · ${latency.count} finished in the last ${Math.round(latency.windowMs / 1000)} s`
     : 'nothing finished in its window';
+  return held ? `${over} · long polls excluded` : over;
+};
+
+/**
+ * What a request count is over, and how many of it were long polls.
+ *
+ * Since 254eb5c3 a runtime counts the requests to a method that holds its
+ * caller (`held` — daos main's notification poll, up to 25 s each) and keeps
+ * their waits out of the latency. The page went on showing the same two
+ * cards with the same words, while the latency beside the count had stopped
+ * timing some of it.
+ */
+export const requestsCaption = ({ held }: Pick<AggregatedMetricsDto['apps'][string], 'held'>): string =>
+  held ? `since the process started · ${held} of them long polls` : 'since the process started';
 
 /**
  * The one process an app's diagnostics measured, when they measured one.

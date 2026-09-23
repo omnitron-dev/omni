@@ -25,7 +25,7 @@ import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess } from 'src/utils/app-address';
+import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess, requestsCaption } from 'src/utils/app-address';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type {
@@ -886,7 +886,7 @@ function MetricsTab({ appName }: { appName: string }) {
         <MetricsGaugeCard
           title="Requests"
           value={loading ? '—' : counted ? String(counted.requests ?? 0) : 'not collected'}
-          {...(counted && { caption: 'since the process started' })}
+          {...(counted && { caption: requestsCaption(counted) })}
           color="info"
           loading={loading}
         />
@@ -901,7 +901,7 @@ function MetricsTab({ appName }: { appName: string }) {
           title="Latency p95"
           value={loading ? '—' : !counted ? 'not collected' : counted.latency ? Math.round(counted.latency.p95) : 'none in window'}
           {...(counted?.latency ? { suffix: 'ms' } : {})}
-          {...(counted && { caption: latencyCaption(counted.latency) })}
+          {...(counted && { caption: latencyCaption(counted) })}
           color="info"
           loading={loading}
         />

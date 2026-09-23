@@ -18,7 +18,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
-import { latencyCaption } from '../../webapp/src/utils/app-address.js';
+import { latencyCaption, requestsCaption } from '../../webapp/src/utils/app-address.js';
 
 const { app, aggregate } = vi.hoisted(() => {
   const MB = 1024 * 1024;
@@ -95,6 +95,38 @@ describe('a latency beside a count of another window', () => {
   });
 
   it('says nothing finished rather than name a window it does not have', () => {
-    expect(latencyCaption(null)).toBe('nothing finished in its window');
+    expect(latencyCaption({ latency: null })).toBe('nothing finished in its window');
+  });
+});
+
+describe('a latency that stopped timing the waits and said nothing', () => {
+  // Since 254eb5c3 the runtime counts main's notification long polls apart
+  // (`held`) and keeps their 25 s waits out of the latency.
+  it('says how many of the requests were long polls, and that the latency leaves them out', async () => {
+    Object.assign(aggregate.apps['daos/dev/main'], {
+      held: 58,
+      latency: { p50: 4.2, p95: 38.9, p99: 61.3, mean: 9.8, max: 61.3, count: 3, windowMs: 60_000 },
+    });
+    const { default: AppDetailPage } = await import('../../webapp/src/pages/apps/detail.js');
+    render(
+      <ThemeProvider theme={createTheme()}>
+        <MemoryRouter initialEntries={['/apps/daos%2Fdev%2Fmain']}>
+          <Routes>
+            <Route path="/apps/:name" element={<AppDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Metrics' }));
+
+    expect(await screen.findByText('since the process started · 58 of them long polls')).toBeInTheDocument();
+    expect(screen.getByText('p50 4 ms · 3 finished in the last 60 s · long polls excluded')).toBeInTheDocument();
+  });
+
+  it('says nothing of long polls where the runtime counts none, or does not count them', () => {
+    expect(requestsCaption({ held: 0 })).toBe('since the process started');
+    expect(requestsCaption({})).toBe('since the process started');
+    expect(latencyCaption({ latency: null, held: 3 })).toBe('nothing finished in its window · long polls excluded');
   });
 });

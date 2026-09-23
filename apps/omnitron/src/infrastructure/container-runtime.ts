@@ -202,6 +202,7 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
         service: info.Config?.Labels?.['omnitron.service'],
         project: info.Config?.Labels?.['omnitron.project'],
         stack: info.Config?.Labels?.['omnitron.stack'],
+        app: info.Config?.Labels?.['omnitron.app'],
         ...(failure && { error: failure }),
       });
     }

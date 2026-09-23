@@ -16,13 +16,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const daemon = { list: vi.fn(), status: vi.fn() };
-const infra = { getState: vi.fn() };
-const fleet = { listNodes: vi.fn() };
+const infra = { listContainers: vi.fn() };
 
 vi.mock('src/netron/client', () => ({
   daemon: { list: (...a: unknown[]) => daemon.list(...a), status: (...a: unknown[]) => daemon.status(...a) },
-  infra: { getState: (...a: unknown[]) => infra.getState(...a) },
-  fleet: { listNodes: (...a: unknown[]) => fleet.listNodes(...a) },
+  infra: { listContainers: (...a: unknown[]) => infra.listContainers(...a) },
+  project: {},
   metrics: {},
   daemonClient: { use: () => {}, daemon: {} },
 }));
@@ -31,8 +30,7 @@ vi.mock('src/netron/client', () => ({
 function allAnswerEmpty() {
   daemon.list.mockResolvedValue([]);
   daemon.status.mockResolvedValue({ apps: [], totalCpu: 0, totalMemory: 0 });
-  infra.getState.mockResolvedValue({ services: {} });
-  fleet.listNodes.mockResolvedValue([]);
+  infra.listContainers.mockResolvedValue([]);
 }
 
 /** Nothing answers — the daemon is down. */
@@ -40,8 +38,7 @@ function allFail() {
   const down = () => Promise.reject(new Error('ECONNREFUSED'));
   daemon.list.mockImplementation(down);
   daemon.status.mockImplementation(down);
-  infra.getState.mockImplementation(down);
-  fleet.listNodes.mockImplementation(down);
+  infra.listContainers.mockImplementation(down);
 }
 
 async function store() {
@@ -85,8 +82,7 @@ describe('an empty topology', () => {
     // not worth presenting as complete.
     daemon.list.mockResolvedValue([{ name: 'main', status: 'online' }]);
     daemon.status.mockResolvedValue({ apps: [], totalCpu: 0, totalMemory: 0 });
-    infra.getState.mockImplementation(() => Promise.reject(new Error('no docker')));
-    fleet.listNodes.mockResolvedValue([]);
+    infra.listContainers.mockImplementation(() => Promise.reject(new Error('no docker')));
     const useStore = await store();
 
     await useStore.getState().fetchAll();
@@ -94,7 +90,7 @@ describe('an empty topology', () => {
     const { error, apps } = useStore.getState();
     expect(apps).toHaveLength(1);
     expect(error).toMatch(/incomplete/i);
-    expect(error).toMatch(/infrastructure/i);
+    expect(error).toMatch(/container health/i);
     // The rest is current, and says so — otherwise an operator distrusts
     // the whole diagram over one missing source.
     expect(error).toMatch(/rest of the diagram is current/i);

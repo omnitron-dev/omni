@@ -24,6 +24,7 @@ import type { IStackInfo } from '../shared/dto/project.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
+import { probeFields, type ProbeReading } from '../infrastructure/host-inspection.js';
 import {
   listManagedContainers,
   getContainerLogs,
@@ -290,6 +291,13 @@ const bytes = (n: number | null | undefined) =>
   n === null || n === undefined ? '-' : n >= 1e12 ? `${(n / 1e12).toFixed(2)} TB` : `${(n / 1e9).toFixed(1)} GB`;
 const yes = (flag: boolean) => (flag ? prism.green('yes') : prism.red('no'));
 
+/** A probe's answer on one line: the fields its declaration reads it by, and how many more `--json` has. */
+function formatProbe(reading: ProbeReading): string {
+  const { fields, more } = probeFields(reading);
+  const line = fields.map(([name, value]) => `${name}=${value ?? '—'}`).join(' ');
+  return more > 0 ? `${line} ${prism.dim(`+${more} in --json`)}` : line;
+}
+
 function printInspection(
   target: string,
   reading: { node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string },
@@ -313,11 +321,7 @@ function printInspection(
       const e = service.external;
       const answer = e.probe
         ? e.probe.ok
-          ? `${e.probe.method}: ${Object.entries(e.probe.result ?? {})
-              .filter(([, v]) => typeof v !== 'string' || v.length <= 24)
-              .slice(0, 12)
-              .map(([k, v]) => `${k}=${v}`)
-              .join(' ')}`
+          ? `${e.probe.method}: ${formatProbe(e.probe)}`
           : `${e.probe.method}: ${prism.red(e.probe.error ?? 'failed')}`
         : '';
       log.info(`${head} → ${e.host}:${e.port ?? '-'} · on this node ${yes(e.local)} · reachable ${yes(e.reachable)} ${answer}`);

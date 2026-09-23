@@ -67,7 +67,29 @@ export interface ProbeReading {
   ok: boolean;
   /** The answer's scalar fields: height, target height, synchronized, version. */
   result?: Record<string, string | number | boolean>;
+  /** The fields its declaration reads the answer by (`healthCheck.jsonrpc.report`). */
+  report?: string[];
   error?: string;
+}
+
+/**
+ * The fields of an answer worth a line: those its declaration names, in its
+ * order — or, naming none, the first dozen short ones — and how many more
+ * `--json` holds.
+ *
+ * The first `infra inspect` of the test node printed monerod's fields as
+ * they came, `adjusted_time` to `database_size`, and cut off the network,
+ * height and sync state the probe had been sent for (2026-09-23).
+ */
+export function probeFields(reading: ProbeReading): {
+  fields: Array<[string, string | number | boolean | undefined]>;
+  more: number;
+} {
+  const result = reading.result ?? {};
+  const short = (name: string) => typeof result[name] !== 'string' || String(result[name]).length <= 24;
+  const names = reading.report?.length ? reading.report : Object.keys(result).filter(short).slice(0, 12);
+  const shown = names.filter((name) => name in result).length;
+  return { fields: names.map((name) => [name, result[name]]), more: Object.keys(result).length - shown };
 }
 
 export interface HostServiceReading {
@@ -262,7 +284,9 @@ async function probe(
     auth = { type: declared.type === 'digest' ? 'digest' : 'basic', user, password };
   }
   const where = host.includes(':') ? `[${host}]` : host;
-  return deps.jsonRpc(`http://${where}:${port}${path}`, method, auth);
+  const reading = await deps.jsonRpc(`http://${where}:${port}${path}`, method, auth);
+  const report = check.jsonrpc?.report;
+  return report?.length ? { ...reading, report } : reading;
 }
 
 // =============================================================================

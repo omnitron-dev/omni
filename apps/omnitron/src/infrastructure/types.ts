@@ -546,6 +546,13 @@ export interface IServiceHealthCheck {
     /** URL path for JSON-RPC endpoint. Default '/json_rpc' (Monero). Set '' for root '/' (some daemons). */
     path?: string;
     auth?: { user: string; password: string; type?: 'digest' | 'basic' };
+    /**
+     * The fields of the answer that say how far the service is — what
+     * `infra inspect` prints of it, in this order; `--json` has them all.
+     * monerod's `get_info` answers some fifty, and its network, height and
+     * sync state are not among the first twelve.
+     */
+    report?: string[];
   };
 }
 

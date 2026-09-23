@@ -148,6 +148,21 @@ export const countedTraffic = (
 ): AggregatedMetricsDto['apps'][string] | null => (entry?.traffic === 'measured' ? entry : null);
 
 /**
+ * What a latency figure is over: its window, how many requests finished in
+ * it, and the median beside the tail.
+ *
+ * The page drew «Requests 101 · Latency p95 25034 ms» side by side — the
+ * first since the process started, the second over the last 60 s, where six
+ * requests had finished. Three of the six were daos main's notification
+ * long-poll, which holds a request for 25 s by design; the p50 of the same
+ * six was 261 ms.
+ */
+export const latencyCaption = (latency: AggregatedMetricsDto['apps'][string]['latency'] | undefined): string =>
+  latency
+    ? `p50 ${Math.round(latency.p50)} ms · ${latency.count} finished in the last ${Math.round(latency.windowMs / 1000)} s`
+    : 'nothing finished in its window';
+
+/**
  * The one process an app's diagnostics measured, when they measured one.
  *
  * Until 0e7726e7 `inspect` measured ONE process — the one whose pid the

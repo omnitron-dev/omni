@@ -189,7 +189,7 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
         });
         if (!owned.ok) throw new Error(`could not give ${action.to} to ${action.owner}: ${firstLine(owned.stderr)}`);
       }
-      await host.run(['chmod', '750', action.to]);
+      await closeToOthers(action.to, host);
       return;
     }
 
@@ -202,7 +202,7 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       }
       // Not group- or world-readable: a chain directory holds a wallet's
       // neighbourhood even when it holds no wallet.
-      await host.run(['chmod', '750', action.path]);
+      await closeToOthers(action.path, host);
       return;
     }
 
@@ -252,6 +252,12 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
       throw new Error(`unknown bare-metal action: ${JSON.stringify(unexpected)}`);
     }
   }
+}
+
+/** 0750 on a data directory — and a refusal said as one, not a directory left open and called done. */
+async function closeToOthers(path: string, host: HostRunner): Promise<void> {
+  const r = await host.run(['chmod', '750', path]);
+  if (!r.ok) throw new Error(`could not close ${path} to other accounts: ${firstLine(r.stderr)}`);
 }
 
 export function describe(action: BareMetalAction): string {
@@ -355,7 +361,19 @@ export function localHost(): HostRunner {
       const fs = await import('node:fs/promises');
       const nodePath = await import('node:path');
 
-      await fs.mkdir(nodePath.dirname(path), { recursive: true });
+      // Every directory this makes is 0755. `mkdir`'s own mode is cut by the
+      // daemon's umask, which nothing sets: under 027 a config's directory
+      // came out 0750 root:root, and the account it was written for could
+      // not reach it. Every level, not the one `mkdir` returns — that is the
+      // topmost it made. A directory that was already there is someone's.
+      const dir = nodePath.dirname(path);
+      const made = await fs.mkdir(dir, { recursive: true });
+      if (made !== undefined) {
+        for (let level = dir; ; level = nodePath.dirname(level)) {
+          await fs.chmod(level, 0o755);
+          if (level === made || level === nodePath.dirname(level)) break;
+        }
+      }
 
       // Same directory as the destination so the rename is atomic — across
       // filesystems it is a copy, and a copy is not.
@@ -367,7 +385,17 @@ export function localHost(): HostRunner {
       if (options.owner) {
         const { execFile } = await import('node:child_process');
         const { promisify } = await import('node:util');
-        await promisify(execFile)('chown', [`${options.owner}:${options.owner}`, staging]).catch(() => undefined);
+        try {
+          await promisify(execFile)('chown', [`${options.owner}:${options.owner}`, staging]);
+        } catch (err) {
+          // Left as it was written, it is root's, 0640 — a file its own
+          // account cannot read, reported as written.
+          await fs.rm(staging, { force: true });
+          const e = err as { stderr?: string; message?: string };
+          throw new Error(
+            `could not give ${path} to ${options.owner}: ${firstLine(e.stderr?.trim() || e.message || '')}`
+          );
+        }
       }
 
       await fs.rename(staging, path);

@@ -47,15 +47,33 @@ interface ScheduleEntry {
   cron: string;
   plan: SchedulePlan;
   /**
-   * `setInterval` for the interval forms, `setTimeout` for cron (each run
-   * arms the next one, because cron occurrences are not evenly spaced).
-   * `clearTimeout` and `clearInterval` are interchangeable in Node, so a
-   * single field and a single cancel path are enough.
+   * The pending `setTimeout`. Both forms arm one run at a time and each run
+   * arms the next: cron because its occurrences are not evenly spaced, the
+   * interval form because its next run is measured from the last one.
    */
   timer?: NodeJS.Timeout;
-  /** Set once a cron schedule has been cancelled, so an in-flight tick stops. */
+  /** When the pending timer fires (ISO, UTC). */
+  nextRunAt?: string;
+  /** Set once a schedule has been cancelled, so an in-flight tick stops. */
   cancelled?: boolean;
 }
+
+/**
+ * A schedule's first run after a start is never sooner than this — the
+ * stacks whose databases it dumps are still coming up — and every further
+ * schedule armed by the same start waits one `FIRST_RUN_STAGGER_MS` more, so
+ * two overdue passes do not begin in the same second.
+ */
+const FIRST_RUN_GRACE_MS = 60_000;
+const FIRST_RUN_STAGGER_MS = 60_000;
+
+/**
+ * After a pass that backed up nothing, the next attempt comes this soon (or
+ * at the interval, when that is sooner). Running overdue passes at start is
+ * what makes this necessary: a daily pass that finds its stacks not yet up
+ * would otherwise wait a whole day to try again.
+ */
+const RETRY_AFTER_NOTHING_MS = 15 * 60_000;
 
 /**
  * How one pass ended. `empty` is its own word: a pass that found nothing to
@@ -96,6 +114,10 @@ export interface BackupScheduleStatus {
   armed: boolean;
   /** The last pass this target ran, from any daemon run; null if none was recorded. */
   lastPass: BackupPassRecord | null;
+  /** The target's newest backup in the index — what its next run is measured from. */
+  lastBackupAt: string | null;
+  /** When the armed timer fires, or null when the schedule is not armed. */
+  nextRunAt: string | null;
 }
 
 /** Everything `backup schedules` and `backup list` need beyond the index rows. */
@@ -292,6 +314,8 @@ export class BackupService {
    * process. Subsequent list/restore calls skip the directory walk.
    */
   private legacyMigrated = false;
+  /** The tail of the scheduled passes, which run one at a time — see `runExclusive`. */
+  private passQueue: Promise<unknown> = Promise.resolve();
 
   // T-2 — @Inject decorators bind tokens to ctor positions; framework
   // reads metadata directly, no inject:[] array drift possible.
@@ -893,6 +917,7 @@ export class BackupService {
       } catch (err) {
         error = (err as Error).message;
       }
+      const last = this.lastBackupOf(target);
       return {
         target,
         spec,
@@ -900,6 +925,8 @@ export class BackupService {
         ...(error ? { error } : {}),
         armed: this.schedules.has(target),
         lastPass: passes[target] ?? null,
+        lastBackupAt: last === null ? null : new Date(last).toISOString(),
+        nextRunAt: this.schedules.get(target)?.nextRunAt ?? null,
       };
     });
     return { schedules };
@@ -1063,8 +1090,18 @@ export class BackupService {
       // is skipped and named at `error` level; `backup schedules` still lists
       // it, so it stays visible as configured-but-not-running.
       try {
-        this.armSchedule(database, parseSchedule(cron));
+        this.armSchedule(database, parseSchedule(cron), n);
         n++;
+        const last = this.lastBackupOf(database);
+        this.logger.info(
+          {
+            database,
+            schedule: cron,
+            lastBackupAt: last === null ? null : new Date(last).toISOString(),
+            nextRunAt: this.schedules.get(database)?.nextRunAt ?? null,
+          },
+          'Backup schedule armed',
+        );
       } catch (err) {
         rejected.push(database);
         this.logger.error(
@@ -1087,8 +1124,25 @@ export class BackupService {
     return this.schedules.get(database)?.cron ?? (await this.listSchedules())[database] ?? null;
   }
 
-  /** In-memory timer arm (no persistence) — shared by setSchedule/restore. */
-  private armSchedule(database: string, plan: SchedulePlan): void {
+  /**
+   * In-memory timer arm (no persistence) — shared by setSchedule/restore.
+   *
+   * An interval schedule used to be `setInterval(run, intervalMs)` from the
+   * moment it was armed — the moment the daemon started — whatever had run
+   * before. Measured on the master: 83 daemon starts between 09-20 07:23Z and
+   * 09-23, the longest uptime 10 h 51 min, so the `full` daily pass never
+   * fired, and its newest `tor-keys`, `storage-objects` and `daemon-state`
+   * copies were 3 d 15 h old; the hourly `all` pass left 13 gaps over two
+   * hours in 74 h (the longest 5 h 43 min, 18 restarts inside it).
+   *
+   * Now the first run is due one interval after the target's newest backup
+   * in the index — immediately if that is already past, which after days of
+   * restarts it is — but never sooner than `FIRST_RUN_GRACE_MS`, and each
+   * further schedule armed by the same start one `FIRST_RUN_STAGGER_MS` later
+   * (`slot`). Every later run is measured from when the previous one STARTED,
+   * so a long pass does not push the cadence back, and passes never overlap.
+   */
+  private armSchedule(database: string, plan: SchedulePlan, slot = 0): void {
     const existing = this.schedules.get(database);
     if (existing) {
       existing.cancelled = true;
@@ -1098,36 +1152,90 @@ export class BackupService {
     const entry: ScheduleEntry = { database, cron: plan.spec, plan };
     this.schedules.set(database, entry);
 
-    if (plan.kind === 'interval') {
-      entry.timer = setInterval(() => void this.runScheduledBackup(database), plan.intervalMs);
+    const arm = (delay: number): void => {
+      if (entry.cancelled) return;
+      entry.nextRunAt = new Date(Date.now() + delay).toISOString();
+      entry.timer = setTimeout(() => {
+        const startedAt = Date.now();
+        void this.runExclusive(() => this.runScheduledBackup(database)).then((outcome) => {
+          if (plan.kind === 'interval') {
+            const backedUpSomething = outcome === 'ok' || outcome === 'partial';
+            const wait = backedUpSomething ? plan.intervalMs : Math.min(plan.intervalMs, RETRY_AFTER_NOTHING_MS);
+            arm(Math.max(0, startedAt + wait - Date.now()));
+          } else {
+            // Cron occurrences are not evenly spaced — "0 3 * * *" is 23 or
+            // 25 hours apart across a DST boundary, and "0 0 1 * *" is 28 to
+            // 31 days. Each run computes the next one from the clock rather
+            // than adding a fixed interval, so the schedule cannot drift off
+            // its stated time.
+            arm(nextCronDelay(plan.expression));
+          }
+        });
+      }, delay);
       entry.timer.unref();
+    };
+
+    if (plan.kind === 'interval') {
+      const last = this.lastBackupOf(database);
+      const due = last === null ? 0 : last + plan.intervalMs - Date.now();
+      arm(Math.max(due, FIRST_RUN_GRACE_MS + slot * FIRST_RUN_STAGGER_MS));
     } else {
-      // Cron occurrences are not evenly spaced — "0 3 * * *" is 23 or 25
-      // hours apart across a DST boundary, and "0 0 1 * *" is 28 to 31 days.
-      // Each run computes the next one from the clock rather than adding a
-      // fixed interval, so the schedule cannot drift off its stated time.
-      const armNext = (): void => {
-        if (entry.cancelled) return;
-        const delay = nextCronDelay(plan.expression);
-        entry.timer = setTimeout(() => {
-          void this.runScheduledBackup(database).finally(armNext);
-        }, delay);
-        entry.timer.unref();
-      };
-      armNext();
+      arm(nextCronDelay(plan.expression));
     }
 
-    this.logger.debug({ database, schedule: describeSchedule(plan) }, 'Backup schedule armed');
+    this.logger.debug({ database, schedule: describeSchedule(plan), nextRunAt: entry.nextRunAt }, 'Backup schedule armed');
+  }
+
+  /**
+   * Scheduled passes run one at a time. Two schedules due together — which is
+   * what every start after a long gap produces — would otherwise dump the same
+   * databases twice, concurrently, on a machine already under load.
+   */
+  private runExclusive<T>(run: () => Promise<T>): Promise<T> {
+    const turn = this.passQueue.then(run, run);
+    this.passQueue = turn.catch(() => undefined);
+    return turn;
+  }
+
+  /**
+   * When `target` last produced a backup, by the index — the newest row among
+   * the artefacts that target writes: `full` → the ones only it produces;
+   * `all` → any stack database; a database → that database. Null when none.
+   */
+  private lastBackupOf(target: string): number | null {
+    let rows: ReturnType<DaemonStateStore['selectBackupsSync']>;
+    try {
+      rows = this.store.selectBackupsSync();
+    } catch {
+      return null;
+    }
+    const fullOnly = new Set<string>(FULL_BACKUP_ARTEFACTS);
+    const name = target.includes('/') ? target.slice(target.lastIndexOf('/') + 1) : target;
+    let newest: number | null = null;
+    for (const row of rows) {
+      let type: string | undefined;
+      try { type = row.metadata ? (JSON.parse(row.metadata) as { type?: string }).type : undefined; } catch { /* */ }
+      const counts =
+        target === 'full' ? fullOnly.has(row.app)
+        : target === 'all' ? (type === undefined || type === 'postgres') && !fullOnly.has(row.app) && row.app !== 'omnitron'
+        : row.app === name;
+      if (!counts) continue;
+      const at = Date.parse(row.created_at);
+      if (Number.isFinite(at) && (newest === null || at > newest)) newest = at;
+    }
+    return newest;
   }
 
   /**
    * One scheduled tick. Extracted so both timer shapes share it, and so a
-   * failure is reported the same way from either.
+   * failure is reported the same way from either. Returns how it ended, which
+   * decides how soon the next attempt comes.
    */
-  private async runScheduledBackup(database: string): Promise<void> {
+  private async runScheduledBackup(database: string): Promise<BackupPassOutcome> {
+    let outcome: BackupPassOutcome = 'failed';
     try {
-      if (database === 'full') await this.createFullBackup('schedule');
-      else if (database === 'all') await this.createAllBackups('schedule');
+      if (database === 'full') outcome = passOutcome(await this.createFullBackup('schedule'));
+      else if (database === 'all') outcome = passOutcome(await this.createAllBackups('schedule'));
       else {
         // A single database is a pass of one, recorded like the others; its
         // failure is caught here rather than thrown past the record.
@@ -1140,12 +1248,13 @@ export class BackupService {
           entry = { target: database, ok: false, error: (err as Error).message };
           this.logger.error({ database, error: reasonOf(err) }, 'Backup failed');
         }
-        this.finishPass(database, 'schedule', startedAt, [entry]);
+        outcome = this.finishPass(database, 'schedule', startedAt, [entry]).outcome;
       }
       await this.pruneOldBackups(database).catch(() => { /* best-effort */ });
     } catch (err) {
       this.logger.error({ database, error: (err as Error).message }, 'Scheduled backup failed');
     }
+    return outcome;
   }
 
   /**

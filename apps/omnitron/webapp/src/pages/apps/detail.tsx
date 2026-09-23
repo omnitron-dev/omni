@@ -121,7 +121,7 @@ function OverviewTab({
     ? Math.round((diagnostics.memory.heapUsed / diagnostics.memory.heapTotal) * 100)
     : 0;
   const hasHeapData = diagnostics != null && diagnostics.memory.heapTotal > 0;
-  const measured = measuredProcess(app, diagnostics?.pid);
+  const measured = measuredProcess(app, diagnostics);
   const of = measured ? ` of ${measured.name}` : '';
 
   const processColumns: TableColumn<SubProcessInfoDto>[] = [

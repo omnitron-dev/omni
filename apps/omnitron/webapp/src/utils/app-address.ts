@@ -7,7 +7,12 @@
  * node, where this daemon has no handle for them at all.
  */
 
-import type { AggregatedMetricsDto, IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
+import type {
+  AggregatedMetricsDto,
+  AppDiagnosticsDto,
+  IProjectAppStatus,
+  ProcessInfoDto,
+} from '@omnitron-dev/omnitron/dto/services';
 
 /** Only a local stack's apps are this daemon's own: a detail page, start, stop. */
 export const isLocal = (app: IProjectAppStatus): boolean => app.stackType === 'local';
@@ -143,15 +148,21 @@ export const countedTraffic = (
 ): AggregatedMetricsDto['apps'][string] | null => (entry?.traffic === 'measured' ? entry : null);
 
 /**
- * The process an app's diagnostics measured, when the app has several.
+ * The one process an app's diagnostics measured, when they measured one.
  *
- * `inspect` measures ONE process — the one whose pid the daemon holds for the
- * app. In an app of several that is one of them (main's notification-worker,
- * 181.9 MB of the app's 661.8 MB, measured 2026-09-23), and the page labelled
- * its figures as though they were the app's.
+ * Until 0e7726e7 `inspect` measured ONE process — the one whose pid the
+ * daemon holds for the app. In an app of several that is one of them (main's
+ * notification-worker, 181.9 MB of the app's 661.8 MB, measured 2026-09-23),
+ * and the page labelled its figures as though they were the app's. Since
+ * then its RSS is the app's, summed over every process, and the answer
+ * carries `pools`, which older daemons do not send: naming one process
+ * beside that figure would call the app's memory one process's — as «RSS of
+ * http: 645.5 MB» did beside an app of 645.2 MB.
  */
 export const measuredProcess = (
   app: Pick<ProcessInfoDto, 'processes'>,
-  pid: number | null | undefined,
-): NonNullable<ProcessInfoDto['processes']>[number] | undefined =>
-  (app.processes?.length ?? 0) > 1 ? app.processes!.find((process) => process.pid === pid) : undefined;
+  diagnostics: Pick<AppDiagnosticsDto, 'pid' | 'pools'> | null | undefined,
+): NonNullable<ProcessInfoDto['processes']>[number] | undefined => {
+  if (!diagnostics || Array.isArray(diagnostics.pools)) return undefined;
+  return (app.processes?.length ?? 0) > 1 ? app.processes!.find((process) => process.pid === diagnostics.pid) : undefined;
+};

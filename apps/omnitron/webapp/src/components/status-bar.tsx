@@ -9,10 +9,11 @@ import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
-import { daemon, alerts, nodes as nodesRpc } from 'src/netron/client';
+import { daemon, alerts, nodes as nodesRpc, project as projectRpc } from 'src/netron/client';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useProjectStore, useActiveProjectStacks } from 'src/stores/project.store';
+import { countedApps, tally } from 'src/utils/app-address';
 
 // =============================================================================
 // Helpers
@@ -121,9 +122,15 @@ export function StatusBar() {
    * cleared. That direction is the safe one: a stale count sends someone to
    * the alerts page, a false zero sends them nowhere.
    */
-  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0 });
+  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0 });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const activeStack = useProjectStore((s) => s.activeStack);
+  // For the event handler below, which runs per event rather than per
+  // selection and must count the selection as it is when the event arrives.
+  const selection = useRef({ project: activeProject, stack: activeStack });
+  selection.current = { project: activeProject, stack: activeStack };
 
   // The status bar sits on every page, so its loop is the one that runs the
   // most — and it was the last hand-written one: three RPCs every ten seconds
@@ -135,10 +142,11 @@ export function StatusBar() {
   // "Offline" beside a stale timestamp rather than asserting anything about
   // why — the banner is the surface that tells an operator what to DO, and
   // that one now distinguishes a timeout from a refusal.
-  const { data: polled } = usePolledResource(
+  const { data: polled, refresh } = usePolledResource(
     async () => {
-      const [status, nodesList, alertsResult] = await Promise.allSettled([
+      const [status, deployments, nodesList, alertsResult] = await Promise.allSettled([
         daemon.status(),
+        activeProject ? projectRpc.getProjectApps({ project: activeProject }) : Promise.resolve(null),
         nodesRpc.listNodes(),
         alerts.getSummary(),
       ]);
@@ -147,8 +155,8 @@ export function StatusBar() {
       const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
       const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
 
-      const appList = st?.apps ?? [];
-      const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
+      const apps = countedApps(activeProject, activeStack, st, deployments);
+      if (apps) Object.assign(lastKnown.current, tally(apps));
 
       // A sub-query that failed contributes nothing rather than zero.
       if (nodesList.status === 'fulfilled' && Array.isArray(nd)) {
@@ -161,8 +169,8 @@ export function StatusBar() {
 
       return {
         daemonOnline: !!st,
-        appsOnline: online,
-        appsTotal: Array.isArray(appList) ? appList.length : 0,
+        appsOnline: lastKnown.current.appsOnline,
+        appsTotal: lastKnown.current.appsTotal,
         nodesOnline: lastKnown.current.nodesOnline,
         nodesTotal: lastKnown.current.nodesTotal,
         firingAlerts: lastKnown.current.firingAlerts,
@@ -179,6 +187,11 @@ export function StatusBar() {
     if (polled) setData(polled);
   }, [polled]);
 
+  // Another selection is another question: its answer should not wait a poll.
+  useEffect(() => {
+    void refresh();
+  }, [activeProject, activeStack, refresh]);
+
   // Instant re-fetch on relevant WS events.
   //
   // `alert.` is in the list of channels that trigger this, and the body used
@@ -191,9 +204,11 @@ export function StatusBar() {
     if (!(ch.startsWith('app.') || ch.startsWith('alert.') || ch.startsWith('daemon.') || ch.startsWith('stack.'))) {
       return;
     }
+    const { project, stack } = selection.current;
     (async () => {
-      const [status, alertsResult] = await Promise.allSettled([
+      const [status, deployments, alertsResult] = await Promise.allSettled([
         daemon.status(),
+        project ? projectRpc.getProjectApps({ project }) : Promise.resolve(null),
         ch.startsWith('alert.') ? alerts.getSummary() : Promise.resolve(null),
       ]);
 
@@ -208,13 +223,13 @@ export function StatusBar() {
       }
 
       const st = status.value as any;
-      const appList = st?.apps ?? [];
-      const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;
+      const apps = countedApps(project, stack, st, deployments);
+      if (apps) Object.assign(lastKnown.current, tally(apps));
       setData((prev) => prev ? {
         ...prev,
         daemonOnline: true,
-        appsOnline: online,
-        appsTotal: appList.length,
+        appsOnline: lastKnown.current.appsOnline,
+        appsTotal: lastKnown.current.appsTotal,
         firingAlerts: lastKnown.current.firingAlerts,
         uptimeMs: st?.uptime ?? prev.uptimeMs,
         version: st?.version ?? prev.version,

@@ -876,7 +876,17 @@ export class OrchestratorService extends EventEmitter {
       } else {
         await this.launchBootstrapMode(entry, handle, cfg);
       }
-      this.logger.info({ app: entry.name, pid: handle.pid, mode }, 'App started');
+      // «App started» only for an app that is. It was logged in the same
+      // millisecond as a child's «Process failed to start», for an app whose
+      // processes never all came up.
+      if (handle.status === 'online') {
+        this.logger.info({ app: entry.name, pid: handle.pid, mode }, 'App started');
+      } else {
+        this.logger.error(
+          { app: entry.name, status: handle.status, mode },
+          'App did not come up — not every declared process started',
+        );
+      }
       this.persistState();
       return handle;
     } catch (err) {
@@ -1686,9 +1696,18 @@ export class OrchestratorService extends EventEmitter {
       definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: this.devMode });
       topology = definition.processes;
     } catch (err) {
-      this.logger.warn(
-        { app: entry.name, error: (err as Error).message },
-        'Could not load bootstrap config for topology — using single-process mode'
+      // Refused, with the reason. This fell back to «single-process mode» at
+      // warn — but every definition declares its topology (IAppDefinition:
+      // `processes` is required), so the fallback started the app in a shape
+      // it was never written for. Measured 2026-09-23 on the master: paysys
+      // and messaging, whose definitions failed to load («Parameter
+      // decorators only work when experimental decorators are enabled»), were
+      // started that way and died on «Dependency 'AuthModule:JWTService' not
+      // found» and a module path that single mode could not resolve — the
+      // operator saw those, and the cause sat one line up at warn.
+      throw new Error(
+        `Could not load ${entry.name}'s definition from ${bootstrapAbsPath}: ${(err as Error).message}`,
+        { cause: err },
       );
     }
 

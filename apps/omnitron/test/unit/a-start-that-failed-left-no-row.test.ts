@@ -256,3 +256,41 @@ describe('a failure does not become the last deployment', () => {
     expect(await (rpc as any).lastDeployedAt('daos-refused', 'test')).toBeNull();
   });
 });
+
+/**
+ * A start in which some apps did not come up is not an «ok» start.
+ *
+ * A boot at 12:14 UTC on 2026-09-23 started daos/dev with paysys and messaging
+ * errored and recorded `outcome: ok, apps: 6` — the stack «started», two of
+ * its six apps never did.
+ */
+describe('a stack start that brought up some of its apps', () => {
+  it('is partial, and names the apps that did not come up', async () => {
+    const { svc, rows } = service(LOCAL, {
+      toStackInfo: () => ({
+        name: 'test',
+        type: 'local',
+        status: 'running',
+        config: LOCAL,
+        apps: [
+          { name: 'main', status: 'online' },
+          { name: 'paysys', status: 'errored' },
+          { name: 'messaging', status: 'errored' },
+        ],
+      }),
+    });
+
+    await svc.startStack('daos', 'test', { source: 'boot' });
+
+    const row = rows.at(-1)!;
+    expect(row.action).toBe('stack.start');
+    expect(outcomeOf({ action: row.action, details: row.details })).toBe('partial');
+    expect(row.details.notUp).toBe('paysys (errored), messaging (errored)');
+  });
+
+  it('is ok when every app is online', async () => {
+    const { svc, rows } = service(LOCAL);
+    await svc.startStack('daos', 'test', { source: 'boot' });
+    expect(outcomeOf({ action: rows.at(-1)!.action, details: rows.at(-1)!.details })).toBe('ok');
+  });
+});

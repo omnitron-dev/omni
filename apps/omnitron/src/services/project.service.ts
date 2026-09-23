@@ -932,6 +932,15 @@ export class ProjectService extends EventEmitter {
       this.logger.info({ project: projectName, stack: stackName, source }, 'Stack started');
 
       const info = this.toStackInfo(projectName, stackName, stackConfig);
+      // What did not come up, said in the row. A boot at 12:14 UTC on
+      // 2026-09-23 started daos/dev with paysys and messaging errored and
+      // recorded `outcome: ok, apps: 6`: the stack «started», two of its six
+      // apps never did. For a local stack the apps are this daemon's; for a
+      // remote one, what did not happen is a node that was skipped.
+      const notUp =
+        stackConfig.type === 'local'
+          ? info.apps.filter((a) => a.status !== 'online').map((a) => `${a.name} (${a.status})`)
+          : (reach?.skipped ?? []).map((n) => `node ${typeof n === 'string' ? n : JSON.stringify(n)}`);
       // Recorded for every caller, and saying WHICH one. `source: 'unknown'`
       // is deliberate rather than a default of `'operator'`: a caller that
       // has not been taught to identify itself should be visible in the
@@ -945,7 +954,7 @@ export class ProjectService extends EventEmitter {
         resourceType: 'stack',
         resourceId: `${projectName}/${stackName}`,
         // Said, now that the other ending is recorded too (`startStackOnce`).
-        outcome: 'ok',
+        outcome: notUp.length > 0 ? 'partial' : 'ok',
         // The commit, so the trail answers what went out and not only when.
         // A node's artifacts carry no revision (every app is version `0.0.1`
         // forever, and `BUNDLE.json` is excluded from the checksum and read
@@ -957,6 +966,7 @@ export class ProjectService extends EventEmitter {
           // described a deployment whose only node could not be provisioned,
           // and nothing in it said so.
           apps: info.apps.length,
+          ...(notUp.length > 0 ? { notUp: notUp.join(', ') } : {}),
           source,
           ...(reach ? { nodes: reach.nodes, reached: reach.reached } : {}),
           ...(reach && reach.skipped.length > 0 ? { skipped: reach.skipped } : {}),

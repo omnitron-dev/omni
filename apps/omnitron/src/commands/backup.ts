@@ -26,6 +26,45 @@ async function invokeRpc(method: string, data?: any): Promise<any> {
   }
 }
 
+/**
+ * Call a method an older daemon does not serve, and learn that without
+ * failing. Netron refuses an unknown method by name ("Unknown member: …");
+ * that one refusal becomes `undefined`, and the command says what it cannot
+ * show. Any other error is still an error.
+ */
+async function invokeOptionalRpc(method: string, data?: any): Promise<any | undefined> {
+  try {
+    return await invokeRpc(method, data);
+  } catch (err) {
+    if (/Unknown member: '[^']+' is not defined/.test((err as Error).message)) return undefined;
+    throw err;
+  }
+}
+
+/** The status the daemon reports beside the index rows, or why there is none. */
+async function readBackupStatus(): Promise<{ status?: any; unavailable?: string }> {
+  try {
+    const status = await invokeOptionalRpc('getBackupStatus');
+    return status ? { status } : { unavailable: 'this daemon does not report it (no getBackupStatus)' };
+  } catch (err) {
+    return { unavailable: (err as Error).message };
+  }
+}
+
+/**
+ * One recorded pass, in UTC, with the reason of everything that failed.
+ * `EMPTY` is spelled out: a pass that found nothing did not succeed.
+ */
+function describePass(pass: any): string {
+  if (!pass) return 'none recorded yet';
+  const when = formatUtc(pass.startedAt);
+  if (pass.outcome === 'empty') return `${when}  EMPTY — nothing was found to back up`;
+  const took = Math.max(0, Math.round((Date.parse(pass.finishedAt) - Date.parse(pass.startedAt)) / 1000));
+  const head = `${when}  ${String(pass.outcome).toUpperCase()} — ${pass.ok} of ${pass.total} in ${took} s`;
+  const failures: any[] = pass.failures ?? [];
+  return failures.length === 0 ? head : `${head}; failed: ${failures.map((f) => `${f.target} (${f.error})`).join('; ')}`;
+}
+
 export async function backupCreateCommand(database?: string): Promise<void> {
   try {
     // No target ⇒ back up every database of every running stack (the safe
@@ -81,6 +120,19 @@ export async function backupListCommand(): Promise<void> {
     ]);
     for (const line of renderTable(['ID', 'Database', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
     log.info('\nRestore one with: omnitron backup restore <ID>');
+
+    // A pass that lost a database leaves a listing that looks complete — the
+    // missing row is the only trace. Say so here, where people look.
+    const { status, unavailable } = await readBackupStatus();
+    if (!status) {
+      log.warn(`Last pass of each schedule: unknown — ${unavailable}`);
+      return;
+    }
+    for (const s of status.schedules ?? []) {
+      if (s.lastPass && s.lastPass.outcome !== 'ok') {
+        log.warn(`Last '${s.target}' pass: ${describePass(s.lastPass)}`);
+      }
+    }
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }
@@ -129,14 +181,38 @@ export async function backupScheduleCommand(target: string, cron: string): Promi
 
 export async function backupSchedulesCommand(): Promise<void> {
   try {
-    const map: Record<string, string> = await invokeRpc('listSchedules');
-    const entries = Object.entries(map || {});
-    if (entries.length === 0) {
+    const { status, unavailable } = await readBackupStatus();
+    if (!status) {
+      // The configuration is all an older daemon can say — printed as it was,
+      // with the gap named rather than left to look like "all is well".
+      const map: Record<string, string> = await invokeRpc('listSchedules');
+      const entries = Object.entries(map || {});
+      if (entries.length === 0) {
+        log.info('No backup schedules configured');
+        return;
+      }
+      log.info('Backup schedules:');
+      for (const [target, cron] of entries) log.info(`  ${target.padEnd(28)} ${cron}`);
+      log.warn(`When each last ran, and how that went: unknown — ${unavailable}`);
+      return;
+    }
+
+    const schedules: any[] = status.schedules ?? [];
+    if (schedules.length === 0) {
       log.info('No backup schedules configured');
       return;
     }
+    // "all hourly" said what was configured, and nothing about whether it
+    // ran: the master's hourly `all` lost `main` at 06:04Z with no line
+    // saying so. Each schedule now carries its last pass and its outcome.
     log.info('Backup schedules:');
-    for (const [target, cron] of entries) log.info(`  ${target.padEnd(28)} ${cron}`);
+    for (const s of schedules) {
+      const how = s.schedule ?? `UNREADABLE — ${s.error ?? 'not armed'}`;
+      log.info(`  ${String(s.target).padEnd(10)} ${String(s.spec).padEnd(12)} ${how}${s.armed ? '' : '  (not armed)'}`);
+      const line = `      last pass  ${describePass(s.lastPass)}`;
+      if (s.lastPass && s.lastPass.outcome !== 'ok') log.warn(line);
+      else log.info(line);
+    }
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);
   }

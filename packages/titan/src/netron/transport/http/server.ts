@@ -42,6 +42,22 @@ import { TOKEN_ISSUANCE_METADATA_KEYS, runWithTokenIssuanceContext } from '../..
 import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transport.js';
 import { isAsyncGenerator } from '@omnitron-dev/common';
 import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
+import { LatencyWindow, type LatencySnapshot } from './latency-window.js';
+
+/** What `HttpServer.getTrafficSnapshot()` answers. */
+export interface HttpTrafficSnapshot {
+  /** Requests answered since the server started, probes excluded. */
+  requests: number;
+  /** Of those, answered with a 5xx. */
+  serverErrors: number;
+  /** Of those, answered with a 4xx. */
+  clientErrors: number;
+  /** `GET /health` and `GET /metrics` — counted apart from traffic. */
+  probes: number;
+  /** In flight right now. */
+  active: number;
+  latency: LatencySnapshot | null;
+}
 
 /**
  * JSON replacer that safely handles BigInt values.
@@ -252,10 +268,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Avoids push/shift memory churn, O(1) instead of O(n)
     responseTimeEma: 0,
     responseTimeAlpha: 0.1, // Smoothing factor for EMA
+    /** 4xx answers — the caller's mistake, counted apart from `totalErrors` (5xx, ours). */
+    clientErrors: 0,
+    /** `GET /health` and `GET /metrics`: a monitor polling, not traffic. */
+    probeRequests: 0,
     statusCounts: new Map<number, number>(),
     methodCounts: new Map<string, number>(),
     startTime: Date.now(),
   };
+
+  private readonly latency = new LatencyWindow();
 
   // OPTIMIZATION: Request timeout configuration
   private requestTimeoutMs: number;
@@ -894,71 +916,91 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const url = new URL(request.url);
     // Normalize pathname by stripping pathPrefix for endpoint matching
     const pathname = this.normalizePath(url.pathname);
+    const probe = request.method === 'GET' && (pathname === '/health' || pathname === '/metrics');
 
     // SECURITY: Check rate limits before processing
     const rateLimitResult = this.rateLimiter.check(request);
     if (!rateLimitResult.allowed) {
       this.metrics.activeRequests--;
-      return this.createRateLimitResponse(rateLimitResult, request);
+      const limited = this.createRateLimitResponse(rateLimitResult, request);
+      this.updateMetrics(startTime, limited.status, probe);
+      return limited;
     }
 
+    // The handlers are AWAITED here, and the status recorded is the one the
+    // response carries. The branches below used to be
+    // `return this.handle…(request)` inside this try, without `await`: the
+    // `finally` then ran when the promise was RETURNED, not when it settled,
+    // so every duration was the time to create a promise, `activeRequests`
+    // was back to zero before the work began, a rejection never reached the
+    // `catch` (no error was counted for any invocation), and every status
+    // was recorded as 200.
+    let status = 500;
     try {
-      // Handle CORS preflight
-      if (request.method === 'OPTIONS') {
-        return this.handleCorsPreflightRequest(request);
-      }
-
-      // Handle special endpoints
-      if (pathname === '/netron/invoke' && request.method === 'POST') {
-        return this.handleInvocationRequest(request);
-      }
-
-      if (pathname === '/netron/batch' && request.method === 'POST') {
-        return this.handleBatchRequest(request);
-      }
-
-      if (pathname === '/netron/authenticate' && request.method === 'POST') {
-        return this.handleAuthenticateRequest(request);
-      }
-
-      if (pathname === '/health' && request.method === 'GET') {
-        return this.handleHealthCheck(request);
-      }
-
-      if (pathname === '/metrics' && request.method === 'GET') {
-        return await this.handleMetricsRequest(request);
-      }
-
-      if (pathname === '/openapi.json' && request.method === 'GET') {
-        return await this.handleOpenAPIRequest(request);
-      }
-
-      // Custom routes (file serving, webhooks, etc.)
-      if (this.options.customRoutes) {
-        for (const routeHandler of this.options.customRoutes) {
-          const customResponse = await routeHandler(request);
-          if (customResponse) return customResponse;
-        }
-      }
-
-      // No matching route
-      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
-      return this.createErrorResponse(
-        new TitanError({
-          code: ErrorCode.NOT_FOUND,
-          message: 'Not found',
-          requestId,
-        }),
-        requestId,
-        request
-      );
+      const response = await this.route(request, pathname);
+      status = response.status;
+      return response;
     } catch (error: any) {
-      this.metrics.totalErrors++;
-      return this.handleError(error, request);
+      const response = this.handleError(error, request);
+      status = response.status;
+      return response;
     } finally {
       this.metrics.activeRequests--;
-      this.updateMetrics(startTime, 200); // Update with actual status
+      this.updateMetrics(startTime, status, probe);
     }
+  }
+
+  /** Which handler answers this request — the dispatch `handleRequest` measures. */
+  private async route(request: Request, pathname: string): Promise<Response> {
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return this.handleCorsPreflightRequest(request);
+    }
+
+    // Handle special endpoints
+    if (pathname === '/netron/invoke' && request.method === 'POST') {
+      return this.handleInvocationRequest(request);
+    }
+
+    if (pathname === '/netron/batch' && request.method === 'POST') {
+      return this.handleBatchRequest(request);
+    }
+
+    if (pathname === '/netron/authenticate' && request.method === 'POST') {
+      return this.handleAuthenticateRequest(request);
+    }
+
+    if (pathname === '/health' && request.method === 'GET') {
+      return this.handleHealthCheck(request);
+    }
+
+    if (pathname === '/metrics' && request.method === 'GET') {
+      return await this.handleMetricsRequest(request);
+    }
+
+    if (pathname === '/openapi.json' && request.method === 'GET') {
+      return await this.handleOpenAPIRequest(request);
+    }
+
+    // Custom routes (file serving, webhooks, etc.)
+    if (this.options.customRoutes) {
+      for (const routeHandler of this.options.customRoutes) {
+        const customResponse = await routeHandler(request);
+        if (customResponse) return customResponse;
+      }
+    }
+
+    // No matching route
+    const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+    return this.createErrorResponse(
+      new TitanError({
+        code: ErrorCode.NOT_FOUND,
+        message: 'Not found',
+        requestId,
+      }),
+      requestId,
+      request
+    );
   }
 
   /**
@@ -2477,8 +2519,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * OPTIMIZATION: O(1) time complexity vs O(n) for array-based averaging
    * Expected improvement: ~95% reduction in metrics overhead for high-traffic servers
    */
-  private updateMetrics(startTime: number, status: number): void {
+  private updateMetrics(startTime: number, status: number, probe: boolean): void {
     const duration = performance.now() - startTime;
+
+    this.metrics.statusCounts.set(status, (this.metrics.statusCounts.get(status) || 0) + 1);
+    if (probe) {
+      this.metrics.probeRequests++;
+      return;
+    }
+    this.latency.record(duration);
+    if (status >= 500) this.metrics.totalErrors++;
+    else if (status >= 400) this.metrics.clientErrors++;
 
     // OPTIMIZATION: Use EMA instead of array-based average
     // EMA formula: new_avg = alpha * new_value + (1 - alpha) * old_avg
@@ -2491,8 +2542,25 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         this.metrics.responseTimeAlpha * duration + (1 - this.metrics.responseTimeAlpha) * this.metrics.responseTimeEma;
     }
     this.metrics.avgResponseTime = this.metrics.responseTimeEma;
+  }
 
-    this.metrics.statusCounts.set(status, (this.metrics.statusCounts.get(status) || 0) + 1);
+  /**
+   * The traffic this server answered — what omnitron's daemon reads through
+   * the process channel for `omnitron metrics` and the console.
+   *
+   * `requests` excludes probes, so a monitor polling `/health` every few
+   * seconds is not reported as traffic; `latency` is the last minute's
+   * (`LatencyWindow`), `null` when nothing finished in it.
+   */
+  getTrafficSnapshot(): HttpTrafficSnapshot {
+    return {
+      requests: this.metrics.totalRequests - this.metrics.probeRequests,
+      serverErrors: this.metrics.totalErrors,
+      clientErrors: this.metrics.clientErrors,
+      probes: this.metrics.probeRequests,
+      active: this.metrics.activeRequests,
+      latency: this.latency.snapshot(),
+    };
   }
 
   /**

@@ -162,12 +162,21 @@ describe('a detail page that took one process for the app, and a default for a c
 
   it('names the process the diagnostics measured when the app has several', () => {
     const main = { processes: [sub('http', 57952), sub('captcha-generator', 58001), sub('notification-worker', 58130)] };
-    expect(measuredProcess(main, 58130)?.name).toBe('notification-worker');
+    // A daemon before 0e7726e7: no `pools`, and the RSS of one process.
+    expect(measuredProcess(main, { pid: 58130 })?.name).toBe('notification-worker');
   });
 
   it('names none when the process is the app', () => {
-    expect(measuredProcess({ processes: [sub('http', 7)] }, 7)).toBeUndefined();
-    expect(measuredProcess({}, 7)).toBeUndefined();
+    expect(measuredProcess({ processes: [sub('http', 7)] }, { pid: 7 })).toBeUndefined();
+    expect(measuredProcess({}, { pid: 7 })).toBeUndefined();
+  });
+
+  it('names none when the daemon measured the whole app', () => {
+    // Since 0e7726e7 the RSS is the sum over every process; `pools` says so.
+    // Measured on the master after it: «RSS of http: 645.5 MB» beside an app
+    // of 645.2 MB — the app's figure, called one process's.
+    const main = { processes: [sub('http', 57952), sub('captcha-generator', 58001), sub('notification-worker', 58130)] };
+    expect(measuredProcess(main, { pid: 57952, pools: [] })).toBeUndefined();
   });
 
   it('counts traffic only when the daemon says it was measured', () => {

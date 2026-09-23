@@ -17,6 +17,7 @@ import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
   IProjectInfo,
   IStackInfo,
+  IProjectAppStatus,
   StackRuntime,
   IProjectRequirements,
 } from '../shared/dto/project.js';
@@ -128,24 +129,21 @@ export class ProjectRpcService {
   }
 
   /**
-   * Get all configured apps for a project with their current status.
-   * Returns apps even when not running (status: 'stopped').
+   * Every deployment of every app of a project, each with its stack — apps
+   * that are not running included (`stopped`).
+   *
+   * This flattened the stacks and kept the FIRST app of each name. A project
+   * whose local `dev` and remote `test` stacks both run the same six apps
+   * answered with dev's six: the console's /apps listed six rows for twelve
+   * deployments, and never one on the node. It also read the stacks without
+   * asking the nodes, so had test's apps survived they would have read
+   * `stopped`. It is `listStacks` now — the nodes asked — with nothing
+   * dropped.
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async getProjectApps(data: { project: string }): Promise<import('../shared/dto/project.js').IStackAppStatus[]> {
-    const stacks = await this.projectService.listStacks(data.project);
-    // Flatten all apps from all stacks, deduplicate by name
-    const seen = new Set<string>();
-    const apps: import('../shared/dto/project.js').IStackAppStatus[] = [];
-    for (const stack of stacks) {
-      for (const app of stack.apps) {
-        if (!seen.has(app.name)) {
-          seen.add(app.name);
-          apps.push(app);
-        }
-      }
-    }
-    return apps;
+  async getProjectApps(data: { project: string }): Promise<IProjectAppStatus[]> {
+    const stacks = await this.listStacks(data);
+    return stacks.flatMap((stack) => stack.apps.map((app) => ({ ...app, stack: stack.name, stackType: stack.type })));
   }
 
   // ===========================================================================

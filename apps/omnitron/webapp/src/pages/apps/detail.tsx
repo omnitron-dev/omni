@@ -25,6 +25,7 @@ import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { daemonNameFor } from 'src/utils/app-address';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type {
@@ -979,10 +980,8 @@ function MetricsTab({ appName }: { appName: string }) {
 
 export default function AppDetailPage() {
   const { name } = useParams<{ name: string }>();
-  const { namespacePrefix } = useStackContext();
-
-  // Resolve display name to daemon-namespaced name (e.g., "main" → "omni/dev/main")
-  const daemonName = name && namespacePrefix ? `${namespacePrefix}${name}` : name;
+  const { activeProject, activeStack } = useStackContext();
+  const daemonName = name && daemonNameFor(name, activeProject, activeStack);
 
   const [app, setApp] = useState<ProcessInfoDto | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnosticsDto | null>(null);

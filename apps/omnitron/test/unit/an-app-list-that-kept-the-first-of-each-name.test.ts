@@ -33,6 +33,8 @@ const stack = (name: string, type: IStackInfo['type'], apps: IStackAppStatus[]) 
 
 /** A project with a local dev stack and a remote test stack, both running main and paysys. */
 const projectService = {
+  // Loaded already: `listStacks` asks for the project's config first (60362827).
+  ensureConfig: async () => undefined,
   listStacks: () => [
     stack('dev', 'local', [app('daos/dev/main', 'online'), app('daos/dev/paysys', 'online')]),
     // As this daemon sees a remote stack: no handles of its own, so stopped.

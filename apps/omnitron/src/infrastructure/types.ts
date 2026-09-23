@@ -549,6 +549,34 @@ export interface IServiceOverride {
   bareMetal?: Partial<IBareMetalServiceConfig>;
 
   /**
+   * How this stack runs the service: as a container (`docker`) or as a
+   * system service on the node (`bareMetal`). `external` above says it runs
+   * somewhere else entirely.
+   *
+   * A declaration may carry both blocks — paysys's bitcoin does: a container
+   * for a laptop, a hardened systemd unit for a server — and nothing chose
+   * between them: a node given the service made the container AND planned
+   * the unit. Unsaid, a service with a docker block is a container, and one
+   * with only a bare-metal block is a system service (`bindService`).
+   */
+  provisioning?: 'docker' | 'bareMetal';
+
+  /**
+   * The credentials this stack gives the service — vault references,
+   * resolved by the master before anything leaves it.
+   *
+   * An application's own `secrets` are the ones for the network IT declares,
+   * which is a laptop's (`omni_regtest_dev_password`, in git). A stack that
+   * runs the service on another network must say its credentials here; the
+   * application's are never used for it, and a template that needs one the
+   * stack did not give is refused rather than filled.
+   */
+  secrets?: Record<string, string | SecretRef>;
+
+  /** Ports this stack's network uses where they differ from the declaration's. */
+  ports?: Record<string, number>;
+
+  /**
    * Which network this service runs on IN THIS STACK.
    *
    * `networkMode` selects the variant of both the docker and bare-metal

@@ -129,6 +129,20 @@ export class ProjectRpcService {
     );
   }
 
+  /**
+   * What each node of a stack would find and do on its host — read, never
+   * changed. Admin: it answers about a machine's units, paths and addresses.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async inspectStackHost(
+    data: { project: string; stack: string } & Omit<
+      import('../infrastructure/host-inspection.js').HostInspectionRequest,
+      'services' | 'overrides'
+    >,
+  ): Promise<Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }>> {
+    return this.projectService.inspectStackHost(data);
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime> {
     return this.projectService.getStackStatus(data.project, data.stack);

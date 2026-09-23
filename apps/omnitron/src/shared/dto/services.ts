@@ -316,6 +316,15 @@ export interface IProjectRpcService {
   stopStack(data: { project: string; stack: string }): Promise<IStackInfo>;
 
   // --- Stacks (Admin) ---
+  /** What each node of a stack would find and do on its host — read, never changed. */
+  inspectStackHost(
+    data: { project: string; stack: string } & Omit<
+      import('../../infrastructure/host-inspection.js').HostInspectionRequest,
+      'services' | 'overrides'
+    >,
+  ): Promise<
+    Array<{ node: string; inspection?: import('../../infrastructure/host-inspection.js').HostInspection; error?: string }>
+  >;
   createStack(data: {
     project: string;
     name: string;
@@ -398,6 +407,10 @@ export interface IOmnitronInfraService {
     missing: string[];
   }>;
   getState(): Promise<InfrastructureState | null>;
+  /** What `provisionStack` would find and do on this host — read, never changed. */
+  inspectHostServices(
+    data: import('../../infrastructure/host-inspection.js').HostInspectionRequest,
+  ): Promise<import('../../infrastructure/host-inspection.js').HostInspection>;
   listContainers(): Promise<ContainerState[]>;
   getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null>;
   startContainer(data: { name: string }): Promise<{ success: boolean }>;

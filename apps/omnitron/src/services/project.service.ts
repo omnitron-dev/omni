@@ -64,6 +64,7 @@ import { SlaveConnector } from '../cluster/slave-connector.js';
 import { staleBuild } from './bundle-builder.js';
 import { NODE_STACK } from '../project/node-app-config.js';
 import { overlayCredentials } from '../infrastructure/node-credentials.js';
+import { bindService } from '../infrastructure/service-binding.js';
 import {
   RemoteDeployer,
   stackNodeToDeployTarget,
@@ -1791,6 +1792,61 @@ export class ProjectService extends EventEmitter {
    * Validate that a stack's infrastructure config satisfies all app requirements.
    * Returns issues if infrastructure is missing for apps that need it.
    */
+  /**
+   * What each node of a stack would find and do on its host for the services
+   * the stack declares — asked, not done (`host-inspection.ts`).
+   *
+   * Built from the parts a deployment sends — the applications'
+   * declarations and the stack's overrides with their references resolved
+   * from this vault — plus the services reached elsewhere, to say whether
+   * they answer. The node that runs mainnet chains could otherwise be read
+   * only by deploying to it: it takes SSH by password, and that stays in
+   * the vault.
+   */
+  async inspectStackHost(
+    data: { project: string; stack: string } & Omit<
+      import('../infrastructure/host-inspection.js').HostInspectionRequest,
+      'services' | 'overrides'
+    >,
+  ): Promise<Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }>> {
+    const config = await this.loadProjectConfig(data.project);
+    const stackConfig = this.resolveStacks(config, data.project)[data.stack];
+    if (!stackConfig) throw new Error(`No stack '${data.stack}' in ${data.project}`);
+    const nodes = stackConfig.nodes ?? [];
+    if (stackConfig.type === 'local' || nodes.length === 0) {
+      throw new Error(`${data.project}/${data.stack} runs on no node of its own — its host is this machine`);
+    }
+
+    const services = await this.collectDeclaredServices(data.project, stackConfig, config, { external: true });
+    const overrides = await this.resolveOverrideSecrets(data.project, stackConfig.serviceOverrides);
+    const { project: _project, stack: _stack, ...asked } = data;
+    const connector = this.getSlaveConnector();
+
+    const readings: Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }> = [];
+    for (const node of nodes) {
+      const host = node.host;
+      const port = node.port ?? 9700;
+      try {
+        await connector.addSlave({ host, port, label: node.label });
+        if (!(await connector.waitUntilConnected(host, port, 60_000))) {
+          throw new Error('it did not join the mesh within a minute');
+        }
+        const inspection = (await connector.invokeOnSlave(
+          host,
+          port,
+          'OmnitronInfra',
+          'inspectHostServices',
+          [{ services, overrides, ...asked }],
+          { retryOnDisconnect: true },
+        )) as import('../infrastructure/host-inspection.js').HostInspection;
+        readings.push({ node: `${host}:${port}`, inspection });
+      } catch (err) {
+        readings.push({ node: `${host}:${port}`, error: (err as Error).message });
+      }
+    }
+    return readings;
+  }
+
   async validateStackInfrastructure(
     projectName: string,
     stackName: string,
@@ -2384,7 +2440,15 @@ export class ProjectService extends EventEmitter {
               node,
               (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
               declaredServices,
-              { project: projectName, stack: stackName, overrides: stackConfig.serviceOverrides },
+              // Resolved, as `resolveNodeAppEnv` resolves them: the node renders
+              // a host service's config from these, and a reference it cannot
+              // resolve — it has no copy of this vault — left the bare-metal
+              // templates with nothing but the declaration's own credentials.
+              {
+                project: projectName,
+                stack: stackName,
+                overrides: await this.resolveOverrideSecrets(projectName, stackConfig.serviceOverrides),
+              },
               project?.path,
               release?.staticsDir ?? undefined,
             );
@@ -3367,6 +3431,8 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
+    /** Keep the ones reached elsewhere too — to ask whether they answer, not to provision them. */
+    options: { external?: boolean } = {},
   ): Promise<Record<string, import('../infrastructure/types.js').IServiceRequirement>> {
     const merged: Record<string, import('../infrastructure/types.js').IServiceRequirement> = {};
     const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
@@ -3377,11 +3443,11 @@ export class ProjectService extends EventEmitter {
 
       for (const [name, requirement] of Object.entries(declared)) {
         const override = stackConfig.serviceOverrides?.[`${appName}/${name}`] ?? stackConfig.serviceOverrides?.[name];
-        if (override?.disabled) continue;
-        // Pointed at something that already exists: there is nothing to
-        // provision, and the address reaches the application through its
-        // environment instead.
-        if (override?.external) continue;
+        // Disabled, or pointed at something that already exists: there is
+        // nothing to provision, and an address reaches the application
+        // through its environment instead.
+        const { provisioning } = bindService(requirement as import('../infrastructure/types.js').IServiceRequirement, override);
+        if (provisioning === 'disabled' || (provisioning === 'external' && !options.external)) continue;
 
         if (merged[name]) {
           this.logger.debug(

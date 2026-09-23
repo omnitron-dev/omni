@@ -29,6 +29,7 @@ import type { IServiceRequirement, IResolvedServiceAddress } from '../infrastruc
 import type { StackPortAllocation } from '../infrastructure/stack-infra-manager.js';
 import { getEnv } from '../shared/env-config.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
+import { bindService } from '../infrastructure/service-binding.js';
 
 // =============================================================================
 // Types
@@ -453,37 +454,45 @@ export function resolveStack(
           const override = stackConfig.serviceOverrides?.[`${entry.name}/${serviceName}`]
             ?? stackConfig.serviceOverrides?.[serviceName];
 
-          if (override?.disabled) continue;
+          // Where and how the stack runs it, with its own credentials when it
+          // runs another network than the declaration names (`bindService`).
+          const binding = bindService(requirement, override);
+          if (binding.provisioning === 'disabled') continue;
 
           let address: IResolvedServiceAddress;
 
-          if (override?.external) {
-            // External service — use provided address directly
+          if (binding.provisioning === 'external') {
             address = {
-              host: override.external.host,
-              ports: override.external.ports,
-              secrets: resolveServiceSecrets(override.external.secrets ?? requirement.secrets ?? {}),
+              host: binding.host ?? LOCAL_INFRA_HOST,
+              ports: binding.ports,
+              secrets: resolveServiceSecrets(binding.secrets),
+            };
+          } else if (binding.provisioning === 'bareMetal') {
+            // A system service on the machine the app runs on: loopback — the
+            // declared RPC binds nothing else — on the ports the stack runs it
+            // on. This read the declaration, and gave a mainnet node's
+            // applications the regtest port and the regtest password.
+            address = {
+              host: LOCAL_INFRA_HOST,
+              ports: binding.ports,
+              secrets: resolveServiceSecrets(binding.secrets),
             };
           } else {
-            // Docker-provisioned — localhost with mapped ports
+            // A container — localhost with its published ports.
             const docker = requirement.docker;
             const hostPorts: Record<string, number> = {};
-            for (const [portName, containerPort] of Object.entries(requirement.ports)) {
+            for (const [portName, containerPort] of Object.entries(binding.ports)) {
               hostPorts[portName] = docker?.portMappings?.[portName] ?? containerPort;
             }
             address = {
               host: LOCAL_INFRA_HOST,
               ports: hostPorts,
-              secrets: resolveServiceSecrets(requirement.secrets ?? {}),
+              secrets: resolveServiceSecrets(binding.secrets),
             };
           }
 
           // Generate env vars from templates and merge into resolved config
-          const serviceEnv = resolveCustomServiceEnv(
-            requirement,
-            address,
-            override?.networkMode ?? requirement.networkMode,
-          );
+          const serviceEnv = resolveCustomServiceEnv(requirement, address, binding.networkMode);
           if (!resolved['_customEnv']) resolved['_customEnv'] = {};
           Object.assign(resolved['_customEnv'] as Record<string, string>, serviceEnv);
         }

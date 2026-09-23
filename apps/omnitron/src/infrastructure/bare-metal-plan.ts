@@ -23,6 +23,9 @@
  * and the same plan can run locally or over SSH.
  */
 
+import { bindService, secretValues } from './service-binding.js';
+import type { IServiceOverride, SecretRef } from './types.js';
+
 /** A declared bare-metal service, with its `networkMode` variant applied. */
 export interface BareMetalSpec {
   /** Service name, for messages. */
@@ -178,8 +181,11 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
     if (unitChanged) actions.push({ type: 'daemon-reload' });
   }
 
-  // 6. Its state.
-  if (spec.systemdUnit) {
+  // 6. Its state — not with a template unfilled. The comment above promises
+  //    a placeholder stops everything, and this still enabled and started a
+  //    unit systemd already knew: a service brought up on whatever config was
+  //    lying on the disk, or none, because its credential was missing.
+  if (spec.systemdUnit && !hasUnfilled) {
     if (!observed.unitKnown && !unitChanged) {
       refusals.push(
         `systemd does not know a unit called \`${spec.systemdUnit}\`, and this declaration provides no \`unitTemplate\` — nothing here can create it.`,
@@ -290,25 +296,23 @@ export function renderConfigTemplate(
 export function selectBareMetal(
   name: string,
   requirement: {
-    bareMetal?: Record<string, unknown> | undefined;
+    bareMetal?: object | undefined;
+    docker?: unknown;
     networkMode?: string | undefined;
     ports?: Record<string, number> | undefined;
-    secrets?: Record<string, string> | undefined;
+    secrets?: Record<string, string | SecretRef> | undefined;
   },
-  override?: {
-    bareMetal?: Record<string, unknown> | undefined;
-    networkMode?: string | undefined;
-    external?: unknown;
-  },
+  override?: IServiceOverride | undefined,
 ): BareMetalSpec | null {
-  // A service the stack declares EXTERNAL is not this node's to install. It
-  // names an address and credentials for something already running — a chain
-  // daemon whose data directory is measured in hundreds of gigabytes and
-  // whose lifetime is longer than any deployment here. Installing a second
-  // one beside it is the opposite of what the declaration asked for, and the
-  // declaration that describes how to install it is still the right thing to
-  // keep: another stack, on another host, uses it.
-  if (override?.external) return null;
+  // Only a service this stack runs on the node. One it declares EXTERNAL
+  // names an address and credentials for something already running — a
+  // chain daemon whose data directory is measured in hundreds of gigabytes —
+  // and installing a second beside it is the opposite of what was asked. One
+  // it runs as a container is not a unit as well: a node given paysys's
+  // bitcoin, which declares both blocks, made the container AND planned the
+  // unit, because nothing chose (`bindService`).
+  const binding = bindService(requirement, override);
+  if (binding.provisioning !== 'bareMetal') return null;
 
   const base = requirement.bareMetal as
     | (Omit<BareMetalSpec, 'name'> & { configTemplate?: string; bindAddress?: string; variants?: Record<string, Record<string, unknown>> })
@@ -333,9 +337,11 @@ export function selectBareMetal(
   if (merged.user) spec.user = merged.user;
   if (merged.validateCommand) spec.validateCommand = merged.validateCommand;
 
+  // Ports and credentials as this stack runs the service: the declaration's
+  // only for the network the declaration names.
   const values = {
-    ports: requirement.ports,
-    secrets: requirement.secrets,
+    ports: binding.ports,
+    secrets: secretValues(binding),
     dataDir: merged.dataDir,
     user: merged.user,
     bindAddress: merged.bindAddress,
@@ -359,7 +365,21 @@ export function selectBareMetal(
   // A placeholder anywhere stops everything. A unit that names a data
   // directory it could not resolve starts a daemon in the wrong place, and
   // for a chain daemon the wrong place is a second copy of the chain.
-  if (unresolved.length > 0) spec.unresolved = [...new Set(unresolved)];
+  if (unresolved.length > 0) {
+    spec.unresolved = [...new Set(unresolved)].map((placeholder) => {
+      // A credential the declaration has and the stack did not give: said as
+      // what to write, because "unfilled" alone reads as a bug here rather
+      // than as the laptop's password withheld from a server on purpose.
+      const secret = /^\$\{secret:([\w-]+)\}$/.exec(placeholder)?.[1];
+      if (!secret || binding.declaredNetwork) return placeholder;
+      const declared =
+        requirement.secrets?.[secret] !== undefined ? `; the declaration's is for ${requirement.networkMode}` : '';
+      return (
+        `${placeholder} (the stack runs ${binding.networkMode} and gives no ${secret}${declared} — ` +
+        `give one in serviceOverrides.${name}.secrets)`
+      );
+    });
+  }
 
   return spec;
 }

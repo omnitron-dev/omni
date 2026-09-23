@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
+import { bindService } from './service-binding.js';
 
 import type {
   InfrastructureConfig,
@@ -280,12 +281,13 @@ export function resolveServiceRequirement(
   override?: IServiceOverride,
   appName?: string,
 ): ResolvedContainer | null {
-  // Skip disabled or external services
-  if (override?.disabled) return null;
-  if (override?.external) return null;
+  // A container only for a service this stack runs as one — not one it
+  // disables, reaches elsewhere, or runs on the node as a system service
+  // (`bindService`).
+  if (bindService(requirement, override).provisioning !== 'docker') return null;
 
   const baseDocker = requirement.docker;
-  if (!baseDocker) return null; // No Docker config = external-only
+  if (!baseDocker) return null;
 
   // Deep-merge: base → networkMode variant → stack override
   let docker: IDockerServiceConfig = { ...baseDocker };

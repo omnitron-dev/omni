@@ -64,10 +64,29 @@ export const minioPreset: IServicePreset = {
           'http://localhost:9000', accessKey, secretKey,
         ]);
         await ctx.execInContainer(['mc', 'mb', '--ignore-existing', `local/${bucket}`]);
-        await ctx.execInContainer(['mc', 'anonymous', 'set', 'public', `local/${bucket}`]);
-        ctx.logger.info({ bucket }, 'Created MinIO bucket');
       } catch (err) {
         ctx.logger.warn({ bucket, error: (err as Error).message }, 'Failed to create bucket');
+        continue;
+      }
+      // No anonymous access — `none`, set on every provisioning, so a bucket
+      // an earlier omnitron made `public` is closed on the next one.
+      //
+      // `public` was set here on every bucket: anonymous read AND write, to
+      // anything that could reach :9000 — every container on the stack's
+      // network — past the storage service's moderation, metadata scrubbing
+      // and safe delivery. Nothing reads MinIO anonymously: the storage
+      // service signs every request with the credentials above, the gateway
+      // has no route to MinIO, and the port is published on loopback
+      // (`portArg`). Measured on daos, 2026-09-23, before ad creatives made
+      // "whose bytes are these" a question with money on it.
+      try {
+        await ctx.execInContainer(['mc', 'anonymous', 'set', 'none', `local/${bucket}`]);
+        ctx.logger.info({ bucket, anonymous: 'none' }, 'MinIO bucket ready — no anonymous access');
+      } catch (err) {
+        ctx.logger.error(
+          { bucket, error: (err as Error).message },
+          'Could not close anonymous access to this MinIO bucket — it keeps whatever policy it had, which an earlier omnitron set to public',
+        );
       }
     }
   },

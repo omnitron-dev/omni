@@ -464,9 +464,19 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     this.remoteDeployer = deployer;
   }
 
-  /** The daemon's mesh connector, so the console can be told what it sees. */
+  /**
+   * The daemon's mesh connector, so the console can be told what it sees —
+   * and so the daemon's own node check asks the daemon over it.
+   *
+   * Handed on to the node manager here rather than by a second line in the
+   * daemon: this is the one place the daemon gives the connector to the node
+   * services, and the check path that needs it is the one this service falls
+   * back to (`checkNodeStatus` without a worker), as is the daemon's own
+   * fallback loop.
+   */
   setSlaveConnector(connector: import('../cluster/slave-connector.js').SlaveConnector | null): void {
     this.slaveConnector = connector;
+    this.nodeManager.setSlaveConnector(connector);
   }
 
   /**

@@ -53,7 +53,17 @@ export interface INodeStatus {
   sshConnected: boolean | null;
   sshLatencyMs: number | null;
   sshError?: string;
-  omnitronConnected: boolean;
+  /**
+   * Whether the node's daemon answered — `null` when no path reached it.
+   *
+   * The same three states as `sshConnected`, for the same reason. The
+   * daemon's own check asks over the mesh and then dials the daemon port;
+   * when neither gets through, that is not evidence the daemon is down — the
+   * port of a hardened node is closed to the master by design — and `false`
+   * printed «offline» about a node serving six apps. `omnitronError` says
+   * which paths were tried and why each failed.
+   */
+  omnitronConnected: boolean | null;
   omnitronVersion?: string;
   omnitronPid?: number;
   omnitronUptime?: number;

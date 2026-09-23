@@ -23,7 +23,12 @@ export interface IHealthCheckResult {
   sshLatencyMs: number | null;
   sshError: string | null;
 
-  omnitronConnected: boolean;
+  /**
+   * `null` when no path reached the daemon — see `INodeStatus.omnitronConnected`.
+   * Only the daemon's own check produces it; the worker's rows are always a
+   * boolean, which is what the NOT NULL history column holds.
+   */
+  omnitronConnected: boolean | null;
   omnitronVersion: string | null;
   omnitronPid: number | null;
   omnitronUptime: number | null;

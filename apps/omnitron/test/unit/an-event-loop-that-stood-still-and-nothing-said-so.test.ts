@@ -15,9 +15,10 @@
  */
 
 import { performance } from 'node:perf_hooks';
+import { Worker } from 'node:worker_threads';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { EventLoopWatch } from '../../src/monitoring/event-loop-watch.js';
+import { EventLoopWatch, cpuVerdict, type EventLoopStall } from '../../src/monitoring/event-loop-watch.js';
 import { EventLoopStallIndicator } from '../../src/monitoring/event-loop-stall.indicator.js';
 import { activePhases, duringPhase, reportPhases } from '../../src/project/deploy-phases.js';
 
@@ -184,5 +185,95 @@ describe('the phase a stall is named by', () => {
       }),
     ).rejects.toThrow(/no space left/);
     expect(activePhases()).toEqual([]);
+  });
+});
+
+describe('what the process was doing while its loop stood still', () => {
+  /**
+   * The first live runs logged ten stalls of 1.1–2.0 s on the dev-laptop
+   * master, all while suites ran at load 44–73: «starved» was a guess. The
+   * CPU time across the gap answers it — and says that «off the CPU» can
+   * equally be a synchronous WAIT, which is why the sleeping case below
+   * blocks with `Atomics.wait` and not with a busy loop.
+   */
+
+  /** CPU per wall-clock millisecond of this process while `block` ran — the measurement the watch makes, made independently. */
+  const shareDuring = (block: () => void) => {
+    const c0 = process.cpuUsage();
+    const t0 = performance.now();
+    block();
+    const d = process.cpuUsage(c0);
+    return (d.user + d.system) / 1000 / (performance.now() - t0);
+  };
+  const stallOf = (warns: Array<{ fields: Record<string, unknown> }>) => warns[0]!.fields as unknown as EventLoopStall;
+
+  it('reads the share of CPU against the calibration points', () => {
+    expect(cpuVerdict(0, 1_300)).toBe('off-cpu');
+    expect(cpuVerdict(649, 1_300)).toBe('off-cpu');
+    expect(cpuVerdict(650, 1_300)).toBe('on-cpu');
+    expect(cpuVerdict(1_274, 1_300)).toBe('on-cpu');
+    expect(cpuVerdict(1_560, 1_300)).toBe('on-cpu');
+    expect(cpuVerdict(1_561, 1_300)).toBe('on-cpu-in-parallel');
+    expect(cpuVerdict(2_509, 1_300)).toBe('on-cpu-in-parallel');
+  });
+
+  it('calls a loop that waited synchronously off the CPU — whatever the machine is doing', async () => {
+    const { warns } = watch();
+
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_300);
+    await sleep(120);
+
+    expect(warns).toHaveLength(1);
+    const stall = stallOf(warns);
+    expect(stall.cpu).toBe('off-cpu');
+    expect(stall.cpuMs).toBeLessThan(stall.stalledMs / 2);
+  });
+
+  it('counts the CPU across the gap, not since the watch started', async () => {
+    const { warns } = watch();
+    // Work that is no stall — two stretches under the threshold — and then a
+    // wait that is one. Counted since start, the work would make the wait
+    // look like work.
+    busy(600);
+    await sleep(80);
+    busy(600);
+    await sleep(80);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_300);
+    await sleep(120);
+
+    expect(warns).toHaveLength(1);
+    expect(stallOf(warns).cpu).toBe('off-cpu');
+  });
+
+  it('calls a loop that worked through it on the CPU, when the machine gave it one', async () => {
+    const { warns } = watch();
+
+    const share = shareDuring(() => busy(1_300));
+    await sleep(120);
+
+    expect(warns).toHaveLength(1);
+    const stall = stallOf(warns);
+    // Always: the verdict is the reading of its own figures.
+    expect(stall.cpu).toBe(cpuVerdict(stall.cpuMs, stall.stalledMs));
+    // A machine this loaded can starve a busy loop too; then «on the CPU» is
+    // not what happened, and the case does not claim it.
+    if (share >= 0.9) expect(stall.cpu).toBe('on-cpu');
+  });
+
+  it('counts the other threads of the process, and says so when they ran alongside', async () => {
+    const { warns } = watch();
+    const worker = new Worker('const end = Date.now() + 2_000; while (Date.now() < end) {}', { eval: true });
+    try {
+      await sleep(100);
+      const share = shareDuring(() => busy(1_300));
+      await sleep(120);
+
+      expect(warns).toHaveLength(1);
+      const stall = stallOf(warns);
+      expect(stall.cpu).toBe(cpuVerdict(stall.cpuMs, stall.stalledMs));
+      if (share >= 1.3) expect(stall.cpu).toBe('on-cpu-in-parallel');
+    } finally {
+      await worker.terminate();
+    }
   });
 });

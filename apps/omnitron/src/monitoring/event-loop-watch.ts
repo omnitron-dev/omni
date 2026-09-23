@@ -29,11 +29,51 @@
  * The gap is measured on the monotonic clock. A laptop master that sleeps for
  * an hour has not stalled for an hour, and a wall-clock gap would say it had
  * on every lid it opened. Wall time is used only to name the moments.
+ *
+ * And each stall says what the PROCESS was doing meanwhile, by the CPU time
+ * it used across the gap — which turns «probably starved» into a reading.
+ * The first live runs logged ten stalls of 1.1–2.0 s on the dev-laptop master,
+ * every one while test suites ran at load 44–73, and the explanation stayed a
+ * guess. Measured on that laptop (16 cores), CPU per wall-clock second:
+ *
+ *     busy-wait on the loop                 0.98   its own work
+ *     Atomics.wait / execSync('sleep 1')    0.00   off the CPU
+ *     busy-wait + a spinning worker thread  1.93   other threads too
+ *
+ * `process.cpuUsage()` counts every thread of the process — worker threads,
+ * GC helpers, the libuv pool — and no child process. So «off the CPU» is
+ * either not being scheduled or WAITING synchronously: a sync spawn's child
+ * does its work on another process's account, which is how the `execSync`
+ * wedge of 2026-09-14 would read here.
  */
 
 import { monitorEventLoopDelay, performance, type IntervalHistogram } from 'node:perf_hooks';
 
 import { activePhases } from '../project/deploy-phases.js';
+
+export type CpuVerdict = 'off-cpu' | 'on-cpu' | 'on-cpu-in-parallel';
+
+/**
+ * What the CPU time across a stall says about it. The bounds sit between the
+ * calibration points above: 0.00, 0.98 and 1.93.
+ */
+export function cpuVerdict(cpuMs: number, stalledMs: number): CpuVerdict {
+  const share = stalledMs > 0 ? cpuMs / stalledMs : 0;
+  if (share < 0.5) return 'off-cpu';
+  if (share <= 1.2) return 'on-cpu';
+  return 'on-cpu-in-parallel';
+}
+
+/** The verdict in words, with the figure it rests on. */
+export function describeCpu(stall: Pick<EventLoopStall, 'cpuMs' | 'cpu'>): string {
+  if (stall.cpu === 'off-cpu') {
+    return `off the CPU for most of it (${stall.cpuMs} ms of CPU): not scheduled, or waiting synchronously — a sync spawn, sync I/O`;
+  }
+  if (stall.cpu === 'on-cpu') {
+    return `on the CPU for most of it (${stall.cpuMs} ms of CPU): its own synchronous work or a GC pause`;
+  }
+  return `more CPU than wall time (${stall.cpuMs} ms): other threads of this process — GC helpers, workers, the libuv pool — ran alongside`;
+}
 
 export interface EventLoopStall {
   /** The last moment the loop was seen running. */
@@ -44,6 +84,9 @@ export interface EventLoopStall {
   stalledMs: number;
   /** What this process was in the middle of — empty when nothing had a name. */
   phases: string[];
+  /** CPU time this process used across the gap, every thread of it. */
+  cpuMs: number;
+  cpu: CpuVerdict;
 }
 
 export interface EventLoopWindow {
@@ -82,6 +125,8 @@ export class EventLoopWatch {
   private windowTimer: NodeJS.Timeout | null = null;
   /** `performance.now()` at the last tick — monotonic, see above. */
   private lastTick = 0;
+  /** `process.cpuUsage()` at the last tick. */
+  private lastCpu: NodeJS.CpuUsage = { user: 0, system: 0 };
   private windowFrom = 0;
 
   private lastWindow: EventLoopWindow | null = null;
@@ -104,6 +149,7 @@ export class EventLoopWatch {
     this.histogram = monitorEventLoopDelay({ resolution: 20 });
     this.histogram.enable();
     this.lastTick = performance.now();
+    this.lastCpu = process.cpuUsage();
     this.windowFrom = Date.now();
     this.ticker = setInterval(() => this.tick(), this.tickMs);
     this.windowTimer = setInterval(() => this.closeWindow(), this.windowMs);
@@ -142,15 +188,21 @@ export class EventLoopWatch {
     const now = performance.now();
     const gap = now - this.lastTick;
     this.lastTick = now;
+    const cpuNow = process.cpuUsage();
+    const cpuMs = Math.round((cpuNow.user - this.lastCpu.user + cpuNow.system - this.lastCpu.system) / 1000);
+    this.lastCpu = cpuNow;
     // Late by more than the threshold: the timer's own period is not a stall.
     if (gap - this.tickMs <= this.thresholdMs) return;
 
     const wallNow = Date.now();
+    const stalledMs = Math.round(gap);
     const stall: EventLoopStall = {
       from: new Date(wallNow - gap).toISOString(),
       to: new Date(wallNow).toISOString(),
-      stalledMs: Math.round(gap),
+      stalledMs,
       phases: this.phases(),
+      cpuMs,
+      cpu: cpuVerdict(cpuMs, stalledMs),
     };
     this.stallCount += 1;
     this.lastStall = stall;

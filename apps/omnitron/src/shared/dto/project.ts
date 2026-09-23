@@ -55,10 +55,23 @@ export interface IStackInfo {
   infrastructure: IStackInfraStatus;
   /** Port range allocated to this stack */
   portRange: { start: number; end: number } | null;
-  /** When this stack was last started */
+  /**
+   * When this stack's applications started, as the machine that runs them
+   * says: this daemon for a local stack; for a remote or cluster stack, the
+   * nodes — the start of the longest-running app they report online. `null`
+   * when that is not known (no node answered, or none runs an app of it):
+   * a start time is never made up from this master's memory.
+   */
   startedAt: string | null;
-  /** Uptime in ms (0 if not running) */
+  /** Milliseconds since `startedAt` (0 when that is `null`) */
   uptime: number;
+  /**
+   * When THIS master took charge of a remote or cluster stack: deployed it,
+   * or attached to it after its own restart. Not when the stack started —
+   * see `startedAt`. `null` for a local stack, and for one this master has
+   * neither deployed nor attached.
+   */
+  attachedAt: string | null;
 }
 
 export interface IStackNodeStatus {

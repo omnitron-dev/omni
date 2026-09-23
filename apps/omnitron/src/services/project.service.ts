@@ -120,6 +120,12 @@ interface StackRuntimeState {
   stack: string;
   status: StackStatus;
   config: IStackConfig;
+  /**
+   * When this daemon started the stack — or, for a remote one, deployed it
+   * or attached to it. For a remote stack that is NOT when its applications
+   * started (`askNodes` reads that from the nodes); `toStackInfo` reports it
+   * as `attachedAt`.
+   */
   startedAt: number | null;
   /** InfrastructureService instance for this stack (local stacks only) */
   infraService: InfrastructureService | null;
@@ -3547,12 +3553,23 @@ export class ProjectService extends EventEmitter {
           ? 'degraded'
           : info.status;
 
+    // And when the stack started is when its applications did: the
+    // longest-running one a node reports online. An uptime is a duration the
+    // node measured on its own clock, so taking it from this one needs no
+    // agreement between the two clocks.
+    const longest = apps.reduce(
+      (max, a) => (reported.has(a.name) && a.status === 'online' && a.uptime > max ? a.uptime : max),
+      0,
+    );
+
     return {
       info: {
         ...info,
         status,
         infrastructure: remoteInfra ?? info.infrastructure,
         apps,
+        startedAt: longest > 0 ? new Date(Date.now() - longest).toISOString() : null,
+        uptime: longest,
       },
       answered,
     };
@@ -3770,6 +3787,16 @@ export class ProjectService extends EventEmitter {
       services: infraServices,
     };
 
+    // A remote stack's applications run on its nodes, and when they started
+    // is the nodes' to say (`askNodes`). What this master remembers is when
+    // IT took charge — deployed the stack, or attached to it after its own
+    // restart — and that was printed as the stack's start: «13:03:46», 25
+    // minutes of uptime, on a stack whose six applications had been running
+    // on the node since 12:20:48 (measured 2026-09-23, after a master
+    // restart). It is reported as what it is.
+    const onNodes = config.type === 'remote' || config.type === 'cluster';
+    const since = state?.startedAt ?? null;
+
     return {
       name: stackName,
       type: config.type,
@@ -3779,8 +3806,9 @@ export class ProjectService extends EventEmitter {
       apps,
       infrastructure,
       portRange: config.portRange ?? null,
-      startedAt: state?.startedAt ? new Date(state.startedAt).toISOString() : null,
-      uptime: state?.startedAt ? Date.now() - state.startedAt : 0,
+      startedAt: !onNodes && since ? new Date(since).toISOString() : null,
+      uptime: !onNodes && since ? Date.now() - since : 0,
+      attachedAt: onNodes && since ? new Date(since).toISOString() : null,
     };
   }
 }

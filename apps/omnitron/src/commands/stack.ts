@@ -126,6 +126,8 @@ export async function stackStatusCommand(projectName: string, stackName: string)
         `Status: ${statusIcon(stack.status)} ${stack.status}`,
         ...(stack.startedAt ? [`Started: ${stack.startedAt}`] : []),
         ...(stack.uptime > 0 ? [`Uptime: ${formatDuration(stack.uptime)}`] : []),
+        // When this master took charge of it — not when it started.
+        ...(stack.attachedAt ? [`Attached: ${stack.attachedAt}`] : []),
         ...(stack.portRange ? [`Ports: ${stack.portRange.start}–${stack.portRange.end}`] : []),
       ].join('\n'),
       'Stack'

@@ -66,6 +66,8 @@ export default defineConfig({
       '@omnitron-dev/omnitron/node-check': path.resolve(here, '../src/shared/node-check.ts'),
       // How an audit row's action ended — the page and `omnitron audit` alike.
       '@omnitron-dev/omnitron/audit-outcome': path.resolve(here, '../src/shared/audit-outcome.ts'),
+      // Whether a node's replication keeps up — the stack pages and `stack status` alike.
+      '@omnitron-dev/omnitron/sync-reading': path.resolve(here, '../src/shared/sync-reading.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),
     },

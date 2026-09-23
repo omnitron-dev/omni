@@ -19,6 +19,7 @@ export default defineConfig({
       '@omnitron-dev/omnitron/node-check': path.resolve(import.meta.dirname, '../src/shared/node-check.ts'),
       '@omnitron-dev/omnitron/release-reading': path.resolve(import.meta.dirname, '../src/shared/release-reading.ts'),
       '@omnitron-dev/omnitron/audit-outcome': path.resolve(import.meta.dirname, '../src/shared/audit-outcome.ts'),
+      '@omnitron-dev/omnitron/sync-reading': path.resolve(import.meta.dirname, '../src/shared/sync-reading.ts'),
     },
   },
   test: {

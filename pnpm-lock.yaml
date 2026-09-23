@@ -19,6 +19,11 @@ overrides:
   react-router: 7.18.3
   react-router-dom: 7.18.3
 
+patchedDependencies:
+  '@xec-sh/core@0.11.1':
+    hash: acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472
+    path: patches/@xec-sh__core@0.11.1.patch
+
 importers:
 
   .:
@@ -149,7 +154,7 @@ importers:
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
         specifier: ^0.11.1
-        version: 0.11.1
+        version: 0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)
       '@xec-sh/kit':
         specifier: ^0.9.0
         version: 0.9.0(typescript@7.0.2)
@@ -9637,7 +9642,7 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@xec-sh/core@0.11.1':
+  '@xec-sh/core@0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)':
     dependencies:
       ssh2: 1.17.0
 
@@ -9660,7 +9665,7 @@ snapshots:
 
   '@xec-sh/ops@0.11.1(typescript@7.0.2)':
     dependencies:
-      '@xec-sh/core': 0.11.1
+      '@xec-sh/core': 0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)
       '@xec-sh/kit': 0.11.1(typescript@7.0.2)
       '@xec-sh/loader': 0.11.1(typescript@7.0.2)
       dotenv: 17.4.2

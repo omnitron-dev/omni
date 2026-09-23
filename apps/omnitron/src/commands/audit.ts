@@ -10,7 +10,7 @@ import { log, table, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronAuditService } from '../shared/dto/services.js';
 import { ACTOR_TYPES, MAX_AUDIT_PAGE, type AuditQuery, type AuditRow } from '../services/audit.service.js';
-import { outcomeOf } from '../shared/audit-outcome.js';
+import { outcomeOf, outcomeReason } from '../shared/audit-outcome.js';
 import { emitError, emitJson } from './output.js';
 
 export interface AuditListOptions {
@@ -196,16 +196,27 @@ function renderTable(rows: AuditRow[]): void {
 }
 
 /** Why each failed row failed, under the table — a column would be as wide as the longest reason. */
+/**
+ * The rows that did not simply succeed, with the reason each gives —
+ * read by `outcomeReason`, the reading the console uses, so both say the
+ * same words. A `partial` row was coloured and then said nothing: which apps
+ * did not come up sat in `notUp`, printed only under `--json`.
+ */
 function renderFailures(rows: AuditRow[]): void {
-  const failed = rows.filter((r) => outcomeOf(r) === 'failed');
-  if (failed.length === 0) return;
+  const notOk = rows.filter((r) => {
+    const outcome = outcomeOf(r);
+    return outcome === 'failed' || outcome === 'partial';
+  });
+  if (notOk.length === 0) return;
+  const failed = notOk.filter((r) => outcomeOf(r) === 'failed').length;
+  const partial = notOk.length - failed;
   log.warn(
     [
-      `${failed.length} failed:`,
-      ...failed.map((r) => {
-        const why = detail(r, 'error') !== '-' ? detail(r, 'error') : detail(r, 'message');
+      [failed ? `${failed} failed` : null, partial ? `${partial} partial` : null].filter(Boolean).join(' / ') + ':',
+      ...notOk.map((r) => {
+        const why = outcomeReason(r)?.text ?? '(no reason recorded)';
         const what = r.resourceId ? `${r.resourceType}:${r.resourceId}` : r.resourceType;
-        return `  ${formatWhen(r.createdAt)}  ${what}  ${why === '-' ? '(no reason recorded)' : why}`;
+        return `  ${formatWhen(r.createdAt)}  ${what}  ${outcomeOf(r)}  ${why}`;
       }),
     ].join('\n'),
   );

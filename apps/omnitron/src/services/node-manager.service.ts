@@ -814,16 +814,18 @@ export class NodeManagerService extends EventEmitter {
   }
 
   /**
-   * Note that the health worker could not be reached.
+   * Note that one call to the health worker failed.
    *
-   * Called by the RPC layer when a worker call throws. The daemon re-spawns
-   * the worker; this exists so the reason appears once, in the daemon's log,
-   * rather than only in the error text of whichever console button was pressed.
+   * Called by the RPC layer when a worker call throws. The call is served
+   * from the daemon instead; the worker keeps its proxy — a process that has
+   * gone is noticed by its exit handler, not guessed from one error. This
+   * exists so the reason appears in the daemon's log rather than only in the
+   * error text of whichever console button was pressed.
    */
   reportWorkerUnavailable(method: string, err: Error): void {
     this.logger.warn(
       { method, error: err.message },
-      'Health monitor worker unavailable — serving this check from the daemon',
+      'Health monitor worker did not answer this call — serving it from the daemon',
     );
     this.emit('worker:unavailable', method, err);
   }

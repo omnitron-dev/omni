@@ -181,24 +181,29 @@ describe('NodeManagerRpcService — the worker is an optimisation', () => {
     expect(nodeManager.reportWorkerUnavailable).toHaveBeenCalled();
   });
 
-  it('drops the dead proxy so the next call does not pay for it again', async () => {
+  it('keeps the proxy after a failed call: the call is served, the worker is not detached', async () => {
+    // This case asserted the opposite until 2026-09-23 — «drops the dead
+    // proxy so the next call does not pay for it again». Nothing but a
+    // respawn re-wired it, so one refused call from a LIVE worker detached it
+    // for good; see one-refused-call-detached-the-health-worker-for-good.
+    // A worker that really died is dropped by its exit handler.
     const triggerCheck = vi.fn(DEAD_WORKER);
     rpc.setHealthWorkerProxy({ triggerCheck, getStatusSummaries: DEAD_WORKER } as any);
-    expect(rpc.hasHealthWorker()).toBe(true);
 
     await rpc.checkNodeStatus({ id: 'node-1' });
-    expect(rpc.hasHealthWorker()).toBe(false);
+    expect(rpc.hasHealthWorker()).toBe(true);
 
     await rpc.checkAllNodes();
-    expect(triggerCheck).toHaveBeenCalledTimes(1);
+    expect(triggerCheck).toHaveBeenCalledTimes(2);
   });
 
   it('checkAllNodes and getNodeHealthSummaries degrade instead of throwing', async () => {
     rpc.setHealthWorkerProxy({ triggerCheck: DEAD_WORKER, getStatusSummaries: DEAD_WORKER } as any);
     await expect(rpc.checkAllNodes()).resolves.toHaveLength(1);
 
+    // To the daemon's own summaries — `[]` read as «no nodes».
     rpc.setHealthWorkerProxy({ triggerCheck: DEAD_WORKER, getStatusSummaries: DEAD_WORKER } as any);
-    await expect(rpc.getNodeHealthSummaries()).resolves.toEqual([]);
+    await expect(rpc.getNodeHealthSummaries()).resolves.toEqual(nodeManager.getHealthSummaries());
   });
 
   it('triggerNodeCheck with no worker runs the checks rather than reporting an empty fleet', async () => {

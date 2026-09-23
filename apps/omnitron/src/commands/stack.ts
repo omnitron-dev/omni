@@ -332,6 +332,45 @@ export async function stackStopCommand(projectName: string, stackName: string): 
   }
 }
 
+/**
+ * `omnitron stack account` — a named account with a platform role on a
+ * remote stack. The password never reaches this terminal: it is in the
+ * daemon's vault, and the command that reads it is printed instead.
+ */
+export async function stackAccountCommand(
+  projectName: string,
+  stackName: string,
+  options: { username: string; role?: string; displayName?: string; vaultKey?: string },
+): Promise<void> {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    emitStep(`Making ${options.username} on ${projectName}/${stackName} — the project's tool, on the node, under its deploy lease…`);
+    const made = await svc.createStackAccount({
+      project: projectName,
+      stack: stackName,
+      username: options.username,
+      ...(options.role !== undefined ? { role: options.role } : {}),
+      ...(options.displayName !== undefined ? { displayName: options.displayName } : {}),
+      ...(options.vaultKey !== undefined ? { vaultKey: options.vaultKey } : {}),
+    });
+    if (emitJson(made)) return;
+    emitSuccess(`Made ${made.username} (${made.role}) on ${projectName}/${stackName} at ${made.node}`);
+    emitInfo(`  its password is in this daemon's vault, and only there — read it with:`);
+    emitInfo(`omnitron secret get ${made.vaultKey}`);
+    emitInfo(`  id ${made.id}; made by the project's tool at ${made.commit.slice(0, 8)}`);
+  } catch (err) {
+    emitError(`Could not make ${options.username} on ${projectName}/${stackName}: ${(err as Error).message}`, {
+      project: projectName,
+      stack: stackName,
+      username: options.username,
+    });
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
 export async function stackCreateCommand(
   projectName: string,
   stackName: string,

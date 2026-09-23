@@ -1431,6 +1431,143 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  /**
+   * Make a named account with a platform role on a remote stack, and keep
+   * its password in this daemon's vault — never in the answer.
+   *
+   * The project's own tool makes it (`scripts/operator-account.mjs` at the
+   * project's HEAD commit), run on the stack's node over the attestation's
+   * transport and under the node's deploy lease: an account is never made
+   * while a deployment is restarting the application that signs it up.
+   *
+   * Two steps that must both happen or neither: the account on the stand and
+   * its password in the vault. The vault is asked first whether the key is
+   * free — a key already there is somebody's secret, and a new password would
+   * replace it — and if the write still fails, the account just made is taken
+   * away again, by its name AND the id the tool printed: an account whose
+   * password nobody holds is a privileged row under a name every later run
+   * refuses as taken.
+   *
+   * One node only, like the attestation: the tool reaches the node's
+   * containers, and which of several nodes holds the stack's database is not
+   * decided here.
+   */
+  async createOperatorAccount(
+    projectName: string,
+    stackName: string,
+    input: {
+      username: string;
+      role?: string | undefined;
+      displayName?: string | undefined;
+      vaultKey?: string | undefined;
+    },
+  ): Promise<import('../shared/dto/project.js').IStackAccount> {
+    const secrets = this.secrets;
+    if (!secrets) {
+      throw new Error('This daemon has no vault: a password made on the node would have nowhere to go, so nothing was made');
+    }
+    const username = input.username?.trim();
+    if (!username) throw new Error('An account needs a name (--username)');
+    const config = await this.loadProjectConfig(projectName);
+    const stackConfig = this.resolveStacks(config, projectName)[stackName];
+    if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+    const tool = await import('../project/operator-account.js');
+    if (stackConfig.type === 'local') {
+      throw new Error(
+        `${projectName}/${stackName} is local: its containers are on this machine — run ` +
+          `\`node ${tool.OPERATOR_ACCOUNT_TOOL} --username=${username}\` in the project`,
+      );
+    }
+    const nodes = stackConfig.nodes ?? [];
+    if (nodes.length === 0) throw new Error(`${projectName}/${stackName} has no node to make the account on`);
+    if (nodes.length > 1) {
+      throw new Error(
+        `${projectName}/${stackName} has ${nodes.length} nodes. The tool reaches one node's containers, and which of them ` +
+          'holds the stack\'s database is not decided here — not supported until it is',
+      );
+    }
+    const project = this.registry.get(projectName);
+    if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
+
+    const vaultKey = input.vaultKey?.trim() || tool.accountVaultKey(projectName, stackName, username);
+    // Before the node is touched.
+    if ((await secrets.get(vaultKey)) !== null) {
+      throw new Error(
+        `The vault already holds '${vaultKey}' — somebody's secret, which a new password would replace. ` +
+          'Name another key with --vault-key; nothing was made',
+      );
+    }
+
+    const staged = await tool.stageOperatorTool(fs.realpathSync(project.path));
+    const target = await this.targetForStackNode(nodes[0]!);
+    const machine = `${target.host}:${target.sshPort ?? 22}`;
+    const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
+    const where = `${projectName}/${stackName} on ${machine}`;
+    const facts = { project: projectName, stack: stackName, node: machine, username };
+    const { shellEscape } = await import('../shared/shell-escape.js');
+    try {
+      return await this.deployer.underLease(target, `operator account ${username} on ${projectName}/${stackName}`, async () => {
+        const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/operator');
+        try {
+          const run = await this.deployer.runOnNode(
+            target,
+            tool.operatorAccountCommand({ remoteDir, containerPrefix, username, role: input.role, displayName: input.displayName }),
+            180_000,
+          );
+          const outcome = tool.readAccountRun(run, username);
+          if (!outcome.made) {
+            this.logger.error({ ...facts, code: run.code, uncertain: outcome.uncertain }, 'No operator account was made');
+            throw new Error(`${where}: ${outcome.because}`);
+          }
+          const { account } = outcome;
+          try {
+            await secrets.set(vaultKey, account.password);
+          } catch (err) {
+            const why = err instanceof Error ? err.message : String(err);
+            const undo = await this.deployer
+              .runOnNode(
+                target,
+                tool.operatorAccountUndoCommand({ remoteDir, containerPrefix, username, id: account.id }),
+                120_000,
+              )
+              .catch((e: unknown) => ({ stdout: '', stderr: e instanceof Error ? e.message : String(e), code: -1 }));
+            this.logger.error(
+              { ...facts, id: account.id, vaultKey, undone: undo.code === 0, error: why },
+              'The vault refused an operator account\'s password',
+            );
+            throw new Error(
+              undo.code === 0
+                ? `${where}: the vault refused the password of ${username} (${why}) — the account was taken away again; nothing is left on the stand`
+                : `${where}: the vault refused the password of ${username} (${why}), and taking the account away failed too ` +
+                    `(${undo.stderr.trim().split('\n').slice(-2).join(' | ') || `exit ${undo.code}`}): ` +
+                    `${username} (id ${account.id}) is on the stand with a password nobody holds`,
+              { cause: err },
+            );
+          }
+          this.logger.info(
+            { ...facts, role: account.role, id: account.id, vaultKey, commit: staged.commit },
+            'Operator account made — its password is in the vault',
+          );
+          return { username, role: account.role, id: account.id, node: machine, vaultKey, commit: staged.commit };
+        } finally {
+          // The tool leaves the node with its run, as the attestation's stage
+          // does, and a removal the node refused is said rather than swallowed.
+          const removed = await this.deployer
+            .runOnNode(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(`${remoteDir}.delivered`)}`, 60_000)
+            .catch((err: unknown) => ({ stdout: '', stderr: err instanceof Error ? err.message : String(err), code: -1 }));
+          if (removed.code !== 0) {
+            this.logger.warn(
+              { ...facts, remoteDir, code: removed.code, reason: removed.stderr.trim().split('\n').slice(-3).join(' | ') || `exit ${removed.code}` },
+              'The operator tool is still on the node after its run, and nothing else removes it',
+            );
+          }
+        }
+      });
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+
   private async admitRelease(
     projectName: string,
     stackName: string,
@@ -2461,7 +2598,7 @@ export class ProjectService extends EventEmitter {
           if (nodeInfra || Object.keys(declaredServices).length > 0) {
             await leases.confirm(nodeKey, `bringing up infrastructure on ${node.host}`);
             phases.enter(`bringing up infrastructure on ${node.host}`);
-            const provisioned = await this.provisionNodeInfrastructure(
+            const infrastructure = await this.provisionNodeInfrastructure(
               connector,
               node,
               (nodeInfra ?? {}) as import('../infrastructure/types.js').InfrastructureConfig,
@@ -2478,7 +2615,7 @@ export class ProjectService extends EventEmitter {
               project?.path,
               release?.staticsDir ?? undefined,
             );
-            if (!provisioned.ready) {
+            if (!infrastructure.ready) {
               // Not fatal: a node whose infrastructure is incomplete can still
               // be looked at, and stopping here would leave the fleet in a state
               // no command describes. It is said at error level with the node —
@@ -2486,10 +2623,10 @@ export class ProjectService extends EventEmitter {
               // used to stop: bitcoind failed to start on the test node and the
               // deployment reported «6/6 apps online», exit 0, `outcome: ok`.
               this.logger.error(
-                { node: nodeKey, stack: stackName, detail: provisioned.detail },
+                { node: nodeKey, stack: stackName, detail: infrastructure.detail },
                 'Node infrastructure is not ready — deploying anyway, applications may not reach their databases',
               );
-              notReady.push(`${nodeKey}: ${provisioned.detail}`);
+              notReady.push(`${nodeKey}: ${infrastructure.detail}`);
             }
           }
 

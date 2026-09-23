@@ -6,51 +6,11 @@
 
 import { log, table, prism } from '@xec-sh/kit';
 import { ServerRegistry } from '../infrastructure/server-registry.js';
-import {
-  mergeKnownMachines,
-  NO_MACHINES_MESSAGE,
-  type KnownMachine,
-  type NodeLike,
-} from '../infrastructure/known-machines.js';
+import { NO_MACHINES_MESSAGE, type KnownMachine } from '../infrastructure/known-machines.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
-import { MeshAsker, askMachine } from './fleet-asking.js';
+import { MeshAsker, askMachine, knownMachines } from './fleet-asking.js';
 import { formatStatus, formatMemory } from '../shared/format.js';
 import { spinner } from './spinner.js';
-
-
-/**
- * Every remote machine this installation knows, from both registries.
- *
- * The fleet commands read `servers.json` alone, which is why they reported
- * "No remote servers registered" on an installation with two machines in the
- * console's registry. See `known-machines.ts` for what was measured.
- *
- * The node registry is reached through the daemon, because it lives in the
- * daemon's SQLite. A daemon that cannot be asked is not an error here — the
- * `servers.json` half still answers, and saying so is better than failing a
- * status command because one of two sources is quiet.
- */
-async function knownMachines(): Promise<{ machines: KnownMachine[]; nodesUnavailable: string | null }> {
-  const servers = new ServerRegistry().list();
-
-  let nodes: NodeLike[] = [];
-  let nodesUnavailable: string | null = null;
-  const client = createDaemonClient();
-  try {
-    if (await client.isReachable()) {
-      const svc = await client.service<import('../shared/dto/services.js').IOmnitronNodesService>('OmnitronNodes');
-      nodes = (await svc.listNodes()) as unknown as NodeLike[];
-    } else {
-      nodesUnavailable = 'the daemon did not answer, so machines registered in the console are not listed';
-    }
-  } catch (err) {
-    nodesUnavailable = `could not read the node registry: ${(err as Error).message}`;
-  } finally {
-    await client.disconnect();
-  }
-
-  return { machines: mergeKnownMachines(servers, nodes), nodesUnavailable };
-}
 
 export async function fleetStatusCommand(): Promise<void> {
   const { machines: servers, nodesUnavailable } = await knownMachines();

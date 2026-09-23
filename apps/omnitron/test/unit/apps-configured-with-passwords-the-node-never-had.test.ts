@@ -104,7 +104,7 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
   svc.registry = { get: () => ({ name: 'daos', path: '/nowhere' }), list: () => [] };
   svc.collectDeclaredServices = async () => ({});
   svc.targetForStackNode = async () => ({ host: NODE.host, username: 'deploy' });
-  svc.provisionNodeInfrastructure = async () => true;
+  svc.provisionNodeInfrastructure = async () => ({ ready: true, detail: 'Infrastructure provisioned and healthy (5 services)' });
   svc.resolveNodeAppEnv = async (_e: unknown, _p: unknown, _s: unknown, _a: unknown, infra: unknown) => {
     configuredWith = infra;
     return { main: {} };
@@ -121,6 +121,7 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
 
   return {
     start: () => svc.startRemoteStack('daos', 'test', STACK, ECOSYSTEM, RELEASE) as Promise<unknown>,
+    svc,
     said,
     delivered,
     reconnected,
@@ -191,3 +192,26 @@ describe('a dropped peer, recognised as a connection that is gone', () => {
     expect(isConnectionGone(NetronErrors.transportLost('WebSocketTransport', 'node-peer'))).toBe(true);
   });
 });
+
+describe('a node whose infrastructure is not up (a-deployment-that-called-a-failed-daemon-healthy)', () => {
+  it('deploys anyway, and carries the node and its words in what the start reached', async () => {
+    const d = deployment(async (service) => provisioned(service));
+    d.svc.provisionNodeInfrastructure = async () => ({
+      ready: false,
+      detail: 'host services NOT up — bitcoin failed: could not start bitcoind',
+    });
+
+    const reach = (await d.start()) as { notReady: string[]; reached: number };
+
+    expect(d.delivered).toEqual(['main']);
+    expect(reach.reached).toBe(1);
+    expect(reach.notReady).toEqual(['10.0.0.9:9700: host services NOT up — bitcoin failed: could not start bitcoind']);
+  });
+
+  it('reaches no «not ready» when the node is ready — the control', async () => {
+    const d = deployment(async (service) => provisioned(service));
+    const reach = (await d.start()) as { notReady: string[] };
+    expect(reach.notReady).toEqual([]);
+  });
+});
+

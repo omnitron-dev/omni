@@ -678,13 +678,16 @@ const deploy = program.command('deploy').description('Deployment management');
 // that only restarted an app. An accepted flag is a promise — `--help`
 // advertised four deploy strategies this system has never implemented — so
 // they are gone rather than left decorating a refusal.
+//
+// `-t, --target` went the same way: it named the alias in an
+// `omnitron remote restart` line the message no longer prints (a restart is
+// not a deployment, and that registry was empty), and nothing else read it.
 deploy
   .command('app <app>')
-  .description('Refused — deployment is `omnitron stack start`; see the message')
-  .option('-t, --target <server>', 'Server alias, used only to name the restart command in the message')
-  .action(async (app, opts) => {
+  .description('Not implemented — prints where deployment is: `omnitron stack start`')
+  .action(async (app) => {
     const { deployCommand } = await import('../commands/deploy.js');
-    await deployCommand(app, opts);
+    await deployCommand(app);
   });
 
 deploy
@@ -695,13 +698,13 @@ deploy
     await projectBuildCommand(app);
   });
 
+// `-t, --target` was accepted here and read by nothing (`_opts`).
 program
   .command('rollback <app>')
-  .description('Refused — this never restored a previous version; see the message')
-  .option('-t, --target <server>', 'Target server alias or tag')
-  .action(async (app, opts) => {
+  .description('Not implemented — prints the way back: deploy the previous release')
+  .action(async (app) => {
     const { rollbackCommand } = await import('../commands/deploy.js');
-    await rollbackCommand(app, opts);
+    await rollbackCommand(app);
   });
 
 // ============================================================================

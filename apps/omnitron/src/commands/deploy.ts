@@ -23,6 +23,8 @@ export async function projectBuildCommand(app: string): Promise<void> {
   const entry = config.apps.find((a) => a.name === app);
   if (!entry) {
     log.error(`Unknown app: ${app}. Available: ${config.apps.map((a) => a.name).join(', ')}`);
+    // It built nothing and exited 0, as the two refusals below did.
+    process.exitCode = 1;
     return;
   }
 
@@ -58,7 +60,7 @@ export async function projectBuildCommand(app: string): Promise<void> {
 }
 
 /**
- * `omnitron deploy app <app> --target <server>` — refused, with directions.
+ * `omnitron deploy app <app>` — not implemented; says so, and where deployment is.
  *
  * What this used to do: connect to the remote daemon and call
  * `restartApp({ name: app })`, then print `Deployed '<app>' to <alias>`. No
@@ -78,64 +80,76 @@ export async function projectBuildCommand(app: string): Promise<void> {
  * different, unfinished model — one app to one server by alias — that never
  * had a deployer behind it.
  *
- * Refusing rather than silently restarting: a refusal costs a command that
- * did not work anyway, and it says where the working one is. See
- * `remoteRestartCommand` for the behaviour this used to have, under its own
- * name.
+ * The refusal that replaced it was wrong in three places, measured
+ * 2026-09-23. It exited 0, so a script took it for a deployment. It said the
+ * remote path «has never been executed» and that «no project config declares
+ * `stacks.nodes`» — while `daos/test` declares one node and the audit trail
+ * held 28 `stack.start daos/test` rows from an operator, 5 of them that day.
+ * And it sent the reader to `omnitron remote restart <alias>` — a restart,
+ * not a deployment, on a registry that answered «No remote servers
+ * registered». The `--target` flag existed only to fill in that line.
+ *
+ * What it says now is what works today: `stack start`, and for a stack that
+ * takes releases only, the two commands its own refusal names
+ * (`ProjectService`, «takes releases only»).
  */
-export async function deployCommand(app: string, opts: { target: string }): Promise<void> {
-  log.error(
-    `\`omnitron deploy\` does not deploy: it only restarted an app that was already on the host.`,
-  );
+export async function deployCommand(app: string): Promise<void> {
+  log.error(`\`omnitron deploy app\` is not implemented: nothing was deployed.`);
   log.info('');
   log.info('Deployment is a stack operation:');
   log.info('');
   log.info('    omnitron stack start <project> <stack>');
   log.info('');
-  // Said plainly, because the alternative is to describe what the code
-  // INTENDS and let the reader hear a promise — which is the same fault this
-  // command is being refused for, one level up.
-  log.warn('Note: the remote half of that path — provision the node, ship the');
-  log.warn('artifact over SSH, install dependencies, verify health — has never');
-  log.warn('been executed in any known configuration. No project config declares');
-  log.warn('`stacks.nodes`, so it has not been reached. Expect its first run to be');
-  log.warn('its first test.');
+  log.info("A stack whose config says `release: { mode: 'required' }` takes releases only:");
   log.info('');
-  log.info(`To restart '${app}' on a registered remote server, which is what this`);
-  log.info('command actually did:');
-  log.info('');
-  log.info(`    omnitron remote restart ${opts.target || '<alias>'} ${app}`);
+  log.info('    omnitron release build <project> --for <stack>');
+  log.info('    omnitron stack start <project> <stack> --release <id>');
   log.info('');
   log.info('To build an artifact without shipping it:');
   log.info('');
   log.info(`    omnitron deploy build ${app}`);
+  process.exitCode = 1;
 }
 
 /**
- * `omnitron rollback <app>` — refused.
+ * `omnitron rollback <app>` — not implemented; names the rollback that exists.
  *
  * It called `restartApp` — the identical operation to `deploy`, restarting
- * the running version. There is no version history behind this path to roll
- * back to. `RemoteDeployer` does keep artifacts per version, under
- * `/opt/omnitron/artifacts/<project>/<app>/<version>/`, so a real rollback is
- * implementable — but it has to move the deployed version, not restart it,
- * and it has to run through the stack path that put them there.
+ * the running version. There is no version history behind this path.
+ *
+ * Its refusal, measured 2026-09-23, opened with «does not roll back: it
+ * restarted the running version of 'main'» — read on its own, a report that
+ * `main` had just been restarted, from a command that does nothing. It exited
+ * 0. It said the stack deployer «has itself never been executed», against 28
+ * operator `stack.start daos/test` rows in the audit trail. It said artifacts
+ * «are kept per version on the node»: the node's path is
+ * `/opt/omnitron/artifacts/<project>/<app>/<version>` (remote-deployer), the
+ * version is the app's package.json version, and every app in all 23 release
+ * manifests on this machine is 0.0.1 — one directory per app, which each
+ * deployment overwrites (from the code; not checked on a node). And its
+ * advice, `omnitron stack start <project> <stack>`, is refused without
+ * `--release` by a stack that takes releases only, as `daos/test` does.
+ *
+ * The rollback that does exist is the release before, for a remote stack
+ * (a local one takes no release: `admitRelease`). Releases are kept where
+ * they were built or pulled, not on the node; `stack start --release` ships
+ * the release's own artifacts, onto a running stack too
+ * (`ProjectService.startStackOnce`: «putting a release onto a running stack
+ * is the point»), and the node installs any artifact whose checksum differs
+ * from what it has. So `release list`, then `stack start --release` with the
+ * previous id, is the way back — read from the code, not exercised here as a
+ * rollback.
  */
-export async function rollbackCommand(app: string, _opts: { target: string }): Promise<void> {
-  log.error(
-    `\`omnitron rollback\` does not roll back: it restarted the running version of '${app}'.`,
-  );
+export async function rollbackCommand(app: string): Promise<void> {
+  log.error(`\`omnitron rollback\` is not implemented: nothing was done to '${app}'.`);
   log.info('');
-  log.info('No previous version is selected or restored by this path. Artifacts are');
-  log.info('kept per version on the node, under');
+  log.info('The way back for a remote stack is the previous release:');
   log.info('');
-  log.info('    /opt/omnitron/artifacts/<project>/<app>/<version>/');
+  log.info('    omnitron release list');
+  log.info('    omnitron stack start <project> <stack> --release <previous-release-id>');
   log.info('');
-  log.info('so a rollback is implementable through the stack deployer, and is not');
-  log.info('implemented yet. Note that the stack deployer has itself never been');
-  log.info('executed in any known configuration. Until then, redeploy the version');
-  log.info('you want:');
-  log.info('');
-  log.info('    omnitron stack start <project> <stack>');
+  log.info("The project checkout must be at that release's project commit");
+  log.info('(`omnitron release show <id>` names it); `stack start` refuses, naming it, when it is not.');
+  process.exitCode = 1;
 }
 

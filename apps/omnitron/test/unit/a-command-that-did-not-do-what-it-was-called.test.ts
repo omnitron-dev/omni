@@ -55,7 +55,7 @@ beforeEach(() => {
 
 describe('omnitron deploy', () => {
   it('refuses, and does not reach for a daemon', async () => {
-    await deployCommand('payments', { target: 'prod-1' });
+    await deployCommand('payments');
 
     expect(createRemoteDaemonClient).not.toHaveBeenCalled();
     expect(logged.some((l) => l.level === 'error')).toBe(true);
@@ -64,45 +64,42 @@ describe('omnitron deploy', () => {
   });
 
   it('names the command that actually deploys', async () => {
-    await deployCommand('payments', { target: 'prod-1' });
+    await deployCommand('payments');
 
     // A refusal that does not say where to go is a dead end. Deployment is a
     // stack operation: provision the node, ship the artifact, install, verify.
     expect(said()).toContain('omnitron stack start');
   });
 
-  it('names the new home of the behaviour it used to have', async () => {
-    await deployCommand('payments', { target: 'prod-1' });
-
-    // The restart was legitimate and had no other home in the CLI.
-    expect(said()).toContain('omnitron remote restart prod-1 payments');
-  });
+  // «names the new home of the behaviour it used to have» asserted the
+  // `omnitron remote restart <alias> <app>` line. It is gone (2026-09-23): a
+  // restart is not a deployment, and the registry it needs answered «No
+  // remote servers registered». `remote restart` itself is unchanged. See
+  // two-refusals-that-exited-zero-and-pointed-at-dead-ends.test.ts.
 });
 
 describe('omnitron rollback', () => {
   it('refuses, and does not reach for a daemon', async () => {
-    await rollbackCommand('payments', { target: 'prod-1' });
+    await rollbackCommand('payments');
 
     expect(createRemoteDaemonClient).not.toHaveBeenCalled();
     expect(logged.some((l) => l.level === 'error')).toBe(true);
     expect(said()).not.toMatch(/^Rolled back /m);
   });
 
-  it('says that no previous version was ever selected', async () => {
-    await rollbackCommand('payments', { target: 'prod-1' });
-
-    // The distinction that matters: not "rollback failed" but "this never
-    // restored anything". Artifacts ARE kept per version on the node, so the
-    // operation is implementable — which is why the message says where they
-    // are rather than calling the idea impossible.
-    expect(said()).toContain('/opt/omnitron/artifacts/');
-  });
+  // «says that no previous version was ever selected» asserted the
+  // `/opt/omnitron/artifacts/` line, under «Artifacts ARE kept per version on
+  // the node». That premise was false (2026-09-23): the version is the app's
+  // package.json version, 0.0.1 for every app in all 23 release manifests, so
+  // each deployment overwrites the one directory. The way back is the
+  // previous release, kept on the master; see
+  // two-refusals-that-exited-zero-and-pointed-at-dead-ends.test.ts.
 
   it('is no longer the same operation as deploy', async () => {
-    await deployCommand('payments', { target: 'prod-1' });
+    await deployCommand('payments');
     const fromDeploy = said();
     logged.length = 0;
-    await rollbackCommand('payments', { target: 'prod-1' });
+    await rollbackCommand('payments');
     const fromRollback = said();
 
     // They were byte-for-byte the same call. Two commands with two names must

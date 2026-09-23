@@ -120,6 +120,36 @@ async function withAdapter<T>(op: (adapter: any) => Promise<T>): Promise<T> {
 // =============================================================================
 
 /**
+ * How many containers this host's Docker holds, by state — every container,
+ * not only omnitron's.
+ *
+ * One `docker ps`, the CLI the rest of this file speaks, with a timeout that
+ * ends it. The system snapshot asked Docker through systeminformation's
+ * socket client instead, which sends `GET /info HTTP/1.0` and waits for the
+ * connection to close; OrbStack answers `HTTP/1.1 200` and keeps it open, so
+ * every question hung until the library's own timeout — measured 2026-09-23:
+ * no answer in 20 s where `curl` on the same socket took 0.055 s — and left
+ * its socket open behind it.
+ */
+export async function countContainersByState(
+  timeoutMs = 10_000,
+): Promise<{ running: number; paused: number; stopped: number }> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { stdout } = await promisify(execFile)('docker', ['ps', '-a', '--format', '{{.State}}'], {
+    encoding: 'utf-8',
+    timeout: timeoutMs,
+  });
+  const counts = { running: 0, paused: 0, stopped: 0 };
+  for (const state of String(stdout).split('\n').map((line) => line.trim()).filter(Boolean)) {
+    if (state === 'running') counts.running++;
+    else if (state === 'paused') counts.paused++;
+    else counts.stopped++;
+  }
+  return counts;
+}
+
+/**
  * Check if Docker daemon is available.
  */
 export async function isDockerAvailable(): Promise<boolean> {

@@ -8,8 +8,20 @@
 
 import type { DaemonRole } from '../../config/types.js';
 
+/** The parts of a snapshot that are asked separately, each with its own budget. */
+export type SnapshotSection = 'os' | 'cpu' | 'memory' | 'disks' | 'network' | 'docker';
+
 export interface SystemSnapshot {
+  /** When it was collected. A snapshot is served while the next is collected: read its age from this. */
   timestamp: number;
+  /** How long collecting it took. */
+  collectedMs: number;
+  /**
+   * The sections that did not answer, and why. Their fields hold no reading —
+   * zeros, empty lists, `null` — and must not be shown as one: `docker: null`
+   * with a reason here is not «no Docker».
+   */
+  unanswered: Partial<Record<SnapshotSection, string>>;
 
   os: {
     platform: string;

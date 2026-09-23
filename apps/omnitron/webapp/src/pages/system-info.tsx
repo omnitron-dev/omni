@@ -107,6 +107,20 @@ function formatDuration(ms: number): string {
 // Page
 // =============================================================================
 
+/**
+ * A section's reading, or why there is none. A section that did not answer
+ * carries zeros and empty lists, and those are not a reading: «CPU 0.0%» and
+ * a missing Docker card were what a slow section looked like.
+ */
+function SectionBody({ why, children }: { why?: string | undefined; children: React.ReactNode }) {
+  if (!why) return <>{children}</>;
+  return (
+    <Typography variant="body2" sx={{ color: 'warning.main' }}>
+      Did not answer — {why}
+    </Typography>
+  );
+}
+
 export default function SystemInfoPage() {
   const theme = useTheme();
   // Shared polling loop — see `use-polled-resource`. The `isFirstLoad` ref
@@ -138,6 +152,14 @@ export default function SystemInfoPage() {
   return (
     <Stack spacing={3}>
       {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
+      {d && (
+        // The daemon serves the last snapshot while it collects the next, so
+        // these are figures of an age, and the age is part of the reading.
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          Collected {Math.max(0, Math.round((Date.now() - d.timestamp) / 1000))} s ago
+          {d.collectedMs != null ? ` in ${d.collectedMs} ms` : ''}
+        </Typography>
+      )}
       <Grid container spacing={3}>
         {/* Daemon */}
         <Grid size={{ xs: 12, md: 6 }}>
@@ -179,7 +201,7 @@ export default function SystemInfoPage() {
             <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }}
               title="CPU"
               action={
-                d?.cpu?.currentLoad != null ? (
+                d?.cpu?.currentLoad != null && !d.unanswered?.cpu ? (
                   <Chip
                     label={`${d.cpu.currentLoad.toFixed(1)}%`}
                     size="small"
@@ -190,6 +212,7 @@ export default function SystemInfoPage() {
               }
             />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+              <SectionBody why={d?.unanswered?.cpu}>
               <Stack spacing={0.5}>
                 <InfoRow label="Model" value={`${d?.cpu?.manufacturer ?? ''} ${d?.cpu?.brand ?? ''}`} />
                 <InfoRow label="Cores" value={`${d?.cpu?.physicalCores ?? 0} physical / ${d?.cpu?.cores ?? 0} logical`} />
@@ -233,6 +256,7 @@ export default function SystemInfoPage() {
                   </Box>
                 </>
               )}
+              </SectionBody>
             </CardContent>
           </Card>
         </Grid>
@@ -242,6 +266,7 @@ export default function SystemInfoPage() {
           <Card variant="outlined" sx={cardSx}>
             <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Memory" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+              <SectionBody why={d?.unanswered?.memory}>
               {d?.memory && (
                 <>
                   {/* `committed`, not `used`: the library reports `used` as
@@ -260,6 +285,7 @@ export default function SystemInfoPage() {
                   </Stack>
                 </>
               )}
+              </SectionBody>
             </CardContent>
           </Card>
         </Grid>
@@ -269,6 +295,7 @@ export default function SystemInfoPage() {
           <Card variant="outlined" sx={cardSx}>
             <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Disks" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+              <SectionBody why={d?.unanswered?.disks}>
               {d?.disks?.length > 0 ? (
                 d.disks.map((disk: any, i: number) => (
                   <Box key={i}>
@@ -285,6 +312,7 @@ export default function SystemInfoPage() {
                   color: "text.secondary"
                 }}>No disk information available</Typography>
               )}
+              </SectionBody>
             </CardContent>
           </Card>
         </Grid>
@@ -294,6 +322,7 @@ export default function SystemInfoPage() {
           <Card variant="outlined" sx={cardSx}>
             <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Network" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+              <SectionBody why={d?.unanswered?.network}>
               {d?.network?.interfaces?.length > 0 ? (
                 <Stack spacing={1}>
                   {d.network.interfaces.slice(0, 5).map((iface: any, i: number) => (
@@ -342,21 +371,24 @@ export default function SystemInfoPage() {
                   color: "text.secondary"
                 }}>No network interfaces</Typography>
               )}
+              </SectionBody>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Docker */}
-        {d?.docker && (
+        {/* Docker — shown when it did not answer too: `null` with a reason is not «no Docker». */}
+        {(d?.docker || d?.unanswered?.docker) && (
           <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined" sx={cardSx}>
               <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Docker" />
               <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+                <SectionBody why={d?.unanswered?.docker}>
                 <Stack spacing={0.5}>
-                  <InfoRow label="Running" value={d.docker.running} />
-                  <InfoRow label="Paused" value={d.docker.paused} />
-                  <InfoRow label="Stopped" value={d.docker.stopped} />
+                  <InfoRow label="Running" value={d.docker?.running ?? '--'} />
+                  <InfoRow label="Paused" value={d.docker?.paused ?? '--'} />
+                  <InfoRow label="Stopped" value={d.docker?.stopped ?? '--'} />
                 </Stack>
+                </SectionBody>
               </CardContent>
             </Card>
           </Grid>
@@ -367,6 +399,7 @@ export default function SystemInfoPage() {
           <Card variant="outlined" sx={cardSx}>
             <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Operating System" />
             <CardContent sx={{ ...cardContentSx, pt: 0 }}>
+              <SectionBody why={d?.unanswered?.os}>
               <Stack spacing={0.5}>
                 <InfoRow label="Platform" value={d?.os?.platform ?? '--'} />
                 <InfoRow label="Distribution" value={d?.os?.distro ?? '--'} />
@@ -376,6 +409,7 @@ export default function SystemInfoPage() {
                 <InfoRow label="Hostname" value={d?.os?.hostname ?? '--'} mono />
                 <InfoRow label="Uptime" value={d?.os?.uptime ? formatDuration(d.os.uptime * 1000) : '--'} />
               </Stack>
+              </SectionBody>
             </CardContent>
           </Card>
         </Grid>

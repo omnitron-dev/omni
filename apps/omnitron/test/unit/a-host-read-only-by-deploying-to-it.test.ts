@@ -310,11 +310,12 @@ describe('a service the stack runs on the node, asked how far it is', () => {
 describe('host facts for a decision the declaration does not cover', () => {
   const host = fakeHost(
     {
-      'systemctl show monero-walletd -p LoadState -p ActiveState -p UnitFileState -p FragmentPath -p ExecStart':
+      'systemctl show monero-walletd -p LoadState -p ActiveState -p SubState -p Result -p UnitFileState -p FragmentPath -p ExecStart -p MainPID -p NRestarts -p ActiveEnterTimestamp -p ControlGroup':
         'LoadState=loaded\nActiveState=active\nUnitFileState=enabled\nFragmentPath=/etc/systemd/system/monero-walletd.service\n' +
         'ExecStart={ path=/usr/local/bin/monero-wallet-rpc ; argv[]=/usr/local/bin/monero-wallet-rpc --rpc-login daos:walletpw --daemon-login daos:daemonpw ; ignore_errors=no }',
-      'systemctl show bitcoin -p LoadState -p ActiveState -p UnitFileState -p FragmentPath -p ExecStart':
-        'LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\nFragmentPath=/etc/systemd/system/bitcoin.service\n' +
+      'systemctl show bitcoin -p LoadState -p ActiveState -p SubState -p Result -p UnitFileState -p FragmentPath -p ExecStart -p MainPID -p NRestarts -p ActiveEnterTimestamp -p ControlGroup':
+        'LoadState=loaded\nActiveState=inactive\nSubState=dead\nResult=success\nUnitFileState=disabled\n' +
+        'MainPID=0\nNRestarts=0\nActiveEnterTimestamp=\nControlGroup=\nFragmentPath=/etc/systemd/system/bitcoin.service\n' +
         'ExecStart={ path=/snap/bin/bitcoin-core.daemon ; argv[]=/snap/bin/bitcoin-core.daemon -datadir=/srv/btc -rpcpassword=hunter2 ; ignore_errors=no }',
       'snap list bitcoin-core':
         'Name          Version  Rev  Tracking       Publisher   Notes\nbitcoin-core  28.1     170  latest/stable  bitcoin-core  -',
@@ -341,9 +342,65 @@ describe('host facts for a decision the declaration does not cover', () => {
       known: true,
       active: false,
       enabled: false,
+      state: 'inactive (dead)',
+      result: 'success',
+      mainPid: null,
+      restarts: 0,
+      since: null,
+      cgroup: null,
       fragmentPath: '/etc/systemd/system/bitcoin.service',
       execStart: '/snap/bin/bitcoin-core.daemon -datadir=/srv/btc -rpcpassword=…',
+      jobs: [],
+      journal: [],
+      processes: [],
     });
+  });
+
+  it('says where a unit is in systemd’s words, what it waits on, what it last said, and whose its processes are', async () => {
+    // The test node's bitcoind read «inactive» while its chain advanced, and
+    // its start was cut at 120 s with no reason (2026-09-23).
+    const node = fakeHost(
+      {
+        [`systemctl show bitcoind -p LoadState -p ActiveState -p SubState -p Result -p UnitFileState -p FragmentPath -p ExecStart -p MainPID -p NRestarts -p ActiveEnterTimestamp -p ControlGroup`]:
+          'LoadState=loaded\nActiveState=activating\nSubState=start\nResult=success\nUnitFileState=enabled\n' +
+          'MainPID=4242\nNRestarts=0\nActiveEnterTimestamp=\nControlGroup=/system.slice/bitcoind.service\n' +
+          'FragmentPath=/etc/systemd/system/bitcoind.service\n' +
+          'ExecStart={ path=/usr/local/bin/bitcoind ; argv[]=/usr/local/bin/bitcoind -conf=/etc/bitcoin/bitcoin.conf -datadir=/var/lib/bitcoind ; ignore_errors=no }',
+        'systemctl list-jobs --no-legend --no-pager':
+          '8812 bitcoind.service                       start waiting\n' +
+          '8811 network-online.target                  start waiting\n' +
+          '8810 systemd-networkd-wait-online.service   start running\n',
+        'journalctl -u bitcoind -n 30 --no-pager -o short-iso':
+          '2026-09-23T16:49:20+0000 node systemd[1]: Starting bitcoind.service...\n' +
+          '2026-09-23T16:49:21+0000 node bitcoind[4242]: Command-line arg: rpcpassword=hunter2\n',
+        'pgrep -x bitcoind': '4242\n4343\n',
+      },
+      {
+        '/proc/4242/cgroup': '0::/system.slice/bitcoind.service\n',
+        '/proc/4343/cgroup': '0::/user.slice/user-0.slice/session-7.scope\n',
+      }
+    );
+    const reading = await inspectHost({ services: {}, units: ['bitcoind'] }, deps(node.host));
+    const unit = reading.units[0]!;
+
+    expect(unit).toMatchObject({
+      state: 'activating (start)',
+      mainPid: 4242,
+      restarts: 0,
+      cgroup: '/system.slice/bitcoind.service',
+    });
+    expect(unit.jobs).toEqual([
+      '8812 bitcoind.service                       start waiting',
+      '8811 network-online.target                  start waiting',
+      '8810 systemd-networkd-wait-online.service   start running',
+    ]);
+    expect(unit.journal[1]).toContain('rpcpassword=…');
+    expect(unit.processes).toEqual([
+      { pid: 4242, cgroup: '/system.slice/bitcoind.service', inUnit: true },
+      { pid: 4343, cgroup: '/user.slice/user-0.slice/session-7.scope', inUnit: false },
+    ]);
+    expect(JSON.stringify(reading)).not.toContain('hunter2');
+    expect(node.writes).toEqual([]);
   });
 
   it('measures a chain directory, reads a snap and the keys asked of a config — and refuses a credential key', async () => {

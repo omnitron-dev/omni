@@ -470,6 +470,8 @@ export interface IOmnitronBackupsService {
   getSchedule(data: { database: string }): Promise<string | null>;
   listSchedules(): Promise<Record<string, string>>;
   removeSchedule(data: { database: string }): Promise<{ success: boolean }>;
+  /** Each schedule's last pass and next run, and which stacks this host backs up. */
+  getBackupStatus(): Promise<import('../../services/backup.service.js').BackupStatus>;
 }
 
 /** Kubernetes workloads on the cluster this daemon is pointed at. */

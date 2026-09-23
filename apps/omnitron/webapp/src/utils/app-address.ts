@@ -7,7 +7,7 @@
  * node, where this daemon has no handle for them at all.
  */
 
-import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
 /** Only a local stack's apps are this daemon's own: a detail page, start, stop. */
 export const isLocal = (app: IProjectAppStatus): boolean => app.stackType === 'local';
@@ -58,4 +58,76 @@ export function countedApps(
 ): ReadonlyArray<{ status: string }> | null {
   if (!project) return status?.apps ?? [];
   return deployments.status === 'fulfilled' && deployments.value ? deploymentsIn(deployments.value, stack) : null;
+}
+
+/** One app as a page shows it for the selection. */
+export interface ShownApp {
+  /** Unique in the view: this daemon's handle for a local app, `stack/name` for a remote one. */
+  key: string;
+  name: string;
+  /** The stack it belongs to; `null` for a process whose handle names none. */
+  stack: string | null;
+  /** Run by a node rather than by this daemon. */
+  remote: boolean;
+  status: ProcessInfoDto['status'];
+  pid: number | null;
+  uptime: number;
+  cpu: number;
+  memory: number;
+  restarts: number;
+  processes?: ProcessInfoDto['processes'];
+}
+
+/**
+ * The apps a page shows for the selection. With a project, its deployments —
+ * the rows /apps lists and the status bar counts — a local one with this
+ * daemon's process details joined by handle, a remote one as its node
+ * reports it; with no project, this daemon's processes. `null` while the
+ * selected project has not been asked yet.
+ *
+ * The dashboard showed `daemon.list()` filtered by prefix: this machine's
+ * processes only. Measured 2026-09-23 with daos selected, all stacks: it
+ * counted and grouped dev's six and never test's six, beside its own
+ * «Stacks 2/2».
+ */
+export function shownApps(
+  project: string | null,
+  stack: string | null,
+  deployments: IProjectAppStatus[] | null,
+  processes: ProcessInfoDto[],
+): ShownApp[] | null {
+  const facts = (app: IProjectAppStatus | ProcessInfoDto) => ({
+    status: app.status,
+    pid: app.pid,
+    uptime: app.uptime,
+    cpu: app.cpu,
+    memory: app.memory,
+    restarts: app.restarts,
+  });
+  if (!project) {
+    return processes.map((process) => {
+      const parts = process.name.split('/');
+      return {
+        ...facts(process),
+        key: process.name,
+        name: parts[parts.length - 1]!,
+        stack: parts.length >= 3 ? parts[1]! : null,
+        remote: false,
+        ...(process.processes ? { processes: process.processes } : {}),
+      };
+    });
+  }
+  if (!deployments) return null;
+  const byHandle = new Map(processes.map((process) => [process.name, process]));
+  return deploymentsIn(deployments, stack).map((app) => {
+    const own = isLocal(app) ? byHandle.get(app.handleKey) : undefined;
+    return {
+      ...facts(app),
+      key: isLocal(app) ? app.handleKey : `${app.stack}/${app.name}`,
+      name: app.name,
+      stack: app.stack,
+      remote: !isLocal(app),
+      ...(own?.processes ? { processes: own.processes } : {}),
+    };
+  });
 }

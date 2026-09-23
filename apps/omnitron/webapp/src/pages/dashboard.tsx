@@ -25,24 +25,22 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
 
 import { Alert, StatCard } from '@omnitron-dev/prism';
-import { daemon, metrics } from 'src/netron/client';
+import { daemon, metrics, project as projectRpc } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { useActiveProjectStacks } from 'src/stores/project.store';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { shownApps, type ShownApp } from 'src/utils/app-address';
 
-import type { ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // App Status Card
 // ---------------------------------------------------------------------------
 
-function AppStatusCard({ app }: { app: ProcessInfoDto }) {
+function AppStatusCard({ app }: { app: ShownApp }) {
   const theme = useTheme();
-
-  // Strip project/stack prefix from display name: "omni/dev/main" → "main"
-  const displayName = app.name.includes('/') ? app.name.split('/').pop()! : app.name;
 
   const statusColor =
     app.status === 'online'
@@ -74,7 +72,7 @@ function AppStatusCard({ app }: { app: ProcessInfoDto }) {
           <Typography variant="subtitle2" sx={{
             fontWeight: 700
           }}>
-            {displayName}
+            {app.name}
           </Typography>
           <Chip
             label={app.status}
@@ -174,13 +172,13 @@ function AppStatusCard({ app }: { app: ProcessInfoDto }) {
 // App Status Grid — groups by stack when showing all stacks
 // ---------------------------------------------------------------------------
 
-function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeStack: string | null }) {
-  // If a specific stack is selected, or apps aren't namespaced, show flat grid
-  if (activeStack || apps.every((a) => !a.name.includes('/'))) {
+function AppStatusGrid({ apps, activeStack }: { apps: ShownApp[]; activeStack: string | null }) {
+  // If a specific stack is selected, or no app belongs to one, show flat grid
+  if (activeStack || apps.every((a) => a.stack === null)) {
     return (
       <Grid container spacing={2.5}>
         {apps.map((app) => (
-          <Grid key={app.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+          <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <AppStatusCard app={app} />
           </Grid>
         ))}
@@ -188,11 +186,11 @@ function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeSt
     );
   }
 
-  // Group apps by stack (from namespaced handle: project/stack/app)
-  const groups = new Map<string, ProcessInfoDto[]>();
+  // Group apps by the stack they belong to. Not by parsing the handle: a
+  // remote stack's apps carry the node's naming, `daos/deployed/main`.
+  const groups = new Map<string, ShownApp[]>();
   for (const app of apps) {
-    const parts = app.name.split('/');
-    const stackLabel = parts.length >= 3 ? parts[1]! : 'default';
+    const stackLabel = app.stack ?? 'default';
     if (!groups.has(stackLabel)) groups.set(stackLabel, []);
     groups.get(stackLabel)!.push(app);
   }
@@ -224,6 +222,7 @@ function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeSt
                 letterSpacing: 0.5
               }}>
               {stackName}
+              {stackApps.some((a) => a.remote) ? ' · remote' : ''}
             </Typography>
             <Typography variant="caption" sx={{
               color: "text.secondary"
@@ -233,7 +232,7 @@ function AppStatusGrid({ apps, activeStack }: { apps: ProcessInfoDto[]; activeSt
           </Stack>
           <Grid container spacing={2.5}>
             {stackApps.map((app) => (
-              <Grid key={app.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <AppStatusCard app={app} />
               </Grid>
             ))}
@@ -267,23 +266,29 @@ function KpiSkeleton() {
 export default function DashboardPage() {
   const theme = useTheme();
 
-  const [allApps, setAllApps] = useState<ProcessInfoDto[]>([]);
+  const [processes, setProcesses] = useState<ProcessInfoDto[]>([]);
+  /** The selected project's deployments, with the project they answer for. */
+  const [deployments, setDeployments] = useState<{ project: string; apps: IProjectAppStatus[] } | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isFirstLoad = useRef(true);
 
-  const { filterApps, activeStack } = useStackContext();
+  const { activeProject, activeStack } = useStackContext();
   const stacks = useActiveProjectStacks();
 
   const fetchData = useCallback(async () => {
     try {
-      const [appList, snapshot] = await Promise.allSettled([
+      const [projectApps, appList, snapshot] = await Promise.allSettled([
+        activeProject ? projectRpc.getProjectApps({ project: activeProject }) : Promise.resolve(null),
         daemon.list(),
         metrics.getSnapshot(),
       ]);
 
-      if (appList.status === 'fulfilled') setAllApps(appList.value);
+      if (activeProject && projectApps.status === 'fulfilled' && projectApps.value) {
+        setDeployments({ project: activeProject, apps: projectApps.value });
+      }
+      if (appList.status === 'fulfilled') setProcesses(appList.value);
       if (snapshot.status === 'fulfilled') setMetricsSnapshot(snapshot.value);
 
       // `allSettled` never rejects, so the `catch` below cannot see a failed
@@ -293,12 +298,14 @@ export default function DashboardPage() {
       // panel is where an operator looks first, so "the numbers are old" has
       // to be visible on it rather than inferred from them not moving.
       const failed = [
+        projectApps.status === 'rejected' ? `${activeProject}'s apps` : null,
         appList.status === 'rejected' ? 'the app list' : null,
         snapshot.status === 'rejected' ? 'metrics' : null,
       ].filter(Boolean);
 
       if (failed.length > 0) {
         const reason =
+          (projectApps.status === 'rejected' ? (projectApps.reason as Error)?.message : null) ??
           (appList.status === 'rejected' ? (appList.reason as Error)?.message : null) ??
           (snapshot.status === 'rejected' ? (snapshot.reason as Error)?.message : null) ??
           'the daemon did not answer';
@@ -315,7 +322,18 @@ export default function DashboardPage() {
         isFirstLoad.current = false;
       }
     }
-  }, []);
+  }, [activeProject]);
+
+  // Another project is another question: ask it now rather than on the next
+  // tick. The poll's own first tick covers the mount.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    void fetchData();
+  }, [fetchData]);
 
   // Initialize WebSocket realtime connection
   const wsConnected = useRealtimeStore((s) => s.connected);
@@ -339,7 +357,13 @@ export default function DashboardPage() {
     if (lastEvent) fetchData();
   }, [lastEvent, fetchData]);
 
-  const apps = filterApps(allApps);
+  const shown = shownApps(
+    activeProject,
+    activeStack,
+    deployments?.project === activeProject ? deployments.apps : null,
+    processes,
+  );
+  const apps = shown ?? [];
 
   // KPI source-of-truth rule: the daemon's `apps` list defines the SET we
   // count. The metrics snapshot is used only to enrich per-app cpu/memory
@@ -349,12 +373,14 @@ export default function DashboardPage() {
   // ghosts (stack-switched / renamed / dev-reloaded apps that no longer
   // report) would inflate the count; even with the filter it bypasses the
   // active stack filter the user has selected.
+  // The snapshot is this daemon's: it enriches local apps only, by handle.
   const snapApps = metricsSnapshot?.apps ?? {};
+  const sampled = (a: ShownApp) => (a.remote ? undefined : snapApps[a.key]);
   const totalApps = apps.length;
   const onlineCount = apps.filter((a) => a.status === 'online').length;
   const offlineCount = totalApps - onlineCount;
-  const totalCpu = apps.reduce((sum, a) => sum + (snapApps[a.name]?.cpu ?? a.cpu), 0);
-  const totalMemory = apps.reduce((sum, a) => sum + (snapApps[a.name]?.memory ?? a.memory), 0);
+  const totalCpu = apps.reduce((sum, a) => sum + (sampled(a)?.cpu ?? a.cpu), 0);
+  const totalMemory = apps.reduce((sum, a) => sum + (sampled(a)?.memory ?? a.memory), 0);
   const runningStacks = stacks.filter((s) => s.status === 'running').length;
   const cpuColor: 'success' | 'warning' | 'error' = totalCpu > 80 ? 'error' : totalCpu > 60 ? 'warning' : 'success';
   const memMb = totalMemory / (1024 * 1024);
@@ -369,7 +395,7 @@ export default function DashboardPage() {
       )}
       {/* Row 1: KPI Stat Cards */}
       <Grid container spacing={2.5}>
-        {loading ? (
+        {loading || shown === null ? (
           <KpiSkeleton />
         ) : (
           <>

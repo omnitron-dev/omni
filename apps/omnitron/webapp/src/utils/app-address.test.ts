@@ -11,9 +11,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
-import { countedApps, daemonNameFor, deploymentsIn, detailHref, isLocal, tally } from './app-address';
+import { countedApps, daemonNameFor, deploymentsIn, detailHref, isLocal, shownApps, tally } from './app-address';
 
 const deployment = (stack: string, stackType: IProjectAppStatus['stackType'], name: string, handleKey: string) =>
   ({
@@ -89,5 +89,48 @@ describe('a status bar that counted another stack’s apps', () => {
 
   it('has no count when the selection could not be asked, rather than a zero', () => {
     expect(countedApps('daos', 'test', localSix, { status: 'rejected', reason: new Error('mesh') })).toBeNull();
+  });
+});
+
+describe('a dashboard that showed one machine of a project', () => {
+  // This daemon's own process for dev's main, with the process list only it has.
+  const devProcess = {
+    name: 'daos/dev/main',
+    pid: 1,
+    status: 'online',
+    cpu: 0,
+    memory: 0,
+    uptime: 1,
+    restarts: 0,
+    instances: 1,
+    port: null,
+    mode: 'bootstrap',
+    critical: false,
+    processes: [],
+  } satisfies ProcessInfoDto;
+
+  it('shows the project’s deployments on every machine, each keyed and grouped by its stack', () => {
+    const shown = shownApps('daos', null, [devMain, testMain], [devProcess])!;
+
+    expect(shown.map((a) => [a.key, a.name, a.stack, a.remote])).toEqual([
+      ['daos/dev/main', 'main', 'dev', false],
+      ['test/main', 'main', 'test', true],
+    ]);
+    expect(shown[0]!.processes, 'a local app keeps what this daemon knows of it').toEqual([]);
+    expect(shown[1]!.processes).toBeUndefined();
+  });
+
+  it('shows one stack’s deployments when one is selected', () => {
+    expect(shownApps('daos', 'test', [devMain, testMain], [devProcess])!.map((a) => a.key)).toEqual(['test/main']);
+  });
+
+  it('shows nothing yet — not an empty project — before the project answers', () => {
+    expect(shownApps('daos', null, null, [devProcess])).toBeNull();
+  });
+
+  it('shows this daemon’s processes with no project selected', () => {
+    expect(shownApps(null, null, null, [devProcess])!.map((a) => [a.key, a.name, a.stack, a.remote])).toEqual([
+      ['daos/dev/main', 'main', 'dev', false],
+    ]);
   });
 });

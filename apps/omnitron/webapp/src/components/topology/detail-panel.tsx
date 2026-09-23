@@ -21,7 +21,7 @@ import {
   StopIcon,
   RestartIcon,
 } from 'src/assets/icons';
-import { useTopologyStore } from './topology-store';
+import { serviceState, useTopologyStore } from './topology-store';
 import { getStatusColor, miniBarSx } from './shared-styles';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
 import { daemon, logs } from 'src/netron/client';
@@ -46,63 +46,68 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Tab Panel
-// ---------------------------------------------------------------------------
-
-function TabPanel({ value, index, children }: { value: number; index: number; children: React.ReactNode }) {
-  return value === index ? <Box sx={{ py: 2 }}>{children}</Box> : null;
-}
-
-// ---------------------------------------------------------------------------
 // Overview for App
 // ---------------------------------------------------------------------------
 
-function AppOverview({ data }: { data: AppNodeData }) {
+/** Start, restart, stop: a local app's. A remote app is its node's, and this daemon has no handle for it. */
+function AppActions({ data }: { data: AppNodeData }) {
   const { restartApp, stopApp, startApp } = useTopologyStore();
+  if (data.remote) {
+    return (
+      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        Runs on the {data.stack} stack&apos;s node — start and stop it with the stack.
+      </Typography>
+    );
+  }
+  const isStopped = data.status === 'stopped' || data.status === 'crashed' || data.status === 'errored';
+  return (
+    <Stack direction="row" spacing={1}>
+      {isStopped ? (
+        <Button
+          variant="contained"
+          size="small"
+          color="success"
+          startIcon={<PlayIcon />}
+          onClick={() => startApp(data.name)}
+          sx={{ textTransform: 'none', fontWeight: 600 }}
+        >
+          Start
+        </Button>
+      ) : (
+        <>
+          <Button
+            variant="outlined"
+            size="small"
+            color="warning"
+            startIcon={<RestartIcon />}
+            onClick={() => restartApp(data.name)}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Restart
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            startIcon={<StopIcon />}
+            onClick={() => stopApp(data.name)}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Stop
+          </Button>
+        </>
+      )}
+    </Stack>
+  );
+}
+
+function AppOverview({ data }: { data: AppNodeData }) {
   const statusColor = getStatusColor(data.status);
   const isOnline = data.status === 'online';
-  const isStopped = data.status === 'stopped' || data.status === 'crashed' || data.status === 'errored';
 
   return (
     <Stack spacing={2}>
-      {/* Actions */}
-      <Stack direction="row" spacing={1}>
-        {isStopped ? (
-          <Button
-            variant="contained"
-            size="small"
-            color="success"
-            startIcon={<PlayIcon />}
-            onClick={() => startApp(data.name)}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Start
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outlined"
-              size="small"
-              color="warning"
-              startIcon={<RestartIcon />}
-              onClick={() => restartApp(data.name)}
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-            >
-              Restart
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              color="error"
-              startIcon={<StopIcon />}
-              onClick={() => stopApp(data.name)}
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-            >
-              Stop
-            </Button>
-          </>
-        )}
-      </Stack>
+      <AppActions data={data} />
       <Divider sx={{ borderColor: 'divider' }} />
       {/* Info rows */}
       <InfoRow label="Status">
@@ -193,11 +198,12 @@ function AppOverview({ data }: { data: AppNodeData }) {
 // ---------------------------------------------------------------------------
 
 function InfraOverview({ data }: { data: InfraNodeData }) {
-  const statusColor = getStatusColor(data.health === 'none' ? data.status : data.health);
+  const statusColor = getStatusColor(serviceState(data));
   return (
     <Stack spacing={2}>
       <InfoRow label="Service">{data.service}</InfoRow>
-      <InfoRow label="Port">{data.port}</InfoRow>
+      <InfoRow label="For">{data.app ?? `the ${data.stack ?? 'daemon'} stack`}</InfoRow>
+      <InfoRow label="Port">{data.port ?? '—'}</InfoRow>
       <InfoRow label="Status">
         <Chip
           label={data.status}
@@ -209,7 +215,7 @@ function InfraOverview({ data }: { data: InfraNodeData }) {
           }}
         />
       </InfoRow>
-      <InfoRow label="Health">{data.health}</InfoRow>
+      <InfoRow label="Health">{data.health === 'unknown' ? 'not inspected — on its node' : data.health}</InfoRow>
       {data.containerId && <InfoRow label="Container">{data.containerId.slice(0, 12)}</InfoRow>}
       {data.image && <InfoRow label="Image">{data.image}</InfoRow>}
       {data.startedAt && <InfoRow label="Started">{formatTimestamp(data.startedAt)}</InfoRow>}
@@ -222,10 +228,10 @@ function InfraOverview({ data }: { data: InfraNodeData }) {
 // ---------------------------------------------------------------------------
 
 function GatewayOverview({ data }: { data: GatewayNodeData }) {
-  const statusColor = getStatusColor(data.health === 'none' ? data.status : data.health);
+  const statusColor = getStatusColor(serviceState(data));
   return (
     <Stack spacing={2}>
-      <InfoRow label="Port">{data.port}</InfoRow>
+      <InfoRow label="Port">{data.port ?? '—'}</InfoRow>
       <InfoRow label="Status">
         <Chip
           label={data.status}
@@ -238,16 +244,9 @@ function GatewayOverview({ data }: { data: GatewayNodeData }) {
         />
       </InfoRow>
       <InfoRow label="Tor">{data.hasTor ? 'Active' : 'Disabled'}</InfoRow>
-      <Divider sx={{ borderColor: 'divider' }} />
-      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        Routes ({data.routes.length})
-      </Typography>
-      {data.routes.map((r) => (
-        <Stack key={r.path} direction="row" spacing={1}>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'info.main', fontSize: 12 }}>{r.path}</Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.disabled', fontSize: 12 }}>{r.target}</Typography>
-        </Stack>
-      ))}
+      {/* Its routes are the project's nginx.conf, which this daemon does not
+          parse: the list that stood here was `/<app name>` → `localhost:<port>`
+          for every app, made up on the page. */}
     </Stack>
   );
 }
@@ -262,6 +261,7 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
     <Stack spacing={2}>
       <InfoRow label="Hostname">{data.hostname}</InfoRow>
       <InfoRow label="Address">{data.address}</InfoRow>
+      <InfoRow label="Stacks">{data.stacks.join(', ')}</InfoRow>
       <InfoRow label="Role">
         <Chip
           label={data.role}
@@ -306,7 +306,7 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
 // Logs Tab
 // ---------------------------------------------------------------------------
 
-function LogsTab({ appName }: { appName?: string }) {
+function LogsTab({ appName }: { appName: string }) {
   const [logEntries, setLogEntries] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -626,8 +626,12 @@ export function DetailPanel() {
   const { open, nodeType, data } = detailPanel;
   if (!data) return null;
 
-  const isApp = nodeType === 'app';
-  const appName = isApp ? (data as AppNodeData).name : undefined;
+  // The tabs a node has a source for. Every node had a Logs tab, and for a
+  // service or a server it asked for the log of no app — the tail of every
+  // app's — under the service's name.
+  const app = nodeType === 'app' ? (data as AppNodeData) : null;
+  const tabs = ['Overview', ...(app && !app.remote ? ['Config', 'Metrics'] : []), ...(app ? ['Logs'] : [])];
+  const shown = tabs[tab] ?? 'Overview';
 
   return (
     <Drawer
@@ -694,39 +698,35 @@ export function DetailPanel() {
           '& .MuiTabs-indicator': { bgcolor: 'primary.main' },
         }}
       >
-        <Tab label="Overview" />
-        {isApp && <Tab label="Config" />}
-        {isApp && <Tab label="Metrics" />}
-        <Tab label="Logs" />
+        {tabs.map((name) => (
+          <Tab key={name} label={name} />
+        ))}
       </Tabs>
       {/* Tab Content */}
       <Box sx={{ px: 2.5, overflow: 'auto', flex: 1 }}>
-        <TabPanel value={tab} index={0}>
-          {nodeType === 'app' && <AppOverview data={data as AppNodeData} />}
-          {nodeType === 'infra' && <InfraOverview data={data as InfraNodeData} />}
-          {nodeType === 'gateway' && <GatewayOverview data={data as GatewayNodeData} />}
-          {nodeType === 'server' && <ServerOverview data={data as ServerNodeData} />}
-        </TabPanel>
-
-        {isApp && (
-          <TabPanel value={tab} index={1}>
-            <ConfigTab appName={appName!} />
-          </TabPanel>
+        {shown === 'Overview' && (
+          <Box sx={{ py: 2 }}>
+            {nodeType === 'app' && <AppOverview data={data as AppNodeData} />}
+            {nodeType === 'infra' && <InfraOverview data={data as InfraNodeData} />}
+            {nodeType === 'gateway' && <GatewayOverview data={data as GatewayNodeData} />}
+            {nodeType === 'server' && <ServerOverview data={data as ServerNodeData} />}
+          </Box>
         )}
-
-        {isApp && (
-          <TabPanel value={tab} index={2}>
-            <MetricsTab
-              appName={appName}
-              cpu={(data as AppNodeData).cpu}
-              memory={(data as AppNodeData).memory}
-            />
-          </TabPanel>
+        {app && shown === 'Config' && (
+          <Box sx={{ py: 2 }}>
+            <ConfigTab appName={app.name} />
+          </Box>
         )}
-
-        <TabPanel value={tab} index={isApp ? 3 : 1}>
-          <LogsTab appName={appName} />
-        </TabPanel>
+        {app && shown === 'Metrics' && (
+          <Box sx={{ py: 2 }}>
+            <MetricsTab appName={app.name} cpu={app.cpu} memory={app.memory} />
+          </Box>
+        )}
+        {app && shown === 'Logs' && (
+          <Box sx={{ py: 2 }}>
+            <LogsTab appName={app.name} />
+          </Box>
+        )}
       </Box>
     </Drawer>
   );

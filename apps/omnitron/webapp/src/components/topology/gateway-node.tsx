@@ -11,7 +11,7 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import { DeployIcon } from 'src/assets/icons';
 import { glassCardSx, getStatusColor } from './shared-styles';
-import type { GatewayNodeData } from './topology-store';
+import { serviceState, type GatewayNodeData } from './topology-store';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -19,8 +19,9 @@ import type { GatewayNodeData } from './topology-store';
 
 function GatewayNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as GatewayNodeData;
-  const statusColor = getStatusColor(nodeData.health === 'none' ? nodeData.status : nodeData.health);
-  const isOnline = nodeData.status === 'running';
+  const state = serviceState(nodeData);
+  const statusColor = getStatusColor(state);
+  const isOnline = state === 'healthy' || state === 'running';
 
   return (
     <>
@@ -69,9 +70,11 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               }}>
               {nodeData.label}
             </Typography>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
-              :{nodeData.port}
-            </Typography>
+            {nodeData.port !== null && (
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
+                :{nodeData.port}
+              </Typography>
+            )}
           </Stack>
 
           <Box
@@ -123,47 +126,6 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
           )}
         </Stack>
 
-        {/* Routes */}
-        {nodeData.routes.length > 0 && (
-          <Stack
-            spacing={0.5}
-            sx={{
-              mt: 1,
-              pt: 1,
-              borderTop: '1px solid', borderTopColor: 'divider',
-            }}
-          >
-            <Typography
-              variant="caption"
-              sx={{ fontSize: 10, color: 'text.disabled', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}
-            >
-              Routes
-            </Typography>
-            {nodeData.routes.slice(0, 6).map((route) => (
-              <Stack key={route.path} direction="row" spacing={0.75} sx={{
-                alignItems: "center"
-              }}>
-                <Typography
-                  variant="caption"
-                  sx={{ fontSize: 11, color: 'info.main', fontFamily: 'monospace' }}
-                >
-                  {route.path}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ fontSize: 10, color: 'text.disabled' }}
-                >
-                  {route.target}
-                </Typography>
-              </Stack>
-            ))}
-            {nodeData.routes.length > 6 && (
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
-                +{nodeData.routes.length - 6} more
-              </Typography>
-            )}
-          </Stack>
-        )}
       </Box>
     </>
   );

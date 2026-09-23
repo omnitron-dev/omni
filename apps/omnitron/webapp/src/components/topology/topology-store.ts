@@ -1,29 +1,36 @@
 /**
- * Topology Store — Zustand state management for the infrastructure topology view.
+ * Topology Store — what runs where, and what depends on what, for the
+ * selected project and stack.
  *
- * Fetches daemon status, app list, fleet nodes, and infrastructure state,
- * then transforms them into React Flow nodes and edges for visualization.
+ * Every part is read where the rest of the console reads it, and only the
+ * relations the platform declares are drawn:
+ *
+ *   each stack's apps, nodes and services   `project.listStacks` — the stacks
+ *                                           page's source; a remote stack's
+ *                                           as its node reports them
+ *   a local container's health, image, app  `infra.listContainers` — the runtime
+ *   a local app's processes                 `daemon.list`
+ *   service → app                           the container's `omnitron.app`
+ *                                           label: provisioned for that app
+ *
+ * With no project selected, this daemon: its processes and every container
+ * it manages.
+ *
+ * Measured on the master, 2026-09-23, before this: the services came from
+ * `infra.getState()` — the daemon's in-memory bookkeeping, `null` after any
+ * restart — so the page said «Incomplete: could not read infrastructure»
+ * beside twelve running containers; the apps came from `daemon.list()`, this
+ * machine's processes, so the remote stack test read «0/0 apps online» beside
+ * the status bar's «Apps 6/6»; the one server drawn was the fleet registry's
+ * leader, where test does not run; and every edge came from a table of
+ * daos's app names from before they were namespaced (`pricing`, `payments`),
+ * so not one was ever drawn — nor would one have been true.
  */
 
 import { create } from 'zustand';
 import type { Node, Edge } from '@xyflow/react';
-import { daemon, infra, fleet } from 'src/netron/client';
-import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
-
-// ---------------------------------------------------------------------------
-// Container state type (mirrors @omnitron-dev/omnitron infrastructure types)
-// ---------------------------------------------------------------------------
-
-interface ContainerState {
-  name: string;
-  image: string;
-  status: string;
-  containerId?: string;
-  ports?: Record<string, number>;
-  health?: 'healthy' | 'unhealthy' | 'starting' | 'none';
-  startedAt?: string;
-  error?: string;
-}
+import { daemon, infra, project } from 'src/netron/client';
+import type { ContainerState, DaemonStatusDto, IStackInfo, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,12 +38,26 @@ interface ContainerState {
 
 export type TopologyNodeType = 'infra' | 'app' | 'gateway' | 'server';
 
+export type ServiceHealth = 'healthy' | 'unhealthy' | 'starting' | 'none' | 'unknown';
+
+/**
+ * The state a service is drawn in: its health where the runtime measured one,
+ * otherwise its status as reported — for a remote stack's, by its node.
+ */
+export const serviceState = (service: { health: ServiceHealth; status: string }): string =>
+  service.health === 'none' || service.health === 'unknown' ? service.status : service.health;
+
 export interface InfraNodeData {
   nodeType: 'infra';
   label: string;
   service: string;
-  port: number;
-  health: 'healthy' | 'unhealthy' | 'starting' | 'none' | 'unknown';
+  /** The stack that runs it; `null` for a container of this daemon's own. */
+  stack: string | null;
+  /** The app it was provisioned for (`omnitron.app`); absent when the stack runs it for all. */
+  app?: string;
+  port: number | null;
+  /** From the runtime; `unknown` for a remote stack's, which this daemon cannot inspect. */
+  health: ServiceHealth;
   status: string;
   containerId?: string;
   image?: string;
@@ -47,7 +68,15 @@ export interface InfraNodeData {
 export interface AppNodeData {
   nodeType: 'app';
   label: string;
+  /**
+   * The name the platform's records keep it under: this daemon's handle
+   * (`daos/dev/main`), or for a remote app the node's (`daos/deployed/main`)
+   * — the one its logs are stored under.
+   */
   name: string;
+  stack: string | null;
+  /** Run by a node: this daemon cannot inspect, restart or stop it. */
+  remote: boolean;
   port: number | null;
   status: string;
   pid: number | null;
@@ -68,11 +97,12 @@ export interface AppNodeData {
 export interface GatewayNodeData {
   nodeType: 'gateway';
   label: string;
-  port: number;
-  health: 'healthy' | 'unhealthy' | 'starting' | 'none' | 'unknown';
+  stack: string | null;
+  port: number | null;
+  health: ServiceHealth;
   status: string;
+  /** Whether the stack's tor service runs beside it. */
   hasTor: boolean;
-  routes: Array<{ path: string; target: string }>;
   [key: string]: unknown;
 }
 
@@ -81,27 +111,21 @@ export interface ServerNodeData {
   label: string;
   hostname: string;
   address: string;
+  /** The daemon's role there — `master`, `slave`. */
   role: string;
   status: string;
-  cpu?: number;
-  memory?: number;
-  disk?: number;
+  /** The stacks it runs, and their apps. */
+  stacks: string[];
   apps: string[];
   [key: string]: unknown;
 }
 
 export type TopologyNodeData = InfraNodeData | AppNodeData | GatewayNodeData | ServerNodeData;
 
-// The daemon's shape. The local copy listed four roles where the server has
-// seven ('candidate', 'gateway', 'worker' were missing) and three statuses
-// where the server has four ('joining'), so any node in one of those states
-// was typed as impossible while rendering perfectly well at runtime.
-export type FleetNode = import('@omnitron-dev/omnitron/dto/services').FleetNode;
-
-/** Read a numeric field out of a node's metadata bag, if present. */
-function numericMetadata(metadata: FleetNode['metadata'], key: string): number | undefined {
-  const value = metadata?.[key];
-  return typeof value === 'number' ? value : undefined;
+/** What the diagram shows: a project and one of its stacks, a whole project, or this daemon. */
+export interface TopologyScope {
+  project: string | null;
+  stack: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,244 +147,284 @@ interface TopologyState {
   // Data
   nodes: Node<TopologyNodeData>[];
   edges: Edge[];
-  apps: ProcessInfoDto[];
+  apps: AppNodeData[];
   daemonStatus: DaemonStatusDto | null;
-  infraServices: Record<string, ContainerState>;
-  fleetNodes: FleetNode[];
 
   // UI state
   loading: boolean;
   error: string | null;
-  /** Stack namespace prefix for filtering (e.g., "omni/dev/") */
-  filterPrefix: string;
+  scope: TopologyScope;
   detailPanel: DetailPanelState;
 
   // Actions
   fetchAll: () => Promise<void>;
-  setFilterPrefix: (prefix: string) => void;
+  setScope: (scope: TopologyScope) => void;
   openDetail: (nodeId: string, nodeType: TopologyNodeType, data: TopologyNodeData) => void;
   closeDetail: () => void;
-  setNodes: (nodes: Node<TopologyNodeData>[]) => void;
-  setEdges: (edges: Edge[]) => void;
 
-  // App actions
+  // App actions — a local app's; a remote one belongs to its node.
   restartApp: (name: string) => Promise<void>;
   stopApp: (name: string) => Promise<void>;
   startApp: (name: string) => Promise<void>;
-  scaleApp: (name: string, instances: number) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
-// Infra service metadata
+// Reading the sources
 // ---------------------------------------------------------------------------
 
-const INFRA_PORTS: Record<string, number> = {
-  postgres: 5432,
-  redis: 6379,
-  minio: 9000,
-  gateway: 8080,
-  tor: 9050,
-};
+/** One stack's part of the diagram, or this daemon's own when `stack` is null. */
+export interface TopologyBand {
+  stack: string | null;
+  servers: ServerNodeData[];
+  services: InfraNodeData[];
+  gateway: GatewayNodeData | null;
+  apps: AppNodeData[];
+}
 
-const INFRA_DEPS: Record<string, string[]> = {
-  main: ['postgres', 'redis'],
-  storage: ['postgres', 'redis', 'minio'],
-  messaging: ['postgres', 'redis'],
-  pricing: ['postgres', 'redis'],
-  payments: ['postgres', 'redis'],
-};
+const lastSegment = (name: string) => name.slice(name.lastIndexOf('/') + 1);
 
-const GATEWAY_APPS = ['main', 'storage', 'gateway'];
+const firstPublishedPort = (container: ContainerState | undefined): number | null =>
+  container?.ports ? (Object.values(container.ports)[0] ?? null) : null;
+
+const processesOf = (process: ProcessInfoDto | undefined): Pick<AppNodeData, 'processes'> =>
+  process?.processes
+    ? { processes: process.processes.map(({ name, type, status, pid }) => ({ name, type, status, pid })) }
+    : {};
+
+function appFromProcess(process: ProcessInfoDto, stack: string | null): AppNodeData {
+  return {
+    nodeType: 'app',
+    label: process.name,
+    name: process.name,
+    stack,
+    remote: false,
+    port: process.port,
+    status: process.status,
+    pid: process.pid,
+    cpu: process.cpu,
+    memory: process.memory,
+    uptime: process.uptime,
+    restarts: process.restarts,
+    instances: process.instances,
+    ...processesOf(process),
+  };
+}
+
+/**
+ * A service as the diagram draws it: the stack's own report of it, and —
+ * for a container this daemon can see — the runtime's health, image and
+ * the app it was provisioned for.
+ */
+function serviceNode(
+  service: string,
+  stack: string | null,
+  reported: { status: string; port: number | null } | null,
+  container: ContainerState | undefined
+): InfraNodeData {
+  return {
+    nodeType: 'infra',
+    label: service,
+    service,
+    stack,
+    ...(container?.app && { app: container.app }),
+    port: reported?.port ?? firstPublishedPort(container),
+    health: container ? (container.health ?? 'none') : 'unknown',
+    status: container?.status ?? reported?.status ?? 'unknown',
+    ...(container?.containerId && { containerId: container.containerId }),
+    ...(container?.image && { image: container.image }),
+    ...(container?.startedAt && { startedAt: container.startedAt }),
+  };
+}
+
+/** A band's services, with the gateway (and tor beside it) drawn as the gateway node. */
+function withGateway(stack: string | null, services: InfraNodeData[]): Pick<TopologyBand, 'services' | 'gateway'> {
+  const gateway = services.find((s) => s.service === 'gateway');
+  if (!gateway) return { services, gateway: null };
+  const tor = services.find((s) => s.service === 'tor');
+  return {
+    services: services.filter((s) => s !== gateway && s !== tor),
+    gateway: {
+      nodeType: 'gateway',
+      label: 'Gateway',
+      stack,
+      port: gateway.port,
+      health: gateway.health,
+      status: gateway.status,
+      hasTor: tor?.status === 'running',
+    },
+  };
+}
+
+/** The selected project's stacks, as bands. */
+export function stackBands(
+  stacks: IStackInfo[],
+  scope: TopologyScope,
+  processes: ProcessInfoDto[],
+  containers: ContainerState[]
+): TopologyBand[] {
+  const processByHandle = new Map(processes.map((p) => [p.name, p]));
+  return stacks
+    .filter((s) => !scope.stack || s.name === scope.stack)
+    .map((s) => {
+      const remote = s.type !== 'local';
+      const apps = s.apps.map((a): AppNodeData => ({
+        nodeType: 'app',
+        label: `${s.name}/${a.name}`,
+        name: a.handleKey,
+        stack: s.name,
+        remote,
+        port: a.port,
+        status: a.status,
+        pid: a.pid,
+        cpu: a.cpu,
+        memory: a.memory,
+        uptime: a.uptime,
+        restarts: a.restarts,
+        instances: a.instances,
+        ...processesOf(remote ? undefined : processByHandle.get(a.handleKey)),
+      }));
+      // The containers this daemon can see are its own machine's: a remote
+      // stack's run on its node, and are drawn as the node reports them.
+      const byName = new Map(
+        remote
+          ? []
+          : containers.filter((c) => c.project === scope.project && c.stack === s.name).map((c) => [c.name, c] as const)
+      );
+      const services = Object.entries(s.infrastructure?.services ?? {}).map(([service, reported]) =>
+        serviceNode(service, s.name, reported, byName.get(reported.containerName))
+      );
+      const servers = s.nodes.map((n): ServerNodeData => ({
+        nodeType: 'server',
+        label: n.label ?? n.host,
+        hostname: n.label ?? n.host,
+        address: `${n.host}:${n.port}`,
+        role: n.daemonRole,
+        status: n.connected ? 'online' : 'offline',
+        stacks: [s.name],
+        apps: s.apps.map((a) => `${s.name}/${a.name}`),
+      }));
+      return { stack: s.name, servers, apps, ...withGateway(s.name, services) };
+    });
+}
+
+/**
+ * This daemon, with no project selected: its processes and every container
+ * it manages, a band per deployment they name — `project/stack` from a
+ * process's handle and a container's labels — and one for its own.
+ */
+export function daemonBands(processes: ProcessInfoDto[], containers: ContainerState[]): TopologyBand[] {
+  const bands = new Map<string, { processes: ProcessInfoDto[]; containers: ContainerState[] }>();
+  const band = (key: string) => {
+    if (!bands.has(key)) bands.set(key, { processes: [], containers: [] });
+    return bands.get(key)!;
+  };
+  for (const p of processes) {
+    const parts = p.name.split('/');
+    band(parts.length >= 3 ? `${parts[0]}/${parts[1]}` : '').processes.push(p);
+  }
+  for (const c of containers) band(c.project && c.stack ? `${c.project}/${c.stack}` : '').containers.push(c);
+
+  return [...bands].map(([key, members]) => {
+    const stack = key ? lastSegment(key) : null;
+    const services = members.containers.map((c) => serviceNode(c.service ?? c.name, stack, null, c));
+    return {
+      stack: key || null,
+      servers: [],
+      apps: members.processes.map((p) => appFromProcess(p, stack)),
+      ...withGateway(stack, services),
+    };
+  });
+}
 
 // ---------------------------------------------------------------------------
-// Layout helpers
+// Layout
 // ---------------------------------------------------------------------------
 
-function buildFlowGraph(
-  apps: ProcessInfoDto[],
-  infraServices: Record<string, ContainerState>,
-  fleetNodes: FleetNode[],
-): { nodes: Node<TopologyNodeData>[]; edges: Edge[] } {
+const COLUMN = { server: -360, infra: 0, app: 360, gateway: 720 };
+const GAP = 24;
+const INFRA_HEIGHT = 120;
+const SERVER_HEIGHT = 180;
+const appHeight = (app: AppNodeData) => 140 + (app.processes?.length ?? 0) * 28;
+
+/**
+ * Bands one under the other, each in four columns: the nodes it runs on,
+ * its services, its apps, its gateway. The only edges are declared ones —
+ * a service provisioned for one app, to that app.
+ */
+export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeData>[]; edges: Edge[] } {
   const nodes: Node<TopologyNodeData>[] = [];
   const edges: Edge[] = [];
+  const serversPlaced = new Map<string, Node<TopologyNodeData>>();
+  let top = 0;
 
-  const colX = { infra: 0, app: 360, gateway: 720 };
-  const nodeW = 280;
-  const nodeGap = 24;
-
-  // --- Infrastructure nodes (left column) ---
-  const infraKeys = Object.keys(infraServices).filter(
-    (k) => k !== 'gateway' && k !== 'tor',
-  );
-  let infraY = 0;
-
-  for (const key of infraKeys) {
-    const svc = infraServices[key]!;
-    const port: number = svc.ports ? (Object.values(svc.ports)[0] as number | undefined) ?? INFRA_PORTS[key] ?? 0 : INFRA_PORTS[key] ?? 0;
-    const nodeHeight = 120;
-
-    nodes.push({
-      id: `infra-${key}`,
-      type: 'infraNode',
-      position: { x: colX.infra, y: infraY },
-      data: {
-        nodeType: 'infra',
-        label: key,
-        service: key,
-        port,
-        health: (svc.health as InfraNodeData['health']) ?? 'unknown',
-        status: svc.status,
-        containerId: svc.containerId,
-        image: svc.image,
-        startedAt: svc.startedAt,
-      },
-    });
-
-    infraY += nodeHeight + nodeGap;
-  }
-
-  // --- App nodes (center column) ---
-  let appY = 0;
-  for (const app of apps) {
-    const nodeHeight = app.processes && app.processes.length > 0
-      ? 140 + app.processes.length * 28
-      : 140;
-
-    nodes.push({
-      id: `app-${app.name}`,
-      type: 'appNode',
-      position: { x: colX.app, y: appY },
-      data: {
-        nodeType: 'app',
-        label: app.name,
-        name: app.name,
-        port: app.port,
-        status: app.status,
-        pid: app.pid,
-        cpu: app.cpu,
-        memory: app.memory,
-        uptime: app.uptime,
-        restarts: app.restarts,
-        instances: app.instances,
-        processes: app.processes?.map((p) => ({
-          name: p.name,
-          type: p.type,
-          status: p.status,
-          pid: p.pid,
-        })),
-      },
-    });
-
-    // Infrastructure → App dependency edges
-    const deps = INFRA_DEPS[app.name];
-    if (deps) {
-      for (const dep of deps) {
-        if (infraServices[dep]) {
-          edges.push({
-            id: `edge-${dep}-${app.name}`,
-            source: `infra-${dep}`,
-            target: `app-${app.name}`,
-            type: 'smoothstep',
-            animated: infraServices[dep]!.status === 'running',
-            style: {
-              stroke: infraServices[dep]!.health === 'healthy' ? '#22c55e' : '#ef4444',
-              strokeDasharray: '6 3',
-              strokeWidth: 1.5,
-            },
-          });
-        }
+  for (const band of bands) {
+    const key = band.stack ?? 'daemon';
+    let serverY = top;
+    for (const server of band.servers) {
+      // A machine that runs two stacks is one machine.
+      const placed = serversPlaced.get(server.address);
+      if (placed) {
+        const data = placed.data as ServerNodeData;
+        placed.data = { ...data, stacks: [...data.stacks, ...server.stacks], apps: [...data.apps, ...server.apps] };
+        continue;
       }
+      const node: Node<TopologyNodeData> = {
+        id: `server-${server.address}`,
+        type: 'serverNode',
+        position: { x: COLUMN.server, y: serverY },
+        data: server,
+      };
+      serversPlaced.set(server.address, node);
+      nodes.push(node);
+      serverY += SERVER_HEIGHT + GAP;
     }
 
-    appY += nodeHeight + nodeGap;
-  }
+    let infraY = top;
+    for (const service of band.services) {
+      nodes.push({
+        id: `infra-${key}-${service.service}`,
+        type: 'infraNode',
+        position: { x: COLUMN.infra, y: infraY },
+        data: service,
+      });
+      infraY += INFRA_HEIGHT + GAP;
+    }
 
-  // --- Gateway node (right column) ---
-  const gatewaySvc = infraServices['gateway'];
-  if (gatewaySvc) {
-    const torSvc = infraServices['tor'];
-    const routes = apps
-      .filter((a) => a.port)
-      .map((a) => ({ path: `/${a.name}`, target: `localhost:${a.port}` }));
+    let appY = top;
+    for (const app of band.apps) {
+      // Keyed by band too: every remote stack's node names its apps alike,
+      // `daos/deployed/main`.
+      const id = `app-${key}-${app.name}`;
+      nodes.push({ id, type: 'appNode', position: { x: COLUMN.app, y: appY }, data: app });
+      appY += appHeight(app) + GAP;
 
-    nodes.push({
-      id: 'gateway-main',
-      type: 'gatewayNode',
-      position: { x: colX.gateway, y: 0 },
-      data: {
-        nodeType: 'gateway',
-        label: 'Gateway',
-        port: gatewaySvc.ports?.['80'] ?? 8080,
-        health: (gatewaySvc.health as GatewayNodeData['health']) ?? 'unknown',
-        status: gatewaySvc.status,
-        hasTor: !!torSvc && torSvc.status === 'running',
-        routes,
-      },
-    });
-
-    // App → Gateway edges
-    for (const app of apps) {
-      if (app.port && GATEWAY_APPS.includes(app.name)) {
+      for (const service of band.services) {
+        if (!service.app || service.app !== lastSegment(app.name)) continue;
         edges.push({
-          id: `edge-${app.name}-gateway`,
-          source: `app-${app.name}`,
-          target: 'gateway-main',
+          id: `edge-${key}-${service.service}-${app.name}`,
+          source: `infra-${key}-${service.service}`,
+          target: id,
           type: 'smoothstep',
+          animated: service.status === 'running',
           style: {
-            stroke: '#3b82f6',
+            stroke: service.health === 'healthy' || service.health === 'none' ? '#22c55e' : '#ef4444',
+            strokeDasharray: '6 3',
             strokeWidth: 1.5,
           },
         });
       }
     }
-  }
 
-  // --- Inter-service RPC edges ---
-  for (const app of apps) {
-    if (app.name === 'messaging') {
-      const mainApp = apps.find((a) => a.name === 'main');
-      if (mainApp) {
-        edges.push({
-          id: 'edge-messaging-main',
-          source: 'app-messaging',
-          target: 'app-main',
-          type: 'smoothstep',
-          style: {
-            stroke: '#a855f7',
-            strokeDasharray: '3 3',
-            strokeWidth: 1,
-          },
-          label: 'RPC',
-          labelStyle: { fontSize: 10, fill: '#a855f7' },
-          labelBgStyle: { fill: '#0a0a0f', fillOpacity: 0.8 },
-        });
-      }
+    if (band.gateway) {
+      nodes.push({
+        id: `gateway-${key}`,
+        type: 'gatewayNode',
+        position: { x: COLUMN.gateway, y: top },
+        data: band.gateway,
+      });
     }
-  }
 
-  // --- Server nodes (for prod fleet) ---
-  let serverY = Math.max(infraY, appY) + 60;
-  for (const server of fleetNodes) {
-    nodes.push({
-      id: `server-${server.id}`,
-      type: 'serverNode',
-      position: { x: colX.infra, y: serverY },
-      data: {
-        nodeType: 'server',
-        label: server.hostname,
-        hostname: server.hostname,
-        address: server.address,
-        role: server.role,
-        status: server.status,
-        // FleetNode carries no cpu/memory of its own — the store used to read
-        // `server.cpu` / `server.memory`, which were always undefined. The
-        // node's metadata bag is where a health reporter would put them.
-        cpu: numericMetadata(server.metadata, 'cpu'),
-        memory: numericMetadata(server.metadata, 'memory'),
-        apps: [],
-      },
-    });
-    serverY += 180 + nodeGap;
+    top = Math.max(serverY, infraY, appY, top + (band.gateway ? 180 : 0)) + 80;
   }
 
   return { nodes, edges };
@@ -375,91 +439,71 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   edges: [],
   apps: [],
   daemonStatus: null,
-  infraServices: {},
-  fleetNodes: [],
   loading: true,
   error: null,
-  filterPrefix: '',
+  scope: { project: null, stack: null },
   detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
 
-  setNodes: (nodes) => set({ nodes }),
-  setEdges: (edges) => set({ edges }),
-
   fetchAll: async () => {
-    try {
-      const [appList, status, infraState, fleetResult] = await Promise.allSettled([
-        daemon.list(),
-        daemon.status(),
-        // These two already swallow their own failures, so `allSettled`
-        // reports them as fulfilled-with-empty. Counted below via the value
-        // rather than the settle status, because "no containers" and "could
-        // not ask about containers" draw the same empty diagram.
-        infra.getState().catch(() => null),
-        fleet.listNodes().catch(() => null),
-      ]);
+    const { scope } = get();
+    // Each question settles on its own, a throw included: one source that
+    // cannot answer thins the diagram, it does not blank it.
+    const ask = <T>(question: () => Promise<T>) => Promise.resolve().then(question);
+    const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer] = await Promise.allSettled([
+      scope.project ? ask(() => project.listStacks({ project: scope.project! })) : Promise.resolve(null),
+      ask(() => daemon.list()),
+      ask(() => infra.listContainers()),
+      ask(() => daemon.status()),
+    ]);
+    // An answer for a scope the page has since left is not drawn.
+    if (get().scope !== scope) return;
 
-      const allApps = appList.status === 'fulfilled' ? appList.value : [];
-      const prefix = get().filterPrefix;
-      const apps = prefix
-        ? allApps.filter((a: any) => a.name.startsWith(prefix) || !a.name.includes('/'))
-        : allApps;
-      const daemonStatus = status.status === 'fulfilled' ? status.value : null;
-      const infraValue = infraState.status === 'fulfilled' ? infraState.value : null;
-      const infraMap = infraValue && typeof infraValue === 'object' && 'services' in infraValue
-        ? ((infraValue as { services: Record<string, ContainerState> }).services ?? {})
-        : {};
-      const fleetNodes = fleetResult.status === 'fulfilled' && Array.isArray(fleetResult.value)
-        ? fleetResult.value
-        : [];
+    const processes = processesAnswer.status === 'fulfilled' ? processesAnswer.value : [];
+    const containers = containersAnswer.status === 'fulfilled' ? containersAnswer.value : [];
+    const stacks = stacksAnswer.status === 'fulfilled' ? stacksAnswer.value : null;
 
-      // Which sources could not answer.
-      //
-      // `Promise.allSettled` never rejects, so the catch below is unreachable
-      // for a source that simply failed — and every failure was being turned
-      // into an empty array or an empty map on its way to the diagram. With
-      // the daemon down, all four failed and the topology rendered an empty
-      // canvas with `error: null`: a picture of a platform with nothing in
-      // it, which is a different claim from "I could not find out".
-      const unavailable: string[] = [];
-      if (appList.status === 'rejected') unavailable.push('applications');
-      if (status.status === 'rejected') unavailable.push('daemon status');
-      if (infraState.status !== 'fulfilled' || infraState.value === null) unavailable.push('infrastructure');
-      if (fleetResult.status !== 'fulfilled' || fleetResult.value === null) unavailable.push('fleet nodes');
+    const bands = scope.project
+      ? stackBands(stacks ?? [], scope, processes, containers)
+      : daemonBands(processes, containers);
+    const { nodes, edges } = layoutBands(bands);
 
-      const { nodes, edges } = buildFlowGraph(apps, infraMap, fleetNodes);
+    // Which sources could not answer — named, because a blank or thinned
+    // diagram is otherwise a picture of a platform with less in it, which is
+    // a different claim from "I could not find out".
+    const unavailable: string[] = [];
+    if (stacksAnswer.status === 'rejected') unavailable.push(`${scope.project}'s stacks`);
+    if (processesAnswer.status === 'rejected') unavailable.push("this daemon's processes");
+    if (containersAnswer.status === 'rejected') unavailable.push('container health');
+    if (statusAnswer.status === 'rejected') unavailable.push('daemon status');
+    const asked = scope.project ? 4 : 3;
 
-      set({
-        apps,
-        daemonStatus,
-        infraServices: infraMap,
-        fleetNodes,
-        nodes,
-        edges,
-        loading: false,
-        // Partial data is still worth drawing — that is what `allSettled` is
-        // for — but not worth presenting as complete.
-        error:
-          unavailable.length === 0
-            ? null
-            : unavailable.length === 4
-              ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
+    set({
+      apps: bands.flatMap((band) => band.apps),
+      daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
+      nodes,
+      edges,
+      loading: false,
+      error:
+        unavailable.length === 0
+          ? null
+          : unavailable.length >= asked
+            ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
+            : stacksAnswer.status === 'rejected'
+              ? `Could not read ${scope.project}'s stacks — this diagram is empty because they could not be read, not because nothing is running.`
               : `Incomplete: could not read ${unavailable.join(', ')}. The rest of the diagram is current.`,
-      });
-    } catch (err: any) {
-      set({
-        error: err?.message ?? 'Failed to fetch topology data',
-        loading: false,
-      });
-    }
+    });
   },
 
-  setFilterPrefix: (prefix) => set({ filterPrefix: prefix }),
+  setScope: (scope) => {
+    const current = get().scope;
+    if (current.project === scope.project && current.stack === scope.stack) return;
+    set({ scope, loading: true });
+    void get().fetchAll();
+  },
 
-  openDetail: (nodeId, nodeType, data) =>
-    set({ detailPanel: { open: true, nodeId, nodeType, data } }),
+  openDetail: (nodeId, nodeType, data) => set({ detailPanel: { open: true, nodeId, nodeType, data } }),
 
-  closeDetail: () =>
-    set({ detailPanel: { open: false, nodeId: null, nodeType: null, data: null } }),
+  closeDetail: () => set({ detailPanel: { open: false, nodeId: null, nodeType: null, data: null } }),
 
   restartApp: async (name) => {
     try {
@@ -494,15 +538,6 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       await get().fetchAll();
     } catch (err: any) {
       set({ error: `Failed to start ${name}: ${err?.message}` });
-    }
-  },
-
-  scaleApp: async (name, instances) => {
-    try {
-      await daemon.scale({ name, instances });
-      await get().fetchAll();
-    } catch (err: any) {
-      set({ error: `Failed to scale ${name}: ${err?.message}` });
     }
   },
 }));

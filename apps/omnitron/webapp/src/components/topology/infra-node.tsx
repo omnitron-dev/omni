@@ -11,7 +11,7 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import { BackupIcon } from 'src/assets/icons';
 import { glassCardSx, getStatusColor } from './shared-styles';
-import type { InfraNodeData } from './topology-store';
+import { serviceState, type InfraNodeData } from './topology-store';
 
 // ---------------------------------------------------------------------------
 // Icons per infra type
@@ -29,9 +29,10 @@ const INFRA_ICONS: Record<string, { emoji: string; color: string }> = {
 
 function InfraNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as InfraNodeData;
-  const statusColor = getStatusColor(nodeData.health === 'none' ? nodeData.status : nodeData.health);
+  const state = serviceState(nodeData);
+  const statusColor = getStatusColor(state);
   const infraMeta = INFRA_ICONS[nodeData.service];
-  const isOnline = nodeData.status === 'running' && (nodeData.health === 'healthy' || nodeData.health === 'none');
+  const isOnline = state === 'healthy' || state === 'running';
 
   return (
     <>
@@ -81,12 +82,14 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               }}>
               {nodeData.label}
             </Typography>
-            <Typography
-              variant="caption"
-              sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}
-            >
-              :{nodeData.port}
-            </Typography>
+            {nodeData.port !== null && (
+              <Typography
+                variant="caption"
+                sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}
+              >
+                :{nodeData.port}
+              </Typography>
+            )}
           </Stack>
 
           {/* Status dot */}
@@ -121,6 +124,10 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               textTransform: 'capitalize',
             }}
           />
+          {/* Provisioned for one app — the edge to it says the same. */}
+          {nodeData.app && (
+            <Chip label={`for ${nodeData.app}`} size="small" variant="outlined" sx={{ height: 22, fontSize: 11 }} />
+          )}
           {nodeData.containerId && (
             <Typography
               variant="caption"

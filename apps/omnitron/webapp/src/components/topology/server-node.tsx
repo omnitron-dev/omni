@@ -1,6 +1,6 @@
 /**
- * ServerNode — Custom React Flow node for production fleet servers.
- * Shows hostname, IP, role, resource usage bars.
+ * ServerNode — a machine a stack runs on: its name, address, the daemon's
+ * role there, and the apps it runs.
  */
 
 import { memo } from 'react';
@@ -10,21 +10,21 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import { ServerIcon } from 'src/assets/icons';
-import { glassCardSx, getStatusColor, miniBarSx } from './shared-styles';
+import { glassCardSx, getStatusColor } from './shared-styles';
 import type { ServerNodeData } from './topology-store';
 
 // ---------------------------------------------------------------------------
 // Role chip colors
 // ---------------------------------------------------------------------------
 
+/**
+ * The daemon's role on the machine. These were the fleet registry's roles —
+ * `leader`, `follower`, `worker` — from a registry the stacks do not deploy
+ * to; the servers drawn now are the stacks' own nodes.
+ */
 const ROLE_COLORS: Record<string, string> = {
-  leader: '#818cf8',
-  follower: '#94a3b8',
-  database: '#60a5fa',
-  cache: '#f59e0b',
-  app: '#22c55e',
-  gateway: '#3b82f6',
-  worker: '#a78bfa',
+  master: '#818cf8',
+  slave: '#22c55e',
 };
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,8 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           p: 2,
           cursor: 'pointer',
           minWidth: 300,
+          // The app chips wrap; left to grow, the card ran into the services beside it.
+          maxWidth: 320,
           background: 'rgba(15, 15, 25, 0.92)',
           border: '1px solid', borderColor: 'divider',
           ...(selected && {
@@ -140,51 +142,6 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
             }}
           />
         </Stack>
-
-        {/* Resource bars */}
-        {isOnline && (
-          <Stack spacing={0.75}>
-            {nodeData.cpu !== undefined && (
-              <Stack direction="row" spacing={1} sx={{
-                alignItems: "center"
-              }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
-                  CPU
-                </Typography>
-                <Box sx={miniBarSx(nodeData.cpu, nodeData.cpu > 80 ? '#ef4444' : nodeData.cpu > 50 ? '#f59e0b' : '#22c55e')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                  {nodeData.cpu.toFixed(0)}%
-                </Typography>
-              </Stack>
-            )}
-            {nodeData.memory !== undefined && (
-              <Stack direction="row" spacing={1} sx={{
-                alignItems: "center"
-              }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
-                  MEM
-                </Typography>
-                <Box sx={miniBarSx(nodeData.memory, nodeData.memory > 80 ? '#ef4444' : nodeData.memory > 50 ? '#f59e0b' : '#3b82f6')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                  {nodeData.memory.toFixed(0)}%
-                </Typography>
-              </Stack>
-            )}
-            {nodeData.disk !== undefined && (
-              <Stack direction="row" spacing={1} sx={{
-                alignItems: "center"
-              }}>
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
-                  DSK
-                </Typography>
-                <Box sx={miniBarSx(nodeData.disk, nodeData.disk > 90 ? '#ef4444' : nodeData.disk > 70 ? '#f59e0b' : '#94a3b8')} />
-                <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                  {nodeData.disk.toFixed(0)}%
-                </Typography>
-              </Stack>
-            )}
-          </Stack>
-        )}
 
         {/* Apps running on this server */}
         {nodeData.apps.length > 0 && (

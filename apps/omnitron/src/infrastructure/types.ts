@@ -218,6 +218,14 @@ export interface ContainerState {
    */
   project?: string | undefined;
   stack?: string | undefined;
+  /**
+   * The app this container was provisioned for, from the `omnitron.app`
+   * label — an app's `requires.custom` service (`bitcoin` for paysys).
+   * Absent for a service the stack provisions for all its apps: postgres,
+   * redis, the gateway. The one declared edge between a container and an
+   * app; anything drawn beyond it is a guess.
+   */
+  app?: string | undefined;
   /** False when a 'running' container is detached from all networks (OrbStack/dockerd restart artifact). */
   networkAttached?: boolean | undefined;
 }

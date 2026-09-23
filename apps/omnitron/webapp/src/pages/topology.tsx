@@ -1,13 +1,14 @@
 /**
- * Topology Page — Visual infrastructure topology editor.
+ * Topology Page — what runs where, for the selected project and stack.
  *
- * The centerpiece UI of the Omnitron Console. Renders a React Flow canvas
- * with custom nodes for infrastructure services, applications, gateways,
- * and fleet servers. Supports drag-to-rearrange, click-to-inspect, and
- * real-time auto-refresh.
+ * A React Flow canvas of the machines each stack runs on, its services, its
+ * apps and its gateway, drawn from the store's sources (see
+ * `topology-store.ts`). Supports drag-to-rearrange, click-to-inspect, and
+ * auto-refresh.
  */
 
 import { useEffect, useCallback, useState, useRef } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
@@ -62,8 +63,7 @@ import { AppNode } from 'src/components/topology/app-node';
 import { GatewayNode } from 'src/components/topology/gateway-node';
 import { ServerNode } from 'src/components/topology/server-node';
 import { DetailPanel } from 'src/components/topology/detail-panel';
-import { AddServerDialog } from 'src/components/topology/add-server-dialog';
-import { useTopologyStore, type TopologyNodeData } from 'src/components/topology/topology-store';
+import { useTopologyStore, type AppNodeData, type TopologyNodeData } from 'src/components/topology/topology-store';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { pulseKeyframes } from 'src/components/topology/shared-styles';
@@ -174,7 +174,7 @@ function ToolbarControls({
 // ---------------------------------------------------------------------------
 
 export default function TopologyPage() {
-  const { namespacePrefix } = useStackContext();
+  const { activeProject, activeStack } = useStackContext();
   const {
     nodes: storeNodes,
     edges: storeEdges,
@@ -182,26 +182,21 @@ export default function TopologyPage() {
     error,
     detailPanel,
     fetchAll,
-    setFilterPrefix,
+    setScope,
     openDetail,
     closeDetail,
-    setNodes: setStoreNodes,
-    setEdges: setStoreEdges,
     apps,
     daemonStatus,
   } = useTopologyStore();
 
-  // Sync stack context → topology filter
+  // The header's project and stack are the diagram's scope.
   useEffect(() => {
-    setFilterPrefix(namespacePrefix);
-  }, [namespacePrefix, setFilterPrefix]);
+    setScope({ project: activeProject, stack: activeStack });
+  }, [activeProject, activeStack, setScope]);
 
   // React Flow local state (synced from store)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-
-  // Dialog state
-  const [addServerOpen, setAddServerOpen] = useState(false);
 
   // Lock / Fullscreen state
   const [nodesLocked, setNodesLocked] = useState(false);
@@ -371,6 +366,11 @@ export default function TopologyPage() {
     },
     [contextMenu, openDetail],
   );
+
+  // The app a context menu was opened on — and, when it is this daemon's own,
+  // the one it may restart or stop: a remote app is its node's.
+  const menuApp = contextMenu?.nodeType === 'app' ? (contextMenu.data as AppNodeData) : null;
+  const localMenuApp = menuApp && !menuApp.remote ? menuApp : null;
 
   // Summary stats
   const onlineApps = apps.filter((a) => a.status === 'online').length;
@@ -594,12 +594,15 @@ export default function TopologyPage() {
                     </IconButton>
                   </Tooltip>
 
-                  {/* Add Server */}
+                  {/* Machines are added where stacks find them: the node
+                      registry. «Add Server» wrote to the fleet table, which
+                      no stack deploys to and this diagram no longer draws. */}
                   <Button
+                    component={RouterLink}
+                    to="/nodes"
                     variant="outlined"
                     size="small"
                     startIcon={<ServerIcon />}
-                    onClick={() => setAddServerOpen(true)}
                     sx={{
                       textTransform: 'none',
                       fontWeight: 600,
@@ -613,7 +616,7 @@ export default function TopologyPage() {
                       },
                     }}
                   >
-                    Add Server
+                    Nodes
                   </Button>
                 </Stack>
               </Panel>
@@ -697,30 +700,32 @@ export default function TopologyPage() {
             <ListItemText>Inspect</ListItemText>
           </MenuItem>
 
-          {contextMenu?.nodeType === 'app' && [
+          {localMenuApp && [
             <Divider key="div-1" sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />,
 
-            (contextMenu.data as any).status === 'online' ? (
+            localMenuApp.status === 'online' ? (
               <MenuItem key="restart" onClick={() => handleContextMenuAction('restart')}>
                 <ListItemIcon><RestartIcon sx={{ fontSize: 18 }} /></ListItemIcon>
                 <ListItemText>Restart</ListItemText>
               </MenuItem>
             ) : null,
 
-            (contextMenu.data as any).status === 'online' ? (
+            localMenuApp.status === 'online' ? (
               <MenuItem key="stop" onClick={() => handleContextMenuAction('stop')}>
                 <ListItemIcon><StopIcon sx={{ fontSize: 18, color: '#ef4444' }} /></ListItemIcon>
                 <ListItemText sx={{ '& .MuiTypography-root': { color: '#ef4444' } }}>Stop</ListItemText>
               </MenuItem>
             ) : null,
 
-            (contextMenu.data as any).status !== 'online' ? (
+            localMenuApp.status !== 'online' ? (
               <MenuItem key="start" onClick={() => handleContextMenuAction('start')}>
                 <ListItemIcon><PlayIcon sx={{ fontSize: 18, color: '#22c55e' }} /></ListItemIcon>
                 <ListItemText sx={{ '& .MuiTypography-root': { color: '#22c55e' } }}>Start</ListItemText>
               </MenuItem>
             ) : null,
+          ]}
 
+          {menuApp && [
             <Divider key="div-2" sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />,
 
             <MenuItem key="logs" onClick={() => handleContextMenuAction('logs')}>
@@ -729,9 +734,6 @@ export default function TopologyPage() {
             </MenuItem>,
           ]}
         </Menu>
-
-        {/* Add server dialog */}
-        <AddServerDialog open={addServerOpen} onClose={() => setAddServerOpen(false)} />
       </Box>
     </>
   );

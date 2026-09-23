@@ -28,6 +28,7 @@
  */
 
 import fs from 'node:fs';
+import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -1711,50 +1712,32 @@ export class OrchestratorService extends EventEmitter {
       );
     }
 
-    // Populate omnitronConfig from app's config/default.json if not set by bootstrap
-    if (definition && !definition.omnitronConfig) {
-      // The catch used to cover both "no config file" and "the config file
-      // does not parse", under a comment naming only the first. They are not
-      // the same event: an app without a `config/default.json` is ordinary,
-      // while one with a malformed default.json is an operator who edited it,
-      // made a typo, and got an app running on defaults with nothing said.
-      const srcDir = path.dirname(bootstrapAbsPath);
-      const appRoot = path.resolve(srcDir, '..');
-      const configPath = path.join(appRoot, 'config', 'default.json');
-      let content: string | null = null;
-      try {
-        content = fs.readFileSync(configPath, 'utf-8');
-      } catch {
-        // Absent, or unreadable — ordinary, and the app has defaults.
+    // The app's `config/default.json`, read on every start and put on a COPY
+    // of the definition. This wrote the section onto the loader's cached
+    // definition «if not set», so the first start's reading was every later
+    // start's — and the logger level beside it, read in the same block, was
+    // never read again at all (`project/declared-config.ts`).
+    if (definition) {
+      const declared = readDeclaredConfig(bootstrapAbsPath);
+      if (declared.malformed) {
+        this.logger.error(
+          { app: entry.name, configPath: declared.configPath, error: declared.malformed },
+          'config/default.json does not parse — its `omnitron` section is being ignored'
+        );
       }
-      if (content !== null) {
-        try {
-          const json = JSON.parse(content);
-          if (json.omnitron) {
-            definition.omnitronConfig = json.omnitron;
-          }
-          // The same file already open, and the only place the parent can
-          // learn what the app chose. Children are spawned with it below.
-          //
-          // Validated rather than trusted: this is a hand-edited JSON file, and
-          // a level pino does not know ("verbose", a typo) would be handed
-          // straight to a child's logger constructor. An unrecognised value is
-          // an operator error worth naming, not a reason to spawn oddly.
-          const declared = json.logger?.level;
-          if (typeof declared === 'string') {
-            if (PINO_LEVELS.has(declared)) {
-              handle.appLogLevel = declared as typeof handle.appLogLevel;
-            } else {
-              this.logger.warn(
-                { app: entry.name, configPath, level: declared },
-                'config/default.json declares a logger level this runtime does not know — children keep the default',
-              );
-            }
-          }
-        } catch (err) {
-          this.logger.error(
-            { app: entry.name, configPath, error: (err as Error).message },
-            'config/default.json does not parse — its `omnitron` section is being ignored'
+      definition = withDeclaredConfig(definition, declared);
+      // The only place the parent can learn the level the app chose; children
+      // are spawned with it below. Validated rather than trusted: this is a
+      // hand-edited JSON file, and a level pino does not know ("verbose", a
+      // typo) would be handed straight to a child's logger constructor.
+      const level = declared.loggerLevel;
+      if (typeof level === 'string') {
+        if (PINO_LEVELS.has(level)) {
+          handle.appLogLevel = level as typeof handle.appLogLevel;
+        } else {
+          this.logger.warn(
+            { app: entry.name, configPath: declared.configPath, level },
+            'config/default.json declares a logger level this runtime does not know — children keep the default',
           );
         }
       }

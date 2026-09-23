@@ -66,6 +66,7 @@ import { SlaveConnector } from '../cluster/slave-connector.js';
 import { staleBuild } from './bundle-builder.js';
 import { NODE_STACK } from '../project/node-app-config.js';
 import { overlayCredentials } from '../infrastructure/node-credentials.js';
+import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import { bindService } from '../infrastructure/service-binding.js';
 import {
   RemoteDeployer,
@@ -3374,39 +3375,20 @@ export class ProjectService extends EventEmitter {
         try {
           const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
           const { loadBootstrapConfig } = await import('../orchestrator/bootstrap-loader.js');
-          const definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
+          const loaded = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
 
-          // Populate omnitronConfig from app's config/default.json if not already set
-          if (!definition.omnitronConfig) {
-            const srcDir = path.dirname(bootstrapAbsPath);
-            const appRoot = path.resolve(srcDir, '..');
-            const configPath = path.join(appRoot, 'config', 'default.json');
-            // Absent and malformed are different events under one comment
-            // naming only the first: an app without a `config/default.json`
-            // is ordinary, one whose default.json does not parse is an
-            // operator who edited it and got defaults with nothing said.
-            // Same shape as `orchestrator.service.ts`, which reads the same
-            // file for the same reason.
-            let content: string | null = null;
-            try {
-              content = fs.readFileSync(configPath, 'utf-8');
-            } catch {
-              // Absent, or unreadable — the app has defaults.
-            }
-            if (content !== null) {
-              try {
-                const json = JSON.parse(content);
-                if (json.omnitron) {
-                  definition.omnitronConfig = json.omnitron as OmnitronAppConfig;
-                }
-              } catch (err) {
-                this.logger.error(
-                  { app: entry.name, configPath, error: (err as Error).message },
-                  'config/default.json does not parse — its `omnitron` section is being ignored'
-                );
-              }
-            }
+          // The app's `config/default.json`, read now and put on a COPY of
+          // the definition: the loaded one is the loader's cache entry, and
+          // writing to it made the first read the only one until the daemon
+          // restarted (`project/declared-config.ts`).
+          const declared = readDeclaredConfig(bootstrapAbsPath);
+          if (declared.malformed) {
+            this.logger.error(
+              { app: entry.name, configPath: declared.configPath, error: declared.malformed },
+              'config/default.json does not parse — its `omnitron` section is being ignored'
+            );
           }
+          const definition = withDeclaredConfig(loaded, declared);
 
           appDefinitions.set(entry.name, definition);
         } catch (err) {

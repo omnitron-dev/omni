@@ -25,13 +25,14 @@ import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { daemonNameFor } from 'src/utils/app-address';
+import { countedTraffic, daemonNameFor, measuredProcess } from 'src/utils/app-address';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 
 import type {
   ProcessInfoDto,
   SubProcessInfoDto,
   AppDiagnosticsDto,
+  AggregatedMetricsDto,
   LogEntryRow,
 } from '@omnitron-dev/omnitron/dto/services';
 
@@ -120,6 +121,8 @@ function OverviewTab({
     ? Math.round((diagnostics.memory.heapUsed / diagnostics.memory.heapTotal) * 100)
     : 0;
   const hasHeapData = diagnostics != null && diagnostics.memory.heapTotal > 0;
+  const measured = measuredProcess(app, diagnostics?.pid);
+  const of = measured ? ` of ${measured.name}` : '';
 
   const processColumns: TableColumn<SubProcessInfoDto>[] = [
     {
@@ -244,8 +247,8 @@ function OverviewTab({
           value={formatMemory(app.memory)}
           sub={diagnostics
             ? hasHeapData
-              ? `Heap: ${formatMemory(diagnostics.memory.heapUsed)} / ${formatMemory(diagnostics.memory.heapTotal)}`
-              : `RSS: ${formatMemory(diagnostics.memory.rss)}`
+              ? `Heap${of}: ${formatMemory(diagnostics.memory.heapUsed)} / ${formatMemory(diagnostics.memory.heapTotal)}`
+              : `RSS${of}: ${formatMemory(diagnostics.memory.rss)}`
             : undefined}
         />
         <StatCard
@@ -277,7 +280,7 @@ function OverviewTab({
                   }}>
                   <Typography variant="caption" sx={{
                     color: "text.secondary"
-                  }}>Heap Usage</Typography>
+                  }}>Heap Usage{of}</Typography>
                   <Typography variant="caption" sx={{
                     fontWeight: 600
                   }}>{memPercent}%</Typography>
@@ -302,7 +305,7 @@ function OverviewTab({
                   }}>
                   <Typography variant="caption" sx={{
                     color: "text.disabled"
-                  }}>RSS: {formatMemory(diagnostics.memory.rss)}</Typography>
+                  }}>RSS{of}: {formatMemory(diagnostics.memory.rss)}</Typography>
                   <Typography variant="caption" sx={{
                     color: "text.disabled"
                   }}>External: {formatMemory(diagnostics.memory.external)}</Typography>
@@ -312,7 +315,7 @@ function OverviewTab({
               <Stack spacing={0.5}>
                 <Typography variant="caption" sx={{
                   color: "text.secondary"
-                }}>Memory (RSS)</Typography>
+                }}>Memory (RSS){of}</Typography>
                 <Typography variant="h6" sx={{
                   fontWeight: 600
                 }}>{formatMemory(diagnostics.memory.rss)}</Typography>
@@ -788,8 +791,8 @@ function MetricsTab({ appName }: { appName: string }) {
   // Gauges
   const [cpu, setCpu] = useState(0);
   const [memory, setMemory] = useState(0);
-  const [requests, setRequests] = useState(0);
-  const [errors, setErrors] = useState(0);
+  /** What the app's transports reported, as the daemon aggregated it; `null` until asked. */
+  const [traffic, setTraffic] = useState<AggregatedMetricsDto['apps'][string] | null>(null);
 
   // Time-series
   const [cpuSeries, setCpuSeries] = useState<any[]>([]);
@@ -797,41 +800,19 @@ function MetricsTab({ appName }: { appName: string }) {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      // Try titan-metrics snapshot first
-      let gotSnapshot = false;
-      try {
-        const snapshot: any = await metrics.getSnapshot();
-        if (snapshot?.apps) {
-          // Find this app in the snapshot — match by full name or short name
-          const appEntry = snapshot.apps[appName]
-            ?? Object.entries(snapshot.apps).find(([k]) => k.endsWith(`/${appName.split('/').pop()}`))?.[1];
-          if (appEntry) {
-            setCpu(Math.round((appEntry as any).cpu * 10) / 10);
-            setMemory((appEntry as any).memory ?? 0);
-            setRequests((appEntry as any).requests ?? 0);
-            setErrors((appEntry as any).errors ?? 0);
-            gotSnapshot = true;
-          }
-        }
-      } catch {
-        // titan-metrics not available
+      // One source for the gauges: the daemon's aggregate for this app, by
+      // its handle. The titan-metrics snapshot tried first answered, when the
+      // exact key was missing, for any key ending in the same last segment —
+      // it holds `daos/dev/main` and `daos/deployed/main` side by side, so
+      // that was another stack's app on this page — and it could not tell no
+      // requests from nobody counting.
+      const agg: AggregatedMetricsDto = await daemon.getMetrics({ name: appName });
+      const entry = agg.apps[appName] ?? null;
+      if (entry) {
+        setCpu(Math.round(entry.cpu * 10) / 10);
+        setMemory(entry.memory);
       }
-
-      // Fallback to daemon getMetrics
-      if (!gotSnapshot) {
-        try {
-          const agg: any = await daemon.getMetrics({ name: appName });
-          const appEntry = agg?.apps?.[appName];
-          if (appEntry) {
-            setCpu(Math.round(appEntry.cpu * 10) / 10);
-            setMemory(appEntry.memory ?? 0);
-            setRequests(appEntry.requests ?? 0);
-            setErrors(appEntry.errors ?? 0);
-          }
-        } catch {
-          // fallback also failed — gauges stay at 0
-        }
-      }
+      setTraffic(entry);
 
       // Fetch time-series
       const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
@@ -873,6 +854,8 @@ function MetricsTab({ appName }: { appName: string }) {
     void fetchMetrics();
   }, [fetchMetrics]);
 
+  const counted = countedTraffic(traffic);
+
   const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     ...baseChartOptions,
     colors: ['#6366f1'],
@@ -894,8 +877,20 @@ function MetricsTab({ appName }: { appName: string }) {
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
         <MetricsGaugeCard title="CPU" value={loading ? '—' : `${cpu}%`} color={cpu > 80 ? 'error' : cpu > 60 ? 'warning' : 'success'} loading={loading} />
         <MetricsGaugeCard title="Memory" value={loading ? '—' : formatMemory(memory)} color={memory > 512 * 1024 * 1024 ? 'warning' : 'primary'} loading={loading} />
-        <MetricsGaugeCard title="Requests" value={loading ? '—' : String(requests)} color="info" loading={loading} />
-        <MetricsGaugeCard title="Errors" value={loading ? '—' : String(errors)} color={errors > 0 ? 'error' : 'success'} loading={loading} />
+        <MetricsGaugeCard title="Requests" value={loading ? '—' : counted ? String(counted.requests ?? 0) : 'not collected'} color="info" loading={loading} />
+        <MetricsGaugeCard
+          title="Errors (5xx)"
+          value={loading ? '—' : counted ? String(counted.errors ?? 0) : 'not collected'}
+          color={!counted ? 'info' : (counted.errors ?? 0) > 0 ? 'error' : 'success'}
+          loading={loading}
+        />
+        <MetricsGaugeCard
+          title="Latency p95"
+          value={loading ? '—' : !counted ? 'not collected' : counted.latency ? Math.round(counted.latency.p95) : 'none in window'}
+          {...(counted?.latency ? { suffix: 'ms' } : {})}
+          color="info"
+          loading={loading}
+        />
       </Stack>
       {/* CPU Chart */}
       <Card variant="outlined">
@@ -1120,11 +1115,13 @@ export default function AppDetailPage() {
           <TabPanel value={tab} index={0}>
             <OverviewTab app={app} diagnostics={diagnostics} diagLoading={diagLoading} />
           </TabPanel>
+          {/* The handle the daemon answered with, not the URL's name: an older
+              link says `main`, and every log and metric is keyed by the handle. */}
           <TabPanel value={tab} index={1}>
-            <LogsTab appName={daemonName!} />
+            <LogsTab appName={app.name} />
           </TabPanel>
           <TabPanel value={tab} index={2}>
-            <MetricsTab appName={daemonName!} />
+            <MetricsTab appName={app.name} />
           </TabPanel>
         </>
       )}

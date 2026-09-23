@@ -11,9 +11,19 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type { IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus, ProcessInfoDto, SubProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
-import { countedApps, daemonNameFor, deploymentsIn, detailHref, isLocal, shownApps, tally } from './app-address';
+import {
+  countedApps,
+  countedTraffic,
+  daemonNameFor,
+  deploymentsIn,
+  detailHref,
+  isLocal,
+  measuredProcess,
+  shownApps,
+  tally,
+} from './app-address';
 
 const deployment = (stack: string, stackType: IProjectAppStatus['stackType'], name: string, handleKey: string) =>
   ({
@@ -132,5 +142,40 @@ describe('a dashboard that showed one machine of a project', () => {
     expect(shownApps(null, null, null, [devProcess])!.map((a) => [a.key, a.name, a.stack, a.remote])).toEqual([
       ['daos/dev/main', 'main', 'dev', false],
     ]);
+  });
+});
+
+
+describe('a detail page that took one process for the app, and a default for a count', () => {
+  const sub = (name: string, pid: number) => ({
+    name,
+    type: 'custom' as const,
+    pid,
+    status: 'online' as const,
+    cpu: 0,
+    memory: 0,
+    uptime: 0,
+    restarts: 0,
+    instances: 1,
+    declaredInstances: 1,
+  }) satisfies SubProcessInfoDto;
+
+  it('names the process the diagnostics measured when the app has several', () => {
+    const main = { processes: [sub('http', 57952), sub('captcha-generator', 58001), sub('notification-worker', 58130)] };
+    expect(measuredProcess(main, 58130)?.name).toBe('notification-worker');
+  });
+
+  it('names none when the process is the app', () => {
+    expect(measuredProcess({ processes: [sub('http', 7)] }, 7)).toBeUndefined();
+    expect(measuredProcess({}, 7)).toBeUndefined();
+  });
+
+  it('counts traffic only when the daemon says it was measured', () => {
+    const measured = { cpu: 1, memory: 1, traffic: 'measured' as const, requests: 0, errors: 0 };
+    expect(countedTraffic(measured)).toBe(measured);
+    expect(countedTraffic({ cpu: 1, memory: 1, traffic: 'not-reported' })).toBeNull();
+    // A daemon from before the field answered `requests: 0` by default.
+    expect(countedTraffic({ cpu: 1, memory: 1, requests: 0, errors: 0 } as never)).toBeNull();
+    expect(countedTraffic(null)).toBeNull();
   });
 });

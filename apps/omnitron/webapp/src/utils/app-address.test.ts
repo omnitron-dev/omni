@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
 
-import { daemonNameFor, deploymentsIn, detailHref, isLocal } from './app-address';
+import { countedApps, daemonNameFor, deploymentsIn, detailHref, isLocal, tally } from './app-address';
 
 const deployment = (stack: string, stackType: IProjectAppStatus['stackType'], name: string, handleKey: string) =>
   ({
@@ -59,5 +59,35 @@ describe('a detail page that asked for an app no daemon has', () => {
 
   it('leaves a bare name bare with all stacks selected — never project/name', () => {
     expect(daemonNameFor('main', 'daos', null)).toBe('main');
+  });
+});
+
+describe('a status bar that counted another stack’s apps', () => {
+  const localSix = { apps: Array.from({ length: 6 }, () => ({ status: 'online' })) };
+  const testDown = { ...testMain, status: 'stopped' as const };
+  const asked = (value: IProjectAppStatus[]) => ({ status: 'fulfilled', value }) as const;
+
+  it('counts the selected stack’s deployments, not this daemon’s processes', () => {
+    // Beside «daos / test» the bar read 6/6 — dev's six, online — while
+    // test's ran on a node it never asked.
+    expect(tally(countedApps('daos', 'test', localSix, asked([devMain, testDown]))!)).toEqual({
+      appsOnline: 0,
+      appsTotal: 1,
+    });
+    expect(tally(countedApps('daos', null, localSix, asked([devMain, testDown]))!)).toEqual({
+      appsOnline: 1,
+      appsTotal: 2,
+    });
+  });
+
+  it('counts this daemon’s own apps with no project selected', () => {
+    expect(tally(countedApps(null, null, localSix, { status: 'fulfilled', value: null })!)).toEqual({
+      appsOnline: 6,
+      appsTotal: 6,
+    });
+  });
+
+  it('has no count when the selection could not be asked, rather than a zero', () => {
+    expect(countedApps('daos', 'test', localSix, { status: 'rejected', reason: new Error('mesh') })).toBeNull();
   });
 });

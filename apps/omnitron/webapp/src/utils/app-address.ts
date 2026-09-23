@@ -33,3 +33,29 @@ export function daemonNameFor(name: string, project: string | null, stack: strin
   if (name.includes('/') || !project || !stack) return name;
   return `${project}/${stack}/${name}`;
 }
+
+/** Online and total among a list of apps. */
+export const tally = (apps: ReadonlyArray<{ status: string }>) => ({
+  appsOnline: apps.filter((app) => app.status === 'online').length,
+  appsTotal: apps.length,
+});
+
+/**
+ * The apps the status bar counts: the deployments of the selected project
+ * and stack — the rows /apps lists — or, with no project selected, this
+ * daemon's own. `null` when the selection could not be asked.
+ *
+ * It counted `daemon.status().apps` whatever was selected: this daemon's
+ * processes, every project's. Beside «daos / test» it read «Apps 6/6» about
+ * dev's six, while test's six run on a node it never asked — had they all
+ * stopped, the bar would still have said 6/6.
+ */
+export function countedApps(
+  project: string | null,
+  stack: string | null,
+  status: { apps?: ReadonlyArray<{ status: string }> } | null,
+  deployments: PromiseSettledResult<IProjectAppStatus[] | null>,
+): ReadonlyArray<{ status: string }> | null {
+  if (!project) return status?.apps ?? [];
+  return deployments.status === 'fulfilled' && deployments.value ? deploymentsIn(deployments.value, stack) : null;
+}

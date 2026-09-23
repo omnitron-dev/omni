@@ -304,7 +304,8 @@ export interface NodeHealthChecksTable {
   sshLatencyMs: number | null;
   sshError: string | null;
 
-  omnitronConnected: ColumnType<boolean, boolean, boolean>;
+  /** NULL when the check could not measure it — see migration 009. Writers always know. */
+  omnitronConnected: ColumnType<boolean | null, boolean, boolean>;
   omnitronVersion: string | null;
   omnitronPid: number | null;
   omnitronUptime: number | null;

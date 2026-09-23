@@ -5,15 +5,18 @@
  *
  * The health-monitor worker is an OPTIMISATION, not a dependency. Every
  * endpoint that prefers it degrades to the daemon's own checks when the call
- * fails, and drops the proxy on the way so the next caller does not pay for
- * the same timeout. The guards used to test `this.healthWorkerProxy` for null
- * — which is only ever true before the worker is wired and after the daemon
- * begins shutting down — so a worker that CRASHED left a proxy that looked
- * present and answered every call with
+ * fails. The guards used to test `this.healthWorkerProxy` for null — which is
+ * only ever true before the worker is wired and after the daemon begins
+ * shutting down — so a worker that CRASHED left a proxy that looked present
+ * and answered every call with
  * `TitanError: Service with id HealthMonitor@1.0.0 not found`. The console's
  * Refresh and Check buttons returned that error verbatim, and the fleet view
  * went on rendering a status frozen at the worker's last report as though it
  * were current.
+ *
+ * A crash is now the daemon's to notice: the worker's `onExit` drops the
+ * proxy and schedules a respawn, which wires a new one. What a failed CALL
+ * costs is that call, and no more — see `callWorker`.
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
@@ -170,6 +173,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async checkNodeStatus(data: { id: string }): Promise<INodeStatus> {
+    this.assertRegistered(data.id);
     // Delegate to worker if available — returns fresh result directly
     const summaries = await this.callWorker((w) => w.triggerCheck(data.id), 'triggerCheck');
     const summary = summaries?.find((s) => s.nodeId === data.id);
@@ -234,13 +238,26 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     );
   }
 
+  /**
+   * Every node's aggregated health.
+   *
+   * From the daemon's own summaries when the worker cannot answer, like
+   * every other endpoint here. It answered `[]` — measured 2026-09-23: 3
+   * entries, then 0 the moment one unrelated call detached the worker — and
+   * an empty list on the page whose subject is the fleet reads as «no
+   * nodes», while the daemon held a summary for each of them.
+   */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeHealthSummaries(): Promise<INodeHealthSummary[]> {
-    return (await this.callWorker((w) => w.getStatusSummaries(), 'getStatusSummaries')) ?? [];
+    return (
+      (await this.callWorker((w) => w.getStatusSummaries(), 'getStatusSummaries')) ??
+      this.nodeManager.getHealthSummaries()
+    );
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async triggerNodeCheck(data: { nodeId?: string }): Promise<INodeHealthSummary[]> {
+    if (data.nodeId) this.assertRegistered(data.nodeId);
     const summaries = await this.callWorker((w) => w.triggerCheck(data.nodeId), 'triggerCheck');
     if (summaries && summaries.length > 0) {
       this.nodeManager.updateStatusCacheFromWorker(summaries);
@@ -767,12 +784,22 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   // ===========================================================================
 
   /**
-   * Call the health worker, or report that it could not be called.
+   * Call the health worker, or report that this call could not be served by it.
    *
-   * `null` means "no answer from the worker" — no proxy, or a proxy whose
-   * process is gone. Both cases return the caller to the in-process path.
-   * A failing proxy is dropped rather than retried: the process behind it
-   * does not come back, and the daemon re-wires a fresh one when it respawns.
+   * `null` means "no answer from the worker for THIS call" — no proxy, or a
+   * call that threw. Either way the caller takes the in-process path.
+   *
+   * The proxy is kept. It used to be dropped on ANY error, and nothing but a
+   * respawn ever wired it again — so one call the worker refused, from a
+   * worker that was alive and checking, detached it for the life of the
+   * process. Measured 2026-09-23: `omnitron node check 16f3dd5a` (the id
+   * `node list` prints) reached the worker as an unknown id, the worker threw
+   * `Node not found`, `getNodeHealthSummaries` fell from 3 entries to 0, and
+   * every later check went through the daemon's own path. The same happened
+   * on 2026-09-22 from one `RPC request timed out after 5000ms` on a loaded
+   * host. A process that has actually gone is the daemon's to notice, and it
+   * does: the worker's `onExit` clears this proxy (daemon.ts,
+   * startHealthMonitorWorker) and a respawn wires the next one.
    */
   private async callWorker<T>(
     fn: (worker: IHealthWorkerProxy) => Promise<T>,
@@ -783,12 +810,21 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     try {
       return await fn(worker);
     } catch (err) {
-      // Drop only the proxy we just used: the daemon may have wired a new one
-      // while this call was in flight.
-      if (this.healthWorkerProxy === worker) this.healthWorkerProxy = null;
       this.nodeManager.reportWorkerUnavailable(method, err as Error);
       return null;
     }
+  }
+
+  /**
+   * Refuse an id the registry does not hold, before anything is asked about it.
+   *
+   * Checked here, not left to the worker: the worker throws for an id it
+   * does not know, and a throw from the worker is what used to detach it
+   * (see `callWorker`). An unknown id is the caller's mistake and is answered
+   * as one, in the registry's words.
+   */
+  private assertRegistered(id: string): void {
+    if (!this.nodeManager.getNode(id)) throw Errors.notFound('Node', id);
   }
 }
 

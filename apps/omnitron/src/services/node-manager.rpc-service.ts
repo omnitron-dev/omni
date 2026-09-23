@@ -211,7 +211,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       // `length > 0` test and then returned an empty array, and an empty
       // array on the page whose subject is the fleet reads as "you have no
       // nodes". Whatever empties it, the daemon can still answer.
-      const checked = summaries.filter((s) => s.lastCheck).map(summaryToNodeStatus);
+      const checked = this.registeredOnly(summaries).filter((s) => s.lastCheck).map(summaryToNodeStatus);
       if (checked.length > 0) return checked;
     }
     return this.nodeManager.checkAllNodes();
@@ -249,16 +249,17 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeHealthSummaries(): Promise<INodeHealthSummary[]> {
-    return (
+    return this.registeredOnly(
       (await this.callWorker((w) => w.getStatusSummaries(), 'getStatusSummaries')) ??
-      this.nodeManager.getHealthSummaries()
+        this.nodeManager.getHealthSummaries(),
     );
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async triggerNodeCheck(data: { nodeId?: string }): Promise<INodeHealthSummary[]> {
     if (data.nodeId) this.assertRegistered(data.nodeId);
-    const summaries = await this.callWorker((w) => w.triggerCheck(data.nodeId), 'triggerCheck');
+    const fromWorker = await this.callWorker((w) => w.triggerCheck(data.nodeId), 'triggerCheck');
+    const summaries = fromWorker ? this.registeredOnly(fromWorker) : null;
     if (summaries && summaries.length > 0) {
       this.nodeManager.updateStatusCacheFromWorker(summaries);
       return summaries;
@@ -825,6 +826,19 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    */
   private assertRegistered(id: string): void {
     if (!this.nodeManager.getNode(id)) throw Errors.notFound('Node', id);
+  }
+
+  /**
+   * The worker's answers about nodes the registry still holds.
+   *
+   * The worker is told of a removal by an IPC call that can fail, and its
+   * answers are its own memory: measured 2026-09-23, a node removed at
+   * 07:28:00Z came back from `checkAllNodes` 82 minutes later as `online`,
+   * and the CLI printed it as a bare id with two green dots. A status with no
+   * node behind it is not a status of anything.
+   */
+  private registeredOnly<T extends { nodeId: string }>(items: T[]): T[] {
+    return items.filter((item) => Boolean(this.nodeManager.getNode(item.nodeId)));
   }
 }
 

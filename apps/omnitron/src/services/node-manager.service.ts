@@ -771,10 +771,17 @@ export class NodeManagerService extends EventEmitter {
   /**
    * Update the in-memory status cache from health-monitor worker summaries.
    * Called by daemon when worker sends IPC status batch.
+   *
+   * Only for nodes the registry holds. The worker's batch is its own memory,
+   * and it can name a node this registry removed — it did, every minute, for
+   * a node removed 82 minutes earlier — and writing that back put a status
+   * with no node behind it into `statusCache`, `summaryCache` and the
+   * heartbeat column of a row that no longer exists.
    */
   updateStatusCacheFromWorker(summaries: INodeHealthSummary[]): void {
     for (const summary of summaries) {
       if (!summary.lastCheck) continue;
+      if (!this.nodes.has(summary.nodeId)) continue;
       const check = summary.lastCheck;
       const status: INodeStatus = {
         nodeId: summary.nodeId,

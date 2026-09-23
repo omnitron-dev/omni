@@ -85,14 +85,29 @@ export class HealthMonitorService {
     void this.runAllChecks();
   }
 
-  /** Master calls this when nodes are added/updated/removed */
+  /**
+   * Master calls this when nodes are added/updated/removed.
+   *
+   * The status cache follows the list. It used to keep every node it had
+   * ever checked: measured 2026-09-23, a node removed at 07:28:00Z was still
+   * served by `getStatusSummaries` and re-broadcast every round as `online,
+   * checkedAt 07:27:49.607Z` — 82 minutes later — and `omnitron node check`
+   * printed `SSH ● Omnitron ●` for a machine that was no longer registered.
+   * A removed node is not checked again, so its last reading only ages; it
+   * never becomes a current one.
+   */
   updateNodes(nodesJson: string): void {
     const nodesList: INodeCheckTarget[] = JSON.parse(nodesJson);
     this.nodes.clear();
     for (const node of nodesList) {
       this.nodes.set(node.id, node);
     }
-    this.logger.info({ nodeCount: this.nodes.size }, 'Node list updated');
+    const forgotten: string[] = [];
+    for (const id of this.statusCache.keys()) {
+      if (!this.nodes.has(id)) forgotten.push(id);
+    }
+    for (const id of forgotten) this.statusCache.delete(id);
+    this.logger.info({ nodeCount: this.nodes.size, forgotten }, 'Node list updated');
   }
 
   /** On-demand check for a specific node or all nodes */

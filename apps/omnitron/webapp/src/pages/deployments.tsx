@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
@@ -327,6 +329,21 @@ export default function DeploymentsPage() {
       */}
       <DeployProgressList records={progress ?? []} />
       {/*
+        What this history is, said where it is read. It records apps deployed
+        one at a time — the Deploy button, `omnitron deploy` — and nothing
+        else. A stack started from a release is recorded in the audit trail
+        and shown on Releases and on the stack's page. On the master,
+        2026-09-23, this table held 0 rows beside stacks deployed from
+        releases all day, and the page said «No deployments yet».
+      */}
+      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        Apps deployed one at a time. A stack deployed from a release is on{' '}
+        <Link component={RouterLink} to="/releases">
+          Releases
+        </Link>{' '}
+        and on its stack&apos;s page.
+      </Typography>
+      {/*
         prism's AdminDataTable, which owns the distinction this page used to
         make with a local `TableEmptyRow` plus an Alert above the table: no
         rows AND a failure says "could not load"; rows AND a failure says
@@ -340,7 +357,7 @@ export default function DeploymentsPage() {
         total={deployments.length}
         loading={loading}
         loadError={error ?? partialFailure ?? null}
-        emptyMessage="No deployments yet"
+        emptyMessage="No app has been deployed one at a time"
         rowKey={(dep) => dep.id}
         page={page}
         pageSize={pageSize}

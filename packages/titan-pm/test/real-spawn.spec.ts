@@ -285,6 +285,39 @@ class Worker {
     expect(health.status).toBe('degraded');
   }, 60_000);
 
+  it('reports the checks a @HealthCheck method measured, not only its verdict', async () => {
+    // Every omnitron app answers through this path (`BootstrapProcess
+    // .checkHealth`), and it kept one check per method — name and verdict —
+    // dropping what the method measured. An app that knew its database was
+    // down said «unhealthy» and nothing about why.
+    const file = writeWorker('measured', `
+class Worker {
+  static __public = ['ping'];
+  async ping() { return 'pong'; }
+  async myHealth() {
+    return {
+      status: 'unhealthy',
+      checks: [
+        { name: 'database', status: 'fail', message: 'connection refused' },
+        { name: 'redis', status: 'pass' },
+      ],
+    };
+  }
+}`);
+
+    const proc = await manager().spawn(file, { name: 'measured' });
+
+    const health = (await (proc as unknown as {
+      __getProcessHealth(): Promise<{ status: string; checks: Array<{ name: string; status: string; message?: string }> }>;
+    }).__getProcessHealth());
+
+    expect(health.status).toBe('unhealthy');
+    expect(health.checks).toEqual([
+      { name: 'database', status: 'fail', message: 'connection refused' },
+      { name: 'redis', status: 'pass' },
+    ]);
+  }, 60_000);
+
   // Each documented transport, against a process that is actually spawned.
   //
   // `real-transports.spec.ts` is titled "Tests all documented IPC transport

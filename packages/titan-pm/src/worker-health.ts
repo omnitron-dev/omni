@@ -59,3 +59,65 @@ export function classifyWorkerHealth(result: unknown): IHealthStatus {
     timestamp,
   };
 }
+
+const RANK: Record<IHealthStatus['status'], number> = { healthy: 0, degraded: 1, unhealthy: 2 };
+const CHECK_OF: Record<IHealthStatus['status'], IHealthCheck['status']> = {
+  healthy: 'pass',
+  degraded: 'warn',
+  unhealthy: 'fail',
+};
+
+/**
+ * One health answer from every `@HealthCheck` method of a class worker.
+ *
+ * The class-worker wrapper turned each method's answer into ONE check named
+ * after the method and kept only its verdict and `message`: the `checks` the
+ * method returned — database, redis, the dependencies it actually measured —
+ * were dropped on the way to the daemon. Every omnitron app runs as such a
+ * worker (`BootstrapProcess.checkHealth`), so an app that knew its database
+ * was down could say «unhealthy» and nothing about why.
+ *
+ * It also skipped a method that returned nothing (`if (result)`), which left
+ * the verdict at `healthy` — the silent answer read as the reassuring one, the
+ * defect `classifyWorkerHealth` was written to close on the module path.
+ *
+ * Each answer is classified by `classifyWorkerHealth`; its checks are kept,
+ * prefixed with the method name only when there is more than one method to
+ * tell apart. A method that reported no checks is one check under its own
+ * name. A method that threw is a failed check with the error.
+ */
+export function combineHealthMethods(
+  answers: ReadonlyArray<readonly [method: string, outcome: { value: unknown } | { error: unknown }]>,
+): IHealthStatus {
+  const timestamp = Date.now();
+  const checks: IHealthCheck[] = [];
+  let status: IHealthStatus['status'] = 'healthy';
+  const prefix = answers.length > 1;
+
+  for (const [method, outcome] of answers) {
+    if ('error' in outcome) {
+      status = 'unhealthy';
+      const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+      checks.push({ name: method, status: 'fail', message });
+      continue;
+    }
+
+    const answer = classifyWorkerHealth(outcome.value);
+    if (RANK[answer.status] > RANK[status]) status = answer.status;
+
+    if (answer.checks.length === 0) {
+      const message = (outcome.value as { message?: unknown } | null | undefined)?.message;
+      checks.push({
+        name: method,
+        status: CHECK_OF[answer.status],
+        ...(typeof message === 'string' ? { message } : {}),
+      });
+      continue;
+    }
+    for (const check of answer.checks) {
+      checks.push(prefix ? { ...check, name: `${method}: ${check.name}` } : check);
+    }
+  }
+
+  return { status, checks, timestamp };
+}

@@ -118,4 +118,14 @@ export interface MethodOptions {
 
   /** Audit configuration */
   audit?: AuditConfig;
+
+  /**
+   * The method holds its caller until something happens — a long poll.
+   *
+   * Its duration is a wait, not work. An HTTP server counts these requests
+   * apart (`held` in its traffic) and keeps them out of its latency window:
+   * one 25-second wait per connected client was the p95 of a whole
+   * application, which read as the application being slow.
+   */
+  holds?: boolean;
 }

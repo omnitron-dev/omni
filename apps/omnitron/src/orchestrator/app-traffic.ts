@@ -24,6 +24,7 @@ export function combineProcessTraffic(reports: ReadonlyArray<IProcessTraffic | u
     total.serverErrors += report.serverErrors;
     total.clientErrors += report.clientErrors;
     total.probes += report.probes;
+    if (report.held !== undefined) total.held = (total.held ?? 0) + report.held;
     total.active += report.active;
     if ((report.latency?.count ?? 0) > (total.latency?.count ?? 0)) total.latency = report.latency;
   }

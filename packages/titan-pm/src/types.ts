@@ -696,6 +696,12 @@ export interface IProcessTraffic {
   clientErrors: number;
   /** `/health` and `/metrics` polls, counted apart. */
   probes: number;
+  /**
+   * Of `requests`, those to a method that holds its caller (a long poll):
+   * their duration is a wait and is not in `latency`. Absent from a runtime
+   * that does not count them.
+   */
+  held?: number;
   /** In flight at the moment of the report. */
   active: number;
   /** `null` when nothing finished inside the window. */

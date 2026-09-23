@@ -78,6 +78,8 @@ export function readTrafficField(value: unknown): IProcessTraffic | undefined {
     serverErrors: t.serverErrors!,
     clientErrors: t.clientErrors!,
     probes: t.probes!,
+    // Optional: a runtime that does not count held requests still reports.
+    ...(n(t.held) ? { held: t.held } : {}),
     active: t.active!,
     latency,
   };

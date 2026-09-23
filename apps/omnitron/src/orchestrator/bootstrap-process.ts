@@ -620,6 +620,7 @@ class BootstrapProcess {
       traffic.serverErrors += snapshot.serverErrors;
       traffic.clientErrors += snapshot.clientErrors;
       traffic.probes += snapshot.probes;
+      traffic.held = (traffic.held ?? 0) + (snapshot.held ?? 0);
       traffic.active += snapshot.active;
       if ((snapshot.latency?.count ?? 0) > (traffic.latency?.count ?? 0)) traffic.latency = snapshot.latency;
     }

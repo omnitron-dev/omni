@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { readProcessTraffic, trafficFields } from '../../src/worker-traffic.js';
+import { readProcessTraffic, readTrafficField, trafficFields } from '../../src/worker-traffic.js';
 
 const traffic = {
   requests: 250,
@@ -47,5 +47,19 @@ describe('readProcessTraffic', () => {
     expect(await readProcessTraffic({ reportTraffic: async () => null })).toBeUndefined();
     expect(await readProcessTraffic({ reportTraffic: () => { throw new Error('no'); } })).toBeUndefined();
     expect(await readProcessTraffic({})).toBeUndefined();
+  });
+});
+
+describe('readTrafficField — held requests', () => {
+  it('keeps the count of long polls a server held apart from its latency', () => {
+    // A long poll's wait is not in `latency`; dropping the count here left a
+    // report that no longer said so.
+    expect(readTrafficField({ ...traffic, held: 12 })).toMatchObject({ requests: 250, held: 12 });
+  });
+
+  it('reads a report from a runtime that does not count them, and invents no zero', () => {
+    const out = readTrafficField(traffic);
+    expect(out).toMatchObject({ requests: 250 });
+    expect(out).not.toHaveProperty('held');
   });
 });

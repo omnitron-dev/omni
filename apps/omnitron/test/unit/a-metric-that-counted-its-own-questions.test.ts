@@ -166,3 +166,38 @@ describe('the app process reports what its transports answered', () => {
     expect(processWith(null).reportTraffic()).toBeNull();
   });
 });
+
+describe('long polls are counted apart, and the count survives the trip', () => {
+  // A long poll's wait is kept out of the latency window by the server; the
+  // number of such requests is how the report says the window is not all of
+  // REQUESTS.
+  const held = (n: number | undefined) => ({ ...traffic(10), ...(n === undefined ? {} : { held: n }) });
+
+  it('adds the held requests of every process', () => {
+    expect(combineProcessTraffic([held(3), held(4)])!.held).toBe(7);
+    // A process on a runtime that does not count them adds nothing — and
+    // does not turn the others' count into «unknown».
+    expect(combineProcessTraffic([held(undefined), held(4)])!.held).toBe(4);
+    expect(combineProcessTraffic([held(undefined), held(undefined)])).not.toHaveProperty('held');
+  });
+
+  it('adds the held requests of every HTTP server in a process', () => {
+    const p = new (BootstrapProcess as unknown as new () => { reportTraffic(): unknown })();
+    const server = (h: number) => ({ getTrafficSnapshot: () => ({ ...traffic(5), held: h }) });
+    Object.assign(p as object, { app: { netron: { transportServers: new Map([['a', server(2)], ['b', server(5)]]) } } });
+    expect((p.reportTraffic() as { held: number }).held).toBe(7);
+  });
+
+  it('puts the count in the report, and leaves it out when nobody counted', async () => {
+    const rpc = (t: unknown) =>
+      new DaemonRpcService(
+        { getMetrics: async () => ({ 'daos/dev/main': { cpu: 1, memory: 1, traffic: t } }) } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+    expect((await rpc(held(12)).getMetrics({})).apps['daos/dev/main']).toMatchObject({ held: 12 });
+    expect((await rpc(held(undefined)).getMetrics({})).apps['daos/dev/main']).not.toHaveProperty('held');
+  });
+});

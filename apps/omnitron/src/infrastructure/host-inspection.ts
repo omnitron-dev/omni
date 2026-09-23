@@ -298,13 +298,29 @@ async function readUnit(unit: string, host: HostRunner): Promise<UnitReading> {
   };
 }
 
-/** `-rpcpassword=x`, `--rpc-login=u:p`, `rpcauth=…`: the value struck out, the flag kept. */
+/**
+ * A command line with every credential struck out and every flag kept.
+ *
+ * Two forms: `-rpcpassword=x` and `--rpc-login user:password` — the value
+ * after a space. Only the first was struck out, and the test node's
+ * monero-walletd unit passes both of its logins the second way: the first
+ * `infra inspect` of it printed a mainnet RPC password in the clear
+ * (2026-09-23).
+ */
 export function redactArgv(argv: string): string {
-  return argv
-    .split(/\s+/)
-    .map((word) => {
+  const words = argv.split(/\s+/);
+  return words
+    .map((word, i) => {
       const eq = word.indexOf('=');
-      return eq > 0 && CREDENTIAL.test(word.slice(0, eq)) ? `${word.slice(0, eq)}=…` : word;
+      if (eq > 0) return CREDENTIAL.test(word.slice(0, eq)) ? `${word.slice(0, eq)}=…` : word;
+      const flag = words[i - 1];
+      const valueOfACredentialFlag =
+        flag !== undefined &&
+        flag.startsWith('-') &&
+        !flag.includes('=') &&
+        CREDENTIAL.test(flag) &&
+        !word.startsWith('-');
+      return valueOfACredentialFlag ? '…' : word;
     })
     .join(' ');
 }

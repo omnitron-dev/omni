@@ -206,6 +206,9 @@ describe('a service the stack runs on the node', () => {
 describe('host facts for a decision the declaration does not cover', () => {
   const host = fakeHost(
     {
+      'systemctl show monero-walletd -p LoadState -p ActiveState -p UnitFileState -p FragmentPath -p ExecStart':
+        'LoadState=loaded\nActiveState=active\nUnitFileState=enabled\nFragmentPath=/etc/systemd/system/monero-walletd.service\n' +
+        'ExecStart={ path=/usr/local/bin/monero-wallet-rpc ; argv[]=/usr/local/bin/monero-wallet-rpc --rpc-login daos:walletpw --daemon-login daos:daemonpw ; ignore_errors=no }',
       'systemctl show bitcoin -p LoadState -p ActiveState -p UnitFileState -p FragmentPath -p ExecStart':
         'LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\nFragmentPath=/etc/systemd/system/bitcoin.service\n' +
         'ExecStart={ path=/snap/bin/bitcoin-core.daemon ; argv[]=/snap/bin/bitcoin-core.daemon -datadir=/srv/btc -rpcpassword=hunter2 ; ignore_errors=no }',
@@ -218,6 +221,13 @@ describe('host facts for a decision the declaration does not cover', () => {
     { '/srv/btc/bitcoin.conf': 'prune=0\ntxindex=0\nprune=100000\nrpcpassword=hunter2\n' },
     ['/srv/btc']
   );
+
+  it('prints no password a unit passes after a space', async () => {
+    const reading = await inspectHost({ services: {}, units: ['monero-walletd'] }, deps(host.host));
+
+    expect(JSON.stringify(reading)).not.toMatch(/walletpw|daemonpw/);
+    expect(reading.units[0]!.execStart).toBe('/usr/local/bin/monero-wallet-rpc --rpc-login … --daemon-login …');
+  });
 
   it('reads a unit a person wrote, the password on its command line struck out', async () => {
     const reading = await inspectHost({ services: {}, units: ['bitcoin'] }, deps(host.host));
@@ -274,6 +284,18 @@ describe('the pieces', () => {
     expect(fileState('a=1', 'a=1')).toBe('not-managed');
     expect(fileState('a=1', `${OMNITRON_CONFIG_MARKER}\na=1\n`)).toBe('matches');
     expect(fileState('a=1', `${OMNITRON_CONFIG_MARKER}\na=2`)).toBe('differs');
+  });
+
+  it('strikes out a credential passed after a space, as monero-walletd takes its logins', () => {
+    // The first `infra inspect` of the test node printed this unit's
+    // mainnet RPC password: only `flag=value` was struck out.
+    expect(
+      redactArgv(
+        '/usr/local/bin/monero-wallet-rpc --rpc-login daos:pw1 --daemon-login daos:pw2 --wallet-dir /var/lib/monero'
+      )
+    ).toBe('/usr/local/bin/monero-wallet-rpc --rpc-login … --daemon-login … --wallet-dir /var/lib/monero');
+    // A flag with no value after it takes nothing with it.
+    expect(redactArgv('monerod --rpc-login --non-interactive')).toBe('monerod --rpc-login --non-interactive');
   });
 
   it('strikes out every credential-shaped flag and keeps the rest', () => {

@@ -25,8 +25,8 @@ export interface IHealthCheckResult {
 
   /**
    * `null` when no path reached the daemon — see `INodeStatus.omnitronConnected`.
-   * Only the daemon's own check produces it; the worker's rows are always a
-   * boolean, which is what the NOT NULL history column holds.
+   * Only the daemon's own check produces it, and that check writes no history
+   * row; the worker, whose results are persisted, always has a boolean.
    */
   omnitronConnected: boolean | null;
   omnitronVersion: string | null;

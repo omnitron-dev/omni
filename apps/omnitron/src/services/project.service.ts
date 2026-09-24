@@ -1768,13 +1768,33 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
     const commit = release.manifest.project.commit;
-    const tree = await treeEqualsCommit(fs.realpathSync(project.path), commit);
+    // Only what the definition reads has to be the release's — see
+    // `release/definition-inputs.ts`. The rest of the checkout is other
+    // people's work in progress, which no deployment reads. When the files
+    // cannot be named, the whole tree is compared, as before.
+    const root = fs.realpathSync(project.path);
+    let inputs: string[] | undefined;
+    try {
+      const { definitionInputs } = await import('../release/definition-inputs.js');
+      inputs = await definitionInputs(
+        root,
+        this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [a.bootstrap] : [])),
+      );
+    } catch (err) {
+      this.logger.warn(
+        { project: projectName, stack: stackName, error: (err as Error).message },
+        'Could not name the files the definition reads — the whole working tree has to be the release\'s commit',
+      );
+    }
+    const tree = await treeEqualsCommit(root, commit, inputs);
     if (!tree.equal) {
       throw new Error(
-        `Refusing release ${release.id} for ${projectName}/${stackName}: ${project.path} is not its commit ${commit.slice(0, 8)} — ` +
-          `${tree.files.length} file(s) differ (${tree.files.slice(0, 5).join(', ')}${tree.files.length > 5 ? ', …' : ''}). ` +
-          `The stack definition is read from this directory, so it has to be the release's: check out ${commit.slice(0, 8)}, ` +
-          `or build a release from what is here.`,
+        `Refusing release ${release.id} for ${projectName}/${stackName}: ` +
+          `${inputs ? `of the ${inputs.length} file(s) the stack definition is read from, ` : ''}` +
+          `${tree.files.length} differ from its commit ${commit.slice(0, 8)} ` +
+          `(${tree.files.slice(0, 5).join(', ')}${tree.files.length > 5 ? ', …' : ''}). ` +
+          `The definition is read from ${project.path}, so those have to be the release's: commit or set them aside, ` +
+          `check out ${commit.slice(0, 8)}, or build a release from what is here.`,
       );
     }
 

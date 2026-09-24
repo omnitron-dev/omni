@@ -32,4 +32,6 @@ export type {
   DashboardBlockContextValue,
   LoadingConfig,
   ErrorConfig,
+  EmptyConfig,
+  DashboardBlockLabels,
 } from './types.js';

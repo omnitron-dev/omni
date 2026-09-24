@@ -84,6 +84,32 @@ export interface DashboardBlockFooterProps {
 }
 
 /**
+ * The block's empty state — shown when the data loaded and there is none.
+ * Never for a failure: an error has its own state, and a list that failed to
+ * load must not look like a list that is empty.
+ */
+export interface EmptyConfig {
+  title?: string;
+  description?: ReactNode;
+  icon?: ReactNode;
+  action?: ReactNode;
+  /** Replaces the default empty state entirely */
+  emptyComponent?: ReactNode;
+}
+
+/**
+ * The block's own words, for an application that does not speak English. Every
+ * string the block renders or announces is here.
+ */
+export interface DashboardBlockLabels {
+  /** Shown when the block fails and `errorConfig.message` says nothing more specific; also after a render crash inside it */
+  error?: string;
+  retry?: string;
+  expand?: string;
+  collapse?: string;
+}
+
+/**
  * Dashboard block props.
  */
 export interface DashboardBlockProps {
@@ -111,6 +137,17 @@ export interface DashboardBlockProps {
   error?: boolean;
   /** Error configuration */
   errorConfig?: ErrorConfig;
+  /** Empty state — the data loaded and there is none. Loading and error take precedence. */
+  empty?: boolean;
+  /** Empty state configuration */
+  emptyConfig?: EmptyConfig;
+  /** The block's strings, translated by the caller */
+  labels?: DashboardBlockLabels;
+  /**
+   * Keep a render crash inside the block (default true): the block shows its
+   * error state with a retry, and the page around it goes on working.
+   */
+  catchErrors?: boolean;
   /** Collapsible block */
   collapsible?: boolean;
   /** Initial collapsed state */
@@ -151,4 +188,6 @@ export interface DashboardBlockContextValue {
   variant: DashboardBlockVariant;
   /** Block size */
   size: DashboardBlockSize;
+  /** The block's strings */
+  labels: DashboardBlockLabels;
 }

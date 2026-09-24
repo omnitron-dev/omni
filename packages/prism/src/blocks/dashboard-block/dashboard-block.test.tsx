@@ -85,4 +85,39 @@ describe('DashboardBlock', () => {
     fireEvent.click(screen.getByText('Повторить'));
     expect(screen.getByText('recovered')).toBeTruthy();
   });
+
+  // The CSS the browser is handed for the element's own class, read from the
+  // text emotion writes. Not from jsdom's view of it: its parser drops
+  // `-webkit-line-clamp`, and `getComputedStyle` never reports the
+  // `calc(100vh - 240px)` this court is about — both checks passed with the
+  // defects planted back until they read the text.
+  function emittedCss(el: Element): string {
+    const text = Array.from(document.querySelectorAll('style'), (s) => s.textContent ?? '').join('\n');
+    return Array.from(el.classList)
+      .filter((c) => c.startsWith('css-'))
+      .flatMap((c) => text.match(new RegExp(`\\.${c}\\{[^}]*\\}`, 'g')) ?? [])
+      .join('\n');
+  }
+
+  // Every rule under the empty state that sizes something by the viewport.
+  function viewportRules(root: HTMLElement): string[] {
+    return [root, ...Array.from(root.querySelectorAll('*'))].map(emittedCss).filter((css) => /\d+vh/.test(css));
+  }
+
+  it('sizes an empty block to its words, not to the viewport — a block is a card', () => {
+    themed(
+      <DashboardBlock title="Задачи" empty emptyConfig={{ title: 'Всё сделано' }}>
+        <div>content</div>
+      </DashboardBlock>,
+    );
+    expect(viewportRules(screen.getByTestId('prism-dashboard-block-empty'))).toEqual([]);
+  });
+
+  it('lets a long title take a second line instead of cutting it to one', () => {
+    themed(<DashboardBlock title="Лента сообществ">content</DashboardBlock>);
+    const title = screen.getByRole('heading', { name: 'Лента сообществ' });
+    const css = emittedCss(title);
+    expect(css).not.toContain('white-space:nowrap');
+    expect(css).toContain('-webkit-line-clamp:2');
+  });
 });

@@ -11,8 +11,8 @@
  * onion.
  *
  * Three facts decide, and each is measured rather than assumed: the
- * artifact's sha256 against the one the node recorded when it installed what
- * it has; whether the app is running there NOW; and whether the
+ * artifact's sha256 against the one the node recorded when the app last came
+ * up healthy on it; whether the app is running there NOW; and whether the
  * configuration it would be started with is about to change — identical
  * files with a different environment is a different deployment.
  *
@@ -181,13 +181,31 @@ describe('the deployment wires both halves', () => {
     expect(transfer).toBeGreaterThan(at);
   });
 
-  it('writes the record only after the install succeeded', () => {
-    // A record that outlives a failed unpack lets the NEXT run skip a
-    // transfer the node needs.
-    const install = deployer.indexOf('npm install --omit=dev');
-    const record = deployer.indexOf(`${'$'}{remotePath}/${'$'}{ARTIFACT_CHECKSUM_FILE}`);
+  // The record is read as «the app runs this». Written at unpack time it
+  // said so of files no process had loaded: on daos/test (2026-09-24) a
+  // deployment stalled after installing three artifacts, the retry read
+  // «installed, running» and left three applications on the code they had
+  // started with an hour before.
+  it('records what an app runs only once it came up on it — never at unpack time', () => {
+    const body = (from: string, to: string) => deployer.slice(deployer.indexOf(from), deployer.indexOf(to, deployer.indexOf(from)));
 
-    expect(record).toBeGreaterThan(install);
+    // Between the install and «Installed» nothing is recorded.
+    const installed = body('npm install --omit=dev', 'startAfterInstall === false');
+    expect(installed).not.toMatch(/ARTIFACT_CHECKSUM_FILE/);
+    expect(installed).not.toMatch(/recordRunningArtifact\(/);
+
+    // One app deployed and started here: recorded after its health.
+    const single = body('startAfterInstall === false', "'Deployment successful'");
+    expect(single.indexOf('this.recordRunningArtifact(')).toBeGreaterThan(single.indexOf('this.verifyHealth('));
+
+    // A stack: recorded for an app that came up, before it is reported running.
+    const loop = body('for (const entry of landed) {', "'Restarted onto the artifact this deployment installed'");
+    expect(loop.indexOf('this.recordRunningArtifact(')).toBeGreaterThan(loop.indexOf('if (health.online) {'));
+
+    // And the helper is the one writer of the file.
+    const helper = body('private async recordRunningArtifact(', '\n  }');
+    expect(helper).toMatch(/ARTIFACT_CHECKSUM_FILE/);
+    expect(deployer.split('ARTIFACT_CHECKSUM_FILE}').length - 1).toBe(1);
   });
 
   it('lets an operator force a transfer anyway', () => {

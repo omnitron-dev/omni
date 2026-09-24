@@ -739,7 +739,7 @@ export class ProjectService extends EventEmitter {
   async startStack(
     projectName: string,
     stackName: string,
-    opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string },
+    opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string; reinstall?: boolean },
   ): Promise<IStackInfo> {
     const inFlightKey = `${projectName}/${stackName}`;
     const running = this.startsInFlight.get(inFlightKey);
@@ -757,6 +757,7 @@ export class ProjectService extends EventEmitter {
       opts?.source ?? 'unknown',
       opts?.allowDirty === true,
       opts?.release,
+      opts?.reinstall === true,
     ).finally(() => {
       this.startsInFlight.delete(inFlightKey);
     });
@@ -795,10 +796,11 @@ export class ProjectService extends EventEmitter {
     source: StackStartSource,
     allowDirty: boolean,
     releaseId?: string,
+    reinstall = false,
   ): Promise<IStackInfo> {
     const known: StackStartKnown = { attach: false };
     try {
-      return await this.runStackStart(projectName, stackName, source, allowDirty, releaseId, known);
+      return await this.runStackStart(projectName, stackName, source, allowDirty, releaseId, known, reinstall);
     } catch (err) {
       if (!known.attach) {
         await this.audit?.record({
@@ -826,6 +828,7 @@ export class ProjectService extends EventEmitter {
     allowDirty: boolean,
     releaseId: string | undefined,
     known: StackStartKnown,
+    reinstall = false,
   ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
@@ -993,7 +996,7 @@ export class ProjectService extends EventEmitter {
       if (stackConfig.type === 'local') {
         await this.startLocalStack(projectName, stackName, stackConfig, config);
       } else if (stackConfig.type === 'remote') {
-        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release);
+        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall);
       } else if (stackConfig.type === 'cluster') {
         await this.startClusterStack(projectName, stackName, stackConfig, config);
       }
@@ -2484,10 +2487,11 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     release: LoadedRelease | null = null,
+    reinstall = false,
   ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
     try {
-      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release);
+      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release, reinstall);
     } finally {
       // Every exit, including the refusals: a reporter that outlives its
       // deployment narrates a step nobody is taking.
@@ -2502,6 +2506,7 @@ export class ProjectService extends EventEmitter {
     ecosystemConfig: IEcosystemConfig,
     phases: DeployPhases,
     release: LoadedRelease | null = null,
+    reinstall = false,
   ): Promise<NodeReach> {
     const nodes = stackConfig.nodes ?? [];
     if (nodes.length === 0) {
@@ -2854,6 +2859,8 @@ export class ProjectService extends EventEmitter {
               apps: appEntries,
               appEnv,
               stack: stackName,
+              // Past the node's record of what each app runs: ship and restart all.
+              ...(reinstall ? { force: true } : {}),
             });
             unsubDeploy();
             const failed = results.filter((r) => r.status === 'failed');

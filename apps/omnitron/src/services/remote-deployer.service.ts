@@ -114,6 +114,18 @@ export function assertRemotePathSegment(kind: string, value: string): string {
   return value;
 }
 
+/**
+ * Where an app's artifact lives on a node — one place, because the install
+ * writes there and the step that starts the app records there.
+ */
+export function artifactDirOnNode(project: string, app: string, version: string): string {
+  return (
+    `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
+    `/${assertRemotePathSegment('app name', app)}` +
+    `/${assertRemotePathSegment('version', version)}`
+  );
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -279,6 +291,11 @@ export interface DeployResult {
    * that decision.
    */
   unchanged?: boolean;
+  /**
+   * The artifact's own checksum, carried so the step that STARTS the app can
+   * record it — see `recordRunningArtifact`.
+   */
+  checksum?: string;
 }
 
 export interface DeployProgress {
@@ -421,10 +438,7 @@ export class RemoteDeployer {
       await this.verifySSH(target);
 
       // 2. Ensure remote directory structure
-      const remotePath =
-        `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
-        `/${assertRemotePathSegment('app name', artifact.app)}` +
-        `/${assertRemotePathSegment('version', artifact.version)}`;
+      const remotePath = artifactDirOnNode(project, artifact.app, artifact.version);
       await this.sshExec(target, `mkdir -p ${shellEscape(remotePath)}`);
 
       // 2a. What the node already has.
@@ -436,8 +450,10 @@ export class RemoteDeployer {
       // node whose files were identical each time.
       //
       // The comparison is the artifact's own sha256 against the one the node
-      // recorded when it installed what it has. `options.force` deploys
-      // anyway, for an operator who has reason to doubt the record.
+      // recorded when the app last came up healthy on it. `options.force`
+      // deploys anyway, for an operator who has reason to doubt the record —
+      // `omnitron stack start --reinstall`, which until 2026-09-24 nothing
+      // could pass: the escape hatch this comment named had no door.
       if (options?.force !== true) {
         const recorded = parseRecordedChecksum(
           await this.sshExec(target, readChecksumCommand(shellEscape(remotePath))),
@@ -660,14 +676,14 @@ export class RemoteDeployer {
         return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }
 
-      // 5b. Record what was installed, so the next deployment can tell
-      // whether it has anything to do. Written after the install rather than
-      // with the archive: a record that outlives a failed unpack would let
-      // the next run skip a transfer the node needs.
-      await this.sshExec(
-        target,
-        `printf %s ${shellEscape(artifact.checksum ?? '')} > ${shellEscape(`${remotePath}/${ARTIFACT_CHECKSUM_FILE}`)}`,
-      );
+      // 5b. No record yet. The next deployment reads `.artifact-sha256` as
+      // «the app runs this», and at this point it does not: the files are
+      // unpacked, the process still runs what it started with. The record
+      // used to be written here, and on daos/test (2026-09-24) a deployment
+      // that stalled after installing three artifacts left them recorded;
+      // the retry read «installed, running» and left all three on the code
+      // they had started with an hour earlier. It is written once the app
+      // has come up healthy on these files — `recordRunningArtifact`.
 
       // 6. Installed. Starting is a SEPARATE phase, and the order matters:
       // a node cannot start an app it has no definition for, and the
@@ -678,7 +694,14 @@ export class RemoteDeployer {
       if (options?.startAfterInstall === false) {
         const duration = Date.now() - startTime;
         this.emitProgress(nodeKey, artifact.app, 'success', 75, 'Installed');
-        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'success', duration };
+        return {
+          node: nodeKey,
+          app: artifact.app,
+          version: artifact.version,
+          status: 'success',
+          duration,
+          ...(artifact.checksum ? { checksum: artifact.checksum } : {}),
+        };
       }
 
       this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');
@@ -709,6 +732,8 @@ export class RemoteDeployer {
           error: `artifact installed, app not running: ${why}`,
         };
       }
+
+      await this.recordRunningArtifact(target, remotePath, artifact.app, artifact.checksum);
 
       this.emitProgress(nodeKey, artifact.app, 'success', 100, `Deployed in ${Math.round(duration / 1000)}s`);
 
@@ -761,6 +786,8 @@ export class RemoteDeployer {
       appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
       /** The stack these apps belong to — names the docker network to open from. */
       stack?: string | undefined;
+      /** Ship and restart every app past the node's record — `stack start --reinstall`. */
+      force?: boolean | undefined;
     },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
@@ -784,6 +811,7 @@ export class RemoteDeployer {
         // started before the node knows it exists.
         const result = await this.deployToNode(task.target, task.artifact, project, {
           startAfterInstall: !options?.apps?.length,
+          ...(options?.force === true ? { force: true } : {}),
         });
         results.push(result);
       })();
@@ -877,6 +905,12 @@ export class RemoteDeployer {
             ? await this.verifyHealth(target, entry.app, project)
             : { online: false, detail: started.detail };
           if (health.online) {
+            await this.recordRunningArtifact(
+              target,
+              artifactDirOnNode(project, entry.app, entry.version),
+              entry.app,
+              result.checksum,
+            );
             this.emitProgress(result.node, entry.app, 'success', 100, 'Running');
             // Said, because its opposite is. «Left running» above logs when
             // this deployment leaves an application alone; restarting one
@@ -1992,6 +2026,33 @@ export class RemoteDeployer {
       const detail = (err as Error).message;
       this.logger.error({ host: target.host, app: appName, error: detail }, 'Could not reach the node to start this app');
       return { ok: false, detail };
+    }
+  }
+
+  /**
+   * Record that the app now runs this artifact — written only after it came
+   * up healthy on it, never at unpack time, so a deployment interrupted
+   * between installing and starting leaves the old record and the next one
+   * ships and starts again. No checksum, no record: the next deployment then
+   * cannot tell, and «cannot tell» deploys.
+   *
+   * A write that fails is said and not fatal: the app runs; the next
+   * deployment transfers once more than it needed to.
+   */
+  private async recordRunningArtifact(
+    target: DeployTarget,
+    remotePath: string,
+    app: string,
+    checksum: string | undefined,
+  ): Promise<void> {
+    if (!checksum) return;
+    try {
+      await this.sshExec(target, `printf %s ${shellEscape(checksum)} > ${shellEscape(`${remotePath}/${ARTIFACT_CHECKSUM_FILE}`)}`);
+    } catch (err) {
+      this.logger.warn(
+        { node: target.host, app, error: (err as Error).message },
+        'The app runs its new artifact and the node could not record which — the next deployment ships it again',
+      );
     }
   }
 

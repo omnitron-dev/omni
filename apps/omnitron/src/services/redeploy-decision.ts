@@ -15,8 +15,10 @@
  *
  * So: three facts decide, and each is measurable rather than assumed.
  *
- *   - the artifact's sha256 against the one the node recorded when it
- *     installed what it has;
+ *   - the artifact's sha256 against the one the node recorded when the app
+ *     last came up healthy on it — not when it was unpacked: a record written
+ *     at install time claimed «runs this» of files no process had loaded
+ *     (daos/test, 2026-09-24, three apps left on hour-old code);
  *   - whether the app is running there NOW;
  *   - whether the configuration it would be started with is about to change
  *     — credentials, addresses, the app list — because identical files with

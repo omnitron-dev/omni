@@ -126,7 +126,25 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
           </Box>
         )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant={config.titleVariant} component="h3" sx={{ fontWeight: 600, lineHeight: 1.4 }} noWrap>
+          {/*
+           * Two lines, then an ellipsis — not one. On a phone the header
+           * shares its row with the block's actions, and «Лента сообществ»
+           * beside «Вся лента →» was cut to «Лента сообще…» with the second
+           * line empty below it.
+           */}
+          <Typography
+            variant={config.titleVariant}
+            component="h3"
+            sx={{
+              fontWeight: 600,
+              lineHeight: 1.4,
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+            }}
+          >
             {title}
           </Typography>
           {subtitle && (
@@ -273,7 +291,14 @@ function EmptyState({ config, size }: EmptyStateProps): ReactNode {
   if (config?.emptyComponent) return config.emptyComponent;
   return (
     <Box data-testid="prism-dashboard-block-empty" sx={{ px: pad.contentPx, py: pad.contentPy }}>
+      {/*
+       * `compact`: a block is always a card. Without it EmptyContent centres
+       * itself in the VIEWPORT (`minHeight: calc(100vh - 240px)`, `flex: 1`),
+       * and every empty module on the portal's home page stood about 400 px
+       * tall — the page came out 4060 px at 1440×1000, most of it nothing.
+       */}
       <EmptyContent
+        compact
         icon={config?.icon}
         iconSize={48}
         title={config?.title}

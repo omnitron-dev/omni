@@ -167,6 +167,14 @@ export interface ReleaseManifest {
     readonly files: number;
     readonly bytes: number;
   };
+  /**
+   * sha256 of every migration file the release carries, by repository path.
+   * Admission compares them with the release running on the stack: a file
+   * that ran there and changed since is refused — see `release/migrations.ts`.
+   * Absent from a release built by an omnitron that did not record them;
+   * admission then says it did not compare.
+   */
+  readonly migrations?: Readonly<Record<string, string>>;
   readonly gates: readonly GateOutcome[];
   /**
    * What the machine was doing while the gates ran.

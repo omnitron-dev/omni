@@ -1552,6 +1552,27 @@ export class ProjectService extends EventEmitter {
     });
   }
 
+  /**
+   * The stand's accounts counted — by role, by status, by the form their MFA
+   * data is in, and whether the seeded admin still opens with its published
+   * password. Counts only. For decisions that depend on what a stand holds
+   * without reading it: a new MFA root cannot open what the old one sealed,
+   * so how many rows are sealed is asked first.
+   */
+  async censusOperatorAccounts(
+    projectName: string,
+    stackName: string,
+  ): Promise<import('../shared/dto/project.js').IStackAccountCensus> {
+    const tool = await import('../project/operator-account.js');
+    return this.withOperatorTool(projectName, stackName, 'census of accounts', async (on) => {
+      const read = tool.readCensusRun(
+        await on.run((remoteDir, containerPrefix) => tool.operatorCensusCommand({ remoteDir, containerPrefix }), 60_000),
+      );
+      if (!read.ok) throw new Error(`${on.where}: could not take the census: ${read.because}`);
+      return { node: on.machine, commit: on.commit, census: read.census };
+    });
+  }
+
   /** What a remote stack's stand holds under a name — never a secret. */
   async showOperatorAccount(
     projectName: string,

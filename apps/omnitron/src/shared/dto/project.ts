@@ -76,6 +76,13 @@ export interface IStackAccountLookup {
   account: IStackAccountShown | null;
 }
 
+/** What `censusStackAccounts` counted on a stand — no value in it. */
+export interface IStackAccountCensus {
+  node: string;
+  commit: string;
+  census: import('../../project/operator-account.js').StandCensus;
+}
+
 /** An account `removeStackAccount` took away. */
 export interface IStackAccountRemoved {
   username: string;

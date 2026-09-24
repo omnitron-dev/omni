@@ -243,6 +243,7 @@ stack
   .option('--role <role>', "Its platform role — which exist, and the default, are the project's tool's to say")
   .option('--display-name <text>', 'Its display name (default: the username)')
   .option('--show <name>', 'What the stand holds under this name — id, role, when made, last active; never a secret')
+  .option('--census', 'Count the accounts — by role, status and MFA form, and whether the seeded admin opens with its published password')
   .option('--remove <name>', 'Take the account with this name away — with --id, and its password from the vault')
   .option('--id <uuid>', 'The id of the account --remove takes away (as --show prints it)')
   .option('--vault-key <key>', 'Where the password is kept (default: <project>.<stack>.account.<username>.password)')
@@ -254,6 +255,7 @@ stack
         username?: string;
         show?: string;
         remove?: string;
+        census?: boolean;
         id?: string;
         role?: string;
         displayName?: string;

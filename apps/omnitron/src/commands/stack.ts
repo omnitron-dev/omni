@@ -337,13 +337,22 @@ export function accountOptionsRefusal(options: {
   username?: string;
   show?: string;
   remove?: string;
+  census?: boolean;
   id?: string;
   role?: string;
   displayName?: string;
   vaultKey?: string;
 }): string | null {
-  const modes = (['username', 'show', 'remove'] as const).filter((m) => options[m] !== undefined);
-  if (modes.length !== 1) return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>';
+  const modes = [
+    ...(['username', 'show', 'remove'] as const).filter((m) => options[m] !== undefined),
+    ...(options.census ? ['census'] : []),
+  ];
+  if (modes.length !== 1) {
+    return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>, --census';
+  }
+  if (options.census && (options.id !== undefined || options.role !== undefined || options.displayName !== undefined || options.vaultKey !== undefined)) {
+    return '--census takes nothing else';
+  }
   if (options.remove !== undefined && !options.id) return '--remove needs --id <uuid> — the id --show prints';
   if (options.remove === undefined && options.id !== undefined) return '--id goes with --remove';
   if (options.username === undefined && (options.role !== undefined || options.displayName !== undefined)) {
@@ -370,6 +379,7 @@ export async function stackAccountCommand(
     username?: string;
     show?: string;
     remove?: string;
+    census?: boolean;
     id?: string;
     role?: string;
     displayName?: string;
@@ -384,9 +394,39 @@ export async function stackAccountCommand(
   }
 
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
-  const name = options.username ?? options.show ?? options.remove!;
+  const name = options.username ?? options.show ?? options.remove ?? 'accounts';
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (options.census) {
+      emitStep(`Counting the accounts on ${projectName}/${stackName} — the project's tool, on the node…`);
+      const counted = await svc.censusStackAccounts({ project: projectName, stack: stackName });
+      if (emitJson(counted)) return;
+      const c = counted.census;
+      const list = (counts: Readonly<Record<string, number>>) =>
+        Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || 'none';
+      emitSuccess(`${projectName}/${stackName} at ${counted.node}: ${c.users} account(s)`);
+      emitInfo(`  roles: ${list(c.byRole)}`);
+      emitInfo(`  status: ${list(c.byStatus)}`);
+      emitInfo(
+        `  MFA: ${c.mfa.totpEnabled} enabled · ${c.mfa.totpSecretEncrypted} secret(s) sealed · ` +
+          `${c.mfa.totpSecretPlain} plain · ${c.mfa.backupCodes} with backup codes`,
+      );
+      const a = c.seededAdmin;
+      emitInfo(
+        `  seeded admin: ${
+          !a.present
+            ? 'absent'
+            : `${a.status ?? '?'}, ${a.role ?? '?'}, ${
+                a.publishedPassword === null
+                  ? 'password not checkable here'
+                  : a.publishedPassword
+                    ? 'opens with the PUBLISHED password'
+                    : 'password changed'
+              }`
+        }`,
+      );
+      return;
+    }
     if (options.show !== undefined) {
       emitStep(`Reading ${name} on ${projectName}/${stackName} — the project's tool, on the node…`);
       const found = await svc.showStackAccount({ project: projectName, stack: stackName, username: name });
@@ -434,7 +474,7 @@ export async function stackAccountCommand(
     emitInfo(`omnitron secret get ${made.vaultKey}`);
     emitInfo(`  id ${made.id}; made by the project's tool at ${made.commit.slice(0, 8)}`);
   } catch (err) {
-    const verb = options.show !== undefined ? 'read' : options.remove !== undefined ? 'remove' : 'make';
+    const verb = options.census ? 'count' : options.show !== undefined ? 'read' : options.remove !== undefined ? 'remove' : 'make';
     emitError(`Could not ${verb} ${name} on ${projectName}/${stackName}: ${(err as Error).message}`, {
       project: projectName,
       stack: stackName,

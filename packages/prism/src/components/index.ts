@@ -134,6 +134,18 @@ export {
   type EmojiPickerI18n,
 } from './emoji-picker/index.js';
 
+// Deadline Chip
+export {
+  DeadlineChip,
+  deadlineUrgency,
+  relativeTimeLeft,
+  type DeadlineChipProps,
+  type DeadlineUrgency,
+} from './deadline-chip/index.js';
+
+// Rail
+export { Rail, type RailProps } from './rail/index.js';
+
 // Label
 export {
   Label,

@@ -37,16 +37,16 @@ type Held = { ref: Ref<HTMLElement>; 'data-held': string };
 
 /** Name → how to render it with nothing but what it needs, plus what a holder passes. */
 const LEAVES: Array<[string, (held: Held) => ReactElement]> = [
-  ['Alert', (h) => <Alert {...(h as never)}>x</Alert>],
-  ['InlineAlert', (h) => <InlineAlert message="x" {...(h as never)} />],
-  ['FormAlert', (h) => <FormAlert autoScroll={false} {...(h as never)}>x</FormAlert>],
-  ['StatusChip', (h) => <StatusChip status="active" {...(h as never)} />],
-  ['CountBadge', (h) => <CountBadge count={3} {...(h as never)} />],
-  ['StatusDot', (h) => <StatusDot status="online" {...(h as never)} />],
-  ['Label', (h) => <Label {...(h as never)}>x</Label>],
-  ['StatusLabel', (h) => <StatusLabel status="active" {...(h as never)} />],
-  ['BooleanLabel', (h) => <BooleanLabel value {...(h as never)} />],
-  ['Skeleton', (h) => <Skeleton {...(h as never)} />],
+  ['Alert', (h) => <Alert {...(h as object)}>x</Alert>],
+  ['InlineAlert', (h) => <InlineAlert message="x" {...(h as object)} />],
+  ['FormAlert', (h) => <FormAlert autoScroll={false} {...(h as object)}>x</FormAlert>],
+  ['StatusChip', (h) => <StatusChip status="active" {...(h as object)} />],
+  ['CountBadge', (h) => <CountBadge count={3} {...(h as object)} />],
+  ['StatusDot', (h) => <StatusDot status="online" {...(h as object)} />],
+  ['Label', (h) => <Label {...(h as object)}>x</Label>],
+  ['StatusLabel', (h) => <StatusLabel status="active" {...(h as object)} />],
+  ['BooleanLabel', (h) => <BooleanLabel value {...(h as object)} />],
+  ['Skeleton', (h) => <Skeleton {...(h as object)} />],
 ];
 
 function themed(node: ReactElement) {

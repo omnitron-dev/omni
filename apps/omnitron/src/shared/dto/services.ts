@@ -314,7 +314,7 @@ export interface IProjectRpcService {
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;
 
   // --- Stacks (Operator) ---
-  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string }): Promise<IStackInfo>;
+  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
   checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }>;
   stopStack(data: { project: string; stack: string }): Promise<IStackInfo>;

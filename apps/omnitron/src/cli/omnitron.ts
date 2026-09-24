@@ -218,11 +218,15 @@ stack
   // from two commits in clean clones, every gate run. A stack whose config
   // says `release: { mode: 'required' }` takes nothing else.
   .option('--release <id>', 'Deploy this release (see `omnitron release build`) instead of the working tree')
+  // For an operator who doubts a node's record of what an app runs: every
+  // artifact is shipped and every app restarted, whatever the record says.
+  .option('--reinstall', "Ship and restart every app, whatever the node's record says it runs")
   .action(async (projectName, stackName, options) => {
     const { stackStartCommand } = await import('../commands/stack.js');
     await stackStartCommand(projectName, stackName, {
       allowDirty: options.allowDirty === true,
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
+      ...(options.reinstall === true ? { reinstall: true } : {}),
     });
   });
 

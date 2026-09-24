@@ -104,6 +104,15 @@ export {
   type DeleteDialogProps,
 } from './confirm-dialog/index.js';
 
+// Sponsored Slot
+export {
+  SponsoredSlot,
+  DEFAULT_SPONSORED_SLOT_LABELS,
+  type SponsoredSlotContent,
+  type SponsoredSlotLabels,
+  type SponsoredSlotProps,
+} from './sponsored-slot/index.js';
+
 // Empty Content
 export {
   EmptyContent,

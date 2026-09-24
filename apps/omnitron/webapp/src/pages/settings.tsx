@@ -39,24 +39,20 @@ import { auth, getSessionId } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
 
 import type { OmnitronActiveSession } from '@omnitron-dev/omnitron/dto/services';
-import { readStored, writeStored } from '../utils/storage';
+import { writeStored } from '../utils/storage';
+import { ALERT_SEVERITIES } from '@omnitron-dev/omnitron/alerts';
+import {
+  LS_ALERT_SEVERITY,
+  LS_DESKTOP_NOTIFICATIONS,
+  LS_SOUND_ALERTS,
+  readLocalBool,
+  readMinSeverity,
+  writeLocalBool,
+} from '../utils/alert-notify-settings';
 
 // =============================================================================
 // Shared
 // =============================================================================
-
-const LS_DESKTOP_NOTIFICATIONS = 'omnitron_desktop_notifications';
-const LS_SOUND_ALERTS = 'omnitron_sound_alerts';
-const LS_ALERT_SEVERITY = 'omnitron_alert_severity';
-
-function readLocalBool(key: string, fallback: boolean): boolean {
-  const v = readStored(key);
-  return v === null ? fallback : v === 'true';
-}
-
-function writeLocalBool(key: string, value: boolean): void {
-  writeStored(key, String(value));
-}
 
 const cardSx = { borderRadius: 2 } as const;
 const cardContentSx = { p: 3, '&:last-child': { pb: 3 } } as const;
@@ -338,7 +334,7 @@ function SessionsSection() {
 function NotificationsSection() {
   const [desktopNotifications, setDesktopNotifications] = useState(() => readLocalBool(LS_DESKTOP_NOTIFICATIONS, false));
   const [soundAlerts, setSoundAlerts] = useState(() => readLocalBool(LS_SOUND_ALERTS, true));
-  const [alertSeverity, setAlertSeverity] = useState<string>(() => readStored(LS_ALERT_SEVERITY) || 'error');
+  const [alertSeverity, setAlertSeverity] = useState<string>(() => readMinSeverity());
   const [permissionState, setPermissionState] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
 
   const handleDesktopToggle = async (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
@@ -371,7 +367,7 @@ function NotificationsSection() {
               fontWeight: 600
             }}>Sound alerts</Typography><Typography variant="caption" sx={{
               color: "text.secondary"
-            }}>Play audio cue on critical alerts</Typography></Box>}
+            }}>Play a tone when an alert fires at or above the minimum severity</Typography></Box>}
             sx={{ alignItems: 'flex-start', ml: 0 }}
           />
           <Divider />
@@ -391,10 +387,11 @@ function NotificationsSection() {
               }}>Only receive notifications at or above this level</Typography>
             <FormControl size="small" fullWidth>
               <Select value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); writeStored(LS_ALERT_SEVERITY, e.target.value); }}>
-                <MenuItem value="info">Info</MenuItem>
-                <MenuItem value="warn">Warning</MenuItem>
-                <MenuItem value="error">Error</MenuItem>
-                <MenuItem value="fatal">Fatal</MenuItem>
+                {ALERT_SEVERITIES.map((s) => (
+                  <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>
+                    {s}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Box>

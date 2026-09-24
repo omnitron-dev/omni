@@ -6,9 +6,17 @@
  * and the server's dependency graph into the console's build.
  */
 
-export type AlertSeverity = 'critical' | 'warning' | 'info';
-export type AlertRuleType = 'metric' | 'log' | 'health';
-export type AlertEventStatus = 'firing' | 'resolved' | 'silenced' | 'acknowledged';
+import type { AlertSeverity } from '../alert-expression.js';
+
+export type { AlertSeverity };
+/** Read off the expression (`alertRuleTypeOf`), never chosen: a state or a figure. */
+export type AlertRuleType = 'metric' | 'health';
+/**
+ * Two states. `acknowledged` and `silenced` were in this union and nothing
+ * ever wrote them — an acknowledgement is who and when on a firing alert
+ * (`acknowledgedAt`), not a third state it leaves for.
+ */
+export type AlertEventStatus = 'firing' | 'resolved';
 
 export interface AlertRule {
   id: string;
@@ -16,9 +24,10 @@ export interface AlertRule {
   expression: string;
   type: AlertRuleType;
   severity: AlertSeverity;
+  /** Seconds the condition must hold before the alert fires; null fires at once. */
   forDuration: number | null;
-  annotations: Record<string, unknown> | null;
-  labels: Record<string, unknown> | null;
+  /** The sentence the alert is listed with; null lists the expression and its value. */
+  summary: string | null;
   enabled: boolean;
   lastEvaluatedAt: string | null;
   createdAt: string;
@@ -38,19 +47,34 @@ export interface AlertEvent {
 }
 
 export interface AlertSummary {
+  /** Firing now, acknowledged or not. */
   firing: number;
+  /** Of those, acknowledged by someone. */
+  acknowledged: number;
   resolved: number;
-  silenced: number;
   total: number;
-  bySeverity: Record<string, number>;
+  /** Firing now, by severity. */
+  bySeverity: Record<AlertSeverity, number>;
 }
 
+/** A new rule — checked by `readAlertRuleFields`, in the form and again in the daemon. */
 export interface CreateAlertRuleInput {
   name: string;
   expression: string;
-  type: string;
-  severity: string;
-  forDuration?: number;
+  severity: AlertSeverity;
+  forDuration?: number | null;
+  summary?: string | null;
+  enabled?: boolean;
+}
+
+/** A change to a rule: whatever is present, checked the same way. */
+export interface UpdateAlertRuleInput {
+  id: string;
+  name?: string;
+  expression?: string;
+  severity?: AlertSeverity;
+  forDuration?: number | null;
+  summary?: string | null;
   enabled?: boolean;
 }
 

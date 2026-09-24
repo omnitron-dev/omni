@@ -1,23 +1,33 @@
 /**
- * Alert Service — Rule-based alerting engine
+ * Alert Service — rule-based alerting.
  *
- * Evaluates alert rules at configurable intervals and fires/resolves alerts.
- * Supports three rule types:
- *   - metric: threshold-based (e.g., CPU > 80%)
- *   - log: pattern matching (e.g., level=error AND app=main count > 10/5min)
- *   - health: health status changes (e.g., app goes unhealthy)
+ * The daemon scheduler's `alert-evaluation` job calls `evaluate()` every
+ * `monitoring.healthCheck.interval` (15 s by default). A rule is an
+ * expression of `shared/alert-expression.ts` — an app's status, cpu or
+ * memory, or a container's health — and what it watches (`health` or
+ * `metric`) is read off it.
  *
- * Alert lifecycle: pending → firing → resolved (or silenced/acknowledged)
+ * Lifecycle: a condition that holds becomes PENDING for the rule's
+ * `forDuration` (kept in this process: a restart starts the wait again), then
+ * FIRING, then RESOLVED when it stops holding. Acknowledging a firing alert
+ * records who and when; it stays firing until the condition clears.
  *
- * Stores alert rules and events in omnitron-pg.
+ * Rules and events are stored in omnitron-pg; the defaults a fresh master
+ * starts with are seeded once by migration 011, and are the operator's after.
  */
 
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
-import { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable } from '../shared/alert-expression.js';
+import {
+  ALERT_EXPRESSION_FORMS,
+  ALERT_SEVERITIES,
+  alertRuleTypeOf,
+  isAlertExpressionParseable,
+  type AlertRuleFields,
+} from '../shared/alert-expression.js';
 
 export { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable };
 import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
@@ -37,6 +47,7 @@ export type {
   AlertEvent,
   AlertSummary,
   CreateAlertRuleInput,
+  UpdateAlertRuleInput,
 } from '../shared/dto/alerts.js';
 
 // =============================================================================
@@ -144,9 +155,14 @@ export function containerHealth(state: Pick<ContainerState, 'status' | 'health' 
 
 @Injectable()
 export class AlertService {
-  private evaluationTimer: NodeJS.Timeout | null = null;
-
   private readonly logger: ILogger;
+
+  /**
+   * When each rule's condition began to hold, for a rule that must hold for
+   * `forDuration` before it fires. In memory: a daemon restart starts every
+   * wait again, which errs toward firing later rather than at once.
+   */
+  private readonly pendingSince = new Map<string, number>();
 
   constructor(
     @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
@@ -173,35 +189,10 @@ export class AlertService {
   }
 
   /**
-   * Start the alert evaluation loop.
-   * Runs every `intervalMs` (default 15s).
+   * Evaluate all enabled alert rules — once per scheduler tick. `now` is a
+   * parameter for the court that walks a rule through its wait.
    */
-  start(intervalMs = 15_000): void {
-    if (this.evaluationTimer) return;
-    this.evaluationTimer = setInterval(() => {
-      // Not `.catch(() => {})`. This is the loop whose entire job is to
-      // notice that something is wrong, and its own failure was the one
-      // failure it could not report: an unreachable database stopped every
-      // alert on the platform and said nothing, indistinguishably from a
-      // platform with nothing to alert about.
-      this.evaluate().catch((err) => {
-        this.logger.error({ err }, 'Alert evaluation failed — no rules were checked this cycle');
-      });
-    }, intervalMs);
-    this.evaluationTimer.unref();
-  }
-
-  stop(): void {
-    if (this.evaluationTimer) {
-      clearInterval(this.evaluationTimer);
-      this.evaluationTimer = null;
-    }
-  }
-
-  /**
-   * Evaluate all enabled alert rules.
-   */
-  async evaluate(): Promise<void> {
+  async evaluate(now: number = Date.now()): Promise<void> {
     const rules = await this.db
       .selectFrom('alert_rules')
       .selectAll()
@@ -240,8 +231,18 @@ export class AlertService {
         .where('status', '=', 'firing')
         .executeTakeFirst();
 
+      if (!firing) this.pendingSince.delete(rule.id);
+
       if (firing && !currentAlert) {
-        // New alert — create firing event
+        // Held long enough? A rule with a wait fires only once its condition
+        // has held for all of it, so a spike shorter than the wait is not paged.
+        const waitMs = (rule.forDuration ?? 0) * 1000;
+        if (waitMs > 0) {
+          const since = this.pendingSince.get(rule.id) ?? now;
+          this.pendingSince.set(rule.id, since);
+          if (now - since < waitMs) continue;
+        }
+        this.pendingSince.delete(rule.id);
         await this.db.insertInto('alert_events').values({
           ruleId: rule.id,
           status: 'firing',
@@ -276,29 +277,38 @@ export class AlertService {
     return rows.map(mapRule);
   }
 
-  async createRule(rule: Omit<AlertRule, 'id' | 'createdAt' | 'updatedAt' | 'lastEvaluatedAt'>): Promise<AlertRule> {
+  /** A rule from fields `readAlertRuleFields` checked; what it watches is read off its expression. */
+  async createRule(rule: AlertRuleFields): Promise<AlertRule> {
     const row = await this.db.insertInto('alert_rules').values({
       name: rule.name,
       expression: rule.expression,
-      type: rule.type,
+      type: alertRuleTypeOf(rule.expression),
       severity: rule.severity,
-      forDuration: rule.forDuration ?? null,
-      annotations: rule.annotations ? (JSON.stringify(rule.annotations) as any) : null,
-      labels: rule.labels ? (JSON.stringify(rule.labels) as any) : null,
+      forDuration: rule.forDuration,
+      annotations: rule.summary ? (JSON.stringify({ summary: rule.summary }) as any) : null,
       enabled: rule.enabled,
     } as any).returningAll().executeTakeFirstOrThrow();
     return mapRule(row);
   }
 
-  async updateRule(id: string, updates: Partial<Omit<AlertRule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AlertRule> {
+  /** Whatever the update carries, checked the same way; a new expression is a new type. */
+  async updateRule(id: string, updates: Partial<AlertRuleFields>): Promise<AlertRule> {
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (updates.name !== undefined) set['name'] = updates.name;
-    if (updates.expression !== undefined) set['expression'] = updates.expression;
+    if (updates.expression !== undefined) {
+      set['expression'] = updates.expression;
+      set['type'] = alertRuleTypeOf(updates.expression);
+    }
     if (updates.severity !== undefined) set['severity'] = updates.severity;
     if (updates.enabled !== undefined) set['enabled'] = updates.enabled;
     if (updates.forDuration !== undefined) set['forDuration'] = updates.forDuration;
+    if (updates.summary !== undefined) {
+      set['annotations'] = updates.summary ? JSON.stringify({ summary: updates.summary }) : null;
+    }
 
     const row = await this.db.updateTable('alert_rules').set(set as any).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
+    // A condition that waited under the old rule proves nothing about the new one.
+    this.pendingSince.delete(id);
     return mapRule(row);
   }
 
@@ -340,7 +350,7 @@ export class AlertService {
         'alert_rules.expression as expression',
         'alert_rules.annotations as ruleAnnotations',
       ])
-      .where('alert_events.status', 'in', ['firing', 'acknowledged'])
+      .where('alert_events.status', '=', 'firing')
       .orderBy('alert_events.firedAt', 'desc')
       .limit(limit)
       .execute();
@@ -382,40 +392,62 @@ export class AlertService {
     });
   }
 
-  async acknowledgeAlert(alertId: string, acknowledgedBy: string): Promise<void> {
-    await this.db.updateTable('alert_events').set({
-      acknowledgedAt: new Date(),
-      acknowledgedBy,
-    } as any).where('id', '=', alertId).execute();
+  /**
+   * Record who acknowledged a firing alert, and when. Only a firing one: a
+   * resolved alert has nobody left to answer. And only the first time: the
+   * moment it was taken, by whom, is the fact — a second click is not a
+   * second taking.
+   *
+   * The acknowledger is the caller the RPC read from the session — it was a
+   * field of the request, so anyone could sign an acknowledgement with
+   * another operator's name. A console session is recorded by its account's
+   * username; the CLI, admitted on the unix socket as `omnitron-local`, as
+   * that — the audit trail's convention. Looked up by text, because
+   * `omnitron-local` is no uuid and a uuid comparison would refuse the whole
+   * acknowledgement over it.
+   */
+  async acknowledgeAlert(alertId: string, userId: string): Promise<boolean> {
+    const user = await this.db
+      .selectFrom('omnitron_users')
+      .select('username')
+      .where(sql<string>`${sql.ref('id')}::text`, '=', userId)
+      .executeTakeFirst();
+    const result = await this.db
+      .updateTable('alert_events')
+      .set({ acknowledgedAt: new Date(), acknowledgedBy: user?.username ?? userId } as any)
+      .where('id', '=', alertId)
+      .where('status', '=', 'firing')
+      .where('acknowledgedAt', 'is', null)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0) > 0;
   }
 
   async getSummary(): Promise<AlertSummary> {
-    // Count events by status using SQL GROUP BY (avoids loading all rows)
     const statusCounts = await this.db
       .selectFrom('alert_events')
       .select(['status'])
       .select((eb) => eb.fn.count<string>('id').as('count'))
+      .select((eb) => eb.fn.count<string>('acknowledgedAt').as('acknowledged'))
       .groupBy('status')
       .execute();
 
     let firing = 0;
+    let acknowledged = 0;
     let resolved = 0;
-    let silenced = 0;
     let total = 0;
-
     for (const row of statusCounts) {
       const count = Number(row.count);
       total += count;
-      switch (row.status) {
-        case 'firing': firing = count; break;
-        case 'resolved': resolved = count; break;
-        case 'silenced': silenced = count; break;
-        default: break;
+      if (row.status === 'firing') {
+        firing = count;
+        acknowledged = Number(row.acknowledged);
+      } else if (row.status === 'resolved') {
+        resolved = count;
       }
     }
 
-    // Count firing alerts by severity using SQL GROUP BY + JOIN
-    const bySeverity: Record<string, number> = {};
+    // Firing alerts by severity — every severity named, zero included.
+    const bySeverity = Object.fromEntries(ALERT_SEVERITIES.map((s) => [s, 0])) as AlertSummary['bySeverity'];
     const severityCounts = await this.db
       .selectFrom('alert_events')
       .innerJoin('alert_rules', 'alert_rules.id', 'alert_events.ruleId')
@@ -424,12 +456,11 @@ export class AlertService {
       .where('alert_events.status', '=', 'firing')
       .groupBy('alert_rules.severity')
       .execute();
-
     for (const row of severityCounts) {
-      bySeverity[row.severity] = Number(row.count);
+      if (row.severity in bySeverity) bySeverity[row.severity as keyof typeof bySeverity] = Number(row.count);
     }
 
-    return { firing, resolved, silenced, total, bySeverity };
+    return { firing, acknowledged, resolved, total, bySeverity };
   }
 }
 
@@ -438,15 +469,20 @@ export class AlertService {
 // =============================================================================
 
 function mapRule(row: any): AlertRule {
+  const annotations = row.annotations
+    ? typeof row.annotations === 'string'
+      ? JSON.parse(row.annotations)
+      : row.annotations
+    : null;
   return {
     id: row.id,
     name: row.name,
     expression: row.expression,
-    type: row.type,
+    // Read off the expression: a row filed as `log` by the old form watched nothing.
+    type: alertRuleTypeOf(row.expression) ?? row.type,
     severity: row.severity,
     forDuration: row.forDuration ?? null,
-    annotations: row.annotations ? (typeof row.annotations === 'string' ? JSON.parse(row.annotations) : row.annotations) : null,
-    labels: row.labels ? (typeof row.labels === 'string' ? JSON.parse(row.labels) : row.labels) : null,
+    summary: typeof annotations?.summary === 'string' ? annotations.summary : null,
     enabled: row.enabled,
     lastEvaluatedAt: row.lastEvaluatedAt ? (row.lastEvaluatedAt instanceof Date ? row.lastEvaluatedAt.toISOString() : String(row.lastEvaluatedAt)) : null,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),

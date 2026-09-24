@@ -2567,11 +2567,6 @@ export class OmnitronDaemon {
       } catch { /* non-critical */ }
 
       try {
-        const alert = await container.resolveAsync<AlertService>(ALERT_SERVICE_TOKEN);
-        alert.stop();
-      } catch { /* non-critical */ }
-
-      try {
         const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
         fleet.stopHeartbeatSweep();
       } catch { /* non-critical */ }

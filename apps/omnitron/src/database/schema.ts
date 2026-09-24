@@ -150,7 +150,7 @@ export interface AlertRulesTable {
 export interface AlertEventsTable {
   id: Generated<string>;
   ruleId: string;
-  status: string; // 'firing' | 'resolved' | 'silenced'
+  status: string; // 'firing' | 'resolved' — an acknowledgement is `acknowledgedAt`, not a status
   value: string | null;
   annotations: JsonB | null;
   firedAt: Timestamp;

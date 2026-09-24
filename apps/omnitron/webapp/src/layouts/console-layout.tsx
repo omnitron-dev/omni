@@ -35,6 +35,7 @@ import { useAuthStore } from 'src/auth/store';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { useActiveProject } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
+import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
 
 // =============================================================================
 // Navigation — conditional on active project
@@ -245,6 +246,9 @@ function HeaderRight() {
 
 export function ConsoleLayout() {
   const navData = useNavData();
+  // Every page of the console, so an alert that fires is heard wherever the
+  // operator is — and only while someone is signed in to hear it.
+  useAlertNotifications(useAuthStore((s) => Boolean(s.user)));
 
   return (
     <DashboardLayout

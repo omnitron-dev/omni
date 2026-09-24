@@ -85,7 +85,7 @@ export interface IDaemonService {
 // ============================================================================
 
 import type { OmnitronSignInResult, OmnitronAuthUser, OmnitronActiveSession } from './auth.js';
-import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput } from './alerts.js';
+import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput, UpdateAlertRuleInput } from './alerts.js';
 import type { DeployResult, DeploymentRecord } from './deploy.js';
 import type { ContainerState, InfrastructureState } from '../../infrastructure/types.js';
 import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.js';
@@ -127,7 +127,7 @@ export type { ContainerState, InfrastructureState };
 
 export type { DeployResult, DeploymentRecord };
 
-export type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput };
+export type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleInput, UpdateAlertRuleInput };
 export type { AlertSeverity, AlertRuleType, AlertEventStatus } from './alerts.js';
 
 import type { LogQueryResult, LogStats, LogEntryRow, LevelCount } from './logs.js';
@@ -382,11 +382,12 @@ export interface IProjectRpcService {
 export interface IOmnitronAlertsService {
   getRules(): Promise<AlertRule[]>;
   createRule(data: CreateAlertRuleInput): Promise<AlertRule>;
-  updateRule(data: { id: string; updates: Partial<AlertRule> }): Promise<AlertRule>;
+  updateRule(data: UpdateAlertRuleInput): Promise<AlertRule>;
   deleteRule(data: { id: string }): Promise<{ success: boolean }>;
   getEvents(data?: { ruleId?: string; status?: string; limit?: number }): Promise<AlertEvent[]>;
   getActiveAlerts(data?: { limit?: number }): Promise<ActiveAlert[]>;
-  acknowledgeAlert(data: { alertId: string; acknowledgedBy: string }): Promise<{ success: boolean }>;
+  /** Who acknowledged is the caller — read from the session, never from the payload. */
+  acknowledgeAlert(data: { alertId: string }): Promise<{ success: boolean }>;
   getSummary(): Promise<AlertSummary>;
 }
 

@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { AlertService } from '../../src/services/alert.service.js';
+import { registerDaemonJobs } from '../../src/daemon/daemon-scheduler.js';
 
 const logger = {
   error: vi.fn(),
@@ -79,31 +80,49 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('the evaluation loop', () => {
+  // The loop is the scheduler's `alert-evaluation` job — the one that runs.
+  // `AlertService.start()` was a second loop nothing started, and this court
+  // used to guard it.
+  const tick = async (evaluate: () => Promise<void>, times: number) => {
+    let job: (() => Promise<void>) | undefined;
+    const scheduler = {
+      addInterval: (name: string, _ms: number, fn: () => Promise<void>) => {
+        if (name === 'alert-evaluation') job = fn;
+      },
+    };
+    registerDaemonJobs(scheduler as never, {
+      logger: logger as never,
+      orchestrator: orchestrator as never,
+      authService: null,
+      metricsService: { record: vi.fn() } as never,
+      alertService: { evaluate } as never,
+      fleetService: null,
+      logManager: { checkRotation: vi.fn() } as never,
+      infraService: null,
+      syncService: null,
+      metricsInterval: 1000,
+      healthCheckInterval: 1000,
+    });
+    for (let i = 0; i < times; i++) await job!();
+  };
+
   it('reports its own failure instead of swallowing it', async () => {
-    const alerts = service(brokenDb());
+    await tick(() => service(brokenDb()).evaluate(), 1);
 
-    alerts.start(1_000);
-    await vi.advanceTimersByTimeAsync(1_000);
-    alerts.stop();
-
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    const [context, message] = logger.error.mock.calls[0]!;
-    expect(String(message)).toMatch(/alert evaluation failed/i);
+    const failures = logger.error.mock.calls.filter(([, message]) => /alert evaluation failed/i.test(String(message)));
+    expect(failures).toHaveLength(1);
     // The cause travels with it: "evaluation failed" without the reason is
     // the same dead end one level up.
-    expect((context as { err?: Error }).err?.message).toContain('ECONNREFUSED');
+    expect((failures[0]![0] as { err?: Error }).err?.message).toContain('ECONNREFUSED');
   });
 
   it('keeps running after a failed cycle', async () => {
     // A loop that dies on the first bad cycle stops alerting for good, and
     // the log line above would be the only trace — once.
-    const alerts = service(brokenDb());
+    await tick(() => service(brokenDb()).evaluate(), 3);
 
-    alerts.start(1_000);
-    await vi.advanceTimersByTimeAsync(3_000);
-    alerts.stop();
-
-    expect(logger.error.mock.calls.length).toBeGreaterThanOrEqual(3);
+    const failures = logger.error.mock.calls.filter(([, message]) => /alert evaluation failed/i.test(String(message)));
+    expect(failures).toHaveLength(3);
   });
 });
 

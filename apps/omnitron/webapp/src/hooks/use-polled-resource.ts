@@ -26,6 +26,13 @@ export interface UsePolledResourceOptions {
   enabled?: boolean;
   /** Turns an unknown throw into something worth showing. */
   describeError?: (err: unknown) => string;
+  /**
+   * False keeps polling in a background tab — for a reader who is not
+   * looking at it. Alert notifications exist for exactly that operator: a
+   * loop that paused with the tab would announce an alert only once they had
+   * come back to see it. Everything else pauses (see the header).
+   */
+  pauseWhileHidden?: boolean;
 }
 
 export interface PolledResource<T> extends PollState<T> {
@@ -52,7 +59,11 @@ function documentVisible(): boolean {
  */
 export function usePollingEffect(
   tick: () => void,
-  { intervalMs, enabled = true }: { intervalMs: number; enabled?: boolean }
+  {
+    intervalMs,
+    enabled = true,
+    pauseWhileHidden = true,
+  }: { intervalMs: number; enabled?: boolean; pauseWhileHidden?: boolean }
 ): void {
   const tickRef = useRef(tick);
   tickRef.current = tick;
@@ -74,6 +85,11 @@ export function usePollingEffect(
       timer = null;
     };
 
+    if (!pauseWhileHidden) {
+      start();
+      return stop;
+    }
+
     const onVisibility = () => (documentVisible() ? start() : stop());
 
     if (documentVisible()) start();
@@ -92,12 +108,12 @@ export function usePollingEffect(
       }
       stop();
     };
-  }, [intervalMs, enabled]);
+  }, [intervalMs, enabled, pauseWhileHidden]);
 }
 
 export function usePolledResource<T>(
   fetcher: () => Promise<T>,
-  { intervalMs, enabled = true, describeError }: UsePolledResourceOptions
+  { intervalMs, enabled = true, describeError, pauseWhileHidden = true }: UsePolledResourceOptions
 ): PolledResource<T> {
   const [state, setState] = useState<PollState<T>>({ data: null, error: null, loading: true });
 
@@ -129,7 +145,7 @@ export function usePolledResource<T>(
     return () => runner.stop();
   }, [runner]);
 
-  usePollingEffect(() => void runner.tick(), { intervalMs, enabled });
+  usePollingEffect(() => void runner.tick(), { intervalMs, enabled, pauseWhileHidden });
 
   const refresh = useCallback(async () => {
     await runner.tick();

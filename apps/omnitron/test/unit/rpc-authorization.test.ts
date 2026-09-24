@@ -67,15 +67,14 @@ describe('RPC authorization metadata', () => {
   it('reads the roles back through the key the transport uses', async () => {
     // The decisive assertion: load a real service class, ask reflect for the
     // metadata using the exported key, and require the roles to come back.
-    const mod = await import('../../src/services/event-broadcaster.rpc-service.js');
-    const cls = Object.values(mod).find(
-      (v): v is new (...args: never[]) => unknown => typeof v === 'function'
-    );
+    // By name: the module exports more than its class (`readChannels`).
+    const { EventBroadcasterRpcService: cls } = await import('../../src/services/event-broadcaster.rpc-service.js');
+    const { VIEWER_ROLES } = await import('../../src/shared/roles.js');
     expect(cls, 'exported service class').toBeDefined();
 
-    const roles = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, cls!.prototype, 'pushEvent');
+    const roles = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, cls.prototype, 'subscribe');
     expect(roles, '@Public({auth}) must be readable at METADATA_KEYS.METHOD_AUTH').toEqual({
-      roles: ['admin'],
+      roles: VIEWER_ROLES,
     });
   });
 

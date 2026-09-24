@@ -1026,7 +1026,7 @@ export class OmnitronDaemon {
 
     // Event Broadcaster RPC service (WebSocket subscriptions)
     this.eventBroadcaster = new EventBroadcasterService(loggerModule.logger);
-    const eventBroadcasterRpcService = new EventBroadcasterRpcService(this.eventBroadcaster);
+    const eventBroadcasterRpcService = new EventBroadcasterRpcService(this.eventBroadcaster, this.app.netron);
     await this.app.netron.peer.exposeService(eventBroadcasterRpcService);
 
     // Node manager — file-based, no PG (master only — manages infrastructure nodes)

@@ -22,6 +22,11 @@ import type { AuthContext } from '@omnitron-dev/titan/netron/auth';
 export interface RequestContext {
   /** Peer address as seen by the server, or undefined when unavailable. */
   ipAddress?: string;
+  /**
+   * The Netron peer the call arrived from — for a service that answers that
+   * peer later (`OmnitronEvents` pushes events to the connection that asked).
+   */
+  peerId?: string;
 }
 
 const requestContextStorage = new AsyncLocalStorage<RequestContext>();
@@ -90,6 +95,8 @@ export function createAuthContextWrapper(options: { trustProxy?: boolean } = {})
 
     const ip = resolveClientIp(metadata, options.trustProxy === true);
     if (ip) requestCtx.ipAddress = ip;
+    const peerId = metadata.get('peerId');
+    if (typeof peerId === 'string' && peerId.length > 0) requestCtx.peerId = peerId;
 
     const run = () => (authCtx ? runWithAuth(authCtx, fn) : fn());
     return requestContextStorage.run(requestCtx, run);

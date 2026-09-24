@@ -55,6 +55,9 @@ export default defineConfig({
       '@omnitron-dev/netron-browser': path.resolve(here, '../../../packages/netron-browser/dist/index.js'),
       // Omnitron DTO
       '@omnitron-dev/omnitron/dto/services': path.resolve(here, '../src/shared/dto/services.ts'),
+      // A value (`DAEMON_EVENT_TASK`), not only types: the package's `default`
+      // for this subpath is the daemon's build, which lags the source.
+      '@omnitron-dev/omnitron/dto/events': path.resolve(here, '../src/shared/events.ts'),
       // The alert grammar, shared so the form can reject an expression the
       // evaluator cannot read — before the rule exists.
       '@omnitron-dev/omnitron/alerts': path.resolve(here, '../src/shared/alert-expression.ts'),

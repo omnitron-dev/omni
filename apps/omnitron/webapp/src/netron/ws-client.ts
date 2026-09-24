@@ -1,34 +1,61 @@
 /**
- * WebSocket Client — Real-time event push from daemon
+ * Daemon events, pushed — over the daemon's Netron WebSocket transport, in
+ * the protocol that transport speaks.
  *
- * Connects to the daemon's WebSocket transport and receives domain events
- * (app lifecycle, infrastructure, alerts, metrics) in real-time.
+ * This opened a raw WebSocket to that transport and waited for JSON
+ * `{channel, timestamp, data}` nobody sent, pinging it with `{type:'ping'}`
+ * it did not understand — and on the other side `OmnitronEvents.subscribe`
+ * registered an empty callback. Not one event ever arrived. Worse, the
+ * socket OPENED, so this reported itself connected, and the apps, dashboard
+ * and nodes pages slowed their polling from 5 s to 15 s on the strength of a
+ * feed that delivered nothing: the operator had a console three times slower
+ * to notice anything, saying it was live.
  *
- * Features:
- *   - Auto-reconnect with exponential backoff
- *   - Subscription channel filtering
- *   - Connection state tracking
- *   - Heartbeat keep-alive
+ * Now it is a Netron client. It opens `/ws` with no token in the URL (a URL
+ * is written to the proxy's access log, and a token there is a session
+ * there), authenticates over the open connection — the `authenticate` core
+ * task — subscribes (`OmnitronEvents.subscribe`), and only then says it is
+ * connected. Events arrive as the daemon's `emit` of `DAEMON_EVENT_TASK`, to
+ * this connection alone. A reconnect is a new peer to the daemon, so it
+ * authenticates and subscribes again.
  */
 
-import type { DaemonEvent } from '@omnitron-dev/omnitron/dto/events';
+import { WebSocketClient } from '@omnitron-dev/prism/netron';
+import { DAEMON_EVENT_TASK, type DaemonEvent } from '@omnitron-dev/omnitron/dto/events';
+
+import { getStorageToken } from './client';
 
 type EventCallback = (event: DaemonEvent) => void;
 type ConnectionCallback = (connected: boolean) => void;
 
-interface WsClientOptions {
-  /** WebSocket URL (default: auto-detect from window.location) */
+/** Every group the console's store listens to (`stores/realtime.store.ts`). */
+export const CONSOLE_CHANNELS = [
+  'app.*',
+  'infra.*',
+  'alert.*',
+  'metrics.collected',
+  'project.*',
+  'stack.*',
+  'node.*',
+  'daemon.*',
+];
+
+/** What this needs of a Netron WebSocket client — the real one, or a court's. */
+export interface EventSocket {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  runTask<T = unknown>(name: string, ...args: unknown[]): Promise<T>;
+  invoke(service: string, method: string, args: unknown[]): Promise<unknown>;
+  onTask(name: string, handler: (...args: any[]) => unknown): unknown;
+  on(event: string, handler: (...args: any[]) => void): unknown;
+}
+
+interface DaemonWsClientOptions {
   url?: string;
-  /** Auto-reconnect on disconnect (default: true) */
-  autoReconnect?: boolean;
-  /** Max reconnect attempts before giving up (default: Infinity) */
-  maxReconnectAttempts?: number;
-  /** Initial reconnect delay in ms (default: 1000) */
-  reconnectDelay?: number;
-  /** Max reconnect delay in ms (default: 30000) */
-  maxReconnectDelay?: number;
-  /** Heartbeat interval in ms (default: 30000) */
-  heartbeatInterval?: number;
+  /** The session to authenticate with; the console's own by default. */
+  token?: () => string | null | undefined;
+  channels?: string[];
+  socket?: (url: string) => EventSocket;
 }
 
 /**
@@ -56,109 +83,47 @@ export function resolveWsUrl(location: Pick<Location, 'protocol' | 'host'>): str
 }
 
 export class DaemonWsClient {
-  private ws: WebSocket | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private reconnectAttempts = 0;
-  private intentionalClose = false;
+  private socket: EventSocket | null = null;
   private readonly eventListeners = new Map<string, Set<EventCallback>>();
   private readonly connectionListeners = new Set<ConnectionCallback>();
   private _connected = false;
 
-  private readonly url: string;
-  private readonly autoReconnect: boolean;
-  private readonly maxReconnectAttempts: number;
-  private readonly reconnectDelay: number;
-  private readonly maxReconnectDelay: number;
-  private readonly heartbeatInterval: number;
+  constructor(private readonly options: DaemonWsClientOptions = {}) {}
 
-  constructor(options: WsClientOptions = {}) {
-    this.url = options.url ?? resolveWsUrl(window.location);
-
-    this.autoReconnect = options.autoReconnect ?? true;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? Infinity;
-    this.reconnectDelay = options.reconnectDelay ?? 1000;
-    this.maxReconnectDelay = options.maxReconnectDelay ?? 30_000;
-    this.heartbeatInterval = options.heartbeatInterval ?? 30_000;
-  }
-
-  /** Current connection state. */
+  /** Subscribed and receiving — not merely a socket that opened. */
   get connected(): boolean {
     return this._connected;
   }
 
-  /** Connect to the daemon WebSocket. */
   connect(): void {
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
-      return; // Already connected or connecting
-    }
+    if (this.socket) return;
+    const url = this.options.url ?? resolveWsUrl(window.location);
+    const socket =
+      this.options.socket?.(url) ??
+      (new WebSocketClient({ url, reconnect: true, maxReconnectAttempts: Infinity }) as unknown as EventSocket);
+    this.socket = socket;
 
-    this.intentionalClose = false;
-
-    try {
-      this.ws = new WebSocket(this.url);
-
-      this.ws.onopen = () => {
-        this._connected = true;
-        this.reconnectAttempts = 0;
-        this.startHeartbeat();
-        this.notifyConnection(true);
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data as string) as DaemonEvent;
-          this.dispatchEvent(data);
-        } catch {
-          // Ignore malformed messages
-        }
-      };
-
-      this.ws.onclose = () => {
-        this._connected = false;
-        this.stopHeartbeat();
-        this.notifyConnection(false);
-
-        if (!this.intentionalClose && this.autoReconnect) {
-          this.scheduleReconnect();
-        }
-      };
-
-      this.ws.onerror = () => {
-        // Error is followed by close event — reconnect handled there
-      };
-    } catch {
-      // Connection failed — schedule reconnect
-      if (this.autoReconnect) {
-        this.scheduleReconnect();
-      }
-    }
+    socket.onTask('emit', (name: unknown, event: unknown) => {
+      if (name === DAEMON_EVENT_TASK) this.dispatchEvent(event as DaemonEvent);
+    });
+    socket.on('disconnect', () => this.setConnected(false));
+    // After Netron's own handshake, which `connect()` also waits for: a
+    // request sent before it has nowhere to be answered.
+    socket.on('reconnect', () => void this.handshake(socket));
+    socket
+      .connect()
+      .then(() => this.handshake(socket))
+      .catch(() => this.setConnected(false));
   }
 
-  /** Disconnect from the daemon WebSocket. */
   disconnect(): void {
-    this.intentionalClose = true;
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-
-    this.stopHeartbeat();
-
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-
-    this._connected = false;
+    const socket = this.socket;
+    this.socket = null;
+    this.setConnected(false);
+    void socket?.disconnect().catch(() => undefined);
   }
 
-  /**
-   * Subscribe to events on specific channels.
-   * Channels support wildcards: 'app.*' matches all app events.
-   * Use '*' to subscribe to all events.
-   */
+  /** Listen to a channel (`app.started`), a group (`app.*`), or everything (`*`). */
   on(channel: string, callback: EventCallback): () => void {
     let listeners = this.eventListeners.get(channel);
     if (!listeners) {
@@ -167,7 +132,6 @@ export class DaemonWsClient {
     }
     listeners.add(callback);
 
-    // Return unsubscribe function
     return () => {
       listeners!.delete(callback);
       if (listeners!.size === 0) {
@@ -176,24 +140,43 @@ export class DaemonWsClient {
     };
   }
 
-  /** Subscribe to connection state changes. */
   onConnection(callback: ConnectionCallback): () => void {
     this.connectionListeners.add(callback);
     return () => this.connectionListeners.delete(callback);
   }
 
-  // ===========================================================================
-  // Private
-  // ===========================================================================
+  /** Authenticate over the open connection, then subscribe; connected only once both answered. */
+  private async handshake(socket: EventSocket): Promise<void> {
+    const token = (this.options.token ?? getStorageToken)();
+    if (!token || socket !== this.socket) return this.setConnected(false);
+    try {
+      const auth = await socket.runTask<{ success?: boolean }>('authenticate', { token });
+      if (!auth?.success) return this.setConnected(false);
+      await socket.invoke('OmnitronEvents', 'subscribe', [{ channels: this.options.channels ?? CONSOLE_CHANNELS }]);
+      if (socket === this.socket) this.setConnected(true);
+    } catch {
+      this.setConnected(false);
+    }
+  }
+
+  private setConnected(connected: boolean): void {
+    if (this._connected === connected) return;
+    this._connected = connected;
+    for (const cb of this.connectionListeners) {
+      try {
+        cb(connected);
+      } catch {
+        // A listener's fault is not the connection's.
+      }
+    }
+  }
 
   private dispatchEvent(event: DaemonEvent): void {
-    // Exact match listeners
     const exact = this.eventListeners.get(event.channel);
     if (exact) {
       for (const cb of exact) cb(event);
     }
 
-    // Wildcard listeners (e.g., 'app.*' matches 'app.started')
     for (const [pattern, listeners] of this.eventListeners) {
       if (pattern === '*') {
         for (const cb of listeners) cb(event);
@@ -205,49 +188,8 @@ export class DaemonWsClient {
       }
     }
   }
-
-  private notifyConnection(connected: boolean): void {
-    for (const cb of this.connectionListeners) {
-      try {
-        cb(connected);
-      } catch {
-        // Listener error should not crash
-      }
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
-
-    const delay = Math.min(
-      this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
-      this.maxReconnectDelay
-    );
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts++;
-      this.connect();
-    }, delay);
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, this.heartbeatInterval);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-  }
 }
 
-/** Singleton WebSocket client for the daemon. */
 let _wsClient: DaemonWsClient | null = null;
 
 export function getDaemonWsClient(): DaemonWsClient {

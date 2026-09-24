@@ -289,6 +289,13 @@ export const ALL_EVENT_CHANNELS = [
 
 export type EventChannel = (typeof ALL_EVENT_CHANNELS)[number];
 
+/**
+ * The name a daemon event travels under to the console: the daemon runs
+ * `emit(DAEMON_EVENT_TASK, event)` on the connection that subscribed
+ * (`OmnitronEvents.subscribe`), and the console listens for exactly this.
+ */
+export const DAEMON_EVENT_TASK = 'omnitron:event';
+
 /** Generic event envelope for WebSocket broadcast */
 export interface DaemonEvent<T = unknown> {
   channel: EventChannel;

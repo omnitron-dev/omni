@@ -122,6 +122,11 @@ export function operatorAccountShowCommand(input: { remoteDir: string; container
   return toolCommand(input.remoteDir, input.containerPrefix, [`--show=${input.username}`]);
 }
 
+/** What the stand holds in aggregate — counts, never a value. */
+export function operatorCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
+  return toolCommand(input.remoteDir, input.containerPrefix, ['--census']);
+}
+
 /** The row with this name AND this id, or nothing. */
 export function operatorAccountRemoveCommand(input: {
   remoteDir: string;
@@ -308,6 +313,81 @@ export function readShowRun(
     return { ok: false, because: `the tool exited 0 with nothing this side can read: ${run.stdout.trim().slice(-300) || '(empty)'}` };
   }
   return { ok: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
+}
+
+/** The stand's accounts, counted — the tool's `--census`. */
+export interface StandCensus {
+  readonly users: number;
+  readonly byRole: Readonly<Record<string, number>>;
+  readonly byStatus: Readonly<Record<string, number>>;
+  readonly mfa: {
+    readonly totpEnabled: number;
+    /** `enc:v1:` — sealed under the root MFA keys are derived from; a new root cannot open them. */
+    readonly totpSecretEncrypted: number;
+    readonly totpSecretPlain: number;
+    readonly backupCodes: number;
+  };
+  readonly seededAdmin: {
+    readonly present: boolean;
+    /** The row's status, or `deleted` when it was soft-deleted. */
+    readonly status: string | null;
+    readonly role: string | null;
+    /** Whether it still opens with the password its seed published; `null` when the stand cannot check. */
+    readonly publishedPassword: boolean | null;
+  };
+}
+
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+const isCounts = (v: unknown): v is Record<string, number> =>
+  !!v && typeof v === 'object' && Object.values(v as Record<string, unknown>).every(isCount);
+
+/**
+ * A run of `--census`. Its stdout carries counts only, so an answer this side
+ * cannot read is quoted, as `--show`'s is.
+ */
+export function readCensusRun(
+  run: { stdout: string; stderr: string; code: number },
+): { readonly ok: true; readonly census: StandCensus } | { readonly ok: false; readonly because: string } {
+  if (run.code !== 0) return { ok: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
+  const c = answerLine(run.stdout, 'operatorCensus')?.['operatorCensus'] as Partial<StandCensus> | undefined;
+  const m = c?.mfa as Partial<StandCensus['mfa']> | undefined;
+  const a = c?.seededAdmin as Partial<StandCensus['seededAdmin']> | undefined;
+  const whole =
+    c &&
+    isCount(c.users) &&
+    isCounts(c.byRole) &&
+    isCounts(c.byStatus) &&
+    m &&
+    isCount(m.totpEnabled) &&
+    isCount(m.totpSecretEncrypted) &&
+    isCount(m.totpSecretPlain) &&
+    isCount(m.backupCodes) &&
+    a &&
+    typeof a.present === 'boolean' &&
+    (a.publishedPassword === null || typeof a.publishedPassword === 'boolean');
+  if (!whole) {
+    return { ok: false, because: `the tool exited 0 with nothing this side can read: ${run.stdout.trim().slice(-300) || '(empty)'}` };
+  }
+  return {
+    ok: true,
+    census: {
+      users: c.users!,
+      byRole: c.byRole!,
+      byStatus: c.byStatus!,
+      mfa: {
+        totpEnabled: m.totpEnabled!,
+        totpSecretEncrypted: m.totpSecretEncrypted!,
+        totpSecretPlain: m.totpSecretPlain!,
+        backupCodes: m.backupCodes!,
+      },
+      seededAdmin: {
+        present: a.present!,
+        status: typeof a.status === 'string' ? a.status : null,
+        role: typeof a.role === 'string' ? a.role : null,
+        publishedPassword: a.publishedPassword ?? null,
+      },
+    },
+  };
 }
 
 /** A run of `--remove`: removed, or why not. */

@@ -23,6 +23,7 @@ import type {
   IStackAccount,
   IStackAccountLookup,
   IStackAccountRemoved,
+  IStackAccountCensus,
 } from '../shared/dto/project.js';
 
 @Service({ name: 'OmnitronProject' })
@@ -280,6 +281,15 @@ export class ProjectRpcService {
       });
       throw err;
     }
+  }
+
+  /**
+   * The stand's accounts counted — no value in the answer. Admin: it runs the
+   * project's code on the node.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async censusStackAccounts(data: { project: string; stack: string }): Promise<IStackAccountCensus> {
+    return this.projectService.censusOperatorAccounts(data.project, data.stack);
   }
 
   /**

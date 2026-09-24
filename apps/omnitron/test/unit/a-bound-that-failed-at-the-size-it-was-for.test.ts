@@ -89,7 +89,22 @@ async function insert(db: Kysely<any>, rows: Row[]): Promise<void> {
   });
 }
 
-const at = (second: number) => new Date(Date.UTC(2026, 8, 22, 12, 0, 0) + second * 1000).toISOString();
+/**
+ * Seconds from a base thirteen hours ago — recent, whatever day the court runs.
+ *
+ * This was `Date.UTC(2026, 8, 22, 12, 0, 0)`, and the routine retention pass
+ * that runs BEFORE the eviction deletes delivered entries older than a day
+ * (`SYNCED_RETENTION_MS`). From 2026-09-23 23:06:40 UTC every delivered
+ * fixture here was older than that, the routine pass removed all 40 000 of
+ * them before the eviction this court exists for was reached, and it failed
+ * with «expected 0 to be greater than 0» — a court pinned to a date is a
+ * court that expires. The ordering court below passed through the same hole
+ * for the wrong reason. Thirteen hours back and 40 000 seconds forward stays
+ * inside the day, so the routine pass takes nothing and the eviction is what
+ * is measured.
+ */
+const BASE = Date.now() - 13 * 60 * 60 * 1000;
+const at = (second: number) => new Date(BASE + second * 1000).toISOString();
 
 function slave(db: Kysely<any>, maxBufferSize: number) {
   return new SyncService(db as never, logger, 'daos-cpp-9700', 'slave', { maxBufferSize } as never);

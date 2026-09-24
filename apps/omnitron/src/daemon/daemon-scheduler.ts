@@ -116,7 +116,11 @@ export function registerDaemonJobs(
       try {
         await alertService.evaluate();
       } catch (err) {
-        logger.warn({ error: (err as Error).message }, 'Alert evaluation failed');
+        // At `error`, with its cause. This is the loop whose whole job is to
+        // notice that something is wrong: its own failure is the one no alert
+        // can report, and an unreachable database would stop every alert on
+        // the platform looking exactly like a platform with nothing to say.
+        logger.error({ err }, 'Alert evaluation failed — no rules were checked this cycle');
       }
     });
     jobs.push('alert-evaluation');

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -26,10 +26,14 @@ import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } fro
 import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
-import { useAuthStore } from 'src/auth/store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { settledPair } from 'src/utils/settled-pair';
-import { isAlertExpressionParseable, ALERT_EXPRESSION_HELP } from '@omnitron-dev/omnitron/alerts';
+import {
+  ALERT_EXPRESSION_HELP,
+  ALERT_SEVERITIES,
+  readAlertRuleFields,
+  type AlertRuleFields,
+} from '@omnitron-dev/omnitron/alerts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,90 +57,84 @@ const SEVERITY_COLORS: Record<string, 'error' | 'warning' | 'info'> = {
 };
 
 // ---------------------------------------------------------------------------
-// Create Alert Rule Dialog
+// Alert Rule Dialog — a new rule, or a change to one
 // ---------------------------------------------------------------------------
 
-interface CreateAlertRuleDialogProps {
+interface AlertRuleDialogProps {
   open: boolean;
+  /** The rule to change; absent, a new one. */
+  rule: AlertRule | null;
   onClose: () => void;
-  onCreated: (rule: AlertRule) => void;
+  onSaved: () => void;
 }
 
-const RULE_TYPES: Array<{ value: AlertRule['type']; label: string }> = [
-  { value: 'metric', label: 'Metric' },
-  { value: 'log', label: 'Log' },
-  { value: 'health', label: 'Health' },
-];
-
-const SEVERITY_OPTIONS: Array<{ value: AlertRule['severity']; label: string }> = [
-  { value: 'critical', label: 'Critical' },
-  { value: 'warning', label: 'Warning' },
-  { value: 'info', label: 'Info' },
-];
-
-function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDialogProps) {
+/**
+ * One form for both. Checked by `readAlertRuleFields` — the function the
+ * daemon runs on the same fields — so the form refuses what the daemon would,
+ * with the same words. What a rule watches is read off its expression; the
+ * type used to be chosen here, beside the expression that already said it,
+ * and could be `log`, which the grammar has no form for.
+ */
+function AlertRuleDialog({ open, rule, onClose, onSaved }: AlertRuleDialogProps) {
   const [name, setName] = useState('');
   const [expression, setExpression] = useState('');
-  const [type, setType] = useState<AlertRule['type']>('metric');
   const [severity, setSeverity] = useState<AlertRule['severity']>('warning');
+  const [wait, setWait] = useState('');
+  const [summary, setSummary] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setName('');
-    setExpression('');
-    setType('metric');
-    setSeverity('warning');
-    setEnabled(true);
+  // A rule opened for editing fills the form; a new one empties it.
+  useEffect(() => {
+    if (!open) return;
+    setName(rule?.name ?? '');
+    setExpression(rule?.expression ?? '');
+    setSeverity(rule?.severity ?? 'warning');
+    setWait(rule?.forDuration ? String(rule.forDuration) : '');
+    setSummary(rule?.summary ?? '');
+    setEnabled(rule?.enabled ?? true);
     setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
+  }, [open, rule]);
 
   const handleSubmit = async () => {
-    if (!name.trim() || !expression.trim()) {
-      setError('Name and expression are required.');
-      return;
-    }
-    // Rejected here rather than accepted and stored. The evaluator answers
-    // an expression it cannot read with "not firing" — the same answer a
-    // healthy platform gives — so a rule outside the grammar is created
-    // successfully, shows enabled and green, and catches nothing.
-    if (!isAlertExpressionParseable(expression)) {
-      setError(`The evaluator cannot read this expression. Supported forms: ${ALERT_EXPRESSION_HELP}`);
+    const { fields, problems } = readAlertRuleFields(
+      {
+        name,
+        expression,
+        severity,
+        forDuration: wait.trim() === '' ? null : Number(wait),
+        summary,
+        enabled,
+      },
+      false,
+    );
+    if (problems.length > 0) {
+      setError(problems.join('; '));
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const created = await alerts.createRule({ name: name.trim(), expression: expression.trim(), type, severity, enabled });
-      onCreated(created);
-      handleClose();
+      const checked = fields as AlertRuleFields;
+      if (rule) await alerts.updateRule({ id: rule.id, ...checked });
+      else await alerts.createRule(checked);
+      onSaved();
+      onClose();
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to create rule');
+      setError(err?.message ?? 'Failed to save the rule');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>New Alert Rule</DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{rule ? 'Edit Alert Rule' : 'New Alert Rule'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="error">{error}</Alert>}
-          <TextField
-            label="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            fullWidth
-            required
-            size="small"
-          />
+          <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth required size="small" />
           <TextField
             label="Expression"
             value={expression}
@@ -144,23 +142,9 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
             fullWidth
             required
             size="small"
-            multiline
-            rows={3}
             placeholder="e.g. app.main.cpu > 90"
             helperText={`Supported forms: ${ALERT_EXPRESSION_HELP}`}
           />
-          <TextField
-            label="Type"
-            value={type}
-            onChange={(e) => setType(e.target.value as AlertRule['type'])}
-            select
-            fullWidth
-            size="small"
-          >
-            {RULE_TYPES.map((t) => (
-              <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
-            ))}
-          </TextField>
           <TextField
             label="Severity"
             value={severity}
@@ -169,25 +153,43 @@ function CreateAlertRuleDialog({ open, onClose, onCreated }: CreateAlertRuleDial
             fullWidth
             size="small"
           >
-            {SEVERITY_OPTIONS.map((s) => (
-              <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+            {[...ALERT_SEVERITIES].reverse().map((s) => (
+              <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>
+                {s}
+              </MenuItem>
             ))}
           </TextField>
-          <FormControlLabel
-            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
-            label="Enable rule immediately"
+          <TextField
+            label="Fire after (seconds)"
+            value={wait}
+            onChange={(e) => setWait(e.target.value)}
+            fullWidth
+            size="small"
+            inputMode="numeric"
+            helperText="How long the condition must hold before the alert fires. Empty fires at once."
           />
+          <TextField
+            label="Summary"
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            fullWidth
+            size="small"
+            helperText="The sentence the alert is listed and notified with. Empty lists the expression and its value."
+          />
+          <FormControlLabel control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />} label="Enabled" />
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={saving}>Cancel</Button>
+        <Button onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
         <Button
           variant="contained"
           onClick={handleSubmit}
           disabled={saving}
           startIcon={saving ? <CircularProgress size={14} /> : undefined}
         >
-          {saving ? 'Creating…' : 'Create Rule'}
+          {saving ? 'Saving…' : rule ? 'Save Rule' : 'Create Rule'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -256,7 +258,8 @@ export default function AlertsPage() {
   // so there is nothing for `namespacePrefix` to narrow. The page used to pull
   // it and `displayName` and use neither, which reads like scoping that
   // happens somewhere below and does not.
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  // Absent: no dialog. `null`: a new rule. A rule: that rule, being changed.
+  const [editing, setEditing] = useState<AlertRule | null | undefined>(undefined);
 
   const { data, loading, error, refresh: fetchData } = usePolledResource(
     async () => {
@@ -284,12 +287,13 @@ export default function AlertsPage() {
   const activeAlerts = data?.activeAlerts ?? [];
   const partialFailure = data?.partialFailure ?? null;
 
-  const firingCount = activeAlerts.filter((a) => !a.resolvedAt).length;
-  const resolvedCount = activeAlerts.filter((a) => !!a.resolvedAt).length;
+  // The list is firing alerts only; «resolved» counted from it was always 0.
+  const firingCount = activeAlerts.length;
+  const acknowledgedCount = activeAlerts.filter((a) => a.acknowledged).length;
 
   const handleToggleRule = async (ruleId: string, enabled: boolean) => {
     try {
-      await alerts.updateRule({ id: ruleId, updates: { enabled } });
+      await alerts.updateRule({ id: ruleId, enabled });
       // Re-read rather than patching the local copy: the rule the server
       // stored is what should be on screen, and the optimistic edit this
       // replaces could not be told apart from a write that silently failed.
@@ -313,9 +317,8 @@ export default function AlertsPage() {
 
   const handleAcknowledge = async (alertId: string) => {
     try {
-      // The server records WHO acknowledged; it is part of the audit trail.
-      const actor = useAuthStore.getState().user?.username ?? 'unknown';
-      await alerts.acknowledgeAlert({ alertId, acknowledgedBy: actor });
+      // Who acknowledged is recorded by the daemon, from the session.
+      await alerts.acknowledgeAlert({ alertId });
       await fetchData();
     } catch (err: any) {
       setActionError(err?.message ?? 'Failed to acknowledge alert');
@@ -369,6 +372,13 @@ export default function AlertsPage() {
       ),
     },
     {
+      key: 'forDuration',
+      header: 'Fires after',
+      render: (rule) => (
+        <Typography variant="caption">{rule.forDuration ? `${rule.forDuration}s held` : 'at once'}</Typography>
+      ),
+    },
+    {
       key: 'enabled',
       header: 'Enabled',
       align: 'center',
@@ -387,7 +397,7 @@ export default function AlertsPage() {
       render: (rule) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
           <Tooltip title="Edit rule">
-            <IconButton size="small">
+            <IconButton size="small" onClick={() => setEditing(rule)}>
               <EditIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -422,7 +432,7 @@ export default function AlertsPage() {
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
-              onClick={() => setCreateDialogOpen(true)}
+              onClick={() => setEditing(null)}
             >
               New Rule
             </Button>
@@ -447,10 +457,10 @@ export default function AlertsPage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <StatCard
-            title="Resolved"
-            value={resolvedCount}
+            title="Acknowledged"
+            value={acknowledgedCount}
             icon={<CheckIcon />}
-            color="success"
+            color={acknowledgedCount < firingCount ? 'warning' : 'success'}
             loading={loading}
           />
         </Grid>
@@ -465,7 +475,7 @@ export default function AlertsPage() {
         </Grid>
       </Grid>
       {/* Active Alerts */}
-      {activeAlerts.filter((a) => !a.resolvedAt).length > 0 && (
+      {firingCount > 0 && (
         <Card variant="outlined">
           <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
             title="Active Alerts"
@@ -473,9 +483,7 @@ export default function AlertsPage() {
           />
           <CardContent sx={{ pt: 0 }}>
             <Stack spacing={1}>
-              {activeAlerts
-                .filter((a) => !a.resolvedAt)
-                .map((alert) => (
+              {activeAlerts.map((alert) => (
                   <Stack
                     key={alert.id}
                     direction="row"
@@ -589,10 +597,11 @@ export default function AlertsPage() {
         confirmLabel="Delete"
         confirmColor="error"
       />
-      <CreateAlertRuleDialog
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        onCreated={() => void fetchData()}
+      <AlertRuleDialog
+        open={editing !== undefined}
+        rule={editing ?? null}
+        onClose={() => setEditing(undefined)}
+        onSaved={() => void fetchData()}
       />
     </Stack>
   );

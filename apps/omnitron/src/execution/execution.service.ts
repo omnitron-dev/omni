@@ -162,6 +162,28 @@ export const SSH_CONNECTION_POOL = {
   maxLifetime: 0,
 } as const;
 
+/**
+ * How long one file transfer may take: a minute to open it, and the bytes at
+ * no less than 32 KiB/s.
+ *
+ * A transfer had no bound at all, and on 2026-09-24 three of them never
+ * ended: `daos/test` stood «delivering 6 artifact(s)» for 19 minutes, holding
+ * the node's deploy lease, until the master was restarted. The chain is in
+ * `@xec-sh/core`: every channel to a node rides ONE pooled SSH connection, a
+ * command that timed out behind the transfers made the pool close that
+ * connection with a graceful `end()` — which stops ssh2's keepalive — and a
+ * transfer still running on it got neither an error nor an end. New commands
+ * opened a new connection and worked; the transfers on the old one waited
+ * forever. Only a deadline of our own ends them.
+ *
+ * The floor is generous on purpose — measured the day after, 26 MB of
+ * artifacts crossed in ~70 s, about 0.4 MB/s — so a slow link still delivers,
+ * and a dead one fails in minutes, with its words, instead of never.
+ */
+export function uploadDeadlineMs(bytes: number): number {
+  return 60_000 + Math.ceil(bytes / (32 * 1024)) * 1000;
+}
+
 function sshConfig(target: SSHTarget): Record<string, unknown> {
   return {
     host: target.host,
@@ -388,6 +410,29 @@ export class ExecutionService {
    * `ssh()`, so one credential path serves both.
    */
   async uploadFile(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
+    // One transfer at a time per node. They share one SSH connection, so
+    // running three side by side is not faster — the link is the limit — and
+    // it queues megabytes in front of every small command on that connection:
+    // with 3–5 transfers in flight (each `fastPut` keeps up to 2 MB
+    // outstanding) a lease renewal waited past its 30 s, and its timeout is
+    // what closed the connection under them (see `uploadDeadlineMs`).
+    const node = `${target.host}:${target.port ?? 22}`;
+    const queue = (this.transfersByNode ??= new Map<string, Promise<void>>());
+    const before = queue.get(node) ?? Promise.resolve();
+    const mine = before.then(() => this.transferOnce(target, localPath, remotePath));
+    const settled = mine.catch(() => undefined);
+    queue.set(node, settled);
+    try {
+      await mine;
+    } finally {
+      if (queue.get(node) === settled) queue.delete(node);
+    }
+  }
+
+  /** Transfers still to finish, per node — see `uploadFile`. */
+  private transfersByNode?: Map<string, Promise<void>>;
+
+  private async transferOnce(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
     const engine = await this.getEngine();
     if (!engine) {
       // No silent fallback to `scp`. It cannot present a password, so it
@@ -415,7 +460,12 @@ export class ExecutionService {
     // fails on the healthy case is worse than none.
     for (let attempt = 1; attempt <= 2; attempt++) {
       const ssh = engine.ssh(sshConfig(target));
-      await ssh.uploadFile(localPath, remotePath);
+      await this.withinDeadline(ssh.uploadFile(localPath, remotePath), uploadDeadlineMs(expected), (ms) =>
+        new Error(
+          `Upload of ${localPath} (${expected} bytes) to ${target.host}:${remotePath} did not finish in ` +
+            `${Math.round(ms / 1000)} s — the transfer was abandoned; the file on the node is incomplete and was not used.`,
+        ),
+      );
 
       const out = await this.ssh(target, `wc -c < '${remotePath.replace(/'/g, "'\\''")}'`, {
         timeout: 30_000,
@@ -433,6 +483,22 @@ export class ExecutionService {
             `of ${expected} bytes, twice. The file on the node is incomplete and was not used.`,
         );
       }
+    }
+  }
+
+  /**
+   * `work`, or a rejection once `ms` have passed. The work itself is not
+   * stopped — nothing in the engine can stop it — only no longer waited for.
+   */
+  private async withinDeadline<T>(work: Promise<T>, ms: number, error: (ms: number) => Error): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(error(ms)), ms);
+    });
+    try {
+      return await Promise.race([work, late]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 

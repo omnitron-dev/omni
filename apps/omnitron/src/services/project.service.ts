@@ -1565,8 +1565,11 @@ export class ProjectService extends EventEmitter {
   ): Promise<import('../shared/dto/project.js').IStackAccountCensus> {
     const tool = await import('../project/operator-account.js');
     return this.withOperatorTool(projectName, stackName, 'census of accounts', async (on) => {
+      // Three minutes, not one: the census checks privileged accounts against
+      // every password the repository publishes with bcrypt at the stand's
+      // cost — 18 s for 17 accounts on the dev stand.
       const read = tool.readCensusRun(
-        await on.run((remoteDir, containerPrefix) => tool.operatorCensusCommand({ remoteDir, containerPrefix }), 60_000),
+        await on.run((remoteDir, containerPrefix) => tool.operatorCensusCommand({ remoteDir, containerPrefix }), 180_000),
       );
       if (!read.ok) throw new Error(`${on.where}: could not take the census: ${read.because}`);
       return { node: on.machine, commit: on.commit, census: read.census };

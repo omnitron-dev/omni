@@ -425,6 +425,21 @@ export async function stackAccountCommand(
               }`
         }`,
       );
+      const p = c.privileged;
+      emitInfo(
+        p
+          ? `  privileged: ${p.accounts} (made: ${Object.entries(p.byCreatedDay).map(([d, n]) => `${d} ${n}`).join(', ') || 'none'}) · ` +
+              `${p.openWithPublishedPassword ?? '?'} open with a password the repository publishes · ${p.signedIn} ever signed in`
+          : '  privileged: not counted by the tool at this commit',
+      );
+      const k = c.keyedOnJwtSecret;
+      const live = k ? Object.values(k.pickupCodesLive).reduce((sum, n) => sum + n, 0) : 0;
+      emitInfo(
+        k
+          ? `  keyed on JWT_SECRET: ${live} live pickup code(s)${live ? ` (${list(k.pickupCodesLive)})` : ''} a new key could not find`
+          : '  keyed on JWT_SECRET: not counted by the tool at this commit',
+      );
+      for (const [question, n] of Object.entries(c.counts ?? {})) emitInfo(`  ${question}: ${n}`);
       return;
     }
     if (options.show !== undefined) {

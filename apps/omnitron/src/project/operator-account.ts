@@ -335,6 +335,29 @@ export interface StandCensus {
     /** Whether it still opens with the password its seed published; `null` when the stand cannot check. */
     readonly publishedPassword: boolean | null;
   };
+  /**
+   * Every account above «user» that is not deleted. Absent from a tool that
+   * predates it — the project's own, taken from its HEAD — and said so.
+   */
+  readonly privileged?: {
+    readonly accounts: number;
+    /** `YYYY-MM-DD` (UTC) → how many were made that day. */
+    readonly byCreatedDay: Readonly<Record<string, number>>;
+    /** How many open with a password the repository publishes; `null` when the stand cannot check. */
+    readonly openWithPublishedPassword: number | null;
+    /** How many were ever signed into, as far as the stand's sign-in log and sessions keep. */
+    readonly signedIn: number;
+  };
+  /** What rotating the stand's JWT_SECRET would take away besides sessions. */
+  readonly keyedOnJwtSecret?: {
+    /** Pickup codes a buyer holds that a new key could not find, by method. */
+    readonly pickupCodesLive: Readonly<Record<string, number>>;
+  };
+  /**
+   * Counts the project's tool names by the question each answers — printed as
+   * they come, so the next question is the tool's to add and needs nothing here.
+   */
+  readonly counts?: Readonly<Record<string, number>>;
 }
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
@@ -352,6 +375,18 @@ export function readCensusRun(
   const c = answerLine(run.stdout, 'operatorCensus')?.['operatorCensus'] as Partial<StandCensus> | undefined;
   const m = c?.mfa as Partial<StandCensus['mfa']> | undefined;
   const a = c?.seededAdmin as Partial<StandCensus['seededAdmin']> | undefined;
+  const p = c?.privileged as Partial<NonNullable<StandCensus['privileged']>> | undefined;
+  const k = c?.keyedOnJwtSecret as Partial<NonNullable<StandCensus['keyedOnJwtSecret']>> | undefined;
+  // Absent is a tool that predates the block; present and malformed is not an answer.
+  const privilegedWhole =
+    p === undefined ||
+    (isCount(p.accounts) &&
+      isCounts(p.byCreatedDay) &&
+      (p.openWithPublishedPassword === null || isCount(p.openWithPublishedPassword)) &&
+      isCount(p.signedIn));
+  const keyedWhole = k === undefined || isCounts(k.pickupCodesLive);
+  const named = c?.counts as unknown;
+  const countsWhole = named === undefined || isCounts(named);
   const whole =
     c &&
     isCount(c.users) &&
@@ -364,7 +399,10 @@ export function readCensusRun(
     isCount(m.backupCodes) &&
     a &&
     typeof a.present === 'boolean' &&
-    (a.publishedPassword === null || typeof a.publishedPassword === 'boolean');
+    (a.publishedPassword === null || typeof a.publishedPassword === 'boolean') &&
+    privilegedWhole &&
+    keyedWhole &&
+    countsWhole;
   if (!whole) {
     return { ok: false, because: `the tool exited 0 with nothing this side can read: ${run.stdout.trim().slice(-300) || '(empty)'}` };
   }
@@ -386,6 +424,18 @@ export function readCensusRun(
         role: typeof a.role === 'string' ? a.role : null,
         publishedPassword: a.publishedPassword ?? null,
       },
+      ...(p
+        ? {
+            privileged: {
+              accounts: p.accounts!,
+              byCreatedDay: p.byCreatedDay!,
+              openWithPublishedPassword: p.openWithPublishedPassword ?? null,
+              signedIn: p.signedIn!,
+            },
+          }
+        : {}),
+      ...(k ? { keyedOnJwtSecret: { pickupCodesLive: k.pickupCodesLive! } } : {}),
+      ...(named !== undefined ? { counts: named as Record<string, number> } : {}),
     },
   };
 }

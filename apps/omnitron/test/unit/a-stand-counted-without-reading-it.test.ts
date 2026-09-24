@@ -27,6 +27,11 @@ const CENSUS = {
   mfa: { totpEnabled: 0, totpSecretEncrypted: 0, totpSecretPlain: 0, backupCodes: 0 },
   seededAdmin: { present: true, status: 'active', role: 'admin', publishedPassword: true },
 };
+const BLOCKS = {
+  privileged: { accounts: 21, byCreatedDay: { '2026-06-14': 1, '2026-09-22': 20 }, openWithPublishedPassword: 1, signedIn: 2 },
+  keyedOnJwtSecret: { pickupCodesLive: { hmac: 3 } },
+  counts: { 'disputes the seller closed in its own favour (noRefund)': 0, 'disputes settled by one side that now need a second': 3 },
+};
 const line = (census: unknown) => `${JSON.stringify({ operatorCensus: census })}\n`;
 
 describe('the census, read', () => {
@@ -51,6 +56,25 @@ describe('the census, read', () => {
       ok: false,
       because: 'exit 1: could not take the census: docker gone',
     });
+  });
+
+  it('reads who holds privilege and what a new JWT_SECRET would take away, when the tool counts them', () => {
+    const counted = { ...CENSUS, ...BLOCKS };
+    expect(readCensusRun({ stdout: line(counted), stderr: '', code: 0 })).toEqual({ ok: true, census: counted });
+  });
+
+  it('refuses a privileged block with a count that is not one — absent is an older tool, malformed is no answer', () => {
+    for (const privileged of [
+      { ...BLOCKS.privileged, signedIn: -1 },
+      { ...BLOCKS.privileged, byCreatedDay: { '2026-09-22': 'many' } },
+      { ...BLOCKS.privileged, openWithPublishedPassword: undefined },
+    ]) {
+      expect(readCensusRun({ stdout: line({ ...CENSUS, privileged }), stderr: '', code: 0 }).ok).toBe(false);
+    }
+    expect(readCensusRun({ stdout: line({ ...CENSUS, keyedOnJwtSecret: {} }), stderr: '', code: 0 }).ok).toBe(false);
+    expect(readCensusRun({ stdout: line({ ...CENSUS, counts: { 'a question': 'three' } }), stderr: '', code: 0 }).ok).toBe(false);
+    const older = readCensusRun({ stdout: line(CENSUS), stderr: '', code: 0 });
+    expect(older.ok && older.census.privileged).toBeUndefined();
   });
 
   it('asks the tool for the census and nothing else', () => {
@@ -139,6 +163,18 @@ describe('`stack account --census` on the command line', () => {
     expect(said).toContain('  roles: user 9, superadmin 2, admin 1');
     expect(said).toContain('  MFA: 0 enabled · 0 secret(s) sealed · 0 plain · 0 with backup codes');
     expect(said).toContain('  seeded admin: active, admin, opens with the PUBLISHED password');
+    expect(said).toContain('  privileged: not counted by the tool at this commit');
+  });
+
+  it('prints who holds privilege, since when, and what a new JWT_SECRET would take away', async () => {
+    const { said } = await run({ census: true }, async () => ({ node: '37.27.130.185:22', commit: 'c', census: { ...CENSUS, ...BLOCKS } }));
+    expect(said).toContain(
+      '  privileged: 21 (made: 2026-06-14 1, 2026-09-22 20) · 1 open with a password the repository publishes · 2 ever signed in',
+    );
+    expect(said).toContain('  keyed on JWT_SECRET: 3 live pickup code(s) (hmac 3) a new key could not find');
+    // The tool's questions, as it asked them — omnitron knows none of them.
+    expect(said).toContain('  disputes the seller closed in its own favour (noRefund): 0');
+    expect(said).toContain('  disputes settled by one side that now need a second: 3');
   });
 
   it('refuses the census beside anything else', async () => {

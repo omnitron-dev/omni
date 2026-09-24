@@ -80,6 +80,7 @@ export interface ManifestInput {
   readonly builtAt: Date;
   readonly builtBy: string;
   readonly statics?: ReleaseManifest['statics'];
+  readonly migrations?: ReleaseManifest['migrations'];
 }
 
 /**
@@ -109,5 +110,6 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     builtAt: input.builtAt.toISOString(),
     builtBy: input.builtBy,
     ...(input.statics ? { statics: input.statics } : {}),
+    ...(input.migrations ? { migrations: input.migrations } : {}),
   };
 }

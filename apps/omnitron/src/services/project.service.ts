@@ -1652,6 +1652,27 @@ export class ProjectService extends EventEmitter {
   }
 
   /**
+   * The release this stack last started with, as the audit trail recorded it
+   * (`stack.start`, `details.release`) — or null: no trail, no start, or a
+   * start that was not a release.
+   */
+  private async releaseRunningOn(projectName: string, stackName: string): Promise<string | null> {
+    if (!this.audit) return null;
+    try {
+      const rows = await this.audit.latestPerResource('stack.start');
+      const row = rows.find((r) => r.resourceId === `${projectName}/${stackName}`);
+      const release = row?.details?.['release'];
+      return typeof release === 'string' && release !== '[object]' ? release : null;
+    } catch (err) {
+      this.logger.warn(
+        { project: projectName, stack: stackName, error: (err as Error).message },
+        'The audit trail could not be read — which release runs on this stack is unknown',
+      );
+      return null;
+    }
+  }
+
+  /**
    * What every operator-account action shares: a remote stack of one node,
    * the project's tool staged from its HEAD commit, the node's deploy lease,
    * and the stage taken away again on both sides, whatever `work` did.
@@ -1763,6 +1784,44 @@ export class ProjectService extends EventEmitter {
     const verdict = decideStackRelease(release.manifest, stackConfig.release, apps, attestations);
     if (verdict.action === 'refuse') {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${verdict.because}.`);
+    }
+
+    // A migration that ran on this stack is history: the release running
+    // here says which ran, and a file among them that changed since is
+    // refused now — not at the migration step, after the build and the
+    // transfer. See `release/migrations.ts`.
+    const running = await this.releaseRunningOn(projectName, stackName);
+    if (!running) {
+      this.logger.info(
+        { project: projectName, stack: stackName },
+        'No release is recorded as running on this stack — applied migrations are not compared',
+      );
+    } else if (running !== release.id) {
+      let ran: Readonly<Record<string, string>> | undefined;
+      try {
+        ran = (await loadRelease(running, await this.releaseStore())).manifest.migrations;
+      } catch (err) {
+        this.logger.warn(
+          { project: projectName, stack: stackName, running, error: (err as Error).message },
+          'The release running on this stack could not be read — its migrations are not compared',
+        );
+      }
+      if (ran && release.manifest.migrations) {
+        const { changedReleasedMigrations } = await import('../release/migrations.js');
+        const changed = changedReleasedMigrations(ran, release.manifest.migrations);
+        if (changed.length > 0) {
+          throw new Error(
+            `Refusing release ${release.id} for ${projectName}/${stackName}: ${changed.length} migration(s) that ran here ` +
+              `with ${running} changed or went away (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}). ` +
+              `An applied migration is history — put the change in a new migration.`,
+          );
+        }
+      } else {
+        this.logger.info(
+          { project: projectName, stack: stackName, running },
+          'A release without migration digests on one side — applied migrations are not compared this time',
+        );
+      }
     }
 
     const project = this.registry.get(projectName);

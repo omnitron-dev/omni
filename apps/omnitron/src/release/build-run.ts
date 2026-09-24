@@ -611,7 +611,10 @@ export async function runReleaseBuild(
     fs.cpSync(scriptsDir, path.join(releaseRoot, 'scripts'), { recursive: true });
   }
 
-  // 7. The manifest.
+  // 7. The manifest — with the migrations the release carries, from the clone
+  // of its commit, so admission can refuse one that ran and changed.
+  const { migrationDigests } = await import('./migrations.js');
+  const migrations = await migrationDigests(plan.projectDir);
   const manifest = assembleManifest({
     id,
     project: await sourceOf(projectPath, projectSha),
@@ -625,6 +628,7 @@ export async function runReleaseBuild(
     builtAt: new Date(),
     builtBy: `${os.userInfo().username}@${os.hostname()}`,
     ...(statics ? { statics } : {}),
+    ...(Object.keys(migrations).length > 0 ? { migrations } : {}),
   });
   const manifestPath = path.join(releaseRoot, 'manifest.json');
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

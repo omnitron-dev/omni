@@ -19,12 +19,16 @@ import Divider from '@mui/material/Divider';
 import Skeleton from '@mui/material/Skeleton';
 import Button from '@mui/material/Button';
 import { useBoolean } from '../../core/hooks/use-boolean.js';
+import { ErrorBoundary } from '../../components/error-boundary/index.js';
+import { EmptyContent } from '../../components/empty-content/index.js';
 import type {
   DashboardBlockProps,
   DashboardBlockContextValue,
   DashboardBlockHeaderProps,
   DashboardBlockContentProps,
   DashboardBlockFooterProps,
+  DashboardBlockLabels,
+  EmptyConfig,
 } from './types.js';
 
 // =============================================================================
@@ -33,6 +37,9 @@ import type {
 
 /** Stable no-op for non-collapsible blocks */
 const collapseNoop = () => {};
+
+/** Stable default: no translated strings, the block's English fallbacks apply */
+const NO_LABELS: DashboardBlockLabels = {};
 
 const DashboardBlockContext = createContext<DashboardBlockContextValue | null>(null);
 
@@ -86,7 +93,7 @@ const sizeConfig = {
  * Dashboard block header component.
  */
 export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: DashboardBlockHeaderProps): ReactNode {
-  const { collapsed, toggleCollapse, variant, size } = useDashboardBlockContext();
+  const { collapsed, toggleCollapse, variant, size, labels } = useDashboardBlockContext();
   const config = sizeConfig[size];
 
   return (
@@ -141,7 +148,7 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
             size="small"
             onClick={toggleCollapse}
             aria-expanded={!collapsed}
-            aria-label={collapsed ? 'Expand block' : 'Collapse block'}
+            aria-label={collapsed ? (labels.expand ?? 'Expand block') : (labels.collapse ?? 'Collapse block')}
             data-testid="prism-dashboard-block-collapse"
           >
             <ChevronIcon direction={collapsed ? 'down' : 'up'} />
@@ -228,12 +235,13 @@ function LoadingState({ rows = 3, size }: LoadingStateProps): ReactNode {
 }
 
 interface ErrorStateProps {
-  message?: string;
-  onRetry?: () => void;
+  message?: string | undefined;
+  retryLabel?: string | undefined;
+  onRetry?: (() => void) | undefined;
   size: 'small' | 'medium' | 'large';
 }
 
-function ErrorState({ message = 'Failed to load data', onRetry, size }: ErrorStateProps): ReactNode {
+function ErrorState({ message = 'Failed to load data', retryLabel = 'Retry', onRetry, size }: ErrorStateProps): ReactNode {
   const config = sizeConfig[size];
   return (
     <Box
@@ -248,9 +256,30 @@ function ErrorState({ message = 'Failed to load data', onRetry, size }: ErrorSta
       </Typography>
       {onRetry && (
         <Button size="small" onClick={onRetry}>
-          Retry
+          {retryLabel}
         </Button>
       )}
+    </Box>
+  );
+}
+
+interface EmptyStateProps {
+  config: EmptyConfig | undefined;
+  size: 'small' | 'medium' | 'large';
+}
+
+function EmptyState({ config, size }: EmptyStateProps): ReactNode {
+  const pad = sizeConfig[size];
+  if (config?.emptyComponent) return config.emptyComponent;
+  return (
+    <Box data-testid="prism-dashboard-block-empty" sx={{ px: pad.contentPx, py: pad.contentPy }}>
+      <EmptyContent
+        icon={config?.icon}
+        iconSize={48}
+        title={config?.title}
+        description={config?.description}
+        action={config?.action}
+      />
     </Box>
   );
 }
@@ -297,6 +326,10 @@ export function DashboardBlock({
   loadingConfig,
   error = false,
   errorConfig,
+  empty = false,
+  emptyConfig,
+  labels = NO_LABELS,
+  catchErrors = true,
   collapsible = false,
   defaultCollapsed = false,
   collapsed: controlledCollapsed,
@@ -340,9 +373,27 @@ export function DashboardBlock({
       error,
       variant,
       size,
+      labels,
     }),
-    [collapsed, collapsible, handleToggleCollapse, handleSetCollapsed, loading, error, variant, size]
+    [collapsed, collapsible, handleToggleCollapse, handleSetCollapsed, loading, error, variant, size, labels]
   );
+
+  const errorMessage = errorConfig?.message ?? labels.error;
+  // Loading, then error, then empty, then the content — an error is never
+  // drawn as «nothing here».
+  const body = loading ? (
+    (loadingConfig?.loadingComponent ?? <LoadingState rows={loadingConfig?.skeletonRows ?? 3} size={size} />)
+  ) : error ? (
+    (errorConfig?.errorComponent ?? (
+      <ErrorState message={errorMessage} retryLabel={labels.retry} onRetry={errorConfig?.onRetry} size={size} />
+    ))
+  ) : empty ? (
+    <EmptyState config={emptyConfig} size={size} />
+  ) : children ? (
+    <DashboardBlockContent disablePadding={disablePadding} {...slotProps?.content}>
+      {children}
+    </DashboardBlockContent>
+  ) : null;
 
   // Paper variant based on block variant
   const paperVariant = variant === 'outlined' ? 'outlined' : 'elevation';
@@ -380,17 +431,26 @@ export function DashboardBlock({
 
         {/* Content */}
         <Box aria-live="polite" aria-busy={loading}>
-          {loading ? (
-            (loadingConfig?.loadingComponent ?? <LoadingState rows={loadingConfig?.skeletonRows ?? 3} size={size} />)
-          ) : error ? (
-            (errorConfig?.errorComponent ?? (
-              <ErrorState message={errorConfig?.message} onRetry={errorConfig?.onRetry} size={size} />
-            ))
-          ) : children ? (
-            <DashboardBlockContent disablePadding={disablePadding} {...slotProps?.content}>
-              {children}
-            </DashboardBlockContent>
-          ) : null}
+          {catchErrors ? (
+            <ErrorBoundary
+              resetKeys={[loading, error, empty]}
+              fallback={({ resetErrorBoundary }) => (
+                <ErrorState
+                  message={labels.error}
+                  retryLabel={labels.retry}
+                  onRetry={() => {
+                    resetErrorBoundary();
+                    errorConfig?.onRetry?.();
+                  }}
+                  size={size}
+                />
+              )}
+            >
+              {body}
+            </ErrorBoundary>
+          ) : (
+            body
+          )}
         </Box>
 
         {/* Footer */}

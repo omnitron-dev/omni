@@ -70,6 +70,26 @@ const READY_UBUNTU = [BLANK_UBUNTU, 'node=v22.14.0', 'npm=10.9.2', 'omnitron=0.2
 const isProbe = (c: string) => c.includes('uname -s');
 
 /**
+ * Run a case whose daemon never answers.
+ *
+ * Such a daemon is waited for the whole start window — two minutes of real
+ * time per case, which made this file four of a suite's idle minutes: a
+ * worker at 0% CPU and no output, indistinguishable from a hang. The clock is
+ * faked instead. The loop still polls, the fake clock passes the deadline,
+ * and the verdict is the one the real window gives.
+ */
+async function pastTheStartWindow<T>(run: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers();
+  try {
+    const result = run();
+    await vi.runAllTimersAsync();
+    return await result;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/**
  * What a healthy daemon answers `omnitron ping` with.
  *
  * Returning a bare `'ok'` here used to pass, because the verification trusted
@@ -187,10 +207,10 @@ describe('provisionSlaveNode on a host that answered', () => {
       stdout: isProbe(c) ? READY_UBUNTU : c === 'omnitron ping' ? 'Daemon is not running' : 'ok',
     })));
 
-    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+    const ok = await pastTheStartWindow(() => d.provisionSlaveNode(target, 'master.local', 9700, 'proj'));
 
     expect(ok).toBe(false);
-  }, 200_000);
+  });
 
   it('refuses a host it cannot identify instead of guessing Linux', async () => {
     const d = new RemoteDeployer(logger, execution((c) => ({ stdout: isProbe(c) ? '' : 'ok' })));
@@ -220,12 +240,12 @@ describe('the run reports what actually happened', () => {
     const progress: string[] = [];
     d.onProgress((p) => progress.push(`${p.status}:${p.message}`));
 
-    const ok = await d.provisionSlaveNode(target, 'master.local', 9700, 'proj');
+    const ok = await pastTheStartWindow(() => d.provisionSlaveNode(target, 'master.local', 9700, 'proj'));
 
     expect(ok).toBe(false);
     const failure = progress.find((p) => p.startsWith('failed:'));
     expect(failure).toContain('command not found');
-  }, 200_000);
+  });
 
   it('succeeds on a daemon that answers, and says what it answered', async () => {
     const d = new RemoteDeployer(logger, execution((c) => {

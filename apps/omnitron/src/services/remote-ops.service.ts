@@ -12,6 +12,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionService, type SSHTarget, type ExecResult } from '../execution/execution.service.js';
 import type { NodeCheckConfig } from '../shared/dto/nodes.js';
 import { readNodeStatus } from '../project/node-app-health.js';
+import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
 import { NOT_INSTALLED, NOT_RUNNING } from '../shared/node-check.js';
 
 export type { NodeCheckConfig } from '../shared/dto/nodes.js';
@@ -290,14 +291,23 @@ export class RemoteOpsService {
     timeoutMs = DEFAULT_CHECK_CONFIG.omnitronCheckTimeout
   ): Promise<RemoteOmnitronStatus & { error?: string }> {
     try {
+      // The answer is data, so it comes through the data channel, past the
+      // transport's masker; the reason for a refusal is words, on stderr,
+      // masked — see `execution/data-channel.ts`.
       const result = await this.exec.ssh(
         target,
-        `command -v omnitron >/dev/null 2>&1 || { echo "${NOT_INSTALLED}" >&2; exit 127; }; omnitron status --json`,
+        throughDataChannel(
+          `command -v omnitron >/dev/null 2>&1 || { echo "${NOT_INSTALLED}" >&2; exit 127; }; omnitron status --json`
+        ),
         { timeout: timeoutMs }
       );
 
       if (result.exitCode !== 0) {
         return { connected: false, error: firstLine(result.stderr) || `omnitron status exited ${result.exitCode}` };
+      }
+      const answer = fromDataChannel(result.stdout);
+      if (!answer.ok) {
+        return { connected: false, error: answer.because };
       }
 
       // Through the envelope. `omnitron status --json` answers
@@ -306,7 +316,7 @@ export class RemoteOpsService {
       // for days, answering this very command, was listed `○ offline` in the
       // console and in `omnitron node list`. Measured on the test node while
       // it reported `appsOnline: 6`.
-      const info = readNodeStatus(result.stdout.trim() || '{}');
+      const info = readNodeStatus(answer.text.trim() || '{}');
       if (!info) {
         return { connected: false, error: 'omnitron status did not return JSON' };
       }

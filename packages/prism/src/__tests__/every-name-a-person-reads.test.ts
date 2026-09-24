@@ -34,6 +34,7 @@ import { describe, it, expect } from 'vitest';
 
 import { DEFAULT_EDITOR_LABELS } from '../components/editor/types.js';
 import { DEFAULT_LIGHTBOX_LABELS } from '../components/lightbox/types.js';
+import { DEFAULT_SPONSORED_SLOT_LABELS } from '../components/sponsored-slot/types.js';
 
 const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -43,6 +44,7 @@ const REGISTRY: Record<string, Record<string, string>> = {
   // Spread: `LightboxLabels` is an interface, and an interface has no implicit
   // index signature — the literal copy has the same seven strings and does.
   'components/lightbox': { ...DEFAULT_LIGHTBOX_LABELS },
+  'components/sponsored-slot': { ...DEFAULT_SPONSORED_SLOT_LABELS },
 };
 
 /**

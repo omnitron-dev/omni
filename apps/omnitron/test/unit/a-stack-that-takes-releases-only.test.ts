@@ -286,9 +286,20 @@ describe('a release is admitted only onto its own commit', () => {
     fs.writeFileSync(path.join(dir, 'omnitron.config.ts'), 'export default { edited: true };\n');
 
     await expect(svc.startStack('daos', 'test', { source: 'operator', release: id })).rejects.toThrow(
-      /is not its commit [0-9a-f]{8} — 1 file\(s\) differ \(omnitron\.config\.ts\)/,
+      /of the 1 file\(s\) the stack definition is read from, 1 differ from its commit [0-9a-f]{8} \(omnitron\.config\.ts\)/,
     );
     expect(svc.startRemoteStack).not.toHaveBeenCalled();
+  });
+
+  // Somebody else's work in progress in the same checkout: no deployment reads
+  // it, and it no longer sends the release back (2026-09-24, three freezes).
+  it('admits it past work in progress in files the definition does not read', async () => {
+    const { dir, id, svc } = setup();
+    fs.mkdirSync(path.join(dir, 'apps', 'main', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'apps', 'main', 'src', 'elsewhere.ts'), 'export const inProgress = true;\n');
+
+    await svc.startStack('daos', 'test', { source: 'operator', release: id }).catch(() => undefined);
+    expect(svc.startRemoteStack).toHaveBeenCalled();
   });
 
   it('refuses a release with a gate that did not pass, before anything moves', async () => {

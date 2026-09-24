@@ -91,7 +91,8 @@ function attestation(rm: (command: string) => { stdout: string; stderr: string; 
   svc.deployer = deployer;
   svc.registry = { get: () => ({ path: project }) };
   svc.loadProjectConfig = async () => ({});
-  svc.resolveStacks = () => ({ test: { type: 'remote', nodes: [{ host: '10.0.0.9' }] } });
+  // Probes may run there (`release.attest`); this court's run provisions no accounts.
+  svc.resolveStacks = () => ({ test: { type: 'remote', nodes: [{ host: '10.0.0.9' }], release: { mode: 'required', attest: {} } } });
   svc.releaseStore = async () => '/nowhere';
   svc.targetForStackNode = async () => ({ host: '10.0.0.9', username: 'deploy' });
 

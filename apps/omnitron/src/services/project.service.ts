@@ -1342,6 +1342,25 @@ export class ProjectService extends EventEmitter {
         `${projectName}/${stackName} is local: its probes run on this machine with \`node scripts/attest.mjs --stack=${stackName}\`, and need no transport`,
       );
     }
+    // The probes write to the system they measure — accounts, organisations,
+    // paysys accounts with their deposit addresses (on daos/test, 2026-09-24:
+    // 91 probe organisations in the public catalogue, 10 mainnet addresses on
+    // accounts nobody owns). So they run only where a stack said they may,
+    // and never on one that takes other stacks' attestations: a stack that
+    // declares `verifiedOn` is where people are, and is verified elsewhere.
+    const releaseRules = stackConfig.release;
+    if (releaseRules?.verifiedOn) {
+      throw new Error(
+        `${projectName}/${stackName} takes releases verified on '${releaseRules.verifiedOn.stack}' — it is verified there, ` +
+          `and the probes, which write accounts and organisations into what they measure, do not run here`,
+      );
+    }
+    if (!releaseRules?.attest) {
+      throw new Error(
+        `${projectName}/${stackName} does not declare \`release.attest\` — the probes write accounts and organisations ` +
+          `into the stack they measure, and run only on a stack that said they may`,
+      );
+    }
     const nodes = stackConfig.nodes ?? [];
     if (nodes.length === 0) throw new Error(`${projectName}/${stackName} has no nodes to run the probes on`);
     if (nodes.length > 1) {

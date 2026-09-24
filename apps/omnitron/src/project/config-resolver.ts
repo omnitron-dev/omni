@@ -94,7 +94,10 @@ export function resolveGenericServiceAddresses(
 
 /**
  * Convert resolved config to standardized URL-based environment variables.
- * Produces DATABASE_URL, REDIS_URL, S3_*, JWT_SECRET — no app-specific prefix.
+ * Produces DATABASE_URL, REDIS_URL, S3_* — no app-specific prefix.
+ *
+ * No JWT_SECRET: see `resolveStack` — an address is derived from what the
+ * stack provisions, and an app's signing key is derived from nothing here.
  */
 export function resolvedConfigToEnv(
   config: IResolvedAppConfig,
@@ -134,10 +137,6 @@ export function resolvedConfigToEnv(
     env[`${prefix}_STORAGE__S3__SECRET_ACCESS_KEY`] = config.s3.secretKey;
     env[`${prefix}_STORAGE__S3__BUCKET`] = config.s3.bucket;
     env[`${prefix}_STORAGE__S3__FORCE_PATH_STYLE`] = 'true';
-  }
-
-  if (config.auth?.jwtSecret) {
-    env['JWT_SECRET'] = config.auth.jwtSecret;
   }
 
   // Titan service module Redis URLs
@@ -288,7 +287,6 @@ export function resolveCustomServiceEnv(
  * @param stackConfig - Stack configuration
  * @param appDefinitions - Bootstrap definitions with `requires` fields
  * @param portAllocation - Port allocation for this stack (from StackInfrastructureManager)
- * @param jwtSecret - Shared JWT secret
  */
 export function resolveStack(
   config: IEcosystemConfig,
@@ -297,7 +295,6 @@ export function resolveStack(
   stackConfig: IStackConfig,
   appDefinitions: Map<string, IAppDefinition>,
   portAllocation?: StackPortAllocation,
-  jwtSecret?: string,
   normalizedServices?: Record<string, IServiceRequirement>,
 ): ResolvedStack {
   // Determine which apps run in this stack
@@ -334,7 +331,17 @@ export function resolveStack(
 
   // Generate per-app resolved config
   const appConfigs = new Map<string, IResolvedAppConfig>();
-  const sharedJwtSecret = jwtSecret ?? 'dev-omnitron-secret-key-minimum-32-chars-long!!';
+  // No signing key is resolved here. There used to be one — every app was
+  // given `auth.jwtSecret` = a literal written in this file, the same for
+  // every project and every stack, because no caller ever passed its own.
+  // On a laptop the project's own `JWT_SECRET` hid it: a local stack merges
+  // what the project states over what is computed. A node merges the other
+  // way — the master's computed values over the app's declared env, which is
+  // right for an address and was wrong for this — so a deployed stack could
+  // run on a key anyone with this repository can read. An address is derived
+  // from what the stack provisions; a signing key is derived from nothing
+  // here. It belongs to the project (`env`) or to the stack (`settings.env`,
+  // from the vault), and an app that has neither refuses to boot.
 
   for (const entry of enabledApps) {
     const definition = appDefinitions.get(entry.name);
@@ -393,12 +400,6 @@ export function resolveStack(
           forcePathStyle: true,
         };
       }
-
-      // Auth — always inject shared JWT secret
-      resolved.auth = {
-        jwtSecret: sharedJwtSecret,
-        algorithm: 'HS256',
-      };
 
       // Titan service module Redis — discovery
       if (omnitronCfg.services?.discovery) {
@@ -540,13 +541,6 @@ export function resolveStack(
         secretKey: addresses.s3.secretKey,
         bucket: requires.s3.buckets?.[0] ?? 'storage',
         forcePathStyle: true,
-      };
-    }
-
-    if (definition?.auth?.jwt?.enabled) {
-      resolved.auth = {
-        jwtSecret: sharedJwtSecret,
-        algorithm: 'HS256',
       };
     }
 

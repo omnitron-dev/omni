@@ -107,8 +107,12 @@ export function readNodeHealth(raw: string, appName: string, project: string): N
   const status = readNodeStatus(raw);
   if (!status) {
     // A node that answers something other than JSON is a node whose CLI is
-    // not the one this expects — worth saying, not worth guessing about.
-    return { online: false, detail: `the node's status was not JSON: ${raw.trim().slice(0, 120)}` };
+    // not the one this expects — worth saying, not worth guessing about. Its
+    // length, not its text: the answer arrives through the data channel,
+    // unmasked, and this detail is written to the log. What the node SAID
+    // about it is its stderr, which the caller adds — masked, because words
+    // are.
+    return { online: false, detail: `the node's status was not JSON (${raw.trim().length} characters)` };
   }
 
   const apps = status.apps;

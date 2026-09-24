@@ -81,6 +81,9 @@ import crypto from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
+
+/** A node that could not be asked at all — the SSH call itself failed. */
+const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 
 
@@ -1409,9 +1412,7 @@ export class RemoteDeployer {
       // that needed nothing. See `decideSlaveDaemonRestart`: it took three
       // deployments to attribute, because the node-side `stack start` was
       // restarting them too and either one alone explains the pids.
-      const daemonNow = readNodeStatus(
-        await this.sshExec(target, 'omnitron status --json 2>&1', 15_000).catch(() => ''),
-      );
+      const daemonNow = readNodeStatus((await this.askNodeStatus(target)).raw);
       const daemonDecision = decideSlaveDaemonRestart({
         hostChanged: plan.steps.length > 0,
         daemon: daemonNow
@@ -2007,9 +2008,15 @@ export class RemoteDeployer {
    */
   private async appsOnline(target: DeployTarget, project: string): Promise<Set<string>> {
     try {
-      const raw = await this.sshExec(target, `omnitron status --json 2>&1`, 15_000);
-      const status = readNodeStatus(raw);
-      if (!status) return new Set();
+      const answer = await this.askNodeStatus(target);
+      const status = readNodeStatus(answer.raw);
+      if (!status) {
+        this.logger.warn(
+          { node: target.host, project, said: answer.words },
+          'The node did not answer what it is running — every app will be restarted',
+        );
+        return new Set();
+      }
       return new Set(
         status.apps
           .filter((app) => app.status === 'online' && typeof app.name === 'string')
@@ -2043,14 +2050,34 @@ export class RemoteDeployer {
     appName: string,
     project: string,
   ): Promise<{ online: boolean; detail: string }> {
-    let status: string;
-    try {
-      status = await this.sshExec(target, `omnitron status --json 2>&1`, 15_000);
-    } catch (err) {
-      return { online: false, detail: `could not read the node's status: ${(err as Error).message}` };
+    const answer = await this.askNodeStatus(target);
+    if (answer.code === UNREADABLE) {
+      return { online: false, detail: `could not read the node's status: ${answer.words}` };
     }
 
-    return readNodeHealth(status, appName, project);
+    const health = readNodeHealth(answer.raw, appName, project);
+    return health.online || !answer.words ? health : { online: false, detail: `${health.detail}: ${answer.words}` };
+  }
+
+  /**
+   * `omnitron status --json` on a node: its stdout is DATA, so it comes
+   * through the data channel — past the transport's masker, which rewrites a
+   * value such as `"token": …` into something that is no longer JSON — and
+   * its stderr stays words, masked, and separate. `2>&1` used to fold the two
+   * together, so an answer that could not be parsed was quoted into the log
+   * whole. Three readers: the daemon check before a restart, `appsOnline`,
+   * `verifyHealth`. None logs `raw`.
+   *
+   * `UNREADABLE` when the node could not be asked at all, with the reason as
+   * the words.
+   */
+  private async askNodeStatus(target: DeployTarget): Promise<{ raw: string; words: string; code: number }> {
+    try {
+      const answer = await this.readFromNode(target, 'omnitron status --json', 15_000);
+      return { raw: answer.stdout, words: answer.stderr.trim().split('\n')[0] ?? '', code: answer.code };
+    } catch (err) {
+      return { raw: '', words: (err as Error).message, code: UNREADABLE };
+    }
   }
 
   // ===========================================================================

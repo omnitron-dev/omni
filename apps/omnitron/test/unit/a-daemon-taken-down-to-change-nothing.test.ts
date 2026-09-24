@@ -107,7 +107,8 @@ describe('where the deployment asks', () => {
   );
 
   it('asks the node before deciding, and decides before taking it down', () => {
-    const asks = deployer.indexOf("'omnitron status --json 2>&1'");
+    // Through the data channel since the answer is data — `askNodeStatus`.
+    const asks = deployer.indexOf('readNodeStatus((await this.askNodeStatus(target)).raw)');
     const decides = deployer.indexOf('decideSlaveDaemonRestart({');
     const takesDown = deployer.indexOf('omnitron down 2>/dev/null');
 

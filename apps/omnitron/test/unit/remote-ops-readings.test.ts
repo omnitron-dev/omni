@@ -85,6 +85,13 @@ describe('checkSsh — reading a remote machine', () => {
   });
 });
 
+/**
+ * What a node's answer looks like on the wire since it travels the data
+ * channel: `throughDataChannel` hex-encodes the command's stdout on the node,
+ * so the masker has nothing to match (`execution/data-channel.ts`).
+ */
+const answered = (text: string) => ok(Buffer.from(text, 'utf8').toString('hex'));
+
 describe('checkRemoteOmnitron — absent is not the same as down', () => {
   it('says so when omnitron is not installed', async () => {
     sshMock.mockReset();
@@ -109,7 +116,7 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
     // fleet listed every daemon `○ offline` for as long as both existed.
     sshMock.mockReset();
     sshMock.mockResolvedValue(
-      ok(
+      answered(
         JSON.stringify({
           ok: true,
           data: { version: '0.2.0', pid: 42, uptime: 1000, role: 'slave', appsTotal: 6, appsOnline: 6, apps: [] },
@@ -130,7 +137,7 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
     // daemon, and this check runs against whatever `omnitron` happens to be
     // on the far end of an SSH session.
     sshMock.mockReset();
-    sshMock.mockResolvedValue(ok(JSON.stringify({ pid: 42, version: '0.2.0' })));
+    sshMock.mockResolvedValue(answered(JSON.stringify({ pid: 42, version: '0.2.0' })));
 
     const ops = new RemoteOpsService(silentLogger);
     const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
@@ -141,7 +148,7 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
 
   it('distinguishes "answered with nonsense" from "is not running"', async () => {
     sshMock.mockReset();
-    sshMock.mockResolvedValue(ok('<html>a proxy ate this</html>'));
+    sshMock.mockResolvedValue(answered('<html>a proxy ate this</html>'));
 
     const ops = new RemoteOpsService(silentLogger);
     const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
@@ -150,9 +157,36 @@ describe('checkRemoteOmnitron — absent is not the same as down', () => {
     expect(result.error).toMatch(/did not return JSON/);
   });
 
+  it('asks through the data channel, so an answer the masker would rewrite arrives whole', async () => {
+    // A daemon's `errors` can quote anything an app said — `"token": …`
+    // included — and through the masker that became `"token": [REDACTED]`,
+    // which is not JSON: a running daemon read as «did not return JSON».
+    sshMock.mockReset();
+    sshMock.mockResolvedValue(
+      answered(JSON.stringify({ ok: true, data: { pid: 7, errors: ['{"token":"a1b2","password":"hunter2"}'] } })),
+    );
+
+    const ops = new RemoteOpsService(silentLogger);
+    const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
+
+    expect(result).toMatchObject({ connected: true, pid: 7 });
+    expect(String(sshMock.mock.calls[0]![1])).toContain("od -An -v -tx1");
+  });
+
+  it('refuses a channel that came back rewritten, rather than reading it', async () => {
+    sshMock.mockReset();
+    sshMock.mockResolvedValue(ok('7b226f6b223a[REDACTED]'));
+
+    const ops = new RemoteOpsService(silentLogger);
+    const result = await ops.checkRemoteOmnitron({ host: 'node.example' });
+
+    expect(result.connected).toBe(false);
+    expect(result.error).toMatch(/data channel came back as something other than its encoding/);
+  });
+
   it('refuses a role it does not recognise instead of passing it through', async () => {
     sshMock.mockReset();
-    sshMock.mockResolvedValue(ok(JSON.stringify({ ok: true, data: { pid: 1, role: 'something-else' } })));
+    sshMock.mockResolvedValue(answered(JSON.stringify({ ok: true, data: { pid: 1, role: 'something-else' } })));
 
     const ops = new RemoteOpsService(silentLogger);
     const result = await ops.checkRemoteOmnitron({ host: 'node.example' });

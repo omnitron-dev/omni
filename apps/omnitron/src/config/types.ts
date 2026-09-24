@@ -211,7 +211,6 @@ export interface IResolvedAppConfig {
   database?: { dialect: string; host: string; port: number; database: string; user: string; password: string; pool?: { min: number; max: number } | undefined; ssl?: boolean | undefined } | undefined;
   redis?: { host: string; port: number; db: number; password?: string | undefined; prefix?: string | undefined } | undefined;
   s3?: { endpoint: string; accessKey: string; secretKey: string; bucket: string; forcePathStyle: boolean } | undefined;
-  auth?: { jwtSecret: string; algorithm: string } | undefined;
   [key: string]: unknown;
 }
 

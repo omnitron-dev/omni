@@ -3710,7 +3710,6 @@ export class ProjectService extends EventEmitter {
       stackConfig,
       appDefinitions,
       portAllocation ?? undefined,
-      undefined,
       normalizedSvcs ?? undefined,
     );
 

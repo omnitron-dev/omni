@@ -283,6 +283,36 @@ export async function secretGenerateCommand(key: string, opts: { bytes?: string;
   }
 }
 
+/**
+ * `omnitron secret copy <from> <to>`
+ *
+ * A second key holding the same secret, made where it is kept — by the daemon
+ * when it is running, by this process against the same store when it is not.
+ * For splitting one secret into two before rotating either: the value never
+ * passes through a command line, a terminal or this process's output. What is
+ * printed is the two key names. A `to` the vault already holds is refused.
+ */
+export async function secretCopyCommand(from: string, to: string): Promise<void> {
+  const client = createDaemonClient();
+  try {
+    if (await client.isReachable()) {
+      await (await secretsRpc(client)).copy({ from, to });
+      log.success(`Copied '${from}' to '${to}' — kept in the vault, not shown`);
+      return;
+    }
+    const direct = await createDirectService();
+    await direct.copy(from, to);
+    log.success(`Copied '${from}' to '${to}' — kept in the vault (direct mode), not shown`);
+  } catch (err) {
+    // No fallback to the file behind a running daemon: it holds the vault in
+    // memory, and its next write would put back the map it had.
+    log.error(`Could not copy '${from}' to '${to}': ${(err as Error).message}`);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
 async function secretsRpc(
   client: ReturnType<typeof createDaemonClient>,
 ): Promise<IOmnitronSecretsService> {

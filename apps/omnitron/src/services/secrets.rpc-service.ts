@@ -87,6 +87,21 @@ export class SecretsRpcService implements IOmnitronSecretsService {
   }
 
   /**
+   * A second key holding the same secret, made here — the answer names the
+   * two keys, never the value. See `SecretsService.copy`.
+   *
+   * Recorded as what it is: a read of `from` whose value went to `to`.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async copy(data: { from: string; to: string }): Promise<{ from: string; to: string }> {
+    const from = data.from?.trim() ?? '';
+    const to = data.to?.trim() ?? '';
+    await this.secrets.copy(from, to);
+    await this.audit?.record({ action: 'secret.copy', resourceType: 'secret', resourceId: to, details: { from } });
+    return { from, to };
+  }
+
+  /**
    * Delete a secret by key.
    */
   @Public({ auth: { roles: ADMIN_ROLES } })

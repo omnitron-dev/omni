@@ -688,6 +688,14 @@ secret
   });
 
 secret
+  .command('copy <from> <to>')
+  .description('A second key holding the same secret — nothing printed but key names')
+  .action(async (from: string, to: string) => {
+    const { secretCopyCommand } = await import('../commands/secret.js');
+    await secretCopyCommand(from, to);
+  });
+
+secret
   .command('rotate-rpcauth <passwordKey>')
   .description('A new RPC password and its bitcoind rpcauth value, as a pair — nothing printed but key names')
   .requiredOption('--user-key <key>', 'The secret holding the RPC user')
@@ -773,9 +781,9 @@ program
 program
   .command('tor [project] [stack]')
   .description('Show Tor hidden service onion addresses (every tor container on this machine, or one stack\'s)')
-  .action(async (project?: string, stack?: string) => {
+  .action(async (projectName?: string, stackName?: string) => {
     const { torCommand } = await import('../commands/tor.js');
-    await torCommand(project, stack);
+    await torCommand(projectName, stackName);
   });
 
 const infra = program.command('infra').description('Manage infrastructure containers (PostgreSQL, Redis, MinIO, etc.)');

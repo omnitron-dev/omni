@@ -40,6 +40,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { shellEscape } from '../shared/shell-escape.js';
+import { standContainerAssignments } from './stand-containers.js';
 
 const exec = promisify(execFile);
 
@@ -75,23 +76,10 @@ export async function sealingKey(): Promise<SealingKey> {
   };
 }
 
-/**
- * The containers the tool reaches, by the names they have on the node —
- * `<prefix>-postgres`, not the developer's `daos-dev-postgres` the tool
- * defaults to.
- */
-function containerEnv(containerPrefix: string): string {
-  return Object.entries({
-    DAOS_PG_CONTAINER: `${containerPrefix}-postgres`,
-    DAOS_REDIS_CONTAINER: `${containerPrefix}-redis`,
-  })
-    .map(([k, v]) => `${k}=${shellEscape(v)}`)
-    .join(' ');
-}
-
-function toolCommand(remoteDir: string, containerPrefix: string, flags: readonly string[]): string {
+/** The command the tool runs as on the node, the stand's containers named as they are there. */
+export function toolCommand(remoteDir: string, containerPrefix: string, flags: readonly string[]): string {
   return (
-    `cd ${shellEscape(remoteDir)} && ${containerEnv(containerPrefix)} ` +
+    `cd ${shellEscape(remoteDir)} && ${standContainerAssignments(containerPrefix)} ` +
     `node ${OPERATOR_ACCOUNT_TOOL} ${flags.map((f) => shellEscape(f)).join(' ')}`
   );
 }

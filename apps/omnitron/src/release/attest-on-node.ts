@@ -28,6 +28,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { shellEscape } from '../shared/shell-escape.js';
+import { standContainerAssignments } from '../project/stand-containers.js';
 
 const exec = promisify(execFile);
 
@@ -78,14 +79,7 @@ export function attestationCommand(input: {
   /** Pass `--provision`: only when the stack allows it AND the staged producer knows the flag. */
   provision?: boolean;
 }): string {
-  const env = {
-    DAOS_PG_CONTAINER: `${input.containerPrefix}-postgres`,
-    DAOS_REDIS_CONTAINER: `${input.containerPrefix}-redis`,
-    DAOS_GATEWAY_CONTAINER: `${input.containerPrefix}-gateway`,
-  };
-  const assignments = Object.entries(env)
-    .map(([k, v]) => `${k}=${shellEscape(v)}`)
-    .join(' ');
+  const assignments = standContainerAssignments(input.containerPrefix);
   // No `--stacks`: the producer refuses an argument it does not know (exit
   // 2, «unknown argument»), and it already finds the stack definition at
   // `scripts/..` — which is where `stageAttestation` puts it.

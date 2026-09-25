@@ -257,9 +257,11 @@ export class SchedulerService implements ILifecycle {
     // explicit `task.start()` here was a redundant double-start (SC-5).
     const task = cron.schedule(
       pattern,
-      async () => {
+      async (context) => {
         if (!job.options.disabled) {
-          await this.executeJob(job);
+          // `context.date` is the slot node-cron fired for — the instant the
+          // distributed lock must be keyed by (see `fireWindowKey`).
+          await this.executeJob(job, context?.date);
         }
       },
       {
@@ -382,12 +384,12 @@ export class SchedulerService implements ILifecycle {
     return true;
   }
 
-  private async executeJob(job: IScheduledJob): Promise<void> {
+  private async executeJob(job: IScheduledJob, slot?: Date): Promise<void> {
     if (!this.isWithinWindow(job)) return;
 
     const distributed = this.config?.distributed;
     if (distributed?.enabled && this.lockProvider) {
-      const key = this.fireWindowKey(job);
+      const key = this.fireWindowKey(job, slot);
       const ttlMs = distributed.lockTTL ?? 30000;
       let lockId: string | null;
       try {
@@ -396,12 +398,14 @@ export class SchedulerService implements ILifecycle {
         // Lock store unreachable: fail CLOSED (skip this fire) rather than risk
         // a duplicate run on every node. The next fire retries; the provider is
         // responsible for logging the underlying store error.
+        this.passOver(job);
         return;
       }
       // `null` = another node already owns this fire window → skip. This is
       // normal contention, not an error: every non-winning node skips every
       // fire, so it is intentionally silent.
       if (!lockId) {
+        this.passOver(job);
         return;
       }
       // Winner: run it. We deliberately do NOT release the lock — holding it for
@@ -417,27 +421,55 @@ export class SchedulerService implements ILifecycle {
   }
 
   /**
+   * A fire this process did not run — another node owns it, or the lock store
+   * did not answer — still moves the job's next run on: node-cron (or the
+   * interval) fires it again. Left alone, `nextExecution` named the skipped
+   * fire, and every reader of it saw an armed job as one that had died.
+   */
+  private passOver(job: IScheduledJob): void {
+    if (job.type === 'cron' || job.type === 'interval') {
+      this.updateNextExecution(job);
+    }
+  }
+
+  /**
    * Compute the lock key identifying ONE scheduled fire across all nodes.
    *
-   * Cron: the cron's scheduled fire instant, derived from the expression — the
-   * same on every node regardless of clock skew (node-cron fires AT/after the
-   * instant, so `prev()` of "now" resolves to this fire), so all nodes firing
-   * the same tick contend on the same key. Interval/timeout (no shared
-   * schedule): a wall-clock window bucket of width `lockTTL`, which dedupes
-   * fires landing in the same window.
+   * Cron: the scheduled fire instant — the slot node-cron fired for, the same
+   * on every node regardless of clock skew, so all nodes firing the same tick
+   * contend on the same key. It used to be `prev()` of the wall clock, which is
+   * STRICTLY before it: a fire landing in its tick's own millisecond was named
+   * after the previous tick, whose lock (held for `lockTTL`, the interval of a
+   * 30-second job) was still taken, and the fire was skipped — 17 of the 60
+   * home-snapshot fires due in daos main's first half hour on test, with one
+   * process and nobody to lose the lock to (2026-09-25). Without a slot
+   * the expression is read inclusively of the current millisecond.
+   * Interval/timeout (no shared schedule): a wall-clock window bucket of width
+   * `lockTTL`, which dedupes fires landing in the same window.
    */
-  private fireWindowKey(job: IScheduledJob): string {
+  private fireWindowKey(job: IScheduledJob, slot?: Date): string {
     const prefix = `scheduler:fire:${job.name}`;
     const ttlMs = this.config?.distributed?.lockTTL ?? 30000;
     if (job.type === 'cron') {
+      if (slot) return `${prefix}:${slot.getTime()}`;
       try {
-        const scheduled = CronExpressionParser.parse(String(job.pattern)).prev().getTime();
+        const scheduled = CronExpressionParser.parse(String(job.pattern), {
+          currentDate: Date.now() + 1,
+          tz: this.timezoneOf(job),
+        })
+          .prev()
+          .getTime();
         return `${prefix}:${scheduled}`;
       } catch {
         // Unparseable pattern — degrade to the time-bucket key below.
       }
     }
     return `${prefix}:${Math.floor(Date.now() / ttlMs) * ttlMs}`;
+  }
+
+  /** The timezone node-cron runs a cron job in; the expression must be read in the same one. */
+  private timezoneOf(job: IScheduledJob): string | undefined {
+    return (job.options as ICronOptions).timezone || this.config?.timezone;
   }
 
   /**
@@ -500,9 +532,13 @@ export class SchedulerService implements ILifecycle {
       // of the old faked `now + 60000` (which made `0 9 * * 1` report "in a
       // minute"). node-cron owns ACTUAL firing; this only feeds the
       // `nextExecution` DISPLAY metadata (health view + sort key), so a parse
-      // failure degrades gracefully to `undefined` rather than throwing.
+      // failure degrades gracefully to `undefined` rather than throwing. Read in
+      // the job's timezone: `0 3 * * *` pinned to UTC on an MSK host fires at
+      // 03:00 UTC, and the host's zone named 00:00 UTC.
       try {
-        nextExecution = CronExpressionParser.parse(String(job.pattern)).next().toDate();
+        nextExecution = CronExpressionParser.parse(String(job.pattern), { tz: this.timezoneOf(job) })
+          .next()
+          .toDate();
       } catch {
         nextExecution = undefined;
       }

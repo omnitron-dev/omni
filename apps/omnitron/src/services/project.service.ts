@@ -1932,6 +1932,14 @@ export class ProjectService extends EventEmitter {
       );
     }
 
+    // The omni an application runs on a node is that node daemon's, not the
+    // release's — see `release/daemon-omni.ts`.
+    const { refuseForeignOmni } = await import('../release/daemon-omni.js');
+    const foreign = refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonVersions(stackConfig));
+    if (foreign) {
+      throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
+    }
+
     const infra = mergeInfrastructure(config, stackConfig) as
       | { gateway?: { staticDir?: string }; services?: Record<string, { config?: { staticDir?: string } }> }
       | undefined;
@@ -1956,6 +1964,25 @@ export class ProjectService extends EventEmitter {
       purpose === 'check' ? 'Release would be admitted — asked, not deployed' : 'Release admitted',
     );
     return release;
+  }
+
+  /** What each of a stack's nodes says its daemon is — the omni its applications load. */
+  private async askDaemonVersions(
+    stackConfig: IStackConfig,
+  ): Promise<Array<import('../release/daemon-omni.js').DaemonAnswer>> {
+    const connector = this.getSlaveConnector();
+    return Promise.all(
+      (stackConfig.nodes ?? []).map(async (node) => {
+        try {
+          const pong = (await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'ping', [])) as
+            | { version?: string }
+            | undefined;
+          return { host: node.host, version: pong?.version ?? null };
+        } catch (err) {
+          return { host: node.host, version: null, error: (err as Error).message };
+        }
+      }),
+    );
   }
 
   /**

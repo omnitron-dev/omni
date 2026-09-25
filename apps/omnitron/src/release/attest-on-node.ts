@@ -79,7 +79,14 @@ export function attestationCommand(input: {
   /** Pass `--provision`: only when the stack allows it AND the staged producer knows the flag. */
   provision?: boolean;
 }): string {
-  const assignments = standContainerAssignments(input.containerPrefix);
+  // The packages the applications on this node actually load: their
+  // `@omnitron-dev/*` are links into the daemon's install (remote deployer,
+  // step 5a), and the staged directory has no `node_modules` of its own. A
+  // probe that reads what is on the wire from the packages' own declarations
+  // finds them here, or says NOT RUN naming this variable.
+  const assignments = `${standContainerAssignments(input.containerPrefix)} OMNITRON_PACKAGES=${shellEscape(
+    '/opt/omnitron/current/node_modules',
+  )}`;
   // No `--stacks`: the producer refuses an argument it does not know (exit
   // 2, «unknown argument»), and it already finds the stack definition at
   // `scripts/..` — which is where `stageAttestation` puts it.

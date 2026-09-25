@@ -39,6 +39,7 @@ import {
   type Provider,
 } from '../nexus/index.js';
 import { Netron, type NetronOptions } from '../netron/index.js';
+import type { InboundGate } from '../netron/inbound-gate.js';
 import { Errors } from '../errors/index.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN, CONFIG_OPTIONS_TOKEN } from '../modules/config/index.js';
@@ -89,6 +90,24 @@ import {
 // Well-known token for optional scheduler integration (Symbol.for so the
 // identity matches across packages without importing the scheduler).
 const SCHEDULER_SERVICE_TOKEN = Symbol.for('titan:SCHEDULER_SERVICE');
+
+/** How long stopping waits for running inbound calls when nothing says otherwise. */
+const DEFAULT_DRAIN_TIMEOUT_MS = 10_000;
+
+/**
+ * The drain a supervised child's runtime stated for every Application in the
+ * process: its share of the window after which the supervisor kills it
+ * (titan-pm `childDrainMs`). Carried in the environment, as the window itself
+ * is, because the Application may come from another copy of titan than the
+ * runtime's. `0` is a statement — do not wait; empty, negative or not a
+ * number is not one.
+ */
+function drainFromEnvironment(): number | undefined {
+  const raw = process.env['TITAN_DRAIN_TIMEOUT_MS'];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const ms = Number(raw);
+  return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+}
 
 /**
  * Application token for dependency injection.
@@ -582,10 +601,24 @@ export class Application implements IApplication {
 
   private async _doStop(options: IShutdownOptions = {}): Promise<void> {
     this._logger?.info({ options }, 'Application stopping');
+    // First, before anything else runs: no new inbound call reaches a service
+    // from here on, and the ones already running finish before a single
+    // module is torn down. The transports used to stay open to the very end,
+    // so a call accepted mid-teardown wrote half its work against a closed
+    // database and answered an error (`netron/inbound-gate.ts`).
+    const gate = this.inboundGate();
+    const ceilingMs = this.drainCeiling(options);
+    const drain = gate?.drain(ceilingMs);
+    if (gate) this._logger?.info({ inflight: gate.inflight, ceilingMs }, 'Draining inbound calls — new ones are refused');
     await new Promise((resolve) => setImmediate(resolve));
 
     try {
       this._events.emit(ApplicationEvent.Stopping);
+
+      const drained = await drain;
+      if (drained && !drained.drained) {
+        this._logger?.warn({ left: drained.left }, 'Inbound calls still running at the drain ceiling — stopping anyway');
+      }
 
       const stopTimeout = options.timeout;
 
@@ -708,6 +741,7 @@ export class Application implements IApplication {
       }
 
       this._logger?.info('Application stopped successfully');
+      if (gate) this._logger?.info({ refused: gate.refused }, 'Inbound calls refused while stopping');
 
       // Stop Netron + logger (in that order — logger flushes from the
       // shutdown task list).
@@ -766,6 +800,36 @@ export class Application implements IApplication {
       } else {
         throw error;
       }
+    }
+  }
+
+  /**
+   * How long this stop waits for the inbound calls already running.
+   *
+   * A forced stop does not wait. Otherwise: what the stop says, else what the
+   * process's supervisor stated, else half of the stop's `timeout`, at most
+   * 10 s. Half, because the teardown runs after the drain inside the same
+   * budget: a signal hands the WHOLE shutdown budget to `stop()` as `timeout`,
+   * and a drain allowed all of it would let one hung call spend the time
+   * `@PreDestroy` needed to close the database. A supervised child is killed
+   * long before 10 s — 3500 ms by default — so its runtime states its share.
+   */
+  private drainCeiling(options: IShutdownOptions): number {
+    if (options.force) return 0;
+    const stated = options.drainTimeout ?? drainFromEnvironment();
+    if (stated !== undefined) return stated;
+    return options.timeout !== undefined
+      ? Math.min(DEFAULT_DRAIN_TIMEOUT_MS, Math.floor(options.timeout / 2))
+      : DEFAULT_DRAIN_TIMEOUT_MS;
+  }
+
+  /** The inbound gate of this application's Netron, when it has one. */
+  private inboundGate(): InboundGate | undefined {
+    if (!this._container.has(NETRON_TOKEN)) return undefined;
+    try {
+      return (this._container.resolve(NETRON_TOKEN) as Netron | undefined)?.inbound;
+    } catch {
+      return undefined;
     }
   }
 

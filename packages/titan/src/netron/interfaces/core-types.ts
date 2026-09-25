@@ -370,6 +370,13 @@ export interface INetron {
    */
   inboundRateLimiter?: { consume(key: string, tier?: string): Promise<void>; destroy(): void };
 
+  /**
+   * The door every inbound invocation passes through; refuses new calls once
+   * stopping has begun (`netron/inbound-gate.ts`). Optional for mocks.
+   * @internal
+   */
+  inbound?: import('../inbound-gate.js').InboundGate;
+
   /** Get local peer */
   getLocalPeer(): ILocalPeer;
 

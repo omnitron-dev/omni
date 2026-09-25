@@ -153,3 +153,20 @@ export function childShutdownWindowMs(env: NodeJS.ProcessEnv): number {
   if (Number.isFinite(stated) && stated >= 0 && env['TITAN_SHUTDOWN_TIMEOUT_MS'] !== '') return stated;
   return DEFAULT_FORCE_EXIT_MS;
 }
+
+/**
+ * How long a child's applications may wait, when they stop, for the inbound
+ * calls they are still running: the child's share of the window it is killed
+ * after. The spawner hands it over in `TITAN_DRAIN_TIMEOUT_MS` beside the
+ * window, and titan's Application reads it there.
+ *
+ * The drain runs inside `service-wrapper-shutdown`, and so does the teardown
+ * after it, which closes the database the finished calls no longer need. The
+ * two share that task's time, half each. Titan's own default is 10 s. In a
+ * child told 3500 ms it would have outwaited SIGKILL: one hung call would
+ * have cost the whole teardown, not only itself.
+ */
+export function childDrainMs(childWindowMs: number): number {
+  if (childWindowMs === 0) return 0;
+  return Math.floor(lifecycleWindows(childWindowMs).defaultTaskTimeoutMs / 2);
+}

@@ -32,6 +32,7 @@ import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
 import type { ILogger } from '../types/logger.js';
 import { Errors, NetronErrors } from '../errors/index.js';
+import { InboundGate } from './inbound-gate.js';
 import {
   CONNECT_TIMEOUT,
   NETRON_EVENT_PEER_CONNECT,
@@ -325,6 +326,13 @@ export class Netron extends EventEmitter implements INetron {
    * Netron itself.
    */
   public inboundRateLimiter?: import('./auth/rate-limiter.js').RateLimiter;
+
+  /**
+   * The door every inbound invocation passes through. `Application.stop()`
+   * drains it first, so nothing new reaches a service while the process is
+   * being torn down (`inbound-gate.ts`).
+   */
+  public readonly inbound = new InboundGate();
 
   /**
    * Creates a new Netron instance.

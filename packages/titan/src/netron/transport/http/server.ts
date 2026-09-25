@@ -43,6 +43,7 @@ import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transpor
 import { isAsyncGenerator } from '@omnitron-dev/common';
 import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
 import { LatencyWindow, type LatencySnapshot } from './latency-window.js';
+import { SHUTTING_DOWN, shuttingDownError } from '../../inbound-gate.js';
 import { METADATA_KEYS } from '../../../decorators/core.js';
 
 /** What `HttpServer.getTrafficSnapshot()` answers. */
@@ -1003,6 +1004,36 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
   }
 
+  /**
+   * Run a request that reaches services through the inbound gate: refused with
+   * 503 `SHUTTING_DOWN` once stopping has begun, and counted as running until
+   * its response is built otherwise — `Application.stop()` waits for it before
+   * tearing anything down (`netron/inbound-gate.ts`).
+   */
+  private async throughTheGate(request: Request, handle: () => Promise<Response>): Promise<Response> {
+    const gate = this.netronPeer?.netron?.inbound;
+    if (gate && !gate.enter()) return this.createShuttingDownResponse(request);
+    try {
+      return await handle();
+    } finally {
+      gate?.leave();
+    }
+  }
+
+  /** The answer to a call that arrived after stopping began: retry elsewhere. */
+  private createShuttingDownResponse(request: Request): Response {
+    const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+    const error = shuttingDownError();
+    const headers = new Headers({ 'Content-Type': 'application/json', 'Retry-After': '1' });
+    this.applyCorsHeaders(headers, request);
+    const body = {
+      id: requestId,
+      success: false,
+      error: { code: SHUTTING_DOWN, message: error.message, details: error.details },
+    };
+    return new Response(safeStringify(body), { status: 503, headers });
+  }
+
   /** Say that this request waits on a method that holds its caller. */
   private noteHeld(method: MethodDescriptor, request: Request): void {
     if (method.holds) this.heldRequests.add(request);
@@ -1015,17 +1046,18 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       return this.handleCorsPreflightRequest(request);
     }
 
-    // Handle special endpoints
+    // Handle special endpoints — the three that reach services pass the
+    // inbound gate, so a process that has begun stopping takes no new work.
     if (pathname === '/netron/invoke' && request.method === 'POST') {
-      return this.handleInvocationRequest(request);
+      return this.throughTheGate(request, () => this.handleInvocationRequest(request));
     }
 
     if (pathname === '/netron/batch' && request.method === 'POST') {
-      return this.handleBatchRequest(request);
+      return this.throughTheGate(request, () => this.handleBatchRequest(request));
     }
 
     if (pathname === '/netron/authenticate' && request.method === 'POST') {
-      return this.handleAuthenticateRequest(request);
+      return this.throughTheGate(request, () => this.handleAuthenticateRequest(request));
     }
 
     if (pathname === '/health' && request.method === 'GET') {
@@ -2678,8 +2710,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       const runtime = detectRuntime();
 
       // OPTIMIZATION: Initiate graceful drain before closing
-      // This allows in-flight requests to complete
-      await this.drain(5000);
+      // This allows in-flight requests to complete — unless the application
+      // already drained the inbound gate up to its own ceiling: waiting again
+      // here added five seconds to every stop that had a call hanging.
+      if (!this.netronPeer?.netron?.inbound?.isDraining) await this.drain(5000);
 
       // Log warning if we're forcing close with active requests
       if (this.metrics.activeRequests > 0 && this.netronPeer?.logger) {
@@ -2701,6 +2735,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         // Node.js
         await new Promise<void>((resolve) => {
           this.server.close(() => resolve());
+          // `close()` alone waits for every open socket — a hung request's
+          // included, forever — which held the whole stop past any drain
+          // ceiling. What the drain did not finish is cut here.
+          this.server.closeAllConnections?.();
         });
         // CRITICAL FIX: Add delay for Node.js to release port (200ms)
         // Node.js needs more time to properly release the port

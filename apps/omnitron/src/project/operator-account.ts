@@ -47,6 +47,13 @@ const exec = promisify(execFile);
 /** The project's tool, relative to its root. */
 export const OPERATOR_ACCOUNT_TOOL = 'scripts/operator-account.mjs';
 
+/**
+ * The project's tool for what the probes left on a stand. Without flags it
+ * is a census — SELECTs and nothing else; its removal modes are not asked for
+ * from here.
+ */
+export const PROBE_LEFTOVERS_TOOL = 'scripts/probe-leftovers.mjs';
+
 /** Where the password is kept when the operator names no key. */
 export function accountVaultKey(project: string, stack: string, username: string): string {
   return `${project}.${stack}.account.${username}.password`;
@@ -77,10 +84,15 @@ export async function sealingKey(): Promise<SealingKey> {
 }
 
 /** The command the tool runs as on the node, the stand's containers named as they are there. */
-export function toolCommand(remoteDir: string, containerPrefix: string, flags: readonly string[]): string {
+export function toolCommand(
+  remoteDir: string,
+  containerPrefix: string,
+  flags: readonly string[],
+  tool: string = OPERATOR_ACCOUNT_TOOL,
+): string {
   return (
     `cd ${shellEscape(remoteDir)} && ${standContainerAssignments(containerPrefix)} ` +
-    `node ${OPERATOR_ACCOUNT_TOOL} ${flags.map((f) => shellEscape(f)).join(' ')}`
+    `node ${tool}${flags.length > 0 ? ` ${flags.map((f) => shellEscape(f)).join(' ')}` : ''}`
   );
 }
 
@@ -113,6 +125,11 @@ export function operatorAccountShowCommand(input: { remoteDir: string; container
 /** What the stand holds in aggregate — counts, never a value. */
 export function operatorCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
   return toolCommand(input.remoteDir, input.containerPrefix, ['--census']);
+}
+
+/** What the probes left on the stand, counted and named — the tool without a flag, which is its census. */
+export function probeLeftoversCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
+  return toolCommand(input.remoteDir, input.containerPrefix, [], PROBE_LEFTOVERS_TOOL);
 }
 
 /** The row with this name AND this id, or nothing. */
@@ -189,6 +206,34 @@ export function describeStdout(stdout: string): string {
     what = last.startsWith('{') ? 'starts like JSON and does not parse' : 'is not JSON';
   }
   return `stdout had ${lines.length} line(s); the last, ${last.length} characters, ${what}`;
+}
+
+/** The census of what the probes left, as the tool reports it: its answer object, and its own words. */
+export interface LeftoversCensus {
+  /** `{"probeLeftovers": …}` — the tool's shape, passed on as it is. */
+  readonly report: Readonly<Record<string, unknown>>;
+  /** What the tool said on stderr, line by line — the census a person reads. */
+  readonly lines: readonly string[];
+}
+
+/**
+ * A census run of `probe-leftovers.mjs`, read. Only a CENSUS is an answer
+ * here: a report in any other mode means the tool did something this door
+ * never asks for, and that is refused rather than shown as counts.
+ */
+export function readLeftoversRun(
+  run: { stdout: string; stderr: string; code: number },
+): { readonly ok: true; readonly census: LeftoversCensus } | { readonly ok: false; readonly because: string } {
+  if (run.code !== 0) return { ok: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
+  const report = answerLine(run.stdout, 'probeLeftovers')?.['probeLeftovers'] as Record<string, unknown> | undefined;
+  if (!report || typeof report !== 'object') {
+    return { ok: false, because: `the tool exited 0 without a report (${describeStdout(run.stdout)})` };
+  }
+  if (report['mode'] !== 'census') {
+    return { ok: false, because: `the tool answered in mode '${String(report['mode'])}', and this door asks for the census only` };
+  }
+  const lines = run.stderr.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim() !== '');
+  return { ok: true, census: { report, lines } };
 }
 
 /**
@@ -451,7 +496,11 @@ export function readRemoveRun(
  * hand out its highest role is code somebody committed, and the answer names
  * which. Refused when that commit has no tool.
  */
-export async function stageOperatorTool(projectPath: string): Promise<{ dir: string; commit: string }> {
+export async function stageOperatorTool(
+  projectPath: string,
+  /** The tool the run needs — refused when the commit has none. */
+  tool: string = OPERATOR_ACCOUNT_TOOL,
+): Promise<{ dir: string; commit: string }> {
   const { stdout: head } = await exec('git', ['rev-parse', 'HEAD'], { cwd: projectPath });
   const commit = head.trim();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-operator-'));
@@ -469,9 +518,9 @@ export async function stageOperatorTool(projectPath: string): Promise<{ dir: str
       cause: err,
     });
   }
-  if (!fs.existsSync(path.join(dir, OPERATOR_ACCOUNT_TOOL))) {
+  if (!fs.existsSync(path.join(dir, tool))) {
     fs.rmSync(dir, { recursive: true, force: true });
-    throw new Error(`The project's commit ${commit.slice(0, 8)} has no ${OPERATOR_ACCOUNT_TOOL} — there is no tool to make the account with`);
+    throw new Error(`The project's commit ${commit.slice(0, 8)} has no ${tool} — there is no tool to run`);
   }
   return { dir, commit };
 }

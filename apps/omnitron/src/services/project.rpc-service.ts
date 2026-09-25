@@ -24,6 +24,7 @@ import type {
   IStackAccountLookup,
   IStackAccountRemoved,
   IStackAccountCensus,
+  IStackLeftoversCensus,
 } from '../shared/dto/project.js';
 
 @Service({ name: 'OmnitronProject' })
@@ -291,6 +292,15 @@ export class ProjectRpcService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async censusStackAccounts(data: { project: string; stack: string }): Promise<IStackAccountCensus> {
     return this.projectService.censusOperatorAccounts(data.project, data.stack);
+  }
+
+  /**
+   * What the probes left on a remote stack's stand — the project tool's
+   * census, nothing removed. Admin: it runs the project's code on the node.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async probeLeftoversCensus(data: { project: string; stack: string }): Promise<IStackLeftoversCensus> {
+    return this.projectService.probeLeftoversCensus(data.project, data.stack);
   }
 
   /**

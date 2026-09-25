@@ -339,6 +339,7 @@ export function accountOptionsRefusal(options: {
   show?: string;
   remove?: string;
   census?: boolean;
+  leftovers?: boolean;
   id?: string;
   role?: string;
   displayName?: string;
@@ -347,13 +348,14 @@ export function accountOptionsRefusal(options: {
   const modes = [
     ...(['username', 'show', 'remove'] as const).filter((m) => options[m] !== undefined),
     ...(options.census ? ['census'] : []),
+    ...(options.leftovers ? ['leftovers'] : []),
   ];
   if (modes.length !== 1) {
-    return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>, --census';
+    return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>, --census, --leftovers';
   }
-  if (options.census && (options.id !== undefined || options.role !== undefined || options.displayName !== undefined || options.vaultKey !== undefined)) {
-    return '--census takes nothing else';
-  }
+  const extras = options.id !== undefined || options.role !== undefined || options.displayName !== undefined || options.vaultKey !== undefined;
+  if (options.census && extras) return '--census takes nothing else';
+  if (options.leftovers && extras) return '--leftovers takes nothing else';
   if (options.remove !== undefined && !options.id) return '--remove needs --id <uuid> — the id --show prints';
   if (options.remove === undefined && options.id !== undefined) return '--id goes with --remove';
   if (options.username === undefined && (options.role !== undefined || options.displayName !== undefined)) {
@@ -381,6 +383,7 @@ export async function stackAccountCommand(
     show?: string;
     remove?: string;
     census?: boolean;
+    leftovers?: boolean;
     id?: string;
     role?: string;
     displayName?: string;
@@ -398,6 +401,16 @@ export async function stackAccountCommand(
   const name = options.username ?? options.show ?? options.remove ?? 'accounts';
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (options.leftovers) {
+      emitStep(`Taking the census of what the probes left on ${projectName}/${stackName} — the project's tool, on the node; nothing is removed…`);
+      const found = await svc.probeLeftoversCensus({ project: projectName, stack: stackName });
+      if (emitJson(found)) return;
+      // The tool's own words: it names what it would take and what holds each
+      // back, and omnitron knows none of its questions.
+      for (const line of found.lines) emitInfo(line);
+      emitSuccess(`census of what the probes left on ${projectName}/${stackName} at ${found.node} — the tool at ${found.commit.slice(0, 8)}; nothing was removed`);
+      return;
+    }
     if (options.census) {
       emitStep(`Counting the accounts on ${projectName}/${stackName} — the project's tool, on the node…`);
       const counted = await svc.censusStackAccounts({ project: projectName, stack: stackName });
@@ -490,7 +503,7 @@ export async function stackAccountCommand(
     emitInfo(`omnitron secret get ${made.vaultKey}`);
     emitInfo(`  id ${made.id}; made by the project's tool at ${made.commit.slice(0, 8)}`);
   } catch (err) {
-    const verb = options.census ? 'count' : options.show !== undefined ? 'read' : options.remove !== undefined ? 'remove' : 'make';
+    const verb = options.census || options.leftovers ? 'count' : options.show !== undefined ? 'read' : options.remove !== undefined ? 'remove' : 'make';
     emitError(`Could not ${verb} ${name} on ${projectName}/${stackName}: ${(err as Error).message}`, {
       project: projectName,
       stack: stackName,

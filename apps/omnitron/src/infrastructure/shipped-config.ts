@@ -17,9 +17,38 @@
  * refuses it by name — `invalid spec: configroot:nominatim:/opt/nominatim-tools:ro:
  * too many colons` — rather than a path being guessed.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 
 export const CONFIG_ROOT_PREFIX = 'configroot:';
+
+/**
+ * One spelling of a path on this machine: symlinks followed as far as the
+ * path exists, the rest appended as written.
+ *
+ * The project root the master deploys from and the paths its config computes
+ * are two spellings of one directory more often than not. On this master daos
+ * is registered as `…/omni/internal/daos`, a symlink to `/…/dao/daos`, where
+ * `omnitron.config.ts` lives and resolves `infra/nominatim` from its own
+ * `__dirname`. Compared as written the mount was «outside» the shipped
+ * directory, left as the master's path, and Nominatim on daos/test mounted an
+ * empty directory the docker daemon made in its place (2026-09-25).
+ */
+function realOf(p: string): string {
+  const abs = path.resolve(p);
+  const rest: string[] = [];
+  let head = abs;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(head), ...rest);
+    } catch {
+      const parent = path.dirname(head);
+      if (parent === head) return abs;
+      rest.unshift(path.basename(head));
+      head = parent;
+    }
+  }
+}
 
 /**
  * The directory a service asks to have shipped to its nodes, as declared.
@@ -76,8 +105,10 @@ function rewrite(volumes: Volumes | undefined, dir: string, service: string, pro
       // A named volume (a bare string, or a source that is not a path) is
       // docker's to keep; only bind mounts name the master's disk.
       if (typeof v === 'string' || !(v.source.startsWith('/') || v.source.startsWith('.'))) return [name, v];
-      const abs = path.resolve(projectRoot, v.source);
-      return [name, { ...v, source: pointAt(abs, dir, service) }];
+      // Compared in one spelling; a mount that stays the master's keeps the
+      // spelling it was declared with.
+      const pointed = pointAt(realOf(path.resolve(projectRoot, v.source)), dir, service);
+      return [name, pointed.startsWith(CONFIG_ROOT_PREFIX) ? { ...v, source: pointed } : v];
     }),
   );
 }
@@ -96,7 +127,8 @@ export function pointMountsAtShippedConfig<S extends Record<string, unknown>>(
 ): S {
   const out: Record<string, unknown> = {};
   for (const [name, svc] of Object.entries(services)) {
-    const dir = shipped.get(name);
+    const declared = shipped.get(name);
+    const dir = declared === undefined ? undefined : realOf(declared);
     const docker = (svc as { docker?: DockerLike } | undefined)?.docker;
     if (!dir || !docker) {
       out[name] = svc;

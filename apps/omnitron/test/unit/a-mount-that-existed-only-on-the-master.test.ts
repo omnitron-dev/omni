@@ -87,6 +87,48 @@ describe('the master names the node\'s copy', () => {
   });
 });
 
+describe('two spellings of one project', () => {
+  // daos on this master: registered as `…/omni/internal/daos`, a symlink to
+  // `…/dao/daos`, where `omnitron.config.ts` computes `infra/nominatim` from
+  // its own `__dirname`. Compared as written, the mount was «outside» and
+  // Nominatim on daos/test mounted an empty directory (2026-09-25).
+  const real = path.join(scratch, 'real-daos');
+  fs.mkdirSync(path.join(real, 'infra', 'nominatim'), { recursive: true });
+  const linked = path.join(scratch, 'linked-daos');
+  fs.symlinkSync(real, linked);
+
+  it('a project registered through a symlink, its mounts computed from the real directory', () => {
+    const out = pointMountsAtShippedConfig(
+      { nominatim: nominatim(real) },
+      new Map([['nominatim', path.join(linked, 'infra', 'nominatim')]]),
+      linked,
+    );
+    const n = out.nominatim as ReturnType<typeof nominatim>;
+    expect(n.docker.volumes.tools.source).toBe('configroot:nominatim');
+    // Relative, and not on the disk yet: the nearest part that is gives the spelling.
+    expect(n.docker.volumes.hooks.source).toBe('configroot:nominatim/hooks');
+    expect(n.docker.variants.mainnet.volumes.extra.source).toBe('configroot:nominatim/extra');
+  });
+
+  it('and the other way round', () => {
+    const out = pointMountsAtShippedConfig(
+      { nominatim: nominatim(linked) },
+      new Map([['nominatim', path.join(real, 'infra', 'nominatim')]]),
+      real,
+    );
+    expect((out.nominatim as ReturnType<typeof nominatim>).docker.volumes.tools.source).toBe('configroot:nominatim');
+  });
+
+  it('a mount outside the directory stays the master\'s, in the spelling it was declared with', () => {
+    const out = pointMountsAtShippedConfig(
+      { nominatim: nominatim(linked) },
+      new Map([['nominatim', path.join(real, 'infra', 'nominatim')]]),
+      real,
+    );
+    expect((out.nominatim as ReturnType<typeof nominatim>).docker.volumes.pbf.source).toBe(`${linked}/var/pbf`);
+  });
+});
+
 describe('the node resolves it to its own copy', () => {
   const TOOLS = `${PROJECT}/infra/nominatim`;
   const root = path.join(scratch, 'configs', 'nominatim');

@@ -176,6 +176,15 @@ export interface IShutdownOptions {
   force?: boolean;
   graceful?: boolean;
   signal?: NodeJS.Signals;
+  /**
+   * How long stopping waits for inbound calls already running before it tears
+   * anything down. Defaults to `TITAN_DRAIN_TIMEOUT_MS`, the share of its kill
+   * window a supervised child's runtime states; else to half of `timeout` (the
+   * teardown keeps the other half), at most 10 s; else to 10 s. A `force` stop
+   * does not wait. New inbound calls are refused from the first moment either
+   * way.
+   */
+  drainTimeout?: number;
 }
 
 /**

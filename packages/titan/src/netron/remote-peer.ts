@@ -19,6 +19,7 @@ import { AbstractPeer, type DefinitionCacheOptions } from './abstract-peer.js';
 import { StreamReference, NetronReadableStream, NetronWritableStream } from './streams/index.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import { NetronErrors, Errors, TitanError, isClientError } from '../errors/index.js';
+import { shuttingDownError } from './inbound-gate.js';
 import { TransportError } from '../errors/netron.js';
 import { REQUEST_TIMEOUT } from './constants.js';
 import {
@@ -1027,249 +1028,267 @@ export class RemotePeer extends AbstractPeer {
       }
     }
 
-    switch (pType) {
-      case TYPE_SET: {
-        const [defIdOrServiceName, name, value] = packet.data;
-        this.logger.debug({ defId: defIdOrServiceName, name }, 'Processing SET packet');
+    // The inbound gate: once stopping has begun, a call, get or set off the
+    // wire is refused and never reaches a service; one admitted before is
+    // counted until it answers, so `Application.stop()` can wait for it
+    // before tearing anything down (`inbound-gate.ts`).
+    const gate = pType === TYPE_SET || pType === TYPE_GET || pType === TYPE_CALL ? this.netron.inbound : undefined;
+    if (gate && !gate.enter()) {
+      try {
+        await this.sendErrorResponse(packet, shuttingDownError());
+      } catch (sendErr) {
+        this.logger.debug({ err: sendErr, peerId: this.id }, 'Peer gone before the shutting-down answer could be sent');
+      }
+      return;
+    }
 
-        try {
-          // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
-          const defId = resolveDefId(defIdOrServiceName, this.netron);
+    try {
+      switch (pType) {
+        case TYPE_SET: {
+          const [defIdOrServiceName, name, value] = packet.data;
+          this.logger.debug({ defId: defIdOrServiceName, name }, 'Processing SET packet');
 
-          if (!isValidPropertyName(name)) {
-            throw Errors.badRequest('Invalid property name');
-          }
-
-          const localPeer = this.netron.peer as ILocalPeerInternal;
-          const stub = localPeer.getStubByDefinitionId(defId);
-          // SECURITY (T#34): enforce method-level ACL on the wire path.
-          // `query_interface` filters definitions for display; that's
-          // defense by obscurity unless every SET/GET/CALL also goes
-          // through `canAccessMethod`. Without this gate, a client that
-          // knows or guesses a property name bypasses ACLs entirely on
-          // every non-HTTP transport.
-          await this.enforceMethodAccess(stub, name, [value], 'set');
-          await stub.set(name, value);
-          await this.sendResponse(packet, undefined);
-        } catch (err: unknown) {
-          this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to set property on remote service');
           try {
-            await this.sendErrorResponse(packet, err);
-          } catch (err_: unknown) {
-            // The reply had nowhere to go. When the peer is gone that is the
-            // same event as the failure above, reported twice; anything else
-            // means a caller is now waiting for a response it will never get,
-            // which is worth a line.
-            if (isPeerGone(err_)) {
-              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
-            } else {
-              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
+            const defId = resolveDefId(defIdOrServiceName, this.netron);
+
+            if (!isValidPropertyName(name)) {
+              throw Errors.badRequest('Invalid property name');
+            }
+
+            const localPeer = this.netron.peer as ILocalPeerInternal;
+            const stub = localPeer.getStubByDefinitionId(defId);
+            // SECURITY (T#34): enforce method-level ACL on the wire path.
+            // `query_interface` filters definitions for display; that's
+            // defense by obscurity unless every SET/GET/CALL also goes
+            // through `canAccessMethod`. Without this gate, a client that
+            // knows or guesses a property name bypasses ACLs entirely on
+            // every non-HTTP transport.
+            await this.enforceMethodAccess(stub, name, [value], 'set');
+            await stub.set(name, value);
+            await this.sendResponse(packet, undefined);
+          } catch (err: unknown) {
+            this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to set property on remote service');
+            try {
+              await this.sendErrorResponse(packet, err);
+            } catch (err_: unknown) {
+              // The reply had nowhere to go. When the peer is gone that is the
+              // same event as the failure above, reported twice; anything else
+              // means a caller is now waiting for a response it will never get,
+              // which is worth a line.
+              if (isPeerGone(err_)) {
+                this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+              } else {
+                this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              }
             }
           }
+          break;
         }
-        break;
-      }
-      case TYPE_GET: {
-        const [defIdOrServiceName, name] = packet.data;
-        this.logger.debug({ defId: defIdOrServiceName, name }, 'Processing GET packet');
+        case TYPE_GET: {
+          const [defIdOrServiceName, name] = packet.data;
+          this.logger.debug({ defId: defIdOrServiceName, name }, 'Processing GET packet');
 
-        try {
-          // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
-          const defId = resolveDefId(defIdOrServiceName, this.netron);
-
-          if (!isValidPropertyName(name)) {
-            throw Errors.badRequest('Invalid property name');
-          }
-
-          const localPeer = this.netron.peer as ILocalPeerInternal;
-          const stub = localPeer.getStubByDefinitionId(defId);
-          // SECURITY (T#34): see SET branch.
-          await this.enforceMethodAccess(stub, name, [], 'get');
-          // SECURITY (T#49): pass `this` so a property getter returning
-          // a nested service can be authz-filtered before the leak.
-          await this.sendResponse(packet, await stub.get(name, this));
-        } catch (err: unknown) {
-          this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to get property from remote service');
           try {
-            await this.sendErrorResponse(packet, err);
-          } catch (err_: unknown) {
-            // The reply had nowhere to go. When the peer is gone that is the
-            // same event as the failure above, reported twice; anything else
-            // means a caller is now waiting for a response it will never get,
-            // which is worth a line.
-            if (isPeerGone(err_)) {
-              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
-            } else {
-              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+            // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
+            const defId = resolveDefId(defIdOrServiceName, this.netron);
+
+            if (!isValidPropertyName(name)) {
+              throw Errors.badRequest('Invalid property name');
+            }
+
+            const localPeer = this.netron.peer as ILocalPeerInternal;
+            const stub = localPeer.getStubByDefinitionId(defId);
+            // SECURITY (T#34): see SET branch.
+            await this.enforceMethodAccess(stub, name, [], 'get');
+            // SECURITY (T#49): pass `this` so a property getter returning
+            // a nested service can be authz-filtered before the leak.
+            await this.sendResponse(packet, await stub.get(name, this));
+          } catch (err: unknown) {
+            this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to get property from remote service');
+            try {
+              await this.sendErrorResponse(packet, err);
+            } catch (err_: unknown) {
+              // The reply had nowhere to go. When the peer is gone that is the
+              // same event as the failure above, reported twice; anything else
+              // means a caller is now waiting for a response it will never get,
+              // which is worth a line.
+              if (isPeerGone(err_)) {
+                this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+              } else {
+                this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              }
             }
           }
+          break;
         }
-        break;
-      }
-      case TYPE_CALL: {
-        const [defIdOrServiceName, method, ...args] = packet.data;
-        this.logger.debug({ defId: defIdOrServiceName, method }, 'Processing CALL packet');
+        case TYPE_CALL: {
+          const [defIdOrServiceName, method, ...args] = packet.data;
+          this.logger.debug({ defId: defIdOrServiceName, method }, 'Processing CALL packet');
 
-        try {
-          // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
-          const defId = resolveDefId(defIdOrServiceName, this.netron);
+          try {
+            // SECURITY: Validate and resolve definition ID (supports both UUID and service names)
+            const defId = resolveDefId(defIdOrServiceName, this.netron);
 
-          if (!isValidPropertyName(method)) {
-            throw Errors.badRequest('Invalid method name');
-          }
+            if (!isValidPropertyName(method)) {
+              throw Errors.badRequest('Invalid method name');
+            }
 
-          const localPeer = this.netron.peer as ILocalPeerInternal;
-          const stub = localPeer.getStubByDefinitionId(defId);
-          // SECURITY (T#34): see SET branch — this is the most-exercised
-          // entry point on the wire, and the one that mattered most in
-          // the audit (RPC method invocations).
-          await this.enforceMethodAccess(stub, method, args, 'call');
-          // A service's declared input contract is enforced on every transport
-          // that takes a call off the wire, not just HTTP. This branch — the
-          // one WebSocket, TCP and Unix sockets arrive through — checked who
-          // may call the method and never what they sent, so a contract was
-          // a guarantee only for clients that happened to speak HTTP.
-          const validatedArgs = validateMethodInput(
-            args,
-            resolveMethodContract(stub.definition?.meta, method),
-            this.logger,
-          ) as any[];
-          await this.sendResponse(
-            packet,
-            await this.withInvocationFrame(
-              () => stub.definition?.meta?.name,
-              method,
-              () => stub.call(method, validatedArgs, this),
-            ),
-          );
-        } catch (err: unknown) {
-          // A peer that went away mid-call is not a failed call — it is the
-          // other side shutting down while we held a request. `isPeerGone`
-          // already exists and is asked three times in this file; this, the
-          // noisiest place, was the one that did not ask.
-          //
-          // Measured on the dev stand 2026-09-22: `geo` had 205 lines of
-          // «Failed to call method on remote service» at level ERROR and
-          // `storage` 19, every one of them `__getProcessMetrics` failing
-          // with «Socket closed during RPC» — a metrics poll racing a
-          // restart. The same files held 8 real errors between them. A log
-          // where the routine outnumbers the real 27 to 1 is read by nobody.
-          if (isPeerGone(err)) {
-            this.logger.debug(
-              { err, defId: defIdOrServiceName, method },
-              'Peer gone during a call — no response will be sent'
+            const localPeer = this.netron.peer as ILocalPeerInternal;
+            const stub = localPeer.getStubByDefinitionId(defId);
+            // SECURITY (T#34): see SET branch — this is the most-exercised
+            // entry point on the wire, and the one that mattered most in
+            // the audit (RPC method invocations).
+            await this.enforceMethodAccess(stub, method, args, 'call');
+            // A service's declared input contract is enforced on every transport
+            // that takes a call off the wire, not just HTTP. This branch — the
+            // one WebSocket, TCP and Unix sockets arrive through — checked who
+            // may call the method and never what they sent, so a contract was
+            // a guarantee only for clients that happened to speak HTTP.
+            const validatedArgs = validateMethodInput(
+              args,
+              resolveMethodContract(stub.definition?.meta, method),
+              this.logger,
+            ) as any[];
+            await this.sendResponse(
+              packet,
+              await this.withInvocationFrame(
+                () => stub.definition?.meta?.name,
+                method,
+                () => stub.call(method, validatedArgs, this),
+              ),
             );
-          } else {
-            this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
-          }
-          try {
-            await this.sendErrorResponse(packet, err);
-          } catch (err_: unknown) {
-            // The reply had nowhere to go. When the peer is gone that is the
-            // same event as the failure above, reported twice; anything else
-            // means a caller is now waiting for a response it will never get,
-            // which is worth a line.
-            if (isPeerGone(err_)) {
-              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+          } catch (err: unknown) {
+            // A peer that went away mid-call is not a failed call — it is the
+            // other side shutting down while we held a request. `isPeerGone`
+            // already exists and is asked three times in this file; this, the
+            // noisiest place, was the one that did not ask.
+            //
+            // Measured on the dev stand 2026-09-22: `geo` had 205 lines of
+            // «Failed to call method on remote service» at level ERROR and
+            // `storage` 19, every one of them `__getProcessMetrics` failing
+            // with «Socket closed during RPC» — a metrics poll racing a
+            // restart. The same files held 8 real errors between them. A log
+            // where the routine outnumbers the real 27 to 1 is read by nobody.
+            if (isPeerGone(err)) {
+              this.logger.debug(
+                { err, defId: defIdOrServiceName, method },
+                'Peer gone during a call — no response will be sent'
+              );
             } else {
-              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              this.logger.error({ err, defId: defIdOrServiceName, method }, 'Failed to call method on remote service');
+            }
+            try {
+              await this.sendErrorResponse(packet, err);
+            } catch (err_: unknown) {
+              // The reply had nowhere to go. When the peer is gone that is the
+              // same event as the failure above, reported twice; anything else
+              // means a caller is now waiting for a response it will never get,
+              // which is worth a line.
+              if (isPeerGone(err_)) {
+                this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+              } else {
+                this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              }
             }
           }
+          break;
         }
-        break;
-      }
-      case TYPE_TASK: {
-        const [name, ...args] = packet.data;
-        this.logger.debug({ name }, 'Processing TASK packet');
+        case TYPE_TASK: {
+          const [name, ...args] = packet.data;
+          this.logger.debug({ name }, 'Processing TASK packet');
 
-        try {
-          if (!this.netron.runTask) {
-            throw Errors.notImplemented('runTask not available');
-          }
-          await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
-        } catch (err: unknown) {
-          if (isPeerGone(err)) {
-            this.logger.debug({ err, task: name }, 'Peer disconnected while its task was running');
-          } else if (isRefusal(err)) {
-            this.logger.debug({ err, task: name }, 'Task refused the peer — the reason is in the task\'s own line');
-          } else {
-            this.logger.error({ err, task: name }, 'Failed to run task');
-          }
           try {
-            await this.sendErrorResponse(packet, err);
-          } catch (err_: unknown) {
-            // The reply had nowhere to go. When the peer is gone that is the
-            // same event as the failure above, reported twice; anything else
-            // means a caller is now waiting for a response it will never get,
-            // which is worth a line.
-            if (isPeerGone(err_)) {
-              this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+            if (!this.netron.runTask) {
+              throw Errors.notImplemented('runTask not available');
+            }
+            await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
+          } catch (err: unknown) {
+            if (isPeerGone(err)) {
+              this.logger.debug({ err, task: name }, 'Peer disconnected while its task was running');
+            } else if (isRefusal(err)) {
+              this.logger.debug({ err, task: name }, 'Task refused the peer — the reason is in the task\'s own line');
             } else {
-              this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              this.logger.error({ err, task: name }, 'Failed to run task');
+            }
+            try {
+              await this.sendErrorResponse(packet, err);
+            } catch (err_: unknown) {
+              // The reply had nowhere to go. When the peer is gone that is the
+              // same event as the failure above, reported twice; anything else
+              // means a caller is now waiting for a response it will never get,
+              // which is worth a line.
+              if (isPeerGone(err_)) {
+                this.logger.debug({ err: err_ }, 'Peer gone before the error response could be sent');
+              } else {
+                this.logger.warn({ err: err_ }, 'Failed to send error response to peer');
+              }
             }
           }
+          break;
         }
-        break;
-      }
-      case TYPE_STREAM: {
-        if (!packet.streamId) {
-          this.logger.warn('Received STREAM packet without streamId');
-          return;
-        }
-
-        let stream = this.readableStreams.get(packet.streamId);
-        if (!stream) {
-          // WIRE-10: gate the per-direction stream cap BEFORE allocating. The
-          // stream constructor enforces the same cap by THROWING, but we are
-          // inside the fire-and-forget async handlePacket — a throw here would
-          // surface as an unhandled rejection. Reject the new stream gracefully
-          // instead: tell the sender to stop, and drop the packet without
-          // constructing anything.
-          if (this.readableStreams.size >= RemotePeer.MAX_STREAMS_PER_DIRECTION) {
-            this.logger.error(
-              { streamId: packet.streamId, count: this.readableStreams.size },
-              `Max readable streams (${RemotePeer.MAX_STREAMS_PER_DIRECTION}) reached; rejecting new stream`,
-            );
-            this.sendPacket(
-              createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
-                streamId: packet.streamId,
-                reason: 'stream-limit-reached',
-              }),
-            ).catch(() => {
-              /* best-effort notify; the sender may already be gone */
-            });
+        case TYPE_STREAM: {
+          if (!packet.streamId) {
+            this.logger.warn('Received STREAM packet without streamId');
             return;
           }
-          this.logger.debug({ streamId: packet.streamId }, 'Creating new readable stream');
-          stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
-          this.events.emit('stream', stream);
-        }
 
-        stream.onPacket(packet);
-        break;
-      }
-      case TYPE_STREAM_ERROR: {
-        const { streamId, message } = packet.data;
-        this.logger.error({ streamId, message }, 'Stream error received');
-        const stream = this.readableStreams.get(streamId);
-        if (stream) {
-          stream.destroy(NetronErrors.streamError(streamId, new Error(message)));
+          let stream = this.readableStreams.get(packet.streamId);
+          if (!stream) {
+            // WIRE-10: gate the per-direction stream cap BEFORE allocating. The
+            // stream constructor enforces the same cap by THROWING, but we are
+            // inside the fire-and-forget async handlePacket — a throw here would
+            // surface as an unhandled rejection. Reject the new stream gracefully
+            // instead: tell the sender to stop, and drop the packet without
+            // constructing anything.
+            if (this.readableStreams.size >= RemotePeer.MAX_STREAMS_PER_DIRECTION) {
+              this.logger.error(
+                { streamId: packet.streamId, count: this.readableStreams.size },
+                `Max readable streams (${RemotePeer.MAX_STREAMS_PER_DIRECTION}) reached; rejecting new stream`,
+              );
+              this.sendPacket(
+                createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
+                  streamId: packet.streamId,
+                  reason: 'stream-limit-reached',
+                }),
+              ).catch(() => {
+                /* best-effort notify; the sender may already be gone */
+              });
+              return;
+            }
+            this.logger.debug({ streamId: packet.streamId }, 'Creating new readable stream');
+            stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
+            this.events.emit('stream', stream);
+          }
+
+          stream.onPacket(packet);
+          break;
         }
-        break;
-      }
-      case TYPE_STREAM_CLOSE: {
-        const { streamId, reason } = packet.data;
-        this.logger.info({ streamId, reason }, 'Stream close received');
-        const stream = this.readableStreams.get(streamId);
-        if (stream) {
-          // Immediately close the stream with the provided reason
-          stream.forceClose(reason);
+        case TYPE_STREAM_ERROR: {
+          const { streamId, message } = packet.data;
+          this.logger.error({ streamId, message }, 'Stream error received');
+          const stream = this.readableStreams.get(streamId);
+          if (stream) {
+            stream.destroy(NetronErrors.streamError(streamId, new Error(message)));
+          }
+          break;
         }
-        break;
+        case TYPE_STREAM_CLOSE: {
+          const { streamId, reason } = packet.data;
+          this.logger.info({ streamId, reason }, 'Stream close received');
+          const stream = this.readableStreams.get(streamId);
+          if (stream) {
+            // Immediately close the stream with the provided reason
+            stream.forceClose(reason);
+          }
+          break;
+        }
+        default: {
+          this.logger.warn({ packetType: pType, peerId: this.id }, 'Received an unknown packet type');
+        }
       }
-      default: {
-        this.logger.warn({ packetType: pType, peerId: this.id }, 'Received an unknown packet type');
-      }
+    } finally {
+      gate?.leave();
     }
   }
 

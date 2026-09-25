@@ -96,7 +96,7 @@ describe('a window a child can finish in', () => {
       /TITAN_SHUTDOWN_TIMEOUT_MS:\s*String\(/,
     );
     expect(spawner, 'and the value must come from the same split the ladder walks').toMatch(
-      /TITAN_SHUTDOWN_TIMEOUT_MS[\s\S]{0,200}shutdownLadder\([\s\S]{0,120}childWindowMs/,
+      /const windowMs = shutdownLadder\([^;]{0,120}\)\.childWindowMs;[\s\S]{0,1500}TITAN_SHUTDOWN_TIMEOUT_MS:\s*String\(windowMs\)/,
     );
   });
 

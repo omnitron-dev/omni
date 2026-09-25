@@ -31,7 +31,7 @@ import { NetronClient } from './netron-client.js';
 import { ServiceProxyHandler } from './service-proxy.js';
 import { getAvailablePort } from '@omnitron-dev/titan/utils';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
-import { shutdownLadder, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
+import { shutdownLadder, childDrainMs, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
 import { confirmDeath } from './confirm-death.js';
 import { threadPoolSizeFor } from './thread-pool.js';
 // MockProcessSpawner is now in @omnitron-dev/testing/titan - use dynamic import to avoid circular dependency
@@ -1341,6 +1341,7 @@ export class ProcessSpawner implements IProcessSpawner {
       throw new Error(`TITAN_WORKER_CONTEXT exceeds 64KB (${contextJson.length} bytes). Reduce dependencies.`);
     }
 
+    const windowMs = shutdownLadder(context.options?.shutdownTimeout ?? DEFAULT_SHUTDOWN_BUDGET_MS).childWindowMs;
     const child = fork(this.forkWorkerPath, [], {
       env: {
         ...childEnv(context.options?.env ?? {}),
@@ -1350,9 +1351,13 @@ export class ProcessSpawner implements IProcessSpawner {
         // this variable and, until now, nothing set it — so the child sized
         // its shutdown against a 5000 default while the ladder killed it at
         // 4000. The deadline belongs to whoever holds SIGKILL.
-        TITAN_SHUTDOWN_TIMEOUT_MS: String(
-          shutdownLadder(context.options?.shutdownTimeout ?? DEFAULT_SHUTDOWN_BUDGET_MS).childWindowMs,
-        ),
+        TITAN_SHUTDOWN_TIMEOUT_MS: String(windowMs),
+        // Its share of that window for the inbound calls still running when
+        // it stops; titan's Application reads it. Written per child, like the
+        // window, because `TITAN_*` is inherited: a worker an app spawns would
+        // otherwise carry the app's share into a window of its own. The app's
+        // own env may state it.
+        TITAN_DRAIN_TIMEOUT_MS: context.options?.env?.['TITAN_DRAIN_TIMEOUT_MS'] || String(childDrainMs(windowMs)),
       },
       execArgv: execArgv || [],
       silent: true,

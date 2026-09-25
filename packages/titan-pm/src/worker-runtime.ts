@@ -17,7 +17,7 @@ import { MetricsCollector, MetricsRegistry } from '@omnitron-dev/titan-metrics';
 import type { MetricSample } from '@omnitron-dev/titan-metrics';
 import { classifyWorkerHealth, combineHealthMethods } from './worker-health.js';
 import { readProcessTraffic, trafficFields } from './worker-traffic.js';
-import { lifecycleWindows, childShutdownWindowMs } from './shutdown-windows.js';
+import { lifecycleWindows, childShutdownWindowMs, childDrainMs } from './shutdown-windows.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -330,6 +330,17 @@ function discoverWorkerService(app: any, serviceMetadataKey: symbol): any {
  */
 async function initialize() {
   try {
+    // How long the applications in this child may wait, when they stop, for
+    // the inbound calls they are still running — its share of the window the
+    // supervisor kills it after. Every Application in the process reads it,
+    // including one a @Process class creates from its own copy of titan;
+    // titan's default without it (10 s) outwaits a 3500 ms window. The
+    // spawner writes it beside the window; this covers a child something else
+    // started, the way `childShutdownWindowMs` covers the window.
+    if (!process.env['TITAN_DRAIN_TIMEOUT_MS']) {
+      process.env['TITAN_DRAIN_TIMEOUT_MS'] = String(childDrainMs(childShutdownWindowMs(process.env)));
+    }
+
     // Dynamic import of the process module
     const ProcessModule = await import(config.processPath);
 

@@ -831,8 +831,10 @@ export class OrchestratorService extends EventEmitter {
       );
       // The handle is errored or stopped, so `stopApp` never ran for it and
       // its services are still registered on the daemon's Netron. Dropping the
-      // handle here is the last moment anything knows they exist.
+      // handle here is the last moment anything knows they exist — or that its
+      // processes still run: an errored app's other children and its pools.
       await this.releaseExposedServices(h);
+      await this.tearDownProcesses(h);
       this.handles.delete(key);
       // Drop any metrics that were collected under the stale alias so it
       // doesn't haunt future snapshots as a ghost offline app.
@@ -843,6 +845,17 @@ export class OrchestratorService extends EventEmitter {
     if (existing && existing.status === 'online') {
       this.logger.warn({ app: entry.name }, 'App already running');
       return existing;
+    }
+    // A handle that is not online may still run processes. A crash restart and
+    // a cool-down recovery only flip its status before coming here; one child
+    // crashing leaves its siblings — the server among them — up; and its pools
+    // were never any supervisor's to stop. Stopped before the new handle
+    // starts, or the new one finds its own predecessor on its port: on
+    // daos/test (2026-09-25) paysys's crash restarts failed five times on
+    // `EADDRINUSE :3004`, «held by … a child this daemon still accounts for».
+    if (existing) {
+      await this.releaseExposedServices(existing);
+      await this.tearDownProcesses(existing);
     }
 
     const mode = entry.bootstrap ? 'bootstrap' : 'classic';
@@ -915,6 +928,43 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /**
+   * Everything a handle still runs, stopped: its supervisor's children (or its
+   * classic child process) AND its topology pools.
+   *
+   * The pools were missed. A pool's workers are not the supervisor's children
+   * — they are the daemon's, siblings of the server, recorded only in
+   * `topologyPools` — so `supervisor.stop()` never reached them, and nothing
+   * in the orchestrator destroyed a pool: only the daemon's own shutdown did.
+   * Every restart of an app with `instances > 1` left the previous workers
+   * running. On daos/test (2026-09-25): priceverse's `ohlcv-aggregator` and
+   * storage's `transform` in three generations at once.
+   *
+   * The pools go even when the supervisor's stop throws: a stop that failed
+   * half-way must not also leave the half nobody asked about.
+   */
+  private async tearDownProcesses(handle: AppHandle, force = false, timeout = 10_000): Promise<void> {
+    try {
+      if (handle.mode === 'bootstrap' && handle.supervisor) {
+        await handle.supervisor.stop();
+      } else if (handle.childProcess) {
+        await this.stopChildProcess(handle, force, timeout);
+      }
+    } finally {
+      for (const [name, pool] of handle.topologyPools) {
+        try {
+          await pool.destroy();
+        } catch (err) {
+          this.logger.warn(
+            { app: handle.name, pool: name, error: (err as Error).message },
+            'Destroying a topology pool failed — its workers may still run',
+          );
+        }
+      }
+      handle.topologyPools.clear();
+    }
+  }
+
+  /**
    * Give back every service an app exposed on the daemon's Netron.
    *
    * A registration outlives the process behind it: the daemon keeps answering
@@ -949,11 +999,7 @@ export class OrchestratorService extends EventEmitter {
       // Unexpose topology services from daemon Netron before stopping processes
       await this.releaseExposedServices(handle);
 
-      if (handle.mode === 'bootstrap' && handle.supervisor) {
-        await handle.supervisor.stop();
-      } else if (handle.childProcess) {
-        await this.stopChildProcess(handle, force, timeout);
-      }
+      await this.tearDownProcesses(handle, force, timeout);
 
       handle.markStopped();
       this.persistState();

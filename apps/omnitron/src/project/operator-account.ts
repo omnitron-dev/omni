@@ -128,12 +128,14 @@ export function operatorCensusCommand(input: { remoteDir: string; containerPrefi
 }
 
 /**
- * What this door asks the leftovers tool for: its census, or a rehearsal of
- * the removal — each database's transaction measured and rolled back. The
- * tool's `--apply` is not among them: a removal takes the owner's word each
- * time, and it is not asked for from here.
+ * What this door asks the leftovers tool for: its census, a rehearsal of the
+ * removal — each database's transaction measured and rolled back — or the
+ * removal itself. The removal is asked for only as the owner gave it on
+ * 2026-09-25, after a census and a rehearsal: without `--accept-losses`, so the
+ * tool refuses to COMMIT anything that would take a row of somebody who stays.
+ * That flag is never passed from here.
  */
-export type LeftoversMode = 'census' | 'rehearse';
+export type LeftoversMode = 'census' | 'rehearse' | 'apply';
 
 /** The tool on the node in one of this door's modes; `also` names accounts no template matches, after the census. */
 export function probeLeftoversCommand(input: {
@@ -143,7 +145,7 @@ export function probeLeftoversCommand(input: {
   also?: readonly string[] | undefined;
 }): string {
   const also = input.also && input.also.length > 0 ? [`--also=${input.also.join(',')}`] : [];
-  const flags = input.mode === 'rehearse' ? ['--rehearse', ...also] : also;
+  const flags = input.mode === 'census' ? also : [`--${input.mode}`, ...also];
   return toolCommand(input.remoteDir, input.containerPrefix, flags, PROBE_LEFTOVERS_TOOL);
 }
 

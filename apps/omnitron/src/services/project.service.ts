@@ -1592,10 +1592,15 @@ export class ProjectService extends EventEmitter {
   ): Promise<import('../shared/dto/project.js').IStackLeftoversCensus> {
     const tool = await import('../project/operator-account.js');
     const mode = request.mode;
-    if (mode !== 'census' && mode !== 'rehearse') {
-      throw new Error(`'${String(mode)}' is not asked for from here — the census, or a rehearsal of the removal`);
+    if (mode !== 'census' && mode !== 'rehearse' && mode !== 'apply') {
+      throw new Error(`'${String(mode)}' is not asked for from here — the census, a rehearsal, or the removal`);
     }
-    const what = mode === 'census' ? 'census of what the probes left' : 'rehearsal of removing what the probes left';
+    const what =
+      mode === 'census'
+        ? 'census of what the probes left'
+        : mode === 'rehearse'
+          ? 'rehearsal of removing what the probes left'
+          : 'removal of what the probes left';
     return this.withOperatorTool(
       projectName,
       stackName,
@@ -1604,8 +1609,8 @@ export class ProjectService extends EventEmitter {
         const read = tool.readLeftoversRun(
           await on.run(
             (remoteDir, containerPrefix) => tool.probeLeftoversCommand({ remoteDir, containerPrefix, mode, also: request.also }),
-            // A rehearsal runs every database's removal and its invariants
-            // before it rolls back — longer than counting.
+            // A rehearsal or a removal runs every database's removal and its
+            // invariants — longer than counting.
             mode === 'census' ? 300_000 : 900_000,
           ),
           mode,

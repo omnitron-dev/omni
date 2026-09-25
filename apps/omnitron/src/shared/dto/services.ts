@@ -353,11 +353,11 @@ export interface IProjectRpcService {
   }): Promise<IStackAccount>;
   /** The stand's accounts counted — by role, status and MFA form; no value. */
   censusStackAccounts(data: { project: string; stack: string }): Promise<IStackAccountCensus>;
-  /** What the probes left on a remote stack's stand — the census, or a rehearsal rolled back; nothing removed. */
+  /** What the probes left on a remote stack's stand — the census, a rehearsal rolled back, or the removal (never accepting losses). */
   probeLeftovers(data: {
     project: string;
     stack: string;
-    mode: 'census' | 'rehearse';
+    mode: 'census' | 'rehearse' | 'apply';
     also?: string[];
   }): Promise<IStackLeftoversCensus>;
   /** What a remote stack's stand holds under a name — never a secret. */

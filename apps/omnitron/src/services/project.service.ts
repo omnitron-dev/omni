@@ -1581,21 +1581,37 @@ export class ProjectService extends EventEmitter {
    * each back. Its removal is not a door here: that takes the owner's word
    * each time, and this census is what the word is given on.
    */
-  async probeLeftoversCensus(
+  async probeLeftovers(
     projectName: string,
     stackName: string,
+    request: {
+      mode: import('../project/operator-account.js').LeftoversMode;
+      /** Accounts no template matches, named after reading the census. */
+      also?: readonly string[] | undefined;
+    },
   ): Promise<import('../shared/dto/project.js').IStackLeftoversCensus> {
     const tool = await import('../project/operator-account.js');
+    const mode = request.mode;
+    if (mode !== 'census' && mode !== 'rehearse') {
+      throw new Error(`'${String(mode)}' is not asked for from here — the census, or a rehearsal of the removal`);
+    }
+    const what = mode === 'census' ? 'census of what the probes left' : 'rehearsal of removing what the probes left';
     return this.withOperatorTool(
       projectName,
       stackName,
-      'census of what the probes left',
+      what,
       async (on) => {
         const read = tool.readLeftoversRun(
-          await on.run((remoteDir, containerPrefix) => tool.probeLeftoversCensusCommand({ remoteDir, containerPrefix }), 300_000),
+          await on.run(
+            (remoteDir, containerPrefix) => tool.probeLeftoversCommand({ remoteDir, containerPrefix, mode, also: request.also }),
+            // A rehearsal runs every database's removal and its invariants
+            // before it rolls back — longer than counting.
+            mode === 'census' ? 300_000 : 900_000,
+          ),
+          mode,
         );
-        if (!read.ok) throw new Error(`${on.where}: could not take the census of what the probes left: ${read.because}`);
-        return { node: on.machine, commit: on.commit, report: read.census.report, lines: read.census.lines };
+        if (!read.ok) throw new Error(`${on.where}: could not take the ${what}: ${read.because}`);
+        return { node: on.machine, commit: on.commit, mode, report: read.census.report, lines: read.census.lines };
       },
       tool.PROBE_LEFTOVERS_TOOL,
     );

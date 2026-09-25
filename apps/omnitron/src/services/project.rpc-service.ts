@@ -296,11 +296,17 @@ export class ProjectRpcService {
 
   /**
    * What the probes left on a remote stack's stand — the project tool's
-   * census, nothing removed. Admin: it runs the project's code on the node.
+   * census, or a rehearsal of the removal rolled back; nothing is removed.
+   * Admin: it runs the project's code on the node.
    */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async probeLeftoversCensus(data: { project: string; stack: string }): Promise<IStackLeftoversCensus> {
-    return this.projectService.probeLeftoversCensus(data.project, data.stack);
+  async probeLeftovers(data: {
+    project: string;
+    stack: string;
+    mode: 'census' | 'rehearse';
+    also?: string[];
+  }): Promise<IStackLeftoversCensus> {
+    return this.projectService.probeLeftovers(data.project, data.stack, { mode: data.mode, also: data.also });
   }
 
   /**

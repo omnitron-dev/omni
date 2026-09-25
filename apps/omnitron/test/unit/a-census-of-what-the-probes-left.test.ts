@@ -13,7 +13,9 @@
  * nothing else — a report in a removal's mode is refused, not shown — and
  * prints the tool's own words. `--leftovers rehearse` asks for the rehearsal
  * (the removal rolled back) with the accounts the owner named after the
- * census; the tool's `--apply` is not asked for from here at all.
+ * census, and `--leftovers apply` for the removal the owner then gave his word
+ * on — never with `--accept-losses`, so the tool commits nothing that would
+ * take a row of somebody who stays.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -64,6 +66,17 @@ describe('the command', () => {
     expect(command.endsWith(`node ${PROBE_LEFTOVERS_TOOL} '--rehearse' '--also=e2eeprobe,e2e2609221947,daomaker'`)).toBe(true);
     expect(command).not.toMatch(/--apply|--accept-losses/);
   });
+
+  it('the removal asks for --apply and the named accounts, and never accepts a loss', () => {
+    const command = probeLeftoversCommand({
+      remoteDir: '/x',
+      containerPrefix: 'daos-test',
+      mode: 'apply',
+      also: ['e2eeprobe', 'e2e2609221947', 'daomaker'],
+    });
+    expect(command.endsWith(`node ${PROBE_LEFTOVERS_TOOL} '--apply' '--also=e2eeprobe,e2e2609221947,daomaker'`)).toBe(true);
+    expect(command).not.toMatch(/--accept-losses|--rehearse/);
+  });
 });
 
 describe('reading its answer', () => {
@@ -93,6 +106,11 @@ describe('reading its answer', () => {
       because: "the tool answered in mode 'apply', and this run asked for 'rehearse'",
     });
     expect(readLeftoversRun({ stdout: answer({ ...REPORT, mode: 'rehearse' }), stderr: WORDS, code: 0 }, 'rehearse').ok).toBe(true);
+    expect(readLeftoversRun({ stdout: answer({ ...REPORT, mode: 'apply' }), stderr: WORDS, code: 0 }, 'apply').ok).toBe(true);
+    expect(readLeftoversRun({ stdout: answer({ ...REPORT, mode: 'census' }), stderr: '', code: 0 }, 'apply')).toEqual({
+      ok: false,
+      because: "the tool answered in mode 'census', and this run asked for 'apply'",
+    });
   });
 
   it('a failed run carries the tool\'s words; a run with no report says what stdout looked like', () => {
@@ -136,6 +154,17 @@ describe('on the node', () => {
       expect(found.lines).toContain('organisations nobody who stays belongs to: 95');
       expect(commands[0]!.endsWith(`node ${PROBE_LEFTOVERS_TOOL}`)).toBe(true);
       expect(commands.some((c) => c.startsWith("rm -rf '/opt/omnitron/operator/abc'"))).toBe(true);
+
+      // The removal goes down the same road, with the named accounts, and
+      // is read back only as a removal.
+      commands.length = 0;
+      svc.deployer.readFromNode = async (_t: unknown, command: string) => {
+        commands.push(command);
+        return { stdout: answer({ ...REPORT, mode: 'apply' }), stderr: WORDS, code: 0 };
+      };
+      const removed = await svc.probeLeftovers('daos', 'test', { mode: 'apply', also: ['e2eeprobe'] });
+      expect(removed).toMatchObject({ mode: 'apply' });
+      expect(commands[0]!.endsWith(`node ${PROBE_LEFTOVERS_TOOL} '--apply' '--also=e2eeprobe'`)).toBe(true);
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
@@ -156,7 +185,7 @@ describe('on the node', () => {
     try {
       await expect(stageOperatorTool(repo, PROBE_LEFTOVERS_TOOL)).rejects.toThrow(/has no scripts\/probe-leftovers\.mjs/);
       await expect(svc.probeLeftovers('daos', 'test', { mode: 'census' })).rejects.toThrow(/has no scripts\/probe-leftovers\.mjs/);
-      await expect(svc.probeLeftovers('daos', 'test', { mode: 'apply' })).rejects.toThrow(/'apply' is not asked for from here/);
+      await expect(svc.probeLeftovers('daos', 'test', { mode: 'force' })).rejects.toThrow(/'force' is not asked for from here/);
       expect(reached).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
@@ -208,6 +237,14 @@ describe('`stack account --leftovers` on the command line', () => {
     );
   });
 
+  it('asks for the removal and says it was committed where its invariants held', async () => {
+    const { said, asked } = await run({ leftovers: 'apply', also: 'e2eeprobe' });
+    expect(asked).toEqual([{ project: 'daos', stack: 'test', mode: 'apply', also: ['e2eeprobe'] }]);
+    expect(said.at(-1)).toBe(
+      "removal of what the probes left on daos/test at 37.27.130.185:22 — the tool at 83db4a79, named: e2eeprobe; committed where its invariants held — the tool's lines above say what went",
+    );
+  });
+
   it('asks for the rehearsal with the accounts named after the census', async () => {
     const { said, asked } = await run({ leftovers: 'rehearse', also: 'e2eeprobe, e2e2609221947,daomaker' });
     expect(asked).toEqual([{ project: 'daos', stack: 'test', mode: 'rehearse', also: ['e2eeprobe', 'e2e2609221947', 'daomaker'] }]);
@@ -222,7 +259,8 @@ describe('`stack account --leftovers` on the command line', () => {
     expect(accountOptionsRefusal({ leftovers: true, census: true })).toMatch(/exactly one of/);
     expect(accountOptionsRefusal({ leftovers: true, id: 'x' })).toMatch(/--leftovers takes nothing but its mode and --also/);
     expect(accountOptionsRefusal({ leftovers: 'rehearse', also: 'a' })).toBeNull();
-    expect(accountOptionsRefusal({ leftovers: 'apply' })).toMatch(/'apply' is not asked for from here/);
+    expect(accountOptionsRefusal({ leftovers: 'apply', also: 'a' })).toBeNull();
+    expect(accountOptionsRefusal({ leftovers: 'force' })).toMatch(/'force' is not asked for from here/);
     expect(accountOptionsRefusal({ also: 'a', census: true })).toMatch(/--also goes with --leftovers/);
   });
 });

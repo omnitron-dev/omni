@@ -250,7 +250,7 @@ stack
   .option('--census', 'Count the accounts — by role, status and MFA form, and whether the seeded admin opens with its published password')
   .option(
     '--leftovers [mode]',
-    'What the probes left on the stand, by the project\'s tool: `census` (the default) — names and what holds each back; `rehearse` — the removal, measured and rolled back. Nothing is removed',
+    'What the probes left on the stand, by the project\'s tool: `census` (the default) — names and what holds each back; `rehearse` — the removal, measured and rolled back; `apply` — the removal, committed only where nothing of somebody who stays would go',
   )
   .option('--also <usernames>', 'With --leftovers: accounts no template matches, named after reading the census (comma-separated)')
   .option('--remove <name>', 'Take the account with this name away — with --id, and its password from the vault')

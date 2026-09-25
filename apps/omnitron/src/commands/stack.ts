@@ -357,8 +357,14 @@ export function accountOptionsRefusal(options: {
   const extras = options.id !== undefined || options.role !== undefined || options.displayName !== undefined || options.vaultKey !== undefined;
   if (options.census && extras) return '--census takes nothing else';
   if (options.leftovers && extras) return '--leftovers takes nothing but its mode and --also';
-  if (options.leftovers !== undefined && options.leftovers !== true && options.leftovers !== 'census' && options.leftovers !== 'rehearse') {
-    return `--leftovers takes census or rehearse — '${String(options.leftovers)}' is not asked for from here`;
+  if (
+    options.leftovers !== undefined &&
+    options.leftovers !== true &&
+    options.leftovers !== 'census' &&
+    options.leftovers !== 'rehearse' &&
+    options.leftovers !== 'apply'
+  ) {
+    return `--leftovers takes census, rehearse or apply — '${String(options.leftovers)}' is not asked for from here`;
   }
   if (options.also !== undefined && !options.leftovers) return '--also goes with --leftovers';
   if (options.remove !== undefined && !options.id) return '--remove needs --id <uuid> — the id --show prints';
@@ -408,10 +414,18 @@ export async function stackAccountCommand(
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     if (options.leftovers) {
-      const mode = options.leftovers === 'rehearse' ? 'rehearse' : 'census';
+      const mode = options.leftovers === 'rehearse' || options.leftovers === 'apply' ? options.leftovers : 'census';
       const also = (options.also ?? '').split(',').map((u) => u.trim()).filter(Boolean);
-      const what = mode === 'census' ? 'census of what the probes left' : 'rehearsal of removing what the probes left';
-      emitStep(`Taking the ${what} on ${projectName}/${stackName} — the project's tool, on the node; nothing is removed…`);
+      const what =
+        mode === 'census'
+          ? 'census of what the probes left'
+          : mode === 'rehearse'
+            ? 'rehearsal of removing what the probes left'
+            : 'removal of what the probes left';
+      emitStep(
+        `Taking the ${what} on ${projectName}/${stackName} — the project's tool, on the node; ` +
+          `${mode === 'apply' ? 'committed only where nothing of somebody who stays would go' : 'nothing is removed'}…`,
+      );
       const found = await svc.probeLeftovers({ project: projectName, stack: stackName, mode, ...(also.length > 0 ? { also } : {}) });
       if (emitJson(found)) return;
       // The tool's own words: it names what it would take and what holds each
@@ -419,7 +433,8 @@ export async function stackAccountCommand(
       for (const line of found.lines) emitInfo(line);
       emitSuccess(
         `${what} on ${projectName}/${stackName} at ${found.node} — the tool at ${found.commit.slice(0, 8)}` +
-          `${also.length > 0 ? `, named: ${also.join(', ')}` : ''}; nothing was removed`,
+          `${also.length > 0 ? `, named: ${also.join(', ')}` : ''}` +
+          `${mode === 'apply' ? '; committed where its invariants held — the tool\'s lines above say what went' : '; nothing was removed'}`,
       );
       return;
     }

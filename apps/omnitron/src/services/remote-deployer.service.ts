@@ -85,6 +85,7 @@ import { fromDataChannel, throughDataChannel } from '../execution/data-channel.j
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
+import { migrationOutput } from './migration-output.js';
 
 
 /**
@@ -1164,11 +1165,18 @@ export class RemoteDeployer {
         const assignments = Object.entries({ DATABASE_URL: databaseUrl, ...dbEnv })
           .map(([k, v]) => `${k}=${shellEscape(v)}`)
           .join(' ');
-        await this.sshExec(
+        // What the migrations said, in order, before the verdict (see
+        // `migration-output.ts`). The masked channel on purpose: these lines
+        // are for reading, not parsing, and a migrator that ever printed a
+        // credential must not put it in the master's log.
+        const said = await this.sshExec(
           target,
           `cd ${shellEscape(dir)} && ${assignments} node ${shellEscape(script)}`,
           600_000,
         );
+        for (const line of migrationOutput(said)) {
+          this.logger.info({ node: target.host, app: entry.app, line }, 'Migration said');
+        }
         this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');
       } catch (err) {
         const message = (err as Error).message;

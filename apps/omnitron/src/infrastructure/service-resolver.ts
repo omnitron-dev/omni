@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
+import { CONFIG_ROOT_PREFIX, shippedMountPath } from './shipped-config.js';
 import { bindService } from './service-binding.js';
 
 import type {
@@ -280,6 +281,8 @@ export function resolveServiceRequirement(
   requirement: IServiceRequirement,
   override?: IServiceOverride,
   appName?: string,
+  /** Where each service's shipped config directory is on THIS machine — see `shipped-config.ts`. */
+  configRoots?: ReadonlyMap<string, string>,
 ): ResolvedContainer | null {
   // A container only for a service this stack runs as one — not one it
   // disables, reaches elsewhere, or runs on the node as a system service
@@ -315,9 +318,19 @@ export function resolveServiceRequirement(
   }));
 
   // Resolve volumes
+  const shippedRoots = new Set<string>();
   const volumes = Object.entries(docker.volumes ?? {}).map(([name, vol]) => {
     if (typeof vol === 'string') {
       return { source: `${CONTAINER_PREFIX}-${serviceName}-${name}`, target: vol };
+    }
+    if (vol.source.startsWith(CONFIG_ROOT_PREFIX)) {
+      // The node's copy of a directory the master shipped. Unresolved — no
+      // copy arrived — it stays as it is, and docker refuses it by name.
+      const local = shippedMountPath(vol.source, configRoots);
+      if (local) shippedRoots.add(local.root);
+      const entry: { source: string; target: string; readonly?: boolean } = { source: local?.path ?? vol.source, target: vol.target };
+      if (vol.readonly) entry.readonly = vol.readonly;
+      return entry;
     }
     const isBindMount = vol.source.startsWith('/') || vol.source.startsWith('.');
     const entry: { source: string; target: string; readonly?: boolean } = {
@@ -331,7 +344,7 @@ export function resolveServiceRequirement(
   // Convert IServiceHealthCheck → ContainerHealthCheck
   const healthCheck = docker.healthCheck ?? convertHealthCheck(requirement.healthCheck, binding.ports);
 
-  return applyManagedDefaults({
+  const spec = applyManagedDefaults({
     name: containerName(serviceName),
     image,
     ports,
@@ -359,6 +372,16 @@ export function resolveServiceRequirement(
     // stamps in the project-wide bridge.
     ...(typeof docker.network === 'string' ? { network: docker.network } : {}),
   });
+  // The content of what it mounts from shipped directories, so a changed
+  // script recreates the container — the same reason as the gateway's.
+  for (const root of shippedRoots) {
+    const digest = mountedConfigDigest(root, spec.volumes);
+    if (digest) spec.configDigest = spec.configDigest ? configFilesHash([
+      { path: 'a', content: spec.configDigest, mode: '644' },
+      { path: 'b', content: digest, mode: '644' },
+    ]) : digest;
+  }
+  return spec;
 }
 
 /**
@@ -369,6 +392,7 @@ export function resolveAppInfrastructure(
   infrastructure: Record<string, IServiceRequirement>,
   overrides?: Record<string, IServiceOverride>,
   appName?: string,
+  configRoots?: ReadonlyMap<string, string>,
 ): ResolvedContainer[] {
   const containers: ResolvedContainer[] = [];
   const resolved = new Set<string>();
@@ -386,7 +410,7 @@ export function resolveAppInfrastructure(
     }
 
     const override = overrides?.[`${appName}/${name}`] ?? overrides?.[name];
-    const container = resolveServiceRequirement(name, req, override, appName);
+    const container = resolveServiceRequirement(name, req, override, appName, configRoots);
     if (container) containers.push(container);
   };
 
@@ -585,7 +609,9 @@ export function mountedConfigDigest(root: string, volumes: ResolvedContainer['vo
   };
   try {
     for (const v of volumes) {
-      if (v.source.startsWith(prefix)) visit(v.source);
+      // The root itself too: a service may mount its whole shipped directory
+      // (`shipped-config.ts`), where the gateway mounts files inside it.
+      if (v.source === root || v.source.startsWith(prefix)) visit(v.source);
     }
   } catch {
     return undefined;
@@ -826,13 +852,14 @@ export function resolveInfrastructure(
 
   const gatewayRoot = configRoots?.get('gateway');
   if (!gatewayRoot || !normalizedServices['gateway'] || !gatewayContext) {
-    return resolveAppInfrastructure(normalizedServices, overrides);
+    return resolveAppInfrastructure(normalizedServices, overrides, undefined, configRoots);
   }
 
   // One resolver for the gateway, wherever it runs. The rest go through the
-  // generic path, which is right for them.
+  // generic path, which is right for them — with the node's copies of what
+  // they mount from shipped directories (`shipped-config.ts`).
   const { gateway: _gateway, ...rest } = normalizedServices;
-  const containers = resolveAppInfrastructure(rest, overrides);
+  const containers = resolveAppInfrastructure(rest, overrides, undefined, configRoots);
   containers.push(
     resolveGateway(
       {

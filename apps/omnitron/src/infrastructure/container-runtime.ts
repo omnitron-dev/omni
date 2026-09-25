@@ -9,6 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
 
 /** Label carrying the desired-spec fingerprint, used for config-drift detection. */
@@ -455,9 +456,11 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     await ensureNetwork(config.network);
   }
 
-  // Ensure volumes exist
+  // Ensure volumes exist. A `configroot:` source is a shipped directory this
+  // node has no copy of (`shipped-config.ts`), not a volume to create: it
+  // reaches `docker run`, which refuses it by name.
   for (const vol of config.volumes) {
-    if (!vol.source.startsWith('/') && !vol.source.startsWith('.')) {
+    if (!vol.source.startsWith('/') && !vol.source.startsWith('.') && !vol.source.startsWith(CONFIG_ROOT_PREFIX)) {
       await createVolume(vol.source);
     }
   }

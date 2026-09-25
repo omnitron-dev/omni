@@ -273,6 +273,14 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const declared = { ...fromStack, ...(data.services ?? {}) };
     const service = this.getInfra() ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
 
+    // Write what the master sent, and point this node's containers at its own
+    // copies. Before `provision()`, because a container created against a
+    // path that does not exist yet mounts an empty directory and then has to
+    // be recreated to pick the files up — and before the applications'
+    // containers are resolved, because they may mount those copies too.
+    const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
+    const staticRoots = await this.acceptStaticRoots(data.staticRoots);
+
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.
     if (Object.keys(data.services ?? {}).length > 0) {
@@ -282,16 +290,11 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       const { resolveAppInfrastructure } = await import('../infrastructure/service-resolver.js');
       // With the stack's overrides: without them a service the stack runs
       // on the node as a system service came up as a container as well.
-      const containers = resolveAppInfrastructure(data.services ?? {}, data.overrides);
+      // With this node's copies of what they mount (`shipped-config.ts`).
+      const containers = resolveAppInfrastructure(data.services ?? {}, data.overrides, undefined, configRoots);
       if (containers.length > 0) service.addAppContainers(containers);
     }
 
-    // Write what the master sent, and point this node's containers at its own
-    // copies. Before `provision()`, because a container created against a
-    // path that does not exist yet mounts an empty directory and then has to
-    // be recreated to pick the files up.
-    const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
-    const staticRoots = await this.acceptStaticRoots(data.staticRoots);
     if (configRoots.size > 0) {
       // The gateway proxies through Redis for maintenance state, and its
       // resolver needs to know where that is. It is the same Redis this stack

@@ -118,8 +118,13 @@ describe('the 5xx log line', () => {
       // Both: the wrapper stack locates the boundary, the cause says what broke.
       expect(block, `5xx log block #${i + 1}`).toContain('stack: titanError.stack');
       expect(block, `5xx log block #${i + 1}`).toContain('causeFields(titanError)');
-      // And only on 5xx — a 4xx is the caller's own doing and needs no internals.
-      expect(block, `5xx log block #${i + 1}`).toMatch(/httpError\.status >= 500 && causeFields/);
+      // And only on 5xx, or on a refusal the DATABASE made — any other 4xx is
+      // the caller's own doing and needs no internals, while a 409 from a
+      // unique index is the server's invariant, and its cause names the
+      // constraint (see a-conflict-the-server-kept-to-itself).
+      expect(block, `5xx log block #${i + 1}`).toMatch(
+        /\(httpError\.status >= 500 \|\| isDatabaseRefusal\(errorCode\)\) && causeFields/
+      );
     }
   });
 });

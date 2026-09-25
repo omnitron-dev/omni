@@ -264,6 +264,30 @@ export function causeFields(error: { cause?: unknown }): Record<string, unknown>
  */
 const WITNESSED_REFUSALS = new Set([401, 403, 404, 429]);
 
+/**
+ * Whether a refusal is recorded without request logging: the statuses above,
+ * and any refusal the DATABASE made.
+ *
+ * `toTitanError` maps SQLSTATE classes 22 and 23 to 400 and 409, with
+ * `errorCode` `DATABASE_INPUT` and `DATABASE_CONSTRAINT`. Those statuses read
+ * like the caller's mistake, and what raised them is the server's own
+ * invariant: a unique index two concurrent requests of one page both tried to
+ * satisfy, a value the server passed to Postgres without reading it first.
+ * The caller can do nothing about either, and until now only the caller knew:
+ * on daos/test (2026-09-25) a new user's first page got DATABASE_CONSTRAINT
+ * from a race in messaging's identity creation, and the log had no line.
+ * A 409 from a business rule («already pinned») carries its own code and
+ * stays the caller's business.
+ */
+export function isWitnessedRefusal(status: number, errorCode: unknown): boolean {
+  return WITNESSED_REFUSALS.has(status) || isDatabaseRefusal(errorCode);
+}
+
+/** A refusal the database made — `toTitanError`'s `DATABASE_*` codes. */
+export function isDatabaseRefusal(errorCode: unknown): boolean {
+  return typeof errorCode === 'string' && errorCode.startsWith('DATABASE_');
+}
+
 export class HttpServer extends EventEmitter implements ITransportServer {
   readonly connections = new Map<string, ITransportConnection>();
 
@@ -1186,12 +1210,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Found while proving a 404 goes unrecorded: the fix to the other copy
       // did not reach this one, which is the usual way a one-directional fix
       // ends.
+      // Business error code when available (e.g., "SESSION_EXPIRED"), the
+      // HTTP status otherwise — for the log line and the response alike.
+      const errorCode = (titanError.details as any)?.errorCode ?? String(httpError.status);
+
       if (this.netronPeer?.logger) {
         const logFields = {
           service: message.service,
           method: message.method,
           requestId: message.id,
           status: httpError.status,
+          errorCode,
           error: titanError.message,
           // The same two fields the other copy carries, and the reason this
           // block exists at all. Teaching this path to log without them
@@ -1201,19 +1230,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           // sentence chosen so the wire reveals nothing — so a log line
           // holding only that is a log line about nothing.
           ...(httpError.status >= 500 && titanError.stack && { stack: titanError.stack }),
-          ...(httpError.status >= 500 && causeFields(titanError)),
+          // A database refusal's cause names the constraint or the value; the
+          // masked sentence in `error` names neither.
+          ...((httpError.status >= 500 || isDatabaseRefusal(errorCode)) && causeFields(titanError)),
           path: 'fast',
         };
         if (httpError.status >= 500) {
           this.netronPeer.logger.error(logFields, 'Netron error');
-        } else if (WITNESSED_REFUSALS.has(httpError.status) || this.options.logging) {
+        } else if (isWitnessedRefusal(httpError.status, errorCode) || this.options.logging) {
           this.netronPeer.logger.warn(logFields, 'Netron error');
         }
       }
-
-      // Use business error code when available (e.g., "SESSION_EXPIRED"),
-      // fall back to HTTP status code for generic errors.
-      const errorCode = (titanError.details as any)?.errorCode ?? String(httpError.status);
 
       const errorResponse = createErrorResponse(message.id, {
         code: errorCode,
@@ -1675,12 +1702,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           // method and the duration, and could not say why.
           //
           // The masking is right and stays. What changes is that the thing
-          // it promised to keep is now actually written down.
-          ...(httpError.status >= 500 && causeFields(titanError)),
+          // it promised to keep is now actually written down — for a database
+          // refusal below 500 too, whose cause names the constraint.
+          ...((httpError.status >= 500 || isDatabaseRefusal(errorCode)) && causeFields(titanError)),
         };
         if (httpError.status >= 500) {
           this.netronPeer.logger.error(logFields, 'Netron error');
-        } else if (WITNESSED_REFUSALS.has(httpError.status) || this.options.logging) {
+        } else if (isWitnessedRefusal(httpError.status, errorCode) || this.options.logging) {
           // A refusal is not traffic tracing, and gating it on `logging`
           // (default false) meant nothing recorded it. Measured on the dev
           // stand 2026-09-22: `POST /netron/invoke` for a method that does

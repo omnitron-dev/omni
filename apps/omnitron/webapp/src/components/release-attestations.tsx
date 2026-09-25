@@ -121,6 +121,9 @@ function CleanupNote({ attestation: a }: { attestation: StoredAttestation }) {
   const taken = Object.entries(c?.removed ?? {})
     .filter(([, n]) => n > 0)
     .map(([kind, n]) => `${n} ${kind}`);
+  const retired = Object.entries(c?.retired ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => `${n} ${kind}`);
   return (
     <Box sx={{ mt: 0.75, pl: 1 }} data-testid={`cleanup-${a.stack}`}>
       {c && (
@@ -132,6 +135,11 @@ function CleanupNote({ attestation: a }: { attestation: StoredAttestation }) {
             ? `cleanup not run — ${c.notRun ?? 'the run had no name to remove by'}`
             : `cleanup: run ${c.run} removed ${taken.length ? taken.join(', ') : 'nothing — it had made nothing to remove'}` +
               (c.failed ? ` — FAILED: ${c.failed}` : '')}
+        </Typography>
+      )}
+      {retired.length > 0 && (
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+          retired: {retired.join(', ')} — blocked in place, their real-chain addresses still watched
         </Typography>
       )}
       {(c?.leftBehind ?? []).map((l) => (

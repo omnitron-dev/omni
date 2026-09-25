@@ -262,6 +262,9 @@ describe('a release is admitted only onto its own commit', () => {
       toStackInfo: () => ({ name: 'test', type: 'remote', apps: [{ name: 'main', status: 'online' }] }),
       emit: vi.fn(),
       releaseStore: async () => store,
+      // The node's daemon, built from the omni the release was gated on — see
+      // `a-release-the-node-never-ran.test.ts` for the other answers.
+      slaveConnector: { invokeOnSlave: vi.fn(async () => ({ version: `0.2.0+local.${'b'.repeat(12)}.202609251029` })) },
     });
     return { dir, id, svc, commit };
   }

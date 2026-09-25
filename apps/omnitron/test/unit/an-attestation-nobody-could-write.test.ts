@@ -220,6 +220,8 @@ describe('the transport, as the producer defines it', () => {
     });
     expect(command).toContain("SAMPLE_PG_CONTAINER='sample-test-postgres'");
     expect(command).toContain("SAMPLE_REDIS_CONTAINER='sample-test-redis'");
+    // What the applications load: the daemon's packages, not the release's.
+    expect(command).toContain("OMNITRON_PACKAGES='/opt/omnitron/current/node_modules'");
     expect(command).toContain('--on-node');
     // The producer's KNOWN list: --stack= --release= --out= --only= --on-node.
     // Anything else is `unknown argument`, exit 2 — which would store nothing.

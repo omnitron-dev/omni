@@ -271,7 +271,11 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const service = this.getInfra() ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
+    const reused = this.getInfra();
+    const service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
+    // Reused, it is told the definition this call carries — the one the
+    // master deploys now, not the one the daemon's first call carried.
+    if (reused) reused.redefine(config, declared, data.overrides ?? {});
 
     // Write what the master sent, and point this node's containers at its own
     // copies. Before `provision()`, because a container created against a

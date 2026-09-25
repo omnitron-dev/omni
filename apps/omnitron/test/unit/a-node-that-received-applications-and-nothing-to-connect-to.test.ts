@@ -34,6 +34,7 @@ function fakeInfra(services: Record<string, unknown>, desired: Array<{ name: str
     }),
     getDesiredServices: () => desired,
     getState: () => ({ services, ready: true }),
+    redefine: vi.fn(),
   } as never;
 }
 
@@ -88,6 +89,9 @@ describe('asking a node to host a stack s infrastructure', () => {
     // set of containers.
     expect(host).not.toHaveBeenCalled();
     expect((infra as any).provisions).toBe(2);
+    // And each call's definition is the one it serves — see
+    // `a-node-that-kept-the-first-definition-it-was-given`.
+    expect((infra as any).redefine).toHaveBeenCalledTimes(2);
   });
 
   it('refuses on a daemon that does not host one', async () => {

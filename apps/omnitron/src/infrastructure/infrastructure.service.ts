@@ -126,7 +126,7 @@ export class InfrastructureService {
   private usingGlobalOmnitronPg = false;
   private healthTimer: NodeJS.Timeout | null = null;
   private readonly state: InfrastructureState = { services: {}, ready: false };
-  private readonly normalizedServices: Record<string, import('./types.js').IServiceRequirement>;
+  private normalizedServices: Record<string, import('./types.js').IServiceRequirement>;
 
   /**
    * Per-service consecutive-unhealthy counter. Restart only fires after
@@ -158,7 +158,7 @@ export class InfrastructureService {
 
   constructor(
     private readonly logger: ILogger,
-    private readonly config: InfrastructureConfig,
+    private config: InfrastructureConfig,
     normalizedServices?: Record<string, import('./types.js').IServiceRequirement>,
     private readonly presetRegistry?: import('./presets/registry.js').PresetRegistry,
     /**
@@ -167,7 +167,7 @@ export class InfrastructureService {
      * there is nothing to create, and the address reaches the application
      * through its environment instead.
      */
-    private readonly serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
+    private serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
     /**
      * Whether this daemon stores its own state in Postgres.
      *
@@ -456,6 +456,30 @@ export class InfrastructureService {
    */
   getState(): InfrastructureState {
     return this.state;
+  }
+
+  /**
+   * Serve the stack's definition as it is now.
+   *
+   * A node's daemon builds this service on its first `provisionStack` and
+   * reuses it for every later one — rightly: a second service would be a
+   * second janitor and a second health monitor over one set of containers.
+   * But the definition it was built with stayed its definition. A later
+   * deployment that enabled a service, changed an image or dropped a
+   * `disabled` reached the node's host services — `reconcileHostServices`
+   * reads each call's own — and not its containers, until something restarted
+   * the daemon. Replaced whole, as the constructor sets it; `setConfigRoots`
+   * and `addAppContainers` then work on this set, as on a first call.
+   */
+  redefine(
+    config: InfrastructureConfig,
+    normalizedServices: Record<string, import('./types.js').IServiceRequirement>,
+    serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
+  ): void {
+    this.config = config;
+    this.normalizedServices = normalizedServices;
+    this.serviceOverrides = serviceOverrides;
+    this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
   }
 
   /**

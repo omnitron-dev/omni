@@ -436,6 +436,29 @@ export async function releaseShowCommand(id: string): Promise<void> {
  * is the daemon's. A command that wrote the file itself would keep an
  * attestation about a system that had since been replaced.
  */
+/**
+ * What an attestation said beyond its probes: what the run took away after
+ * itself, what it left and why, and whether it could read the legal texts.
+ * The producer measured all of it on the node; a tally of probes alone says
+ * nothing about the accounts and organisations a run made on the stand.
+ */
+function sayWhatTheRunLeft(answer: import('../shared/dto/services.js').AttestStored): void {
+  const c = answer.cleanup;
+  if (c) {
+    if (c.run === null) log.warn(`  cleanup: not run — ${c.notRun ?? 'the run had no name to remove by'}`);
+    else {
+      const taken = Object.entries(c.removed ?? {})
+        .filter(([, n]) => n > 0)
+        .map(([kind, n]) => `${n} ${kind}`);
+      const said = `  cleanup: run ${c.run} removed ${taken.length ? taken.join(', ') : 'nothing — it had made nothing to remove'}`;
+      if (c.failed) log.warn(`${said} — FAILED: ${c.failed}`);
+      else log.info(said);
+    }
+    for (const l of c.leftBehind ?? []) log.warn(`  left behind: ${l.what} — ${l.why.join('; ') || 'no reason given'}`);
+  }
+  if (answer.legalTextsUnread) log.warn(`  legal texts: could not be read — ${answer.legalTextsUnread}`);
+}
+
 export async function releaseAttestCommand(
   id: string,
   options: { stack?: string; from?: string; onNode?: boolean } = {},
@@ -474,6 +497,7 @@ export async function releaseAttestCommand(
         log.info(`  accounts: none provisioned — ${options.stack} does not declare release.attest.provision; probes that sign in say NOT RUN`);
       else if (answer.accounts === 'producer-cannot')
         log.warn("  accounts: none provisioned — the stack allows it, but this release's producer predates --provision");
+      sayWhatTheRunLeft(answer);
       log.info(`  ${answer.path}`);
     } catch (err) {
       log.error((err as Error).message);
@@ -498,6 +522,7 @@ export async function releaseAttestCommand(
     const failed = answer.gates - answer.passed;
     if (failed === 0) log.success(`Attested ${id} on ${options.stack}: ${answer.passed} of ${answer.gates} probes passed`);
     else log.warn(`Attested ${id} on ${options.stack}: ${answer.passed} of ${answer.gates} probes passed, ${failed} did not`);
+    sayWhatTheRunLeft(answer);
     log.info(`  ${answer.path}`);
   } catch (err) {
     log.error((err as Error).message);

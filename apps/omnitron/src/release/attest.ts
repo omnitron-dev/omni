@@ -42,6 +42,26 @@ interface RawAttestation {
   at?: unknown;
   probes?: unknown;
   onNode?: { claimed?: unknown; hosts?: unknown; matched?: unknown };
+  cleanup?: unknown;
+  legalTextsUnread?: unknown;
+}
+
+/**
+ * What the run took away after itself, and what it would not take and why —
+ * the producer's `cleanup`. Kept because a run's «36 of 36» says nothing
+ * about the accounts and organisations it made on the stand; this does.
+ */
+export interface AttestationCleanup {
+  /** The run's name — the mark its rows carry. `null`: the run had none, so nothing was taken. */
+  readonly run: string | null;
+  /** Rows removed, per kind («accounts», «organisations», …). */
+  readonly removed?: Readonly<Record<string, number>>;
+  /** What stays, each with the reasons the removal gave. */
+  readonly leftBehind?: ReadonlyArray<{ readonly what: string; readonly why: readonly string[] }>;
+  /** The removal ran and did not finish, in its words. */
+  readonly failed?: string;
+  /** Why no removal was attempted. */
+  readonly notRun?: string;
 }
 
 export interface StoredAttestation extends StackAttestation {
@@ -51,6 +71,41 @@ export interface StoredAttestation extends StackAttestation {
   readonly onNode: { claimed: boolean; hosts: string[]; matched: boolean | null };
   /** When this master accepted it. */
   readonly storedAt: string;
+  /**
+   * The run's removal of what it made. Absent from a producer that predates
+   * it — and from every record stored before 2026-09-25, when this side kept
+   * only the probes and dropped what the producer said about the rest.
+   */
+  readonly cleanup?: AttestationCleanup;
+  /** The producer could not read the legal texts in force — the probes that sign up then say NOT RUN. */
+  readonly legalTextsUnread?: string;
+}
+
+/** The producer's `cleanup`, keeping only what has the shape above. */
+export function cleanupOf(raw: unknown): AttestationCleanup | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Record<string, unknown>;
+  if (!('run' in c) || (c['run'] !== null && typeof c['run'] !== 'string')) return undefined;
+  const removed =
+    c['removed'] && typeof c['removed'] === 'object'
+      ? Object.fromEntries(
+          Object.entries(c['removed'] as Record<string, unknown>).filter(
+            (e): e is [string, number] => typeof e[1] === 'number' && Number.isFinite(e[1]),
+          ),
+        )
+      : undefined;
+  const leftBehind = Array.isArray(c['leftBehind'])
+    ? (c['leftBehind'] as unknown[])
+        .filter((l): l is { what: unknown; why: unknown } => !!l && typeof l === 'object')
+        .map((l) => ({ what: String(l.what), why: Array.isArray(l.why) ? l.why.map(String) : [] }))
+    : undefined;
+  return {
+    run: c['run'] as string | null,
+    ...(removed ? { removed } : {}),
+    ...(leftBehind ? { leftBehind } : {}),
+    ...(typeof c['failed'] === 'string' ? { failed: c['failed'] } : {}),
+    ...(typeof c['notRun'] === 'string' ? { notRun: c['notRun'] } : {}),
+  };
 }
 
 /**
@@ -170,6 +225,7 @@ export async function storeAttestation(
   }
 
   const gates = (raw.probes as Array<Record<string, unknown>>).map(outcomeOf);
+  const cleanup = cleanupOf(raw.cleanup);
   const attestation: StoredAttestation = {
     stack,
     release: releaseId,
@@ -177,6 +233,8 @@ export async function storeAttestation(
     at,
     onNode: { claimed, hosts, matched },
     storedAt: new Date().toISOString(),
+    ...(cleanup ? { cleanup } : {}),
+    ...(typeof raw.legalTextsUnread === 'string' ? { legalTextsUnread: raw.legalTextsUnread } : {}),
   };
   const target = path.join(dir, 'attestations');
   fs.mkdirSync(target, { recursive: true });

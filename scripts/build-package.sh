@@ -25,8 +25,18 @@ fi
 rm -rf dist.next dist.old node_modules/.tmp
 
 # `--outDir` overrides whatever the tsconfig says, and declarations follow it
-# unless `declarationDir` is set explicitly — checked per package before this
-# script was adopted.
+# — unless `declarationDir` is set, in which case tsc writes them THERE, the
+# swap below throws that directory away, and the package ships with no types.
+# The comment here once said this was «checked per package before this script
+# was adopted». It was not true for `packages/testing`, whose tsconfig said
+# `declarationDir: ./dist`: every clean clone built it with 0 `.d.ts`, and a
+# developer's checkout hid it with declarations left over from a build before
+# this script (measured 2026-09-25, a daos release refused because paysys
+# could not resolve `@omnitron-dev/testing/async`). So it is checked, here.
+if npx tsc "${args[@]}" --showConfig | grep -q '"declarationDir"'; then
+  echo "build-package: $pkg sets declarationDir — its declarations would land outside dist.next and be thrown away by the swap. Remove it (they follow --outDir)." >&2
+  exit 1
+fi
 npx tsc "${args[@]}" --outDir dist.next
 
 if [ ! -d dist.next ]; then

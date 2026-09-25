@@ -785,6 +785,19 @@ export type ReleasePruneAnswer = import('../../release/store.js').PruneResult & 
  * viewer's, starting and stopping is an operator's, and `prune` — the only
  * call that deletes — is an administrator's.
  */
+
+/**
+ * What an attestation stored: its probes' tally, and what the run said about
+ * the stand beyond them — the rows it took away and what it left — which a
+ * «36 of 36» alone does not tell.
+ */
+export interface AttestStored {
+  path: string;
+  gates: number;
+  passed: number;
+  cleanup?: import('../../release/attest.js').AttestationCleanup;
+  legalTextsUnread?: string;
+}
 export interface IOmnitronReleaseService {
   preflight(): Promise<ReleasePreflightDto>;
   list(): Promise<{ releases: import('../../release/store.js').ReleaseSummary[]; root: string }>;
@@ -805,12 +818,9 @@ export interface IOmnitronReleaseService {
   prune(data: { keep?: number; apply?: boolean; protect?: string[]; allowUnprotected?: boolean }): Promise<ReleasePruneAnswer>;
   deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
   /** Take what a stack measured about this release, or refuse it by name. */
-  attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }>;
+  attest(data: { release: string; stack: string; stdout: string }): Promise<AttestStored>;
   /** Run this release's probes on the stack's node, over the master's transport, and keep what should be kept. */
-  attestOnNode(data: { release: string; stack: string }): Promise<{
-    path: string;
-    gates: number;
-    passed: number;
+  attestOnNode(data: { release: string; stack: string }): Promise<AttestStored & {
     node: string;
     scriptsFrom: 'release' | 'history';
     /** Application source files staged beside the probes; 0 when the commit has none. */

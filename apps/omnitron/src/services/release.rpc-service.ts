@@ -221,7 +221,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
    * the audit trail, which is here and not in the file that does the rest.
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async attest(data: { release: string; stack: string; stdout: string }): Promise<{ path: string; gates: number; passed: number }> {
+  async attest(data: { release: string; stack: string; stdout: string }): Promise<import('../shared/dto/services.js').AttestStored> {
     if (!data?.release || !data?.stack || typeof data.stdout !== 'string') {
       throw new Error('An attestation needs a release, a stack, and what the producer printed');
     }
@@ -243,7 +243,13 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
         onNode: stored.attestation.onNode.matched === null ? 'unconfirmed' : String(stored.attestation.onNode.matched),
       },
     });
-    return { path: stored.path, gates: stored.attestation.gates.length, passed };
+    return {
+      path: stored.path,
+      gates: stored.attestation.gates.length,
+      passed,
+      ...(stored.attestation.cleanup ? { cleanup: stored.attestation.cleanup } : {}),
+      ...(stored.attestation.legalTextsUnread ? { legalTextsUnread: stored.attestation.legalTextsUnread } : {}),
+    };
   }
 
   /**
@@ -261,10 +267,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
    * console calls this with a deadline and says so while it waits.
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async attestOnNode(data: { release: string; stack: string }): Promise<{
-    path: string;
-    gates: number;
-    passed: number;
+  async attestOnNode(data: { release: string; stack: string }): Promise<import('../shared/dto/services.js').AttestStored & {
     node: string;
     scriptsFrom: 'release' | 'history';
     sourceFiles: number;

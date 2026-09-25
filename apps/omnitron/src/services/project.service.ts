@@ -1575,6 +1575,33 @@ export class ProjectService extends EventEmitter {
   }
 
   /**
+   * What the probes left on a stand — the project's own census of it,
+   * `scripts/probe-leftovers.mjs` without a flag: SELECTs and nothing else,
+   * the accounts, organisations and orphans it would take and what would hold
+   * each back. Its removal is not a door here: that takes the owner's word
+   * each time, and this census is what the word is given on.
+   */
+  async probeLeftoversCensus(
+    projectName: string,
+    stackName: string,
+  ): Promise<import('../shared/dto/project.js').IStackLeftoversCensus> {
+    const tool = await import('../project/operator-account.js');
+    return this.withOperatorTool(
+      projectName,
+      stackName,
+      'census of what the probes left',
+      async (on) => {
+        const read = tool.readLeftoversRun(
+          await on.run((remoteDir, containerPrefix) => tool.probeLeftoversCensusCommand({ remoteDir, containerPrefix }), 300_000),
+        );
+        if (!read.ok) throw new Error(`${on.where}: could not take the census of what the probes left: ${read.because}`);
+        return { node: on.machine, commit: on.commit, report: read.census.report, lines: read.census.lines };
+      },
+      tool.PROBE_LEFTOVERS_TOOL,
+    );
+  }
+
+  /**
    * The stand's accounts counted — by role, by status, by the form their MFA
    * data is in, and whether the seeded admin still opens with its published
    * password. Counts only. For decisions that depend on what a stand holds
@@ -1694,6 +1721,8 @@ export class ProjectService extends EventEmitter {
       where: string;
       commit: string;
     }) => Promise<T>,
+    /** The project's tool the work runs — its commit must have it. */
+    toolPath?: string,
   ): Promise<T> {
     const config = await this.loadProjectConfig(projectName);
     const stackConfig = this.resolveStacks(config, projectName)[stackName];
@@ -1716,7 +1745,7 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
 
-    const staged = await tool.stageOperatorTool(fs.realpathSync(project.path));
+    const staged = await tool.stageOperatorTool(fs.realpathSync(project.path), toolPath ?? tool.OPERATOR_ACCOUNT_TOOL);
     const target = await this.targetForStackNode(nodes[0]!);
     const machine = `${target.host}:${target.sshPort ?? 22}`;
     const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;

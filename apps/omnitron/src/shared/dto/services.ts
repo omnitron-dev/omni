@@ -255,6 +255,7 @@ import type {
   IStackAccountLookup,
   IStackAccountRemoved,
   IStackAccountCensus,
+  IStackLeftoversCensus,
 } from './project.js';
 
 export type {
@@ -352,6 +353,8 @@ export interface IProjectRpcService {
   }): Promise<IStackAccount>;
   /** The stand's accounts counted — by role, status and MFA form; no value. */
   censusStackAccounts(data: { project: string; stack: string }): Promise<IStackAccountCensus>;
+  /** What the probes left on a remote stack's stand — the project tool's census; nothing removed. */
+  probeLeftoversCensus(data: { project: string; stack: string }): Promise<IStackLeftoversCensus>;
   /** What a remote stack's stand holds under a name — never a secret. */
   showStackAccount(data: { project: string; stack: string; username: string }): Promise<IStackAccountLookup>;
   /** Take an account away — the one with this name AND id — and the password the vault keeps for it. */

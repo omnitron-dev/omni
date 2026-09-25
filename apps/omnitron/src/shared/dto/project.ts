@@ -83,6 +83,14 @@ export interface IStackAccountCensus {
   census: import('../../project/operator-account.js').StandCensus;
 }
 
+/** What `probeLeftoversCensus` found on a stand: the project tool's census, its report and its words. */
+export interface IStackLeftoversCensus {
+  node: string;
+  commit: string;
+  report: Readonly<Record<string, unknown>>;
+  lines: readonly string[];
+}
+
 /** An account `removeStackAccount` took away. */
 export interface IStackAccountRemoved {
   username: string;

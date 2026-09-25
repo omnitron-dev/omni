@@ -207,6 +207,17 @@ describe('the transport, as the producer defines it', () => {
     expect(run.keep === false && run.because).toMatch(/omnitron\.stacks\.json is not here/);
   });
 
+  it('keeps nothing from exit 0 or 1 without the record, and passes on what the producer said last', () => {
+    // daos/test, 2026-09-25: a run 27 s long, no JSON object, and the only
+    // words kept were «printed no JSON object». Asked again, 38 of 38.
+    for (const code of [0, 1]) {
+      const run = interpretRun({ stdout: 'a-probe: PASS\n', stderr: 'the stand did not answer /health in 20 s', code });
+      expect(run, `exit ${code}`).toMatchObject({ keep: false });
+      expect(run.keep === false && run.because).toMatch(new RegExp(`exited ${code} without its record`));
+      expect(run.keep === false && run.because).toMatch(/the stand did not answer \/health in 20 s/);
+    }
+  });
+
   it('keeps nothing from the transport failing — ssh\'s own 255 is not the producer', () => {
     expect(interpretRun({ stdout: '', stderr: 'Connection reset', code: 255 })).toMatchObject({ keep: false });
   });

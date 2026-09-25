@@ -51,8 +51,23 @@ export type AttestRun =
  * producer, and is not kept either.
  */
 export function interpretRun(run: { stdout: string; stderr: string; code: number }): AttestRun {
-  if (run.code === 0 || run.code === 1) return { keep: true, stdout: run.stdout, allPassed: run.code === 0 };
   const words = (run.stderr.trim() || run.stdout.trim()).split('\n').slice(-6).join('\n');
+  if (run.code === 0 || run.code === 1) {
+    // Kept only with the object that IS the record. Without it the reader
+    // below refused with «printed no JSON object» and nothing else: on
+    // daos/test (2026-09-25) a run right after a deployment ended in 27 s
+    // with exit 0 or 1 and no record, the producer's own words discarded,
+    // and the same release attested 38 of 38 when asked again.
+    if (!hasRecordLine(run.stdout)) {
+      return {
+        keep: false,
+        because:
+          `The producer exited ${run.code} without its record (no JSON object on stdout) — nothing was stored. ` +
+          `What it said last:\n${words || '(nothing)'}`,
+      };
+    }
+    return { keep: true, stdout: run.stdout, allPassed: run.code === 0 };
+  }
   if (run.code === 2) {
     return { keep: false, because: `The producer could not measure anything on the node (exit 2):\n${words || '(it said nothing)'}` };
   }
@@ -60,6 +75,20 @@ export function interpretRun(run: { stdout: string; stderr: string; code: number
     keep: false,
     because: `The run on the node ended with exit ${run.code}, which is the transport rather than the producer — nothing was stored.\n${words || '(no output)'}`,
   };
+}
+
+/** Whether stdout carries a JSON object line — the record `parseAttestation` reads. */
+function hasRecordLine(stdout: string): boolean {
+  return stdout.split('\n').some((line) => {
+    const t = line.trim();
+    if (!t.startsWith('{')) return false;
+    try {
+      const parsed: unknown = JSON.parse(t);
+      return typeof parsed === 'object' && parsed !== null;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

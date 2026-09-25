@@ -431,11 +431,9 @@ export class InfrastructureService {
       this.phantomJanitor = null;
     }
 
-    // Remove all containers in parallel for fast shutdown.
-    // Skip the stack-prefixed PG when using the global omnitron-pg (it's shared).
-    const allContainers = this.usingGlobalOmnitronPg
-      ? [...this.desiredContainers].reverse()
-      : [...[...this.desiredContainers].reverse(), this.omnitronPgContainer];
+    // Remove all containers in parallel for fast shutdown — the control-plane
+    // database only where this service keeps one (`controlPlaneContainers`).
+    const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];
 
     await Promise.allSettled(
       allContainers.map(async (c) => {
@@ -954,12 +952,25 @@ export class InfrastructureService {
     }
   }
 
+  /**
+   * The control-plane database container this service keeps, if any: none on
+   * a node — it keeps its own state in SQLite (`decideControlPlaneDatabase`) —
+   * and none where the global `omnitron-pg` serves.
+   *
+   * `provision()` asked `needsControlPlaneDatabase`; the health sweep and the
+   * teardown asked only `usingGlobalOmnitronPg`. So on a node the sweep found
+   * `<prefix>-pg` «not running» every 30 s and created it: daos/test got one on
+   * 2026-09-20, and again on 2026-09-25 forty seconds after it was removed —
+   * on the default credentials, for a database nothing reads.
+   */
+  private controlPlaneContainers(): ResolvedContainer[] {
+    return this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? [this.omnitronPgContainer] : [];
+  }
+
   private async healthSweep(): Promise<void> {
-    // Include omnitron-pg in health sweep alongside app containers,
-    // but skip the stack-prefixed PG when using the global omnitron-pg
-    const allContainers = this.usingGlobalOmnitronPg
-      ? [...this.desiredContainers]
-      : [this.omnitronPgContainer, ...this.desiredContainers];
+    // The control-plane database alongside the app containers, where this
+    // service keeps one.
+    const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name);
 

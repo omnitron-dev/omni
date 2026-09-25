@@ -199,8 +199,12 @@ export class CircuitBreaker extends EventEmitter {
       throw new Error(`Circuit breaker '${this.config.name}' is ${this.state}`);
     }
 
-    // In half-open state, only allow one call at a time to test recovery
-    if (this.state === CircuitState.HalfOpen) {
+    // In half-open state, only allow one call at a time to test recovery.
+    // The probe owns the mark and clears it when IT settles: its result always
+    // moves the circuit out of half-open, so a mark cleared only "while still
+    // half-open" outlived every probe and refused the next episode's first one.
+    const probe = this.state === CircuitState.HalfOpen;
+    if (probe) {
       if (this.halfOpenInProgress) {
         this.rejectedCalls++;
         this.emit('rejected', {
@@ -226,7 +230,7 @@ export class CircuitBreaker extends EventEmitter {
       this.recordFailure(Date.now() - startTime);
       throw error;
     } finally {
-      if (this.state === CircuitState.HalfOpen) {
+      if (probe) {
         this.halfOpenInProgress = false;
       }
     }

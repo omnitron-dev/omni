@@ -21,6 +21,16 @@ import { execFileSync } from 'node:child_process';
 
 import { DockerTestManager } from './docker-test-manager.js';
 
+/**
+ * What a test that starts a real container may take: docker's time, not the
+ * behaviour's. Measured 2026-09-25 at a load of ~50 on 16 cores with the host
+ * volume nearly full: two runs of three exceeded 120 s starting and removing
+ * a `redis:7-alpine`, every inner wait inside its own 30 s. These tests say
+ * what docker does — waits, leaves another worker's containers, re-draws a
+ * port — never how fast.
+ */
+const DOCKER_BUDGET_MS = 300_000;
+
 function docker(...args: string[]): string {
   return execFileSync('docker', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 }
@@ -69,7 +79,7 @@ describeOrSkip('DockerTestManager cleanup scope', () => {
     expect(docker('inspect', '-f', '{{.State.Running}}', container.name)).toBe('true');
 
     await manager.cleanupAll();
-  }, 120_000);
+  }, DOCKER_BUDGET_MS);
 
   it('leaves another manager\'s containers alone when the process exits', async () => {
     // The damage was done by the `process.on('exit')` handler, which runs
@@ -108,5 +118,5 @@ describeOrSkip('DockerTestManager cleanup scope', () => {
     // ...and the other worker's is untouched and still running.
     expect(docker('ps', '--filter', `name=${foreignName}`, '-q')).not.toBe('');
     expect(docker('inspect', '-f', '{{.State.Running}}', foreignName)).toBe('true');
-  }, 120_000);
+  }, DOCKER_BUDGET_MS);
 });

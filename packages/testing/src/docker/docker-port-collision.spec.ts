@@ -16,6 +16,16 @@ import { execFileSync } from 'node:child_process';
 
 import { DockerTestManager } from './docker-test-manager.js';
 
+/**
+ * What a test that starts a real container may take: docker's time, not the
+ * behaviour's. Measured 2026-09-25 at a load of ~50 on 16 cores with the host
+ * volume nearly full: two runs of three exceeded 120 s starting and removing
+ * a `redis:7-alpine`, every inner wait inside its own 30 s. These tests say
+ * what docker does — waits, leaves another worker's containers, re-draws a
+ * port — never how fast.
+ */
+const DOCKER_BUDGET_MS = 300_000;
+
 function docker(...args: string[]): string {
   return execFileSync('docker', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 }
@@ -83,5 +93,5 @@ describeOrSkip('DockerTestManager host-port collision', () => {
     const published = docker('port', probeName, '6379/tcp');
     expect(published).not.toContain(`:${taken}`);
     expect(spy.mock.calls.length).toBeGreaterThan(1);
-  }, 120_000);
+  }, DOCKER_BUDGET_MS);
 });

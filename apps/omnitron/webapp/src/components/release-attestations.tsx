@@ -109,6 +109,45 @@ function isDeadline(message: string): boolean {
   return /^HTTP 50\d|Request timeout|Gateway Time-?out/i.test(message);
 }
 
+/**
+ * What the run took away after itself and what it left — the producer
+ * measured it on the node, and a tally of probes says nothing about the
+ * accounts and organisations a run made on the stand. Absent from records
+ * stored before this side kept it (2026-09-25).
+ */
+function CleanupNote({ attestation: a }: { attestation: StoredAttestation }) {
+  const c = a.cleanup;
+  if (!c && !a.legalTextsUnread) return null;
+  const taken = Object.entries(c?.removed ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => `${n} ${kind}`);
+  return (
+    <Box sx={{ mt: 0.75, pl: 1 }} data-testid={`cleanup-${a.stack}`}>
+      {c && (
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', color: c.failed || c.run === null ? 'warning.main' : 'text.secondary' }}
+        >
+          {c.run === null
+            ? `cleanup not run — ${c.notRun ?? 'the run had no name to remove by'}`
+            : `cleanup: run ${c.run} removed ${taken.length ? taken.join(', ') : 'nothing — it had made nothing to remove'}` +
+              (c.failed ? ` — FAILED: ${c.failed}` : '')}
+        </Typography>
+      )}
+      {(c?.leftBehind ?? []).map((l) => (
+        <Typography key={l.what} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+          left behind: {l.what} — {l.why.join('; ') || 'no reason given'}
+        </Typography>
+      ))}
+      {a.legalTextsUnread && (
+        <Typography variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+          legal texts could not be read — {a.legalTextsUnread}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 export function ReleaseAttestations({
   releaseId,
   project,
@@ -310,6 +349,7 @@ export function ReleaseAttestations({
                         ))}
                     </Box>
                   )}
+                  <CleanupNote attestation={a} />
                 </Box>
               );
             })}

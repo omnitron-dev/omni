@@ -13,9 +13,9 @@
  * nothing else — a report in a removal's mode is refused, not shown — and
  * prints the tool's own words. `--leftovers rehearse` asks for the rehearsal
  * (the removal rolled back) with the accounts the owner named after the
- * census, and `--leftovers apply` for the removal the owner then gave his word
- * on — never with `--accept-losses`, so the tool commits nothing that would
- * take a row of somebody who stays.
+ * census, and `--leftovers apply` for the removal the owner then agreed to —
+ * never with `--accept-losses`, so the tool commits nothing that would take a
+ * row of somebody who stays.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

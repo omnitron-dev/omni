@@ -35,6 +35,23 @@ function warnIfHidingAFailure(err: unknown, reachable: boolean): void {
   log.warn('Falling back to direct file access — these two can disagree; the daemon\'s answer is what the console and MCP tools see.');
 }
 
+/**
+ * A write refused by a running daemon ends there.
+ *
+ * The daemon holds the decrypted vault in memory (`SecretsService.load`
+ * answers from its cache) and `save` writes the whole map. A key the CLI wrote
+ * to the store behind it was invisible to the daemon, and the daemon's next
+ * write of any key put back the map it had — the CLI's write gone, after it
+ * had printed «set (direct mode)». Reads may still fall back; a write may not.
+ */
+function refuseAWriteBehindTheDaemon(what: string, err: unknown): void {
+  log.error(
+    `Could not ${what}: the daemon is running and refused it — ${(err as Error)?.message ?? String(err)}. ` +
+      'Nothing was written: the daemon holds the vault in memory, and a write to the file behind it would be undone by its next one.',
+  );
+  process.exitCode = 1;
+}
+
 export async function secretSetCommand(key: string, value: string): Promise<void> {
   // Try daemon RPC first, fall back to direct file access
   const client = createDaemonClient();
@@ -49,7 +66,11 @@ export async function secretSetCommand(key: string, value: string): Promise<void
       return;
     }
   } catch (err) {
-    warnIfHidingAFailure(err, reachable);
+    if (reachable) {
+      refuseAWriteBehindTheDaemon(`set '${key}'`, err);
+      await client.disconnect();
+      return;
+    }
   }
   await client.disconnect();
 
@@ -131,11 +152,15 @@ export async function secretDeleteCommand(key: string): Promise<void> {
       return;
     }
   } catch (err) {
-    warnIfHidingAFailure(err, reachable);
+    if (reachable) {
+      refuseAWriteBehindTheDaemon(`delete '${key}'`, err);
+      await client.disconnect();
+      return;
+    }
   }
   await client.disconnect();
 
-  // Direct file access
+  // Direct file access (daemon offline)
   const secrets = await createDirectService();
   const existed = await secrets.delete(key);
   if (existed) {

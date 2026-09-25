@@ -114,8 +114,22 @@ async function readDeployments(): Promise<DeploymentsAnswer> {
 export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions = {}): Promise<void> {
   const started = Date.now();
   let releaseRoot: string | null = null;
+  // Ctrl-C or a `kill` stops the build the way a build stops — its steps'
+  // process groups ended, its build root removed on the way out — instead of
+  // the way a killed process does, which leaves 2 GB of clones behind (six
+  // of them, 12 GB, on 2026-09-25). A second signal does not wait.
+  const stop = new AbortController();
+  let signalled: NodeJS.Signals | null = null;
+  const onSignal = (sig: NodeJS.Signals): void => {
+    if (signalled) process.exit(sig === 'SIGINT' ? 130 : 143);
+    signalled = sig;
+    log.warn(`${sig} — stopping the build; its build root goes on the way out (a second ${sig} does not wait)`);
+    stop.abort();
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   try {
-    const outcome = await runReleaseBuild(projectName, options, (p) => {
+    const outcome = await runReleaseBuild(projectName, { ...options, signal: options.signal ?? stop.signal }, (p) => {
       if (p.releaseId && !releaseRoot) {
         releaseRoot = `${releasesRoot()}/${p.releaseId}`;
         log.info(`Release ${p.releaseId}`);
@@ -142,8 +156,13 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     log.info(`  manifest: ${outcome.manifestPath}`);
   } catch (err) {
     log.error(`Release build failed after ${Math.round((Date.now() - started) / MINUTE)} min: ${(err as Error).message}`);
-    if (releaseRoot) log.info(`  kept for inspection: ${releaseRoot}`);
-    process.exitCode = 1;
+    if (releaseRoot) {
+      log.info(`  its logs: ${releaseRoot}/logs${options.keepSource ? ` · its build root: ${releaseRoot}/src` : ''}`);
+    }
+    process.exitCode = signalled ? (signalled === 'SIGINT' ? 130 : 143) : 1;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
 }
 
@@ -523,7 +542,14 @@ export async function releasePruneCommand(
       log.info(`${result.kept} release(s), keeping ${keep} — nothing to remove.`);
       return;
     }
-    for (const d of result.doomed) log.info(`  ${apply ? 'removing' : 'would remove'} ${d.id} (${size(d.bytes)})`);
+    for (const d of result.doomed) {
+      log.info(`  ${apply ? 'removing' : 'would remove'} ${d.id} (${size(d.bytes)}${d.keptSource ? ' + a build root, not measured' : ''})`);
+    }
+    // A build root is two clones with their `node_modules` — gigabytes, and
+    // not in the size above, which counts what a release carries. Without
+    // this line, removing 14 GB read as «2001.9 MB freed» (2026-09-25).
+    const roots = result.doomed.filter((d) => d.keptSource).length;
+    const rootsNote = roots > 0 ? `, plus ${roots} build root(s) of builds that did not finish — not in that size` : '';
     if (refused) {
       log.error(
         `Nothing was removed: ${blind} — so which of these a stack is running cannot be told. ` +
@@ -534,11 +560,11 @@ export async function releasePruneCommand(
     }
     if (!options.yes) {
       if (blind) log.warn(`Which of these a stack is running is unknown: ${blind}. --yes refuses without --allow-unprotected.`);
-      log.warn(`${result.doomed.length} release(s), ${size(result.freedBytes)}. Nothing was removed — pass --yes to remove them.`);
+      log.warn(`${result.doomed.length} release(s), ${size(result.freedBytes)}${rootsNote}. Nothing was removed — pass --yes to remove them.`);
       return;
     }
     if (blind) log.warn(`Removed without knowing which releases stacks run (--allow-unprotected): ${blind}.`);
-    log.success(`Removed ${result.removed.length} release(s), ${size(result.freedBytes)} freed; ${result.kept} kept.`);
+    log.success(`Removed ${result.removed.length} release(s), ${size(result.freedBytes)} freed${rootsNote}; ${result.kept} kept.`);
   } catch (err) {
     log.error((err as Error).message);
     process.exitCode = 1;

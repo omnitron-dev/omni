@@ -95,8 +95,10 @@ export function projectOfId(id: string): string {
  * What a release WEIGHS, without walking the build root.
  *
  * `src/` holds the two clones — with their `node_modules`, several hundred
- * thousand files — and it is transient: removed after a successful build
- * unless `--keep-source`, kept after a failed one as evidence. Walking it to
+ * thousand files — and it is transient: removed when a build ends, passed,
+ * failed or stopped, unless `--keep-source` (`runReleaseBuild`). Only a build
+ * whose process was killed outright leaves one, and `prune` takes it with its
+ * release — saying so, since its size is not in the number. Walking it to
  * draw a table is what a list must never do: measured here, the console sat
  * on skeleton rows for the whole of a build because `dirBytes` was counting
  * the clones as they were being written.
@@ -291,8 +293,13 @@ export function readReleaseLog(
 }
 
 export interface PruneResult {
-  /** What would go, oldest first. */
-  readonly doomed: ReadonlyArray<{ id: string; bytes: number }>;
+  /**
+   * What would go, oldest first. `bytes` is what the release carries;
+   * `keptSource` says it also holds a build root (two clones with their
+   * `node_modules`) whose size is NOT in `bytes` — measured 2026-09-25, six
+   * such roots were 12 of the 14 GB a prune reported as «2001.9 MB freed».
+   */
+  readonly doomed: ReadonlyArray<{ id: string; bytes: number; keptSource: boolean }>;
   /** Removed for real, or empty when this was a dry run. */
   readonly removed: readonly string[];
   readonly kept: number;
@@ -324,7 +331,7 @@ export function pruneReleases(
   const all = listReleases(root);
   const old = all.slice(keep);
   const spared = old.filter((r) => protect.has(r.id)).map((r) => r.id);
-  const doomed = old.filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes }));
+  const doomed = old.filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes, keptSource: r.keptSource }));
   const removed: string[] = [];
   if (options.apply) {
     for (const d of doomed) {

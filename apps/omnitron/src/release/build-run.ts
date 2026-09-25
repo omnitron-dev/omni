@@ -399,13 +399,48 @@ export function missingTools(env: NodeJS.ProcessEnv, tools: readonly string[] = 
 /**
  * Build a release, reporting each phase.
  *
- * Throws with the failing step's words and the log that holds the rest; the
- * build root is left on disk when it does, because a failed build is evidence.
+ * Throws with the failing step's words and the log that holds the rest.
+ *
+ * The build root (`src/`: both clones with their `node_modules`, about 2 GB)
+ * goes when the build ends however it ends — passed, failed, or stopped —
+ * unless `--keep-source`. It used to stay after a throw «because a failed
+ * build is evidence»; nothing ever removed it after that, and on 2026-09-25
+ * six of them held 12 GB on a disk at 100 % whose fsyncs had reached 29 s.
+ * The evidence is the logs, which stay; the clones are two commits anyone
+ * can check out again, and `--keep-source` keeps them for the one who wants
+ * to look inside.
  */
 export async function runReleaseBuild(
   projectName: string,
   options: ReleaseBuildOptions,
   onPhase: (phase: BuildPhase) => void = () => {},
+): Promise<BuildOutcome> {
+  return withBuildRootGoneOnFailure(options.keepSource, (where) => buildRelease(projectName, options, onPhase, where));
+}
+
+/**
+ * Run `build`; if it throws once it has named its release root, take that
+ * root's `src/` with it — unless the caller keeps it. The logs beside it
+ * stay. A build that throws before it has a root has nothing to take.
+ */
+export async function withBuildRootGoneOnFailure<T>(
+  keepSource: boolean | undefined,
+  build: (where: { root?: string }) => Promise<T>,
+): Promise<T> {
+  const where: { root?: string } = {};
+  try {
+    return await build(where);
+  } catch (err) {
+    if (where.root && !keepSource) fs.rmSync(path.join(where.root, 'src'), { recursive: true, force: true });
+    throw err;
+  }
+}
+
+async function buildRelease(
+  projectName: string,
+  options: ReleaseBuildOptions,
+  onPhase: (phase: BuildPhase) => void,
+  where: { root?: string },
 ): Promise<BuildOutcome> {
   const started = Date.now();
   const extra = checkedEnv(options.env);
@@ -453,6 +488,7 @@ export async function runReleaseBuild(
   // name it — and `prune` can refuse to delete a build in progress.
   say('preparing the build root', 3);
   const releaseRoot = path.join(OMNITRON_HOME, 'releases', id);
+  where.root = releaseRoot;
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
   const plan = planBuildRoot(path.join(releaseRoot, 'src'), projectPath, layout);

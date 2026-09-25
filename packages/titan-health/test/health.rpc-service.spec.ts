@@ -139,30 +139,23 @@ describe('HealthRpcService', () => {
       expect(result.checks).toBeUndefined();
     });
 
-    it('should return degraded status and include checks', async () => {
+    // A probe reads `status`. Which indicator is not healthy, and why, is
+    // check()'s to say — ready() is anonymous, and it used to name the
+    // subsystem under pressure the moment the pressure worked.
+    it('degraded: says so, and names nothing', async () => {
       healthService.registerIndicator(new MockHealthIndicator('test').setStatus('degraded', 'Slow response'));
 
       const result = await rpcService.ready();
       expect(result.status).toBe('degraded');
-      expect(result.checks?.['test']?.status).toBe('degraded');
-      expect(result.checks?.['test']?.message).toBe('Slow response');
+      expect(result).toEqual({ status: 'degraded', timestamp: expect.any(String) });
     });
 
-    it('should return unhealthy status and include checks', async () => {
+    it('unhealthy: says so, and names nothing', async () => {
       healthService.registerIndicator(new MockHealthIndicator('test').setStatus('unhealthy', 'Connection failed'));
 
       const result = await rpcService.ready();
       expect(result.status).toBe('unhealthy');
-      expect(result.checks?.['test']?.status).toBe('unhealthy');
-    });
-
-    it('should only include non-healthy checks', async () => {
-      healthService.registerIndicator(new MockHealthIndicator('healthy').setStatus('healthy'));
-      healthService.registerIndicator(new MockHealthIndicator('degraded').setStatus('degraded'));
-
-      const result = await rpcService.ready();
-      expect(result.checks?.['healthy']).toBeUndefined();
-      expect(result.checks?.['degraded']).toBeDefined();
+      expect(JSON.stringify(result)).not.toMatch(/test|Connection failed/);
     });
   });
 

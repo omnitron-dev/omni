@@ -8,6 +8,7 @@
  */
 
 import { Service, Public, Injectable } from '@omnitron-dev/titan/decorators';
+import { Errors } from '@omnitron-dev/titan/errors';
 import type { HealthService } from './health.service.js';
 import type { HealthIndicatorResult, HealthStatus } from './health.types.js';
 
@@ -99,23 +100,30 @@ export interface UptimeResponse {
  *   Anonymous BY NECESSITY — `live()` and `ready()`. An orchestrator probe
  *   carries no credentials; requiring auth here means the pod is restarted or
  *   pulled from rotation for failing to authenticate, which is an outage
- *   caused by the auth setting rather than by health.
+ *   caused by the auth setting rather than by health. Both answer a status and
+ *   a timestamp and nothing else. `ready()` used to add the name and message
+ *   of every indicator that was NOT healthy — a door that stays quiet while a
+ *   caller measures the background and starts naming the subsystem the moment
+ *   pressure lands on it. Which one, and why, is `check()`'s to say.
  *
  *   Anonymous BY INHERITANCE — `check()`, `checkIndicator()`,
  *   `listIndicators()`, `uptime()`, `isHealthy()`. These answer questions a
  *   probe does not ask. `check()` returns every indicator's `message` and
- *   `error` — which, for the database indicator, names the query methods a
- *   connection lacks, and for others can carry a driver's own text.
- *   `listIndicators()` enumerates what this process depends on. `ready()`
- *   discloses a subset of the same: names and messages of whatever is not
- *   healthy.
+ *   `error`, the memory indicator's heap used, heap limit and the thresholds a
+ *   pressure has to reach, and uptime to the millisecond; `checkIndicator()`
+ *   answers one subsystem, with its thresholds, on request.
  *
  * Left as it is deliberately. Which of these may be public is a property of
  * the DEPLOYMENT — an internal port scraped by Prometheus and a public edge
- * are different answers — and a package cannot know which it is in. Tightening
- * the second group here would silently break every dashboard that reads it
- * today, and the outage would land on whoever upgraded rather than on whoever
- * chose the exposure.
+ * are different answers — and a package cannot know which it is in. Its
+ * answer is `enableRpcService: false`, which takes the whole service off the
+ * wire. That answer was lost for `forRootAsync` until 2026-09-25: the flag was
+ * read from the factory's result, after the providers existed, so daos storage
+ * and paysys — which return `enableRpcService: false` («We use our own RPC
+ * service») — served `check()` anonymously through their public gateway with
+ * main and messaging. It is now read at registration (see
+ * `HealthModuleAsyncOptions.enableRpcService`), and a factory that still
+ * returns `false` gets a service that answers every call as a missing one.
  *
  * What an operator needs is that the surface be visible: `omnitron doctor`
  * reports it, and this comment is the answer they should find when they come
@@ -126,6 +134,20 @@ export interface UptimeResponse {
 export class HealthRpcService {
   private healthService!: HealthService;
   private version?: string;
+  private disabled = false;
+
+  /**
+   * Answer every call as a missing service would. For a deployment that said
+   * `enableRpcService: false` where the module could no longer take the
+   * service off the wire (see `TitanHealthModule.forRootAsync`).
+   */
+  disable(): void {
+    this.disabled = true;
+  }
+
+  private assertEnabled(): void {
+    if (this.disabled) throw Errors.notFound('Service Health@1.0.0');
+  }
 
   /**
    * Set the health service instance
@@ -150,6 +172,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async check(): Promise<HealthResponse> {
+    this.assertEnabled();
     const result = await this.healthService.check();
 
     return {
@@ -172,6 +195,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async live(): Promise<LivenessResponse> {
+    this.assertEnabled();
     const isAlive = await this.healthService.isAlive();
 
     return {
@@ -191,23 +215,13 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async ready(): Promise<ReadinessResponse> {
+    this.assertEnabled();
     const result = await this.healthService.check();
-    const checks: Record<string, { status: HealthStatus; message?: string }> = {};
-
-    // Only include non-healthy indicators in summary
-    for (const [name, indicator] of Object.entries(result.indicators)) {
-      if (indicator.status !== 'healthy') {
-        checks[name] = {
-          status: indicator.status,
-          message: indicator.message,
-        };
-      }
-    }
-
+    // Which indicator is not healthy, and why, is `check()`'s to say — to a
+    // caller with a role. A probe reads `status`.
     return {
       status: result.status,
       timestamp: new Date().toISOString(),
-      checks: Object.keys(checks).length > 0 ? checks : undefined,
     };
   }
 
@@ -218,6 +232,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async checkIndicator(name: string): Promise<IndicatorResponse> {
+    this.assertEnabled();
     const result = await this.healthService.checkOne(name);
 
     return {
@@ -231,6 +246,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async listIndicators(): Promise<{ indicators: string[]; count: number }> {
+    this.assertEnabled();
     const indicators = this.healthService.getIndicators();
 
     return {
@@ -244,6 +260,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async uptime(): Promise<UptimeResponse> {
+    this.assertEnabled();
     const uptimeMs = this.healthService.getUptime();
     const uptimeSeconds = Math.floor(uptimeMs / 1000);
     const days = Math.floor(uptimeSeconds / 86400);
@@ -269,6 +286,7 @@ export class HealthRpcService {
    */
   @Public({ auth: { allowAnonymous: true } })
   async isHealthy(): Promise<{ healthy: boolean }> {
+    this.assertEnabled();
     const healthy = await this.healthService.isHealthy();
     return { healthy };
   }

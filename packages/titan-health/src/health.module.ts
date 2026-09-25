@@ -272,6 +272,8 @@ export class TitanHealthModule {
    */
   static forRootAsync(options: HealthModuleAsyncOptions): DynamicModule {
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [];
+    // Decided now, because the providers below are: see `HealthModuleAsyncOptions.enableRpcService`.
+    const rpcEnabled = options.enableRpcService !== false;
 
     // Async options provider
     if (options.useFactory) {
@@ -339,28 +341,38 @@ export class TitanHealthModule {
     ]);
 
     // Health RPC service provider
-    providers.push([
-      HEALTH_RPC_SERVICE_TOKEN,
-      {
-        useFactory: (healthService: HealthService, moduleOptions: HealthModuleOptions) => {
-          const rpcService = new HealthRpcService();
-          rpcService.setHealthService(healthService);
-          if (moduleOptions.version) {
-            rpcService.setVersion(moduleOptions.version);
-          }
-          return rpcService;
+    if (rpcEnabled) {
+      providers.push([
+        HEALTH_RPC_SERVICE_TOKEN,
+        {
+          useFactory: (healthService: HealthService, moduleOptions: HealthModuleOptions) => {
+            const rpcService = new HealthRpcService();
+            rpcService.setHealthService(healthService);
+            // Registered because the flag at registration did not say otherwise,
+            // and switched off because the factory does: provider lists are fixed
+            // before the factory runs, so this is the only place its `false` can
+            // still be honoured — without failing a boot on a node whose daemon
+            // and application arrive in either order.
+            if (moduleOptions.enableRpcService === false) {
+              rpcService.disable();
+            }
+            if (moduleOptions.version) {
+              rpcService.setVersion(moduleOptions.version);
+            }
+            return rpcService;
+          },
+          inject: [HEALTH_SERVICE_TOKEN, HEALTH_MODULE_OPTIONS_TOKEN],
         },
-        inject: [HEALTH_SERVICE_TOKEN, HEALTH_MODULE_OPTIONS_TOKEN],
-      },
-    ]);
+      ]);
 
-    providers.push([
-      HealthRpcService,
-      {
-        useFactory: (rpcService: HealthRpcService) => rpcService,
-        inject: [HEALTH_RPC_SERVICE_TOKEN],
-      },
-    ]);
+      providers.push([
+        HealthRpcService,
+        {
+          useFactory: (rpcService: HealthRpcService) => rpcService,
+          inject: [HEALTH_RPC_SERVICE_TOKEN],
+        },
+      ]);
+    }
 
     // Built-in indicator tokens (resolved from health service)
     providers.push([
@@ -406,9 +418,8 @@ export class TitanHealthModule {
     const exports: InjectionToken<any>[] = [
       HEALTH_SERVICE_TOKEN,
       HEALTH_MODULE_OPTIONS_TOKEN,
-      HEALTH_RPC_SERVICE_TOKEN,
+      ...(rpcEnabled ? [HEALTH_RPC_SERVICE_TOKEN, HealthRpcService] : []),
       HealthService,
-      HealthRpcService,
       MEMORY_HEALTH_INDICATOR_TOKEN,
       EVENT_LOOP_HEALTH_INDICATOR_TOKEN,
       DISK_HEALTH_INDICATOR_TOKEN,

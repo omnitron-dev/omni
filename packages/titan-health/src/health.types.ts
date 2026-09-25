@@ -232,6 +232,10 @@ export interface HealthModuleOptions {
 
   /**
    * Enable Netron RPC service
+   *
+   * With `forRootAsync` this is read from the async options themselves, not
+   * from what the factory returns: the providers are registered before the
+   * factory runs (see `HealthModuleAsyncOptions.enableRpcService`).
    * @default true
    */
   enableRpcService?: boolean;
@@ -301,6 +305,20 @@ export interface HealthModuleAsyncOptions {
    * Make the module global
    */
   isGlobal?: boolean;
+
+  /**
+   * Whether `Health@1.0.0` goes on the wire. Read HERE, when the module is
+   * registered — the factory's options arrive after the providers exist, so a
+   * flag returned from the factory could never take effect. It never did:
+   * daos storage and paysys returned `enableRpcService: false` from their
+   * factories («We use our own RPC service») and served `Health@1.0.0.check`
+   * to anonymous callers through the public gateway anyway (2026-09-25). A
+   * A factory that still returns `false` gets a registered service that
+   * answers every call as a missing service would; put the flag here to keep
+   * it off the wire altogether.
+   * @default true
+   */
+  enableRpcService?: boolean;
 }
 
 /**

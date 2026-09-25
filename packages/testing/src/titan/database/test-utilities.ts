@@ -5,7 +5,7 @@
  * Falls back to SQLite when Docker is not available
  */
 
-import { DockerTestManager, DatabaseTestManager, type DockerContainer } from '@omnitron-dev/testing/docker';
+import { DockerTestManager, DatabaseTestManager, type DockerContainer } from '../../docker/index.js';
 import type { DatabaseModuleOptions } from '@omnitron-dev/titan-database';
 
 export interface DatabaseTestOptions {

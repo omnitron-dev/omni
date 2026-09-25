@@ -20,10 +20,7 @@
 
 import 'reflect-metadata';
 import { classOfRegistration } from '../../nexus/registration-class.js';
-import {
-  type Constructor,
-  type Container,
-} from '../../nexus/index.js';
+import { type Constructor, type Container } from '../../nexus/index.js';
 import type { Netron } from '../../netron/index.js';
 import type { ILogger } from '../../modules/logger/index.js';
 
@@ -40,7 +37,7 @@ interface ServiceInfo {
 export class ServiceExposer {
   constructor(
     private readonly container: Container,
-    private readonly getLogger: () => ILogger | undefined,
+    private readonly getLogger: () => ILogger | undefined
   ) {}
 
   /**
@@ -86,14 +83,14 @@ export class ServiceExposer {
           if (serviceClass.name && serviceClass.name.includes('RpcService')) {
             logger?.info(
               { className: serviceClass.name, hasMetadata: false },
-              'RPC Service class found without @Service metadata',
+              'RPC Service class found without @Service metadata'
             );
           }
           continue;
         }
         logger?.info(
           { serviceName: metadata.name, className: serviceClass.name },
-          'Found service with @Service decorator',
+          'Found service with @Service decorator'
         );
         services.push({ serviceClass, serviceMetadata: metadata });
       } catch (error) {
@@ -106,9 +103,14 @@ export class ServiceExposer {
     let exposed = 0;
     for (const { serviceClass, serviceMetadata } of services) {
       try {
-        const instance = await this.resolveSafely(serviceClass);
+        const { instance, missing } = await this.resolveSafely(serviceClass);
         if (!instance) {
-          logger?.info({ serviceName: serviceMetadata.name }, 'Service instance not found for auto-exposure');
+          // Which of three: one sentence for all of them made a service
+          // registered only under a Symbol read like one that failed to build.
+          logger?.info(
+            { serviceName: serviceMetadata.name, className: serviceClass.name, because: missing },
+            `Service ${serviceMetadata.name} not exposed — ${missing}`
+          );
           continue;
         }
         try {
@@ -116,7 +118,7 @@ export class ServiceExposer {
           exposed++;
           logger?.info(
             { serviceName: serviceMetadata.name, version: serviceMetadata.version },
-            'Auto-exposed service to Netron',
+            'Auto-exposed service to Netron'
           );
         } catch (error) {
           if (error instanceof Error && error.message.includes('already exposed')) {
@@ -126,7 +128,7 @@ export class ServiceExposer {
             const errStack = error instanceof Error ? error.stack : undefined;
             logger?.error(
               { serviceName: serviceMetadata.name, errMsg, errStack },
-              'Failed to expose service to Netron',
+              'Failed to expose service to Netron'
             );
           }
         }
@@ -139,22 +141,27 @@ export class ServiceExposer {
     return exposed;
   }
 
-  private async resolveSafely(serviceClass: Constructor<unknown>): Promise<unknown | null> {
+  private async resolveSafely(
+    serviceClass: Constructor<unknown>
+  ): Promise<{ instance: unknown; missing?: undefined } | { instance: null; missing: string }> {
     const logger = this.getLogger();
     try {
       const hasService = this.container.has(serviceClass);
-      logger?.info(
-        { className: serviceClass.name, hasService },
-        'Attempting to resolve service',
-      );
-      if (!hasService) return null;
+      logger?.info({ className: serviceClass.name, hasService }, 'Attempting to resolve service');
+      if (!hasService) {
+        return {
+          instance: null,
+          missing: `${serviceClass.name} is not registered under its own class, only under another token, so it cannot be resolved by class`,
+        };
+      }
       const instance = await this.container.resolveAsync(serviceClass);
       logger?.info({ resolved: !!instance }, 'Service resolution result');
-      return instance ?? null;
+      return instance ? { instance } : { instance: null, missing: `${serviceClass.name} resolved to nothing` };
     } catch (error) {
-      logger?.info({ className: serviceClass.name, error }, 'Failed to resolve service instance for auto-exposure');
-      return null;
+      return {
+        instance: null,
+        missing: `${serviceClass.name} failed to resolve: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
   }
 }
-

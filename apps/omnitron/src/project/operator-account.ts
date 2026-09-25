@@ -127,9 +127,29 @@ export function operatorCensusCommand(input: { remoteDir: string; containerPrefi
   return toolCommand(input.remoteDir, input.containerPrefix, ['--census']);
 }
 
+/**
+ * What this door asks the leftovers tool for: its census, or a rehearsal of
+ * the removal — each database's transaction measured and rolled back. The
+ * tool's `--apply` is not among them: a removal takes the owner's word each
+ * time, and it is not asked for from here.
+ */
+export type LeftoversMode = 'census' | 'rehearse';
+
+/** The tool on the node in one of this door's modes; `also` names accounts no template matches, after the census. */
+export function probeLeftoversCommand(input: {
+  remoteDir: string;
+  containerPrefix: string;
+  mode: LeftoversMode;
+  also?: readonly string[] | undefined;
+}): string {
+  const also = input.also && input.also.length > 0 ? [`--also=${input.also.join(',')}`] : [];
+  const flags = input.mode === 'rehearse' ? ['--rehearse', ...also] : also;
+  return toolCommand(input.remoteDir, input.containerPrefix, flags, PROBE_LEFTOVERS_TOOL);
+}
+
 /** What the probes left on the stand, counted and named — the tool without a flag, which is its census. */
 export function probeLeftoversCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
-  return toolCommand(input.remoteDir, input.containerPrefix, [], PROBE_LEFTOVERS_TOOL);
+  return probeLeftoversCommand({ ...input, mode: 'census' });
 }
 
 /** The row with this name AND this id, or nothing. */
@@ -217,20 +237,21 @@ export interface LeftoversCensus {
 }
 
 /**
- * A census run of `probe-leftovers.mjs`, read. Only a CENSUS is an answer
- * here: a report in any other mode means the tool did something this door
- * never asks for, and that is refused rather than shown as counts.
+ * A run of `probe-leftovers.mjs`, read. Only a report in the mode that was
+ * asked for is an answer: anything else means the tool did something this
+ * run never asked of it, and that is refused rather than shown as counts.
  */
 export function readLeftoversRun(
   run: { stdout: string; stderr: string; code: number },
+  asked: LeftoversMode = 'census',
 ): { readonly ok: true; readonly census: LeftoversCensus } | { readonly ok: false; readonly because: string } {
   if (run.code !== 0) return { ok: false, because: `exit ${run.code}: ${wordsOf(run.stderr) || '(no words)'}` };
   const report = answerLine(run.stdout, 'probeLeftovers')?.['probeLeftovers'] as Record<string, unknown> | undefined;
   if (!report || typeof report !== 'object') {
     return { ok: false, because: `the tool exited 0 without a report (${describeStdout(run.stdout)})` };
   }
-  if (report['mode'] !== 'census') {
-    return { ok: false, because: `the tool answered in mode '${String(report['mode'])}', and this door asks for the census only` };
+  if (report['mode'] !== asked) {
+    return { ok: false, because: `the tool answered in mode '${String(report['mode'])}', and this run asked for '${asked}'` };
   }
   const lines = run.stderr.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim() !== '');
   return { ok: true, census: { report, lines } };

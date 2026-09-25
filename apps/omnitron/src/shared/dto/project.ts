@@ -83,10 +83,11 @@ export interface IStackAccountCensus {
   census: import('../../project/operator-account.js').StandCensus;
 }
 
-/** What `probeLeftoversCensus` found on a stand: the project tool's census, its report and its words. */
+/** What `probeLeftovers` found on a stand: the project tool's report in the mode asked for, and its words. */
 export interface IStackLeftoversCensus {
   node: string;
   commit: string;
+  mode: import('../../project/operator-account.js').LeftoversMode;
   report: Readonly<Record<string, unknown>>;
   lines: readonly string[];
 }

@@ -248,7 +248,11 @@ stack
   .option('--display-name <text>', 'Its display name (default: the username)')
   .option('--show <name>', 'What the stand holds under this name — id, role, when made, last active; never a secret')
   .option('--census', 'Count the accounts — by role, status and MFA form, and whether the seeded admin opens with its published password')
-  .option('--leftovers', 'What the probes left on the stand — the project\'s census of it, names and what holds each back; nothing is removed')
+  .option(
+    '--leftovers [mode]',
+    'What the probes left on the stand, by the project\'s tool: `census` (the default) — names and what holds each back; `rehearse` — the removal, measured and rolled back. Nothing is removed',
+  )
+  .option('--also <usernames>', 'With --leftovers: accounts no template matches, named after reading the census (comma-separated)')
   .option('--remove <name>', 'Take the account with this name away — with --id, and its password from the vault')
   .option('--id <uuid>', 'The id of the account --remove takes away (as --show prints it)')
   .option('--vault-key <key>', 'Where the password is kept (default: <project>.<stack>.account.<username>.password)')
@@ -261,7 +265,8 @@ stack
         show?: string;
         remove?: string;
         census?: boolean;
-        leftovers?: boolean;
+        leftovers?: boolean | string;
+        also?: string;
         id?: string;
         role?: string;
         displayName?: string;

@@ -339,7 +339,8 @@ export function accountOptionsRefusal(options: {
   show?: string;
   remove?: string;
   census?: boolean;
-  leftovers?: boolean;
+  leftovers?: boolean | string;
+  also?: string;
   id?: string;
   role?: string;
   displayName?: string;
@@ -348,14 +349,18 @@ export function accountOptionsRefusal(options: {
   const modes = [
     ...(['username', 'show', 'remove'] as const).filter((m) => options[m] !== undefined),
     ...(options.census ? ['census'] : []),
-    ...(options.leftovers ? ['leftovers'] : []),
+    ...(options.leftovers !== undefined && options.leftovers !== false ? ['leftovers'] : []),
   ];
   if (modes.length !== 1) {
     return 'Say exactly one of --username <name> (make), --show <name>, --remove <name> --id <uuid>, --census, --leftovers';
   }
   const extras = options.id !== undefined || options.role !== undefined || options.displayName !== undefined || options.vaultKey !== undefined;
   if (options.census && extras) return '--census takes nothing else';
-  if (options.leftovers && extras) return '--leftovers takes nothing else';
+  if (options.leftovers && extras) return '--leftovers takes nothing but its mode and --also';
+  if (options.leftovers !== undefined && options.leftovers !== true && options.leftovers !== 'census' && options.leftovers !== 'rehearse') {
+    return `--leftovers takes census or rehearse — '${String(options.leftovers)}' is not asked for from here`;
+  }
+  if (options.also !== undefined && !options.leftovers) return '--also goes with --leftovers';
   if (options.remove !== undefined && !options.id) return '--remove needs --id <uuid> — the id --show prints';
   if (options.remove === undefined && options.id !== undefined) return '--id goes with --remove';
   if (options.username === undefined && (options.role !== undefined || options.displayName !== undefined)) {
@@ -383,7 +388,8 @@ export async function stackAccountCommand(
     show?: string;
     remove?: string;
     census?: boolean;
-    leftovers?: boolean;
+    leftovers?: boolean | string;
+    also?: string;
     id?: string;
     role?: string;
     displayName?: string;
@@ -402,13 +408,19 @@ export async function stackAccountCommand(
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     if (options.leftovers) {
-      emitStep(`Taking the census of what the probes left on ${projectName}/${stackName} — the project's tool, on the node; nothing is removed…`);
-      const found = await svc.probeLeftoversCensus({ project: projectName, stack: stackName });
+      const mode = options.leftovers === 'rehearse' ? 'rehearse' : 'census';
+      const also = (options.also ?? '').split(',').map((u) => u.trim()).filter(Boolean);
+      const what = mode === 'census' ? 'census of what the probes left' : 'rehearsal of removing what the probes left';
+      emitStep(`Taking the ${what} on ${projectName}/${stackName} — the project's tool, on the node; nothing is removed…`);
+      const found = await svc.probeLeftovers({ project: projectName, stack: stackName, mode, ...(also.length > 0 ? { also } : {}) });
       if (emitJson(found)) return;
       // The tool's own words: it names what it would take and what holds each
       // back, and omnitron knows none of its questions.
       for (const line of found.lines) emitInfo(line);
-      emitSuccess(`census of what the probes left on ${projectName}/${stackName} at ${found.node} — the tool at ${found.commit.slice(0, 8)}; nothing was removed`);
+      emitSuccess(
+        `${what} on ${projectName}/${stackName} at ${found.node} — the tool at ${found.commit.slice(0, 8)}` +
+          `${also.length > 0 ? `, named: ${also.join(', ')}` : ''}; nothing was removed`,
+      );
       return;
     }
     if (options.census) {

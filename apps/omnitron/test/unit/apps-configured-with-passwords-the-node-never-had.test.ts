@@ -172,6 +172,19 @@ describe('apps configured with passwords the node never had', () => {
     expect(d.delivered).toEqual([]);
   });
 
+  it('stops when the node answers nothing for a service the stack runs there', async () => {
+    // daos/test, 2026-09-25: a `fleet upgrade` restarted the node's daemon, the
+    // next deployment's infrastructure step did not reach it, and its
+    // `getConnectionInfo` answered null — no infrastructure in this daemon's
+    // lifetime. Taken as «nothing to read», six apps were configured with the
+    // declared password.
+    const d = deployment(async () => null);
+
+    await expect(d.start()).rejects.toThrow(/10\.0\.0\.9 answered nothing for postgres, which this stack runs there/);
+    expect(d.configuredWith()).toBeUndefined();
+    expect(d.delivered).toEqual([]);
+  });
+
   it('takes a service the node does not run as nothing to read, not as a failure', async () => {
     const d = deployment(async (service) => provisioned(service));
 

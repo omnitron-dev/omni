@@ -265,10 +265,25 @@ export class SlaveConnector {
    * established when this is called — a subscriber would then wait for a
    * transition that has already happened, which is the same race wearing a
    * different hat.
+   *
+   * And a reconnect waiting out its backoff is brought forward: the backoff
+   * is for retries nobody is waiting on, and it grows to `maxBackoff`
+   * (120 s) — past this wait's own minute. On daos/test (2026-09-25) a
+   * deployment right after a `fleet upgrade` restarted the node's daemon
+   * waited 60 s here for a connection whose next attempt was 66 s away, and
+   * went on without the node's infrastructure.
    */
   async waitUntilConnected(host: string, port: number, timeoutMs = 60_000): Promise<boolean> {
     const key = `${host}:${port}`;
     const deadline = Date.now() + timeoutMs;
+
+    const pending = this.connections.get(key);
+    if (pending && !this.disposed && (pending.status === 'disconnected' || pending.status === 'error') && pending.reconnectTimer) {
+      clearTimeout(pending.reconnectTimer);
+      pending.reconnectTimer = null;
+      pending.reconnectAttempt = 0;
+      void this.connectSlave(key, pending);
+    }
 
     while (Date.now() < deadline) {
       if (this.disposed) return false;

@@ -232,6 +232,9 @@ export interface ProjectServiceOptions {
   readonly audit?: import('./audit.service.js').AuditService;
 }
 
+/** The services whose credentials a node generates, and a deployment reads back from it. */
+const CREDENTIALED_SERVICES = ['postgres', 'redis', 'minio'] as const;
+
 export class ProjectService extends EventEmitter {
   private readonly registry: ProjectRegistry;
   private readonly configRegistry = new Map<string, LoadedProject>();
@@ -3013,7 +3016,11 @@ export class ProjectService extends EventEmitter {
           // the rest stay as this stack declared them, because those are the
           // master's to decide and the node merely carried them out.
           phases.enter(`reading credentials from ${node.host}`);
-          const nodeCredentials = await this.readNodeCredentials(connector, node);
+          const nodeCredentials = await this.readNodeCredentials(
+            connector,
+            node,
+            CREDENTIALED_SERVICES.filter((service) => Boolean((nodeInfra as Record<string, unknown> | undefined)?.[service])),
+          );
           const deployedInfra = overlayCredentials(
             nodeInfra as Record<string, unknown> | undefined,
             nodeCredentials,
@@ -3290,9 +3297,11 @@ export class ProjectService extends EventEmitter {
   private async readNodeCredentials(
     connector: SlaveConnector,
     node: import('../config/types.js').IStackNode,
+    /** The services this stack declares — each must be answered for. */
+    declared: readonly string[] = [],
   ): Promise<Record<string, Record<string, unknown>>> {
     const out: Record<string, Record<string, unknown>> = {};
-    for (const service of ['postgres', 'redis', 'minio']) {
+    for (const service of CREDENTIALED_SERVICES) {
       let info: Record<string, unknown> | null;
       try {
         info = (await connector.invokeOnSlave(
@@ -3312,6 +3321,23 @@ export class ProjectService extends EventEmitter {
         );
       }
       if (info) out[service] = info;
+    }
+    // Nothing is an answer only for a service the stack does not run. For one
+    // it does, it means the node's daemon holds no infrastructure for it — it
+    // restarted since it last provisioned, and the step that would have
+    // provisioned it did not reach it. The declared password in its place is
+    // wrong by construction: on daos/test (2026-09-25) a deployment right
+    // after a `fleet upgrade` found the node 66 s into a 60 s mesh wait,
+    // «deployed anyway», configured six apps with `postgres`, and was stopped
+    // only because each app's migrations had to log in first.
+    const missing = declared.filter((service) => !out[service]);
+    if (missing.length > 0) {
+      throw new Error(
+        `${node.host} answered nothing for ${missing.join(', ')}, which this stack runs there: its daemon holds no ` +
+          'infrastructure for them — it restarted since it last provisioned, and this deployment did not reach it to ' +
+          'provision them again (see the infrastructure step above). Their generated credentials are known only there, ' +
+          'so no application is configured with the declared ones. Run the deployment again once the node is in the mesh.',
+      );
     }
     return out;
   }

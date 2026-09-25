@@ -23,6 +23,15 @@ const OUTCOMES: Record<string, GateOutcome['status']> = {
   'not-run': 'not-run',
 };
 
+/** The mark `gates.mjs` prints on each gate's own line as it lands. */
+const MARKS: Record<string, GateOutcome['status']> = {
+  PASS: 'passed',
+  FAIL: 'failed',
+  TIME: 'timed-out',
+  KILL: 'killed',
+  NRUN: 'not-run',
+};
+
 /**
  * What the gates said, from `gates.mjs --json`.
  *
@@ -58,11 +67,26 @@ export function gateOutcomesFromGates(stdout: string, exitCode: number | null): 
       };
     });
   }
+  // No result object: the script was stopped, or died, before its last line.
+  // The verdicts that had landed are still in their own lines — `PASS  scans
+  // 138s  69 of 69` — and a tally over nothing but the missing object said
+  // «gates: 0 of 1 passed» of two builds stopped on 2026-09-25 after six and
+  // seven gates had reported. They are kept; the missing result stays a
+  // `not-run` of its own, so what landed never reads as the whole run.
+  const landed: GateOutcome[] = [];
+  for (const line of lines) {
+    const m = /^(PASS|FAIL|TIME|KILL|NRUN)\s+(\S+)\s+(\d+)s(?:\s+(.*))?$/.exec(line);
+    if (!m) continue;
+    landed.push({ name: m[2]!, status: MARKS[m[1]!]!, durationMs: Number(m[3]) * 1000, ...(m[4] ? { detail: m[4] } : {}) });
+  }
   return [
+    ...landed,
     {
       name: 'gates',
       status: 'not-run',
-      detail: `the gates script printed no result object (exit ${exitCode === null ? 'by signal' : exitCode})`,
+      detail:
+        `the gates script printed no result object (exit ${exitCode === null ? 'by signal' : exitCode})` +
+        (landed.length > 0 ? `; ${landed.length} gate(s) had reported before it did` : ''),
     },
   ];
 }

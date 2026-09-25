@@ -453,6 +453,10 @@ function sayWhatTheRunLeft(answer: import('../shared/dto/services.js').AttestSto
       const said = `  cleanup: run ${c.run} removed ${taken.length ? taken.join(', ') : 'nothing — it had made nothing to remove'}`;
       if (c.failed) log.warn(`${said} — FAILED: ${c.failed}`);
       else log.info(said);
+      const retired = Object.entries(c.retired ?? {})
+        .filter(([, n]) => n > 0)
+        .map(([kind, n]) => `${n} ${kind}`);
+      if (retired.length) log.info(`  retired: ${retired.join(', ')} — blocked in place, their real-chain addresses still watched`);
     }
     for (const l of c.leftBehind ?? []) log.warn(`  left behind: ${l.what} — ${l.why.join('; ') || 'no reason given'}`);
   }

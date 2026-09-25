@@ -56,6 +56,16 @@ describe('a cleanup the release page did not show', () => {
     expect(note).toHaveTextContent('left behind: organisation Ночной Рынок — PaySys account: 2 deposit address(es) on a real chain');
   });
 
+  it('shows what the run retired apart from what it removed', async () => {
+    await render({
+      ...base,
+      cleanup: { run: 'r5', removed: { accounts: 478, organisations: 97 }, retired: { paysysAccounts: 107 } },
+    });
+    const note = screen.getByTestId('cleanup-test');
+    expect(note).toHaveTextContent('cleanup: run r5 removed 478 accounts, 97 organisations');
+    expect(note).toHaveTextContent('retired: 107 paysysAccounts — blocked in place, their real-chain addresses still watched');
+  });
+
   it('says so when the removal was not run, and when the legal texts could not be read', async () => {
     await render({ ...base, cleanup: { run: null, notRun: 'the producer ran without a run name' }, legalTextsUnread: 'the gateway did not answer' });
     const note = screen.getByTestId('cleanup-test');

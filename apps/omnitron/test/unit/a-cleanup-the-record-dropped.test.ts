@@ -94,6 +94,12 @@ describe('the record keeps what the producer said about the stand', () => {
       cleanupOf({ run: 'r1', removed: { accounts: 3, organisations: 'many', sessions: Number.NaN }, leftBehind: [{ what: 'x', why: 'not a list' }], extra: 1 }),
     ).toEqual({ run: 'r1', removed: { accounts: 3 }, leftBehind: [{ what: 'x', why: [] }] });
     expect(cleanupOf({ run: null, notRun: 'the run had no name' })).toEqual({ run: null, notRun: 'the run had no name' });
+    // Retired is kept apart from removed, by the same rule: numbers only.
+    expect(cleanupOf({ run: 'r3', removed: { accounts: 1 }, retired: { paysysAccounts: 97, note: 'blocked' } })).toEqual({
+      run: 'r3',
+      removed: { accounts: 1 },
+      retired: { paysysAccounts: 97 },
+    });
     expect(cleanupOf({ removed: { accounts: 1 } })).toBeUndefined();
     expect(cleanupOf('text')).toBeUndefined();
   });
@@ -126,6 +132,25 @@ describe('the command says what the run left', () => {
     const out = said.join('\n');
     expect(out).toMatch(/cleanup: run attest-20260925T012700\.000Z-af0237 removed 20 accounts, 4 organisations, 8 journalRows, 1 paysysAccounts, 1 identities, 30 sessions/);
     expect(out).toMatch(/left behind: organisation Cat Probe Org 17 — its journal holds a binding act/);
+  });
+
+  it('says what the run retired apart from what it removed — a wallet kept in place is not gone', async () => {
+    // daos 75c24f46: an account held only by an address on a real chain is
+    // blocked and marked, and its owner goes; «removed» would say it went.
+    daemon.answer = {
+      path: 'p',
+      gates: 37,
+      passed: 37,
+      node: 'n',
+      scriptsFrom: 'release',
+      sourceFiles: 1,
+      accounts: 'provisioned',
+      cleanup: { run: 'r4', removed: { accounts: 478, organisations: 97 }, retired: { paysysAccounts: 107 } },
+    };
+    await releaseAttestCommand(RELEASE, { stack: 'test', onNode: true });
+    const out = said.join('\n');
+    expect(out).toMatch(/cleanup: run r4 removed 478 accounts, 97 organisations$/m);
+    expect(out).toMatch(/retired: 107 paysysAccounts — blocked in place, their real-chain addresses still watched/);
   });
 
   it('says so when the removal failed, and when there was no run to remove by', async () => {

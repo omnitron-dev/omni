@@ -56,6 +56,13 @@ export interface AttestationCleanup {
   readonly run: string | null;
   /** Rows removed, per kind («accounts», «organisations», …). */
   readonly removed?: Readonly<Record<string, number>>;
+  /**
+   * Kept, not removed, per kind («paysysAccounts»): a PaySys account whose
+   * only reason to stay was an address on a real chain is retired — blocked,
+   * marked `data.retired`, its addresses still credited — and its owner goes
+   * (daos 75c24f46). Counted apart, since «removed» would say it is gone.
+   */
+  readonly retired?: Readonly<Record<string, number>>;
   /** What stays, each with the reasons the removal gave. */
   readonly leftBehind?: ReadonlyArray<{ readonly what: string; readonly why: readonly string[] }>;
   /** The removal ran and did not finish, in its words. */
@@ -86,14 +93,16 @@ export function cleanupOf(raw: unknown): AttestationCleanup | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const c = raw as Record<string, unknown>;
   if (!('run' in c) || (c['run'] !== null && typeof c['run'] !== 'string')) return undefined;
-  const removed =
-    c['removed'] && typeof c['removed'] === 'object'
+  const counts = (x: unknown): Record<string, number> | undefined =>
+    x && typeof x === 'object'
       ? Object.fromEntries(
-          Object.entries(c['removed'] as Record<string, unknown>).filter(
+          Object.entries(x as Record<string, unknown>).filter(
             (e): e is [string, number] => typeof e[1] === 'number' && Number.isFinite(e[1]),
           ),
         )
       : undefined;
+  const removed = counts(c['removed']);
+  const retired = counts(c['retired']);
   const leftBehind = Array.isArray(c['leftBehind'])
     ? (c['leftBehind'] as unknown[])
         .filter((l): l is { what: unknown; why: unknown } => !!l && typeof l === 'object')
@@ -102,6 +111,7 @@ export function cleanupOf(raw: unknown): AttestationCleanup | undefined {
   return {
     run: c['run'] as string | null,
     ...(removed ? { removed } : {}),
+    ...(retired ? { retired } : {}),
     ...(leftBehind ? { leftBehind } : {}),
     ...(typeof c['failed'] === 'string' ? { failed: c['failed'] } : {}),
     ...(typeof c['notRun'] === 'string' ? { notRun: c['notRun'] } : {}),

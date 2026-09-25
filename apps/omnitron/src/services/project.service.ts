@@ -76,6 +76,7 @@ import {
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
+import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
@@ -93,25 +94,6 @@ function samePath(a: string, b: string): boolean {
     }
   };
   return real(a) === real(b);
-}
-
-/**
- * What a migrator printed, as lines worth a log.
- *
- * A data migration reports what it did on stdout — daos 194 names every role it
- * swept, 195 counts the measurement axes it found and made and names the
- * hand-made ones — and the runner prints how many it applied. All of it was
- * discarded: the daemon logged «Migrations applied» and nothing it had been
- * told (2026-09-25, 195 on dev and test). The one line cut short is the
- * runner's enumeration of every migration it found, 202 names on one line: its
- * count is kept, the names are not.
- */
-function migrationOutput(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim() !== '')
-    .map((line) => line.replace(/^(Discovered \d+ migration\(s\)):.*$/, '$1'));
 }
 
 /**

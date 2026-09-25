@@ -205,7 +205,12 @@ function specifiersOf(file) {
         const flag = node.elements[i];
         const value = node.elements[i + 1];
         if (!ts.isStringLiteralLike(flag) || !LOADER_FLAGS.has(flag.text)) continue;
-        if (ts.isStringLiteralLike(value)) add(value, value.text, false);
+        // A flag followed by another flag names no package: `-r` is also
+        // «recursive» to git and pnpm — `['ls-tree', '-r', '--name-only']`,
+        // `['branch', '-r', '--contains']`, `['-r', '--filter', …]` were read
+        // as three packages called `--name-only`, `--contains` and `--filter`
+        // (2026-09-25). Node itself reads a `-`-led argument as a flag too.
+        if (ts.isStringLiteralLike(value) && !value.text.startsWith('-')) add(value, value.text, false);
       }
     } else if (ts.isCallExpression(node)) {
       const callee = node.expression;

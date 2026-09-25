@@ -571,6 +571,8 @@ export interface IOmnitronSecretsService {
     bytes?: number;
     encoding?: 'base64' | 'base64url' | 'hex';
   }): Promise<{ key: string; bytes: number; encoding: 'base64' | 'base64url' | 'hex' }>;
+  /** A second key holding the same secret, made by the daemon; the answer names both keys, never the value. */
+  copy(data: { from: string; to: string }): Promise<{ from: string; to: string }>;
 }
 
 /**

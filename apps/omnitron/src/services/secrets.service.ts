@@ -152,6 +152,29 @@ export class SecretsService {
   }
 
   /**
+   * A second key holding the same secret, made here: the value is read and
+   * written inside this service and handed to nobody.
+   *
+   * For splitting one secret into two before rotating either — the new key
+   * starts as the old one's value, so a deployment that begins reading it
+   * changes nothing on the day it lands. `set` would have carried the value
+   * through a terminal and a process table to get it here. A key that already
+   * exists is refused, not replaced, as `generate` refuses one.
+   */
+  async copy(from: string, to: string): Promise<void> {
+    if (!from || !to) throw new Error('A copy needs the key to copy and the key to make');
+    if (from === to) throw new Error(`'${from}' cannot be copied onto itself`);
+    const secrets = await this.load();
+    const value = secrets[from];
+    if (value === undefined) throw new Error(`The vault has no '${from}' — nothing was copied`);
+    if (to in secrets) {
+      throw new Error(`The vault already holds '${to}' — nothing was copied. Delete it first if replacing it is the intent`);
+    }
+    secrets[to] = value;
+    await this.save(secrets);
+  }
+
+  /**
    * Delete a secret by key.
    * Returns true if the key existed and was deleted.
    */

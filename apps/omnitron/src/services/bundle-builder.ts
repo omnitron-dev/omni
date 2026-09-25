@@ -1229,10 +1229,18 @@ export function activateSteps(layout: InstallLayout, pathDir = '/usr/local/bin')
 /**
  * Keep the last `keep` versions and remove the rest.
  *
- * `current` is never removed whatever its age — the sort is by directory
- * name, which for `0.2.0+local.<sha>.<stamp>` is chronological, but a
- * retention that reasons about age must not be the thing that deletes what
- * is running.
+ * «Last» by the build stamp that ends every local version —
+ * `0.2.0+local.<sha>.<stamp>` — not by the name. The name was the sort key,
+ * on the stated ground that it «is chronological»; it is not, because the
+ * sha comes first. On daos/test (2026-09-25) three upgrades in one morning
+ * left the node with the running version and three from 22–23 September,
+ * and deleted 311bddb1 and de454a80 — the two a rollback would have wanted.
+ * A version without a numeric stamp counts as the oldest.
+ *
+ * `current` is never removed whatever its age: a retention that reasons
+ * about age must not be the thing that deletes what is running. Portable
+ * `awk` rather than GNU `head -n -N`, so the court can run the command
+ * itself on the machine that builds.
  */
 export function pruneSteps(layout: InstallLayout, keep: number): readonly RemoteStep[] {
   const versions = `${layout.prefix}/versions`;
@@ -1242,7 +1250,8 @@ export function pruneSteps(layout: InstallLayout, keep: number): readonly Remote
       command:
         `cd ${q(versions)} 2>/dev/null || exit 0; ` +
         `CURRENT=$(readlink ${q(`${layout.prefix}/current`)} 2>/dev/null); ` +
-        `ls -1 | sort | head -n -${keep} | while read -r v; do ` +
+        `ls -1 | awk -F. '{ s = $NF; if (s !~ /^[0-9]+$/) s = 0; print s "\\t" $0 }' | sort -n -k1,1 | cut -f2- | ` +
+        `awk -v keep=${keep} '{ a[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print a[i] }' | while read -r v; do ` +
         `[ "${versions}/$v" = "$CURRENT" ] && continue; ` +
         `rm -rf -- "$v"; done; true`,
       timeoutMs: 120_000,

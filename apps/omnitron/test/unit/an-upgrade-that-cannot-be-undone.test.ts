@@ -17,6 +17,11 @@
  * the layout can be built that looks right and is not.
  */
 
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -149,9 +154,8 @@ describe('making a version live', () => {
 
 describe('retention', () => {
   it('never removes what is running', () => {
-    // The sort is by name, which for these versions is chronological — but a
-    // retention that reasons about age must not be the thing that deletes the
-    // live copy. A rollback needs its target to still be there.
+    // A retention that reasons about age must not be the thing that deletes
+    // the live copy. A rollback needs its target to still be there.
     const commands = script(pruneSteps(layout, 3));
 
     expect(commands).toContain('readlink');
@@ -159,7 +163,35 @@ describe('retention', () => {
   });
 
   it('keeps the number asked for', () => {
-    expect(script(pruneSteps(layout, 5))).toContain('head -n -5');
+    expect(script(pruneSteps(layout, 5))).toContain('keep=5');
+  });
+
+  it('keeps the most recent BUILDS, not the names that sort last', () => {
+    // The names put the sha before the stamp, so sorting them sorts shas. On
+    // daos/test, 2026-09-25, three upgrades in one morning kept the running
+    // version and three from 22–23 September, and deleted the two a rollback
+    // would have wanted. The very same names, the command run for real.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-'));
+    try {
+      const names = [
+        '0.2.0+local.f5dec792c4a3.202609221401',
+        '0.2.0+local.fc0a1d6f3c3c.202609231545',
+        '0.2.0+local.fc0a1d6f3c3c.202609231701',
+        '0.2.0+local.311bddb1e8d2.202609250830',
+        '0.2.0+local.de454a80a3bd.202609251029',
+        '0.2.0+local.a0ca22683705.202609251111',
+      ];
+      for (const n of names) fs.mkdirSync(path.join(root, 'versions', n), { recursive: true });
+      fs.symlinkSync(path.join(root, 'versions', names[5]!), path.join(root, 'current'));
+
+      execFileSync('bash', ['-c', script(pruneSteps({ prefix: root, version: names[5]! }, 3))]);
+
+      expect(fs.readdirSync(path.join(root, 'versions')).sort()).toEqual(
+        [names[3]!, names[4]!, names[5]!].sort()
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('does nothing when there are no versions yet', () => {

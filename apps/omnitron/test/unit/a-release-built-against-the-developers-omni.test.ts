@@ -139,6 +139,34 @@ describe('the release says what the build found, and no more', () => {
     ]);
   });
 
+  it('a run stopped part-way keeps the verdicts that had landed, and still is not whole', () => {
+    // Two builds stopped on 2026-09-25 reported «gates: 0 of 1 passed» over
+    // lines like these.
+    const stdout = [
+      'PASS  links                 0s  359 installed links resolve',
+      'PASS  scans               138s  69 of 69',
+      'FAIL  unit:main           306s  Tests 1 failed | 4824 passed (4825) — test/unit/a-refusal-in-paysyss-words.test.ts',
+      'TIME  integration:paysys  600s',
+      '',
+    ].join('\n');
+    expect(gateOutcomesFromGates(stdout, null)).toEqual([
+      { name: 'links', status: 'passed', durationMs: 0, detail: '359 installed links resolve' },
+      { name: 'scans', status: 'passed', durationMs: 138000, detail: '69 of 69' },
+      {
+        name: 'unit:main',
+        status: 'failed',
+        durationMs: 306000,
+        detail: 'Tests 1 failed | 4824 passed (4825) — test/unit/a-refusal-in-paysyss-words.test.ts',
+      },
+      { name: 'integration:paysys', status: 'timed-out', durationMs: 600000 },
+      {
+        name: 'gates',
+        status: 'not-run',
+        detail: 'the gates script printed no result object (exit by signal); 4 gate(s) had reported before it did',
+      },
+    ]);
+  });
+
   it('a killed gate refuses the release, and says it was killed', () => {
     const manifest = assembleManifest({
       id: 'r',

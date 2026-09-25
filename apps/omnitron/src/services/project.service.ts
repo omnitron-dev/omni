@@ -3020,13 +3020,6 @@ export class ProjectService extends EventEmitter {
    * start rather than at the next heartbeat.
    */
 /**
-   * The config files the stack's services need, read from this master.
-   *
-   * Only services whose declaration names a `configDir`, which today is the
-   * gateway. A service with no such directory sends nothing, so this costs
-   * nothing for the stacks that do not need it.
-   */
-/**
    * Deliver each service's static content to the node, and report where.
    *
    * Only services that declare a `staticDir`, which today is the gateway
@@ -3355,22 +3348,34 @@ export class ProjectService extends EventEmitter {
       : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
   }
 
+  /**
+   * The config files the stack's services need, read from this master.
+   *
+   * Only services that name a directory to ship (`shippedDirOf`) — the
+   * gateway's nginx tree, Nominatim's import scripts. A stack that names none
+   * sends nothing, so this costs nothing where it is not needed.
+   */
   private async readStackConfigFiles(
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig,
     projectRoot: string,
+    /** Filled with each service whose directory was sent → that directory's absolute path here. */
+    shippedDirs?: Map<string, string>,
+    /** The services the stack's apps require — each may name a directory of its own, as the stack's may. */
+    services?: Record<string, import('../infrastructure/types.js').IServiceRequirement>,
   ): Promise<import('../infrastructure/config-payload.js').ConfigPayload> {
     const { readConfigDirectory } = await import('../infrastructure/config-payload.js');
+    const { shippedDirOf } = await import('../infrastructure/shipped-config.js');
     const fsp = await import('node:fs/promises');
     const payload: import('../infrastructure/config-payload.js').ConfigPayload = {};
 
     const candidates: Array<[string, string]> = [];
     const gateway = (infrastructure as { gateway?: { configDir?: string } }).gateway;
     if (gateway?.configDir) candidates.push(['gateway', gateway.configDir]);
-    for (const [name, svc] of Object.entries(
-      (infrastructure as { services?: Record<string, { config?: { configDir?: string } }> }).services ?? {},
-    )) {
-      const dir = svc?.config?.configDir;
-      if (dir) candidates.push([name, dir]);
+    // The stack's own services first — an app's requirement of the same name
+    // is the same service, and one directory is shipped for it.
+    for (const [name, svc] of [...Object.entries(infrastructure.services ?? {}), ...Object.entries(services ?? {})]) {
+      const dir = shippedDirOf(svc);
+      if (dir && !candidates.some(([n]) => n === name)) candidates.push([name, dir]);
     }
 
     for (const [name, configDir] of candidates) {
@@ -3383,7 +3388,10 @@ export class ProjectService extends EventEmitter {
           readFile: (f) => fsp.readFile(f, 'utf-8'),
           stat: (f) => fsp.stat(f),
         });
-        if (files.length > 0) payload[name] = files;
+        if (files.length > 0) {
+          payload[name] = files;
+          shippedDirs?.set(name, abs);
+        }
         if (skipped.length > 0) {
           // Said out loud: a file left behind changes what the service does,
           // and silence here would make the node's behaviour unexplainable
@@ -3446,7 +3454,17 @@ export class ProjectService extends EventEmitter {
     }
 
     try {
-      const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot) : {};
+      const shippedDirs = new Map<string, string>();
+      const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot, shippedDirs, services) : {};
+      // A service's bind mounts inside its shipped directory name the node's
+      // copy, not this machine's path — the stack's own services and the ones
+      // its apps require alike. See `shipped-config.ts`.
+      const { pointMountsAtShippedConfig } = await import('../infrastructure/shipped-config.js');
+      const configForNode =
+        projectRoot && infrastructure.services
+          ? { ...infrastructure, services: pointMountsAtShippedConfig(infrastructure.services, shippedDirs, projectRoot) }
+          : infrastructure;
+      const servicesForNode = projectRoot && services ? pointMountsAtShippedConfig(services, shippedDirs, projectRoot) : services;
 
       // The frontend the gateway serves, if this stack declares one. It goes
       // by SSH rather than inside the call: 32 MB is the wrong size for an
@@ -3465,7 +3483,7 @@ export class ProjectService extends EventEmitter {
         port,
         'OmnitronInfra',
         'provisionStack',
-        [{ config: infrastructure, services, ...(owner ?? {}), configFiles, staticRoots }],
+        [{ config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots }],
         { retryOnDisconnect: true },
       )) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 

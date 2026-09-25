@@ -323,6 +323,14 @@ export interface IServiceRequirement {
    * If omitted, service must be provisioned externally.
    */
   docker?: IDockerServiceConfig;
+  /**
+   * A directory of this project the service's container bind-mounts from —
+   * scripts, templates. Shipped to every node that runs the service, where
+   * the container mounts the node's copy instead of a path that exists only
+   * on the master (`infrastructure/shipped-config.ts`). Relative to the
+   * project root, or absolute.
+   */
+  configDir?: string;
 
   /** Bare-metal provisioning hints — used for prod stacks. */
   bareMetal?: IBareMetalServiceConfig;

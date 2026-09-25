@@ -70,6 +70,15 @@ export class InboundGate {
     }
   }
 
+  /**
+   * Admit calls again: the process is serving once more. The count of
+   * refusals starts over with it, so it says what this run refused.
+   */
+  reopen(): void {
+    this.draining = false;
+    this.refusedCount = 0;
+  }
+
   /** Stopping has begun: new calls are being refused. */
   get isDraining(): boolean {
     return this.draining;

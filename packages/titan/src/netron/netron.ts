@@ -663,6 +663,10 @@ export class Netron extends EventEmitter implements INetron {
   private async doStart() {
     this.logger.info('Starting Netron instance');
 
+    // A started Netron admits calls. Stopping closed the gate, and on the same
+    // instance — `Application.restart()` — nothing else would open it.
+    this.inbound.reopen();
+
     // StreamReference is registered eagerly + synchronously at module load by
     // ./streams/register-stream-reference.js (imported above); this idempotent
     // call is belt-and-suspenders so registration can't be tree-shaken away.
@@ -973,8 +977,11 @@ export class Netron extends EventEmitter implements INetron {
     await Promise.all(stopPromises);
     this.transportServers.clear();
 
-    // Clear transport server configs
-    this.transportRegistry.clearServerConfigs();
+    // The server CONFIGS stay. They say what this Netron serves, not what is
+    // running: clearing them here made the next `start()` bind nothing and
+    // come up «client-only», so `Application.restart()` ended with no port
+    // listening (ECONNREFUSED, measured on main 2d071f93). A registration
+    // under the same name replaces its config, so keeping them is safe.
 
     // SECURITY (T#39): tear down the inbound rate limiter so its
     // queue processor and cleanup intervals don't keep the event

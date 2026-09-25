@@ -138,12 +138,10 @@ describe('Netron - start/stop interleaving', () => {
       // The guard joins callers of ONE stop; it must not turn every stop
       // after the first into a no-op.
       //
-      // The server config has to be re-registered between the two, and that
-      // is not this test being awkward: `stop()` ends with
-      // `transportRegistry.clearServerConfigs()`, so a Netron that is started
-      // again comes back binding nothing. Latent rather than live —
-      // `Application.restart()` has exactly one reference in the monorepo, a
-      // README, and every real registration happens in per-process setup.
+      // No re-registration between the two: the server config survives a
+      // stop, so a Netron started again binds what it bound before. It used
+      // to be cleared, and `Application.restart()` came back listening on
+      // nothing (`a-restart-that-answered-nothing.spec.ts`).
       const { transport, server } = gatedTransport(Promise.resolve());
       const n = new Netron(createLogger(), { id: 'stop-start-stop' });
       n.registerTransport('mock-ws', () => transport as never);
@@ -153,7 +151,6 @@ describe('Netron - start/stop interleaving', () => {
       await n.stop();
       expect(server.close).toHaveBeenCalledTimes(1);
 
-      n.registerTransportServer('mock-ws', { name: 'mock-ws', options: {} } as never);
       await n.start();
       await n.stop();
       expect(server.close, 'the second stop was swallowed by a latched guard').toHaveBeenCalledTimes(2);

@@ -726,6 +726,33 @@ export class InfrastructureService {
     }
 
     if (actual.status === 'exited' || actual.status === 'created') {
+      // A container that is not running still carries the spec it was created
+      // with, and `start` runs THAT spec. The drift checks above were only
+      // asked of a running container, so one created wrong was started wrong
+      // for as long as it existed: Nominatim on daos/test, created at 05:37
+      // with a mount the master had not rewritten, was «started» by every
+      // reconcile after the fix that corrected its desired spec — «exec:
+      // /opt/nominatim-tools/cis-entrypoint.sh: no such file» each time
+      // (2026-09-25). Same questions, same answers, before it is started.
+      if (actual.image !== desired.image && !actual.image.startsWith(desired.image)) {
+        return {
+          type: 'recreate',
+          service: desired.name,
+          config: desired,
+          reason: `image changed while stopped: ${actual.image} → ${desired.image}`,
+        };
+      }
+      if (actual.specHash) {
+        const desiredHash = containerSpecHash(desired);
+        if (actual.specHash !== desiredHash) {
+          return {
+            type: 'recreate',
+            service: desired.name,
+            config: desired,
+            reason: `config drift while ${actual.status} (spec ${actual.specHash} → ${desiredHash})`,
+          };
+        }
+      }
       return { type: 'start', service: desired.name, containerId: actual.containerId ?? desired.name };
     }
 

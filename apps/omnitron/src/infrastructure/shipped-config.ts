@@ -35,6 +35,29 @@ export function shippedDirOf(service: unknown): string | undefined {
   return typeof dir === 'string' && dir !== '' ? dir : undefined;
 }
 
+/**
+ * Every service a deployment ships a directory for, with the directory as
+ * declared: the legacy `gateway` block's, then the stack's own services', then
+ * the ones its apps require — one per service, the first declaration winning.
+ *
+ * Two questions ask it and must get one answer: what the master sends to a
+ * node (`readStackConfigFiles`), and what release admission compares with the
+ * release's commit, since those files are read from the working tree.
+ */
+export function shippedDirsOf(
+  infrastructure: { gateway?: { configDir?: string | undefined } | undefined; services?: Record<string, unknown> | undefined } | undefined,
+  required?: Record<string, unknown>,
+): Array<[service: string, dir: string]> {
+  const out: Array<[string, string]> = [];
+  const legacy = infrastructure?.gateway?.configDir;
+  if (typeof legacy === 'string' && legacy !== '') out.push(['gateway', legacy]);
+  for (const [name, svc] of [...Object.entries(infrastructure?.services ?? {}), ...Object.entries(required ?? {})]) {
+    const dir = shippedDirOf(svc);
+    if (dir && !out.some(([n]) => n === name)) out.push([name, dir]);
+  }
+  return out;
+}
+
 type Mount = string | { source: string; target: string; readonly?: boolean };
 type Volumes = Record<string, Mount>;
 type DockerLike = { volumes?: Volumes; variants?: Record<string, { volumes?: Volumes }> };

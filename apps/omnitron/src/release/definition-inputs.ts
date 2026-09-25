@@ -17,7 +17,10 @@
  *   - `omnitron.stacks.json`, read by path;
  *   - each app's `config/*.json`, read by path (`default.json`'s `omnitron`
  *     section is what the master reads; the rest are included so a config
- *     edit never passes unseen).
+ *     edit never passes unseen);
+ *   - each directory the deployment ships to its nodes (`shippedDirsOf`) —
+ *     the gateway's nginx tree, a service's scripts — whole: a directory is a
+ *     pathspec to git, so every file under it is compared.
  * Machine-local files the config reads by path are gitignored, and so are not
  * the commit's business either way.
  *
@@ -31,7 +34,12 @@ import path from 'node:path';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
 
 /** Paths relative to the project root, sorted, each once. */
-export async function definitionInputs(projectPath: string, bootstraps: readonly string[]): Promise<string[]> {
+export async function definitionInputs(
+  projectPath: string,
+  bootstraps: readonly string[],
+  /** Directories shipped to nodes, as declared — relative to the project, or absolute. */
+  shipped: readonly string[] = [],
+): Promise<string[]> {
   const root = fs.realpathSync(projectPath);
   const configFile = CONFIG_FILE_NAMES.map((name) => path.join(root, name)).find((p) => fs.existsSync(p));
   const entries = [
@@ -81,5 +89,7 @@ export async function definitionInputs(projectPath: string, bootstraps: readonly
     for (const name of names) inputs.add(path.relative(root, path.join(configDir, name)));
   }
 
-  return [...inputs].filter((p) => !p.startsWith('..') && !path.isAbsolute(p)).sort();
+  for (const dir of shipped) inputs.add(path.relative(root, path.resolve(root, dir)));
+
+  return [...inputs].filter((p) => p !== '' && !p.startsWith('..') && !path.isAbsolute(p)).sort();
 }

@@ -286,7 +286,7 @@ describe('a release is admitted only onto its own commit', () => {
     fs.writeFileSync(path.join(dir, 'omnitron.config.ts'), 'export default { edited: true };\n');
 
     await expect(svc.startStack('daos', 'test', { source: 'operator', release: id })).rejects.toThrow(
-      /of the 1 file\(s\) the stack definition is read from, 1 differ from its commit [0-9a-f]{8} \(omnitron\.config\.ts\)/,
+      /of the 1 path\(s\) the stack definition and what it ships are read from, 1 differ from its commit [0-9a-f]{8} \(omnitron\.config\.ts\)/,
     );
     expect(svc.startRemoteStack).not.toHaveBeenCalled();
   });

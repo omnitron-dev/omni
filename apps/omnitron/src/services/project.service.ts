@@ -1759,6 +1759,35 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  /**
+   * The paths of the working tree a deployment of this stack reads, relative
+   * to its root — what admission requires to be the release's commit.
+   *
+   * The definition (`release/definition-inputs.ts`), and the directories the
+   * deployment ships to its nodes (`shippedDirsOf`): the gateway's nginx tree,
+   * a service's scripts. Those were read from the working tree and compared
+   * with nothing, so an uncommitted edit to the gateway's template reached the
+   * test node past every gate a release has.
+   */
+  private async deploymentReads(
+    projectName: string,
+    stackConfig: IStackConfig,
+    config: IEcosystemConfig,
+    root: string,
+  ): Promise<string[]> {
+    const { definitionInputs } = await import('../release/definition-inputs.js');
+    const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
+    const shipped = shippedDirsOf(
+      mergeInfrastructure(config, stackConfig),
+      await this.collectDeclaredServices(projectName, stackConfig, config),
+    );
+    return definitionInputs(
+      root,
+      this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [a.bootstrap] : [])),
+      shipped.map(([, dir]) => dir),
+    );
+  }
+
   private async admitRelease(
     projectName: string,
     stackName: string,
@@ -1834,11 +1863,7 @@ export class ProjectService extends EventEmitter {
     const root = fs.realpathSync(project.path);
     let inputs: string[] | undefined;
     try {
-      const { definitionInputs } = await import('../release/definition-inputs.js');
-      inputs = await definitionInputs(
-        root,
-        this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [a.bootstrap] : [])),
-      );
+      inputs = await this.deploymentReads(projectName, stackConfig, config, root);
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, error: (err as Error).message },
@@ -1849,7 +1874,7 @@ export class ProjectService extends EventEmitter {
     if (!tree.equal) {
       throw new Error(
         `Refusing release ${release.id} for ${projectName}/${stackName}: ` +
-          `${inputs ? `of the ${inputs.length} file(s) the stack definition is read from, ` : ''}` +
+          `${inputs ? `of the ${inputs.length} path(s) the stack definition and what it ships are read from, ` : ''}` +
           `${tree.files.length} differ from its commit ${commit.slice(0, 8)} ` +
           `(${tree.files.slice(0, 5).join(', ')}${tree.files.length > 5 ? ', …' : ''}). ` +
           `The definition is read from ${project.path}, so those have to be the release's: commit or set them aside, ` +
@@ -3364,19 +3389,13 @@ export class ProjectService extends EventEmitter {
     services?: Record<string, import('../infrastructure/types.js').IServiceRequirement>,
   ): Promise<import('../infrastructure/config-payload.js').ConfigPayload> {
     const { readConfigDirectory } = await import('../infrastructure/config-payload.js');
-    const { shippedDirOf } = await import('../infrastructure/shipped-config.js');
+    const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
     const fsp = await import('node:fs/promises');
     const payload: import('../infrastructure/config-payload.js').ConfigPayload = {};
 
-    const candidates: Array<[string, string]> = [];
-    const gateway = (infrastructure as { gateway?: { configDir?: string } }).gateway;
-    if (gateway?.configDir) candidates.push(['gateway', gateway.configDir]);
     // The stack's own services first — an app's requirement of the same name
     // is the same service, and one directory is shipped for it.
-    for (const [name, svc] of [...Object.entries(infrastructure.services ?? {}), ...Object.entries(services ?? {})]) {
-      const dir = shippedDirOf(svc);
-      if (dir && !candidates.some(([n]) => n === name)) candidates.push([name, dir]);
-    }
+    const candidates = shippedDirsOf(infrastructure as never, services);
 
     for (const [name, configDir] of candidates) {
       const abs = configDir.startsWith('/')

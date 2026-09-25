@@ -99,6 +99,37 @@ describe('a master that stood still while it migrated', () => {
     expect(longest, 'the longest the loop went without running a 50 ms timer').toBeLessThan(1_500);
   });
 
+  it("logs what the migrations said, and cuts the runner's list of every name to its count", async () => {
+    // What daos's runner and migration 195 printed on dev, 2026-09-25 — and
+    // what the daemon threw away, logging only «Migrations applied».
+    const root = project(
+      [
+        "console.log('Connecting to PostgreSQL at localhost:5432/main');",
+        "console.log('Discovered 3 migration(s): 193_a_tie, 194_three_keys, 195_a_marketplace');",
+        "console.log('  195: measurement axes — found 0, created 5; presets added 23');",
+        "console.log('  195: other measurement axes in scope product: 2 — units-1788956628078 «Единицы» (count, 4 values)');",
+        "console.log('');",
+        "console.log('1 migration(s) applied. 2 already applied.');",
+      ].join('\n') + '\n',
+    );
+    const { migrate, said } = service();
+
+    await migrate(root);
+
+    const lines = said.filter((s) => s.msg === 'Migration said');
+    expect(lines.map((s) => s.fields['line'])).toEqual([
+      'Connecting to PostgreSQL at localhost:5432/main',
+      'Discovered 3 migration(s)',
+      '  195: measurement axes — found 0, created 5; presets added 23',
+      '  195: other measurement axes in scope product: 2 — units-1788956628078 «Единицы» (count, 4 values)',
+      '1 migration(s) applied. 2 already applied.',
+    ]);
+    expect(lines.every((s) => s.level === 'info' && s.fields['database'] === 'main')).toBe(true);
+    // Said before the verdict, not instead of it.
+    const applied = said.findIndex((s) => s.msg === 'Migrations applied');
+    expect(applied).toBeGreaterThan(said.lastIndexOf(lines.at(-1)!));
+  });
+
   it('still reports a failed migration with what it wrote to stderr', async () => {
     const root = project("process.stderr.write('ERROR: relation \"wallets\" does not exist\\n'); process.exit(1);\n");
     const { migrate, said } = service();

@@ -96,6 +96,25 @@ function samePath(a: string, b: string): boolean {
 }
 
 /**
+ * What a migrator printed, as lines worth a log.
+ *
+ * A data migration reports what it did on stdout — daos 194 names every role it
+ * swept, 195 counts the measurement axes it found and made and names the
+ * hand-made ones — and the runner prints how many it applied. All of it was
+ * discarded: the daemon logged «Migrations applied» and nothing it had been
+ * told (2026-09-25, 195 on dev and test). The one line cut short is the
+ * runner's enumeration of every migration it found, 202 names on one line: its
+ * count is kept, the names are not.
+ */
+function migrationOutput(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+    .map((line) => line.replace(/^(Discovered \d+ migration\(s\)):.*$/, '$1'));
+}
+
+/**
  * The infrastructure a stack actually gets: the ecosystem's, plus its own.
  *
  * Shallow for the top-level keys — a stack that declares `postgres` replaces
@@ -3859,7 +3878,11 @@ export class ProjectService extends EventEmitter {
           );
           // Nothing to read from us, as `stdio: 'ignore'` said before.
           running.child.stdin?.end();
-          await running;
+          const { stdout } = await running;
+          // What the migrations said, in order — see `migrationOutput`.
+          for (const line of migrationOutput(String(stdout))) {
+            this.logger.info({ database: dbName, line }, 'Migration said');
+          }
           this.logger.info({ database: dbName, attempts: attempt }, 'Migrations applied');
           lastErr = null;
           break;

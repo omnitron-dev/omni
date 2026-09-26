@@ -91,6 +91,32 @@ type DynamicQueryBuilder = {
 /**
  * Abstract repository that automatically uses transaction context.
  */
+/**
+ * A page size, bounded at both ends.
+ *
+ * Deliberately NOT `Math.min(n ?? fallback, max)`: that form honours a `0` and a
+ * negative, and Postgres refuses a negative LIMIT with an error the caller reads
+ * as a broken page. Nonsense — absent, not a number, below one — takes the
+ * fallback; anything else is capped.
+ */
+function clampPageSize(n: unknown, fallback: number, max: number): number {
+  const v = typeof n === 'number' ? Math.floor(n) : NaN;
+  if (!Number.isFinite(v) || v < 1) return fallback;
+  return Math.min(v, max);
+}
+
+/**
+ * An offset, bounded above as well as below.
+ *
+ * A floor alone (`Math.max(0, n)`) refuses the negative Postgres would raise on
+ * and lets a million through, which it performs as a scan and throws away.
+ */
+function clampOffsetValue(n: unknown, max: number): number {
+  const v = typeof n === 'number' ? Math.floor(n) : NaN;
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return Math.min(v, max);
+}
+
 export abstract class TransactionAwareRepository<DB, Table extends string> {
   protected readonly hasSoftDelete: boolean = false;
   protected readonly softDeleteColumn: string = 'deletedAt';
@@ -103,6 +129,30 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
    * or junctions without these columns, and injecting into them would be
    * a runtime SQL error.
    */
+  /**
+   * Does this table have an `id` column?
+   *
+   * `list()` ends its ORDER BY on the primary key so that a page partitions the
+   * rows — see there. Junction tables keyed on a pair, configuration singletons
+   * and tables keyed on something else have no `id`, and asking for one compiles
+   * perfectly and fails in the database. A repository on such a table sets this
+   * false, exactly as it sets `hasSoftDelete`.
+   */
+  protected readonly hasIdColumn: boolean = true;
+
+  /**
+   * Page bounds for `list()`.
+   *
+   * `options.limit ?? 20` was a DEFAULT, not a bound: it applied only when the
+   * caller omitted the value, so `limit: 1_000_000` reached SQL in full and the
+   * offset beside it had no ceiling at all — Postgres walks and discards every
+   * row before an offset, for one request. A repository that genuinely pages
+   * larger raises these deliberately, the way it widens any other field here.
+   */
+  protected readonly defaultPageSize: number = 20;
+  protected readonly maxPageSize: number = 100;
+  protected readonly maxOffset: number = 10_000;
+
   protected readonly hasTimestamps: boolean = false;
   protected readonly createdAtColumn: string = 'createdAt';
   protected readonly updatedAtColumn: string = 'updatedAt';
@@ -304,7 +354,16 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     };
 
     let query = (this.dynamicExecutor.selectFrom(this.tableName) as QR).selectAll().where(field, '=', value);
-    if (options?.orderBy) query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+    if (options?.orderBy) {
+      query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+      // The same tiebreak as `list()`: this helper takes a limit and an offset,
+      // and a sort that ties does not partition them. Only when an order was
+      // asked for — a read with NO order is a separate question, and imposing one
+      // would change which rows an existing caller gets back.
+      if (this.hasIdColumn && options.orderBy !== 'id') {
+        query = query.orderBy('id', options.direction ?? 'desc');
+      }
+    }
     if (options?.limit !== undefined) query = query.limit(options.limit);
     if (options?.offset !== undefined) query = query.offset(options.offset);
     return await query.execute();
@@ -320,7 +379,16 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
     };
 
     let query = (this.dynamicExecutor.selectFrom(this.tableName) as QR).selectAll();
-    if (options?.orderBy) query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+    if (options?.orderBy) {
+      query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+      // The same tiebreak as `list()`: this helper takes a limit and an offset,
+      // and a sort that ties does not partition them. Only when an order was
+      // asked for — a read with NO order is a separate question, and imposing one
+      // would change which rows an existing caller gets back.
+      if (this.hasIdColumn && options.orderBy !== 'id') {
+        query = query.orderBy('id', options.direction ?? 'desc');
+      }
+    }
     if (options?.limit !== undefined) query = query.limit(options.limit);
     if (options?.offset !== undefined) query = query.offset(options.offset);
     return await query.execute();
@@ -501,10 +569,20 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
   // ===========================================================================
 
   async list(options: ListOptions = {}): Promise<OffsetPaginatedResult<Selectable<DB[Table & keyof DB]>>> {
-    const limit = options.limit ?? 20;
-    const offset = options.offset ?? 0;
+    const limit = clampPageSize(options.limit, this.defaultPageSize, this.maxPageSize);
+    const offset = clampOffsetValue(options.offset, this.maxOffset);
     const orderBy = options.orderBy ?? 'createdAt';
-    const direction = options.direction ?? 'desc';
+    // `asc` or `desc`, and nothing else: Kysely throws `Invalid order by
+    // direction` on anything it does not recognise, and `options.direction` is a
+    // typed field that JSON from a wire can still contradict.
+    const direction = options.direction === 'asc' ? 'asc' : 'desc';
+
+    // The sort COLUMN is deliberately not checked here. It would have to fall
+    // back to something, and this class does not know the table: `hasTimestamps`
+    // defaults to false, so `createdAt` is not guaranteed to exist, and a
+    // fallback to a missing column turns a working read into a broken one. The
+    // app knows — `apps/main`'s BaseRepository keeps an `orderableColumns`
+    // allowlist over this same input and a comment saying why.
     const includeSoftDeleted = options.includeSoftDeleted ?? false;
 
     type CEB = { fn: { count(column: string): { as(alias: string): unknown } } };
@@ -537,6 +615,15 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       dataQuery = dataQuery.where(this.softDeleteColumn, 'is', null);
     }
     dataQuery = dataQuery.orderBy(orderBy, direction);
+    // A total order, which is what makes a page a page. `createdAt` — the
+    // default here — is `NOW()` in Postgres, the TRANSACTION timestamp, so every
+    // row one transaction wrote shares it to the microsecond. `limit`/`offset`
+    // walks a sorted list by position, so a tie lets one row sit at position 50
+    // on one read and 49 on the next: shown twice, and the row it displaced
+    // shown never. Nothing fails and nothing logs.
+    if (this.hasIdColumn && orderBy !== 'id') {
+      dataQuery = dataQuery.orderBy('id', direction);
+    }
 
     if (!withTotal) {
       // COUNT skipped: fetch limit+1 to derive hasMore, report total = -1
@@ -628,7 +715,16 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       .selectAll()
       .where((eb: unknown) => applyWhereClause(eb as never, where as Record<string, unknown>));
 
-    if (options?.orderBy) query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+    if (options?.orderBy) {
+      query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+      // The same tiebreak as `list()`: this helper takes a limit and an offset,
+      // and a sort that ties does not partition them. Only when an order was
+      // asked for — a read with NO order is a separate question, and imposing one
+      // would change which rows an existing caller gets back.
+      if (this.hasIdColumn && options.orderBy !== 'id') {
+        query = query.orderBy('id', options.direction ?? 'desc');
+      }
+    }
     if (options?.limit !== undefined) query = query.limit(options.limit);
     if (options?.offset !== undefined) query = query.offset(options.offset);
     return await query.execute();

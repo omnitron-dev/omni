@@ -47,6 +47,50 @@ export function getContainerPrefix(): string {
   return CONTAINER_PREFIX;
 }
 
+/**
+ * A named volume two services of one stack mount by the same name:
+ * `source: 'shared:gateway-socket'` is `<prefix>-gateway-socket` wherever it
+ * is declared.
+ *
+ * Every other named volume is its service's — `<prefix>-<service>-<key>`,
+ * whatever its `source` says — so nothing a stack could write gave two
+ * containers one volume. The onion needed exactly that: Tor resolved
+ * `daos-test-gateway` once, at start, and on 2026-09-26 a deploy gave the
+ * gateway's old address to Nominatim; for ~10 minutes the onion served
+ * Nominatim's Apache and nobody could sign in. A unix socket on a volume
+ * both containers mount has no address to go stale.
+ */
+export const SHARED_VOLUME_PREFIX = 'shared:';
+
+type DeclaredVolume = string | { source: string; target: string; readonly?: boolean };
+
+/** A declared volume as docker mounts it for `service`: shared, bound, or the service's own. */
+function resolveNamedOrBound(
+  service: string,
+  key: string,
+  vol: DeclaredVolume,
+): { source: string; target: string; readonly?: boolean } {
+  if (typeof vol === 'string') return { source: `${CONTAINER_PREFIX}-${service}-${key}`, target: vol };
+  const shared = vol.source.startsWith(SHARED_VOLUME_PREFIX) ? vol.source.slice(SHARED_VOLUME_PREFIX.length) : null;
+  if (shared !== null && !/^[a-z0-9][a-z0-9_.-]*$/.test(shared)) {
+    // Docker would refuse the name anyway; saying which declaration it was is
+    // the useful part.
+    throw new Error(`Volume "${key}" of ${service}: "${vol.source}" does not name a shared volume (lower-case letters, digits, «_.-»)`);
+  }
+  const isBindMount = vol.source.startsWith('/') || vol.source.startsWith('.');
+  const entry: { source: string; target: string; readonly?: boolean } = {
+    source:
+      shared !== null
+        ? `${CONTAINER_PREFIX}-${shared}`
+        : isBindMount
+          ? vol.source
+          : `${CONTAINER_PREFIX}-${service}-${key}`,
+    target: vol.target,
+  };
+  if (vol.readonly) entry.readonly = vol.readonly;
+  return entry;
+}
+
 
 /**
  * Where to PUBLISH the gateway, which is not where it listens.
@@ -320,10 +364,7 @@ export function resolveServiceRequirement(
   // Resolve volumes
   const shippedRoots = new Set<string>();
   const volumes = Object.entries(docker.volumes ?? {}).map(([name, vol]) => {
-    if (typeof vol === 'string') {
-      return { source: `${CONTAINER_PREFIX}-${serviceName}-${name}`, target: vol };
-    }
-    if (vol.source.startsWith(CONFIG_ROOT_PREFIX)) {
+    if (typeof vol !== 'string' && vol.source.startsWith(CONFIG_ROOT_PREFIX)) {
       // The node's copy of a directory the master shipped. Unresolved — no
       // copy arrived — it stays as it is, and docker refuses it by name.
       const local = shippedMountPath(vol.source, configRoots);
@@ -332,13 +373,7 @@ export function resolveServiceRequirement(
       if (vol.readonly) entry.readonly = vol.readonly;
       return entry;
     }
-    const isBindMount = vol.source.startsWith('/') || vol.source.startsWith('.');
-    const entry: { source: string; target: string; readonly?: boolean } = {
-      source: isBindMount ? vol.source : `${CONTAINER_PREFIX}-${serviceName}-${name}`,
-      target: vol.target,
-    };
-    if (vol.readonly) entry.readonly = vol.readonly;
-    return entry;
+    return resolveNamedOrBound(serviceName, name, vol);
   });
 
   // Convert IServiceHealthCheck → ContainerHealthCheck
@@ -497,8 +532,11 @@ function deepMergeDocker(
   if (base.labels || overlay.labels) {
     merged.labels = { ...base.labels, ...overlay.labels };
   }
-  if (overlay.volumes === undefined && base.volumes) {
-    merged.volumes = base.volumes;
+  // By key, like the environment: an overlay that adds a volume keeps the
+  // base's. Replaced wholesale, a stack that gave Tor one more mount would
+  // have taken away `/var/lib/tor` — its onion keys, and with them its address.
+  if (base.volumes || overlay.volumes) {
+    merged.volumes = { ...base.volumes, ...overlay.volumes };
   }
   if (overlay.resources === undefined && base.resources) {
     merged.resources = base.resources;
@@ -629,6 +667,35 @@ export function mountedConfigDigest(root: string, volumes: ResolvedContainer['vo
  * @param redisConfig  Stack's Redis connection info (host, port, password)
  * @param projectRoot  Absolute path to project root (for resolving configDir)
  */
+/**
+ * The gateway's config as the stack declares it: every field `resolveGateway`
+ * reads, the preset's block first and the legacy `infrastructure.gateway`
+ * after. The stack manager used to hand it two of them — `configDir` and
+ * `staticDir` — so `env`, declared on `GatewayServiceConfig` as «passed to the
+ * gateway container», reached nothing, and `volumes`, which carries the
+ * onion's socket, would have reached nothing either.
+ */
+export function gatewayConfigOf(
+  presetConfig: Readonly<Record<string, unknown>> | undefined,
+  legacy: Partial<GatewayServiceConfig> | undefined,
+  port: number,
+  redisDb: number,
+): GatewayServiceConfig {
+  const pick = <K extends keyof GatewayServiceConfig>(key: K): GatewayServiceConfig[K] | undefined =>
+    (presetConfig?.[key] as GatewayServiceConfig[K] | undefined) ?? legacy?.[key];
+  const staticDir = pick('staticDir');
+  const env = pick('env');
+  const volumes = pick('volumes');
+  return {
+    port,
+    configDir: pick('configDir') ?? 'infra/nginx',
+    redisDb,
+    ...(staticDir ? { staticDir } : {}),
+    ...(env ? { env } : {}),
+    ...(volumes ? { volumes } : {}),
+  };
+}
+
 export function resolveGateway(
   config: GatewayServiceConfig,
   redisConfig: { host: string; port: number; db: number; password?: string },
@@ -705,6 +772,9 @@ export function resolveGateway(
       // the path nginx.conf serves `/` from whenever `PORTAL_DEV_UPSTREAM` is
       // unset, which is every deployment that has no Vite beside it.
       ...(absStaticDir ? [{ source: absStaticDir, target: '/var/www/portal', readonly: true }] : []),
+      // What the stack adds — the onion's unix socket above all, on a
+      // `shared:` volume the Tor container mounts too.
+      ...Object.entries(config.volumes ?? {}).map(([key, vol]) => resolveNamedOrBound('gateway', key, vol)),
     ],
     entrypoint: ['/bin/sh', '/docker-entrypoint.sh'],
     healthCheck: {

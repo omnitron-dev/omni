@@ -163,7 +163,7 @@ export class StackInfrastructureManager {
     const gatewayInServices = normalizedServices?.['gateway'];
     const legacyGateway = stackInfraConfig.gateway;
     if ((gatewayInServices || legacyGateway) && projectRoot) {
-      const { resolveGateway, containerEndpoint, REDIS_CONTAINER_PORT } = await import('./service-resolver.js');
+      const { resolveGateway, gatewayConfigOf, containerEndpoint, REDIS_CONTAINER_PORT } = await import('./service-resolver.js');
       const gatewayRedisDb = portAlloc.redisDbEnd + 1;
       const redisPassword = typeof stackInfraConfig.redis?.password === 'string'
         ? stackInfraConfig.redis.password
@@ -181,15 +181,10 @@ export class StackInfrastructureManager {
       if (redisPassword) redisConfig.password = redisPassword;
 
       const gwPort = gatewayHostPort(gatewayInServices, legacyGateway);
-      const gwConfigDir = (gatewayInServices?._presetConfig?.['configDir'] as string)
-        ?? legacyGateway?.configDir
-        ?? 'infra/nginx';
-      // The frontend this gateway serves at `/`, when the stack declares one.
-      const gwStaticDir = (gatewayInServices?._presetConfig?.['staticDir'] as string)
-        ?? (legacyGateway as { staticDir?: string } | undefined)?.staticDir;
-
+      // Every field of the stack's gateway block — its config dir, the
+      // frontend it serves at `/`, its env and its volumes (`gatewayConfigOf`).
       const gatewayContainer = resolveGateway(
-        { port: gwPort, configDir: gwConfigDir, redisDb: gatewayRedisDb, ...(gwStaticDir ? { staticDir: gwStaticDir } : {}) },
+        gatewayConfigOf(gatewayInServices?._presetConfig, legacyGateway, gwPort, gatewayRedisDb),
         redisConfig,
         projectRoot,
       );

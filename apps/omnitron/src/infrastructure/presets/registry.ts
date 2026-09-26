@@ -134,6 +134,13 @@ export class PresetRegistry {
       ...preset.defaultDocker,
       ...(built ? { command: built } : {}),
       ...config.docker,
+      // By key: a stack that adds a mount keeps the preset's. Spread whole,
+      // `docker.volumes` replaced them — the Tor preset's `/var/lib/tor`, its
+      // onion keys and so its address, would have gone the moment a stack
+      // gave Tor the gateway's socket to reach.
+      ...(preset.defaultDocker.volumes || config.docker?.volumes
+        ? { volumes: { ...preset.defaultDocker.volumes, ...config.docker?.volumes } }
+        : {}),
       environment: dockerEnv,
       // Where each port is published, after the config's ports were read as
       // host mappings rather than container ones.

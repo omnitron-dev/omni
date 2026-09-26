@@ -29,11 +29,13 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { renderTorrc } from '../../src/infrastructure/presets/torrc.js';
 import {
   gatewayConfigOf,
   resolveGateway,
+  resolveInfrastructure,
   resolveServiceRequirement,
   setContainerPrefix,
 } from '../../src/infrastructure/service-resolver.js';
@@ -144,6 +146,83 @@ describe('an onion that resolved its gateway once', () => {
     const root = configRoot();
     const gateway = resolveGateway(gatewayConfigOf({ configDir: '.', env: { GATEWAY_UNIX_SOCKET: SOCKET } }, undefined, 8080, 1), REDIS, root);
     expect(gateway.environment?.['GATEWAY_UNIX_SOCKET']).toBe(SOCKET);
+  });
+
+  /**
+   * The node's road. A node does not run the stack manager's resolution; it
+   * re-resolves its infrastructure once the master's files arrive
+   * (`InfrastructureService.setConfigRoots` → `resolveInfrastructure`), and
+   * that road handed the gateway port, configDir and staticDir only. On
+   * daos/test, 2026-09-26, with f0e19089 on the node, the gateway came up
+   * with no GATEWAY_UNIX_SOCKET and no socket volume while Tor, resolved on
+   * the generic road, pointed at the socket: the onion was down ~11 minutes.
+   */
+  it('on a node, the gateway gets its socket volume and env too — the road a node takes', () => {
+    const root = configRoot();
+    const services = normalizeInfraConfig(
+      {
+        services: {
+          gateway: {
+            preset: 'openresty',
+            config: {
+              configDir: './infra/nginx',
+              staticDir: 'apps/portal/dist',
+              env: { GATEWAY_UNIX_SOCKET: SOCKET },
+              volumes: { socket: SHARED },
+            },
+            ports: { http: 8080 },
+          },
+          tor: {
+            preset: 'tor',
+            config: { hiddenServices: [{ name: 'portal', virtualPort: 80, target: `unix:${SOCKET}` }] },
+            docker: { volumes: { socket: SHARED } },
+          },
+        },
+      } as never,
+      createDefaultRegistry(),
+    );
+
+    const containers = resolveInfrastructure({} as never, services, undefined, new Map([['gateway', root]]), {
+      redis: REDIS,
+      staticRoots: new Map([['gateway', '/root/.omnitron/static/daos/test/gateway']]),
+    });
+    const gateway = containers.find((c) => c.name === 'daos-test-gateway');
+    const tor = containers.find((c) => c.name === 'daos-test-tor');
+
+    expect(gateway?.environment?.['GATEWAY_UNIX_SOCKET']).toBe(SOCKET);
+    expect(gateway?.volumes).toContainEqual({ source: 'daos-test-gateway-socket', target: SOCKET_DIR });
+    expect(tor?.volumes).toContainEqual({ source: 'daos-test-gateway-socket', target: SOCKET_DIR });
+    expect(tor?.volumes).toContainEqual({ source: 'daos-test-tor-data', target: '/var/lib/tor' });
+    // The frontend is the node's copy, never the project-relative path the
+    // stack declared.
+    expect(gateway?.volumes).toContainEqual({
+      source: '/root/.omnitron/static/daos/test/gateway',
+      target: '/var/www/portal',
+      readonly: true,
+    });
+    expect(gateway?.volumes.some((v) => v.source.includes('apps/portal/dist'))).toBe(false);
+  });
+
+  it('both roads give the gateway the same socket and env — a master’s and a node’s', () => {
+    const block = {
+      configDir: '.',
+      env: { GATEWAY_UNIX_SOCKET: SOCKET },
+      volumes: { socket: SHARED },
+    };
+    const root = configRoot();
+    const onMaster = resolveGateway(gatewayConfigOf(block, undefined, 8080, 1), REDIS, root);
+    const services = normalizeInfraConfig(
+      { services: { gateway: { preset: 'openresty', config: block, ports: { http: 8080 } } } } as never,
+      createDefaultRegistry(),
+    );
+    const onNode = resolveInfrastructure({} as never, services, undefined, new Map([['gateway', root]]), {
+      redis: REDIS,
+    }).find((c) => c.name === 'daos-test-gateway');
+
+    const socketOf = (c: { volumes: Array<{ source: string; target: string }> } | undefined) =>
+      c?.volumes.filter((v) => v.target === SOCKET_DIR);
+    expect(socketOf(onNode)).toEqual(socketOf(onMaster));
+    expect(onNode?.environment?.['GATEWAY_UNIX_SOCKET']).toBe(onMaster.environment?.['GATEWAY_UNIX_SOCKET']);
   });
 
   it('Tor is pointed at the socket as written — no name, no address', () => {

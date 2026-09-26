@@ -930,16 +930,28 @@ export function resolveInfrastructure(
   // they mount from shipped directories (`shipped-config.ts`).
   const { gateway: _gateway, ...rest } = normalizedServices;
   const containers = resolveAppInfrastructure(rest, overrides, undefined, configRoots);
+  const port = gatewayHostPort(normalizedServices['gateway'] as never, undefined);
+  // The stack's whole gateway block — its env and its volumes as on a master
+  // (`gatewayConfigOf`) — with the two paths a node names for itself. This
+  // road passed port, configDir and staticDir only: on 2026-09-26 the node
+  // built daos/test's gateway without GATEWAY_UNIX_SOCKET and without the
+  // shared socket volume, Tor pointed at a socket nobody listened on, and the
+  // onion was down for ~11 minutes. f0e19089 had fixed the master's road.
+  const { staticDir: _declaredStaticDir, ...declared } = gatewayConfigOf(
+    normalizedServices['gateway']._presetConfig,
+    undefined,
+    port,
+    gatewayContext.redis.db,
+  );
+  const staticRoot = gatewayContext.staticRoots?.get('gateway');
   containers.push(
     resolveGateway(
       {
-        port: gatewayHostPort(normalizedServices['gateway'] as never, undefined),
+        ...declared,
         configDir: '.',
         // Absolute: a node names its own copy, not a path relative to a
         // project it does not have.
-        ...(gatewayContext.staticRoots?.get('gateway')
-          ? { staticDir: gatewayContext.staticRoots.get('gateway')! }
-          : {}),
+        ...(staticRoot ? { staticDir: staticRoot } : {}),
       },
       gatewayContext.redis,
       gatewayRoot,

@@ -125,6 +125,13 @@ export interface GatewayServiceConfig {
   customConfig?: string;
   /** Extra environment variables passed to the gateway container (merged over the preset defaults). */
   env?: Record<string, string>;
+  /**
+   * Volumes the stack adds to the gateway's own mounts, as a service declares
+   * them. `source: 'shared:<name>'` is one volume for every service of the
+   * stack that names it — the onion reaches the gateway through a unix
+   * socket there rather than through an address Tor resolved once.
+   */
+  volumes?: Record<string, string | IVolumeMount>;
   resources?: ResourceLimits;
 }
 

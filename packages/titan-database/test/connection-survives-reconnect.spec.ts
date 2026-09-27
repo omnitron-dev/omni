@@ -176,5 +176,5 @@ describe('a repository resolved through forFeature survives reconnection', () =>
     // Before the fix this threw "driver has already been destroyed" and kept
     // throwing it for the life of the process.
     expect(await repo.count()).toBe(0);
-  }, 60_000);
+  });
 });

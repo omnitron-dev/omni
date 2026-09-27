@@ -183,7 +183,12 @@ describeOrSkip('Docker Database Integration', () => {
 
       // Create schema
       await createUserSchema(db, context.dialect);
-    }, 60000); // Increase timeout for Docker container startup
+      // No budget of its own: `vitest.config.ts` allows 120 s, and the 60 s that stood
+      // here SHRANK that. The comment said «increase», and it did when vitest's default
+      // was 5 s; once the config said 120 s it halved it. Measured 2026-09-27: this hook
+      // needs 64 s to start its container on a QUIET machine, and 118.63 s was the cost
+      // of one `docker run` under load — it timed out at 60 s twice that day.
+    });
 
     afterAll(async () => {
       await app.stop();
@@ -255,7 +260,8 @@ describeOrSkip('Docker Database Integration', () => {
           await app.stop();
         }
       );
-    }, 90000); // Increased timeout for MySQL 8.0 initialization
+      // `testTimeout` is 120 s; the 90 s that stood here shrank it for the same reason.
+    });
   });
 
   describe('Cross-Database Compatibility', () => {

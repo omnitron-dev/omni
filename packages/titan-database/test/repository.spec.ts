@@ -402,7 +402,7 @@ describeOrSkip('Repository Integration', () => {
           "deletedAt" TIMESTAMP
         )
       `.execute(db);
-    }, 60000);
+    });
 
     afterAll(async () => {
       if (app) {

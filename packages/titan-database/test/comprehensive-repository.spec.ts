@@ -1420,7 +1420,7 @@ describe('Comprehensive Repository Tests', () => {
         console.error('Failed to initialize PostgreSQL test environment:', error);
         throw error;
       }
-    }, 120000);
+    });
 
     afterAll(async () => {
       try {
@@ -1594,7 +1594,7 @@ describe('Comprehensive Repository Tests', () => {
         console.error('Failed to initialize MySQL test environment:', error);
         throw error;
       }
-    }, 120000);
+    });
 
     afterAll(async () => {
       try {

@@ -52,7 +52,7 @@ describeOrSkip('RedisService with Real Redis', () => {
     if (client) {
       await client.flushall();
     }
-  }, 30000);
+  });
 
   afterEach(async () => {
     // Disconnect and cleanup

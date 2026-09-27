@@ -97,7 +97,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
 
     // Wait for Redis to be ready
     await redis.ping();
-  }, 60000);
+  });
 
   afterAll(async () => {
     if (SKIP_DOCKER) {
@@ -132,7 +132,7 @@ describeOrSkip('RotifTransport - Docker Integration', () => {
     if (container) {
       await container.cleanup();
     }
-  }, 30000);
+  });
 
   beforeEach(async () => {
     if (SKIP_DOCKER) {

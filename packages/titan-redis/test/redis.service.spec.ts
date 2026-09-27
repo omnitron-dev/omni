@@ -27,7 +27,7 @@ describeOrSkip('RedisService', () => {
   beforeAll(async () => {
     // Create Docker Redis container for all tests
     dockerFixture = await createDockerRedisFixture();
-  }, 30000);
+  });
 
   beforeEach(async () => {
     const redisConfig = {

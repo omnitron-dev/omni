@@ -33,7 +33,7 @@ describeOrSkip('Rotif - NotificationManager Infrastructure Tests', () => {
     await helper.waitForRedis();
     // Create a dedicated client for this test suite
     redis = helper.createClient('rotif-comprehensive-test');
-  }, 30000);
+  });
 
   afterAll(async () => {
     // Cleanup helper (closes all clients)

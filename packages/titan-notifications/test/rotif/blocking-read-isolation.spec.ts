@@ -160,5 +160,5 @@ describeOrSkip('consumer loops and the shared command connection', () => {
 
     expect(await countReadClients()).toBe(0);
     probe.disconnect();
-  }, 60_000);
+  });
 });

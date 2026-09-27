@@ -73,5 +73,5 @@ describeOrSkip('rotif — ack scope', () => {
       await raw.del(streamKey).catch(() => undefined);
       await raw.quit();
     }
-  }, 60_000);
+  });
 });

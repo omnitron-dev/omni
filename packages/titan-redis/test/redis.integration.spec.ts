@@ -110,7 +110,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     // Resolve services
     redisManager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
     redisService = await container.resolveAsync<RedisService>(RedisService);
-  }, 30000);
+  });
 
   afterAll(async () => {
     // Clean up all test data
@@ -134,7 +134,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     await app?.close();
     await dockerFixture?.cleanup();
     restoreConsole?.();
-  }, 30000);
+  });
 
   beforeEach(async () => {
     // Clean up test data before each test

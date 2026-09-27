@@ -313,7 +313,7 @@ describe('Migration System', () => {
       await setupMigrations(db);
 
       runner = new MigrationRunner(db, pgMigrations, { useTransactions: true });
-    }, 120000);
+    });
 
     afterEach(async () => {
       if (app) {

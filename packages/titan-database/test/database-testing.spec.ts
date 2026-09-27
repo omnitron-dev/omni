@@ -565,7 +565,7 @@ describeOrSkip('DatabaseTestingModule', () => {
           "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `.execute(db);
-    }, 90_000);
+    });
     // 90 s against the Postgres factory's own 45 s — the same relationship, and
     // it was already the reason this one did not fail.
 
@@ -732,7 +732,7 @@ describeOrSkip('DatabaseTestingModule', () => {
           FOREIGN KEY (user_id) REFERENCES users(id)
         )
       `.execute(db);
-    }, 120_000);
+    });
     // 120 s, because the factory this hook calls is allowed 90 s on its own:
     // `createMySQLContainer` passes `waitFor.timeout: 90000` with the comment
     // "MySQL 8.0 can take longer to initialize". A 60 s hook could therefore

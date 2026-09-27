@@ -486,7 +486,7 @@ describe('Comprehensive Migration Tests', () => {
       const dbManager: IDatabaseManager = await app.resolveAsync(DATABASE_MANAGER);
       db = await dbManager.getConnection();
       await setupMigrations(db);
-    }, 120000);
+    });
 
     afterAll(async () => {
       if (app) await app.stop();

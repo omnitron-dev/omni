@@ -100,9 +100,13 @@ export interface ITokenTransport {
    * For bearer transport this is a no-op; the response body already
    * contains the tokens and the client stores them.
    *
+   * `req` is the request being answered. A transport that serves more than
+   * one kind of client (composite) decides by it which ONE channel the
+   * tokens leave by — see {@link isBrowserRequest}.
+   *
    * @returns Body-stripping spec applied by the post-processor.
    */
-  issue(res: TokenIssueResponse, tokens: IssuedTokens): IssueResult;
+  issue(res: TokenIssueResponse, tokens: IssuedTokens, req?: TokenExtractRequest): IssueResult;
 
   /**
    * Clear tokens from the client (e.g. Set-Cookie with Max-Age=0).
@@ -110,4 +114,37 @@ export interface ITokenTransport {
    * own storage based on the response).
    */
   clear(res: TokenIssueResponse): void;
+}
+
+/**
+ * Whether a request came from a browser — a client whose page scripts can
+ * read any response body the page's own `fetch` receives.
+ *
+ * A browser sets `Origin` on every non-GET request, same-origin included,
+ * and `Sec-Fetch-Site` on every request; both are forbidden header names,
+ * so no script can take them off a request it makes or remove them from the
+ * page's own. Every path that issues tokens is a POST. Node clients (S2S,
+ * probes, CLI tools) send neither unless they choose to, and choosing to
+ * makes them a browser for this purpose.
+ *
+ * Not `Sec-Fetch-Mode`: Node's own `fetch` sends `sec-fetch-mode: cors` on
+ * every request (measured on v24.13.0, beside `user-agent: node` and no
+ * `origin`), so it would have made every Node client a browser.
+ *
+ * This is the signal a composite transport answers by: a browser gets the
+ * cookies and a body without the tokens, anything else the body and no
+ * cookies. One channel per response — a token in a cookie AND in a body is
+ * a token handed to the page's scripts next to the HttpOnly cookie meant to
+ * keep it from them.
+ */
+export function isBrowserRequest(req: TokenExtractRequest | undefined): boolean {
+  if (!req) return false;
+  const has = (name: string): boolean => {
+    const wanted = name.toLowerCase();
+    for (const key of Object.keys(req.headers)) {
+      if (key.toLowerCase() === wanted && req.headers[key] !== undefined && req.headers[key] !== '') return true;
+    }
+    return false;
+  };
+  return has('origin') || has('sec-fetch-site');
 }

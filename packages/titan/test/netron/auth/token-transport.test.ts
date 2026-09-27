@@ -185,15 +185,24 @@ describe('CompositeTokenTransport', () => {
     expect(composite.extract({ headers: {} })).toBeNull();
   });
 
-  it('issue() fans out to all delegates without stripping body (composite serves both cookie + bearer)', () => {
+  // One channel per response (integration/one-channel-per-response.spec.ts).
+  // This asserted the fan-out without a strip, which put a browser's tokens
+  // in the body next to the HttpOnly cookie meant to keep them from its
+  // scripts.
+  it('issue() answers a browser by cookie alone, with the tokens stripped from the body', () => {
     const composite = createCompositeCookieBearer({ accessCookie: { name: 'a', secure: false } });
     const res = new RecordingResponse();
-    const result = composite.issue(res, { access: 'jwt', refresh: 'r' });
-    // Cookie delegate still emits Set-Cookie...
+    const result = composite.issue(res, { access: 'jwt', refresh: 'r' }, { headers: { origin: 'http://x.onion' } });
     expect(res.setCookies().length).toBeGreaterThan(0);
-    // ...but composite deliberately does NOT propagate stripFromBody
-    // so bearer-header clients still see the tokens in the JSON body.
-    expect(result.stripFromBody).toBeUndefined();
+    expect(result.stripFromBody).toEqual(expect.arrayContaining(['accessToken', 'refreshToken']));
+  });
+
+  it('issue() answers any other client by body alone, with no cookie', () => {
+    const composite = createCompositeCookieBearer({ accessCookie: { name: 'a', secure: false } });
+    const res = new RecordingResponse();
+    const result = composite.issue(res, { access: 'jwt', refresh: 'r' }, { headers: { 'user-agent': 'node', 'sec-fetch-mode': 'cors' } });
+    expect(res.setCookies()).toEqual([]);
+    expect(result.stripFromBody ?? []).toEqual([]);
   });
 
   it('clear() fans out', () => {

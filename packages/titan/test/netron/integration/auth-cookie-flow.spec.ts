@@ -224,19 +224,33 @@ describe('Netron auth — cookie token transport (integration)', () => {
       await bootServer('composite');
     });
 
-    it('signin emits Set-Cookie AND keeps tokens in body (composite serves both clients)', async () => {
-      const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'carol', password: 'x' });
+    // One channel per response (one-channel-per-response.spec.ts): this
+    // asserted the cookie AND the body for every client, which handed a
+    // browser page's scripts the token its HttpOnly cookie was hiding.
+    it('a browser signin gets the cookie and a body without the tokens', async () => {
+      const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'carol', password: 'x' }, {
+        headers: { Origin: `http://localhost:${port}` },
+      });
       const setCookies = parseSetCookies(res);
       expect(setCookies.length).toBe(1);
       expect(setCookies[0]).toContain('omni_access=access-carol');
-      // Composite deliberately does NOT strip body — bearer-header
-      // clients still need the tokens in the JSON response.
+      const body = await res.json();
+      expect(body.data.user).toBe('carol');
+      expect(body.data.accessToken).toBeUndefined();
+      expect(body.data.refreshToken).toBeUndefined();
+    });
+
+    it('any other client gets the tokens in the body and no cookie', async () => {
+      const res = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'carol', password: 'x' });
+      expect(parseSetCookies(res)).toEqual([]);
       const body = await res.json();
       expect(body.data.accessToken).toBe('access-carol');
     });
 
     it('Cookie header authenticates (cookie delegate wins extract)', async () => {
-      const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'dave', password: 'x' });
+      const signin = await rpcCall(port, 'cookieAuthService@1.0.0', 'signin', { username: 'dave', password: 'x' }, {
+        headers: { Origin: `http://localhost:${port}` },
+      });
       const cookieValue = parseSetCookies(signin)[0]!.split(';')[0]!;
       const protectedRes = await rpcCall(port, 'cookieAuthService@1.0.0', 'ping', null, {
         headers: { Cookie: cookieValue },

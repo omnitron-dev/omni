@@ -5,22 +5,24 @@
  *
  * 1. **Migration period**: serve both cookie and bearer simultaneously so
  *    old clients (still sending Authorization headers) keep working while
- *    new clients switch to cookies.
+ *    new clients switch to cookies. Old NON-browser clients only: a
+ *    browser is answered by cookie alone, so a bearer-mode page that reads
+ *    its token from the body needs a bearer transport, not this one.
  *
  * 2. **S2S coexistence**: an app accepts user-facing requests via cookies
  *    AND service-to-service calls via bearer service-account JWTs. One
  *    netron, one auth manager, two transport strategies.
  *
- * `extract()` runs delegates in order, first non-null wins. `issue()`/
- * `clear()` fan out to ALL delegates so a signin can simultaneously
- * set Set-Cookie AND leave the tokens in the response body (bearer
- * mode reads the body, cookie mode strips them — composite strips
- * whatever ANY delegate asks to strip).
+ * `extract()` runs delegates in order, first non-null wins. `issue()`
+ * answers each request by ONE channel: a browser gets the cookie
+ * delegates and a body without the tokens, any other client the bearer
+ * body and no cookies (see `issue` below). `clear()` fans out to all
+ * delegates — clearing a cookie a client never had costs nothing.
  *
  * @module @omnitron-dev/titan/netron/auth/token-transports/composite
  */
 
-import type { ITokenTransport, IssueResult, IssuedTokens, TokenExtractRequest, TokenIssueResponse } from '../token-transport.js';
+import { isBrowserRequest, type ITokenTransport, type IssueResult, type IssuedTokens, type TokenExtractRequest, type TokenIssueResponse } from '../token-transport.js';
 
 /**
  * Composite transport.
@@ -45,22 +47,37 @@ export class CompositeTokenTransport implements ITokenTransport {
     return null;
   }
 
-  issue(res: TokenIssueResponse, tokens: IssuedTokens): IssueResult {
-    // Composite mode deliberately does NOT propagate stripFromBody:
-    // the very reason to compose multiple transports is to serve
-    // browser clients (cookie path — JWT in cookie jar) AND bearer-
-    // header clients (S2S, admin tools — JWT in body) from the same
-    // endpoint. Stripping the body would break the bearer-header
-    // consumer. The cookie path's security guarantee is unchanged:
-    // the JWT in the body lives only for the round-trip to the
-    // signing client, who already saw it via Set-Cookie too. If a
-    // deployment wants strict cookie-only semantics (no body leak),
-    // it should configure a pure CookieTokenTransport instead of
-    // composite.
-    for (const delegate of this.delegates) {
-      delegate.issue(res, tokens);
+  /**
+   * One channel per response, chosen by who is asking.
+   *
+   * This fanned out to every delegate and stripped nothing, on the reasoning
+   * that «the JWT in the body lives only for the round-trip to the signing
+   * client, who already saw it via Set-Cookie too». In a browser the
+   * round-trip ends in the page's scripts, which are exactly what the
+   * HttpOnly cookie is for keeping the token from. Measured on the daos dev
+   * stand, every backend composite (2026-09-27): `signin` answered with the
+   * access token (547 chars) and the 7-day refresh token (43) in the body
+   * beside the cookies, and so did a `refreshAccessToken` a script can make
+   * at will: empty body, refresh cookie sent by the browser, CSRF header read
+   * from the readable cookie.
+   *
+   * Now a browser ({@link isBrowserRequest}) gets the cookie delegates only
+   * and a body stripped of what they strip; any other client gets the rest
+   * and no cookies. Without the request (a caller that does not pass it) the
+   * answer is the browser's: a missing body token fails loudly for a bearer
+   * client, while a token left in a browser's body fails silently.
+   */
+  issue(res: TokenIssueResponse, tokens: IssuedTokens, req?: TokenExtractRequest): IssueResult {
+    const browser = req === undefined || isBrowserRequest(req);
+    const chosen = this.delegates.filter((d) => d.usesCookies === browser);
+    // A composite with no delegate for this kind of client has one channel
+    // only, and it is the one the client gets.
+    const serving = chosen.length > 0 ? chosen : this.delegates;
+    const strip = new Set<string>();
+    for (const delegate of serving) {
+      for (const field of delegate.issue(res, tokens, req).stripFromBody ?? []) strip.add(field);
     }
-    return {};
+    return strip.size > 0 ? { stripFromBody: [...strip] } : {};
   }
 
   clear(res: TokenIssueResponse): void {

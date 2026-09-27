@@ -1551,7 +1551,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // mode emits Set-Cookie headers (queued in metadata, flushed to
       // responseHeaders below) and strips token fields from context.output;
       // bearer mode is a no-op and the body keeps its tokens.
-      this.applyTokenTransport(context);
+      this.applyTokenTransport(context, request);
 
       // Build response with hints
       const hints: {
@@ -1786,6 +1786,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     req: HttpRequestMessage,
     request: Request,
     fallbackContext: HttpRequestContext | undefined,
+    setCookies: string[],
   ): Promise<unknown> {
     const service = this.services.get(req.service);
     const method = service?.methods.get(req.method);
@@ -1857,6 +1858,18 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     context.result = result;
     await this.globalPipeline.execute(context, MiddlewareStage.POST_INVOKE);
 
+    // The token transport, as on a single invoke. It was never applied here:
+    // a handler that called `issueTokens()` inside a batch set no cookie and
+    // had nothing stripped, under ANY transport. Measured on the daos dev
+    // stand (2026-09-27): a cookie-mode `refreshAccessToken` sent through
+    // `/netron/batch` answered 200 with the access and refresh tokens in the
+    // body and no Set-Cookie. The server had already rotated, so the
+    // browser kept a spent refresh cookie, and its next renewal would read as
+    // reuse and burn the session.
+    this.applyTokenTransport(context, request);
+    const queued = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.setCookies) as string[] | undefined;
+    if (queued) setCookies.push(...queued);
+
     return context.output;
   }
 
@@ -1905,6 +1918,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     };
 
     const startTime = performance.now();
+    // Set-Cookie values the items' token transport queued: a batch is one
+    // response, so they travel on its headers, in the order the items
+    // finished.
+    const batchSetCookies: string[] = [];
     const parallel = batchRequest.options?.parallel !== false;
     const stopOnError = batchRequest.options?.stopOnError === true;
 
@@ -1913,7 +1930,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       const promises = batchRequest.requests.map(async (req) => {
         try {
           // Same execution path as a single invoke — see `invokeBatched`.
-          const result = await this.invokeBatched(req, request, batchRequest.context);
+          const result = await this.invokeBatched(req, request, batchRequest.context, batchSetCookies);
 
           batchHints.successCount++;
           return {
@@ -1958,7 +1975,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       for (const req of batchRequest.requests) {
         try {
           // Same execution path as a single invoke — see `invokeBatched`.
-          const result = await this.invokeBatched(req, request, batchRequest.context);
+          const result = await this.invokeBatched(req, request, batchRequest.context, batchSetCookies);
 
           batchHints.successCount++;
           batchResponse.responses.push({
@@ -2002,12 +2019,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     batchHints.totalTime = Math.round(performance.now() - startTime);
 
-    return new Response(safeStringify(batchResponse), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json' });
+    for (const value of batchSetCookies) responseHeaders.append('Set-Cookie', value);
+    return new Response(safeStringify(batchResponse), { status: 200, headers: responseHeaders });
   }
 
   /**
@@ -2811,8 +2825,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    *  - the handler didn't call issueTokens()/clearTokens();
    *  - or the transport is bearer (bearer.issue() returns no Set-Cookie
    *    and no stripFromBody, so nothing happens).
+   *
+   * `request` is handed to the transport: a composite answers a browser by
+   * cookie and everyone else by body, and only the request says which.
    */
-  private applyTokenTransport(context: NetronMiddlewareContext & { output?: unknown }): void {
+  private applyTokenTransport(context: NetronMiddlewareContext & { output?: unknown }, request: Request): void {
     const issued = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.issued) as IssuedTokens | undefined;
     const cleared = context.metadata.get(TOKEN_ISSUANCE_METADATA_KEYS.cleared) === true;
     if (!issued && !cleared) return;
@@ -2838,7 +2855,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     };
 
     if (issued) {
-      const result = transport.issue(adapter, issued);
+      const headers: Record<string, string> = {};
+      request.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
+      });
+      const result = transport.issue(adapter, issued, { headers, url: request.url });
       if (result.stripFromBody && context.output && typeof context.output === 'object' && context.output !== null) {
         // Strip the listed fields from the response body BEFORE
         // createSuccessResponse wraps it. We mutate in-place because

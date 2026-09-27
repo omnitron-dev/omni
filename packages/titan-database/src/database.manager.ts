@@ -294,6 +294,22 @@ const HIGH_LATENCY_MS = 500;
  * about the process, not about the database.
  */
 /**
+ * The wait `closeAll()` allows when nobody asks for another.
+ *
+ * A bound nobody sets is not a bound. `shutdownTimeout` was optional with no
+ * default, and measured on 2026-09-27 no consumer passes it: not this module, not
+ * daos's `createDatabaseModuleFactory`, not one of its `DatabaseModule.forRootAsync`
+ * calls — they set pools, plugins and RLS, and never this. So every process took the
+ * unbounded branch, and one pg client checked out of a pool and never returned was
+ * enough to make shutdown belong to whatever sends SIGKILL.
+ *
+ * Ten seconds: the health-check deadline is 5–10 s and the connect retry budget
+ * 30 s, so a drain still unfinished after ten is already pathological, and the point
+ * is to stop waiting rather than to hurry.
+ */
+export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/**
  * How long a replaced connection may take to close before the operator is told
  * which one is stuck. A LOG threshold, not a bound on anything: the rebuild does
  * not wait for the teardown at all.
@@ -334,6 +350,14 @@ export class DatabaseManager implements IDatabaseManager {
   private eventEmitter: EventEmitter = new EventEmitter();
   public logger: ILogger;
   private options: DatabaseModuleOptions;
+
+  /**
+   * The wait `closeAll()` allows, with the default applied once — one reader, so a
+   * caller's 0 and a caller's silence cannot be confused for each other.
+   */
+  private get shutdownTimeoutMs(): number {
+    return this.options.shutdownTimeout ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+  }
 
   /** Module-level RLS defaults (activation inputs, bulk-check bound). */
   getRlsDefaults(): DatabaseModuleOptions['rls'] {
@@ -1810,8 +1834,12 @@ export class DatabaseManager implements IDatabaseManager {
     // driver gives us no way to. Naming the connections still pending is the
     // whole point: without them the operator sees a process that would not
     // exit and nothing that says which database it was waiting on.
-    const shutdownTimeout = this.options.shutdownTimeout;
-    if (shutdownTimeout !== undefined && shutdownTimeout > 0) {
+    // 0 means «do not wait», which is what a caller passing it means. It used to
+    // mean «wait for ever»: the guard read `!== undefined && > 0`, so both 0 and
+    // absence fell into the unbounded await below — the same trap titan-pm records
+    // for its own option, where `shutdownTimeout: 0` reached the child as 5000 ms.
+    const shutdownTimeout = this.shutdownTimeoutMs;
+    if (shutdownTimeout > 0) {
       let timer: NodeJS.Timeout | undefined;
       const timedOut = await Promise.race([
         Promise.all(closePromises).then(() => false),
@@ -1830,7 +1858,15 @@ export class DatabaseManager implements IDatabaseManager {
         return;
       }
     } else {
-      await Promise.all(closePromises);
+      // Asked not to wait. The closes keep running — each already carries its own
+      // `catch`, so nothing is left to reject unhandled — and the process is free to
+      // exit without them. Saying «all closed» here would be a claim nobody checked.
+      void Promise.all(closePromises);
+      this.logger.info(
+        { pending: Array.from(pending) },
+        'Not waiting for database connections to finish closing (shutdownTimeout is 0)'
+      );
+      return;
     }
 
     this.logger.info('All database connections closed');

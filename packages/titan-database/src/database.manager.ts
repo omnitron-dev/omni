@@ -293,6 +293,13 @@ const HIGH_LATENCY_MS = 500;
  * that long — the abort timer would have rejected it — so it is evidence
  * about the process, not about the database.
  */
+/**
+ * How long a replaced connection may take to close before the operator is told
+ * which one is stuck. A LOG threshold, not a bound on anything: the rebuild does
+ * not wait for the teardown at all.
+ */
+const DISPOSE_WARN_MS = 30_000;
+
 function healthCheckDeadlineMs(dialect: DatabaseDialect): number {
   return dialect === 'sqlite' ? 10_000 : 5_000;
 }
@@ -1623,18 +1630,97 @@ export class DatabaseManager implements IDatabaseManager {
 
     this.logger.info({ name }, 'Attempting to reconnect to database');
 
-    // Tear down the stale instance/pool first: reconnect is auto-triggered
-    // by failed health checks, and recreating over a live pool leaked one
-    // pool per cycle on a flapping database.
     const config = info.config;
-    try {
-      await this.close(name);
-    } catch (error) {
-      this.logger.warn({ name, error }, 'Error disposing stale connection before reconnect');
-    }
 
-    // Use retry logic for reconnection
+    // The entry STAYS in the map, and this is the whole of the fix.
+    //
+    // `close()` means «this name is not wanted any more». `recoverConnection`'s
+    // docblock says so in as many words: an explicitly closed connection is
+    // DELETED from the map rather than marked, so «present and down» already
+    // means «wanted». Reconnect used that for a TEMPORARY teardown — and spent
+    // the name. Afterwards neither the health-check sweep (which visits the
+    // entries it can see) nor `getConnection` could find anything to rebuild,
+    // and every caller got the line the stands showed:
+    //
+    //     Database connection with id default not found
+    //
+    // dev, 2026-09-27 from 03:27Z: paysys 1667 lines, priceverse 1266,
+    // messaging 465, storage 153, until the apps were restarted. test,
+    // priceverse: four reconnect attempts on 2026-09-20 at 12:53Z, then that
+    // line from 17:31Z on 09-20 to 21:49Z on 09-26 — SIX DAYS with no database,
+    // until a deployment restarted the app. Two pg sessions sat in
+    // `pg_stat_activity` with an empty `query` from the first minute.
+    info.connected = false;
+    // Nothing may start a second rebuild while this one runs: `getConnection`
+    // and the recovery sweep both skip an entry that is `connecting`.
+    info.connecting = true;
+    this.healthCheckFailures.delete(name);
+    // The breaker belongs to the connection, not to the name; `createConnection`
+    // installs a fresh one at the same key.
+    this.circuitBreakers.delete(name);
+    this.emitEvent({
+      type: DATABASE_EVENTS.DISCONNECTED as DatabaseEventType,
+      connection: name,
+      timestamp: new Date(),
+    });
+
+    // Released, not awaited. `closeAll` already records why a teardown cannot be
+    // waited on unconditionally — «a driver that never settles its destroy() — a
+    // pg client stuck mid-query, a socket with no keepalive — otherwise holds the
+    // process open forever … We stop waiting; we do not cancel, because the
+    // driver gives us no way to» — and the driver on this path is the same one.
+    // Awaiting it here is what turned one stuck client into a connection nothing
+    // could rebuild: the `try/catch` around it caught THROWS, and a destroy that
+    // never settles does not throw.
+    //
+    // The stale pool is still being given back, just not on anyone's critical
+    // path, which is what the old comment here actually wanted: «recreating over
+    // a live pool leaked one pool per cycle on a flapping database» is about
+    // failing to destroy at all, not about failing to wait.
+    void this.disposeReleased(name, info);
+
+    // A rebuild that FAILS needs nothing extra here: `createConnection`'s own
+    // catch puts its entry back with `connecting: false` and `lastError` set, so
+    // the name stays present and stays wanted either way. Measured — a reconnect
+    // onto a config that cannot work leaves the entry there, which is why the old
+    // code lost the name only when the teardown HUNG and this line was never
+    // reached at all. A `connecting = false` here looked prudent and was dead; a
+    // plant proved it, and it is gone.
     await this.createConnectionWithRetry(name, config);
+  }
+
+  /**
+   * Give a stale connection's resources back, without making anyone wait.
+   *
+   * Nobody awaits this, so a failure has nowhere to go but the log — and that is
+   * the point: the caller has already stopped depending on this object. The
+   * warning after `DISPOSE_WARN_MS` is for the operator, naming the connection
+   * whose driver is not settling; it bounds no behaviour, so its value only has
+   * to be longer than a healthy teardown.
+   */
+  private async disposeReleased(name: string, info: ConnectionInfo): Promise<void> {
+    const started = Date.now();
+    const timer = setTimeout(() => {
+      this.logger.warn(
+        { name, afterMs: DISPOSE_WARN_MS },
+        'The replaced database connection has still not finished closing; its driver is not settling. The new connection is already serving.'
+      );
+    }, DISPOSE_WARN_MS);
+    timer.unref?.();
+    try {
+      if (info.executor && isKyseraExecutor(info.executor)) {
+        await destroyExecutor(info.executor);
+      }
+      await info.instance.destroy();
+      this.logger.info({ name, ms: Date.now() - started }, 'Replaced database connection closed');
+    } catch (error) {
+      this.logger.warn(
+        { name, error: describeError(error), ms: Date.now() - started },
+        'Error closing the replaced database connection'
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**

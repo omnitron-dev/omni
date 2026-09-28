@@ -1749,11 +1749,18 @@ export class OrchestratorService extends EventEmitter {
 
     const bootstrapAbsPath = path.resolve(entry.cwd ?? this.cwd, entry.bootstrap!);
 
-    // Load bootstrap definition to check for process topology and requirements
+    // Load bootstrap definition to check for process topology and requirements.
+    //
+    // In dev, in a process of its own (`freshModuleGraph`): imported here, a
+    // package the definition uses would be the one this daemon first saw, for
+    // as long as it runs (bootstrap-loader.ts has the measurement). What comes
+    // back is data, which is all the daemon reads of it — here, in the build
+    // service and in the stack resolver; the app's own processes load the
+    // definition themselves, functions and all.
     let topology: IProcessEntry[] | undefined;
     let definition: IAppDefinition | undefined;
     try {
-      definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: this.devMode });
+      definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: this.devMode, freshModuleGraph: true });
       topology = definition.processes;
     } catch (err) {
       // Refused, with the reason. This fell back to «single-process mode» at

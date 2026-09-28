@@ -14,7 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { IEcosystemAppEntry, OmnitronAppConfig } from '../config/types.js';
+import type { IAppDefinition, IEcosystemAppEntry, OmnitronAppConfig } from '../config/types.js';
 import { loadBootstrapConfig } from '../orchestrator/bootstrap-loader.js';
 
 // =============================================================================
@@ -109,6 +109,26 @@ export async function scanRequirements(
     byApp: new Map(),
   };
 
+  // Every definition this scan reads — each once, and all of them at once. A
+  // read is a process of its own (bootstrap-loader's `freshModuleGraph`:
+  // imported in the daemon, a definition's packages would stay as they were
+  // at the daemon's start), and one read after another would put a process
+  // start and a full import of a definition's packages between each app and
+  // the next.
+  const read = (bootstrapPath: string) => loadBootstrapConfig(bootstrapPath, { devMode: true, freshModuleGraph: true });
+  const definitions = new Map<string, Promise<IAppDefinition>>();
+  for (const entry of apps) {
+    if (entry.enabled === false || !entry.bootstrap) continue;
+    const bootstrapPath = `${cwd}/${entry.bootstrap}`;
+    if (definitions.has(bootstrapPath)) continue;
+    const reading = read(bootstrapPath);
+    // Awaited below, inside the try that handles it; this only keeps a
+    // failure from counting as unhandled before the loop gets there.
+    reading.catch(() => undefined);
+    definitions.set(bootstrapPath, reading);
+  }
+  const definitionOf = (bootstrapPath: string) => definitions.get(bootstrapPath) ?? read(bootstrapPath);
+
   for (const entry of apps) {
     if (entry.enabled === false) continue;
     if (!entry.bootstrap) continue;
@@ -120,7 +140,7 @@ export async function scanRequirements(
     // Fallback: read from bootstrap requires (deprecated)
     if (!omnitronConfig) {
       try {
-        const definition = await loadBootstrapConfig(bootstrapPath, { devMode: true });
+        const definition = await definitionOf(bootstrapPath);
         const requires = definition.requires;
         if (requires) {
           console.warn(
@@ -190,7 +210,7 @@ export async function scanRequirements(
 
     // Auth — check bootstrap definition for JWT config
     try {
-      const definition = await loadBootstrapConfig(bootstrapPath, { devMode: true });
+      const definition = await definitionOf(bootstrapPath);
       if (definition.auth?.jwt?.enabled) {
         result.needsAuth = true;
       }

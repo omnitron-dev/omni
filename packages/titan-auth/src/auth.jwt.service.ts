@@ -6,6 +6,8 @@
  * @module titan/modules/auth
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { jwtVerify, createRemoteJWKSet, SignJWT, decodeProtectedHeader } from 'jose';
 import { JWTExpired } from 'jose/errors';
 import type { JWTVerifyResult, JWTPayload as JoseJWTPayload } from 'jose';
@@ -457,6 +459,14 @@ export class JWTService implements IJWTService, ISignedUrlService {
       throw new Error('URL signing key not configured');
     }
 
+    // Every token its own: a `jti` of its own. Without one the claims were
+    // the resource, the operation and `iat`/`exp` in whole seconds, so two
+    // links to one object issued in the same second were one token byte for
+    // byte. storage keeps each issued link as a row under a unique index on
+    // the token's hash, with its own use count: the second insert failed
+    // with 23505 and the reader got «Internal Server Error» (daos/test,
+    // 2026-09-29, a download asked for twice), and two readers in one second
+    // would have shared a single one-use link.
     return new SignJWT({
       resource_id: payload.resourceId,
       resource_path: payload.resourcePath,
@@ -464,6 +474,7 @@ export class JWTService implements IJWTService, ISignedUrlService {
       transform: payload.transform,
     })
       .setProtectedHeader({ alg: 'HS256' })
+      .setJti(randomUUID())
       .setExpirationTime(`${expiresIn}s`)
       .setIssuedAt()
       .sign(this.urlSigningSecret);

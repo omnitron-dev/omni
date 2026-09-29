@@ -23,7 +23,6 @@ on:
 
 env:
   NODE_VERSION: '22'
-  PNPM_VERSION: '10'
 
 jobs:
   # -------------------------------------------------------------------
@@ -43,9 +42,20 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here ON PURPOSE. `package.json` carries
+      # `"packageManager": "pnpm@10.33.0"`, and `pnpm/action-setup@v4` refuses
+      # when it is told a version twice:
+      #
+      #   Error: Multiple versions of pnpm specified:
+      #     - version 10 in the GitHub Action config with the key "version"
+      #     - version pnpm@10.33.0 in the package.json with the key "packageManager"
+      #
+      # That refusal killed BOTH jobs at the first step, in twelve seconds,
+      # on every push since this file was added: 33 runs, 2026-09-21 to
+      # 2026-09-29, all red, none of which ever reached a typecheck or a scan.
+      # The file above says «`run-checks.mjs` was written to be a gate and had
+      # no gate to stand in» — it then had one that never opened.
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -75,8 +85,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

@@ -39,6 +39,7 @@ import { box, log, prism } from '@xec-sh/kit';
 
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
+import { diskAtHome } from '../monitoring/host-disk.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
@@ -515,11 +516,12 @@ async function checkTableGrowth(findings: Findings, db: unknown, target: string)
  * addressed to nobody.
  *
  * Checked against the evaluator's own list of forms rather than a copy, so
- * the two cannot come to disagree about which rules work.
+ * the two cannot come to disagree about which rules work. The remedy quotes
+ * the same grammar: it said «three forms» by hand, wrong the day a fourth came.
  */
 async function checkAlertRules(findings: Findings, db: unknown): Promise<void> {
   const { sql } = await import('kysely');
-  const { isAlertExpressionParseable } = await import('../services/alert.service.js');
+  const { isAlertExpressionParseable, ALERT_EXPRESSION_HELP } = await import('../shared/alert-expression.js');
 
   const rows = await sql<{ id: string; name: string; expression: string }>`
     SELECT id, name, expression FROM alert_rules WHERE enabled = true
@@ -534,8 +536,7 @@ async function checkAlertRules(findings: Findings, db: unknown): Promise<void> {
     title: `${broken.length} enabled alert rule(s) can never fire`,
     evidence: broken.slice(0, 5).map((r) => `"${r.name}": ${r.expression}`),
     remedy:
-      'The evaluator understands three forms: `app.<name|*>.status != <status>`, ' +
-      '`app.<name|*>.<cpu|memory> <op> <number>` and `infra.<name|*>.health != <status>`. ' +
+      `The evaluator reads these forms and no others: ${ALERT_EXPRESSION_HELP}. ` +
       'Anything else evaluates to "not firing", which is indistinguishable from a healthy ' +
       'platform — so these rules show as enabled and green while catching nothing. ' +
       'Fix or disable them: an alert nobody can rely on is worse than an absent one.',
@@ -1073,31 +1074,6 @@ async function checkBuildFreshness(findings: Findings, daemonStartedMs: number |
 }
 
 /**
- * Free space on the filesystem holding omnitron's own state.
- *
- * A disk that fills does not report itself as a disk that filled. It reports
- * itself as Postgres refusing writes, as the daemon dying without a message,
- * as a login endpoint answering 500 — this project has diagnosed it as an
- * auth bug once and as a Docker networking bug once, and both times the
- * answer was `df`. Asking directly costs one syscall.
- *
- * The threshold is absolute rather than proportional on purpose: what fails
- * is a WAL segment that cannot be written or an image layer that cannot be
- * unpacked, and those need gigabytes, not percentages. A 2 TB disk at 3% free
- * still has 60 GB and is fine; a 32 GB disk at 10% free has 3 GB and is not.
- */
-/** Free and total bytes where omnitron writes, or null when unreadable. */
-async function diskAtHome(): Promise<{ free: number; total: number } | null> {
-  try {
-    const st = await fs.promises.statfs(OMNITRON_HOME);
-    return { free: st.bavail * st.bsize, total: st.blocks * st.bsize };
-  } catch {
-    // No statfs, or the home does not exist yet. Neither is a disk fault.
-    return null;
-  }
-}
-
-/**
  * Every registered project's config, loaded the way the daemon loads it.
  *
  * A config that does not load is not a config that is absent, and the daemon
@@ -1161,6 +1137,26 @@ export async function checkProjectConfigs(findings: Findings): Promise<void> {
   }
 }
 
+/**
+ * Free space on the filesystem holding omnitron's own state.
+ *
+ * A disk that fills does not report itself as a disk that filled. It reports
+ * itself as Postgres refusing writes, as the daemon dying without a message,
+ * as a login endpoint answering 500 — this project has diagnosed it as an
+ * auth bug once and as a Docker networking bug once, and both times the
+ * answer was `df`. Asking directly costs one syscall.
+ *
+ * The threshold is absolute rather than proportional on purpose: what fails
+ * is a WAL segment that cannot be written or an image layer that cannot be
+ * unpacked, and those need gigabytes, not percentages. A 2 TB disk at 3% free
+ * still has 60 GB and is fine; a 32 GB disk at 10% free has 3 GB and is not.
+ *
+ * What it does not catch: the container engine stops by itself near 99% used,
+ * whatever is left — at 21 GiB free of 1.8 TiB on 2026-09-29. So the alert
+ * rule seeded by migration 012 watches the same reading (`diskAtHome`, now in
+ * monitoring/host-disk.ts) at 50 GiB, and it runs every tick, not when
+ * somebody runs doctor.
+ */
 export async function checkDiskSpace(findings: Findings): Promise<void> {
   const ERROR_BYTES = 2 * 1024 ** 3;
   const WARN_BYTES = 10 * 1024 ** 3;

@@ -4,8 +4,8 @@
  * The daemon scheduler's `alert-evaluation` job calls `evaluate()` every
  * `monitoring.healthCheck.interval` (15 s by default). A rule is an
  * expression of `shared/alert-expression.ts` — an app's status, cpu or
- * memory, or a container's health — and what it watches (`health` or
- * `metric`) is read off it.
+ * memory, a container's health, or the space free on this host's disk — and
+ * what it watches (`health` or `metric`) is read off it.
  *
  * Lifecycle: a condition that holds becomes PENDING for the rule's
  * `forDuration` (kept in this process: a restart starts the wait again), then
@@ -13,7 +13,8 @@
  * records who and when; it stays firing until the condition clears.
  *
  * Rules and events are stored in omnitron-pg; the defaults a fresh master
- * starts with are seeded once by migration 011, and are the operator's after.
+ * starts with are seeded once by migrations 011 and 012, and are the
+ * operator's after.
  */
 
 import { sql, type Kysely } from 'kysely';
@@ -34,6 +35,7 @@ import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN } from '..
 import type { ProjectService } from './project.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
+import { diskAtHome } from '../monitoring/host-disk.js';
 
 // =============================================================================
 // Types
@@ -65,13 +67,15 @@ export type {
 interface EvalContext {
   apps: Array<{ name: string; status: string; cpu: number; memory: number }>;
   infra: Record<string, { status: string; health: string }>;
+  /** Bytes free on the host's disk; null when it could not be read. */
+  diskFree?: number | null;
   logCounts?: Record<string, number>; // level → count in window
 }
 
 function evaluateExpression(
   expr: string,
   ctx: EvalContext
-): { firing: boolean; value: string; unparseable?: boolean } {
+): { firing: boolean; value: string; unparseable?: boolean; unreadable?: boolean } {
   const trimmed = expr.trim();
 
   // app.<name>.status != online
@@ -120,6 +124,24 @@ function evaluateExpression(
       firing: violations.length > 0,
       value: violations.map(([k, v]) => `${k}=${v.health}`).join(', '),
     };
+  }
+
+  // host.disk.free < N — bytes free on this host's disk.
+  const diskMatch = trimmed.match(ALERT_EXPRESSION_FORMS[3]);
+  if (diskMatch) {
+    const [, op, thresholdStr] = diskMatch;
+    const threshold = Number(thresholdStr);
+    const free = ctx.diskFree ?? null;
+    if (free === null) return { firing: false, value: 'disk unreadable', unreadable: true };
+    const holds =
+      op === '<'
+        ? free < threshold
+        : op === '<='
+          ? free <= threshold
+          : op === '>'
+            ? free > threshold
+            : free >= threshold;
+    return { firing: holds, value: `${(free / 1024 ** 3).toFixed(1)} GiB free` };
   }
 
   // Nothing matched. `firing: false` is what every caller acts on, and it is
@@ -208,10 +230,14 @@ export class AlertService {
     const ctx: EvalContext = {
       apps: apps.map((a) => ({ name: a.name, status: a.status, cpu: a.cpu, memory: a.memory })),
       infra,
+      // Read only when a rule asks: one statfs a tick, for the rules that watch it.
+      diskFree: rules.some((r) => ALERT_EXPRESSION_FORMS[3].test(r.expression.trim()))
+        ? ((await diskAtHome())?.free ?? null)
+        : null,
     };
 
     for (const rule of rules) {
-      const { firing, value, unparseable } = evaluateExpression(rule.expression, ctx);
+      const { firing, value, unparseable, unreadable } = evaluateExpression(rule.expression, ctx);
 
       if (unparseable) {
         // Said once per cycle per rule rather than swallowed. An operator
@@ -221,6 +247,17 @@ export class AlertService {
           { ruleId: rule.id, ruleName: rule.name, expression: rule.expression },
           'Alert rule expression cannot be evaluated — this rule will never fire'
         );
+      }
+
+      if (unreadable) {
+        // The reading failed, not the condition: «unknown» is neither «full»
+        // nor «fine». Resolving here would close an alert on a full disk as
+        // all clear, so the rule — its wait, its event — is left as it was.
+        this.logger.warn(
+          { ruleId: rule.id, ruleName: rule.name, expression: rule.expression },
+          'Alert rule could not read what it watches — left as it was'
+        );
+        continue;
       }
 
       // Get current firing alert for this rule (if any)

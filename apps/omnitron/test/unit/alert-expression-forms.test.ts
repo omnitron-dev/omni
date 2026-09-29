@@ -22,6 +22,7 @@ describe('expressions the evaluator understands', () => {
     'app.*.memory >= 1024',
     'infra.postgres.health != healthy',
     'infra.*.health == unhealthy',
+    'host.disk.free < 53687091200',
   ])('accepts %s', (expression) => {
     expect(isAlertExpressionParseable(expression)).toBe(true);
   });
@@ -49,7 +50,8 @@ describe('expressions it cannot', () => {
     // `status` takes `!=` or `==`, not `<`; a rule written this way would
     // have been accepted by nothing and reported by nothing.
     expect(isAlertExpressionParseable('app.main.status < online')).toBe(false);
-    // Metrics take a number, not a quoted one.
+    // Metrics take a number, not a quoted one — nor one with a unit.
     expect(isAlertExpressionParseable("app.main.cpu > '80'")).toBe(false);
+    expect(isAlertExpressionParseable('host.disk.free < 50GiB')).toBe(false);
   });
 });

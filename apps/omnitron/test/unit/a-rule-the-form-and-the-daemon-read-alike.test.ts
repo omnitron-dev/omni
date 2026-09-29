@@ -101,8 +101,9 @@ describe('what a rule watches', () => {
     expect(alertRuleTypeOf('app.main.memory >= 1024')).toBe('metric');
     expect(alertRuleTypeOf('app.*.status == crashed')).toBe('health');
     expect(alertRuleTypeOf('infra.*.health != healthy')).toBe('health');
+    expect(alertRuleTypeOf('host.disk.free < 53687091200')).toBe('metric');
     expect(alertRuleTypeOf('log.error.count > 10')).toBeNull();
-    expect(ALERT_EXPRESSION_FORMS).toHaveLength(3);
+    expect(ALERT_EXPRESSION_FORMS).toHaveLength(4);
   });
 });
 

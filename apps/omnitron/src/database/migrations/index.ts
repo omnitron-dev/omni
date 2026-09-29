@@ -24,6 +24,7 @@ import * as m008 from './008_node_health_version_text.js';
 import * as m009 from './009_node_health_unmeasured.js';
 import * as m010 from './010_metrics_raw_had_no_reader.js';
 import * as m011 from './011_alerts_nobody_had_to_write.js';
+import * as m012 from './012_a_disk_nobody_watched.js';
 
 /**
  * Every Omnitron migration, in apply order.
@@ -43,4 +44,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   { name: '009_node_health_unmeasured', up: m009.up, down: m009.down },
   { name: '010_metrics_raw_had_no_reader', up: m010.up, down: m010.down },
   { name: '011_alerts_nobody_had_to_write', up: m011.up, down: m011.down },
+  { name: '012_a_disk_nobody_watched', up: m012.up, down: m012.down },
 ];

@@ -87,6 +87,9 @@ export function checkedEnv(env: Record<string, string> | undefined): Record<stri
   for (const [key, value] of Object.entries(env ?? {})) {
     if (!ENV_NAME.test(key)) throw new Error(`'${key}' is not an environment variable name a build takes`);
     if (ENV_FORBIDDEN.has(key)) throw new Error(`A build request may not set ${key} — it changes what the steps themselves load`);
+    if (key === 'TMPDIR') {
+      throw new Error('A build request may not set TMPDIR — a build keeps its steps\' temporary files itself (makeBuildTempDir)');
+    }
     if (typeof value !== 'string') throw new Error(`${key} must be a string, not ${typeof value}`);
     if (value.includes('\0')) throw new Error(`${key} holds a NUL byte`);
     out[key] = value;
@@ -422,25 +425,62 @@ export async function runReleaseBuild(
  * Run `build`; if it throws once it has named its release root, take that
  * root's `src/` with it — unless the caller keeps it. The logs beside it
  * stay. A build that throws before it has a root has nothing to take.
+ *
+ * The children's temporary directory (`where.tmp`, see `makeBuildTempDir`)
+ * goes however the build ends, `--keep-source` or not: it is what the tools
+ * under the gates left, not the commits being built.
  */
 export async function withBuildRootGoneOnFailure<T>(
   keepSource: boolean | undefined,
-  build: (where: { root?: string }) => Promise<T>,
+  build: (where: { root?: string; tmp?: string }) => Promise<T>,
 ): Promise<T> {
-  const where: { root?: string } = {};
+  const where: { root?: string; tmp?: string } = {};
   try {
     return await build(where);
   } catch (err) {
     if (where.root && !keepSource) fs.rmSync(path.join(where.root, 'src'), { recursive: true, force: true });
     throw err;
+  } finally {
+    if (where.tmp) fs.rmSync(where.tmp, { recursive: true, force: true });
   }
+}
+
+/**
+ * The system's own temporary directory — the one the system clears by
+ * itself — whatever TMPDIR this process was started with.
+ */
+export function systemTempRoot(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'darwin' ? '/private/tmp' : '/tmp';
+}
+
+/**
+ * A temporary directory for everything a build runs: TMPDIR for every step.
+ *
+ * Test runners, and the tools under them, write into TMPDIR and do not always
+ * take it back. vitest 5.0.0 left `$TMPDIR/<nanoid>/ssr` behind on EVERY run
+ * (patched in omni and daos since), and a gate killed at its timeout cleans
+ * nothing at all. The master's TMPDIR is `~/.tmp`, which nothing clears:
+ * measured 2026-09-29, 16 443 of those directories, 112 GB, from every suite
+ * and every release gate since 2026-09-11 — and the Docker engine stopped
+ * with the disk at 99 %.
+ *
+ * So a build gives its children a directory of its own and removes it when it
+ * ends, however it ends (`withBuildRootGoneOnFailure`). It is made under the
+ * system's own temporary directory, not TMPDIR, because a build whose process
+ * is killed outright runs no cleanup, and its files must not stay for good
+ * either. And it is short on purpose: a unix socket's path is limited to 104
+ * bytes on macOS, tests make sockets under TMPDIR, and the build root's own
+ * path is already longer than half of that.
+ */
+export function makeBuildTempDir(root: string = systemTempRoot()): string {
+  return fs.mkdtempSync(path.join(root, 'omnitron-build-'));
 }
 
 async function buildRelease(
   projectName: string,
   options: ReleaseBuildOptions,
   onPhase: (phase: BuildPhase) => void,
-  where: { root?: string },
+  where: { root?: string; tmp?: string },
 ): Promise<BuildOutcome> {
   const started = Date.now();
   const extra = checkedEnv(options.env);
@@ -489,6 +529,11 @@ async function buildRelease(
   say('preparing the build root', 3);
   const releaseRoot = path.join(OMNITRON_HOME, 'releases', id);
   where.root = releaseRoot;
+  // Every step from here on — clones, installs, builds, the gates — keeps its
+  // temporary files where the build removes them (`makeBuildTempDir`). `env`
+  // is this build's own copy (`buildEnv` above), never this process's.
+  where.tmp = makeBuildTempDir();
+  env['TMPDIR'] = where.tmp;
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
   const plan = planBuildRoot(path.join(releaseRoot, 'src'), projectPath, layout);

@@ -139,6 +139,37 @@ interface PendingRequest {
  */
 const STABLE_CONNECTION_MS = 5_000;
 
+/**
+ * RFC 6455 «Service Restart». The server sends it when it is going down on
+ * purpose and coming back — a deployment, a supervised restart — as opposed
+ * to 1001 «Going Away», which a BROWSER also sends when the page navigates.
+ */
+const CLOSE_SERVICE_RESTART = 1012;
+
+/**
+ * How long to wait after a 1012 before the first retry, as a jittered window
+ * `[floor, ceiling]`.
+ *
+ * The ordinary backoff must not apply here, and the numbers say why. It is a
+ * full-jitter draw from `[1000, min(1000·2^(attempt−1), 30000)]`, and a
+ * restart that takes minutes — six apps came back in 3 min 20 s on this
+ * platform's own stand — walks the client to the sixth attempt, where the
+ * draw reaches thirty seconds. The socket then stays shut for up to half a
+ * minute AFTER the server is answering. The user sees a dead chat long past
+ * the outage.
+ *
+ * A JITTERED window, not a fixed delay: every client of a restarted server
+ * was disconnected within the same millisecond, and a fixed retry would
+ * bring all of them back in the same one — onto an application that has just
+ * finished starting. Two seconds of spread is cheap for the client and the
+ * difference between a queue and a spike for the server.
+ *
+ * ONE attempt, then the ordinary backoff resumes: a server that says
+ * «restarting» and does not come back must not be hammered, and nothing here
+ * can tell the two apart except by trying once.
+ */
+const RESTART_RETRY_MS: readonly [number, number] = [1_000, 3_000];
+
 export class WebSocketClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private wsUrl: string;
@@ -149,6 +180,12 @@ export class WebSocketClient extends EventEmitter {
   private maxReconnectAttempts: number;
   private reconnectAttempts = 0;
   private reconnectTimeout?: number;
+  /**
+   * What the LAST close said. Rewritten by every close event, so it always
+   * describes the disconnection the pending retry is answering — never an
+   * older one.
+   */
+  private restartAnnounced = false;
   private isManualDisconnect = false;
   private auth?: AuthenticationClient;
   private authTransport?: import('../auth/client-token-transport.js').IClientTokenTransport;
@@ -364,6 +401,17 @@ export class WebSocketClient extends EventEmitter {
             clearTimeout(pending.timeout);
           }
           this.pendingRequests.clear();
+
+          // The server said it is restarting. That is the one close code
+          // that carries information about what happens NEXT — every other
+          // one describes what just happened — and it is what makes a short
+          // retry safe: this endpoint is coming back, so waiting out an
+          // exponential delay only keeps the socket shut after it returns.
+          //
+          // Read here rather than in `attemptReconnect`, because this is the
+          // only place the code exists; `CloseEvent` does not survive the
+          // call.
+          this.restartAnnounced = event.code === CLOSE_SERVICE_RESTART;
 
           // A session that lasted is evidence the far side works, so the
           // next failure starts the backoff from the beginning. One that
@@ -922,9 +970,30 @@ export class WebSocketClient extends EventEmitter {
 
     this.state = 'reconnecting' as ConnectionState;
     this.reconnectAttempts++;
-    const delay = calculateBackoff(this.reconnectAttempts, this.reconnectInterval);
 
-    this.emit('reconnecting', { attempt: this.reconnectAttempts, delay, maxAttempts: this.maxReconnectAttempts });
+    // A restart the server announced gets a short, jittered retry; anything
+    // else gets the ordinary backoff.
+    //
+    // «ONE retry» is not enforced here and does not need to be: the flag is
+    // rewritten by EVERY close, and the retry that finds the server still
+    // down dies with 1006, which sets it false. A line clearing it here
+    // looked prudent and held nothing — a plant that removed it left all six
+    // cases green, which is the only honest reason to take a line out.
+    const announced = this.restartAnnounced;
+    const [floor, ceiling] = RESTART_RETRY_MS;
+    const delay = announced
+      ? floor + Math.floor(Math.random() * (ceiling - floor))
+      : calculateBackoff(this.reconnectAttempts, this.reconnectInterval);
+
+    // `announced` on the event too: a caller that renders «reconnecting…»
+    // can say «the server is restarting» instead, and a test can see which
+    // schedule was used without measuring the clock.
+    this.emit('reconnecting', {
+      attempt: this.reconnectAttempts,
+      delay,
+      maxAttempts: this.maxReconnectAttempts,
+      announced,
+    });
 
     this.reconnectTimeout = setTimeout(async () => {
       try {

@@ -197,13 +197,36 @@ export class WebSocketServerAdapter extends BaseServer {
   }
 
   /**
-   * Close the WebSocket server
+   * Close the WebSocket server.
+   *
+   * ── Why 1012 and not 1001 ─────────────────────────────────────────────
+   *
+   * RFC 6455 registers 1012 as «Service Restart» and 1001 as «Going Away»,
+   * which a browser also sends when the PAGE navigates away. A client cannot
+   * tell «this server is coming back in seconds» from «this endpoint is
+   * flapping» out of 1001, so it must assume the worse of the two and back
+   * off. Measured on the client that reads this
+   * (`netron-browser/src/client/ws-client.ts`): the delay is a full-jitter
+   * draw from `[1000, min(1000·2^(attempt−1), 30000)]`, so by the sixth
+   * attempt — which a restart of minutes reaches — the socket can stay shut
+   * for up to thirty seconds AFTER the server is answering again. The user
+   * sees a dead chat long past the outage.
+   *
+   * 1012 says the one thing that makes a short retry safe: the server is
+   * coming back. The client treats it as such for ONE attempt and then
+   * resumes its ordinary backoff, so an endpoint that lied about restarting
+   * is not hammered.
+   *
+   * THIS ALONE CHANGES NOTHING. The code is only useful because the client
+   * was taught to read it in the same change; before that it did not look at
+   * `event.code` at all. A close code nobody reads is a comment with a
+   * number in it.
    */
   async close(): Promise<void> {
     return new Promise((resolve, reject) => {
       // Close all connections
       for (const client of this.wss.clients) {
-        client.close(1001, 'Server closing');
+        client.close(1012, 'Service restart');
       }
 
       this.wss.close((error) => {

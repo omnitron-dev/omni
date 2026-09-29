@@ -691,7 +691,12 @@ export class DockerTestManager extends EventEmitter {
     const writePortArgs = () => {
       const args: string[] = [];
       portMappings.forEach((hostPort, containerPort) => {
-        args.push('-p', `${hostPort}:${containerPort}`);
+        // The loopback only: a bare `-p host:container` publishes on 0.0.0.0,
+        // past the host firewall, and a test database with its default
+        // credentials is then a database the LAN can log into
+        // (scripts/a-port-the-network-could-reach.mjs). `isPortAvailable`
+        // probes the same address.
+        args.push('-p', `127.0.0.1:${hostPort}:${containerPort}`);
       });
       return args;
     };

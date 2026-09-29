@@ -7,12 +7,20 @@
 #
 # Override ports via environment:
 #   TEST_REDIS_PORT=26379 TEST_POSTGRES_PORT=25432 docker compose -f docker-compose.test.yml up -d
+#
+# Every port is published on the loopback only. A bare "15432:5432" publishes
+# on 0.0.0.0, and docker's own forwarding sits in front of the host firewall:
+# the LAN reaches it whatever the firewall says. Measured in daos on
+# 2026-09-16 — its test Postgres answered a login from another address on the
+# network with the credentials written in its compose file — and this file's
+# Postgres (test/test) was published the same way until 2026-09-29.
+# `scripts/a-port-the-network-could-reach.mjs` keeps it so.
 
 services:
   redis-test:
     image: redis:7-alpine
     ports:
-      - "${TEST_REDIS_PORT:-16379}:6379"
+      - "127.0.0.1:${TEST_REDIS_PORT:-16379}:6379"
     command: redis-server --save "" --appendonly no --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -25,7 +33,7 @@ services:
   postgres-test:
     image: postgres:16-alpine
     ports:
-      - "${TEST_POSTGRES_PORT:-15432}:5432"
+      - "127.0.0.1:${TEST_POSTGRES_PORT:-15432}:5432"
     environment:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test

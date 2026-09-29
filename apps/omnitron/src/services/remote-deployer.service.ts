@@ -2045,6 +2045,11 @@ export class RemoteDeployer {
       }
 
       await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+      // A tab opened before this deployment asks for chunks of the build it
+      // loaded; they are carried into this one, and builds nobody serves go
+      // (`static-carry-forward.ts`). Before the marker: it is part of what
+      // «delivered» means now.
+      await this.carryPreviousBuildForward(target, remoteRoot, remoteDir);
       // Last, and only now: the unpack is what this records.
       await this.sshExec(target, `printf %s ${shellEscape(digest)} > ${shellEscape(marker)}`);
 
@@ -2052,6 +2057,31 @@ export class RemoteDeployer {
       return { remoteDir, bytes };
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Hard-link the assets of the build the running gateways serve into the
+   * one just unpacked, and remove builds nobody serves
+   * (`static-carry-forward.ts`). Never fails the delivery: without it an open
+   * tab reloads onto the new build instead of continuing, which the portal
+   * handles; with a failed delivery nobody gets a portal at all.
+   */
+  private async carryPreviousBuildForward(target: DeployTarget, root: string, fresh: string): Promise<void> {
+    try {
+      const { GATEWAY_MOUNTS_COMMAND, readGatewayMounts, carryForwardScript } = await import('./static-carry-forward.js');
+      const mounts = readGatewayMounts(await this.sshExec(target, GATEWAY_MOUNTS_COMMAND).catch(() => ''));
+      const script = carryForwardScript({ root, fresh, serving: mounts.serving, mounted: mounts.mounted, keep: 5 });
+      const said = await this.sshExec(target, `bash -c ${shellEscape(script)}`, 300_000);
+      this.logger.info(
+        { host: target.host, fresh, serving: mounts.serving, said: said.trim() },
+        'The build open tabs loaded is carried forward; builds nobody serves are removed',
+      );
+    } catch (err) {
+      this.logger.warn(
+        { host: target.host, fresh, error: (err as Error).message.slice(0, 400) },
+        'Could not carry the previous build forward — open tabs will reload onto the new one',
+      );
     }
   }
 

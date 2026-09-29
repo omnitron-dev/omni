@@ -86,7 +86,7 @@ class VaultService {
 const netrons: Netron[] = [];
 
 async function boot(): Promise<{ server: Netron; port: number }> {
-  const port = await getFreePort();
+  const port = await getFreePort('localhost');
   const logger = createMockLogger();
   const server = new Netron(logger, { id: `net14b-server-${port}` });
 

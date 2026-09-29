@@ -67,7 +67,7 @@ afterEach(async () => {
 });
 
 async function serve() {
-  const [http, ws] = [await getFreePort(), await getFreePort()];
+  const [http, ws] = [await getFreePort('localhost'), await getFreePort('localhost')];
   const netron = new Netron(createMockLogger(), { id: 'restart-server' });
   netron.registerTransport('http', () => new HttpTransport());
   netron.registerTransportServer('http', { name: 'http', options: { host: 'localhost', port: http } });

@@ -100,7 +100,7 @@ describe('Full Auth Flow Integration', () => {
   let serverPort: number;
 
   beforeEach(async () => {
-    serverPort = await getFreePort();
+    serverPort = await getFreePort('localhost');
 
     // Setup server Netron with full auth
     const serverLogger = createMockLogger();

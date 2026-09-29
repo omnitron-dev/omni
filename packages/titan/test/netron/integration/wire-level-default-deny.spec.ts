@@ -72,7 +72,7 @@ class ConfigService {
 const netrons: Netron[] = [];
 
 async function bootServer(authDefaultDeny: boolean): Promise<{ server: Netron; port: number }> {
-  const port = await getFreePort();
+  const port = await getFreePort('localhost');
   const logger = createMockLogger();
   const server = new Netron(logger, { id: `sec2-server-${authDefaultDeny}-${port}`, authDefaultDeny });
 

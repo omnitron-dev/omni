@@ -43,7 +43,7 @@ describe('query_interface — semver wildcard resolution (T#41)', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     server = new Netron(createMockLogger(), { id: 'semver-server' });
     server.registerTransport('ws', () => new WebSocketTransport());

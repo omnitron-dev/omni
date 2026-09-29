@@ -65,6 +65,43 @@ describe('test port allocation', () => {
     ).toEqual([]);
   });
 
+  /**
+   * The allocator is asked about the host the server will bind, not another.
+   *
+   * `isBindable` binds the port on the host it is given, and `getFreePort`
+   * defaults that host to `127.0.0.1`. Twelve spec files took the default and
+   * then listened on `host: 'localhost'`. Measured: `dns.lookup('localhost')`
+   * answers `::1` here, a server on `'localhost'` takes `[::1]:P`, and the
+   * probe on `127.0.0.1` calls that port free. The allocator was answering
+   * about a socket none of them would ever bind.
+   *
+   * A literal port in an ADDRESS is not a bind — `parseAddress('tcp://
+   * localhost:8080')` mentions both words and listens to nothing — so the
+   * pattern requires `port` without a numeric literal after it, which is the
+   * shape of a real options object (`{ host: 'localhost', port }`).
+   */
+  it('asks the allocator about the host it will bind', () => {
+    const listensOnLocalhost = /host:\s*'localhost'\s*,\s*\n?\s*port(?!\s*:\s*\d)/;
+    const bareCall = /getFree(?:Http)?Port\(\s*\)/;
+    const withHost = /getFree(?:Http)?Port\(\s*'([^']+)'/g;
+
+    const offenders: string[] = [];
+    for (const f of files) {
+      const text = readFileSync(f, 'utf-8');
+      if (!listensOnLocalhost.test(text)) continue;
+      const hosts = [...text.matchAll(withHost)].map((m) => m[1]);
+      if (bareCall.test(text) || hosts.some((h) => h !== 'localhost')) {
+        offenders.push(relative(TEST_ROOT, f));
+      }
+    }
+
+    expect(
+      offenders,
+      'these listen on `localhost` and ask the allocator about another host, ' +
+        `so the answer is about a different socket:\n  ${offenders.join('\n  ')}`
+    ).toEqual([]);
+  });
+
   it('computes no port from a random number', () => {
     const offenders: string[] = [];
     for (const f of files) {

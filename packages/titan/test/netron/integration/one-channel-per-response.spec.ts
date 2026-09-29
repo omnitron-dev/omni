@@ -36,6 +36,7 @@ import { issueTokens } from '../../../src/netron/auth/token-issuance.js';
 import { Service, Public } from '../../../src/decorators/core.js';
 import { createMockLogger } from '../test-utils.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
+import { getFreePort } from '../../utils/index.js';
 
 @Service('channelAuth@1.0.0')
 class ChannelAuthService {
@@ -64,8 +65,27 @@ function transportOf(kind: Kind): ITokenTransport {
 
 let server: Netron | undefined;
 
+/**
+ * A port from the shared allocator, on the host this server binds.
+ *
+ * It used to start at `19400 + Math.random()*400` and walk upward until a bind
+ * worked. Three things wrong with that, and `port-allocation-rule` refuses the
+ * first: **19400-19799 is below the allocator's base of 20000**, so it belongs
+ * to no worker's band and every worker drew from it at once; the `catch` made
+ * a lost race invisible; and `for (;;) port++` walks out of any range for ever
+ * if something is systematically wrong. The rule has been red since `ad4c1e0a`
+ * (2026-09-27) and titan's own `vitest run` covers it, so the package's suite
+ * was red and nobody looked.
+ *
+ * The allocator cannot close the window between handing a number out and
+ * binding it — its own comment says so — which is why the retry stays. It is
+ * bounded now, and each attempt draws a fresh number instead of the next one.
+ * `'localhost'`, because that is what this server listens on and the probe
+ * must ask about the socket that will actually be taken.
+ */
 async function boot(kind: Kind): Promise<number> {
-  for (let port = 19400 + Math.floor(Math.random() * 400); ; port++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const port = await getFreePort('localhost');
     const logger = createMockLogger();
     const netron = new Netron(logger, { id: `channel-${kind}-${port}` });
     const authn = new AuthenticationManager(logger, {
@@ -85,6 +105,7 @@ async function boot(kind: Kind): Promise<number> {
     server = netron;
     return port;
   }
+  throw new Error('No port in this worker\'s band could be bound in 10 attempts');
 }
 
 afterEach(async () => {

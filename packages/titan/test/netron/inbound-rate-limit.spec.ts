@@ -42,7 +42,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
   let port: number;
 
   async function startPair(opts: { limit: number; window?: number }) {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     server = new Netron(createMockLogger(), {
       id: 'rate-limit-server',

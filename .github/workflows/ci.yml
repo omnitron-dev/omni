@@ -62,6 +62,19 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # Without this the job cannot typecheck at all, and the first run that
+      # ever reached it said so: `packages/eventemitter` and `packages/msgpack`
+      # both answered `Cannot find module '@omnitron-dev/common' or its
+      # corresponding type declarations`. A workspace package resolves a
+      # sibling through its `exports`, which point at `dist`, and a fresh
+      # checkout has none. Every developer's tree has them, which is why this
+      # was invisible for as long as nothing ran the job.
+      #
+      # Packages only: the apps typecheck against the packages' `dist`, not
+      # against each other's, so building thirty projects to check thirty is
+      # work the graph does not ask for.
+      - name: Build packages (apps typecheck against their dist)
+        run: pnpm --filter './packages/**' run build
       - name: Typecheck (all packages + apps)
         run: pnpm -r run typecheck
 

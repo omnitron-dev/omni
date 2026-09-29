@@ -36,6 +36,7 @@ import type { ProjectService } from './project.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 import { diskAtHome } from '../monitoring/host-disk.js';
+import { notifyDesktop } from '../monitoring/desktop-notifier.js';
 
 // =============================================================================
 // Types
@@ -151,6 +152,20 @@ function evaluateExpression(
   // `firing` stays false because firing on a syntax error would page
   // somebody about the wrong thing.
   return { firing: false, value: 'unparseable expression', unparseable: true };
+}
+
+/** A rule's summary, from its annotations as the database hands them back — a jsonb object or its text. */
+function summaryOf(annotations: unknown): string | null {
+  let value = annotations;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  const summary = value && typeof value === 'object' ? (value as { summary?: unknown }).summary : null;
+  return typeof summary === 'string' && summary.length > 0 ? summary : null;
 }
 
 /**
@@ -287,6 +302,7 @@ export class AlertService {
           annotations: rule.annotations ? (JSON.stringify(rule.annotations) as any) : null,
           firedAt: new Date(),
         } as any).execute();
+        if (rule.severity === 'critical') this.sayOnDesktop(rule, 'firing', value);
       } else if (!firing && currentAlert) {
         // Alert resolved
         await this.db
@@ -294,6 +310,7 @@ export class AlertService {
           .set({ status: 'resolved', resolvedAt: new Date() } as any)
           .where('id', '=', currentAlert.id)
           .execute();
+        if (rule.severity === 'critical') this.sayOnDesktop(rule, 'resolved', null);
       }
 
       // Update last evaluated timestamp
@@ -303,6 +320,20 @@ export class AlertService {
         .where('id', '=', rule.id)
         .execute();
     }
+  }
+
+  /**
+   * A critical alert's fire and its end, on the master's desktop — at the
+   * transition, once, never per tick (monitoring/desktop-notifier.ts).
+   */
+  private sayOnDesktop(rule: { name: string; annotations?: unknown }, what: 'firing' | 'resolved', value: string | null): void {
+    const summary = summaryOf(rule.annotations);
+    notifyDesktop(
+      what === 'firing'
+        ? { title: 'omnitron — critical', subtitle: rule.name, body: [value, summary].filter(Boolean).join(' · ') || rule.name }
+        : { title: 'omnitron — resolved', subtitle: rule.name, body: 'The condition no longer holds.' },
+      (err) => this.logger.warn({ err, rule: rule.name }, 'A critical alert could not be said on the desktop')
+    );
   }
 
   // ===========================================================================

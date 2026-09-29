@@ -11,7 +11,7 @@
  * events by `evaluate`, the acknowledgement by the RPC inside a session.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 
@@ -23,12 +23,22 @@ import { runWithAuth } from '../../src/services/auth-context.js';
 import { alertRuleTypeOf, readAlertRuleFields } from '../../src/shared/alert-expression.js';
 import { migrateOmnitronDb } from '../../src/database/migration-runner.js';
 import * as m011 from '../../src/database/migrations/011_alerts_nobody_had_to_write.js';
+import * as m012 from '../../src/database/migrations/012_a_disk_nobody_watched.js';
+
+// The host's disk, as the evaluator reads it: this machine's own would make
+// the court's events depend on how full the disk it runs on happens to be.
+const GiB = 1024 ** 3;
+const disk = vi.hoisted(() => ({ free: (198 * 1024 ** 3) as number | null }));
+vi.mock('../../src/monitoring/host-disk.js', () => ({
+  diskAtHome: async () => (disk.free === null ? null : { free: disk.free, total: 1843 * 1024 ** 3 }),
+}));
 
 const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const logger = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {} };
 const MINUTE = 60_000;
+const DEFAULT_NAMES = [...m011.DEFAULT_ALERT_RULES, m012.DISK_ALERT_RULE].map((r) => r.name).sort();
 
 describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
   let own: OwnDatabase;
@@ -54,10 +64,10 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
   afterAll(async () => own?.drop());
 
   describe('a fresh master', () => {
-    it('starts with the five defaults, each on and each one the evaluator reads', async () => {
+    it('starts with the defaults of 011 and 012, each on and each one the evaluator reads', async () => {
       const rules = await alerts.getRules();
 
-      expect(rules.map((r) => r.name).sort()).toEqual(m011.DEFAULT_ALERT_RULES.map((r) => r.name).sort());
+      expect(rules.map((r) => r.name).sort()).toEqual(DEFAULT_NAMES);
       for (const rule of rules) {
         expect(rule.enabled, rule.name).toBe(true);
         expect(rule.summary, rule.name).toBeTruthy();
@@ -178,6 +188,27 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
     });
   });
 
+  describe('the disk rule', () => {
+    const diskEvents = async () => (await events()).filter((e) => e.name === m012.DISK_ALERT_RULE.name);
+
+    it('fires after a minute under 50 GiB, holds through a reading that failed, resolves when space comes back', async () => {
+      const t0 = Date.now();
+      disk.free = 21 * GiB;
+      await alerts.evaluate(t0);
+      expect(await diskEvents()).toEqual([]);
+      await alerts.evaluate(t0 + MINUTE);
+      expect(await diskEvents()).toMatchObject([{ status: 'firing', value: '21.0 GiB free' }]);
+
+      disk.free = null;
+      await alerts.evaluate(t0 + 2 * MINUTE);
+      expect(await diskEvents()).toMatchObject([{ status: 'firing' }]);
+
+      disk.free = 198 * GiB;
+      await alerts.evaluate(t0 + 3 * MINUTE);
+      expect(await diskEvents()).toMatchObject([{ status: 'resolved' }]);
+    });
+  });
+
   describe('a default', () => {
     it('the operator deletes stays deleted when the master starts again', async () => {
       await own.db.deleteFrom('alert_rules').where('name', '=', 'Memory above 2 GiB').execute();
@@ -189,12 +220,34 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
       await own.db.updateTable('alert_rules').set({ expression: 'app.*.cpu > 95' }).where('name', '=', 'CPU above 90%').execute();
 
       await m011.down(own.db as never);
-      expect(await names()).toEqual(['CPU above 90%']);
+      expect(await names()).toEqual(['CPU above 90%', m012.DISK_ALERT_RULE.name]);
 
       await m011.up(own.db as never);
-      expect(await names()).toEqual(m011.DEFAULT_ALERT_RULES.map((r) => r.name).sort());
+      expect(await names()).toEqual(DEFAULT_NAMES);
       const cpu = await own.db.selectFrom('alert_rules').select('expression').where('name', '=', 'CPU above 90%').executeTakeFirstOrThrow();
       expect(cpu.expression).toBe('app.*.cpu > 95');
+    });
+
+    it('012’s too: `down` takes back only the disk rule as seeded, and `up` does not overwrite an edit', async () => {
+      await m012.down(own.db as never);
+      expect(await names()).not.toContain(m012.DISK_ALERT_RULE.name);
+      await m012.up(own.db as never);
+      expect(await names()).toEqual(DEFAULT_NAMES);
+
+      const edited = `host.disk.free < ${100 * GiB}`;
+      await own.db
+        .updateTable('alert_rules')
+        .set({ expression: edited })
+        .where('name', '=', m012.DISK_ALERT_RULE.name)
+        .execute();
+      await m012.down(own.db as never);
+      await m012.up(own.db as never);
+      const rule = await own.db
+        .selectFrom('alert_rules')
+        .select('expression')
+        .where('name', '=', m012.DISK_ALERT_RULE.name)
+        .executeTakeFirstOrThrow();
+      expect(rule.expression).toBe(edited);
     });
   });
 });

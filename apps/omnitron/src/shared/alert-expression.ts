@@ -20,11 +20,13 @@ export const ALERT_EXPRESSION_FORMS = [
   /^app\.(\*|[\w-]+)\.status\s*(!=|==)\s*(\w+)$/,
   /^app\.(\*|[\w-]+)\.(cpu|memory)\s*(>|<|>=|<=)\s*(\d+)$/,
   /^infra\.(\*|[\w-]+)\.health\s*(!=|==)\s*(\w+)$/,
+  // Bytes free on the host's own disk (monitoring/host-disk.ts).
+  /^host\.disk\.free\s*(>|<|>=|<=)\s*(\d+)$/,
 ] as const;
 
 /** Human-readable grammar, for a message that has to tell someone what to type. */
 export const ALERT_EXPRESSION_HELP =
-  'app.<name|*>.status != <status> · app.<name|*>.<cpu|memory> <op> <number> · infra.<name|*>.health != <status>';
+  'app.<name|*>.status != <status> · app.<name|*>.<cpu|memory> <op> <number> · infra.<name|*>.health != <status> · host.disk.free <op> <bytes>';
 
 /** Whether the evaluator can read this expression at all. */
 export function isAlertExpressionParseable(expression: string): boolean {
@@ -52,7 +54,7 @@ export function severityRank(severity: string): number {
  */
 export function alertRuleTypeOf(expression: string): 'metric' | 'health' | null {
   const trimmed = expression.trim();
-  if (ALERT_EXPRESSION_FORMS[1].test(trimmed)) return 'metric';
+  if (ALERT_EXPRESSION_FORMS[1].test(trimmed) || ALERT_EXPRESSION_FORMS[3].test(trimmed)) return 'metric';
   if (ALERT_EXPRESSION_FORMS[0].test(trimmed) || ALERT_EXPRESSION_FORMS[2].test(trimmed)) return 'health';
   return null;
 }

@@ -176,6 +176,23 @@ describe('warned, then held', () => {
     expect(n.log).toEqual([]);
   });
 
+  it('a node it cannot even ask leaves the deployment unheld — never failed', async () => {
+    // What three courts' fake deployer handed over: no runner at all. And a
+    // runner that throws before it returns a promise, which `.catch` on its
+    // result never saw.
+    for (const run of [undefined, () => { throw new Error('ssh: connect to host 10.0.0.9 port 22: Connection refused'); }]) {
+      const warn = vi.fn();
+      const opened = MaintenanceLock.open(
+        { run: run as never, prefix: 'daos-test', db: 15, release: 'daos-r1' },
+        { ...(logger as object), warn } as never,
+        FAST,
+        noWait,
+      );
+      await expect(opened).resolves.toBeNull();
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'daos-test' }), expect.stringMatching(/Could not ask the node for its gateway/));
+    }
+  });
+
   it('says so when the gateway does not see the lock — the way it failed before', async () => {
     const n = node({ gatewayDb: 1 });
     const error = vi.fn();

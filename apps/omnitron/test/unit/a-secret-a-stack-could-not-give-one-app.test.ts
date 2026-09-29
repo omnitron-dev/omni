@@ -143,7 +143,8 @@ describe('a remote stack', () => {
     svc.resolveNodeAppEnv = async () => ({ main: { DATABASE_URL: 'postgres://…/main' }, paysys: { DATABASE_URL: 'postgres://…/paysys' } });
     svc.deployer = {
       onProgress: () => () => {},
-      leaseRunner: () => ({}),
+      // A node with no gateway stack: the maintenance lock finds nothing to hold.
+      leaseRunner: () => async () => '',
       provisionSlaveNode: async () => {
         provisioned.push(NODE.host);
         return true;

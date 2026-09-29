@@ -111,7 +111,8 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
   };
   svc.deployer = {
     onProgress: () => () => {},
-    leaseRunner: () => ({}),
+    // A node with no gateway stack: the maintenance lock finds nothing to hold.
+    leaseRunner: () => async () => '',
     provisionSlaveNode: async () => true,
     deployToStack: async (_targets: unknown, artifacts: Array<{ app: string }>) => {
       delivered.push(...artifacts.map((a) => a.app));

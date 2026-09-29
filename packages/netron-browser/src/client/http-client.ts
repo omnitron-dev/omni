@@ -68,6 +68,42 @@ export interface HttpClientOptions {
 }
 
 /**
+ * An answer, with the HTTP status it came under when that was not 2xx.
+ *
+ * The envelope has no field for the status, and a caller that has no word for
+ * a business code can still tell «wait» (429) from «refused» (403) by it.
+ */
+type Answer = HttpResponseMessage & { httpStatus?: number };
+
+/** What a failed call throws. */
+type RefusalError = Error & { code?: unknown; details?: unknown; status?: number };
+
+/**
+ * The error a failed call throws: the server's code, and what it said with it.
+ *
+ * This threw `new Error(message)` with `code` and nothing else, so everything
+ * a server put in `error.details` ended here — the `retryAfter` of a refused
+ * sign-in (a page could say «later», never when), the fields a validation
+ * refusal named, the two currencies of a mismatched cart. Measured in the
+ * downstream portal on 2026-09-29: six refused sign-ins, six errors whose only
+ * own key was `code`, while each body carried
+ * `details: { retryAfter: 897, errorCode: 'RATE_LIMIT_EXCEEDED' }`. Fourteen
+ * of its messages interpolate a detail; with none arriving, i18next leaves
+ * each `{{placeholder}}` in the text.
+ *
+ * `code` stays exactly what the envelope carried — a business string from an
+ * application's error, a number from titan's — because callers compare it.
+ * `details` and `status` come beside it, never in its place.
+ */
+function refusal(answer: Answer): RefusalError {
+  const error: RefusalError = new Error(answer.error?.message || 'Method invocation failed');
+  error.code = answer.error?.code;
+  if (answer.error?.details !== undefined) error.details = answer.error.details;
+  if (answer.httpStatus !== undefined) error.status = answer.httpStatus;
+  return error;
+}
+
+/**
  * HTTP Transport Client implementation
  */
 export class HttpClient {
@@ -171,9 +207,7 @@ export class HttpClient {
         const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth, credentials);
 
         if (!response.success) {
-          const error = new Error(response.error?.message || 'Method invocation failed');
-          (error as any).code = response.error?.code;
-          throw error;
+          throw refusal(response);
         }
 
         // Store response in context
@@ -220,7 +254,7 @@ export class HttpClient {
     customHeaders?: Record<string, string>,
     skipAuth = false,
     credentials?: RequestCredentials
-  ): Promise<HttpResponseMessage> {
+  ): Promise<Answer> {
     const url = `${this.baseUrl}/netron/invoke`;
     const timeout = message.hints?.timeout || this.timeout;
     const startTime = Date.now();
@@ -264,7 +298,7 @@ export class HttpClient {
         // Try to parse error response
         try {
           const errorData = await response.json();
-          return errorData;
+          return { ...errorData, httpStatus: response.status };
         } catch {
           // Return generic error
           this.metrics.errors++;
@@ -275,6 +309,7 @@ export class HttpClient {
               code: 'HTTP_ERROR',
               message: `HTTP ${response.status}: ${response.statusText}`,
             },
+            httpStatus: response.status,
           };
         }
       }

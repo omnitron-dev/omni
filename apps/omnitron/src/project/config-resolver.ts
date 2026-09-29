@@ -30,6 +30,7 @@ import type { StackPortAllocation } from '../infrastructure/stack-infra-manager.
 import { getEnv } from '../shared/env-config.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import { bindService } from '../infrastructure/service-binding.js';
+import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 
 // =============================================================================
 // Types
@@ -435,15 +436,16 @@ export function resolveStack(
         };
       }
 
-      // Gateway Redis — main app writes maintenance state to gateway's dedicated Redis DB
-      // DB index is auto-allocated by omnitron (redisDbEnd + 1, after app range)
+      // Gateway Redis — main writes the administrators' maintenance lock into
+      // the gateway's own database. The same number the gateway container is
+      // given (`gateway-redis-db.ts`); this was `redisDbOffset + 5`, which on
+      // daos is geo's database, while a node's gateway read 1, storage's.
       const hasGateway = config.gateway || config.infrastructure?.services?.['gateway'] || normalizedServices?.['gateway'];
       if (entry.name === 'main' && hasGateway) {
-        const gatewayRedisDb = redisDbOffset + 5; // After app DBs (0-4 range)
         resolved['gatewayRedis'] = {
           host: addresses.redis.host,
           port: addresses.redis.port,
-          db: gatewayRedisDb,
+          db: gatewayRedisDb(declaredRedisDbs),
           password: addresses.redis.password,
         };
       }
@@ -706,6 +708,8 @@ function allocateRedisDBs(
     allocation.set(key, stated);
     taken.add(stated);
   }
+  // The gateway's database is nobody else's — see `gateway-redis-db.ts`.
+  taken.add(gatewayRedisDb(declared));
 
   // The counter fills the rest, stepping over every number already spoken
   // for — including one stated for a key that comes later in the list.

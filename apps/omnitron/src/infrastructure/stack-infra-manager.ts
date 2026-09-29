@@ -24,6 +24,7 @@ import type { InfrastructureConfig } from './types.js';
 import type { IStackConfig, IStackSettings } from '../config/types.js';
 import { InfrastructureService } from './infrastructure.service.js';
 import { setContainerPrefix, setStackLabels, gatewayHostPort } from './service-resolver.js';
+import { gatewayRedisDb as gatewayRedisDbOf } from './gateway-redis-db.js';
 
 // =============================================================================
 // Default port offsets per stack index
@@ -164,7 +165,12 @@ export class StackInfrastructureManager {
     const legacyGateway = stackInfraConfig.gateway;
     if ((gatewayInServices || legacyGateway) && projectRoot) {
       const { resolveGateway, gatewayConfigOf, containerEndpoint, REDIS_CONTAINER_PORT } = await import('./service-resolver.js');
-      const gatewayRedisDb = portAlloc.redisDbEnd + 1;
+      // The gateway's own database, by the one rule every side uses
+      // (gateway-redis-db.ts). `redisDbEnd + 1` was 5 — geo's database, since
+      // daos outgrew the five-wide range this was the end of.
+      const gatewayRedisDb = gatewayRedisDbOf(
+        (stackInfraConfig.redis as { databases?: Record<string, number> } | undefined)?.databases,
+      );
       const redisPassword = typeof stackInfraConfig.redis?.password === 'string'
         ? stackInfraConfig.redis.password
         : undefined;

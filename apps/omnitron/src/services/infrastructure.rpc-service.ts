@@ -16,6 +16,7 @@ import { duringPhase } from '../project/deploy-phases.js';
 import { containerEndpoint, REDIS_CONTAINER_PORT } from '../infrastructure/service-resolver.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
+import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 import {
   startContainer,
   stopContainer,
@@ -310,12 +311,16 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       // to the docker bridge and finds nothing: every gateway request paid a
       // 200ms Redis timeout and the maintenance check failed open, on a
       // machine where the two containers were two IPs apart on one network.
-      const redisCfg = (config as { redis?: { port?: number; db?: number; password?: string } }).redis;
+      const redisCfg = (config as {
+        redis?: { port?: number; db?: number; password?: string; databases?: Record<string, number> };
+      }).redis;
       const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
       service.setConfigRoots(configRoots, staticRoots, {
         host: endpoint.host,
         port: endpoint.port,
-        db: (redisCfg?.db ?? 0) + 1,
+        // Not `(redis.db ?? 0) + 1`: on daos/test that is 1, storage's
+        // database, while main wrote the lock to 5 — see gateway-redis-db.ts.
+        db: gatewayRedisDb(redisCfg?.databases),
         ...(redisCfg?.password ? { password: redisCfg.password } : {}),
       });
     }

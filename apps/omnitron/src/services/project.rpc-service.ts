@@ -25,6 +25,7 @@ import type {
   IStackAccountRemoved,
   IStackAccountCensus,
   IStackLeftoversCensus,
+  IStackMaintenance,
 } from '../shared/dto/project.js';
 
 @Service({ name: 'OmnitronProject' })
@@ -308,6 +309,20 @@ export class ProjectRpcService {
     also?: string[];
   }): Promise<IStackLeftoversCensus> {
     return this.projectService.probeLeftovers(data.project, data.stack, { mode: data.mode, also: data.also });
+  }
+
+  /**
+   * The stack's maintenance lock: the gateway's answer, or held/released by
+   * hand. Admin: it holds the whole platform.
+   */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async stackMaintenance(data: {
+    project: string;
+    stack: string;
+    action: 'status' | 'on' | 'off';
+    minutes?: number;
+  }): Promise<IStackMaintenance> {
+    return this.projectService.stackMaintenance(data.project, data.stack, { action: data.action, minutes: data.minutes });
   }
 
   /**

@@ -312,7 +312,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     // The step that restarts the node's daemon — the last thing to do under
     // somebody else's deployment.
     const activated = await this.deployer().underLease(target, `fleet upgrade: activate ${data.version}`, () =>
-      this.deployer().activateBundle(target, data.version, '/opt/omnitron', data.keepVersions ?? 3),
+      // Held: activation stops every app on the node (`activateBundleHeld`).
+      this.deployer().activateBundleHeld(target, data.version, '/opt/omnitron', data.keepVersions ?? 3),
     );
     // The one step that changes what a node SERVES, and the one an operator
     // will want to find afterwards: `fleet upgrade` reaches it through this

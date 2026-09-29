@@ -76,6 +76,15 @@ import {
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
+import { DEFAULT_MAINTENANCE_TIMING, MaintenanceLock } from './maintenance-lock.js';
+import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
+
+/**
+ * What a deployment asks through the gateway before it lets the platform go:
+ * the portal's page and main's health. Each app already passed its own health
+ * check inside the deployment; these prove the path a person's request takes.
+ */
+const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
 import type { SyncService } from './sync.service.js';
@@ -1579,6 +1588,55 @@ export class ProjectService extends EventEmitter {
   }
 
   /**
+   * The stack's maintenance lock by hand (`maintenance-lock.ts`): the state
+   * as its gateway enforces it, or held for a bounded time, or let go — a lock
+   * a failed deployment left (it also expires by itself), or work outside a
+   * deployment. Not under the node's deploy lease: letting go of the lock is
+   * exactly what an operator does while a stuck deployment holds that lease.
+   * Only omnitron's keys; the administrators' mode is main's, in /admin.
+   */
+  async stackMaintenance(
+    projectName: string,
+    stackName: string,
+    request: { action: 'status' | 'on' | 'off'; minutes?: number | undefined },
+  ): Promise<import('../shared/dto/project.js').IStackMaintenance> {
+    const config = await this.loadProjectConfig(projectName);
+    const stackConfig = this.resolveStacks(config, projectName)[stackName];
+    if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+    if (stackConfig.type === 'local') {
+      throw new Error(`${projectName}/${stackName} is local: its gateway is on this machine, and so is anyone using it`);
+    }
+    const nodes = stackConfig.nodes ?? [];
+    if (nodes.length !== 1) {
+      throw new Error(
+        `${projectName}/${stackName} has ${nodes.length} node(s); which one runs the gateway is not decided here — one is supported`,
+      );
+    }
+    const lockModule = await import('./maintenance-lock.js');
+    const target = await this.targetForStackNode(nodes[0]!);
+    const prefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
+    // Where the gateway that is RUNNING reads — asked of it, not computed: by
+    // hand one acts on the platform as it is.
+    const site = await lockModule.runningGatewaySite(this.deployer.leaseRunner(target), prefix, 'by-hand');
+    if (!site) throw new Error(`${projectName}/${stackName} has no running gateway (${prefix}-gateway) on ${target.host}`);
+    if (request.action === 'on') {
+      await lockModule.holdByHand(site, request.minutes ?? 15);
+    } else if (request.action === 'off') {
+      await lockModule.releaseByHand(site);
+    } else if (request.action !== 'status') {
+      throw new Error(`'${String(request.action)}' is not a maintenance action — status, on or off`);
+    }
+    // What the gateway enforces — asked after its 2-second cache has turned.
+    if (request.action !== 'status') await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const state = await lockModule.readMaintenanceState(site);
+    this.logger.info(
+      { project: projectName, stack: stackName, action: request.action, active: state.active, reason: state.reason },
+      'Maintenance lock by hand',
+    );
+    return { where: `${projectName}/${stackName} on ${target.host}`, ...state };
+  }
+
+  /**
    * What the probes left on a stand — the project's own census of it,
    * `scripts/probe-leftovers.mjs` without a flag: SELECTs and nothing else,
    * the accounts, organisations and orphans it would take and what would hold
@@ -2889,6 +2947,12 @@ export class ProjectService extends EventEmitter {
       `${projectName}/${stackName}`,
       this.logger,
       async (leases) => {
+        // Each node's platform is held at its gateway from before the first
+        // step that can stop an app until the apps answer through it again
+        // (`maintenance-lock.ts`). A node whose deployment throws or is
+        // skipped keeps its lock only until this callback ends.
+        const locks = new Map<string, MaintenanceLock>();
+        try {
         // Deploy to each node: provision slave → deploy artifacts → connect
         for (const node of nodes) {
           const nodeKey = `${node.host}:${node.port ?? 9700}`;
@@ -2925,6 +2989,8 @@ export class ProjectService extends EventEmitter {
             );
           }
           await leases.confirm(nodeKey, `provisioning ${node.host}`);
+          const lock = await this.holdForDeployment(target, projectName, stackName, stackConfig, ecosystemConfig, release, phases);
+          if (lock) locks.set(nodeKey, lock);
           phases.enter(`provisioning ${node.host}`);
           const provisioned = await this.deployer.provisionSlaveNode(
             target,
@@ -3087,6 +3153,22 @@ export class ProjectService extends EventEmitter {
             }
           }
 
+          // 3b. Let the platform go — once it answers through the gateway, as
+          //     a person's request will. One that does not keeps the lock,
+          //     which then expires by itself; said, and carried to the answer.
+          const held = locks.get(nodeKey);
+          if (held) {
+            locks.delete(nodeKey);
+            phases.enter(`lifting maintenance on ${node.host}`);
+            const lifted = await held.liftWhenAnswering(MAINTENANCE_PROBE_PATHS);
+            if (!lifted.lifted) {
+              notReady.push(
+                `${nodeKey}: the platform did not answer through the gateway (${lifted.failed.join(', ')}) — ` +
+                  'it stays in maintenance until the lock expires, or `omnitron stack maintenance … off`',
+              );
+            }
+          }
+
           // 4. Connect master to slave daemon via Netron TCP
           await leases.confirm(nodeKey, `joining ${node.host} to the mesh`);
           phases.enter(`joining ${node.host} to the mesh`);
@@ -3112,7 +3194,59 @@ export class ProjectService extends EventEmitter {
         }
 
         return { nodes: nodes.length, reached: reached.length, skipped, notReady };
+        } finally {
+          // A node whose deployment threw or was skipped: its platform is not
+          // held past this deployment — the state it is in is the one to see.
+          for (const [nodeKey, lock] of locks) {
+            await lock.lift('failed').catch((err: unknown) =>
+              this.logger.error({ node: nodeKey, err: (err as Error).message }, 'Could not lift maintenance — it expires by itself'),
+            );
+          }
+        }
       },
+    );
+  }
+
+  /**
+   * Warn the platform on this node, then hold it at its gateway for the
+   * deployment (`maintenance-lock.ts`). `null` when the stack opted out, or
+   * when the node has no running gateway and Redis to hold with — a first
+   * deployment, which nobody is using yet.
+   */
+  private async holdForDeployment(
+    target: DeployTarget,
+    projectName: string,
+    stackName: string,
+    stackConfig: IStackConfig,
+    ecosystemConfig: IEcosystemConfig,
+    release: LoadedRelease | null,
+    phases: DeployPhases,
+  ): Promise<MaintenanceLock | null> {
+    const settings = stackConfig.settings?.maintenance;
+    if (settings?.disabled) {
+      this.logger.warn({ stack: stackName }, 'Maintenance lock disabled for this stack — deploying under its users');
+      return null;
+    }
+    const timing = {
+      ...DEFAULT_MAINTENANCE_TIMING,
+      ...(settings?.noticeSeconds !== undefined ? { noticeSeconds: settings.noticeSeconds } : {}),
+      ...(settings?.etaSeconds !== undefined ? { etaSeconds: settings.etaSeconds } : {}),
+    };
+    // The database by the one rule the gateway on the node used for its own
+    // REDIS_DB — from the same merged infrastructure the node was sent.
+    const infra = mergeInfrastructure(ecosystemConfig, stackConfig) as
+      | { redis?: { databases?: Record<string, number> } }
+      | undefined;
+    if (timing.noticeSeconds > 0) phases.enter(`warning the platform: maintenance in ${timing.noticeSeconds} s`);
+    return MaintenanceLock.open(
+      {
+        run: this.deployer.leaseRunner(target),
+        prefix: stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`,
+        db: gatewayRedisDb(infra?.redis?.databases),
+        release: release?.id ?? 'unreleased',
+      },
+      this.logger,
+      timing,
     );
   }
 

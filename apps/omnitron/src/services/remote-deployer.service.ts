@@ -50,6 +50,7 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
 import type { ArtifactInfo } from '../project/artifact-builder.js';
 import type { ExecutionService, SSHTarget } from '../execution/execution.service.js';
@@ -1645,6 +1646,43 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, '*', 'failed', 0, message);
       this.logger.error({ host: target.host, version, error: message }, 'Bundle install failed');
       return false;
+    }
+  }
+
+  /**
+   * `activateBundle` with the platform held. `omnitron down; up` stops every
+   * app on the node, so each stack gateway there holds its platform
+   * (`maintenance-lock.ts`) — warned first — until its apps answer through it
+   * again, for up to three minutes after the restart; past that the lock is
+   * left to expire by itself. A node with no gateway activates as before.
+   */
+  async activateBundleHeld(
+    target: DeployTarget,
+    version: string,
+    prefix = '/opt/omnitron',
+    keepVersions = 3,
+  ): Promise<boolean> {
+    const { runningGatewaySites, MaintenanceLock, DEFAULT_MAINTENANCE_TIMING } = await import('./maintenance-lock.js');
+    const run = this.leaseRunner(target);
+    const locks: HeldLock[] = [];
+    for (const site of await runningGatewaySites(run, `omnitron ${version}`)) {
+      const lock = await MaintenanceLock.open(site, this.logger, { ...DEFAULT_MAINTENANCE_TIMING, probeWithinMs: 180_000 });
+      if (lock) locks.push(lock);
+    }
+    try {
+      const activated = await this.activateBundle(target, version, prefix, keepVersions);
+      while (locks.length > 0) {
+        const lifted = await locks.shift()!.liftWhenAnswering(['/', '/api/main/health']);
+        if (!lifted.lifted) {
+          this.logger.error(
+            { host: target.host, version, failed: lifted.failed },
+            'After the upgrade the platform does not answer through its gateway — maintenance expires by itself',
+          );
+        }
+      }
+      return activated;
+    } finally {
+      for (const lock of locks) await lock.lift('failed').catch(() => undefined);
     }
   }
 

@@ -859,6 +859,14 @@ export interface IDaemonConfig {
 // Ecosystem Config — Project configuration (omnitron.config.ts)
 // =============================================================================
 
+/** A platform's receiver of omnitron's critical alerts — see `IEcosystemConfig.monitoring.alertSink`. */
+export interface IAlertSink {
+  /** The app, by its name within a stack: `main` for `daos/dev/main`. */
+  app: string;
+  service: string;
+  method: string;
+}
+
 export interface IEcosystemConfig {
   /** Project display name (shown in webapp, CLI) */
   project?: string;
@@ -899,6 +907,17 @@ export interface IEcosystemConfig {
   monitoring: {
     healthCheck: { interval: number; timeout: number };
     metrics: { interval: number; retention: number };
+    /**
+     * Where this project's platform takes omnitron's critical alerts: a
+     * service method in one of its apps, which each daemon calls — through
+     * the same path as `omnitron exec`, its own socket into the app's
+     * process — on the stacks of this project it runs, and repeats until the
+     * call lands. Only an app in bootstrap mode: the HTTP branch of `exec`
+     * is never used for this.
+     *
+     *   alertSink: { app: 'main', service: 'OpsAlerts', method: 'raise' }
+     */
+    alertSink?: IAlertSink;
   };
 
   logging: {

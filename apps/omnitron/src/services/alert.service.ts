@@ -37,6 +37,8 @@ import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 import { diskAtHome } from '../monitoring/host-disk.js';
 import { notifyDesktop } from '../monitoring/desktop-notifier.js';
+import { callExposedService, type ExposingSupervisor } from '../orchestrator/call-exposed-service.js';
+import type { IAlertSink } from '../config/types.js';
 
 // =============================================================================
 // Types
@@ -154,6 +156,11 @@ function evaluateExpression(
   return { firing: false, value: 'unparseable expression', unparseable: true };
 }
 
+/** How long a critical alert is still worth delivering: older, the sink never hears of it. */
+const DELIVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** How long a project's alert sink is taken from its config before it is read again. */
+const SINK_TTL_MS = 60_000;
+
 /** A rule's summary, from its annotations as the database hands them back — a jsonb object or its text. */
 function summaryOf(annotations: unknown): string | null {
   let value = annotations;
@@ -209,7 +216,8 @@ export class AlertService {
     // service's. This was an accessor token wired to `() => ({})`: every
     // `infra.…` rule — which the console's form accepts as supported — was
     // evaluated against no containers at all and could never fire.
-    @Optional() @Inject(PROJECT_SERVICE_TOKEN) private readonly projects?: Pick<ProjectService, 'getInfraManager'>,
+    @Optional() @Inject(PROJECT_SERVICE_TOKEN)
+    private readonly projects?: Partial<Pick<ProjectService, 'getInfraManager' | 'listProjects' | 'loadProjectConfig'>>,
   ) {
     this.logger = loggerModule.logger;
   }
@@ -217,7 +225,7 @@ export class AlertService {
   /** Every container of every stack on this machine, by container name. */
   private infraState(): Record<string, { status: string; health: string }> {
     const out: Record<string, { status: string; health: string }> = {};
-    for (const { infra } of this.projects?.getInfraManager().listInstances() ?? []) {
+    for (const { infra } of this.projects?.getInfraManager?.()?.listInstances() ?? []) {
       for (const [name, state] of Object.entries(infra.getState().services)) {
         out[name] = { status: state.status, health: containerHealth(state) };
       }
@@ -320,6 +328,136 @@ export class AlertService {
         .where('id', '=', rule.id)
         .execute();
     }
+
+    // After the rules, and never in their way: a sink that cannot be reached
+    // this tick is tried again on the next.
+    try {
+      await this.deliverPending(now);
+    } catch (err) {
+      this.logger.warn({ err }, 'Alert sink delivery failed this tick — tried again on the next');
+    }
+  }
+
+  /** Each project's alert sink, read from its config at most once a minute. */
+  private sinkCache: { at: number; sinks: Array<IAlertSink & { project: string }> } | null = null;
+
+  private async alertSinks(now: number): Promise<Array<IAlertSink & { project: string }>> {
+    if (this.sinkCache && now - this.sinkCache.at < SINK_TTL_MS) return this.sinkCache.sinks;
+    const sinks: Array<IAlertSink & { project: string }> = [];
+    for (const project of this.projects?.listProjects?.() ?? []) {
+      try {
+        const config = await this.projects!.loadProjectConfig!(project.name);
+        const sink = config.monitoring?.alertSink;
+        if (sink) sinks.push({ project: project.name, ...sink });
+      } catch (err) {
+        this.logger.warn({ err, project: project.name }, 'A project config could not be read for its alert sink');
+      }
+    }
+    this.sinkCache = { at: now, sinks };
+    return sinks;
+  }
+
+  /**
+   * The critical alerts the platform's alert sink has not taken yet, handed to
+   * it — every tick until it takes them (migration 013). The sink is an app of
+   * each stack of the sink's project this daemon runs (`daos/dev/main` on the
+   * master, `daos/test/main` on its node): a daemon delivers its own alerts to
+   * the stacks it runs, and a node's never wait for the master to be awake.
+   * The call takes `exec`'s road — the supervisor's socket into the process —
+   * and only into an app in bootstrap mode.
+   */
+  private async deliverPending(now: number): Promise<void> {
+    const sinks = await this.alertSinks(now);
+    const targets = sinks.flatMap((sink) => this.sinkTargets(sink).map((name) => ({ sink, name })));
+    if (targets.length === 0) return;
+
+    const pending = await this.db
+      .selectFrom('alert_events')
+      .innerJoin('alert_rules', 'alert_rules.id', 'alert_events.ruleId')
+      .select([
+        'alert_events.id as id',
+        'alert_events.status as status',
+        'alert_events.value as value',
+        'alert_events.deliveredAt as deliveredAt',
+        'alert_events.resolveDeliveredAt as resolveDeliveredAt',
+        'alert_rules.name as ruleName',
+        'alert_rules.annotations as annotations',
+      ])
+      .where('alert_rules.severity', '=', 'critical')
+      .where('alert_events.firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
+      .where((eb) =>
+        eb.or([
+          eb('alert_events.deliveredAt', 'is', null),
+          eb.and([eb('alert_events.status', '=', 'resolved'), eb('alert_events.resolveDeliveredAt', 'is', null)]),
+        ])
+      )
+      .orderBy('alert_events.firedAt', 'asc')
+      .limit(20)
+      .execute();
+
+    for (const event of pending) {
+      // The firing before its end: a resolve nobody saw fire says nothing.
+      const transitions: Array<'firing' | 'resolved'> = [];
+      if (!event.deliveredAt) transitions.push('firing');
+      if (event.status === 'resolved' && !event.resolveDeliveredAt) transitions.push('resolved');
+      for (const status of transitions) {
+        const failure = await this.deliverTo(targets, event, status);
+        await this.db
+          .updateTable('alert_events')
+          .set(
+            (failure
+              ? { deliveryError: failure }
+              : {
+                  [status === 'firing' ? 'deliveredAt' : 'resolveDeliveredAt']: new Date(now),
+                  deliveryError: null,
+                }) as any
+          )
+          .where('id', '=', event.id)
+          .execute();
+        if (failure) break;
+      }
+    }
+  }
+
+  /** The apps a sink names on the stacks of its project this daemon runs. */
+  private sinkTargets(sink: IAlertSink & { project: string }): string[] {
+    return this.orchestrator
+      .list()
+      .map((app) => app.name)
+      .filter((name) => {
+        const [project, stack, app, ...rest] = name.split('/');
+        return rest.length === 0 && Boolean(stack) && project === sink.project && app === sink.app;
+      });
+  }
+
+  /** One transition to every target: the first failure, or null when every one took it. */
+  private async deliverTo(
+    targets: Array<{ sink: IAlertSink; name: string }>,
+    event: { id: string; value: string | null; ruleName: string; annotations: unknown },
+    status: 'firing' | 'resolved'
+  ): Promise<string | null> {
+    for (const { sink, name } of targets) {
+      const handle = this.orchestrator.getHandle(name);
+      if (!handle || handle.status !== 'online') return `${name} is not online`;
+      if (handle.mode !== 'bootstrap' || !handle.supervisor)
+        return `${name} is not a bootstrap app — its alert sink is refused`;
+      const [project, stack] = name.split('/');
+      try {
+        await callExposedService(handle.supervisor as unknown as ExposingSupervisor, name, sink.service, sink.method, [
+          {
+            eventId: event.id,
+            status,
+            ruleName: event.ruleName,
+            value: event.value ?? '',
+            summary: summaryOf(event.annotations),
+            host: `${project}/${stack}`,
+          },
+        ]);
+      } catch (err) {
+        return `${name}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
+      }
+    }
+    return null;
   }
 
   /**

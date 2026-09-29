@@ -17,6 +17,8 @@ export function defineEcosystem(config: Partial<IEcosystemConfig> & Pick<IEcosys
     monitoring: {
       healthCheck: { ...DEFAULT_ECOSYSTEM.monitoring.healthCheck, ...config.monitoring?.healthCheck },
       metrics: { ...DEFAULT_ECOSYSTEM.monitoring.metrics, ...config.monitoring?.metrics },
+      // Named, or it is dropped: this block is rebuilt field by field.
+      ...(config.monitoring?.alertSink && { alertSink: config.monitoring.alertSink }),
     },
     logging: { ...DEFAULT_ECOSYSTEM.logging, ...config.logging },
   };

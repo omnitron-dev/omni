@@ -157,6 +157,12 @@ export interface AlertEventsTable {
   resolvedAt: Timestamp | null;
   acknowledgedAt: Timestamp | null;
   acknowledgedBy: string | null;
+  /** When the platform's alert sink took the firing (monitoring.alertSink); null while it has not. */
+  deliveredAt: Timestamp | null;
+  /** When the sink took the resolve. */
+  resolveDeliveredAt: Timestamp | null;
+  /** Why the last delivery attempt failed, while it keeps being retried. */
+  deliveryError: string | null;
 }
 
 // =============================================================================

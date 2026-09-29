@@ -15,6 +15,7 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { callExposedService, type ExposingSupervisor } from '../orchestrator/call-exposed-service.js';
 import type { IDaemonService } from '../shared/dto/services.js';
 import type {
   ProcessInfoDto,
@@ -673,52 +674,12 @@ export class DaemonRpcService implements IDaemonService {
     }
   }
 
-  /**
-   * Call a service method on whichever of the app's processes exposes it.
-   *
-   * This asked the FIRST child's process proxy for `proxy[service][method]`.
-   * The proxy answers a remote-call function for ANY property name, so
-   * `proxy[service]` was a function and `[method]` on it undefined: `omnitron
-   * exec main NotificationWorker getStatus` answered «Method with id
-   * NotificationWorker.getStatus not found» for a method that exists — in the
-   * notification-worker process, which the first child is not. The working
-   * path is the one `ServiceRouter` uses: each process lists the services it
-   * exposes (`getExposedServices`) and runs a call on one of them
-   * (`callExposedService`).
-   */
+  /** A bootstrap app's call, through the one road `exec` and the alert sink share. */
   private async execInBootstrapApp(
     supervisor: NonNullable<ReturnType<OrchestratorService['getHandle']>>['supervisor'] & object,
     data: { name: string; service: string; method: string; args: unknown[] },
   ): Promise<unknown> {
-    const childNames = supervisor.getChildNames();
-    if (childNames.length === 0) throw Errors.conflict(`No running children for app '${data.name}'`);
-
-    const wanted = data.service.split('@')[0];
-    const offered: string[] = [];
-    for (const child of childNames) {
-      const proxy = (await supervisor.getChildProxy(child)) as {
-        getExposedServices?: () => Promise<Array<{ name: string; version?: string; methods: string[] }>>;
-        callExposedService?: (service: string, method: string, args: unknown[]) => Promise<unknown>;
-      } | null;
-      if (!proxy?.getExposedServices || !proxy.callExposedService) continue;
-      const services = await proxy.getExposedServices();
-      const match = services.find((svc) => svc.name === wanted || svc.name.split('@')[0] === wanted);
-      if (!match) {
-        offered.push(...services.map((svc) => `${svc.name} (${child})`));
-        continue;
-      }
-      if (!match.methods.includes(data.method)) {
-        throw Errors.notFound(
-          'Method',
-          `${data.service}.${data.method} — ${match.name} in ${child} offers: ${match.methods.join(', ') || 'no public methods'}`,
-        );
-      }
-      return proxy.callExposedService(data.service, data.method, data.args);
-    }
-    throw Errors.notFound(
-      'Service',
-      `${data.service} in ${data.name} — its processes expose: ${offered.join(', ') || 'no services'}`,
-    );
+    return callExposedService(supervisor as ExposingSupervisor, data.name, data.service, data.method, data.args);
   }
 
   /**

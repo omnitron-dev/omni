@@ -115,9 +115,31 @@ function exportsOf(file, depth = 0) {
   return names;
 }
 
+/**
+ * The documentation this gate reads is NOT in this repository.
+ *
+ * `.gitignore` line 1 is `internal/`, so `internal/website/docs` exists on a
+ * developer's machine and nowhere else. On a hosted runner the directory is
+ * absent, `mdFiles` returns nothing, `checked` stays 0 and the self-check
+ * below refuses — which is how the first CI run that ever reached a check
+ * reported «only 0 symbols checked — the docs or the parser moved»
+ * (2026-09-29, run 36637763472, the 34th and first non-trivial one).
+ *
+ * An absent SUBJECT is not a failed check. Saying so out loud is the whole of
+ * the difference: the gate prints where it looked and passes, and the
+ * self-check's «400 symbols» floor keeps its teeth for every checkout that
+ * HAS the directory. A silent pass here would be the thing this file's own
+ * self-check exists to prevent.
+ */
+const DOCS = join(ROOT, 'internal/website/docs');
+if (!existsSync(DOCS)) {
+  console.log(`no documentation at ${DOCS} — it lives under the gitignored \`internal/\`, so there is nothing here to check`);
+  process.exit(0);
+}
+
 const missing = new Map();
 let checked = 0;
-for (const file of mdFiles(join(ROOT, 'internal/website/docs'))) {
+for (const file of mdFiles(DOCS)) {
   const lines = readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, i) => {
     const m = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'(@omnitron-dev\/[^']+)'/.exec(line);

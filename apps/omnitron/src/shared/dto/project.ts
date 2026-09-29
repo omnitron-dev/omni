@@ -304,3 +304,14 @@ export interface IProjectRequirements {
   /** Aggregated: does any app need S3? */
   needsS3: boolean;
 }
+
+/** A stack's maintenance lock, as its gateway answers `/_/maintenance`. */
+export interface IStackMaintenance {
+  where: string;
+  active: boolean;
+  reason: string | null;
+  message: string | null;
+  endsAt: number | null;
+  retryAfter: number | null;
+  notice: { startsAt: number; startsIn: number; reason: string; message: string | null } | null;
+}

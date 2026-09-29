@@ -377,6 +377,58 @@ export function accountOptionsRefusal(options: {
 }
 
 /**
+ * `omnitron stack maintenance <project> <stack> [status|on|off]` — the stack's
+ * maintenance lock at its gateway, as the gateway enforces it. `on` holds the
+ * platform for `--minutes` (default 15, at most 60) and lets go by itself;
+ * `off` lets go now — also a lock a failed deployment left behind.
+ */
+export async function stackMaintenanceCommand(
+  projectName: string,
+  stackName: string,
+  action: string | undefined,
+  options: { minutes?: string },
+): Promise<void> {
+  const verb = (action ?? 'status') as 'status' | 'on' | 'off';
+  if (verb !== 'status' && verb !== 'on' && verb !== 'off') {
+    emitError(`'${action}' is not a maintenance action — status, on or off`, { project: projectName, stack: stackName });
+    process.exitCode = 1;
+    return;
+  }
+  const minutes = options.minutes === undefined ? undefined : Number(options.minutes);
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (verb !== 'status') {
+      emitStep(verb === 'on' ? `Holding ${projectName}/${stackName} for ${minutes ?? 15} min…` : `Letting ${projectName}/${stackName} go…`);
+    }
+    const state = await svc.stackMaintenance({
+      project: projectName,
+      stack: stackName,
+      action: verb,
+      ...(minutes !== undefined ? { minutes } : {}),
+    });
+    if (emitJson(state)) return;
+    if (state.active) {
+      log.warn(
+        `${state.where}: HELD (${state.reason ?? 'unknown'})` +
+          (state.retryAfter !== null ? ` — callers are told to retry in ${state.retryAfter} s` : '') +
+          (state.message ? ` — «${state.message}»` : ''),
+      );
+      if (state.reason === 'admin') emitInfo('The administrators\' mode is switched in /admin, not from here.');
+    } else if (state.notice) {
+      emitInfo(`${state.where}: open; maintenance (${state.notice.reason}) announced in ${state.notice.startsIn} s`);
+    } else {
+      emitSuccess(`${state.where}: open`);
+    }
+  } catch (err) {
+    emitError(err instanceof Error ? err.message : String(err), { project: projectName, stack: stackName });
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect().catch(() => undefined);
+  }
+}
+
+/**
  * `omnitron stack account` — accounts on a remote stack's stand, by the
  * project's own tool on the node:
  *

@@ -90,6 +90,12 @@ export interface UpgradeDeployer {
   installBundle(target: never, archivePath: string, version: string): Promise<boolean>;
   activateBundle(target: never, version: string, prefix?: string, keepVersions?: number): Promise<boolean>;
   /**
+   * `activateBundle` with the node's platform held at its gateways while its
+   * apps restart (`maintenance-lock.ts`). Optional, as `underLease` is: the
+   * daemon's `RemoteDeployer` has it, and a caller without it activates unheld.
+   */
+  activateBundleHeld?(target: never, version: string, prefix?: string, keepVersions?: number): Promise<boolean>;
+  /**
    * Run `work` holding the node's deploy lease — the same one a stack
    * deployment takes. Optional so a caller without leases keeps working; the
    * daemon's `RemoteDeployer` has it, and the console's upgrades went around
@@ -418,7 +424,10 @@ export class NodeUpgradeService {
           return;
         }
         this.emit(nodeId, 'activating', 80, 'Switching the node into the new version', version);
-        const activated = await deployer.activateBundle(target, version, '/opt/omnitron', 3);
+        // Held where the deployer can: activation stops every app on the node.
+        const activated = deployer.activateBundleHeld
+          ? await deployer.activateBundleHeld(target, version, '/opt/omnitron', 3)
+          : await deployer.activateBundle(target, version, '/opt/omnitron', 3);
         if (!activated) {
           this.emit(
             nodeId,

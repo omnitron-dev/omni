@@ -256,6 +256,7 @@ import type {
   IStackAccountRemoved,
   IStackAccountCensus,
   IStackLeftoversCensus,
+  IStackMaintenance,
 } from './project.js';
 
 export type {
@@ -360,6 +361,16 @@ export interface IProjectRpcService {
     mode: 'census' | 'rehearse' | 'apply';
     also?: string[];
   }): Promise<IStackLeftoversCensus>;
+  /**
+   * The stack's maintenance lock at its gateway: its state as the gateway
+   * enforces it, or held/released by hand (`services/maintenance-lock.ts`).
+   */
+  stackMaintenance(data: {
+    project: string;
+    stack: string;
+    action: 'status' | 'on' | 'off';
+    minutes?: number;
+  }): Promise<IStackMaintenance>;
   /** What a remote stack's stand holds under a name — never a secret. */
   showStackAccount(data: { project: string; stack: string; username: string }): Promise<IStackAccountLookup>;
   /** Take an account away — the one with this name AND id — and the password the vault keeps for it. */
@@ -839,3 +850,4 @@ export interface IOmnitronReleaseService {
     accounts: 'provisioned' | 'not-declared' | 'producer-cannot';
   }>;
 }
+

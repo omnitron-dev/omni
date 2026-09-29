@@ -279,6 +279,17 @@ stack
   );
 
 stack
+  .command('maintenance <project> <stack> [action]')
+  .description(
+    "The stack's maintenance lock at its gateway: `status` (the default), `on` — hold the platform for --minutes and let go by itself — or `off`",
+  )
+  .option('--minutes <n>', 'With `on`: how long to hold, 1–60 (default 15)')
+  .action(async (projectName: string, stackName: string, action: string | undefined, options: { minutes?: string }) => {
+    const { stackMaintenanceCommand } = await import('../commands/stack.js');
+    await stackMaintenanceCommand(projectName, stackName, action, options);
+  });
+
+stack
   .command('runtime <project> <stack>')
   .description('Show stack runtime status as JSON')
   .action(async (projectName, stackName) => {

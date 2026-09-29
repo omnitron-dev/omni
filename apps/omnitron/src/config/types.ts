@@ -329,6 +329,19 @@ export interface IStackSettings {
   appEnv?: Record<string, Record<string, StackEnvValue>>;
   /** Override log level for all apps in this stack */
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
+  /**
+   * The maintenance lock a remote deployment holds at the stack's gateway
+   * (`services/maintenance-lock.ts`): open pages are warned `noticeSeconds`
+   * ahead (default 60), then everyone is held until the deployed platform
+   * answers through the gateway; `etaSeconds` (default 180) is what callers
+   * are told to wait. `disabled` deploys unheld — for an emergency, where a
+   * minute of warning costs more than a restart under the users.
+   */
+  maintenance?: {
+    noticeSeconds?: number;
+    etaSeconds?: number;
+    disabled?: boolean;
+  };
   /** Override infrastructure ports for this stack (avoids port conflicts between stacks) */
   portOffsets?: {
     /** Offset added to postgres port (default: 0 for first stack) */

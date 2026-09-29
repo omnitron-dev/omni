@@ -350,6 +350,12 @@ describe('one writer per node', () => {
         order.push('confirm');
         return 'RENEWED\n';
       }
+      // The maintenance lock asks the node's docker whether a gateway runs
+      // (maintenance-lock.ts); none does here, so nothing is held.
+      if (script.startsWith('docker ')) {
+        order.push('maintenance');
+        return '';
+      }
       order.push('release');
       return 'RELEASED\n';
     };
@@ -360,13 +366,18 @@ describe('one writer per node', () => {
 
     await svc.startRemoteStack('daos', 'test', REMOTE, {});
 
-    expect(order[0]).toBe('lease');
+    // The maintenance lock's look at the node sits between the confirmation
+    // and the first change — under the lease, before anything stops.
+    expect(order.indexOf('maintenance')).toBeGreaterThan(order.indexOf('confirm'));
+    expect(order.indexOf('maintenance')).toBeLessThan(order.indexOf('provision'));
+    const steps = order.filter((s) => s !== 'maintenance');
+    expect(steps[0]).toBe('lease');
     // Confirmed with the node before each step that changes it…
-    expect(order.slice(0, 3)).toEqual(['lease', 'confirm', 'provision']);
-    expect(order[order.indexOf('deliver') - 1]).toBe('confirm');
+    expect(steps.slice(0, 3)).toEqual(['lease', 'confirm', 'provision']);
+    expect(steps[steps.indexOf('deliver') - 1]).toBe('confirm');
     // …and given back exactly once, after everything else.
-    expect(order.at(-1)).toBe('release');
-    expect(order.filter((s) => s === 'release')).toHaveLength(1);
+    expect(steps.at(-1)).toBe('release');
+    expect(steps.filter((s) => s === 'release')).toHaveLength(1);
   });
 
   it('a node another deployment holds is refused before anything on it changes', async () => {

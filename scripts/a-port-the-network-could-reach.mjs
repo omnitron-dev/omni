@@ -145,10 +145,12 @@ if (declared.length > 0) {
   console.log(`${declared.length} port(s) public on purpose (# public: …):`);
   for (const d of declared) console.log(`  ${d}`);
 }
+// Ended by `process.exitCode`, never `process.exit` (see the vitest court beside this).
 if (refused.length > 0) {
   console.error(`${refused.length} of ${count} published port(s) in ${files.length} compose file(s) reach the network:`);
   for (const r of refused) console.error(`  ${r}`);
   console.error('Bind each to the loopback ("127.0.0.1:host:container"), or say on its line why it must not be: # public: <why>');
-  process.exit(1);
+  process.exitCode = 1;
+} else {
+  console.log(`${count} published port(s) in ${files.length} compose file(s), all on the loopback or public on purpose`);
 }
-console.log(`${count} published port(s) in ${files.length} compose file(s), all on the loopback or public on purpose`);

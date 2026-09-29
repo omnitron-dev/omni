@@ -137,14 +137,11 @@ export class MaintenanceLock {
     timing: MaintenanceTiming = DEFAULT_MAINTENANCE_TIMING,
     sleep: (ms: number) => Promise<void> = sleepFor,
   ): Promise<MaintenanceLock | null> {
-    let running = '';
-    try {
-      running = await site.run(
+    const running = await site
+      .run(
         `docker inspect -f '{{.Name}} {{.State.Running}}' ${shellEscape(`${site.prefix}-gateway`)} ${shellEscape(`${site.prefix}-redis`)} 2>/dev/null || true`,
-      );
-    } catch {
-      running = '';
-    }
+      )
+      .catch(() => '');
     if (!/-gateway true\b/.test(running) || !/-redis true\b/.test(running)) {
       logger.info({ prefix: site.prefix }, 'No running gateway and Redis on this node — deploying without a maintenance lock');
       return null;

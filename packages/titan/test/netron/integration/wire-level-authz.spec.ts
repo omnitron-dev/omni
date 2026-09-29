@@ -57,7 +57,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 'wire-authz-server' });

@@ -48,7 +48,7 @@ describe('a contract binds on every transport', () => {
 
   async function startPair() {
     seen.length = 0;
-    const port = await getFreePort();
+    const port = await getFreePort('localhost');
 
     server = new Netron(createMockLogger(), { id: 'contract-server' });
     server.registerTransport('ws', () => new WebSocketTransport());
@@ -137,7 +137,7 @@ describe('a contract on a method that takes no arguments', () => {
 
   async function pair() {
     heard.length = 0;
-    const port = await getFreePort();
+    const port = await getFreePort('localhost');
     s2 = new Netron(createMockLogger(), { id: 'zero-arg-server' });
     s2.registerTransport('ws', () => new WebSocketTransport());
     s2.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });

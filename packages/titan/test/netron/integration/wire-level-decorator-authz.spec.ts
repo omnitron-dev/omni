@@ -50,7 +50,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 'sec1-server' });

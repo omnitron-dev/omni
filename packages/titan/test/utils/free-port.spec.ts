@@ -86,4 +86,70 @@ describe('getFreePort', () => {
 
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
+
+  /**
+   * The allocator answers about the host it is GIVEN, and `localhost` is not
+   * `127.0.0.1`.
+   *
+   * `isBindable`'s own comment says this one layer up — «the old probe
+   * listened on port 0 with no host … those are different questions» — and
+   * twelve spec files then took the default and bound `host: 'localhost'`
+   * anyway. Measured on this machine: `dns.lookup('localhost')` answers `::1`,
+   * a server that listens on `'localhost'` takes `[::1]:P`, and
+   * `isBindable(P, '127.0.0.1')` answers **true** about it. So those files
+   * were handed «free» about a socket nobody had asked about.
+   *
+   * Whether that is what reddened `wire-level-decorator-authz` once in nine
+   * full runs is NOT established — that failure was never reproduced and its
+   * text was lost. This holds the mechanism, which is a defect on its own.
+   */
+  it('steps over a port a localhost server holds', async () => {
+    // The sibling above parks on `127.0.0.1` and is answered correctly by the
+    // default probe. This is the same case with the host the twelve callers
+    // actually bind: with the default host the probe asks about another socket
+    // and the allocator hands the held number straight back. Parked on the
+    // NEXT number the cursor will produce, because a draw twenty apart never
+    // comes back round a 1500-port band — the version that did that passed
+    // with the allocator ignoring its host argument entirely.
+    const first = await getFreePort('localhost');
+    const squatter = createServer();
+    await new Promise<void>((resolve) => squatter.listen(first + 1, 'localhost', resolve));
+
+    try {
+      const next = await getFreePort('localhost');
+      expect(next, 'handed back a port a localhost server holds').not.toBe(first + 1);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  it('answers about the host it was given, and localhost is not 127.0.0.1', async () => {
+    const port = await getFreePort('localhost');
+    const held = createServer();
+    await new Promise<void>((resolve) => held.listen(port, 'localhost', resolve));
+
+    try {
+      // What a caller that binds `localhost` must ask, and what it must hear.
+      await expect(isFree(port, 'localhost')).resolves.toBe(false);
+
+      // What the DEFAULT asks. On a host where `localhost` is `::1` this is a
+      // different socket and answers about nothing the caller will bind; the
+      // case below is written to pass either way, because a machine whose
+      // `localhost` is `127.0.0.1` has no gap to report.
+      const dual = (held.address() as { address: string }).address !== '127.0.0.1';
+      if (dual) await expect(isFree(port, '127.0.0.1')).resolves.toBe(true);
+
+    } finally {
+      await new Promise<void>((resolve) => held.close(() => resolve()));
+    }
+  });
 });
+
+/** `isBindable` is private; this is the same question asked from outside. */
+function isFree(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, host, () => probe.close(() => resolve(true)));
+  });
+}

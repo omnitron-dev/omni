@@ -52,7 +52,7 @@ describe('Netron — SEC-5 per-peer unref refcounting of dynamic stubs', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     server = new Netron(createMockLogger(), { id: 'sec5-server' });
     server.registerTransport('ws', () => new WebSocketTransport());

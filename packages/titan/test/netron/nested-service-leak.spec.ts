@@ -55,7 +55,7 @@ describe('Netron — nested-service leak (T#49)', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort();
+    port = await getFreePort('localhost');
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 't49-server' });

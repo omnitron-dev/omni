@@ -59,7 +59,8 @@ function remoteStart() {
   svc.resolveNodeAppEnv = async () => ({ main: { DATABASE_URL: 'postgres://…/main' } });
   svc.deployer = {
     onProgress: () => () => {},
-    leaseRunner: () => ({}),
+    // A node with no gateway stack: the maintenance lock finds nothing to hold.
+    leaseRunner: () => async () => '',
     provisionSlaveNode: async () => true,
     deployToStack: async (_t: unknown, artifacts: Array<{ app: string }>, _p: string, options: Record<string, unknown>) => {
       asked.push(options);

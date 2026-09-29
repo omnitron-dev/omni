@@ -137,11 +137,25 @@ export class MaintenanceLock {
     timing: MaintenanceTiming = DEFAULT_MAINTENANCE_TIMING,
     sleep: (ms: number) => Promise<void> = sleepFor,
   ): Promise<MaintenanceLock | null> {
-    const running = await site
-      .run(
+    // Asked inside `try`, not with a `.catch` on what `run` returns: a runner
+    // that throws before it returns a promise went past the `.catch` and
+    // failed the whole deployment — ten cases in three courts whose fake
+    // deployer hands back no runner said «site.run is not a function» from
+    // 2026-09-29 (14d60961) on. A node that could not be asked has not said
+    // it has no gateway, so it is said differently; either way the deployment
+    // goes on unheld, which is this function's word.
+    let running: string;
+    try {
+      running = await site.run(
         `docker inspect -f '{{.Name}} {{.State.Running}}' ${shellEscape(`${site.prefix}-gateway`)} ${shellEscape(`${site.prefix}-redis`)} 2>/dev/null || true`,
-      )
-      .catch(() => '');
+      );
+    } catch (err) {
+      logger.warn(
+        { prefix: site.prefix, err: err instanceof Error ? err.message : String(err) },
+        'Could not ask the node for its gateway — deploying without a maintenance lock',
+      );
+      return null;
+    }
     if (!/-gateway true\b/.test(running) || !/-redis true\b/.test(running)) {
       logger.info({ prefix: site.prefix }, 'No running gateway and Redis on this node — deploying without a maintenance lock');
       return null;

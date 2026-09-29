@@ -24,6 +24,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { NetronMiddlewareContext } from '../transport/http/middleware/types.js';
 import type { IssuedTokens } from './token-transport.js';
+import { buildSetCookie, buildClearCookie, type CookieAttributes } from './cookie-codec.js';
 
 /**
  * Metadata keys consumed by the HTTP transport's response builder.
@@ -167,6 +168,105 @@ export function clearTokens(ctx?: Pick<NetronMiddlewareContext, 'metadata'>): vo
     );
   }
   metadata.set(TOKEN_ISSUANCE_METADATA_KEYS.cleared, true);
+}
+
+/**
+ * Queue one Set-Cookie for this response, for a cookie that is NOT an auth
+ * token.
+ *
+ * `issueTokens` speaks only of `access` and `refresh`, and only when a cookie
+ * transport is configured. A platform needs other cookies that a gateway —
+ * not the application — reads: a maintenance-mode bypass an nginx/Lua layer
+ * compares against a stored hash, a canary flag, a shard pin. They have no
+ * business in the token transport and no reason to wait for one.
+ *
+ * Writes into the SAME queue the transport appends to
+ * ({@link TOKEN_ISSUANCE_METADATA_KEYS.setCookies}), which the HTTP server
+ * flushes into the response after every POST_PROCESS middleware has run —
+ * unconditionally, not only when tokens were issued. So this composes with
+ * `issueTokens` in either order and in either transport mode.
+ *
+ * This function exists so that nobody writes into that metadata key by hand.
+ * The key is exported for transports and tests, and a second writer with its
+ * own idea of the attributes is how two cookies of one name end up in a jar:
+ * browsers key on (name, path, domain), so a value written once with `Path=/`
+ * and once without is two cookies, and which one is sent is not something the
+ * server decides.
+ *
+ * SECURITY: `attrs` defaults are the auth-grade ones from
+ * {@link buildSetCookie} — `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`.
+ * A deployment served over plain HTTP (an onion address, a development
+ * stand) MUST pass `secure: false`, or the browser drops the cookie and the
+ * caller sees nothing but a feature that does not work. Take that flag from
+ * whatever already decided it for the session cookie; do not re-derive it.
+ *
+ * @example
+ *   issueCookie('omni_maint', secret, { secure, maxAge: 86_400 });
+ */
+export function issueCookie(name: string, value: string, attrs?: CookieAttributes): void;
+export function issueCookie(
+  ctx: Pick<NetronMiddlewareContext, 'metadata'>,
+  name: string,
+  value: string,
+  attrs?: CookieAttributes
+): void;
+export function issueCookie(
+  first: string | Pick<NetronMiddlewareContext, 'metadata'>,
+  second: string,
+  third?: string | CookieAttributes,
+  fourth?: CookieAttributes
+): void {
+  if (typeof first === 'string') {
+    queueSetCookie(null, buildSetCookie(first, second, third as CookieAttributes | undefined));
+    return;
+  }
+  queueSetCookie(first.metadata, buildSetCookie(second, third as string, fourth));
+}
+
+/**
+ * Queue a Set-Cookie that deletes one non-auth cookie.
+ *
+ * `path` and `domain` MUST match what {@link issueCookie} used, because the
+ * browser deletes by the (name, path, domain) tuple and silently keeps a
+ * cookie whose tuple differs — a bypass that outlives the session that was
+ * given it, with nothing in any log to say so.
+ *
+ * Distinct from {@link clearTokens}, which clears the transport's registered
+ * auth cookies and knows nothing about these.
+ */
+export function clearCookie(name: string, attrs?: Pick<CookieAttributes, 'path' | 'domain'>): void;
+export function clearCookie(
+  ctx: Pick<NetronMiddlewareContext, 'metadata'>,
+  name: string,
+  attrs?: Pick<CookieAttributes, 'path' | 'domain'>
+): void;
+export function clearCookie(
+  first: string | Pick<NetronMiddlewareContext, 'metadata'>,
+  second?: string | Pick<CookieAttributes, 'path' | 'domain'>,
+  third?: Pick<CookieAttributes, 'path' | 'domain'>
+): void {
+  if (typeof first === 'string') {
+    queueSetCookie(null, buildClearCookie(first, second as Pick<CookieAttributes, 'path' | 'domain'> | undefined));
+    return;
+  }
+  queueSetCookie(first.metadata, buildClearCookie(second as string, third));
+}
+
+/**
+ * Internal: append one serialized Set-Cookie to the response queue.
+ *
+ * Appends rather than replaces: a handler may set several cookies, and the
+ * transport's own tokens are in the same array.
+ */
+function queueSetCookie(metadata: Map<string, unknown> | null, serialized: string): void {
+  const target = metadata ?? currentMetadata();
+  if (!target) {
+    throw new Error(
+      'issueCookie()/clearCookie() called outside of a service-handler context — either pass ctx explicitly or invoke inside runWithTokenIssuanceContext'
+    );
+  }
+  const existing = target.get(TOKEN_ISSUANCE_METADATA_KEYS.setCookies) as string[] | undefined;
+  target.set(TOKEN_ISSUANCE_METADATA_KEYS.setCookies, existing ? [...existing, serialized] : [serialized]);
 }
 
 /**

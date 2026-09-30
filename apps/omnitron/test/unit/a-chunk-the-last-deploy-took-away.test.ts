@@ -83,6 +83,47 @@ describe('a tab from before the deployment keeps its chunks', () => {
   });
 });
 
+/**
+ * A second generation the rollback would have carried.
+ *
+ * `<dir>.own-assets` is the list of what a build brought itself, and it is
+ * what the NEXT deployment reads to decide what to carry. One generation is
+ * the whole design: carrying what was carried grows every build by every
+ * build before it.
+ *
+ * A rollback runs this for a directory that is already on the node and has
+ * already been carried INTO — its `assets/` holds another build's chunks as
+ * hard links. Rewriting the list there records those as its own, and the next
+ * deployment carries two generations out of it. So the list is written once
+ * and never again for the same directory.
+ */
+describe('a build says what it brought itself, once', () => {
+  it('keeps the first list when the same build is delivered again', () => {
+    root = mkdtempSync(join(tmpdir(), 'carry-'));
+    const prev = build(1, ['old-a.js', 'old-b.js']);
+    const fresh = build(2, ['new.js']);
+    // Delivery one: `fresh` records `new.js`, then takes the previous build's two.
+    run(carryForwardScript({ root, fresh, serving: [prev], mounted: [prev], keep: 5 }));
+    expect(readFileSync(`${fresh}.own-assets`, 'utf8').trim().split('\n').sort()).toEqual(['new.js']);
+    expect(existsSync(join(fresh, 'assets', 'old-a.js'))).toBe(true);
+
+    // Delivery two: the same build, asked for again — a rollback onto it.
+    run(carryForwardScript({ root, fresh, serving: [prev], mounted: [prev], keep: 5 }));
+    expect(
+      readFileSync(`${fresh}.own-assets`, 'utf8').trim().split('\n').sort(),
+      'the carried chunks were recorded as this build\'s own — the next deployment would carry two generations',
+    ).toEqual(['new.js']);
+  });
+
+  it('still writes it for a build that has none yet', () => {
+    root = mkdtempSync(join(tmpdir(), 'carry-'));
+    const fresh = build(2, ['new.js']);
+    rmSync(`${fresh}.own-assets`, { force: true });
+    run(carryForwardScript({ root, fresh, serving: [], mounted: [], keep: 5 }));
+    expect(readFileSync(`${fresh}.own-assets`, 'utf8').trim()).toBe('new.js');
+  });
+});
+
 describe('builds nobody serves go', () => {
   it('keeps the newest, the new one and every mounted one; removes the rest with their markers', () => {
     root = mkdtempSync(join(tmpdir(), 'carry-'));

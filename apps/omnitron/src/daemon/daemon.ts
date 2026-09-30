@@ -1795,7 +1795,8 @@ export class OmnitronDaemon {
 
       // Master-only services (require PG)
       const authService = !isSlave ? await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN) : null;
-      const alertService = !isSlave ? await container.resolveAsync<AlertService>(ALERT_SERVICE_TOKEN) : null;
+      // Both roles: a node evaluates its own alarms on its SQLite (daemon.module.ts).
+      const alertService = await container.resolveAsync<AlertService>(ALERT_SERVICE_TOKEN);
       const fleetService = !isSlave ? await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN) : null;
 
       registerDaemonJobs(scheduler, {

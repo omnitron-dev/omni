@@ -599,7 +599,24 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           useClass: AlertService,
           scope: Scope.Singleton,
         },
-      ] as any] : []),
+      ] as any] : [[
+        // A node counts its own alarms, in its SQLite, with the four critical
+        // defaults (SlaveStorageService.createAlertTables) — the owner's choice
+        // of 2026-09-30. It was master-only, and the test stack's alerts were
+        // evaluated by nobody. The rules' RPC stays on the master: the console
+        // talks to the master alone.
+        ALERT_SERVICE_TOKEN,
+        {
+          useFactory: async (
+            loggerModule: ILoggerModule,
+            slaveStorage: SlaveStorageService,
+            orchestrator: OrchestratorService,
+            projects: ProjectService
+          ) => new AlertService(loggerModule, (await slaveStorage.getDb()) as any, orchestrator, projects),
+          inject: [LOGGER_SERVICE_TOKEN, SLAVE_STORAGE_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN],
+          scope: Scope.Singleton,
+        },
+      ] as any]),
 
       // The audit trail (master only — the table is in the omnitron
       // database). Registration order does not bind resolution — the

@@ -59,9 +59,19 @@ describe('serialising the parameters a statement is given', () => {
   it('leaves everything better-sqlite3 already accepts alone', () => {
     // Numbers, strings, bigints, buffers and null — the driver's own list.
     // "Helpfully" converting any of these would break a query that works.
-    const params = [1, 'text', 10n, Buffer.from('x'), null, undefined, true];
+    // (`true` stood in this list and is not on the driver's: measured
+    // 2026-09-30, better-sqlite3 13.0.3 refuses it with the same message as
+    // a Date — see the next case.)
+    const params = [1, 'text', 10n, Buffer.from('x'), null, undefined];
 
     expect(serialiseDates(params)).toEqual(params);
+  });
+
+  it('binds a boolean as SQLite keeps one, 1 or 0', () => {
+    // The node's alert engine asks `enabled = true`; Kysely hands the driver
+    // the array of parameters, so the inner branch is the one that runs.
+    expect(serialiseDates([true, false])).toEqual([1, 0]);
+    expect(serialiseDates([[true, 'x', false]])).toEqual([[1, 'x', 0]]);
   });
 
   it('returns the same array when there is nothing to change', () => {

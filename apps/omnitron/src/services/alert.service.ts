@@ -307,7 +307,12 @@ export class AlertService {
           ruleId: rule.id,
           status: 'firing',
           value,
-          annotations: rule.annotations ? (JSON.stringify(rule.annotations) as any) : null,
+          // Postgres hands `jsonb` back as an object, the node's SQLite as the
+          // text it holds; stringifying that text again stored a JSON string of
+          // JSON, which `summaryOf` reads as no summary at all.
+          annotations: rule.annotations
+            ? ((typeof rule.annotations === 'string' ? rule.annotations : JSON.stringify(rule.annotations)) as any)
+            : null,
           firedAt: new Date(),
         } as any).execute();
         if (rule.severity === 'critical') this.sayOnDesktop(rule, 'firing', value);

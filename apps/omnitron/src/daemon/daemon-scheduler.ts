@@ -110,7 +110,7 @@ export function registerDaemonJobs(
   });
   jobs.push('metrics-collection');
 
-  // Alert evaluation (master only — requires PG)
+  // Alert evaluation — on both roles: the master on Postgres, a node on its SQLite
   if (alertService) {
     scheduler.addInterval('alert-evaluation', deps.healthCheckInterval, async () => {
       try {
@@ -125,7 +125,7 @@ export function registerDaemonJobs(
     });
     jobs.push('alert-evaluation');
   } else {
-    skipped.push({ job: 'alert-evaluation', because: 'no alert service (master only — requires PG)' });
+    skipped.push({ job: 'alert-evaluation', because: 'no alert service' });
   }
 
   // Fleet heartbeat (master only — requires PG): keeps this daemon's own row

@@ -865,6 +865,13 @@ export interface IAlertSink {
   app: string;
   service: string;
   method: string;
+  /**
+   * How the alert names where it came from — `<project>/<stack>`. Absent, the
+   * daemon says the stack it runs the sink in. A node runs its apps in a stack
+   * of its own (`deployed`), so its deployment writes the master's name for
+   * it: the bell says `daos/test`, not `daos/deployed`.
+   */
+  host?: string;
 }
 
 export interface IEcosystemConfig {

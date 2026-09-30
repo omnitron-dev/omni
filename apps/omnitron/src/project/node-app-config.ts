@@ -18,7 +18,7 @@
  * header cannot repay.
  */
 
-import type { IEcosystemAppEntry } from '../config/types.js';
+import type { IAlertSink, IEcosystemAppEntry } from '../config/types.js';
 
 /**
  * The stack a node runs its deployed apps under.
@@ -73,6 +73,16 @@ export interface NodeConfigInput {
    * build what it points at, and the two must not be said with one sentence.
    */
   appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
+  /**
+   * Where the node hands its critical alerts — the project's
+   * `monitoring.alertSink`, with the master's `<project>/<stack>` as `host`.
+   *
+   * The node's config carried the apps and nothing else, so on the test node
+   * the alert engine found no sink and delivered nothing, silently: nine
+   * ticks for a firing and nine for its end, `deliveredAt` and
+   * `deliveryError` both empty (omni-3f, release 6, 2026-09-30).
+   */
+  alertSink?: IAlertSink | undefined;
 }
 
 /**
@@ -182,6 +192,7 @@ export function renderNodeAppConfig(input: NodeConfigInput): string {
         stacks: {
           [NODE_STACK]: { type: 'local', apps: apps.map((a) => a['name'] as string) },
         },
+        ...(input.alertSink && { monitoring: { alertSink: input.alertSink } }),
       },
       null,
       2,

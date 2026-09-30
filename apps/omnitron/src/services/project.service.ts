@@ -3130,12 +3130,16 @@ export class ProjectService extends EventEmitter {
             // someone asks it directly.
             await leases.confirm(nodeKey, `delivering ${artifacts.length} artifact(s) to ${node.host}`);
             phases.enter(`delivering ${artifacts.length} artifact(s) to ${node.host}`);
+            const sink = ecosystemConfig.monitoring?.alertSink;
             const results = await this.deployer.deployToStack([target], artifacts, projectName, {
               apps: appEntries,
               appEnv,
               stack: stackName,
               // Past the node's record of what each app runs: ship and restart all.
               ...(reinstall ? { force: true } : {}),
+              // The node counts its own alarms and hands them to this project's
+              // sink on the stack it runs; named as the master names the stack.
+              ...(sink && { alertSink: { ...sink, host: `${projectName}/${stackName}` } }),
             });
             unsubDeploy();
             const failed = results.filter((r) => r.status === 'failed');

@@ -114,10 +114,32 @@ describe('a delivery that fails', () => {
       return { remoteDir: '/opt/omnitron/stack-static/gateway/3b4dbc9cf7db675b', bytes: 19_317_630 };
     });
 
-    const roots = await svc.shipStackStatics(infra, '/p', node, '/releases/r/statics');
+    const shipped = await svc.shipStackStatics(infra, '/p', node, '/releases/r/statics');
 
     expect(uploadStaticBundle).toHaveBeenCalledTimes(2);
-    expect(roots).toEqual({ gateway: '/opt/omnitron/stack-static/gateway/3b4dbc9cf7db675b' });
+    expect(shipped.dirs).toEqual({ gateway: '/opt/omnitron/stack-static/gateway/3b4dbc9cf7db675b' });
+    // `roots` is empty without an owner: no owner, no `current-<project>-<stack>`
+    // to point at, so nothing is mounted through a link and the node behaves
+    // exactly as it did before.
+    expect(shipped.roots).toEqual({});
+  });
+
+  it('reports the root beside the build when it knows whose stack this is', async () => {
+    // With an owner the delivery also swaps `current-<project>-<stack>`, and
+    // the root travels so the gateway can mount THAT instead of the build —
+    // the path that does not change from one release to the next, which is
+    // what stops the container being recreated.
+    const { svc } = project(async () => ({
+      remoteDir: '/opt/omnitron/stack-static/gateway/3b4dbc9cf7db675b',
+      bytes: 1,
+    }));
+
+    const shipped = await svc.shipStackStatics(infra, '/p', node, '/releases/r/statics', {
+      project: 'daos',
+      stack: 'test',
+    });
+
+    expect(shipped.roots).toEqual({ gateway: '/opt/omnitron/stack-static/gateway' });
   });
 
   it('twice is the end of the deployment, not a gateway with no web root', async () => {

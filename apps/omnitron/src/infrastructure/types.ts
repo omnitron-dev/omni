@@ -105,6 +105,24 @@ export interface GatewayServiceConfig {
    */
   staticDir?: string;
   /**
+   * The static ROOT on a NODE — the directory that holds every build of this
+   * service plus `current-<project>-<stack>`.
+   *
+   * Set only by `resolveNodeInfrastructure`, from what the delivery reported,
+   * and never by a stack's own declaration: on a master `staticDir` is a path
+   * INSIDE the project (daos declares `apps/portal/dist`), and mounting its
+   * parent would put `src/` and `node_modules` under the web root.
+   *
+   * Given together with `staticLinkName`, the gateway mounts this instead of
+   * the build directory and serves `/var/www/portal/<link>`. The mount is then
+   * a constant across releases, so a new build no longer changes the
+   * container's spec — which is what recreated it, at a cost of 1 s of 000 per
+   * deployment.
+   */
+  staticLinkRoot?: string;
+  /** `current-<project>-<stack>` — see `gatewayStaticLinkName`. */
+  staticLinkName?: string;
+  /**
    * Environment for building `staticDir`, when the deployment finds it stale.
    *
    * A frontend build can refuse to guess. The daos portal does exactly that:

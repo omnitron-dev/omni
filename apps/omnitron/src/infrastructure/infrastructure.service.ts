@@ -598,6 +598,15 @@ export class InfrastructureService {
     roots: Map<string, string>,
     staticRoots: Map<string, string>,
     redis: { host: string; port: number; db: number; password?: string },
+    /**
+     * The static ROOT per service, when the delivery made a
+     * `current-<project>-<stack>` link inside it. Given, the gateway mounts
+     * the root and serves through the link — a path that does not change from
+     * one release to the next, so the container is not recreated and the
+     * second of 000 a deployment cost goes with it. Empty, everything below
+     * resolves exactly as before.
+     */
+    staticLinkRoots?: Map<string, string>,
   ): void {
     if (roots.size === 0) return;
     this.desiredContainers = resolveInfrastructure(
@@ -605,7 +614,7 @@ export class InfrastructureService {
       this.normalizedServices,
       this.serviceOverrides,
       roots,
-      { redis, staticRoots },
+      { redis, staticRoots, ...(staticLinkRoots && { staticLinkRoots }) },
     );
   }
 

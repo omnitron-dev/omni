@@ -94,14 +94,58 @@ export function carryForwardScript(options: {
 }
 
 /**
- * The build directories gateway containers on the node mount at the web root:
- * running ones (what open tabs loaded) and all of them (what must stay).
+ * What a stack's `current` link is called, inside the static root.
+ *
+ * `current-<project>-<stack>`, because `/opt/omnitron/stack-static/gateway` is
+ * shared by every stack on the NODE — the literal is passed to
+ * `uploadStaticBundle` with no project and no stack in it — and several stacks
+ * do run on one node. A bare `current` would make one deployment repoint
+ * another stack's portal.
+ *
+ * Both sides spell it from here: the master when it swaps the link, and the
+ * shell below when it reads a container's back. `CONTAINER_PREFIX` is the same
+ * `<project>-<stack>`, which is why the container is `<project>-<stack>-gateway`.
+ */
+export function gatewayStaticLinkName(project: string, stack: string): string {
+  return `current-${project}-${stack}`;
+}
+
+/**
+ * The build directories gateway containers on the node serve: running ones
+ * (what open tabs loaded) and all of them (what must stay).
+ *
+ * It used to read the mount SOURCE, which was the build directory itself. Once
+ * the gateway mounts the static ROOT and serves through `current-<stack>`, the
+ * source is the same constant for every gateway on the node — so the source
+ * answers «which build» with nothing, and both halves of the script below fail
+ * silently: the carry-forward finds no `assets/` under a root and copies
+ * nothing (printing `carried 0 from 0 build(s)`, a line that looks fine), and
+ * the prune stops holding any build, leaving only «newest 5 by mtime» — which
+ * is exactly the wrong rule on a ROLLBACK, where the wanted build is old.
+ *
+ * So it resolves the link instead. `readlink -f`, not `readlink`: the link is
+ * relative (it must be — it is resolved inside the container), and the reader
+ * below wants an absolute path. A gateway with no link yet — the first
+ * deployment — prints nothing, and there is nothing to carry.
  */
 export const GATEWAY_MOUNTS_COMMAND = [
   'for c in $(docker ps -aq --filter label=omnitron.service=gateway 2>/dev/null); do',
   '  src=$(docker inspect -f \'{{range .Mounts}}{{if eq .Destination "/var/www/portal"}}{{.Source}}{{end}}{{end}}\' "$c" 2>/dev/null)',
   '  state=$(docker inspect -f \'{{.State.Running}}\' "$c" 2>/dev/null)',
-  '  [ -n "$src" ] && echo "$state $src"',
+  '  [ -n "$src" ] || continue',
+  // The mount is either the build directory (before this change, and on a
+  // master serving a project-relative `staticDir`) or the root that holds
+  // `current-<project>-<stack>`. Ask the labels which stack, resolve the
+  // link, and fall back to the source itself when there is no link.
+  '  proj=$(docker inspect -f \'{{index .Config.Labels "omnitron.project"}}\' "$c" 2>/dev/null)',
+  '  stk=$(docker inspect -f \'{{index .Config.Labels "omnitron.stack"}}\' "$c" 2>/dev/null)',
+  '  tgt=""',
+  // The link's name comes from `gatewayStaticLinkName` even here: given the
+  // shell's own variables it yields the shell's own string, so there is one
+  // spelling and not two that drift.
+  `  [ -n "$proj" ] && [ -n "$stk" ] && tgt=$(readlink -f "$src/${gatewayStaticLinkName('$proj', '$stk')}" 2>/dev/null)`,
+  '  [ -n "$tgt" ] || tgt="$src"',
+  '  echo "$state $tgt"',
   'done',
 ].join('\n');
 

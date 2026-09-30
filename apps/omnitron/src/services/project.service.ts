@@ -19,6 +19,7 @@ import { LOGGER_SERVICE_TOKEN, type ILogger, type ILoggerModule } from '@omnitro
 import { AUDIT_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN, ORCHESTRATOR_TOKEN, SECRETS_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { SecretsService } from './secrets.service.js';
+import { gatewayStaticLinkName } from './static-carry-forward.js';
 import type { AuditService } from './audit.service.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
@@ -3487,7 +3488,15 @@ export class ProjectService extends EventEmitter {
      * the developer's tree back into a release.
      */
     releasedStatics?: string,
-  ): Promise<Record<string, string>> {
+    /**
+     * Whose stack this is. Given, the delivery also points
+     * `current-<project>-<stack>` at what it unpacked, and the roots come back
+     * beside the build directories so the gateway can mount the ROOT instead
+     * of the build — which is what stops it being recreated, and with it the
+     * second of 000 a deployment costs.
+     */
+    owner?: { project: string; stack: string } | undefined,
+  ): Promise<{ dirs: Record<string, string>; roots: Record<string, string> }> {
     // Both spellings, like the config reader beside it: a stack may declare
     // the gateway as a preset service or through the legacy top-level block,
     // and reading only one is how `serviceOverrides` was honoured for half
@@ -3500,7 +3509,7 @@ export class ProjectService extends EventEmitter {
       }
     ).services?.['gateway'];
     const staticDir = preset?.config?.staticDir ?? legacy?.staticDir;
-    if (!staticDir) return {};
+    if (!staticDir) return { dirs: {}, roots: {} };
 
     // How to build it, when it turns out to be stale. See `staticEnv`.
     const staticEnv =
@@ -3556,7 +3565,11 @@ export class ProjectService extends EventEmitter {
       // attempt failed: `Failed to connect to 37.27.130.185`, an error about
       // credentials that were sitting in the registry all along.
       const target = await this.targetForStackNode(node);
-      const deliver = () => this.deployer.uploadStaticBundle(target, abs, '/opt/omnitron/stack-static/gateway');
+      // Shared by every stack on the NODE — the literal names no project and
+      // no stack — which is why the link inside it is per stack.
+      const gatewayRoot = '/opt/omnitron/stack-static/gateway';
+      const link = owner ? gatewayStaticLinkName(owner.project, owner.stack) : undefined;
+      const deliver = () => this.deployer.uploadStaticBundle(target, abs, gatewayRoot, link);
       // Once more before giving up: `uploadStaticBundle` starts from nothing
       // each time — it removes what a failed attempt left — so a second try
       // is a clean one, and a transfer that broke once on a loaded link
@@ -3572,7 +3585,13 @@ export class ProjectService extends EventEmitter {
         { node: node.host, service: 'gateway', from: abs, remoteDir, bytes },
         bytes === 0 ? 'The node already has this build' : 'Frontend delivered to the node',
       );
-      return { gateway: remoteDir };
+      // The root travels only when the link was made: a node that gets a root
+      // mounts it and serves through the link, and one that does not behaves
+      // exactly as it did before. An ADDITIVE field for the same reason — the
+      // master's omni may legitimately be newer than the node's, so a changed
+      // value type would break both mixing directions while a field an old
+      // node ignores breaks neither.
+      return { dirs: { gateway: remoteDir }, roots: link ? { gateway: gatewayRoot } : {} };
     } catch (err) {
       // Fatal, and before anything on the node changes. This returned `{}`,
       // and the node was then provisioned with no static root: the gateway,
@@ -3727,9 +3746,11 @@ export class ProjectService extends EventEmitter {
       // by SSH rather than inside the call: 32 MB is the wrong size for an
       // RPC argument, which is held whole on both sides and blocks the call
       // it rides on. Config files are 65 KB and ride along; a build does not.
-      const staticRoots = projectRoot
-        ? await this.shipStackStatics(infrastructure, projectRoot, node, releasedStatics)
-        : {};
+      const shipped = projectRoot
+        ? await this.shipStackStatics(infrastructure, projectRoot, node, releasedStatics, owner)
+        : { dirs: {}, roots: {} };
+      const staticRoots = shipped.dirs;
+      const staticLinkRoots = shipped.roots;
 
       // Retry once if the connection turns out to be gone: the deployer just
       // restarted this node's daemon, so the mesh connection the master holds
@@ -3740,7 +3761,7 @@ export class ProjectService extends EventEmitter {
         port,
         'OmnitronInfra',
         'provisionStack',
-        [{ config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots }],
+        [{ config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots }],
         { retryOnDisconnect: true },
       )) as { ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[] } | undefined;
 

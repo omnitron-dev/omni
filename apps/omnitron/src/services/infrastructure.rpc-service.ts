@@ -165,6 +165,18 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * refuses one that is not under the directory this daemon owns.
      */
     staticRoots?: Record<string, string> | undefined;
+    /**
+     * The static ROOT of each service whose gateway serves through a link —
+     * `/opt/omnitron/stack-static/gateway`, the directory that holds the build
+     * directories and `current-<project>-<stack>`.
+     *
+     * ADDITIVE and optional on purpose. A node's omni must equal the
+     * release's, while the master's may legitimately be newer, so the two ends
+     * of this call differ by design: an old node ignores a field it does not
+     * know, and a new node that is sent none does exactly what it did before.
+     * Changing the type of `staticRoots` instead would break both directions.
+     */
+    staticLinkRoots?: Record<string, string> | undefined;
   }): Promise<{
     ready: boolean;
     detail: string;
@@ -285,6 +297,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // containers are resolved, because they may mount those copies too.
     const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
     const staticRoots = await this.acceptStaticRoots(data.staticRoots);
+    const staticLinkRoots = await this.acceptStaticRoots(data.staticLinkRoots);
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.
@@ -322,7 +335,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
         // database, while main wrote the lock to 5 — see gateway-redis-db.ts.
         db: gatewayRedisDb(redisCfg?.databases),
         ...(redisCfg?.password ? { password: redisCfg.password } : {}),
-      });
+      }, staticLinkRoots);
     }
 
     const state = await service.provision();

@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
+import { gatewayStaticLinkName } from '../services/static-carry-forward.js';
 import { CONFIG_ROOT_PREFIX, shippedMountPath } from './shipped-config.js';
 import { bindService } from './service-binding.js';
 
@@ -720,6 +721,32 @@ export function resolveGateway(
       ? staticDir
       : `${projectRoot.replace(/\/$/, '')}/${staticDir.replace(/^\.\//, '')}`;
 
+  /**
+   * Mount the ROOT and serve through the link, when the node sent one.
+   *
+   * The build directory's path changes with every release, and it is the ONLY
+   * field of this spec that does — `mountedConfigDigest` is rooted at the
+   * config directory and the node's config root
+   * (`~/.omnitron/stack-config/<project>/<stack>/<service>`) is stable. So the
+   * container was recreated for every deployment, and that cost **1 s of 000**
+   * on the gateway, measured on release 4 (81 s of deploy). Mounting the root
+   * instead makes the mount a constant, and the swap of
+   * `current-<project>-<stack>` inside it is what changes — atomically, with
+   * `rename(2)`, picked up with no reload because nginx resolves `root` per
+   * request and this config sets no `open_file_cache`.
+   *
+   * Only when the node says so. On a master `staticDir` is a path inside the
+   * project — daos declares `apps/portal/dist` — and mounting ITS parent would
+   * put `src/`, `node_modules` and `vite.config.ts` under the web root, while
+   * `current-…` would not exist there at all and the entrypoint would fall
+   * back to proxying a Vite that is not running.
+   */
+  const linkRoot = config.staticLinkRoot;
+  const linkName = config.staticLinkName;
+  const servesThroughLink = Boolean(linkRoot && linkName);
+  const portalMount = servesThroughLink ? linkRoot! : absStaticDir;
+  const portalRoot = servesThroughLink ? `/var/www/portal/${linkName}` : '/var/www/portal';
+
   // Default upstream host — host.docker.internal for Docker, overridable for bare-metal/cluster
   const upstreamHost = 'host.docker.internal';
 
@@ -755,6 +782,11 @@ export function resolveGateway(
       UPSTREAM_MESSAGING_WS_PORT: '3006',
       UPSTREAM_GEO_HOST: upstreamHost,
       UPSTREAM_GEO_PORT: '3007',
+      // Where the entrypoint serves `/` from. `/var/www/portal` unless the
+      // node mounted the root, in which case the link inside it — so the
+      // gateway is pointed at a new build by a symlink swap and not by a new
+      // container.
+      PORTAL_ROOT: portalRoot,
       // User-supplied env overrides/additions (e.g. PORTAL_DEV_UPSTREAM). Merged
       // last so config can override a preset default when intended.
       ...(config.env ?? {}),
@@ -771,7 +803,7 @@ export function resolveGateway(
       // The built frontend, when the stack declares one. `/var/www/portal` is
       // the path nginx.conf serves `/` from whenever `PORTAL_DEV_UPSTREAM` is
       // unset, which is every deployment that has no Vite beside it.
-      ...(absStaticDir ? [{ source: absStaticDir, target: '/var/www/portal', readonly: true }] : []),
+      ...(portalMount ? [{ source: portalMount, target: '/var/www/portal', readonly: true }] : []),
       // What the stack adds — the onion's unix socket above all, on a
       // `shared:` volume the Tor container mounts too.
       ...Object.entries(config.volumes ?? {}).map(([key, vol]) => resolveNamedOrBound('gateway', key, vol)),
@@ -914,6 +946,14 @@ export function resolveInfrastructure(
     port?: number;
     /** Where each service's static content lives on THIS machine. */
     staticRoots?: Map<string, string>;
+    /**
+     * The static ROOT per service, when the delivery made a
+     * `current-<project>-<stack>` link inside it. Only a NODE sends this: on a
+     * master `staticDir` is a path inside the project (daos declares
+     * `apps/portal/dist`), and mounting ITS parent would put `src/` and
+     * `node_modules` under the web root.
+     */
+    staticLinkRoots?: Map<string, string>;
   },
 ): ResolvedContainer[] {
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
@@ -944,6 +984,7 @@ export function resolveInfrastructure(
     gatewayContext.redis.db,
   );
   const staticRoot = gatewayContext.staticRoots?.get('gateway');
+  const staticLinkRoot = gatewayContext.staticLinkRoots?.get('gateway');
   containers.push(
     resolveGateway(
       {
@@ -952,6 +993,19 @@ export function resolveInfrastructure(
         // Absolute: a node names its own copy, not a path relative to a
         // project it does not have.
         ...(staticRoot ? { staticDir: staticRoot } : {}),
+        // The project and the stack are not parameters here and do not need
+        // to be: `setStackLabels` has already put them where every container
+        // of this stack reads them, and the link is spelled by the one
+        // function that spells it anywhere.
+        ...(staticLinkRoot
+          ? {
+              staticLinkRoot,
+              staticLinkName: gatewayStaticLinkName(
+                STACK_LABELS['omnitron.project'] ?? '',
+                STACK_LABELS['omnitron.stack'] ?? '',
+              ),
+            }
+          : {}),
       },
       gatewayContext.redis,
       gatewayRoot,

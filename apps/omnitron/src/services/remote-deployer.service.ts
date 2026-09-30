@@ -790,6 +790,8 @@ export class RemoteDeployer {
       stack?: string | undefined;
       /** Ship and restart every app past the node's record — `stack start --reinstall`. */
       force?: boolean | undefined;
+      /** The project's alert sink, for the node's own alert engine — see `NodeConfigInput.alertSink`. */
+      alertSink?: import('../config/types.js').IAlertSink | undefined;
     },
   ): Promise<DeployResult[]> {
     const concurrency = options?.concurrency ?? 3;
@@ -848,6 +850,7 @@ export class RemoteDeployer {
           options.apps,
           landed,
           options.appEnv,
+          options.alertSink,
         );
 
         // Schema before the apps that read it — and an app whose schema did
@@ -1207,6 +1210,7 @@ export class RemoteDeployer {
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
     landed: ReadonlyArray<{ app: string; version: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
+    alertSink?: import('../config/types.js').IAlertSink | undefined,
   ): Promise<{ changed: boolean }> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
@@ -1221,6 +1225,7 @@ export class RemoteDeployer {
       apps,
       artifacts: landed,
       appEnv,
+      alertSink,
     });
 
     const bodyHash = crypto.createHash('sha256').update(body).digest('hex');

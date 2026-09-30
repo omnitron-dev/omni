@@ -161,6 +161,9 @@ const DELIVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** How long a project's alert sink is taken from its config before it is read again. */
 const SINK_TTL_MS = 60_000;
 
+/** An undelivered critical alert on a daemon that runs no project naming a sink. */
+export const NO_SINK = 'no alert sink: no project this daemon runs names one (monitoring.alertSink)';
+
 /** A rule's summary, from its annotations as the database hands them back — a jsonb object or its text. */
 function summaryOf(annotations: unknown): string | null {
   let value = annotations;
@@ -374,7 +377,22 @@ export class AlertService {
   private async deliverPending(now: number): Promise<void> {
     const sinks = await this.alertSinks(now);
     const targets = sinks.flatMap((sink) => this.sinkTargets(sink).map((name) => ({ sink, name })));
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      // Said on the event, once, rather than returned from in silence. The test
+      // node ran without a sink for a release: its alerts fired, resolved, and
+      // kept `deliveryError` empty — nothing anywhere said they went nowhere.
+      await this.db
+        .updateTable('alert_events')
+        .set({ deliveryError: NO_SINK } as any)
+        .where('deliveredAt', 'is', null)
+        .where('deliveryError', 'is', null)
+        .where('firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
+        .where('ruleId', 'in', (eb: any) =>
+          eb.selectFrom('alert_rules').select('id').where('severity', '=', 'critical')
+        )
+        .execute();
+      return;
+    }
 
     const pending = await this.db
       .selectFrom('alert_events')
@@ -447,6 +465,7 @@ export class AlertService {
       if (handle.mode !== 'bootstrap' || !handle.supervisor)
         return `${name} is not a bootstrap app — its alert sink is refused`;
       const [project, stack] = name.split('/');
+      const host = sink.host ?? `${project}/${stack}`;
       try {
         await callExposedService(handle.supervisor as unknown as ExposingSupervisor, name, sink.service, sink.method, [
           {
@@ -455,7 +474,7 @@ export class AlertService {
             ruleName: event.ruleName,
             value: event.value ?? '',
             summary: summaryOf(event.annotations),
-            host: `${project}/${stack}`,
+            host,
           },
         ]);
       } catch (err) {

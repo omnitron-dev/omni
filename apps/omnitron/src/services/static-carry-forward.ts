@@ -58,7 +58,14 @@ export function carryForwardScript(options: {
     'set -u',
     `ROOT=${q(root)}; FRESH=${q(fresh)}; KEEP=${Math.max(1, Math.floor(keep))}`,
     // The new build's own assets, beside it (a directory's contents are served).
-    dryRun ? ':' : 'ls -1 "$FRESH/assets" 2>/dev/null > "$FRESH.own-assets"',
+    //
+    // Written ONCE, and never again for the same directory. A rollback runs
+    // this for a build that is already on the node and has already been
+    // carried into — its `assets/` now holds another build's chunks as hard
+    // links. Rewriting the list there would record those as its own, and the
+    // next deployment carrying from it would carry a second generation, which
+    // is the growth this file exists to stop.
+    dryRun ? ':' : '[ -s "$FRESH.own-assets" ] || ls -1 "$FRESH/assets" 2>/dev/null > "$FRESH.own-assets"',
     'carried=0; from=0',
     `for S in ${servingList}; do`,
     '  case "$S" in "$ROOT"/*) ;; *) continue ;; esac',

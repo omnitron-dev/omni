@@ -146,6 +146,63 @@ describe('a bundle is unpacked only when it arrived whole', () => {
     expect(uploadFile).not.toHaveBeenCalled();
   });
 
+  /**
+   * A rollback that served the release before it.
+   *
+   * «Already there» excuses the TRANSFER, not the deployment. Under the old
+   * mount the two were the same thing — the gateway mounted the build
+   * directory itself, so a container recreated with this digest as its source
+   * served this digest and nothing further had to happen. Serving through
+   * `current-<project>-<stack>` moves that fact into the link, and the early
+   * return skipped the link with it.
+   *
+   * Only a rollback reaches it: a forward release has new content, so a new
+   * digest (`gzip -n`, so the digest is the CONTENT's), so the marker is not
+   * there. Deploy A, deploy B, ask for A again — A's bundle and marker are
+   * still on the node, and the link stayed on B. The gateway went on serving
+   * B while the release said A.
+   */
+  describe('a build the node already has is still deployed', () => {
+    const alreadyThere = (cmd: string) => (cmd.includes('.delivered') ? 'yes' : '');
+    const LINK = 'current-daos-test';
+
+    it('points the link at it, though it transfers nothing', async () => {
+      const { svc, asked, uploadFile } = deployer(alreadyThere);
+      const out = await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT, LINK);
+
+      expect(out.bytes).toBe(0);
+      expect(uploadFile).not.toHaveBeenCalled();
+      expect(asked.some((c) => c.includes('tar -xzf'))).toBe(false);
+
+      // The digest is the directory's name, which the function itself chose.
+      const digest = out.remoteDir.slice(ROOT.length + 1);
+      expect(digest).toMatch(/^[0-9a-f]{16}$/);
+      const swap = asked.find((c) => c.startsWith('ln -s '));
+      expect(swap, 'the link was never pointed — a rollback would serve the build before it').toBeDefined();
+      expect(swap).toContain(digest);
+      expect(swap).toContain(`mv -T`);
+      expect(swap).toContain(`${ROOT}/${LINK}`);
+    });
+
+    it('carries the serving build forward, so tabs on the other one keep working', async () => {
+      const { svc, asked } = deployer(alreadyThere);
+      await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT, LINK);
+      expect(asked.some((c) => c.includes('own-assets'))).toBe(true);
+    });
+
+    it('writes no second record — the marker belongs to the unpack', async () => {
+      const { svc, asked } = deployer(alreadyThere);
+      await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT, LINK);
+      expect(asked.some((c) => c.startsWith('printf %s') && c.includes('.delivered'))).toBe(false);
+    });
+
+    it('and without a link asks for no link — a node that gets no root is unchanged', async () => {
+      const { svc, asked } = deployer(alreadyThere);
+      await svc.uploadStaticBundle(TARGET, dirToServe(), ROOT);
+      expect(asked.some((c) => c.startsWith('ln -s '))).toBe(false);
+    });
+  });
+
   it('does not mistake a directory a failed unpack left behind for a bundle', async () => {
     // What actually happened: `mkdir -p` succeeded, the transfer landed
     // short, `tar` died on the truncated stream. The directory existed and

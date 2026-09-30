@@ -2018,41 +2018,58 @@ export class RemoteDeployer {
         target,
         `test -s ${shellEscape(marker)} && test -d ${shellEscape(remoteDir)} && echo yes || echo no`,
       ).catch(() => 'no');
-      if (exists.trim() === 'yes') return { remoteDir, bytes: 0 };
+      //
+      // What «already there» excuses is the TRANSFER, not the deployment.
+      // This used to `return` here, and under the old mount that was exact:
+      // the gateway mounted the build directory itself, so a container
+      // recreated with this digest as its source served this digest, and
+      // nothing else had to happen. Serving through
+      // `current-<project>-<stack>` moves that fact into the link, and a
+      // deployment that does not point the link has not deployed.
+      //
+      // The case is a ROLLBACK, and only a rollback: forward releases carry
+      // new content, so a new digest, so this is false. Deploy A, deploy B,
+      // then ask for A again — A's bundle and its marker are still on the
+      // node, the early return fired, and the link stayed on B. The gateway
+      // went on serving B while the release said A, with nothing anywhere
+      // saying so. Which is the version you least want wrong.
+      const alreadyThere = exists.trim() === 'yes';
 
       // Whatever a previous attempt left half-written is not a starting
       // point: unpacking onto it would merge two trees.
-      await this.sshExec(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(marker)}`).catch(() => undefined);
+      if (!alreadyThere) {
+        await this.sshExec(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(marker)}`).catch(() => undefined);
 
-      await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
-      await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
+        await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
+        await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
 
-      // `uploadFile` already refuses a file that landed SHORT. That catches
-      // the likely failure and not the other one: a transfer that completes
-      // and corrupts in the middle has the right length and the wrong
-      // bytes, and `tar` would report it three steps later as a broken
-      // archive rather than as a bad transfer.
-      //
-      // The sum costs nothing to obtain here, because it is already the
-      // name of the directory this is going into. `sha256sum` on the node,
-      // `shasum -a 256` where that is what exists — asking for both and
-      // taking whichever answers beats assuming the platform.
-      // (omni-74's objection: the size check was one class of failure, and
-      // the stronger check needed no new information.)
-      const sum = await this.sshExec(
-        target,
-        `sha256sum ${shellEscape(remoteFile)} 2>/dev/null || shasum -a 256 ${shellEscape(remoteFile)}`,
-      );
-      const landed = sum.trim().split(/\s+/)[0]?.slice(0, 16);
-      if (landed !== digest) {
-        await this.sshExec(target, `rm -f ${shellEscape(remoteFile)}`).catch(() => undefined);
-        throw new Error(
-          `The static bundle arrived corrupt: sent sha256 ${digest}, the node has ${landed ?? 'no readable sum'}. ` +
-            'Nothing was unpacked and the partial file was removed.',
+        // `uploadFile` already refuses a file that landed SHORT. That catches
+        // the likely failure and not the other one: a transfer that completes
+        // and corrupts in the middle has the right length and the wrong
+        // bytes, and `tar` would report it three steps later as a broken
+        // archive rather than as a bad transfer.
+        //
+        // The sum costs nothing to obtain here, because it is already the
+        // name of the directory this is going into. `sha256sum` on the node,
+        // `shasum -a 256` where that is what exists — asking for both and
+        // taking whichever answers beats assuming the platform.
+        // (omni-74's objection: the size check was one class of failure, and
+        // the stronger check needed no new information.)
+        const sum = await this.sshExec(
+          target,
+          `sha256sum ${shellEscape(remoteFile)} 2>/dev/null || shasum -a 256 ${shellEscape(remoteFile)}`,
         );
-      }
+        const landed = sum.trim().split(/\s+/)[0]?.slice(0, 16);
+        if (landed !== digest) {
+          await this.sshExec(target, `rm -f ${shellEscape(remoteFile)}`).catch(() => undefined);
+          throw new Error(
+            `The static bundle arrived corrupt: sent sha256 ${digest}, the node has ${landed ?? 'no readable sum'}. ` +
+              'Nothing was unpacked and the partial file was removed.',
+          );
+        }
 
-      await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+        await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+      }
       // A tab opened before this deployment asks for chunks of the build it
       // loaded; they are carried into this one, and builds nobody serves go
       // (`static-carry-forward.ts`). Before the marker: it is part of what
@@ -2062,10 +2079,13 @@ export class RemoteDeployer {
       // open tabs loaded — the one being replaced.
       if (link) await this.pointStaticLinkAt(target, remoteRoot, link, digest);
       // Last, and only now: the unpack is what this records.
-      await this.sshExec(target, `printf %s ${shellEscape(digest)} > ${shellEscape(marker)}`);
+      if (!alreadyThere) await this.sshExec(target, `printf %s ${shellEscape(digest)} > ${shellEscape(marker)}`);
 
-      this.logger.info({ host: target.host, remoteDir, bytes }, 'Static bundle delivered to the node');
-      return { remoteDir, bytes };
+      this.logger.info(
+        { host: target.host, remoteDir, bytes: alreadyThere ? 0 : bytes, transferred: !alreadyThere },
+        alreadyThere ? 'The node already had this build — pointed at it' : 'Static bundle delivered to the node',
+      );
+      return { remoteDir, bytes: alreadyThere ? 0 : bytes };
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
     }

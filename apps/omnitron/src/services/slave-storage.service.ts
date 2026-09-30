@@ -22,11 +22,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import { withDateBinding } from '../database/sqlite-date-binding.js';
+import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_had_to_write.js';
+import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 const OMNITRON_HOME = path.join(process.env['HOME'] ?? '/tmp', '.omnitron');
 const DATA_DIR = path.join(OMNITRON_HOME, 'data');
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'slave.db');
+
+/** The alert rules a node seeds: the master's critical defaults (see `createAlertTables`). */
+export const NODE_ALERT_RULES = [
+  ...DEFAULT_ALERT_RULES.filter((rule) => rule.severity === 'critical'),
+  DISK_ALERT_RULE,
+];
 
 // =============================================================================
 // Schema
@@ -61,6 +69,38 @@ export interface SlaveDatabase {
     spanId: string | null;
     metadata: string | null;
   };
+  /**
+   * The node's own alerts — the master's `alert_rules` / `alert_events`
+   * (migrations 001, 013), in SQLite: booleans as 0/1, times and JSON as text.
+   */
+  alert_rules: {
+    id: string;
+    name: string;
+    expression: string;
+    type: string;
+    severity: string;
+    forDuration: number | null;
+    annotations: string | null;
+    labels: string | null;
+    enabled: number;
+    lastEvaluatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  alert_events: {
+    id: string;
+    ruleId: string;
+    status: string;
+    value: string | null;
+    annotations: string | null;
+    firedAt: string;
+    resolvedAt: string | null;
+    acknowledgedAt: string | null;
+    acknowledgedBy: string | null;
+    deliveredAt: string | null;
+    resolveDeliveredAt: string | null;
+    deliveryError: string | null;
+  };
 }
 
 // =============================================================================
@@ -94,6 +134,11 @@ export class SlaveStorageService {
     database.pragma('journal_mode = WAL');
     database.pragma('busy_timeout = 5000');
     database.pragma('synchronous = NORMAL');
+    // An alert rule's events go with it (`alert_events.ruleId … ON DELETE
+    // CASCADE`). SQLite enforces a foreign key only when asked, per
+    // connection; better-sqlite3 13 is built asking by default, and this keeps
+    // it so under a build that is not. No other table here declares one.
+    database.pragma('foreign_keys = ON');
 
     // Every `Date` bound to this database becomes an ISO string on the way
     // in. The daemon runs the same services against Postgres and SQLite, and
@@ -176,6 +221,7 @@ export class SlaveStorageService {
     `.execute(this.db);
 
     await this.createBufferStats();
+    await this.createAlertTables();
 
     // logs — column names match OmnitronDatabase.LogsTable (camelCase)
     // id is TEXT (UUID) to match PG schema — allows LogCollectorService to work unchanged
@@ -276,5 +322,71 @@ export class SlaveStorageService {
         SELECT 1, coalesce(sum(octet_length(payload)), 0), count(*), count(syncedAt) FROM sync_buffer
       `.execute(trx);
     });
+  }
+
+  /**
+   * The node's own alerts, kept where its metrics are.
+   *
+   * A node daemon runs without Postgres, and the alert engine lived only on
+   * the master (`daemon.module.ts`: "master only — requires PG"), so the test
+   * stack's alerts were evaluated by nobody: its log said `alert-evaluation —
+   * no alert service` at every start (omni-3f, 2026-09-30). The owner chose
+   * that a node counts its own alarms, here, independent of the Mac and of
+   * the stack's own Postgres — an alarm stored in the Postgres it is about
+   * would be lost exactly when that Postgres goes.
+   *
+   * The rules are the four CRITICAL defaults the master seeds (migrations 011,
+   * 012 — the same constants, not a copy): an app crashed, an app erroring, a
+   * container unhealthy, this host's disk under 50 GiB. Only critical alerts
+   * are delivered; a warning the node cannot show anyone is not kept.
+   * Seeded by name, so an operator's change to one survives a restart.
+   */
+  private async createAlertTables(): Promise<void> {
+    if (!this.db) return;
+    const iso = sql.raw(`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`);
+    await sql`
+      CREATE TABLE IF NOT EXISTS alert_rules (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        name TEXT NOT NULL UNIQUE,
+        expression TEXT NOT NULL,
+        type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        forDuration INTEGER,
+        annotations TEXT,
+        labels TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        lastEvaluatedAt TEXT,
+        createdAt TEXT NOT NULL DEFAULT ${iso},
+        updatedAt TEXT NOT NULL DEFAULT ${iso}
+      )
+    `.execute(this.db);
+    await sql`
+      CREATE TABLE IF NOT EXISTS alert_events (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        ruleId TEXT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        value TEXT,
+        annotations TEXT,
+        firedAt TEXT NOT NULL DEFAULT ${iso},
+        resolvedAt TEXT,
+        acknowledgedAt TEXT,
+        acknowledgedBy TEXT,
+        deliveredAt TEXT,
+        resolveDeliveredAt TEXT,
+        deliveryError TEXT
+      )
+    `.execute(this.db);
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_alert_events_rule_status
+      ON alert_events (ruleId, status)
+    `.execute(this.db);
+
+    for (const rule of NODE_ALERT_RULES) {
+      await sql`
+        INSERT OR IGNORE INTO alert_rules (name, expression, type, severity, forDuration, annotations, enabled)
+        VALUES (${rule.name}, ${rule.expression}, ${rule.type}, ${rule.severity}, ${rule.forDuration},
+                ${JSON.stringify({ summary: rule.summary })}, 1)
+      `.execute(this.db);
+    }
   }
 }

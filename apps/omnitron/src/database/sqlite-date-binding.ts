@@ -57,10 +57,18 @@
 export function serialiseDates(args: readonly unknown[]): readonly unknown[] {
   let changed = false;
 
+  // A boolean the same way and for the same reason: better-sqlite3 refuses it,
+  // and the node's alert engine asks `enabled = true` (2026-09-30, the first
+  // service that runs on both roles with a boolean in a query). SQLite keeps
+  // booleans as 0 / 1.
   const convert = (value: unknown): unknown => {
     if (value instanceof Date) {
       changed = true;
       return value.toISOString();
+    }
+    if (typeof value === 'boolean') {
+      changed = true;
+      return value ? 1 : 0;
     }
     // One level of nesting, because that is the shape a driver passes: an
     // array OF bindings. Deeper is not a thing SQLite binds, and walking
@@ -72,6 +80,10 @@ export function serialiseDates(args: readonly unknown[]): readonly unknown[] {
         if (v instanceof Date) {
           innerChanged = true;
           return v.toISOString();
+        }
+        if (typeof v === 'boolean') {
+          innerChanged = true;
+          return v ? 1 : 0;
         }
         return v;
       });

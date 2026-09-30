@@ -1912,6 +1912,14 @@ export class RemoteDeployer {
     target: DeployTarget,
     localDir: string,
     remoteRoot: string,
+    /**
+     * The stack's link inside `remoteRoot`, `current-<project>-<stack>`
+     * (`gatewayStaticLinkName`). Given, the delivery points it at the build it
+     * just unpacked — which is what lets the gateway mount the ROOT once and
+     * never be recreated for a new build. Omitted, nothing is linked and the
+     * delivery is exactly what it was.
+     */
+    link?: string,
   ): Promise<{ remoteDir: string; bytes: number }> {
     const { createHash } = await import('node:crypto');
     const fsp = await import('node:fs/promises');
@@ -2050,6 +2058,9 @@ export class RemoteDeployer {
       // (`static-carry-forward.ts`). Before the marker: it is part of what
       // «delivered» means now.
       await this.carryPreviousBuildForward(target, remoteRoot, remoteDir);
+      // AFTER the carry-forward, because that reads the link to find the build
+      // open tabs loaded — the one being replaced.
+      if (link) await this.pointStaticLinkAt(target, remoteRoot, link, digest);
       // Last, and only now: the unpack is what this records.
       await this.sshExec(target, `printf %s ${shellEscape(digest)} > ${shellEscape(marker)}`);
 
@@ -2058,6 +2069,39 @@ export class RemoteDeployer {
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /**
+   * Point a stack's `current-<project>-<stack>` at the build just unpacked.
+   *
+   * This is the whole reason the gateway stops being recreated on a
+   * deployment: it mounts the static ROOT, whose path never changes, and
+   * serves `/var/www/portal/<link>`. nginx resolves `root` per request and
+   * this config sets no `open_file_cache`, so the swap is picked up with no
+   * reload and no restart. What it replaces cost **1 s of 000** on the
+   * gateway, measured on the release-4 deployment (81 s total).
+   *
+   * RELATIVE, so it resolves inside the container as well as on the host — the
+   * host path is not the container path.
+   *
+   * And swapped with `mv -T`, never `ln -sfn`: `-f` unlinks before it
+   * symlinks, and a request arriving in that window gets a 404 from a web root
+   * that does not exist. `rename(2)` has no window at all. The temporary name
+   * carries the digest so two deliveries racing on one node cannot collide on
+   * it.
+   */
+  private async pointStaticLinkAt(
+    target: DeployTarget,
+    root: string,
+    link: string,
+    digest: string,
+  ): Promise<void> {
+    const tmp = `${root}/${link}.${digest}.tmp`;
+    await this.sshExec(
+      target,
+      `ln -s ${shellEscape(digest)} ${shellEscape(tmp)} && mv -T ${shellEscape(tmp)} ${shellEscape(`${root}/${link}`)}`,
+    );
+    this.logger.info({ host: target.host, link, digest }, 'The gateway now serves this build through its link');
   }
 
   /**

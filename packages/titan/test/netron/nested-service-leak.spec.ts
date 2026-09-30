@@ -18,6 +18,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ErrorCode } from '../../src/errors/index.js';
 import { Netron } from '../../src/netron/netron.js';
 import { Service, Public } from '../../src/decorators/core.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
@@ -49,6 +50,12 @@ class DirectoryService {
   }
 }
 
+// A refusal is measured by its CODE, not by a word in its sentence.
+// `expect.stringMatching(/…|access/i)` calls any rejection carrying that word a
+// denial — a timeout, a closed peer, even «Authentication NOT configured»,
+// which is a misconfiguration (SERVICE_UNAVAILABLE) and not a refusal at all.
+// The wire carries the TitanError's `code` (measured: 403 / category 'auth'),
+// so the assertion can name the verdict it claims to be testing.
 describe('Netron — nested-service leak (T#49)', () => {
   let server: Netron;
   let client: Netron;
@@ -103,6 +110,7 @@ describe('Netron — nested-service leak (T#49)', () => {
     const directory = await peer.queryInterface<{ openSecrets(): Promise<unknown> }>('directory@1.0.0');
 
     await expect(directory.openSecrets()).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/Access denied to nested service/i),
     });
 

@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { ErrorCode } from '../../../src/errors/index.js';
 import { Netron } from '../../../src/netron/netron.js';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
@@ -123,6 +124,12 @@ afterEach(async () => {
   await new Promise((r) => setTimeout(r, 100));
 });
 
+// A refusal is measured by its CODE, not by a word in its sentence.
+// `expect.stringMatching(/…|access/i)` calls any rejection carrying that word a
+// denial — a timeout, a closed peer, even «Authentication NOT configured»,
+// which is a misconfiguration (SERVICE_UNAVAILABLE) and not a refusal at all.
+// The wire carries the TitanError's `code` (measured: 403 / category 'auth'),
+// so the assertion can name the verdict it claims to be testing.
 describe('AuthorizationManager.hasACL (SEC-2 predicate)', () => {
   it('reports false when no ACL covers the service, true for exact and wildcard matches', () => {
     const authz = new AuthorizationManager(createMockLogger());
@@ -159,6 +166,7 @@ describe('Netron wire-level — default-ALLOW (back-compat, authDefaultDeny unse
     const { peer, defId } = await connectAuthed(server, port);
 
     await expect(peer.call(defId, 'internalReset', [])).rejects.toMatchObject({
+      code: ErrorCode.NOT_FOUND,
       message: expect.stringMatching(/not found/i),
     });
 
@@ -184,6 +192,7 @@ describe('Netron wire-level — default-DENY (authDefaultDeny: true)', () => {
     const { peer, defId } = await connectAuthed(server, port);
 
     await expect(peer.call(defId, 'listKeys', [])).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/denied|forbidden|access/i),
     });
 
@@ -197,6 +206,7 @@ describe('Netron wire-level — default-DENY (authDefaultDeny: true)', () => {
     // `internalReset` is outside the @Public surface, so NET-14's whitelist
     // rejects it with NOT_FOUND before the default-deny FORBIDDEN gate is reached.
     await expect(peer.call(defId, 'internalReset', [])).rejects.toMatchObject({
+      code: ErrorCode.NOT_FOUND,
       message: expect.stringMatching(/not found/i),
     });
 

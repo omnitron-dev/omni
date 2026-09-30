@@ -18,6 +18,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ErrorCode } from '../../../src/errors/index.js';
 import { Netron } from '../../../src/netron/netron.js';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
@@ -51,6 +52,12 @@ class VaultService {
   }
 }
 
+// A refusal is measured by its CODE, not by a word in its sentence.
+// `expect.stringMatching(/…|access/i)` calls any rejection carrying that word a
+// denial — a timeout, a closed peer, even «Authentication NOT configured»,
+// which is a misconfiguration (SERVICE_UNAVAILABLE) and not a refusal at all.
+// The wire carries the TitanError's `code` (measured: 403 / category 'auth'),
+// so the assertion can name the verdict it claims to be testing.
 describe('Netron — wire-level method authorization (T#34)', () => {
   let server: Netron;
   let client: Netron;
@@ -137,9 +144,11 @@ describe('Netron — wire-level method authorization (T#34)', () => {
     // The non-admin must NOT be able to call admin-only methods, even
     // when bypassing queryInterface and crafting a raw TYPE_CALL.
     await expect(peer.call(realDefId, 'rotate', [])).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/Access denied/),
     });
     await expect(peer.call(realDefId, 'destroy', [])).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/Access denied/),
     });
 
@@ -154,6 +163,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
     const realDefId = plantDef(peer);
 
     await expect(peer.call(realDefId, 'rotate', [])).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/Access denied/),
     });
 

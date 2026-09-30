@@ -21,6 +21,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { ErrorCode } from '../../src/errors/index.js';
 import { Netron } from '../../src/netron/netron.js';
 import { Service, Public } from '../../src/decorators/core.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
@@ -36,6 +37,12 @@ class EchoService {
   }
 }
 
+// A refusal is measured by its CODE, not by a word in its sentence.
+// `expect.stringMatching(/…|access/i)` calls any rejection carrying that word a
+// denial — a timeout, a closed peer, even «Authentication NOT configured»,
+// which is a misconfiguration (SERVICE_UNAVAILABLE) and not a refusal at all.
+// The wire carries the TitanError's `code` (measured: 403 / category 'auth'),
+// so the assertion can name the verdict it claims to be testing.
 describe('Netron — inbound rate limit (T#39)', () => {
   let server: Netron;
   let client: Netron;
@@ -100,6 +107,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
     }
 
     await expect(echo.ping()).rejects.toMatchObject({
+      code: ErrorCode.TOO_MANY_REQUESTS,
       message: expect.stringMatching(/Rate limit/i),
     });
 

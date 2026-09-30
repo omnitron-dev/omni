@@ -20,6 +20,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ErrorCode } from '../../../src/errors/index.js';
 import { Netron } from '../../../src/netron/netron.js';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { Service, Public } from '../../../src/decorators/core.js';
@@ -44,6 +45,12 @@ class VaultService {
   }
 }
 
+// A refusal is measured by its CODE, not by a word in its sentence.
+// `expect.stringMatching(/…|access/i)` calls any rejection carrying that word a
+// denial — a timeout, a closed peer, even «Authentication NOT configured»,
+// which is a misconfiguration (SERVICE_UNAVAILABLE) and not a refusal at all.
+// The wire carries the TitanError's `code` (measured: 403 / category 'auth'),
+// so the assertion can name the verdict it claims to be testing.
 describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', () => {
   let server: Netron;
   let client: Netron;
@@ -106,6 +113,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
 
     // roles:['admin'] + role 'user' → MUST be denied (decorator-only).
     await expect(peer.call(defId, 'rotate', [])).rejects.toMatchObject({
+      code: ErrorCode.FORBIDDEN,
       message: expect.stringMatching(/role|denied|forbidden|access/i),
     });
 
@@ -117,9 +125,11 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
     const defId = plantDef(peer);
 
     await expect(peer.call(defId, 'read', ['x'])).rejects.toMatchObject({
+      code: ErrorCode.UNAUTHORIZED,
       message: expect.stringMatching(/auth|denied|forbidden|required/i),
     });
     await expect(peer.call(defId, 'rotate', [])).rejects.toMatchObject({
+      code: ErrorCode.UNAUTHORIZED,
       message: expect.stringMatching(/auth|role|denied|forbidden|required/i),
     });
 

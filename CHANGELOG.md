@@ -6,6 +6,1343 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.3.0] - 2026-10-01
+
+### ✨ Features
+
+- feat(omnitron): a node that keeps its own alarms
+- feat(omnitron): an alarm delivered
+- feat(omnitron): an alert said on the screen
+- feat(omnitron): a disk nobody watched
+- feat(omnitron): a deployment under whoever was acting
+- feat(titan): a cookie no transport would carry
+- feat(omnitron): the removal of what the probes left, on the owner's word
+- feat(omnitron): a rehearsal of removing what the probes left, on the node
+- feat(omnitron): a census of what the probes left, on the node
+- feat(omnitron): a secret that had to be shown to be copied
+- feat(omnitron): a migration that ran and changed
+- feat(prism): a sponsored slot, marked and sized, gone when empty
+- feat(omnitron): events that reach the console that asked for them
+- feat(omnitron): alerts nobody had to write, and an operator who hears them
+- feat(omnitron): a census that says who holds privilege and what a rotation takes
+- feat(omnitron): a stand counted without reading it
+- feat(prism): a deadline said as how long, and a row the browser scrolls
+- feat(prism): a block that could not say «nothing here», or anything in Russian
+- feat(omnitron): a secret a stack could not give one app
+- feat(omnitron): a host's memory, read from its kernel
+- feat(omnitron): a superadmin whose password was in the repository
+- feat(omnitron): a unit read in systemd's own words
+- feat(omnitron): a daemon on the node asked how far it is
+- feat(omnitron): a chain the node already held
+- feat(omnitron): a stall that says whether the process was working or waiting
+- feat(omnitron): an event loop that stood still, and nothing said so
+- feat(omnitron): a stack that lets its probes bring their own accounts
+- feat(omnitron): a finding a probe made on a node, kept in its own words
+- feat(omnitron): a fleet rolled out one node at a time
+- feat(omnitron): a release only the master that built it could deploy
+- feat(omnitron/console): the build dialog says how loaded the machine is, before the press
+- feat(omnitron): a release's probes run on the node that carries it
+- feat(omnitron): a release records the machine its gates ran on
+- feat(omnitron): the receiving half of an attestation, so verifiedOn can say yes
+- feat(omnitron/console): a plan that says what it did not compare
+- feat(omnitron): a release build the console can start, watch and refuse
+- feat(omnitron): planUpgrade, so the console can show a rollout before running it
+- feat(omnitron): the fleet-rollout contract, declared before it is built
+- feat(omnitron): releases you can look at, and remove
+- feat(omnitron): a stack that takes releases, and the deployment that brings one
+- feat(omnitron): a release built from two commits, not from a developer's disk
+- feat(omnitron): fleet upgrade and cluster stacks were writers with no lease
+- feat(omnitron): a stack.start row named the project's commit and not the omni that went with it
+- feat(omnitron): two masters could deploy to one node at once, and neither would know
+- feat(omnitron): nothing asked whether the artifact that arrived is the one sent
+- feat(omnitron): a publish that would have gone outward, with a credential already loaded
+- feat(omnitron): what a release is, and what earns one the right to reach a stack
+- feat(omnitron): a restart that fails on a port says who is holding it
+- feat(titan-cache): an invalidation the other processes can hear
+- feat(omnitron): a deployment stops compiling what nobody changed
+- feat(scripts): which packages run from a build older than their source
+- feat(webapp): Upgrade omnitron, from the node's own page
+- feat(omnitron): a node can be upgraded from the console
+- feat(omnitron): a deployment stops shipping what the node already has
+- feat(omnitron): a node upgrade leaves a trace
+- feat(omnitron): topology.expose works for a single process, not only a pool
+- feat(webapp): an Audit page, now that there is something to read
+- feat(omnitron): the audit table has a writer
+- feat(omnitron): a node can be given the secret its auth method needs
+- feat(webapp): the node page says what the node is running
+- feat(omnitron): the fleet view can reach a node the way the master does
+- feat(omnitron): a frontend build that refuses to guess needs somewhere to be told
+- feat(omnitron): a deployment published its every step and the console could not see one
+- feat(omnitron): the node had the artifacts and no idea what to do with them
+- feat(omnitron): the gateway served `/` from a directory nobody ever put anything in
+- feat(omnitron): a node that blinked once and one down since Tuesday looked identical
+- feat(omnitron): a fleet where every node is healthy and no two agree who leads it
+- feat(omnitron): a node can be green on every reading and be moving no data
+- feat(omnitron): the console showed that a node was down and never why
+- feat(scripts): twelve standing checks, and nothing ran any of them
+- feat(scripts): 28 tests in a package's own test directory have never run
+- feat(prism): let the host name a failed read, as it already names the empty one
+- feat(omnitron): a stack on a public host ran on the passwords printed in this repository
+- feat(omnitron): the torrc is rendered, reviewable and hardened, and a remote stack gets its gateway
+- feat(omnitron): omnitron can provide the systemd unit, so hardening is declared rather than improvised
+- feat(omnitron): `bareMetal` described how a service runs from systemd, and nothing read it
+- feat(omnitron): a remote stack shipped its applications to a node with no database
+- feat(omnitron): the node page could call a node healthy while none of its data arrived
+- feat(omnitron): the fleet formed no mesh, and three things had to be true before it could
+- feat(omnitron-console): show which node runs which build, and which are behind
+- feat(omnitron): install a bundle on a node beside what it is running, and activate separately
+- feat(omnitron): omnitron fleet upgrade — one node at a time, stopping at the first failure
+- feat(omnitron): build a bundle of this tree that installs itself on the target
+- feat(omnitron): plan a bundle of this working tree that does not carry this machine
+- feat(omnitron): prepare a remote node automatically, whatever machine it is
+- feat(titan-notifications): the realtime signaler could not know what it was signalling
+- feat(titan-pm): log the RPC deadline a PM client will actually enforce
+- feat(titan-redis): let xadd cap the stream it writes to
+- feat(titan-database): give the table-plugin registry its reader, off by default
+- feat(prism): AdminDataTable can expand a row, and two console tables stop faking columns
+- feat(prism): AdminDataTable had no way to say "this whole row is different"
+- feat(prism): `loading` on Table drew nothing, so every consumer drew its own
+- feat(omnitron): the daemon says which of its jobs did not register
+- feat(titan): export forwardRef from the package root
+- feat(titan-scheduler): report what was actually scheduled
+- feat(omnitron): doctor grew quieter the more loops an installation had
+- feat(omnitron): doctor now reads every registered project's config
+- feat(omnitron): doctor now reports what it could not examine, not just what it found
+- feat(omnitron): doctor names alert rules that can never fire
+- feat(omnitron): doctor checks the console's proxy, and stops guessing where the disk went
+- feat(omnitron): doctor tells a large table from a bloated one
+- feat(omnitron): doctor names the three faults this host has actually had
+- feat(omnitron): doctor asks whether the console serves, not whether nginx is up
+- feat(omnitron): doctor reports what the daemon answers without credentials
+- feat(omnitron): an MCP agent now hears why a tool is unavailable
+- feat(omnitron): app-declared PostgreSQL extensions are actually created
+- feat(titan-auth): clock skew was unconfigurable, and the checklist said otherwise
+- feat(omnitron): teach `doctor` to read the log table as a symptom
+- feat(omnitron): bound the logs table, which had no retention at all
+- feat(prism): exact decimal subtraction, and use it for the portal's wallet balance
+- feat(titan-scheduler): honour a job's startTime and endTime
+- feat(omnitron): teach `doctor` to ask whether the running code is the written code
+- feat(titan-database): make shutdownTimeout real, mark the options that are not
+- feat(prism): let a table say it could not load, not just that it is empty
+- feat(titan-ratelimit): let tiers come from something that can change
+- feat(prism): add exact decimal addition alongside the exact formatting
+- feat(omnitron): teach doctor to look underneath an app's status
+- feat(omnitron): `doctor` — say what is wrong, why, and what to do about it
+- feat(omnitron/auth): record the session address server-side, or not at all
+- feat(omnitron/console): the control-plane UI shipped with no security headers
+- feat(omnitron/auth): sign-in had no brute-force protection at all
+- feat(common): add describeError() for AggregateError and cause-chain logging
+- feat(titan-database): adopt kysera 0.10 — activation pass-through, transaction retry, count-free listing
+- feat(titan-database): compile RLS decorators into a real rlsPlugin
+- feat(titan-database): TransactionAwareRepository honors executor plugins
+- feat(omnitron): converge enabled stacks — docker-wait at boot + reconciler
+- feat(omnitron): `omnitron service` — OS-level daemon supervision (launchd/systemd)
+- feat(omnitron/backup): storage, tor-keys and daemon-state backup + `backup full`
+- feat(omnitron/backup): persisted, auto-restored backup schedules + retention
+- feat(netron-react): NR-1 parity — unified infinite types + suspense/keepPreviousData on all hooks
+- feat(netron-react): useErrorBoundary in useInfiniteQuery + useQueries
+- feat(netron-react): useQuery keepPreviousData + suspense + useErrorBoundary
+- feat(titan-scheduler): SC-1-full — per-fire-window distributed lock
+- feat(utils): extract shared PeriodicProbe; unify netron health loops (HEARTBEAT-UNIFY)
+- feat(http-core): unify QueryBuilder + ConfigurableProxy + request types (SHARED-HTTP-CORE incr 3)
+- feat(http-core): unify RetryManager into shared package (SHARED-HTTP-CORE incr 2)
+- feat(http-core): extract shared @omnitron-dev/netron-http-core; unify HttpCacheManager (SHARED-HTTP-CORE incr 1)
+- feat(netron-protocol): new shared wire-protocol package — UID + constants (SHARED-PROTO incr 1)
+- feat(omnitron): Docker container self-heal + infra/test hardening
+- feat(titan-auth): __Host- cookie prefix for session cookies (cookie-mode hardening)
+- feat(prism): Map component (MapLibre GL + react-map-gl)
+- feat(netron-react): MultiBackendProvider→NetronContext bridge + query cache hardening
+- feat(titan-auth): wildcard host patterns in Origin allow-list (T#68)
+- feat(omnitron/inspect): per-child diagnostics + log path surfacing (T#66)
+- feat(titan-auth): roleExpander option for SharedSessionAuthManager
+- feat(netron-browser): multi-tab WS leader-election primitive (T#64)
+- feat(omnitron): OmnitronEnvConfig — typed env var source-of-truth (T-6)
+- feat(omnitron): migrate Secrets / Backup / NodeManager onto DaemonStateStore
+- feat(omnitron): ProjectRegistry on DaemonStateStore (T-7 part 2)
+- feat(omnitron): unified DaemonStateStore — SQLite-backed daemon persistence
+- feat(omnitron): boot-time discovery of pre-existing managed processes
+- feat(titan-pm): foundational primitives — backoff, liveness, discovery, child contract
+- feat(nexus): warn on constructor inject arity mismatch
+- feat(omnitron): persist crash diagnostics on AppHandle + surface via inspect
+- feat(omnitron-config): UPSTREAM_GEO_HOST/PORT for the new geo backend
+- feat(prism+netron-auth): XSS hardening + HTTP Origin middleware (T#347, T#368)
+- feat(netron+auth): T#176 pluggable token transport — cookie / bearer / composite
+- feat(omnitron-cli): daemon-RPC backed project commands + boot-race guard
+- feat(prism/layouts): selectionPrefix accepts string | string[]
+- feat(prism/emoji-picker): drop skin tones
+- feat(prism): EmojiPicker — twemoji-aware drop-in replacement for emoji-mart
+- feat(prism/StatusChip): add optional `label` prop for localized text
+- feat(admin-data-table): localised pagination labels via optional paginationLabels prop
+
+### 🐛 Bug Fixes
+
+- fix(omnitron): an alarm the node had nowhere to send
+- fix(omnitron): a rollback that served the release before it
+- fix(titan/test): a port asked about on a host nobody binds
+- fix(netron): a close code that said nothing, and a client that waited it out
+- fix(test): scans that end by running out of work
+- fix(titan-auth): a link issued twice in one second
+- fix(test): a port the network could reach
+- fix(omnitron): a temp dir the gates left behind
+- fix(test): a temp dir the test runner never removed
+- fix(omnitron): a lock that failed the deployment it promised to spare
+- fix(omnitron): a chunk the last deployment took away
+- fix(omnitron): a value the lock assigned and never read
+- fix(omnitron): a lock written where the gateway did not look
+- fix(netron-browser): a refusal that lost what the server said with it
+- fix(omnitron): a definition loader that kept its first graph
+- fix(titan): a token that left by the cookie and the body
+- fix(titan-database): a shutdown bound nobody set, and a zero that meant «for ever»
+- fix(titan-database): a reconnect that spent the name it was rebuilding
+- fix(titan-database): a page that did not partition its rows
+- fix(omnitron): the gateway's other road — a node's
+- fix(omnitron): an onion that resolved its gateway once
+- fix(omnitron): a migration that spoke to nobody — on the node
+- fix(titan): a restart that answered nothing
+- fix(omnitron): a migration that spoke to nobody
+- fix(titan): a call accepted while the database closed
+- fix(omnitron): an attestation run that left no record and no words
+- fix(titan): a service found and not exposed, said in one sentence for three causes
+- fix(omnitron): a deployment right after its node restarted
+- fix(omnitron): a rollback target the upgrade deleted
+- fix(titan): a conflict the server kept to itself
+- fix(omnitron): a release the node never ran
+- fix(titan-health): a flag the factory returned
+- fix(titan-scheduler): a fire named after the tick before
+- fix(titan): a circuit that stayed half-open
+- fix(omnitron): a container started with the spec it no longer had
+- fix(omnitron): a database the health sweep brought back
+- fix(omnitron): two spellings of one project, and a mount left the master's
+- fix(omnitron): an app that left its workers running
+- fix(omnitron): a wallet kept in place, told apart from one removed
+- fix(omnitron): a stopped build that reported no gate had run
+- fix(omnitron): a write the daemon would undo
+- fix(omnitron): a node that kept the first definition it was given
+- fix(omnitron): a directory shipped past admission
+- fix(omnitron): a mount that existed only on the master
+- fix(omnitron): a cleanup the release page did not show
+- fix(omnitron): a gateway one tool could not find
+- fix(omnitron): a cleanup the record dropped
+- fix(scripts): three packages called --name-only, --contains and --filter
+- fix(testing,build): a package that built only where it had been built before
+- fix(omnitron): a build root nobody removed
+- fix(omnitron): a transfer that waited forever
+- fix(omnitron): a checkout frozen for files no deployment reads
+- fix(omnitron): probes that wrote into what people see
+- fix(omnitron): a record that said «runs» of files no process had loaded
+- fix(omnitron): a signing key the resolver invented
+- fix(prism): an empty block that took the whole viewport
+- fix(omnitron): a node's status read through the masker and quoted into the log
+- fix(omnitron): a bucket anyone on the network could write
+- fix(omnitron): a record the transport rewrote
+- fix(omnitron): a password the transport rewrote on its way back
+- fix(omnitron): a redeployment that restarted the old environment
+- fix(omnitron): a template read once for the daemon's life
+- fix(omnitron): a config its account could not reach
+- fix(omnitron): a deployment that called a failed daemon healthy
+- fix(omnitron): a start cut at its deadline, with no reason given
+- fix(omnitron): a table with writers and no reader
+- fix(omnitron): a network's ports that nothing read
+- fix(omnitron): a log line read four ways, and a remote app with no logs
+- fix(omnitron/webapp): a latency that stopped timing the waits and said nothing
+- fix(omnitron): a probe printed up to the fields it was sent for
+- fix(omnitron): a refusal that ended in a stack frame
+- fix(omnitron): a digest answered on a connection nobody challenged
+- fix(omnitron): an alert rule that watched no containers
+- fix(omnitron): a bundle that named a commit it did not ship
+- fix(omnitron): a password after a space, printed by infra inspect
+- fix(omnitron): a stack that started when the master did
+- fix(titan): a long poll that was the p95 of a whole application
+- fix(omnitron): a mainnet daemon given the laptop's password
+- fix(omnitron): a health check that knocked on nothing it named
+- fix(omnitron): a remote stack «started» when this master attached to it
+- fix(omnitron): a latency beside a count of another window
+- fix(omnitron): a Sync column that read the batch as lag
+- fix(omnitron): a node that read as «Buffering» for ever
+- fix(omnitron): a second set of zoom buttons, drawn white on the canvas
+- fix(omnitron): a dashboard that summed the daemon into its apps
+- fix(omnitron): a containers page that read the name for the label
+- fix(omnitron): a runtime that could not be asked, listed as nothing
+- fix(omnitron): a topology with edges nobody declared
+- fix(omnitron): a test that wrote its probes into the live log table
+- fix(omnitron): a breakdown beside a total it did not add up to
+- fix(omnitron): a partial start the audit command coloured and did not explain
+- fix(omnitron): a partial start the audit page read like any other
+- fix(omnitron): an app that did not come up, reported as started
+- fix(omnitron): four http processes drawn under one name
+- fix(omnitron): an app definition read with the importer's tsconfig
+- fix(omnitron): an upgrade that depended on the builder's file modes
+- fix(omnitron): a process named beside the app's own memory
+- fix(omnitron): a project the daemon had not got to yet
+- fix(titan-pm): a metrics answer rebuilt from four fields
+- fix(omnitron): a containers page that hid a stack
+- fix(omnitron): a deployments page that said none were made
+- fix(omnitron): a system page that waited for Docker
+- fix(omnitron): an audit page that named the CLI «omnitron…»
+- fix(omnitron): a prune the console could not see
+- fix(omnitron): a daemon's memory the console read as the total
+- fix(omnitron): a check that could not read the answer, counted as an answer
+- fix(omnitron): an exec that asked the wrong process, the wrong way
+- fix(omnitron): a master-to-node call the registry court did not name
+- fix(omnitron): a comment that called the history column NOT NULL on the day main made it nullable
+- fix(omnitron): tor and infra registered without the arguments their fixes take
+- fix(omnitron): a tor title the box border cut off
+- fix(omnitron): infra status and logs saw only this machine and did not say so
+- fix(omnitron): discover printed fields nothing had measured
+- fix(omnitron): tor answered every question with the dev stack's onion
+- fix(omnitron): a dry run that built a bundle in the live tree first
+- fix(omnitron): remote denied a machine the node registry holds
+- fix(omnitron): every fleet command waited five seconds at a port the mesh knew was shut
+- fix(omnitron): the id node list prints, accepted by no command
+- fix(omnitron): a removed node that kept answering as alive
+- fix(omnitron): one refused call detached the health worker for good
+- fix(omnitron): a check that called a node offline without asking the mesh it was connected by
+- fix(omnitron): a daemon's memory that was the apps' memory
+- fix(omnitron): an indicator that counted «starting» as online
+- fix(omnitron): a secret printed by the command that masked
+- fix(omnitron): an inspection that measured one process
+- fix(omnitron): an app that took its last process's pid and its first's start
+- fix(omnitron): two projects printed under one path
+- fix(omnitron): a status that created the knowledge base it reported on
+- fix(omnitron): a rollback that said it restarted, and advice that led to a refusal
+- fix(omnitron): three commands that walked peers Netron never had
+- fix(omnitron): a status the service computed and no call reached
+- fix(omnitron): a stack no backup reached, and no command named
+- fix(omnitron): a schedule that started over with every restart
+- fix(omnitron): a failed backup that said nothing
+- fix(omnitron): a restore that could not be called from what the list printed
+- fix(omnitron): a backup directory that kept what no index named
+- fix(omnitron): a protection only the browser held
+- fix(omnitron): a release the CLI and the console read apart
+- fix(omnitron): a reader that said «stopped» whatever it read
+- fix(omnitron): an audit trail with no failure in it and every caller named system
+- fix(omnitron): a flag the refusal named and the command line refused
+- fix(omnitron): a release list that could not say which release a stack runs
+- fix(omnitron): a detail page that took one process for the app
+- fix(omnitron): a dashboard that showed one machine of a project
+- fix(omnitron): a metric that counted its own questions
+- fix(omnitron): a status bar that counted another stack's apps
+- fix(titan): a request timed before it ran
+- fix(omnitron): an app list that kept the first of each name
+- fix(titan): a record the collector cut into lines
+- fix(titan-pm): a health answer that kept the verdict and dropped the reason
+- fix(omnitron): a health report that never asked an app
+- fix(omnitron): one event-loop indicator in the daemon, not two that disagreed
+- fix(titan-health): an event loop indicator that measured the one instant nothing could be wrong
+- fix(titan): a refusal said twice, once as an error
+- fix(omnitron): a control plane the scheduler put last
+- fix(omnitron): a master that stood still while it migrated
+- fix(omnitron): a kill that waited on ps, for as long as ps liked
+- fix(omnitron): a host with six apps running, called «not provisioned»
+- fix(titan-health): a heap that looked full because it was measured against itself
+- fix(omnitron): apps configured with passwords the node never had
+- fix(omnitron): the source a probe run left on its node, and nothing said so
+- fix(omnitron): a node that could not be asked, taken to have no migrations
+- fix(omnitron): a firewall it could not read, reported as switched off
+- fix(omnitron): an onion that opened when its client keys did not arrive
+- fix(omnitron): a release that vendored the developer's omnitron, and rebuilt the daemon in passing
+- fix(omnitron): a deployment that reported success and left the portal answering 504
+- fix(omnitron): a court the rollout left behind, and a refusal in the wrong words
+- fix(omnitron): a cluster that could elect nobody
+- fix(omnitron): a machine's heartbeat written into the control plane's table
+- fix(omnitron): probes that found no code on the node
+- fix(omnitron): a gateway config that never reached the gateway
+- fix(omnitron): the master beat a row called «self»
+- fix(omnitron): a system worker's warnings reached no log
+- fix(omnitron): a node's build-stamped version outgrew its column, and every node's history stopped with it
+- fix(omnitron): the master's dedup ledger was written on every entry and pruned by nothing
+- fix(omnitron/console): the whole console read through, and what it said that was not so
+- fix(prism): wrapped rows that kept their margin, and leaves nothing could hold
+- fix(omnitron): a batch was received one entry, one transaction, one WAL flush at a time
+- fix(omnitron): a pull started again before the last one had finished
+- fix(omnitron): a node's buffer bound failed at the size it was for
+- fix(omnitron): prune could delete the release being built
+- fix(omnitron): the release list walked the build it was listing
+- fix(omnitron): the plan stopped the daemon it was asked from
+- fix(omnitron): a pull that failed, or was never wired, said nothing at all
+- fix(omnitron): the release a deployment carried was recorded as «[object]»
+- fix(omnitron): my own registry court could not see a third of its subject
+- fix(omnitron/console): the telemetry panel vanished instead of saying why
+- fix(omnitron): I replaced a literal zero with a figure that could never be true
+- fix(titan/netron): the client refused a zero the server could never send
+- fix(titan, titan-scheduler): the third and fourth zero read as absence
+- fix(titan-pm): a zero window meant five seconds, in both readers
+- fix(omnitron): a master's restart shipped its working tree to the test server
+- fix(omnitron): two names for one server made a deployment refuse itself
+- fix(omnitron): a refusal that named the package, not the place
+- fix(omnitron): a node that refused its own master, on three reads at once
+- fix(titan*): a writer with no reader, a cast that accepted anything
+- fix(titan/netron): a zero that asked for any port was read as 8080
+- fix(omnitron): three sync figures, two of them typed rather than counted
+- fix(titan-pm): four threads for sixteen cores, on every child
+- fix(omnitron): the doctor reported a busy machine as a container that could not be reached
+- fix(titan-pm): the budget was agreed, and then badly divided
+- fix(omnitron): a deployment that reached no node at all was recorded as one that deployed six apps
+- fix(titan-pm): a question asked too early, about the wrong thing
+- fix(omnitron): a deadline the pool had and the child did not
+- fix(omnitron): a server that never stated its deadline
+- fix(omnitron): a healthy remote stack was declared entirely down, so every start deployed it again
+- fix(titan-pm): a deadline neither side agreed on
+- fix(omnitron): leaving an application alone was logged; restarting it was not
+- fix(omnitron): a race at startup reported as a failure
+- fix(omnitron): a guard keyed on a field the node never sets, which is a guard that always fires
+- fix(omnitron): the decision that took a node down said nothing when it took it down
+- fix(omnitron): every deployment stopped the node's daemon, and the six applications under it
+- fix(omnitron): the mesh link dropped every 360 seconds because a pool called a busy tunnel idle
+- fix(omnitron): a cycle that delivered nothing and called it success
+- fix(omnitron): a build wrote down inputs its own run then changed
+- fix(titan-pm): a shutdown nobody reached
+- fix(omnitron): a refusal repeated 76 659 times without its reason
+- fix(titan-pm): a kill recorded as a clean exit
+- fix(omnitron): a diagnostic inside the catch replaced the failure it was added to explain
+- fix(titan): a log file nothing could read back — colour codes, and no date
+- fix(omnitron): `stack runtime` counted a remote stack on the machine it does not run on
+- fix(omnitron): a name that resolved to a closed door
+- fix(omnitron): an allocation nothing allocated
+- fix(omnitron): the deployment restarted the six applications it had just decided to leave alone
+- fix(titan-database): a latency that measured the process, not the database
+- fix(omnitron): a deployment that says nothing cannot be told from one that stopped
+- fix(omnitron): the tree that ships is not only the project's own
+- fix(titan): a peer that left mid-call was logged as a failed call, 27 times for every real fault
+- fix(omnitron): a remote deployment ships a commit, or refuses
+- fix(titan): a refusal nobody wrote down, and a fast path that logged nothing at all
+- fix(omnitron): a build deadline that reached only the first process in the tree
+- fix(omnitron): new code started on a schema its migrations failed to produce
+- fix(omnitron): the skip that could never fire, because the name changed every time
+- fix(omnitron): a directory a failed unpack left behind looked like a delivered bundle
+- fix(omnitron): an upload that returned before the bytes arrived
+- fix(omnitron): a deployment that shipped five of six and called it started
+- fix(omnitron): a frontend's sources are not all under its own src
+- fix(prism): one door for both label dictionaries
+- fix(prism): the lightbox named its buttons in English, and the rule now has one court
+- fix(prism): an aria-label sweep finds only what has an aria-label
+- fix(titan-cache): one cache was cleared and every cache in the process went
+- fix(build): a package stopped existing while it was being built
+- fix(titan,netron-browser): a merge writes the keys its SOURCE chose
+- fix(msgpack): a sender could replace the prototype of the object it sent
+- fix(netron): two copies of one decoder, each carrying half the guard
+- fix(omnitron): the last clock in a bundle was the name it gave itself
+- fix(omnitron): a bundle was new on every build, whatever the sources did
+- fix(omnitron): an artifact was identified by the minute it was packed
+- fix(titan-cache): a tag flush dropped the local copy and left the shared one
+- fix(omnitron): a topology service that was not there yet was never there again
+- fix(omnitron): a fake node manager without the method the recorder reads
+- fix(omnitron): a node rebuilt and watched the artifacts a deployment had just written
+- fix(omnitron): a stack whose every app was running read "stopped"
+- fix(omnitron): a node's infrastructure state is a cache, and the containers are the fact
+- fix(omnitron): a remote stack's containers are on its nodes, not on this master
+- fix(omnitron): six apps running on a node were reported as six stopped
+- fix(omnitron): a guard against duplicates also blocked the repair
+- fix(omnitron): the daemon exposed the secrets service and the CLI could not find it
+- fix(omnitron): a master could deploy to a node and not ask how it was doing
+- fix(omnitron): a qualified app name was answered with a different deployment
+- fix(omnitron): four tests that described code that had moved
+- fix(omnitron): a node answering `appsOnline: 6` was listed offline
+- fix(omnitron): a server was configured for the laptop that deployed it
+- fix(omnitron): six running apps were reported as six failed deployments
+- fix(titan-database): a migration failed on objects an unshipped record had created
+- fix(omnitron): one machine was upgraded twice, at the same time
+- fix(omnitron): an artifact carried compiled files whose sources were gone
+- fix(omnitron): every /api/* answered 503 while the upstream was healthy on the same host
+- fix(omnitron): the migrator never read the credentials it was sent
+- fix(omnitron): a platform with no schema at all reported five of six apps healthy
+- fix(omnitron): the node threw away the credentials it had been handed, one line later
+- fix(omnitron): an empty map is not a map of nothing declared
+- fix(omnitron): a node swept its master's host, and no rule about names could stop it
+- fix(omnitron): an address is not an instruction to build what it points at
+- fix(omnitron): a master could command a node and not question it, and a viewer could read its passwords
+- fix(omnitron): the node's config named the apps and not what they connect to
+- fix(omnitron): a daemon upgrade removed the stack the daemon was running
+- fix(omnitron): three ways a deployment lied about what was wrong
+- fix(omnitron): a literal NUL byte in a source file
+- fix(omnitron): the test portal was ten days and 1 152 files behind the tree it was testing
+- fix(omnitron): the first phase of a deployment wrote nothing for six apps in a row
+- fix(omnitron): a build that failed said nothing, and an unknown project said less
+- fix(omnitron): one field, two types, and the narrower one was the declared contract
+- fix(omnitron): a supervised app and its daemon each had their own Titan
+- fix(omnitron): a package shipped a dist months older than its sources
+- fix(titan-database): three drivers declared optional, all three required to import the package
+- fix(omnitron): the gateway reached the container beside it through the host
+- fix(omnitron): every artifact carried twenty-three symlinks into a home directory
+- fix(omnitron): the registry knew one config filename and the loader has always read three
+- fix(omnitron): the node read six app definitions and started none of them
+- fix(omnitron): the daemon could not find pnpm, so six artifacts failed to build and the deployment said it succeeded
+- fix(omnitron): the node could not be told what to run until it ran, and could not run until it was told
+- fix(omnitron): every artifact this fleet ever shipped was missing its dependencies
+- fix(omnitron): six apps reported deployed to a node that was running none of them
+- fix(omnitron): the master provisioned a node over a connection to the process that had just exited
+- fix(titan/netron): a call that arrived with too few arguments answered 500
+- fix(titan/netron): every 5xx logged the mask and threw away the fault
+- fix(omnitron): the first log-retention pass raced the migrations that create its table
+- fix(titan/nexus): inject[] wins over the decorators, and only its LENGTH was ever checked
+- fix(omnitron): the control-plane database ran on one stack's volume while its own sat dangling
+- fix(omnitron): a node's gateway was built by the resolver that does not configure gateways
+- fix(omnitron): deposing the cluster leader required no credential, and the check that would have caught it read one directory
+- fix(omnitron): the gateway was published where it listens, not where the stack asked
+- fix(omnitron): the stack's answer never reached the bare-metal plan
+- fix(omnitron): the control plane's own database was adopted without being looked at
+- fix(omnitron): the one container that faces outward was the one that skipped the loopback default
+- fix(titan-notifications): a broadcast was one array, one insert and one signal, each the size of the platform
+- fix(netron-browser): connect() resolved one exchange before the server could receive anything
+- fix(scripts): the orphan-test scan measured its own repository from wherever it was run, and refused to run anywhere else
+- fix(omnitron): infra psql said the database was missing while it was serving
+- fix(netron-browser): the bearer token was dropped again, one line above the fix that stored it
+- fix(scripts): seven scanners read source with holes in it and reported what they could not see as absent
+- fix(omnitron): the janitor stopped working exactly when it was needed, 990 times
+- fix(omnitron): a secret store resolved once at boot turned credential generation off for good
+- fix(omnitron): a preset asserted the contents of a config it does not own
+- fix(omnitron): a config declared which port a server listens on, and it cannot
+- fix(omnitron): the health probe knocked on port 80 whatever port the service used
+- fix(omnitron): the reconciler could not see the changes it was asked to make
+- fix(omnitron): a container serving traffic correctly reported unhealthy for its whole life
+- fix(omnitron): the safety mechanism worked and reported to nobody
+- fix(titan-pm): a signal sent is not a process stopped
+- fix(omnitron): every provisioned node got a Postgres nobody queries, on default credentials
+- fix(omnitron): "port is already allocated" named the port and withheld the holder
+- fix(omnitron): recreating three services at once left all three unstartable
+- fix(omnitron): a generated password would have locked an application out of its own database
+- fix(omnitron): a stack could turn a service off and get it anyway
+- fix(omnitron): the MinIO image was gone from the registry, and a warm cache hid it
+- fix(omnitron): containers came up and what goes inside them never did
+- fix(omnitron): a node asked for three services reported that none were declared
+- fix(omnitron): a managed database was open to the internet through a firewall that said it was not
+- fix(omnitron): the method that exists for a master to call refused the master
+- fix(omnitron): a stack could name a registered node and not know how to reach it
+- fix(omnitron): a master that pulls was refused for having nowhere to be dialled
+- fix(omnitron): a deploy failed its SSH handshake against a node with load average 0.02
+- fix(omnitron): a broken tunnel was reported as a node refusing the master's credential
+- fix(omnitron): `down` reported the daemon stopped, and a supervisor put it back
+- fix(titan/errors): a masked fault still shipped its system code and its details
+- fix(omnitron): an alert that said where it came from stopped saying what was wrong
+- fix(titan-scheduler): a @Cron on a class built by a factory was never scheduled
+- fix(titan): a @Service registered through useFactory never reached the wire
+- fix(titan/errors): a fault's message went to the caller, naming paths and hosts
+- fix(titan-database): the driver's sentence travelled to the caller, three messages deep
+- fix(titan-database): the circuit breaker was read before the connection it protects
+- fix(titan-database): the health check loop stopped watching a connection when it went down
+- fix(titan-database): a reconnect succeeded and its own caller could not see it
+- fix(titan-database): the commonest database failure produced an empty sentence
+- fix(titan/netron): declaring a method's schemas published it, unauthenticated
+- fix(omnitron): one machine could be registered twice, and everything did it twice
+- fix(omnitron): a reinstalled node could never rejoin, and a duplicate registry row could evict a live one
+- fix(omnitron): every reconnect leaked the SSH session the last attempt was using
+- fix(titan/netron): a contract turned every no-argument call into a 500
+- fix(omnitron): one malformed entry would have stopped a node replicating, permanently
+- fix(omnitron): "Infrastructure ready:" was a heading, not a finding
+- fix(omnitron-console): the log viewer's node filter listed a registry with one row
+- fix(omnitron-console): two machines were drawn as two lines with one name
+- fix(omnitron): a fleet heartbeat that could not succeed, in a catch that could not report it
+- fix(omnitron): a log filter that was a syntax error on every slave in the fleet
+- fix(omnitron): the buffer bound measured itself with a function SQLite has not got
+- fix(omnitron): a date fix that converted the shape its caller never sends
+- fix(omnitron): the CLI could not report its own hang
+- fix(omnitron): the fleet commands reported an empty fleet about two machines
+- fix(omnitron): the upgrade refused the one node that needed it, over a channel it does not use
+- fix(titan/netron): the CORS preflight granted a permission the responses would not honour
+- fix(titan-auth): a Redis error logged every user out, past the fallback written for exactly that
+- fix(titan/netron): two documented connection limits enforce nothing, and now say so
+- fix(titan-pm): a startup timeout named the child when the supervisor was the one not running
+- fix(omnitron): the unit file said things systemd read differently, and the slave bound loopback
+- fix(omnitron): two ways to start the daemon, and neither kept a word of what went wrong
+- fix(omnitron): a slave's retention passes could not bind the value they compared
+- fix(titan-database): a misconfigured connection was retried for 31 seconds
+- fix(omnitron): the published package carried code from sources that no longer exist
+- fix(omnitron): a slave was supervised by something that stops when you log out
+- fix(omnitron): the supervised daemon's ExecStart named a loader the package does not ship
+- fix(titan-pm): a discovery test asked about one project and asserted another
+- fix(packages): nine runtime imports declared only as devDependencies
+- fix(omnitron): a backup interrupted half-way took its final name anyway
+- fix(omnitron): a provisioned slave would have booted as a master, on loopback, with no master
+- fix(omnitron): a slave published two surfaces it does not serve, and installed system packages nobody authorised
+- fix(omnitron): a console-registered machine could not be deployed to, and a provisioned slave pointed at itself
+- fix(omnitron): a rotated log carried its .gz name before it was a .gz
+- fix(omnitron-console): the fleet page reported 0% uptime for software that was never installed
+- fix(omnitron): the CLI told the operator to start a daemon that was already running
+- fix(omnitron-console): the loading states were hand-rolled, and thinner than what prism ships
+- fix(omnitron): the sync buffer's bound ran only on a cycle that had drained it
+- fix(omnitron): a check that opened no SSH session reported an SSH refusal
+- fix(omnitron): the vault's key depended on whether a shell command answered in time
+- fix(omnitron): the janitor's two halves disagreed again, in the other direction
+- fix(omnitron): the janitor reaped the daemon's own health monitor, 108 times
+- fix(omnitron): editing a test restarted the app that never loads it, and "watching" meant an object existed
+- fix(omnitron): the slave→master replication pipeline had no producer
+- fix(omnitron): the refusal pointed at a path that has never run, and said what it does
+- fix(omnitron): stop advertising four deploy strategies that were never implemented
+- fix(omnitron): `deploy` restarted, `rollback` restarted the same thing
+- fix(titan-pm): @CircuitBreaker's threshold counted failures for the life of the instance
+- fix(omnitron): an app's startup budget never reached its child processes
+- fix(omnitron): a corrupt server registry read as an empty fleet
+- fix(omnitron): the CLI could not report the one condition it was being used to investigate
+- fix(omnitron): the janitor blocked the daemon it was sweeping, and could not see an orphan
+- fix(omnitron): a crashed health worker took the whole fleet view with it
+- fix(netron-browser): the reconnect backoff never backed off
+- fix(common): a scale of NaN scaled every amount to nonsense and said nothing
+- fix(common): the platform's server-side money library was wrong in five places
+- fix(prism): a balance was rounded up, so the platform showed more coin than it held
+- fix(titan-pm): a pool's requestTimeout bounded the queue and not the call
+- fix(netron-browser): every business error reached the browser as a 500
+- fix(titan-cache): the decorator's cache key turned different arguments into the same key
+- fix(titan-cache): `invalidatePattern` documented a glob and built an unanchored regex
+- fix(titan-pm): `@Idempotent` keyed a keyless call on a constant and served one caller another's result
+- fix(titan): `@Logger()` returned a null logger and no DI path ever replaced it
+- fix(netron): a socket that was already closing was reported as an unexpected state
+- fix(netron): `stop()` had no guard against a concurrent second call, so a clean shutdown logged an error
+- fix(netron): the handler that existed to prevent unhandled rejections raised one
+- fix(titan-redis): Redis connections were opened and never closed, in any app, ever
+- fix(titan): the instance teardown disposed the container it was walking
+- fix(omnitron): a topology call got a wire deadline, and a stale handle got no way back
+- fix(omnitron): `start` read the daemon's own config, so it could not start what `ls` listed
+- fix(titan): @PreDestroy only ever ran when the application failed to start
+- fix(titan-notifications): one poisoned message would have stopped the stream being trimmed at all
+- fix(titan-pm, omnitron): an app configured at `error` still had every child logging at `info`
+- fix(titan-ratelimit): the token bucket answered "when is the bucket full", not "when may I retry"
+- fix(titan-ratelimit): a sliding window told every denied caller to wait the maximum
+- fix(titan-pm): @OnShutdown marked a method the runtime never called
+- fix(prism): the contrast fix landed in one place and three call paths kept the old answer
+- fix(netron-browser): the client and the server disagreed about which version is "latest"
+- fix(omnitron): a service registration outlived the app that exposed it
+- fix(netron/http): the built-in request log kept the caller's identity and the token in their URL
+- fix(netron): a contract was an HTTP-only promise, and packet transports could not carry one at all
+- fix(netron/http): a validator that throws was read as a validator that passed
+- fix(netron): the credential mask was a denylist over an open index signature
+- fix(titan): forRoot and forRootAsync wired different things in two modules
+- fix(titan-ratelimit): the key prefix was applied twice, so nothing could find a limit
+- fix(omnitron): every rotated log was plain JSON wearing a .gz name
+- fix(titan-notifications): the event stream and its consumer list were both append-only
+- fix(titan-database): configuring a plugin silently turned the built-in ones off
+- fix(titan-database): key plugin initialization on the plugin, not on (plugin, database)
+- fix(titan-database): a registered RLS plugin would have thrown on its first query
+- fix(omnitron): the backup directory held the .onion identity at 0644
+- fix(titan/netron): a rejected request wrote the caller's password to the log
+- fix(omnitron): `omnitron stop` force-killed on liveness, and 58 destructive sites now say what bounds them
+- fix(omnitron): a MinIO secret was a fragment of a shell command
+- fix(omnitron): the daemon tore down its own infrastructure on every boot
+- fix(omnitron): `daemon kill` SIGKILLed whatever held the pid, not the daemon
+- fix(omnitron): the seeded admin password was a network credential by default
+- fix(omnitron): the janitor reaped another daemon's children
+- fix(titan): three guards that could not see what they were guarding
+- fix(titan): one refused subscribe left the event silently dead for every later subscriber
+- fix(netron-browser): a subscription that reported success and delivered nothing
+- fix(titan-notifications): a failed rotif startup left every publish waiting forever
+- fix(titan-events): a request whose send failed waited forever for the answer
+- fix(titan,netron-browser): four cache and batcher operations whose failure had nowhere to go
+- fix(titan,netron-browser): one throwing listener wedged the HTTP request batcher for good
+- fix(titan-scheduler,titan-cache,titan-pm): three timers that could end the process instead of logging
+- fix(titan,titan-events): an async validator passed everything, and a module could be used before it was configured
+- fix(titan): a transaction middleware that began twice, and a blocking audit that did not block
+- fix(titan-cache): the cache's own size estimator overflowed the stack on a cyclic value
+- fix(titan-pm): the pid-reuse check answered "couldn't confirm" to every pid ever passed to it
+- fix(console): the app detail page stripped the namespace off a name every backend keys on
+- fix(console): the Logs app filter offered a name the daemon stores nothing under
+- fix(prism): useIntersectionObserver latched its options at mount and never let go
+- fix(prism): three types a public prop is declared with, that nobody could import
+- fix(prism,website): three imports the docs tell you to write that do not resolve
+- fix(omnitron): `inspect` sent operators to a log file nothing writes
+- fix(omnitron): the "tor-keys" backup was 99.97% Tor's public directory cache
+- fix(omnitron): the daemon's anonymous surface answered 500 to a malformed request
+- fix(prism): a URL security check read as "a space or a dash"
+- fix(kb): configuring an embedding provider crashed the service in its constructor
+- fix(omnitron): a restarted app left the daemon routing to a pool that was gone
+- fix(titan): the DI core injected `undefined` for a dependency kind it did not know
+- fix(titan): a module wrapper erased async-ness, and an alias resolved past it
+- fix(omnitron/console): 36 card headers passed a prop MUI no longer reads
+- fix(titan-database): a repository handed an unsettled connection kept the Promise
+- fix(titan): an application that could not bind its transport reported success
+- fix(titan-pm): the fork claim covers the startup, not the process
+- fix(titan-pm,omnitron): the orphan janitor killed children that were still starting
+- fix(omnitron): `omnitron init` scaffolded somebody else's five backends
+- fix(titan-pm,omnitron): killing a process that was still starting killed nothing
+- fix(omnitron): a pool worker's output went nowhere
+- fix(titan-pm): the stale-socket sweep deleted sockets that were about to serve
+- fix(titan): a module ring whose every edge is a forwardRef never stopped walking
+- fix(console): the web console has not compiled since the restart counter learned to say "unknown"
+- fix(omnitron): a topology proxy that lost its socket stayed broken until restart
+- fix(titan/netron): a client hanging up produced two stack traces
+- fix(omnitron): a failed start filled the log with errors that were not errors
+- fix(titan-redis): the startup connect could hang forever, and its deadline came from the wrong knob
+- fix(titan-pm): socket cleanup deleted other people's live sockets and none of the dead ones
+- fix(omnitron): a failed start left nothing in the app's own log file
+- fix(titan,titan-pm): every process's management socket was world-connectable
+- fix(titan): a service registered under two tokens was exposed twice and warned about it
+- fix(omnitron): topology.expose registered a service that could not be called
+- fix(omnitron): a pool service with no methods was registered as nothing, silently
+- fix(titan-pm,omnitron): an application's boot never reached its log file
+- fix(titan-pm): everything a child printed while starting up was thrown away
+- fix(titan): "Failed to create module instance from provided input" named nothing
+- fix(titan): a forwardRef module import registered a class and none of its providers
+- fix(titan-scheduler): a job that could not be resolved was dropped in silence
+- fix(titan): module imports were never told to the container, so imports granted nothing
+- fix(omnitron): `restart acme/dev/payments` started omnitron's own payments instead
+- fix(titan-ratelimit): the enforcing decorator recorded nothing about the limit
+- fix(titan-ratelimit): the rate-limit key was the first argument, not the caller
+- fix(titan/netron): every field of every service was readable and writable over the wire
+- fix(titan-auth): a session-bearing token could claim the service tier
+- fix(titan/errors): a driver error is not automatically a server fault
+- fix(titan/netron): /netron/batch executed handlers with no middleware at all
+- fix(titan/netron): the HTTP transport put every private method on the wire
+- fix(titan-ratelimit): an exhausted rate limit answered 500, and named its key
+- fix(titan/errors): a database error handed the caller the schema
+- fix(titan/config): a missing optional config file was indistinguishable from an empty one
+- fix(omnitron): a cold Postgres could not come up inside the deadline, and the test for it checked a copy
+- fix(omnitron): `logs` reported no logs for exactly the app whose logs you needed
+- fix(titan/errors): every schema rejection was reported as an internal server error
+- fix(omnitron): "SIGHUP config reload failed" read as "nothing changed", and often meant the opposite
+- fix(omnitron): `stack start` believed its own record and told the operator a dead stack had started
+- fix(omnitron): a crashed app answered no command for ten minutes, and the CLI just timed out
+- fix(netron-react): a shadowed type parameter made one cast ambiguous, and the hook warnings are not defects
+- fix(omnitron): the restart policy had never restarted anything
+- fix(omnitron): three rethrows dropped the error that explained them
+- fix(titan-pm): a startup timeout glued its own suffix onto the last line the child printed
+- fix(omnitron): `start` accepted a project name it could not register, and said it worked
+- fix(omnitron): `start` rejected the only app name an operator can see
+- fix(titan-pm): a worker killed during startup reported "code null" and dropped the signal that explains it
+- fix(omnitron): a killed app reported "code null", discarding the one fact that explains it
+- fix(titan-redis): every client was configured to stop reconnecting for good after about 43 seconds
+- fix(titan-pm): IProcessInfo.restartCount was assigned zero at registration and incremented nowhere
+- fix(omnitron): every child row in `omnitron list` reported the app's uptime and a literal zero restarts
+- fix(titan-pm): a sandbox setting chose the spawn strategy, and "no sandbox" removed the service proxy
+- fix(omnitron): doctor advised a command that runs straight back into the cause
+- fix(titan/test): the memory-leak test never ran a garbage collection
+- fix(omnitron-console): the dashboard builder said "No applications configured" when the daemon did not answer
+- fix(omnitron-console): a database outage spent 28 seconds on a blank spinner, then a sign-in page that said nothing
+- fix(titan/test): millisecond bounds measured the machine, and one of them proved a property that is false
+- fix(titan/test): the port partitioning read a worker id vitest never sets
+- fix(omnitron-console): the status bar's alert chip vanished when the alerts query failed, and ignored the event it exists for
+- fix(titan-discovery/test): concurrent spec files shared one Redis database and deleted each other's nodes
+- fix(omnitron): a broken config in the daemon's cwd started a daemon that supervised nothing
+- fix(omnitron): a broken ecosystem config read as no config at all
+- fix(titan/test): getFreePort handed out ports another worker was about to bind
+- fix(titan/config): `optional` forgave a corrupt config file as readily as a missing one
+- fix(omnitron): a database outage told every operator their session was revoked
+- fix(omnitron-console): a stack that refused to start said nothing on its own page
+- fix(titan-scheduler): a job that failed to register was indistinguishable from one turned off
+- fix(testing/docker): a killed test run left its containers running forever
+- fix(titan/netron/auth): the queued rate-limit case was told apart by an English sentence
+- fix(prism): isNetworkError missed Safari and blamed the user's router for the server's answer
+- fix(omnitron-console): six real daemon failures were discarded as "just an RPC timeout"
+- fix(netron-react): a server subscribe that failed left a subscription reporting healthy
+- fix(titan/netron/auth): audit redaction keyed on words that name secrets, not on secrets
+- fix(omnitron-console): a failed node removal and a failed node save looked like nothing happened
+- fix(prism): auth forms let a second click through while the first was open
+- fix(prism): auth error filter matched the words for a secret, not a secret
+- fix(console): the dashboard cleared its error after a half-failed refresh
+- fix(titan-notifications): one group acknowledging a message deleted it for every other group
+- fix(omnitron): doctor called an absent database "reachable but not queryable"
+- fix(testing): removing a test container left its volume behind, and the disk filled
+- fix(titan-database): a driver was handed another dialect's connection options
+- fix(console): a stop that failed looked exactly like one that worked
+- fix(console): the alert form suggested an expression that can never fire
+- fix(titan-lock): a failed lock release replaced the caller's result and the caller's error
+- fix(omnitron): a node could step down and leave the registry calling it leader
+- fix(omnitron): the alerting loop was the one thing that could not report its own failure
+- fix(omnitron): doctor checked five of the fifteen tables it needs
+- fix(prism): the carousel's autoplay advanced once per render, not once per tick
+- fix(prism): useLightbox exported four zoom controls that controlled nothing
+- fix(omnitron): the log viewer's node filter narrowed nothing
+- fix(omnitron): backup retention ran only where the producer still ran
+- fix(titan/application): a scan path that could not be read was skipped in silence
+- fix(omnitron): an unreachable host read as a host with no Node installed
+- fix(console): a failed call reported an empty fleet and a quiet app
+- fix(testing): retry a container start when the host port was taken between check and run
+- fix(prism): the exports map promised 50 subpaths and shipped three
+- fix(titan-notifications): recordSent cost six round trips and could leave counter keys without a TTL
+- fix(titan-metrics): a DDL that genuinely failed still marked the storage ready
+- fix(titan-database): a concurrent init() built a second set of pools and dropped the first
+- fix(omnitron): two concurrent calls opened two daemon connections
+- fix(titan/nexus): a concurrent dispose() ran every hook and every user disposer twice
+- fix(prism): infinite scroll rebuilt its observer on every render
+- fix(titan/netron): stop() could resolve while start() went on binding sockets
+- fix(prism): the third countdown had the same impure updater, and two others keep theirs on purpose
+- fix(prism): a countdown that finished four times, and one that never stopped rendering
+- fix(titan-pm): SIGTERM during supervisor startup left every child running
+- fix(titan-notifications): channels were never shut down, and the flag guarding it was set too late
+- fix(console): four text tones were unreadable on the console's dark panes
+- fix(titan/utils): a timer that missed its slot waited a whole wheel revolution
+- fix(console): topology text was invisible in light mode
+- fix(titan/netron): disconnect() during connect() resolved without disconnecting anything
+- fix(console): a crash left no trace, and two `ErrorBoundary`s shared a name
+- fix(titan/config): a failed config source reported its type, which identifies nothing
+- fix(console): session restore ran twice on every load
+- fix(titan-notifications): the DLQ consumer choked on the payloads the DLQ exists to hold
+- fix(console): nine pages never finished loading in development
+- fix(console): a browser that blocks site data got a blank page
+- fix(console): a double release could disconnect the shared socket
+- fix(titan-pm): scripting the fixture now determines the whole scenario, not its prefix
+- fix(console): the dev server asked for the daemon's WebSocket port
+- fix(prism): three icon buttons had no name, and one message described a rule the code does not enforce
+- fix(prism): the DurationPicker's Custom button did nothing
+- fix(prism): the error boundary misread every anonymous stack frame
+- fix(prism): an empty permission list granted access
+- fix(titan/netron): make the weighted load-balancing strategy weight
+- fix(omnitron): the spinner flooded every non-terminal output
+- fix(titan-pm): validate the health and metrics a process sends back
+- fix(titan-lock): withLock's skip path returns undefined — say so in the type
+- fix(omnitron-console): resolve two tests that disagreed about the same input
+- fix(titan-pm): an unreadable checkHealth() answer reported the worker as healthy
+- fix(omnitron-console): a health response we could not read was reported as down
+- fix(titan/application): report an exhausted shutdown budget instead of racing for it
+- fix(omnitron-console): an unreachable daemon drew an empty topology, not an error
+- fix(omnitron-console): an absent role was displayed as admin
+- fix(testing,common): point the runtime entries at the adapters, not at stubs beside them
+- fix(testing): scope Deno lifecycle hooks, and register matchers where they take effect
+- fix(prism): the arctic preset put white text on colours where black scores 4x
+- fix(prism): an operator-chosen primary colour produced unreadable labels
+- fix(testing,titan,common): make the cross-runtime test runners actually run
+- fix(prism): a version bump silently reset every user preference
+- fix(titan-notifications): apply BroadcastOptions.filters — they were declared and ignored
+- fix(omnitron-console): open redirect in the sign-in return path, and first tests
+- fix(titan-health): stop the database indicator from naming Kysely as the pattern it does not support
+- fix(titan/nexus): drop the register() overload the container cannot honour
+- fix(testing): give every runtime adapter the same exports
+- fix(omnitron): 33 of 54 MCP tools called methods that do not exist
+- fix(titan-database): let getConnection carry the caller's schema
+- fix(titan/nexus): declare the provider shape the container has always accepted
+- fix(omnitron): an unreadable fleet registry is not a one-node cluster
+- fix(titan-redis): declare set() overloads for expiry combined with NX/XX
+- fix(titan/netron): honour invocationWrapper and requestTimeout on socket transports
+- fix(omnitron): name the transports invocationWrapper actually covers
+- fix(omnitron): a config reload never reached the file watcher
+- fix(omnitron): leader election called a port that does not speak HTTP
+- fix(titan-scheduler): a cancelled job reached the audit trail as silence
+- fix(omnitron): a health check's probe deadline was the interval's default
+- fix(omnitron): `daemon.host: '0.0.0.0'` was the one value that meant loopback
+- fix(titan): the circuit breaker's failure count now honours its window
+- fix(build): give turbo the dependency edges the workspace actually has
+- fix(titan): make getContextManager reachable, and mark a dead breaker option
+- fix(omnitron-console): pnpm build was broken outright under TypeScript 7
+- fix(omnitron): every prescribed command now exists, and a test keeps it that way
+- fix(titan): any peer could read the host's service topology over `subscribe`
+- fix(omnitron): a shared name was enough to restart somebody else's app
+- fix(omnitron): doctor treated a transition as a fault
+- fix(titan-notifications,titan-discovery): 65 tests gated on a file nobody writes
+- fix(omnitron): every app was watching the daemon's source tree, not its own
+- fix(omnitron): a failed `ps` made a running app read as idle
+- fix(kb): an unreadable spec directory reported as holding no specs
+- fix(omnitron): the console published the whole RPC surface to the network
+- fix(titan,titan-pm): connection lifecycle is debug, and errors keep their cause
+- fix(omnitron): stop storing every child log line twice
+- fix(titan): `port: 0` asked for any free port and got 3000
+- fix(titan): a logged error kept its cause only if you named the field `err`
+- fix(titan-pm): let a consumer with its own log pipeline turn off forwarding
+- fix(omnitron): `omnitron list` rendered as a grid of ellipses
+- fix(titan): delete a queued special event, and drop the right one at the cap
+- fix(omnitron/console): the RAM bar disagreed with the Available line beside it
+- fix(omnitron/console): the metrics page drew invented data when it had none
+- fix(titan): drop a WebSocket listening branch whose condition never held
+- fix(omnitron/console): a memory figure that was never a percentage, and a rate that was a constant
+- fix(omnitron): the containers page showed no ports, because nothing ever set them
+- fix(omnitron/console): repetition is not corroboration — stop declaring a running daemon offline
+- fix(titan): one metadata registry, derived rather than duplicated
+- fix(omnitron): the exported config schema had fallen two keys behind the type
+- fix(omnitron): bound the WebSocket frame, and stop the rate-limit comment overstating itself
+- fix(titan-ratelimit): a declared limit applies without a magic-named field
+- fix(prism): a table with rows said nothing about the rows it did not get
+- fix(titan-notifications): deliver two options that were declared and dropped
+- fix(prism): jest-dom 6.9.1 broke every rejection assertion in the package
+- fix(omnitron): three silences that covered a second, different event
+- fix(omnitron): a failed dump could still leave a file that looks like a backup
+- fix(testing,titan-redis): the cluster tests could not pass as written
+- fix(omnitron): three things quoting did not cover on the remote deploy path
+- fix(titan): apply the RLS attribute mapping that was declared and never read
+- fix(omnitron): let the infrastructure tuning block reach the container
+- fix(omnitron): repair `node list`, and stop the fleet view freezing its own status
+- fix(titan-redis): a connection string decides the connection, as documented
+- fix(omnitron): implement four of the five guarantees sync.service promised
+- fix(titan-redis): let a cluster client keep the retry strategy it was given
+- fix(omnitron): make `backup schedule` mean what its name says
+- fix(titan-events): export the services EventsService cannot be built without
+- fix(omnitron): restore the reason on a failed exec, and type the xec payloads
+- fix(omnitron): make DaemonStateStore.dispose() actually dispose
+- fix(titan-database): a manager could not be reopened after closeAll
+- fix(omnitron): read a timeout from the error's code, and only fall back to its text
+- fix(titan): titan() could not start an application, and three empty tests said it could
+- fix(titan): give the container a logger — lifecycle failures were silent
+- fix(omnitron): a pipeline step that printed too much was reported as failed
+- fix(omnitron): a failed database dump was recorded as a successful backup
+- fix(netron-browser): a falsy token clears the session instead of faking one
+- fix(omnitron): three controls in the console were reachable by mouse only
+- fix(omnitron): the SSH check button announced itself as "button"
+- fix(omnitron): form errors in the console were not announced to screen readers
+- fix(omnitron): three destructive actions in the console asked nothing before doing it
+- fix(omnitron): the console's tables can now say they could not load
+- fix(titan-events): wire the logger through DI — 44 log calls were dead
+- fix(titan): reject the inject tuple form at registration instead of at resolve
+- fix(omnitron): one docker inspect for every container, not one per container
+- fix(omnitron): the console kept polling from a hidden tab, and three pages polled twice
+- fix(titan-pm,titan-events): a configured zero is an instruction, not a missing value
+- fix(titan-telemetry-relay): an unreadable WAL directory is not an empty WAL
+- fix(titan-pm): say whether the health probe timed out or the process was unreachable
+- fix(omnitron): the traces page never worked, and the console said the daemon was down
+- fix(titan-pm): a metrics sample that was never taken is not a sample of zero
+- fix(titan): stop the one spec that used the stale copy of DockerTestManager
+- fix(omnitron): the console listed no containers, and nothing said why
+- fix(titan-pm): @HealthCheck wrote its metadata where nothing reads it
+- fix(titan-lock): make redisClientName select the client, as it says it does
+- fix(titan-metrics): use the configured flush and cleanup intervals
+- fix(titan): the declared request-size option is the one that works now
+- fix(titan-scheduler): use the persistence and metrics providers a caller supplies
+- fix(omnitron): a failed metrics sample is not a reading of zero
+- fix(netron-browser): honour autoAttach and retryStatusCodes; mark the rest as unimplemented
+- fix(titan-pm): "I could not check" must not be reported as healthy
+- fix(omnitron): stop the CLI reporting failure for work that is succeeding
+- fix(titan-pm): a metrics failure is not a health failure, and recycling measures the real footprint
+- fix(titan-pm): the pool auto-scaler compared bytes and CPU-seconds against percentages
+- fix(omnitron): stop the janitor reaping pool workers, and the pools growing without bound
+- fix(testing): waiting on a container without a healthcheck could never succeed
+- fix(kb): keep chunk ranges inside the file, and give the package its first tests
+- fix(titan-pm): do not publish a worker thread under the daemon's pid
+- fix(titan-pm): stop promising an isolation boundary that does not exist
+- fix(omnitron): carry app metrics through the project DTO to the console
+- fix(titan-pm): make the src→dist worker redirect actually fire, and test a real spawn
+- fix(titan-redis): bound the health probe, so one wedged client cannot freeze the rest
+- fix(titan-database): survive a reconnect instead of dying with it
+- fix(titan-notifications): three rotif defects that made the manager unusable at scale
+- fix(netron-browser): run the shared middleware callers pass in, not a no-op
+- fix(prism): the filter bar showed a search term it was no longer applying
+- fix(prism): Breadcrumbs rendered any string as a link, scheme included
+- fix(prism): AmountCell rounded financial amounts through a float
+- fix(netron-browser): the auth error middleware never ran on the HTTP transport
+- fix(console)!: session refresh never worked — the panel died an hour after sign-in
+- fix(build): netron-browser and netron-react could not build on TypeScript 7
+- fix(console): an expired session rendered a dashboard that lied
+- fix(testing): scope Docker cleanup to the manager that created the resources
+- fix(titan-pm): latency metrics were computed and thrown away
+- fix(titan-scheduler): enforce maxConcurrent, and stop retries resurrecting a cancelled job
+- fix(prism): a server-sent status of "constructor" crashed the page
+- fix(prism): a double-click on a delete confirmation deleted twice
+- fix(prism): money formatting rounded through a float, against its own promise
+- fix(prism/field): a decimal could not be typed into Field.Number
+- fix: satisfy TypeScript 7, and two real Node-isms it exposed in browser code
+- fix(omnitron/console)!: the web panel called eight methods that never existed
+- fix(titan): make reconnection actually reconnect, and observable when it can't
+- fix(titan-auth): depend on reflect-metadata directly
+- fix(titan): WebSocketTransport ignored a ws:// address in createServer
+- fix(testing): scope the network-pool prune to test-owned networks
+- fix(titan-auth): close a role-guard bypass and a tenant-isolation hole
+- fix(titan-pm): use cross-platform `ps -eo etime` so discovery works on macOS
+- fix(omnitron/infra)!: janitor force-disconnected nine RUNNING containers
+- fix(omnitron/database)!: schema migrations never ran — one registry, one runner
+- fix(titan-discovery): connect tests to the real test Redis and current service API
+- fix(titan-database)!: P0 batch — advisory lock, lifecycle, schema isolation, savepoints, RLS decorators
+- fix(omnitron/service): stop duplicating the daemon log into an unrotated file
+- fix(omnitron): daemon died from log-collector buffer overflow — harden both
+- fix(omnitron/registry): persist enabledStacks — boot-time stack resume never worked
+- fix(omnitron/infra): detect + recreate network-detached containers
+- fix(omnitron/backup): back up the running stack's real databases
+- fix(omnitron/infra): recreate infra on config drift + pass through gateway env
+- fix(omnitron/cli): reach daemon-own services via client.service(), not exec(__daemon__)
+- fix: resolve the remaining dead/ignored config options across 3 packages
+- fix(titan/logger): wire up the dead transport/processor/prettyPrint options
+- fix(omnitron): trust OS-gated local unix socket for daemon CLI auth
+- fix(netron): unexposeService releases child interfaces safely (NET-2)
+- fix(errors): bound TitanError byCode statistics against arbitrary codes (XC-7)
+- fix(scheduler): persistence failures surface via optional logger, not silent catch (SC-6)
+- fix(scheduler): deleteJob — capture job id before registry removal so persistence delete fires (SC-11)
+- fix(scheduler): guard persisted-job load against lost handlers (SC-2)
+- fix(scheduler): single failure-counting path in metrics (SC-7)
+- fix(scheduler): clear old interval/timeout handle on reschedule (SC-8)
+- fix(scheduler): stop old cron task on reschedule + drop double-start (SC-5)
+- fix(scheduler): atomic executor-owned preventOverlap gate (SC-4)
+- fix(scheduler): derive real cron nextExecution via cron-parser (SC-3)
+- fix(ratelimit): FixedWindow.reset() targets the window-suffixed key (RL-1)
+- fix(netron): harden adapter disconnect→close reason coercion (WIRE-7)
+- fix(netron/ws): config-keyed KeepAliveManager + unified cleanup (WIRE-12)
+- fix(netron): await unexpose cascade in unexposeAllServices (NET-11)
+- fix(titan): getAvailablePort() no-arg must return a unique OS-assigned port (XC-12 regression)
+- fix(netron): jitter BaseConnection reconnect backoff to avoid thundering herd (WIRE-4)
+- fix(nexus): isConstructor returns a strict boolean (NX-13)
+- fix(netron-react): structural sharing on useQuery resync (NR-4)
+- fix(netron-react): stabilize useQuery fetchData across status changes (NR-5)
+- fix(netron-react): useQueries refetch returns fresh result, not stale snapshot (NR-6)
+- fix(nexus): clearCache() also clears in-flight pending promises (NX-16)
+- fix(nexus): emit ContainerDisposing so onDispose hooks fire (NX-6)
+- fix(netron-browser): per-request AbortController in HttpConnection (NB-11)
+- fix(netron): await peer.disconnect() in Netron.disconnect (NET-9)
+- fix(netron): secure-by-default trustProxy in HTTP rate limiter (RL-5)
+- fix(notifications): enforce all rate-limit tiers in in-memory fallback (NT-6)
+- fix(notifications): revive dead event emitter (NT-1) + in-app channel redis (NT-2)
+- fix(netron-react): bundle cleanups NR-10/12/14
+- fix(netron-react): namespace infinite-query cache entries (NR-3b)
+- fix(notifications): route Redis through titan-redis DI (NT-4) + type Nexus optional-inject
+- fix(titan): XC-3 valid httpStatus for custom codes + XC-12 getAvailablePort honors startPort
+- fix(titan-ratelimit): RL-3c — atomic token-bucket refill+consume (+RL-2)
+- fix(titan-ratelimit): RL-3b — atomic sliding-window check+consume
+- fix(netron-browser+titan): NB-5 — gate retries to idempotent RPCs
+- fix(netron-browser): NB-4 auto-reconnect + NB-6 401 refresh/retry
+- fix(netron-browser): NB-7 — read bearer token from canonical accessToken field
+- fix(titan-ratelimit): RL-atomicity — atomic checkAndConsume for fixed-window
+- fix(netron-react): NR-13 — { stale } filter respects per-query staleTime
+- fix(netron-react): NR-3 — cache RAW data, project select() per-observer
+- fix(netron-react): NR-2 — lazy self-stopping QueryCache GC (release blocker)
+- fix(titan/netron): SEC-5 — per-peer refcounting for unref_service (eviction-DoS)
+- fix(titan/netron): WIRE-11 final-chunk-error hang + unexposeService await cascade
+- fix(titan/netron): NET-14 — restrict wire CALLs to the @Public method surface
+- fix(titan/netron): SEC-2 opt-in default-deny authorization
+- fix(titan-events): real node-cron for scheduled events (EV-1)
+- fix(netron): uniform NOT_FOUND on query_interface denials (SEC-6)
+- fix(netron-react): AuthProvider.login delegates to onLogin (NR-9)
+- fix(netron-browser): BackendClient forwards transport lifecycle events (NB-8)
+- fix(netron-browser): core-task constants must be bare server names (NB-2)
+- fix(netron): correct releaseInterface child recursion (NET-2)
+- fix(netron): single guarded teardown for WritableStream (WIRE-11)
+- fix(netron): gate stream cap BEFORE allocation in handlePacket (WIRE-10)
+- fix(netron): eager synchronous StreamReference registration (WIRE-13)
+- fix(netron): decodePacket robustness — wrap all reads + reject trailing bytes (WIRE-6)
+- fix(titan-ratelimit): token-bucket peek off-by-one + first algorithm test suite (RL)
+- fix(titan-events): inject the logger into event services (EV-2)
+- fix(titan-cache): single-flight stampede protection in @Cacheable (CA-1)
+- fix(titan-lock): auto-renew watchdog in withLock to preserve mutual exclusion (LK-1)
+- fix(netron-browser): secure-by-default token storage — MemoryTokenStorage (NB-3)
+- fix(titan-scheduler): fail fast on unimplemented distributed mode (SC-1 hazard)
+- fix(titan-telemetry-relay): truncate WAL on successful forward (TR-1)
+- fix(titan-discovery,titan-health): namespace DI tokens to prevent global-registry collisions (DI-1)
+- fix(titan-notifications): constant-time webhook signature comparison (NT-3)
+- fix(netron-browser): suppress error stack traces on the wire by default (NB-1)
+- fix(titan/netron): cap declared packet length at the TCP/Unix framing layer (WIRE-1 DoS)
+- fix(titan/netron): query_interface returns a real Definition instance (NET-1)
+- fix(titan/netron,netron-browser): preserve TitanError subclass fields over the wire (XC-1)
+- fix(titan/netron): enforce @Public auth on all wire transports (SEC-1)
+- fix(prism): content renderer — router-aware links + table tbody + SSR-safe selectors
+- fix(prism/DocSidebar): wrap-2-lines + tooltip-on-overflow for long labels
+- fix(prism/header): hysteresis on scroll-offset hook to stop header blink
+- fix(titan-database): defensive diagnostic on executor shape (T#84)
+- fix(titan-pm): exponential backoff on auto-scale failures (T#80)
+- fix(omnitron/logs): probe project-mode + standalone-dir layouts in file-fallback (T#76)
+- fix(netron-http): unconditional 5xx logging — close the silent-500 blackhole (T#70)
+- fix(prism/nav-section): tighten gap between section title and previous item
+- fix(titan/rls-bridge): propagate isServiceRole from AuthContext.metadata to RLSAuthContext.isSystem
+- fix(titan-pm): parent-death watchdog in fork-workers + post-SIGKILL liveness verify (T#65)
+- fix(omnitron): cold-start orphan reap on every boot path (T#63)
+- fix(titan-pm): suppress crash-driven restarts during sibling escalation (T#62)
+- fix(omnitron): crashed cool-down + realtime apps page + WS refcount
+- fix(omnitron,titan-pm): P0 security + lifecycle hardening pass
+- fix(titan-auth,titan/netron): propagate JWT claims through AuthContext
+- fix(omnitron-orchestrator): auto-promote bare entry.name to project/stack/name
+- fix(netron-browser/csrf): unwrap quote-wrapped cookie values (T#375)
+- fix(titan-auth-sec): refuse non-Secure cookies in production (T#365)
+- fix(netron+auth-sec): clear-then-set csrf cookie on issue() (T#176-sec)
+- fix(prism/content-renderer): render JSON-stringified TipTap docs instead of printing the raw JSON
+- fix(prism/sidenav): symmetric divider spacing in collapsed sidebar
+- fix(prism/emoji-picker): scroll-spy, unbroken search outline, full i18n
+- fix(prism/toggle-button): use currentColor on selected border, drop hard-coded primary
+- fix(workspace): dedupe react / react-router across packages to defuse Router-context split
+- fix(prism,omnitron/webapp): externalize react-router + bump webapp to MUI 9
+- fix(prism/editor): floating Material labels in Insert-Link / Insert-Image dialogs
+
+### 📝 Other Changes
+
+- test(titan/netron): a refusal measured by a word in its sentence
+- test(omnitron): a gateway recreated for every build, and the swap that ends it
+- wip(omnitron): serve the portal through a per-stack link, not a new mount
+- ci(omni): what the first run that reached a check had to say
+- ci(omni): a gate that never opened, and the red waiting behind it
+- test(titan-redis,titan-notifications): nine budgets that capped the wait for the infrastructure they start
+- test(titan-database): eight per-case budgets that shrank what the config already allowed
+- test(omnitron): the migration court's node answers with the release's omni
+- docs(omnitron): a docblock that named the owner's pronoun
+- test(testing): three docker specs that measured the machine
+- test(omnitron): a suite that waited four minutes for a daemon nobody started
+- test(omnitron): a court that expired on a date
+- test(prism): a court tsc could not read
+- test(omnitron): a failed start judged against the reader deployments() now uses
+- test(omnitron): a stop court that rendered a page the router never shows
+- test(omnitron): a court that stopped counting at the first parenthesis
+- refactor(omnitron): a factory that passed its arguments by position
+- perf(omnitron): a node read its whole buffer twice a minute to know its size
+- style(prism): nine lint errors the first measurement never saw, and one red typecheck
+- style(omnitron): twenty-seven lint errors, each read, one of them a latent defect
+- style(netron-protocol, netron-browser, kb): four lint errors, each read, none a defect
+- test(omnitron): pin what makes the startup race cheap
+- test(omnitron): an absent database is not a defect, and a silent skip is worse
+- test(omnitron): a source assertion that got stricter when the code was explained
+- refactor(omnitron): one bundle of omnitron itself, for both ways to upgrade
+- ci(omni): this repository had no workflows at all
+- test(omnitron): four red tests, three pinning behaviour their own commits replaced
+- Revert "fix(titan/netron): a call that arrived with too few arguments answered 500"
+- test(netron-browser): the integration suite could not be run, by three separate mechanisms
+- test(titan-pm): exercise the kill escalation instead of naming it
+- chore(titan/netron): export CorsOptions, the type `TransportOptions.cors` now names
+- test(titan-database): one branch of the permanence classifier was never exercised
+- test(titan-redis): a spec defaulted to 6379 and walked past its own setup
+- chore(packages): drop eight dependencies nothing imports, and teach the scan why
+- test(titan-health): an uptime assertion sat on the boundary between two clocks
+- perf(titan-metrics): the buffer cap cost 132µs a record, exactly when it engaged
+- test(omnitron): the rotated log's privacy is checked on the file, and in the window
+- docs(omnitron): name the startup budget an app gets when it declares none
+- docs(titan-pm): record the baseline the timeout fix will be verified against
+- docs(omnitron): measure the topology-timeout fix after the fact, not only before
+- test(netron-browser): pin the wire against titan, not just the shape of the copy
+- refactor(titan-pm): drop nine decorators that record a promise and enforce nothing
+- test(titan-lock): the suite produced no result at all, because it waited on a Redis that was not there
+- test: the suites' Redis discovery pointed at nothing, and the obvious fix pointed it at the live stand
+- test(titan-redis): the test helper resolved a Redis through a global setup the package never registered
+- build(scripts): scan for metadata nothing reads, and answer what it found
+- refactor(netron/auth): one case-insensitive header reader, not three
+- build(scripts): port the stub-that-reports-success scan to omni, and fix what it got wrong here
+- build(scripts): bring two downstream scanners over to omni, with triage for this tree
+- refactor(titan-database): delete the table-plugin registry — it was a second, losing delivery path
+- docs(lint): record the async-audit baseline after the omni sweep
+- refactor(console): two pages pulled the stack context and scoped nothing by it
+- build(kb): six files, 887 lines, were in no tsconfig project — so neither lint nor typecheck ever read them
+- build(lint): `npm run lint` crashed on its own repo, which is why 153 problems accumulated
+- chore(scripts): the reachability check guessed source paths; make it read the exports map
+- refactor(netron-http-core): eight debug lines said the same thing eight ways
+- refactor(omnitron): a `var` hoisted out of try/catch says less than a `let` above it
+- refactor(omnitron/console): Alert comes from the design system, with every close button kept
+- build(lint): the console was never linted — the glob said `web`, the directory is `webapp`
+- style(omnitron/console): the sidebar drew two weights of the same icon
+- refactor(omnitron/console): every Skeleton now comes from the design system
+- refactor(omnitron/console): the console kept its own copy of prism's command palette
+- test(titan): a provider cycle inside a module cycle must fail, not wait
+- docs(netron/auth): say how roles, permissions and scopes combine
+- docs(omnitron): the migrations registry cited a test by the wrong name
+- test(titan/netron): record what the property hole actually reached on a live stand
+- build(lint): give typescript-eslint its own TypeScript 6, so lint runs again
+- build: drop the flat typescript override, which is what actually blocked lint
+- test(titan/netron): pin the status code across the wire AND the normalisation that follows it
+- test(prism): the sanitiser's fixtures have to look like secrets, so a scanner flagged them
+- test(prism): the snackbar severity tests asserted a class MUI no longer emits
+- docs(gitignore): the Playwright rules were untrue about a path each, from the commit that wrote them
+- refactor(titan): two import cycles held open by a convenience and an erasable import
+- build: untrack the Playwright report, which .gitignore has claimed to exclude since it was written
+- docs(eslint): record that lint has not run since the TypeScript 7 upgrade
+- build(titan): stop tracking a Playwright report the repo already says it ignores
+- build: stop tracking a Playwright artifact that claimed the e2e suite passed
+- docs(omnitron/test): correct the mechanism claimed for the `ps` slowdown
+- build(prism): the coverage thresholds were never run, and were untrue
+- refactor(omnitron): move the daemon's boot-config fallback where it can be tested
+- test(omnitron): a skip reason may not hedge about what the run did
+- docs(prism): 279 of 314 @module tags named an import path that does not exist
+- docs(netron-react,titan-telemetry-relay): say where the swallowed error actually surfaces
+- test(titan-pm): two tests asserted things concurrency and a clock do not provide
+- test(titan-database): a container hook shorter than the wait it performs, and a teardown that assumed it worked
+- test(titan/netron/auth): two security tests measured a clock; both now measure the property
+- test(titan/netron): stop eight specs guessing a listen port
+- test(omnitron): three assertions compared a constant with itself
+- test(titan/netron/auth): assert that the ACL check short-circuits, instead of timing it
+- test(omnitron): the lockout-escalation test could not see escalation
+- perf(titan-events): persist transform output between runs
+- test(netron-browser): mock WebSocket timers outlived the environment they were created in
+- test(titan-redis): the custom-key lock test raced its own assertion
+- perf(kb): the default embedding provider sent one HTTP request per symbol, and symbols were written twice
+- perf(titan-pm): discovery forked `ps` once per process on the host, not once per match
+- docs(titan/netron): the OpenAPI summary chain reads two fields that never exist
+- docs(titan-health,titan-metrics): write down what these services answer without credentials
+- build(console): resolve vite's paths from the config, not from the caller
+- docs(titan/netron): the HTTP protocol has no `version` and no `timestamp`
+- docs(titan): `@Public({ transports })` tags a method, it does not restrict it
+- build(packages): typecheck the tests too, and fix what that found
+- build(packages): give seven packages the typecheck script turbo was looking for
+- test(titan/netron): give the httpClient mock the surface it replaces
+- build(turbo): declare `test` as producing no outputs
+- docs(titan/netron,netron-browser): write down two contracts that consumers were guessing at
+- test(omnitron): a bound asserted against its own constant is not a bound
+- docs(titan-pm): say the six enterprise options are absent where they are configured
+- docs(kb,eventemitter,testing,netron-react): finish the dead-option sweep
+- docs(eventemitter,netron-react,netron-browser): mark three surfaces that describe features nobody built
+- test(titan/nexus): make the PerformanceTimer tests measure the timer, not the machine
+- test(titan/netron/auth): assert the behaviour these tests are named for, not a stopwatch
+- test(titan-health): stop the indicator mocks spending the latency budget nobody asked for
+- test(titan,titan-cache): delete a placeholder and give an export test something to assert
+- docs(titan-auth): say why a missing `role` claim is defaulted rather than rejected
+- docs(netron-browser): enableHealthChecks buys observability, not failover
+- docs(titan/validation): say what the duplicate ValidationError actually costs
+- Revert "build(common): declare the testing package it imports"
+- test(prism): pin which navigation entry lights up
+- build(common): declare the testing package it imports
+- docs(titan-database,titan-events): mark two shadow types that shadow the working ones
+- chore(titan,common): refresh the Deno lockfiles
+- test(titan-events): test @EmitEvent instead of emitting the event for it
+- test(titan/logger): wait for the log line instead of for 10 ms
+- docs(packages): mark four config options that nothing reads
+- test(cuid): give the scaling benchmark a budget matching its own work
+- test(omnitron): a missing export would have left three tests green and empty
+- test(titan-discovery): cover the module's wiring instead of skipping it
+- test(titan-events): a skip that blamed the runner, and a test that pinned prose
+- test(omnitron): pin the console's RPC surface to what the daemon exposes
+- test: three more suites that reported green without running
+- docs(titan-database): name the config that is read and the config that is not
+- perf(titan): look an ACL up instead of scanning every one
+- test(omnitron): pin the join between a declared role and the thing that checks it
+- docs(titan-pm): say that this RateLimit records and the other one enforces
+- test(titan): best-of-three for the synchronous HTTP benchmarks too
+- test(titan-notifications): pin the group-name composition
+- build: give turbo a typecheck task, so the twenty that declare one can run
+- perf(titan): an ACL check no longer scans the permission list per permission
+- chore(omnitron): remove the gateway generator — unreachable, and wrong if reached
+- test(titan): take the best of three where the budget already does
+- docs(titan-pm): name the option that works next to the one that does nothing
+- test(omnitron): stop the file-watcher seam test from measuring the machine
+- test(titan): the last two assertion-free tests in the zone
+- test(titan): three more tests that measured the clock, or nothing at all
+- build: make `turbo test` build a package before testing against it
+- test(omnitron): catch an import the repository does not have
+- test(omnitron): cover the console's backend-status and status-colour rules
+- test(omnitron): pin doctor remedies to commands the CLI actually has
+- test(titan): give the two type-only error tests something that runs
+- test(omnitron): pin the five event names that cross into titan-pm
+- test(titan): two more tests that named a property and checked none of it
+- test(omnitron): remove tests for code that no longer exists, restore one that does
+- test: replace six more "should not throw" tests with real observations
+- test(titan-discovery): test address detection instead of announcing a skip
+- test(titan): test that policies evaluate in parallel, not that they race
+- test: give four assertion-free tests something to check
+- test(titan-pm): make worker:spawned observable instead of awaited
+- test(titan-notifications): assert what happens to an unparseable message
+- test(omnitron): pin the account-lockout schedule, and verify it against the running daemon
+- test(omnitron): check that every factory provider gets the tokens it takes
+- test(titan-pm): delete tests for source that never existed, salvage the rest
+- test(titan): stop assertions escaping the promise in timing tests
+- test(titan-redis): replace an unrunnable spec with real-Redis coverage
+- test(titan-discovery): make the own-event filter observable
+- refactor(omnitron): every polling loop in the console now shares one implementation
+- test(titan): replace four tests that could not fail with what they were measuring
+- refactor(omnitron): finish removing the pattern that hid the traces failure
+- test(titan-pm): carry a call over each transport, with a process on the far end
+- test(omnitron): first tests for the console, and stop it reading zero as "unknown"
+- test(titan): give the leak regression a positive path, and derive the scaling bound
+- docs: mark the last of the declared-but-unread options across five packages
+- test(titan-notifications): wait for the event, not for a guess at how long it takes
+- docs(titan-database,titan-notifications): mark the option groups nothing reads
+- docs(titan-cache): mark the options that are declared, documented and never read
+- test(titan-pm): stop three suites from claiming coverage they do not have
+- test(titan): assert what the test container guarantees about memory, not what V8 does
+- test(titan-pm): adopt the http-cluster spec and correct what it claims to cover
+- test(titan,titan-discovery): retire specs for removed APIs, cover the real path instead
+- test(titan-redis): stop configuring a keyPrefix the module does not have
+- test(titan-notifications): restore the comprehensive suite and stop asserting on sleeps
+- test(prism): cover the alert and search primitives
+- test(prism): cover AdminDataTable, and refuse a positional selection silently
+- refactor(omnitron/dto): every RPC contract is now typed — none left as `any`
+- test: fix three assertions that vitest 5 exposed as never having run
+- chore(deps)!: vitest 5 across the workspace
+- test(titan-notifications): give each vitest worker its own Redis database
+- test: remove two more assertions that depended on luck rather than behaviour
+- test(titan-pm): give the remaining assertion-free tests something to assert
+- test: replace wall-clock assertions with properties that survive a busy machine
+- chore(titan): drop @babel/core and @babel/preset-env — nothing uses them
+- chore(deps)!: better-sqlite3 13, @testing-library/jest-dom 7
+- test(titan-lock): exercise the distributed lock against a real Redis
+- test(titan-notifications): fix the migrated rotif suite — none of it was the engine
+- chore(omnitron): drop two dependencies nothing imports
+- chore(deps)!: majors confined to this zone — commander 15, apexcharts 7, maplibre 6
+- chore(deps)!: TypeScript 7 — one compiler for the whole workspace
+- chore(deps): minor/patch wave — ~110 packages, React 19.2.8, MUI 9.4
+- refactor(omnitron/dto): typed contracts for pipelines, traces and system info
+- test(titan-notifications): migrate the rotif suite from titan (as-is)
+- test(titan): stop guessing HTTP ports in the server specs
+- chore(titan): delete the hand-written @kysera mocks
+- chore(titan): delete test trees for modules that were extracted to packages
+- test(titan): repair and re-enable the wheel-timer suite
+- test(titan): run the Netron auth tests against the real @kysera/rls
+- test(titan): restore the Netron transport suite (1256 tests, was 0)
+- test: stop disabling integration suites in CI
+- refactor(omnitron/dto): DTO barrier leaked the server into the webapp build
+- test(omnitron/watcher): the "must not restart" cases were passing vacuously
+- docs(titan-database): record positional-DI fragility evidence in plan §4
+- refactor(titan-database): delegate connection retry to @kysera/infra withRetry
+- chore(titan-database): remove dead module-logger provider, stale src/README, sqlite test litter
+- refactor(titan-database)!: timestamp injection is per-repo opt-in via @Timestamps
+- chore(deps): bump @kysera/* to ^0.9.0, kysely to ^0.29.4 across the workspace
+- docs(titan-database): §1 implementer notes — verified DI wiring facts for TAR plugin chain
+- docs(titan-database): fold main-app audit into stack normalization plan
+- docs(titan-database): audit addendum — live-reproduced criticals
+- docs(titan-database): database stack normalization plan (2026-08-01 audit)
+- docs(audit): backlog-staleness verification — ~11 open-marked items confirmed already-done; only NET-2 was real (fixed); accurate remaining = strategic/infra/high-risk
+- docs(netron): NET-2 done (unexposeService snapshot+await+shared-set)
+- docs(netron): NET-3 reconnect-backoff done (3rd site); PeerConnector extraction gated→deferred (high-risk hot path)
+- refactor(netron): connect() reconnect delay uses shared computeBackoff (RESILIENCE-UNIFY)
+- docs(resilience): HeartbeatMonitor/PeriodicProbe done (netron); RESILIENCE-UNIFY substantively complete
+- docs(netron): NET-5 investigated → backed out (4 marshaling pipelines are context-divergent, not unifiable; shared stream part already centralized)
+- docs(resilience): cross-package backoff investigated — titan-database migrated, rest are regression-traps (left)
+- refactor(database): connection-retry backoff uses shared computeBackoff (RESILIENCE-UNIFY)
+- docs(http-core): incr 3 done (query-builder/proxy/request-types); SHARED-HTTP-CORE live scope complete; request-batcher dead-in-both
+- docs(http-core): SHARED-HTTP-CORE incr 2 (retry-manager) done; query-builder/proxy need shared-types step
+- docs(http-core): SHARED-HTTP-CORE incr 1 (cache-manager) done; package created
+- docs(resilience): auth CircuitBreaker unified onto canonical; only public errors CB remains (strategic)
+- refactor(resilience): unify auth CircuitBreaker onto canonical (RESILIENCE-UNIFY)
+- docs(nexus): NX-9 largely done — ContainerStore injected into all 4 resolution services
+- refactor(nexus): AsyncResolutionService reads from ContainerStore (NX-9 incr 5)
+- refactor(nexus): ResolutionService reads from ContainerStore (NX-9 incr 4)
+- refactor(nexus): FactoryService reads resolve from ContainerStore (NX-9 incr 3)
+- refactor(nexus): move createInstance hook onto ContainerStore (NX-9 incr 2)
+- docs(nexus): NX-9 increment 1 done (ContainerStore → ScopingService)
+- refactor(nexus): inject ContainerStore into ScopingService (NX-9 incr 1)
+- docs(bundle): NR-9 done; NB-12 is feature-incomplete (conditional revalidation), deferred
+- docs(bundle): XC-3/XC-7/NR-13 done (error httpStatus + byCode bound + stale-filter)
+- docs(netron): NET-3 increment 2 done (transport config → registry)
+- refactor(netron): consolidate transport config into TransportRegistry (NET-3 incr 2)
+- docs(scheduler): SC-6 + SC-11 done (8 concrete fixes); SC-9/10 wontfix; SC-1-full carved out as feature
+- docs(scheduler): SC-2/3/4/5/7/8 done; SC-1 partial (fail-fast); SC-1-full/SC-6/SC-9/10 remain
+- test(netron-protocol): comprehensive coverage for the shared TitanError + Packet
+- test(netron-browser): cross-impl wire round-trip for shared TitanError (SHARED-PROTO incr 8)
+- docs(resilience): netron backoff/reconnect slice done (delegates to computeBackoff); cross-pkg backoff + CBs + heartbeat remain
+- refactor(titan): netron reconnect backoff delegates to computeBackoff (RESILIENCE-UNIFY)
+- docs(shared-proto): incr 9 Packet class shared (codec core done); serializer/StreamReference remain (env-specific)
+- refactor(netron-protocol): share the Packet wire-frame class (SHARED-PROTO incr 9)
+- test(netron-browser): cross-impl wire round-trip for shared Definition/Reference (SHARED-PROTO)
+- docs(shared-proto): incr 8 TitanError class merged (XC-2 core done); factories/subclasses divergent (per-package)
+- refactor(netron-protocol): merge the TitanError class hierarchy (SHARED-PROTO incr 8, XC-2)
+- docs(shared-proto): incr 7 — full error-code module shared (XC-2 wire contract done); TitanError class = divergent sub-EPIC
+- refactor(netron-protocol): share the full error-code module (SHARED-PROTO incr 7, XC-2)
+- docs(shared-proto): incr 6 (error taxonomy) done; Packet/serializer codec confirmed divergent sub-EPIC
+- refactor(netron-protocol): share the wire error taxonomy (SHARED-PROTO incr 6, XC-2 partial)
+- docs(shared-proto): incr 4-5 done (Definition/types/Reference); StreamReference divergent (skip); error-system + codec scoped as sub-EPICs
+- refactor(netron-protocol): share Reference (SHARED-PROTO incr 5)
+- refactor(netron-protocol): share Definition + service-metadata shape types (SHARED-PROTO incr 4)
+- docs(audit): SHARED-PROTO incr 3 (uuid) done; Definition unit de-risked + next-steps documented
+- refactor(netron-protocol): share the UUIDv7 generator (SHARED-PROTO incr 3)
+- refactor(netron-protocol): share packet wire types (SHARED-PROTO incr 2)
+- refactor(netron-browser): consume Uid + MAX_UID_VALUE from netron-protocol (SHARED-PROTO incr 1c)
+- refactor(titan): consume Uid + MAX_UID_VALUE from netron-protocol (SHARED-PROTO incr 1b)
+- test(netron-react): cover SubscriptionManager (NR-8)
+- test(ratelimit): lock MemoryRateLimitStorage TTL/expiry semantics (RL-1)
+- refactor(titan): collapse dual shutdown engines to one; resolve APP-1/2/3
+- refactor(netron): extract SpecialEventBuffer from Netron god object (NET-3, incr 1)
+- docs(audit): WIRE-1 verified already-fixed (stale entry); WIRE-2 downgraded (dead reorder, moot on ordered transports)
+- refactor(netron-react): delete dead unexported state/ module (NR-7)
+- refactor(nexus): extract live dependency-graph, delete dead DevTools debugger (NX-5 done)
+- refactor(nexus): delete dead experimental tracing module (NX-5, cont.)
+- refactor(nexus): delete dead experimental mesh module (NX-5, partial)
+- refactor(nexus): de-duplicate the Middleware interface (NX-12)
+- refactor(errors): consolidate per-code metadata into one ERROR_METADATA table (ERROR-TABLE)
+- docs(audit): WIRE-5 investigated — practically unreachable, deliberate T#48 trade-off (epic-level framing fix)
+- docs(audit): record investigations — NB-10 (not a bug), SC-3/SC-4 (scheduler EPIC scope)
+- refactor(netron): rename RemotePeer.refService to registerRemoteDefinition (NET-4)
+- docs(audit): record 2026-06-13 session (NT-4, RD-1, NR-3b, NR-10/12/14, NT-1/2/6, RL-5)
+- refactor(titan-redis): remove deprecated up/down health indicator (RD-1)
+- docs(audit): U-P3 portal-seed env-creds done (downstream 54e2d31); @Service-naming deferred (wire-contract)
+- docs(audit): 2026-06-12 session log — closed SEC-2/5, NET-14, WIRE-11, NR-2/3/13, RL-atomicity, NB-4/5/6/7
+- docs(audit): APP-3 — record why naive EventBus.clear() teardown is wrong
+- test(nexus): pin provider scope default = Singleton (NX-1)
+- docs(audit): U-P2 complete — health assessed (substrate unified, adapters legitimately vary); unification arc landed
+- docs(audit): U-P2 optional-deps confirmed used (keep); health factory is the last piece
+- docs(audit): U-P2 metrics assessed — already unified, factory rejected as over-abstraction
+- docs(audit): U-P2 storage auth-shim removal done; metrics + health remain
+- docs(audit): U-P2 investigation — health is thin titan-health adapter (contract-sensitive); plan recorded
+- docs(audit): U-P0 + U-P1 complete; cookie-mode __Host- hardening — session progress
+- docs(audit): wireNetronAuth scoping (two-hook, security-critical) + remaining unification plan
+- docs(audit): U-P1 complete — all 6 backends unified on @acme/titan-kit + config-bug fix
+- docs(audit): U-P1 divergence map + config-path-bug finding across backends
+- docs(audit): U-P1 part 1 done — @acme/titan-kit + main migrated & verified
+- docs(audit): U-P1 titan-kit design + verified framework→backends propagation
+- docs(audit): record unified-architecture north star + Phase 3 plan
+- test(titan/netron): register declared policies in full-auth-flow (SEC-1 follow-up)
+- chore(scripts): one-command rebuild + redeploy of downstream backends (T#82)
+- refactor(omnitron): @Injectable migration for config-bearing services (T-2 part 2)
+- refactor(omnitron): @Injectable + @Inject migration for simple-deps services
+- refactor(omnitron): centralise ~ expansion via expandPath() helper
+- perf(netron-browser): full jitter backoff per AWS Brooker 2015
+- perf(omnitron): parallelize stack-start apps + infra reconcile
+- docs+test(auth-sec): T#176 quickstart, changelog, CSRF/Origin telemetry, cookie attr + kid-rotation integration tests
+- chore(prism/emoji-picker): drop unused skin variants from dataset
+- refactor: enum → const-object across omni packages (TS team guidance)
+- refactor: close out residual deprecated patterns from monorepo audit
+- refactor(prism): clear remaining MUI v9 type drift + jsdoc modernisation
+- refactor(prism): MUI v9 + React 19 modernisation pass
+- chore: normalise project-agnostic phrasing in code comments
+
+
 ## [Unreleased]
 
 ### ✨ Features

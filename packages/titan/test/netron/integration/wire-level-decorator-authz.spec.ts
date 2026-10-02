@@ -30,6 +30,17 @@ import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../../src/netron/auth/types.js';
 import { getFreePort } from '../../utils/index.js';
 
+// One literal address on both ends, never the name 'localhost'. A server told
+// 'localhost' binds ONE family — the first answer of dns.lookup, `::1` here —
+// while a client dialling 'localhost' tries both, giving each attempt 250 ms
+// (Node's autoSelectFamilyAttemptTimeout). Under load the `::1` attempt runs
+// out first, `127.0.0.1` is refused, and connect() fails with an
+// AggregateError whose message is empty. Measured with 200 busy loops on the
+// machine: 2 of 2400 connects, in each of three runs; with a literal address,
+// 0 of 4800. That is a refusal the suite never asked for, in a file whose
+// subject is refusals.
+const HOST = '127.0.0.1';
+
 @Service('vault@1.0.0')
 class VaultService {
   // Any authenticated caller may read.
@@ -57,7 +68,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort('localhost');
+    port = await getFreePort(HOST);
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 'sec1-server' });
@@ -80,7 +91,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
     (server as any).authenticationManager = authn;
 
     server.registerTransport('ws', () => new WebSocketTransport());
-    server.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });
+    server.registerTransportServer('ws', { name: 'ws', options: { host: HOST, port } });
     await server.start();
     await server.peer.exposeService(new VaultService());
 
@@ -104,7 +115,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
   }
 
   it('denies a non-admin from a decorator-only admin method (no ACL registered)', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'user', password: 'pw' });
     const defId = plantDef(peer);
 
@@ -121,7 +132,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
   });
 
   it('denies an unauthenticated peer from a decorator auth:true method (no ACL registered)', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     const defId = plantDef(peer);
 
     await expect(peer.call(defId, 'read', ['x'])).rejects.toMatchObject({
@@ -137,7 +148,7 @@ describe('Netron — wire-level DECORATOR authorization without ACL (SEC-1)', ()
   });
 
   it('allows admin to call the decorator-only admin method (no ACL registered)', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'admin', password: 'pw' });
     const defId = plantDef(peer);
 

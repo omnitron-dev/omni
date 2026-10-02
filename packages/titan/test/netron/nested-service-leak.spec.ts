@@ -29,6 +29,10 @@ import type { RemotePeer } from '../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../src/netron/auth/types.js';
 import { getFreePort } from '../utils/index.js';
 
+// A literal address on both ends, never 'localhost' — see
+// wire-level-decorator-authz.spec.ts for what 'localhost' did under load.
+const HOST = '127.0.0.1';
+
 @Service('secrets@1.0.0')
 class SecretsService {
   @Public()
@@ -62,7 +66,7 @@ describe('Netron — nested-service leak (T#49)', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort('localhost');
+    port = await getFreePort(HOST);
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 't49-server' });
@@ -87,7 +91,7 @@ describe('Netron — nested-service leak (T#49)', () => {
     (server as any).authorizationManager = authz;
 
     server.registerTransport('ws', () => new WebSocketTransport());
-    server.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });
+    server.registerTransportServer('ws', { name: 'ws', options: { host: HOST, port } });
     await server.start();
     await server.peer.exposeService(new DirectoryService());
     await server.peer.exposeService(new SecretsService());
@@ -104,7 +108,7 @@ describe('Netron — nested-service leak (T#49)', () => {
   });
 
   it('refuses to leak a nested service definition to a non-admin caller', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'user', password: 'pw' });
 
     const directory = await peer.queryInterface<{ openSecrets(): Promise<unknown> }>('directory@1.0.0');
@@ -118,7 +122,7 @@ describe('Netron — nested-service leak (T#49)', () => {
   });
 
   it('lets the admin caller through to the nested service', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'admin', password: 'pw' });
 
     const directory = await peer.queryInterface<{ openSecrets(): Promise<{ get(): Promise<string> }> }>(

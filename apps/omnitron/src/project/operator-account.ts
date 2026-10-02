@@ -89,9 +89,10 @@ export function toolCommand(
   containerPrefix: string,
   flags: readonly string[],
   tool: string = OPERATOR_ACCOUNT_TOOL,
+  projectName?: string,
 ): string {
   return (
-    `cd ${shellEscape(remoteDir)} && ${standContainerAssignments(containerPrefix)} ` +
+    `cd ${shellEscape(remoteDir)} && ${standContainerAssignments(containerPrefix, projectName)} ` +
     `node ${tool}${flags.length > 0 ? ` ${flags.map((f) => shellEscape(f)).join(' ')}` : ''}`
   );
 }
@@ -104,6 +105,7 @@ export function toolCommand(
 export function operatorAccountCommand(input: {
   remoteDir: string;
   containerPrefix: string;
+  projectName?: string;
   username: string;
   role?: string | undefined;
   displayName?: string | undefined;
@@ -114,17 +116,17 @@ export function operatorAccountCommand(input: {
     ...(input.role !== undefined ? [`--role=${input.role}`] : []),
     ...(input.displayName !== undefined ? [`--display-name=${input.displayName}`] : []),
     `--seal-to=${input.sealTo}`,
-  ]);
+  ], OPERATOR_ACCOUNT_TOOL, input.projectName);
 }
 
 /** What the stand holds under a name — read, never a secret. */
-export function operatorAccountShowCommand(input: { remoteDir: string; containerPrefix: string; username: string }): string {
-  return toolCommand(input.remoteDir, input.containerPrefix, [`--show=${input.username}`]);
+export function operatorAccountShowCommand(input: { remoteDir: string; containerPrefix: string; projectName?: string; username: string }): string {
+  return toolCommand(input.remoteDir, input.containerPrefix, [`--show=${input.username}`], OPERATOR_ACCOUNT_TOOL, input.projectName);
 }
 
 /** What the stand holds in aggregate — counts, never a value. */
-export function operatorCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
-  return toolCommand(input.remoteDir, input.containerPrefix, ['--census']);
+export function operatorCensusCommand(input: { remoteDir: string; containerPrefix: string; projectName?: string }): string {
+  return toolCommand(input.remoteDir, input.containerPrefix, ['--census'], OPERATOR_ACCOUNT_TOOL, input.projectName);
 }
 
 /**
@@ -141,16 +143,17 @@ export type LeftoversMode = 'census' | 'rehearse' | 'apply';
 export function probeLeftoversCommand(input: {
   remoteDir: string;
   containerPrefix: string;
+  projectName?: string;
   mode: LeftoversMode;
   also?: readonly string[] | undefined;
 }): string {
   const also = input.also && input.also.length > 0 ? [`--also=${input.also.join(',')}`] : [];
   const flags = input.mode === 'census' ? also : [`--${input.mode}`, ...also];
-  return toolCommand(input.remoteDir, input.containerPrefix, flags, PROBE_LEFTOVERS_TOOL);
+  return toolCommand(input.remoteDir, input.containerPrefix, flags, PROBE_LEFTOVERS_TOOL, input.projectName);
 }
 
 /** What the probes left on the stand, counted and named — the tool without a flag, which is its census. */
-export function probeLeftoversCensusCommand(input: { remoteDir: string; containerPrefix: string }): string {
+export function probeLeftoversCensusCommand(input: { remoteDir: string; containerPrefix: string; projectName?: string }): string {
   return probeLeftoversCommand({ ...input, mode: 'census' });
 }
 
@@ -158,10 +161,11 @@ export function probeLeftoversCensusCommand(input: { remoteDir: string; containe
 export function operatorAccountRemoveCommand(input: {
   remoteDir: string;
   containerPrefix: string;
+  projectName?: string;
   username: string;
   id: string;
 }): string {
-  return toolCommand(input.remoteDir, input.containerPrefix, [`--remove=${input.username}`, `--id=${input.id}`]);
+  return toolCommand(input.remoteDir, input.containerPrefix, [`--remove=${input.username}`, `--id=${input.id}`], OPERATOR_ACCOUNT_TOOL, input.projectName);
 }
 
 export interface MadeAccount {

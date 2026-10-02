@@ -19,7 +19,9 @@
  *   on the wire to solve a problem the node does not have.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 
 import {
   resolveServiceCredentials,
@@ -257,14 +259,26 @@ describe('a service that already holds state', () => {
 });
 
 describe('asking whether a volume exists', () => {
-  it('answers "assume state" when it cannot tell', async () => {
+  it.each([
+    ['No such volume: test-volume', false],
+    ['Cannot connect to the Docker daemon', true],
+    ['Permission denied', true],
+    ['Command timed out', true],
+  ])('answers safely for %s', async (message, expected) => {
     const { volumeExists } = await import('../../src/infrastructure/container-runtime.js');
-
-    // Only the message that means absence answers absence. Docker
-    // unreachable, a timeout, a permission error — none of those are
-    // evidence that a volume is missing, and the caller generates a
-    // credential when this says false.
-    await expect(volumeExists('omnitron-test-definitely-not-a-real-volume-xyz')).resolves.toBe(false);
+    const run = vi.spyOn(childProcess, 'execFile').mockImplementation(((...args: unknown[]) => {
+      const callback = args.at(-1) as (error: Error, stdout: string, stderr: string) => void;
+      callback(new Error(message), '', message);
+      return {};
+    }) as typeof childProcess.execFile);
+    syncBuiltinESMExports();
+    try {
+      // A unit test must control Docker's answer, not depend on a local daemon.
+      await expect(volumeExists('test-volume')).resolves.toBe(expected);
+    } finally {
+      run.mockRestore();
+      syncBuiltinESMExports();
+    }
   });
 });
 

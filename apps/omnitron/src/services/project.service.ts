@@ -1429,7 +1429,7 @@ export class ProjectService extends EventEmitter {
           // the transport's masker through its closing quote.
           const run = await this.deployer.readFromNode(
             target,
-            attestationCommand({ remoteDir, stack: stackName, releaseId, containerPrefix, provision: accounts === 'provisioned' }),
+            attestationCommand({ projectName, remoteDir, stack: stackName, releaseId, containerPrefix, provision: accounts === 'provisioned' }),
           );
           return { ...run, node: machine, scriptsFrom: staged.scriptsFrom, sourceFiles: staged.sourceFiles, accounts };
         } finally {
@@ -1524,7 +1524,7 @@ export class ProjectService extends EventEmitter {
       const facts = { project: projectName, stack: stackName, node: on.machine, username };
       const run = await on.run(
         (remoteDir, containerPrefix) =>
-          tool.operatorAccountCommand({
+          tool.operatorAccountCommand({ projectName,
             remoteDir,
             containerPrefix,
             username,
@@ -1542,7 +1542,7 @@ export class ProjectService extends EventEmitter {
         let holds = '';
         if (outcome.uncertain) {
           const shown = tool.readShowRun(
-            await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ remoteDir, containerPrefix, username }), 60_000),
+            await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ projectName, remoteDir, containerPrefix, username }), 60_000),
           );
           holds = !shown.ok
             ? ` What the stand holds could not be read either: ${shown.because}`
@@ -1562,7 +1562,7 @@ export class ProjectService extends EventEmitter {
         const undo = tool.readRemoveRun(
           await on.run(
             (remoteDir, containerPrefix) =>
-              tool.operatorAccountRemoveCommand({ remoteDir, containerPrefix, username, id: account.id }),
+              tool.operatorAccountRemoveCommand({ projectName, remoteDir, containerPrefix, username, id: account.id }),
             120_000,
           ),
           username,
@@ -1671,7 +1671,7 @@ export class ProjectService extends EventEmitter {
       async (on) => {
         const read = tool.readLeftoversRun(
           await on.run(
-            (remoteDir, containerPrefix) => tool.probeLeftoversCommand({ remoteDir, containerPrefix, mode, also: request.also }),
+            (remoteDir, containerPrefix) => tool.probeLeftoversCommand({ projectName, remoteDir, containerPrefix, mode, also: request.also }),
             // A rehearsal or a removal runs every database's removal and its
             // invariants — longer than counting.
             mode === 'census' ? 300_000 : 900_000,
@@ -1702,7 +1702,7 @@ export class ProjectService extends EventEmitter {
       // every password the repository publishes with bcrypt at the stand's
       // cost — 18 s for 17 accounts on the dev stand.
       const read = tool.readCensusRun(
-        await on.run((remoteDir, containerPrefix) => tool.operatorCensusCommand({ remoteDir, containerPrefix }), 180_000),
+        await on.run((remoteDir, containerPrefix) => tool.operatorCensusCommand({ projectName, remoteDir, containerPrefix }), 180_000),
       );
       if (!read.ok) throw new Error(`${on.where}: could not take the census: ${read.because}`);
       return { node: on.machine, commit: on.commit, census: read.census };
@@ -1720,7 +1720,7 @@ export class ProjectService extends EventEmitter {
     const tool = await import('../project/operator-account.js');
     return this.withOperatorTool(projectName, stackName, `reading operator account ${name}`, async (on) => {
       const shown = tool.readShowRun(
-        await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ remoteDir, containerPrefix, username: name }), 60_000),
+        await on.run((remoteDir, containerPrefix) => tool.operatorAccountShowCommand({ projectName, remoteDir, containerPrefix, username: name }), 60_000),
       );
       if (!shown.ok) throw new Error(`${on.where}: could not read ${name}: ${shown.because}`);
       return { node: on.machine, commit: on.commit, account: shown.account };
@@ -1745,7 +1745,7 @@ export class ProjectService extends EventEmitter {
     const vaultKey = input.vaultKey?.trim() || tool.accountVaultKey(projectName, stackName, username);
     const removed = await this.withOperatorTool(projectName, stackName, `removing operator account ${username}`, async (on) => {
       const outcome = tool.readRemoveRun(
-        await on.run((remoteDir, containerPrefix) => tool.operatorAccountRemoveCommand({ remoteDir, containerPrefix, username, id }), 120_000),
+        await on.run((remoteDir, containerPrefix) => tool.operatorAccountRemoveCommand({ projectName, remoteDir, containerPrefix, username, id }), 120_000),
         username,
         id,
       );

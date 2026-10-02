@@ -1,28 +1,28 @@
-/**
- * The names the project's tools look the stand's containers up by, as they
- * are on a node — `<prefix>-postgres`, not the developer's `sample-dev-postgres`
- * the tools default to.
- *
- * One table for every tool this master runs on a node. There were two: the
- * attestation's with three names and the operator-account tool's with two —
- * no gateway. When signup began reading the legal texts in force from the
- * gateway (sample c0dcf556), `omnitron stack account sample test` looked for
- * `sample-dev-gateway` on the test node and made no account (2026-09-25):
- * «No such container: sample-dev-gateway».
- */
+/** Container environment shared by project tools and release probes. */
 import { shellEscape } from '../shared/shell-escape.js';
 
-export function standContainers(prefix: string): Readonly<Record<string, string>> {
+/**
+ * Project tools may already consume <PROJECT>_*_CONTAINER variables. Derive
+ * that namespace from the registered project, independently of a custom
+ * container prefix, so existing tools continue to work without project names
+ * in the runtime. The fallback supports the conventional <project>-<stack>
+ * prefix for standalone callers; the daemon always supplies projectName.
+ */
+export function standContainers(prefix: string, projectName?: string): Readonly<Record<string, string>> {
+  const namespace = (projectName ?? prefix.replace(/-[^-]+$/, '')).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (!/^[A-Z_][A-Z0-9_]*$/.test(namespace)) {
+    throw new Error('A project name must produce a valid environment variable namespace');
+  }
   return {
-    SAMPLE_PG_CONTAINER: `${prefix}-postgres`,
-    SAMPLE_REDIS_CONTAINER: `${prefix}-redis`,
-    SAMPLE_GATEWAY_CONTAINER: `${prefix}-gateway`,
+    [`${namespace}_PG_CONTAINER`]: `${prefix}-postgres`,
+    [`${namespace}_REDIS_CONTAINER`]: `${prefix}-redis`,
+    [`${namespace}_GATEWAY_CONTAINER`]: `${prefix}-gateway`,
   };
 }
 
 /** The same, as shell assignments to put before a command. */
-export function standContainerAssignments(prefix: string): string {
-  return Object.entries(standContainers(prefix))
+export function standContainerAssignments(prefix: string, projectName?: string): string {
+  return Object.entries(standContainers(prefix, projectName))
     .map(([k, v]) => `${k}=${shellEscape(v)}`)
     .join(' ');
 }

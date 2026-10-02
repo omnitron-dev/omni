@@ -17,6 +17,21 @@ import { waitForEvent } from '../../utils/index.js';
 import { existsSync } from 'node:fs';
 import { within } from '../../async-assert.js';
 
+/**
+ * A RELATIVE socket path whose absolute form is short.
+ *
+ * A Unix socket path is capped by `sun_path` — 104 bytes on macOS, 108 on
+ * Linux — and `./name.sock` resolves under the checkout, so the two cases that
+ * use one passed or failed by how deep the repository was cloned: 101 bytes
+ * under `omni/packages/titan`, 107 under a worktree named `omni-flake`, and
+ * `listen EINVAL` in every full run there. Relative to the cwd but pointing
+ * into the temp dir, the path still exercises the relative→absolute
+ * conversion and no longer measures the clone.
+ */
+function relativeSocketPath(name: string): string {
+  return path.relative(process.cwd(), join(tmpdir(), name));
+}
+
 // Helper to generate unique socket path
 function getSocketPath(): string {
   const timestamp = Date.now();
@@ -1018,7 +1033,7 @@ describe('Unix Domain Socket Transport', () => {
 
         it('should convert relative paths to absolute during connect', async () => {
           const transport = new UnixSocketTransport();
-          const relativePath = `./relative-${Date.now()}.sock`;
+          const relativePath = relativeSocketPath(`relative-${Date.now()}.sock`);
 
           // Create server
           const server = await transport.createServer(relativePath);
@@ -1300,7 +1315,7 @@ describe('Unix Domain Socket Transport', () => {
 
         it('should convert relative to absolute path during server creation', async () => {
           const transport = new UnixSocketTransport();
-          const relativePath = `./relative-server-${Date.now()}.sock`;
+          const relativePath = relativeSocketPath(`relative-server-${Date.now()}.sock`);
 
           const server = await transport.createServer(relativePath);
           await server.listen();

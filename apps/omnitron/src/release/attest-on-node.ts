@@ -105,6 +105,7 @@ export function attestationCommand(input: {
   stack: string;
   releaseId: string;
   containerPrefix: string;
+  projectName?: string;
   /** Pass `--provision`: only when the stack allows it AND the staged producer knows the flag. */
   provision?: boolean;
 }): string {
@@ -113,7 +114,7 @@ export function attestationCommand(input: {
   // step 5a), and the staged directory has no `node_modules` of its own. A
   // probe that reads what is on the wire from the packages' own declarations
   // finds them here, or says NOT RUN naming this variable.
-  const assignments = `${standContainerAssignments(input.containerPrefix)} OMNITRON_PACKAGES=${shellEscape(
+  const assignments = `${standContainerAssignments(input.containerPrefix, input.projectName)} OMNITRON_PACKAGES=${shellEscape(
     '/opt/omnitron/current/node_modules',
   )}`;
   // No `--stacks`: the producer refuses an argument it does not know (exit

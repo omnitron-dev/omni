@@ -106,10 +106,10 @@ describe('the closure follows a link out of the repository', () => {
 
     expect(plan.refusal).toBeUndefined();
     expect(plan.vendored.map((v) => v.name).sort()).toEqual([
-      '@sample/titan-kit',
       '@omnitron-dev/omnitron',
       '@omnitron-dev/titan',
       '@omnitron-dev/titan-cache',
+      '@sample/titan-kit',
     ]);
   });
 

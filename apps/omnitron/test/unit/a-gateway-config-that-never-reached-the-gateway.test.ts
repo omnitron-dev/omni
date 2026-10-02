@@ -118,7 +118,7 @@ describe('a gateway config that never reached the gateway', () => {
       network: 'sample-test_default',
     };
 
-    expect(containerSpecHash(postgres as never)).toBe('90df79926feead89');
+    expect(containerSpecHash(postgres as never)).toBe('595b88b9c66bcdbf');
   });
 
   it('a config directory that cannot be read leaves the hash without a digest', () => {

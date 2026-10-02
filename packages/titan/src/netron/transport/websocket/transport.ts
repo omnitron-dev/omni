@@ -69,7 +69,35 @@ export class WebSocketTransport extends BaseTransport {
 
         socket.once('open', () => {
           clearTimeout(timeout);
+          // Nothing the server sent may be delivered before the caller of
+          // `connect()` has had its turn to listen.
+          //
+          // `ws` hands over the bytes that arrived in the SAME read as the
+          // `101 Switching Protocols` response by unshifting them onto the
+          // socket, and the socket replays them on `process.nextTick` — which
+          // runs before any promise continuation. So when the server's first
+          // frame shares a read with the 101, it is emitted while the caller
+          // is still waiting for this promise to settle, and the connection
+          // re-emits it to no listener. In Netron that frame is the handshake
+          // (`{type:'id'}`, sent 10 ms after the server accepts): it was lost
+          // and `Netron.connect()` waited for it forever. Two writes 10 ms
+          // apart share one read whenever the client is not reading for 10 ms
+          // — a GC pause, a descheduled process, a busy loop. Measured with
+          // 200 busy loops on the machine: 4, 5 and 4 of 2400 connects hung
+          // in three runs, 0 of 7200 with the pause below
+          // (`a-handshake-the-client-heard-before-it-listened.test.ts`).
+          //
+          // TCP never had this (measured with the same stall), nor Unix
+          // sockets, which share its connection class: their data arrives in
+          // its own I/O callback, after every continuation queued by
+          // 'connect'. Pausing
+          // here and resuming on the next macrotask gives this transport the
+          // same order — the bytes stay buffered in the socket, nothing is
+          // copied or dropped, and `setImmediate` runs only after every
+          // microtask, including the caller's continuation, has drained.
+          socket.pause();
           resolve(connection);
+          setImmediate(() => socket.resume());
         });
 
         socket.once('error', (error) => {

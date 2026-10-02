@@ -1074,8 +1074,27 @@ export class Netron extends EventEmitter implements INetron {
         const transportOpts = this.transportRegistry.getOptions(transport.name) || {};
         const connectTimeout = transportOpts.connectTimeout ?? CONNECT_TIMEOUT;
 
+        // The deadline covers everything `connect()` promises: the transport
+        // AND the handshake, because a peer is not connected until the server
+        // has said who it is.
+        //
+        // It used to be cleared the moment the TRANSPORT reported connected,
+        // which left the wait for the server's `{type:'id'}` frame with no
+        // deadline at all. A handshake that never came — lost on the client
+        // (see `WebSocketTransport.connect`), or never sent by an endpoint
+        // that accepts sockets and does not speak Netron — kept this promise
+        // pending forever, and a test waiting on it failed as «Test timed out
+        // in 120000ms» — on an authorization spec, with nothing to say why.
+        let opened: ITransportConnection | undefined;
+        let timedOut = false;
         const timeoutId = setTimeout(() => {
-          this.logger.warn({ address }, 'Connection timeout');
+          timedOut = true;
+          this.logger.warn({ address, transportConnected: opened !== undefined }, 'Connection timeout');
+          // Close what was opened: the socket must not outlive the promise
+          // that owned it, nor complete a handshake nobody is waiting for.
+          opened?.close().catch((closeErr: unknown) => {
+            this.logger.debug({ err: closeErr, address }, 'Closing a timed-out connection failed');
+          });
           reject(NetronErrors.connectionTimeout(transport.name, address));
         }, connectTimeout);
 
@@ -1087,6 +1106,12 @@ export class Netron extends EventEmitter implements INetron {
               ...transportOpts,
               headers: { 'x-netron-id': this.id },
             });
+            opened = connection;
+            if (timedOut) {
+              // The transport came up after the deadline had already answered.
+              await connection.close();
+              return;
+            }
 
             // Create RemotePeer with transport adapter
             const adapter = TransportConnectionFactory.fromConnection(connection);
@@ -1095,22 +1120,12 @@ export class Netron extends EventEmitter implements INetron {
 
             let resolved = false;
 
-            // For transports that resolve connect() only after connection is established
-            // (TCP, Unix sockets), the 'connect' event may have already fired during
-            // transport.connect(). Clear the timeout immediately since we have a live connection.
-            // For WebSocket transports, the connect event may still be pending.
-            if (connection.state === 'connected') {
-              this.logger.debug({ address }, 'Connection already established');
-              clearTimeout(timeoutId);
-            } else {
-              connection.once('connect', () => {
-                this.logger.debug({ address }, 'Connection established');
-                clearTimeout(timeoutId);
-              });
-            }
-
             // Handle first message (handshake)
             adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
+              if (timedOut) return;
+              // The server has answered; what remains is local work whose
+              // failures reach the catch below.
+              clearTimeout(timeoutId);
               try {
                 const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
                 const message = JSON.parse(str) as { type: 'id'; id: string };

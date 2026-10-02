@@ -1,0 +1,112 @@
+diff --git a/dist/chunks/index.DpLw24bj.js b/dist/chunks/index.DpLw24bj.js
+index 5dc15d7..87484cc 100644
+--- a/dist/chunks/index.DpLw24bj.js
++++ b/dist/chunks/index.DpLw24bj.js
+@@ -86,6 +86,43 @@ function nanoid(size = 21) {
+ 	while (i--) id += urlAlphabet[Math.random() * 64 | 0];
+ 	return id;
+ }
++// Patched (omnitron-dev): the tmp module copies of a run that never closed.
++// close() removes them since 5.0.3 (vitest-dev/vitest#11248). A run ended by
++// SIGINT or SIGTERM exits from the logger's handler without closing, and one
++// ended by SIGKILL, a crash or a lost terminal runs no code at all: each left
++// `$TMPDIR/<nanoid>/<environment>` behind for good. The directory now names
++// the process that owns it; a signal exit removes the process's own
++// directories synchronously, and every start removes those whose owner is no
++// longer alive (`isProcessAlive`, below, the lock's own test). Liveness, not
++// age: a live run's copies are never touched, however long it has been idle.
++const TMP_COPIES_DIR_RE = /^vitest-(\d+)-[\w-]{21}$/;
++function tmpCopiesDir() {
++	return join(tmpdir(), `vitest-${process.pid}-${nanoid()}`);
++}
++let tmpCopiesOfEndedRunsRemoved = false;
++function removeTmpCopiesOfEndedRuns() {
++	if (tmpCopiesOfEndedRunsRemoved) return;
++	tmpCopiesOfEndedRunsRemoved = true;
++	const root = tmpdir();
++	let names;
++	try {
++		names = readdirSync(root);
++	} catch {
++		return;
++	}
++	for (const name of names) {
++		const owner = TMP_COPIES_DIR_RE.exec(name);
++		if (!owner) continue;
++		const pid = Number(owner[1]);
++		if (pid === process.pid || isProcessAlive(pid)) continue;
++		try {
++			fs.rmSync(join(root, name), {
++				recursive: true,
++				force: true
++			});
++		} catch {}
++	}
++}
+ 
+ class SnapshotManager {
+ 	options;
+@@ -12090,7 +12127,7 @@ class TestProject {
+ 	constructor(vitest, server, viteConfig, projectConfig) {
+ 		this.vitest = vitest;
+ 		this.globalConfig = vitest.config;
+-		this.tmpDir = join(tmpdir(), nanoid());
++		this.tmpDir = tmpCopiesDir();
+ 		this.vite = server;
+ 		this.viteConfig = viteConfig;
+ 		this.config = projectConfig;
+@@ -14162,6 +14199,8 @@ This might cause false positive tests. Resolve unhandled errors to make sure you
+ 		};
+ 		const onExit = (signal, exitCode) => {
+ 			cleanup();
++			// Patched (omnitron-dev): this exit skips close(), which removes the tmp module copies
++			this.ctx._removeTmpDirsSync?.();
+ 			// Interrupted signals don't set exit code automatically.
+ 			// Use same exit code as node: https://nodejs.org/api/process.html#signal-events
+ 			if (process.exitCode === void 0) process.exitCode = exitCode !== void 0 ? 128 + exitCode : Number(signal);
+@@ -20500,7 +20539,7 @@ class Vitest {
+ 	/** @internal */ _resolver;
+ 	/** @internal */ _fetcher;
+ 	/** @internal */ _fsCache;
+-	/** @internal */ _tmpDir = join(tmpdir(), nanoid());
++	/** @internal */ _tmpDir = tmpCopiesDir();
+ 	/** @internal */ _traces;
+ 	/** @internal */ _harness;
+ 	/** @internal */ _exitTimeout;
+@@ -20571,7 +20610,8 @@ class Vitest {
+ 		this.snapshot = new SnapshotManager({ ...resolved.snapshotOptions });
+ 		this._resolver = new VitestResolver(this.viteConfig.cacheDir, resolved);
+ 		// a closed run removes the temp dir, so a restart must allocate a new one
+-		const tmpDir = this._tmpDir ??= join(tmpdir(), nanoid());
++		removeTmpCopiesOfEndedRuns();
++		const tmpDir = this._tmpDir ??= tmpCopiesDir();
+ 		this._fetcher = createFetchModuleFunction(this._resolver, resolved, this._fsCache, this._traces, tmpDir);
+ 	}
+ 	_restartPromise;
+@@ -21530,6 +21570,26 @@ class Vitest {
+ 		} catch {}
+ 	}
+ 	/**
++	* Patched (omnitron-dev): the synchronous removal for a process that exits
++	* without closing — the logger's SIGINT, SIGTERM and exit handler.
++	*/
++	_removeTmpDirsSync() {
++		const dirs = new Set([
++			this._tmpDir,
++			this.coreWorkspaceProject?.tmpDir,
++			...(this.projects ?? []).map((project) => project.tmpDir)
++		]);
++		for (const dir of dirs) {
++			if (!dir) continue;
++			try {
++				fs.rmSync(dir, {
++					recursive: true,
++					force: true
++				});
++			} catch {}
++		}
++	}
++	/**
+ 	* Closes all projects and exit the process
+ 	* @param force If true, the process will exit immediately after closing the projects.
+ 	*/

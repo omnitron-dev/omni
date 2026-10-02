@@ -2,38 +2,42 @@
 /**
  * A temp dir the test runner never removed.
  *
- * vitest 5.0.0 copies every module it transforms for the forks pool into
- * `$TMPDIR/<nanoid>/<environment>/<sha1>`. A project removes its directory in
- * `clearTmpDir()`. But the default project, the only one a config without
- * `projects` has, is made by `TestProject._createBasicProject`, which hands it
- * the core's fetcher: the copies go under the CORE's `_tmpDir`, while the
- * project's `clearTmpDir()` removes a `tmpDir` of its own that nothing ever
- * wrote to. Nothing removed the core's. Every run, graceful or not, left one
- * directory behind.
+ * vitest copies every module it transforms for the forks pool into
+ * `$TMPDIR/<dir>/<environment>/<sha1>`. TMPDIR on the development Mac is
+ * `~/.tmp`, which nothing cleans. Measured 2026-09-29: 16 443 such
+ * directories, 112 GB, from 2026-09-11 on — every suite, every scanner that
+ * starts vitest, every release gate. The disk reached 99 % and the Docker
+ * engine stopped with every database in it.
  *
- * TMPDIR on the development Mac is `~/.tmp`, which nothing cleans. Measured
- * 2026-09-29: 16 443 such directories, 112 GB, from 2026-09-11 on — every
- * suite, every scanner that starts vitest, every release gate. The disk reached
- * 99 % and the Docker engine stopped with every database in it. A graceful
- * one-file run with TMPDIR of its own left `hqLP_2YcZs8cypI1cXdwO/ssr`.
- * vitest 5.0.2, the latest then, has the same code.
+ * Two ways a run left its copies behind:
+ *   - A run that CLOSED. vitest 5.0.0 never removed the core's `_tmpDir`, where
+ *     the default project's copies go. Patched here on 2026-09-29; fixed
+ *     upstream in 5.0.3 (vitest-dev/vitest#11248), so that patch is gone.
+ *   - A run that did NOT close. SIGINT and SIGTERM end vitest from the logger's
+ *     handler with `process.exit()`, past `close()`; SIGKILL, a crash or a lost
+ *     terminal run no code at all. 5.0.3 leaves one directory for each, measured
+ *     on this fixture: SIGINT 1, SIGTERM 1, SIGKILL 1. `patches/vitest@5.0.3.patch`
+ *     names the directory after the process that owns it
+ *     (`vitest-<pid>-<nanoid>`), removes the process's own directories
+ *     synchronously in that handler, and on every start removes those whose
+ *     owner is no longer alive. Liveness, not age: a live run is never touched.
  *
- * `patches/vitest@5.0.0.patch` removes `_tmpDir` at the very end of
- * `Vitest.close()`, when the pool, every project and every server are closed.
- *
- * This check runs this repository's own vitest on a one-test project it writes
- * into a fresh TMPDIR, and asks two things:
- *   - DURING the run a copies directory existed: the test looks for itself.
- *     Without this half the check would pass on a vitest that copied nothing,
- *     which is the same verdict as one that cleaned up;
- *   - AFTER the run none is left.
+ * This check runs this repository's own vitest on a project it writes into a
+ * fresh TMPDIR, one run per way of ending, and asks:
+ *   - passed: DURING the run a copies directory existed (the test looks for
+ *     itself — without this half the check would pass on a vitest that copied
+ *     nothing), and TMPDIR is empty after;
+ *   - failed (a red test, exit 1): TMPDIR is empty after;
+ *   - SIGINT, SIGTERM (sent to vitest itself once its copies exist): empty after;
+ *   - SIGKILL: what it left names the killed process, and the next run in the
+ *     same TMPDIR leaves it empty.
  * It removes everything it made however it ends.
  *
- * Exit 0 when both hold; 1 with what was found; 2 when it could not ask.
+ * Exit 0 when all hold; 1 with what was found; 2 when it could not ask.
  */
 
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -44,8 +48,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** The packages whose tests this repository runs, in the order asked. */
 const RUNNERS = ['packages/testing', 'packages/titan', 'apps/omnitron'];
 
-/** A copies directory: `nanoid()`'s 21 characters. */
-const COPIES = /^[A-Za-z0-9_-]{21}$/;
+/** How long one run may take before the check gives up on asking. */
+const RUN_MS = 60_000;
 
 function vitestOf(pkg) {
   try {
@@ -57,81 +61,199 @@ function vitestOf(pkg) {
   }
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** What TMPDIR holds: every entry, each directory with its children. */
+function contents(tmp) {
+  return readdirSync(tmp, { withFileTypes: true }).map((e) =>
+    e.isDirectory() ? `${e.name}/{${readdirSync(join(tmp, e.name)).join(',')}}` : e.name,
+  );
+}
+
+/** A copies directory that already holds a copy: the run is past its first transform. */
+function hasCopies(tmp) {
+  return readdirSync(tmp, { withFileTypes: true }).some(
+    (e) =>
+      e.isDirectory() &&
+      readdirSync(join(tmp, e.name), { withFileTypes: true }).some(
+        (env) => env.isDirectory() && readdirSync(join(tmp, e.name, env.name)).length > 0,
+      ),
+  );
+}
+
 /**
- * The verdict as an exit code. The caller sets `process.exitCode` and lets the
- * process end by running out of work: `process.exit` disposes the platform
- * without draining it, and under load it deadlocks against a V8 worker that
- * waits for a collection (daos `scripts/a-scan-that-hung-on-its-way-out.mjs`).
+ * One run of vitest on `project` with TMPDIR `tmp`. With `signal`, the signal
+ * is sent to vitest itself (not its workers) once its copies exist.
  */
-function main() {
+async function run(vitest, project, tmp, signal) {
+  const child = spawn(process.execPath, [vitest.bin, 'run', '--root', project], {
+    cwd: project,
+    env: { ...process.env, TMPDIR: tmp, CI: '1', NO_COLOR: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.on('data', (b) => (output += b));
+  child.stderr.on('data', (b) => (output += b));
+  const exited = new Promise((r) => child.on('close', (code, sig) => r(code ?? sig)));
+  const deadline = setTimeout(() => child.kill('SIGKILL'), RUN_MS);
+  let signalled = false;
+  if (signal) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < RUN_MS && child.exitCode === null && !hasCopies(tmp)) await sleep(50);
+    if (child.exitCode === null && hasCopies(tmp)) {
+      child.kill(signal);
+      signalled = true;
+    }
+  }
+  const exit = await exited;
+  clearTimeout(deadline);
+  return { exit, output, pid: child.pid, signalled };
+}
+
+/** The test file: `mode` passed, failed, or blocked until its vitest is gone. */
+function writeTest(project, mode) {
+  const body = {
+    passed: [
+      "  const tmp = process.env.TMPDIR;",
+      "  const copies = readdirSync(tmp).filter((n) => statSync(join(tmp, n)).isDirectory());",
+      "  writeFileSync(new URL('./seen.json', import.meta.url), JSON.stringify({ copies }));",
+      '  expect(two()).toBe(2);',
+    ],
+    failed: ['  expect(two()).toBe(3);'],
+    // Blocks until the vitest that started this worker is gone, so a killed run
+    // leaves no worker of its own behind; capped in case it never goes.
+    blocked: [
+      '  const parent = process.ppid;',
+      '  const t0 = Date.now();',
+      '  while (process.ppid === parent && Date.now() - t0 < 50_000) await new Promise((r) => setTimeout(r, 50));',
+      '  expect(two()).toBe(2);',
+    ],
+  }[mode];
+  writeFileSync(
+    join(project, 'sample.test.mjs'),
+    [
+      "import { readdirSync, statSync, writeFileSync } from 'node:fs';",
+      "import { join } from 'node:path';",
+      "import { two } from './two.mjs';",
+      "test('the copies of this run', async () => {",
+      ...body,
+      '}, 60_000);',
+      '',
+    ].join('\n'),
+  );
+}
+
+async function main() {
   const vitest = RUNNERS.map(vitestOf).find(Boolean);
   if (!vitest) {
     console.error(`could not ask: no vitest resolves from ${RUNNERS.join(', ')} — install first`);
     return 2;
   }
+  const of = `vitest ${vitest.version} (from ${vitest.pkg})`;
 
   const base = mkdtempSync(join(tmpdir(), 'a-temp-dir-court-'));
-  let code = 2;
   try {
-    const tmp = join(base, 'tmp');
-    const project = join(base, 'project');
-    mkdirSync(tmp);
-    mkdirSync(project);
-    // A module to transform besides the test file, and a test that records what
-    // TMPDIR held while it ran. `globals` so nothing here has to resolve vitest.
-    writeFileSync(join(project, 'two.mjs'), 'export const two = () => 2;\n');
-    writeFileSync(
-      join(project, 'sample.test.mjs'),
-      [
-        "import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';",
-        "import { join } from 'node:path';",
-        "import { two } from './two.mjs';",
-        "test('the copies exist while the run lives', () => {",
-        '  const tmp = process.env.TMPDIR;',
-        "  const copies = readdirSync(tmp).filter((n) => /^[A-Za-z0-9_-]{21}$/.test(n) && statSync(join(tmp, n)).isDirectory());",
-        "  writeFileSync(new URL('./seen.json', import.meta.url), JSON.stringify({ copies }));",
-        '  expect(two()).toBe(2);',
-        '});',
-        '',
-      ].join('\n'),
-    );
-    writeFileSync(
-      join(project, 'vitest.config.mjs'),
-      "export default { test: { include: ['sample.test.mjs'], globals: true, pool: 'forks', watch: false } };\n",
-    );
-
-    const run = spawnSync(process.execPath, [vitest.bin, 'run', '--root', project], {
-      cwd: project,
-      env: { ...process.env, TMPDIR: tmp, CI: '1', NO_COLOR: '1' },
-      encoding: 'utf8',
-      timeout: 150_000,
-    });
-    const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
-    const seenFile = join(project, 'seen.json');
-    const during = existsSync(seenFile) ? JSON.parse(readFileSync(seenFile, 'utf8')).copies : null;
-    const after = readdirSync(tmp).filter((n) => COPIES.test(n));
-
-    if (run.status !== 0 || !/1 passed/.test(output) || during === null) {
-      console.error(`could not ask: vitest ${vitest.version} (from ${vitest.pkg}) exited ${run.status ?? run.signal} without running the one test`);
-      console.error(output.split('\n').slice(-15).join('\n'));
-      code = 2;
-    } else if (during.length === 0) {
-      console.error(`vitest ${vitest.version} made no copies during the run — this check measures nothing on it; rewrite it for the runner in use`);
-      code = 1;
-    } else if (after.length > 0) {
-      console.error(
-        `vitest ${vitest.version} (from ${vitest.pkg}) left ${after.length} copies director${after.length === 1 ? 'y' : 'ies'} in TMPDIR: ${after.join(', ')}.\n` +
-          '  Each run of every suite leaves one. Is patches/vitest@5.0.0.patch applied (pnpm install), or did vitest change version?',
+    const found = [];
+    const asked = [];
+    const fresh = (name) => {
+      const tmp = join(base, name, 'tmp');
+      const project = join(base, name, 'project');
+      mkdirSync(tmp, { recursive: true });
+      mkdirSync(project, { recursive: true });
+      // A module to transform besides the test file. `globals` so nothing here
+      // has to resolve vitest.
+      writeFileSync(join(project, 'two.mjs'), 'export const two = () => 2;\n');
+      writeFileSync(
+        join(project, 'vitest.config.mjs'),
+        "export default { test: { include: ['sample.test.mjs'], globals: true, pool: 'forks', watch: false } };\n",
       );
-      code = 1;
-    } else {
-      console.log(`vitest ${vitest.version} (from ${vitest.pkg}): ${during.length} copies director${during.length === 1 ? 'y' : 'ies'} during the run, none after`);
-      code = 0;
+      return { tmp, project };
+    };
+    const couldNot = (what, r) => {
+      console.error(`could not ask: ${of}, ${what}: exited ${r.exit}`);
+      console.error(r.output.split('\n').slice(-15).join('\n'));
+      return 2;
+    };
+
+    // passed
+    {
+      const { tmp, project } = fresh('passed');
+      writeTest(project, 'passed');
+      const r = await run(vitest, project, tmp);
+      const seen = join(project, 'seen.json');
+      const during = existsSync(seen) ? JSON.parse(readFileSync(seen, 'utf8')).copies : null;
+      if (r.exit !== 0 || !/1 passed/.test(r.output) || during === null) return couldNot('a passing run', r);
+      if (during.length === 0) {
+        console.error(`${of} made no copies during the run — this check measures nothing on it; rewrite it for the runner in use`);
+        return 1;
+      }
+      const after = contents(tmp);
+      if (after.length > 0) found.push(`a passing run left ${after.join(', ')}`);
+      asked.push(`passed: ${during.length} during, ${after.length} after`);
     }
+
+    // failed
+    {
+      const { tmp, project } = fresh('failed');
+      writeTest(project, 'failed');
+      const r = await run(vitest, project, tmp);
+      if (r.exit !== 1 || !/1 failed/.test(r.output)) return couldNot('a failing run', r);
+      const after = contents(tmp);
+      if (after.length > 0) found.push(`a failing run left ${after.join(', ')}`);
+      asked.push(`failed: ${after.length} after`);
+    }
+
+    // SIGINT, SIGTERM
+    for (const signal of ['SIGINT', 'SIGTERM']) {
+      const { tmp, project } = fresh(signal);
+      writeTest(project, 'blocked');
+      const r = await run(vitest, project, tmp, signal);
+      if (!r.signalled) return couldNot(`a run to send ${signal} to (no copies appeared)`, r);
+      await sleep(300);
+      const after = contents(tmp);
+      if (after.length > 0) found.push(`a run ended by ${signal} left ${after.join(', ')}`);
+      asked.push(`${signal}: ${after.length} after`);
+    }
+
+    // SIGKILL, then the next run in the same TMPDIR
+    {
+      const { tmp, project } = fresh('SIGKILL');
+      writeTest(project, 'blocked');
+      const r = await run(vitest, project, tmp, 'SIGKILL');
+      if (!r.signalled) return couldNot('a run to send SIGKILL to (no copies appeared)', r);
+      const left = contents(tmp);
+      const owned = readdirSync(tmp).filter((n) => n.startsWith(`vitest-${r.pid}-`));
+      if (owned.length === 0) {
+        found.push(
+          `a killed run left ${left.join(', ') || 'nothing'}, none of it named after the killed process (${r.pid}): ` +
+            'the next run cannot tell it from the copies of a live one',
+        );
+      }
+      writeTest(project, 'passed');
+      const next = await run(vitest, project, tmp);
+      if (next.exit !== 0) return couldNot('the run after a killed one', next);
+      const after = contents(tmp);
+      if (after.length > 0) found.push(`the run after a killed one left ${after.join(', ')}`);
+      asked.push(`SIGKILL: ${left.length} left by the killed run, ${after.length} after the next`);
+    }
+
+    if (found.length > 0) {
+      console.error(`${of} left its module copies in TMPDIR:`);
+      for (const f of found) console.error(`  - ${f}`);
+      console.error('  Is patches/vitest@<version>.patch applied (pnpm install), or did vitest change version?');
+      return 1;
+    }
+    console.log(`${of}: ${asked.join('; ')}`);
+    return 0;
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
-  return code;
 }
 
-process.exitCode = main();
+/**
+ * The verdict as an exit code. The process ends by running out of work:
+ * `process.exit` disposes the platform without draining it, and under load it
+ * deadlocks against a V8 worker that waits for a collection (a scan that hung
+ * on its way out, 2026-09-23).
+ */
+process.exitCode = await main();

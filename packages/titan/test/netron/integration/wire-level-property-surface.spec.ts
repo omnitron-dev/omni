@@ -53,6 +53,10 @@ import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../../src/netron/auth/types.js';
 import { getFreePort } from '../../utils/index.js';
 
+// A literal address on both ends, never 'localhost' — see
+// wire-level-decorator-authz.spec.ts for what 'localhost' did under load.
+const HOST = '127.0.0.1';
+
 @Service('vault@1.0.0')
 class VaultService {
   /** Annotated, and therefore published. */
@@ -86,7 +90,7 @@ class VaultService {
 const netrons: Netron[] = [];
 
 async function boot(): Promise<{ server: Netron; port: number }> {
-  const port = await getFreePort('localhost');
+  const port = await getFreePort(HOST);
   const logger = createMockLogger();
   const server = new Netron(logger, { id: `net14b-server-${port}` });
 
@@ -104,7 +108,7 @@ async function boot(): Promise<{ server: Netron; port: number }> {
   (server as any).authenticationManager = authn;
 
   server.registerTransport('ws', () => new WebSocketTransport());
-  server.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });
+  server.registerTransportServer('ws', { name: 'ws', options: { host: HOST, port } });
   await server.start();
   await server.peer.exposeService(new VaultService({ secret: 'THE-SIGNING-SECRET' }));
   netrons.push(server);
@@ -115,7 +119,7 @@ async function connectAuthed(server: Netron, port: number): Promise<{ peer: Remo
   const client = new Netron(createMockLogger(), { id: `net14b-client-${port}-${Math.random()}` });
   client.registerTransport('ws', () => new WebSocketTransport());
   netrons.push(client);
-  const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+  const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
   await peer.runTask('authenticate', { username: 'user', password: 'pw' });
 
   const stub: any = (server as any).services.get('vault@1.0.0');

@@ -29,6 +29,10 @@ import type { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials } from '../../../src/netron/auth/types.js';
 import { getFreePort } from '../../utils/index.js';
 
+// A literal address on both ends, never 'localhost' — see
+// wire-level-decorator-authz.spec.ts for what 'localhost' did under load.
+const HOST = '127.0.0.1';
+
 @Service('vault@1.0.0')
 class VaultService {
   // Anyone authenticated can read.
@@ -64,7 +68,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   let port: number;
 
   beforeEach(async () => {
-    port = await getFreePort('localhost');
+    port = await getFreePort(HOST);
 
     const serverLogger = createMockLogger();
     server = new Netron(serverLogger, { id: 'wire-authz-server' });
@@ -96,7 +100,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
     (server as any).authorizationManager = authz;
 
     server.registerTransport('ws', () => new WebSocketTransport());
-    server.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });
+    server.registerTransportServer('ws', { name: 'ws', options: { host: HOST, port } });
     await server.start();
     await server.peer.exposeService(new VaultService());
 
@@ -132,7 +136,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   }
 
   it('blocks a non-admin from invoking an admin-only method via raw call(defId, …)', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'user', password: 'pw' });
 
     const realDefId = plantDef(peer);
@@ -156,7 +160,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   });
 
   it('blocks an entirely unauthenticated peer from invoking any restricted method via raw call', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     // Skip authentication. queryInterface would normally fail at the
     // service-level ACL — we plant the definition directly to simulate
     // a hostile client that already knows the defId.
@@ -171,7 +175,7 @@ describe('Netron — wire-level method authorization (T#34)', () => {
   });
 
   it('allows admin to invoke admin-only methods through the raw call path', async () => {
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     await peer.runTask('authenticate', { username: 'admin', password: 'pw' });
     const realDefId = plantDef(peer);
 

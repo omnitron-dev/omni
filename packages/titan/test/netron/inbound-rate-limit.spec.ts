@@ -29,6 +29,10 @@ import { createMockLogger } from './test-utils.js';
 import type { RemotePeer } from '../../src/netron/remote-peer.js';
 import { getFreePort } from '../utils/index.js';
 
+// A literal address on both ends, never 'localhost' — see
+// wire-level-decorator-authz.spec.ts for what 'localhost' did under load.
+const HOST = '127.0.0.1';
+
 @Service('echo@1.0.0')
 class EchoService {
   @Public()
@@ -49,7 +53,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
   let port: number;
 
   async function startPair(opts: { limit: number; window?: number }) {
-    port = await getFreePort('localhost');
+    port = await getFreePort(HOST);
 
     server = new Netron(createMockLogger(), {
       id: 'rate-limit-server',
@@ -60,7 +64,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
       },
     });
     server.registerTransport('ws', () => new WebSocketTransport());
-    server.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port } });
+    server.registerTransportServer('ws', { name: 'ws', options: { host: HOST, port } });
     await server.start();
     await server.peer.exposeService(new EchoService());
 
@@ -91,7 +95,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
   it('rejects packets that exceed the configured budget', async () => {
     // Tight budget so we can exhaust it quickly.
     await startPair({ limit: 2, window: 60_000 });
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     const echo = await peer.queryInterface<{ ping(): Promise<string> }>('echo@1.0.0');
 
     // queryInterface already consumed a couple of tokens (definition
@@ -116,7 +120,7 @@ describe('Netron — inbound rate limit (T#39)', () => {
 
   it('lets normal traffic flow when the budget is generous', async () => {
     await startPair({ limit: 200 });
-    const peer = (await client.connect(`ws://localhost:${port}`)) as RemotePeer;
+    const peer = (await client.connect(`ws://${HOST}:${port}`)) as RemotePeer;
     const echo = await peer.queryInterface<{ ping(): Promise<string> }>('echo@1.0.0');
 
     for (let i = 0; i < 10; i++) {

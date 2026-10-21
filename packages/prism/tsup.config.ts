@@ -24,6 +24,7 @@ export default defineConfig([
       // the build matrix. Add entries here when a downstream file
       // uses `from '@omnitron-dev/prism/components/<name>'`.
       'components/index': 'src/components/index.ts',
+      'components/research/index': 'src/components/research/index.ts',
       'components/editor/index': 'src/components/editor/index.ts',
       // EmojiPicker — independent subpath entry so apps can lazy-load
       // it as its own chunk (the dataset adds ~260 KiB raw / ~80 KiB
@@ -34,6 +35,9 @@ export default defineConfig([
       // Bundle the bundled emoji-data JSON as a code-split asset so it
       // ships with the emoji-picker chunk rather than every dep tree.
       '.json': 'json',
+      '.woff2': 'file',
+      '.woff': 'file',
+      '.ttf': 'file',
     },
     format: ['esm'],
     // Declarations come from `tsc -p tsconfig.build.json` — see that file.

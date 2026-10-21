@@ -1,6 +1,7 @@
 'use client';
+
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
-import { getSchema, type Editor, type JSONContent } from '@tiptap/core';
+import { getSchema, type JSONContent } from '@tiptap/core';
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
 import { TextSelection, NodeSelection } from '@tiptap/pm/state';
 import Box from '@mui/material/Box';
@@ -14,8 +15,10 @@ import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { ResearchWidgets, ResearchLabels } from '../research/document.js';
 import { researchLimits } from '../research/parse.js';
-import { researchExtensions, currentBlock, ResearchViewContext } from './extensions.js';
-import { blockSource, hydrateSource, newBlockId, snapshot, type ResearchSnapshot } from './source.js';
+import { researchExtensions, ResearchViewContext } from './extensions.js';
+import { blockSource, hydrateSource, snapshot, type ResearchSnapshot } from './source.js';
+import { currentBlock, findBlock, runBlockAction } from './block-commands.js';
+import { BlockControls } from './block-controls.js';
 import './editor.css';
 
 export const defaultResearchEditorLabels = {
@@ -51,6 +54,8 @@ export const defaultResearchEditorLabels = {
   table: 'Table',
   widget: 'Interactive block',
   blocks: 'blocks',
+  blockMenu: 'Block actions',
+  dragBlock: 'Drag to move; click for block actions. Keyboard: Ctrl/Command + Alt + Up/Down.',
 };
 export type ResearchEditorLabels = typeof defaultResearchEditorLabels;
 export interface ResearchInsertion {
@@ -76,6 +81,8 @@ export interface ResearchEditorProps {
   /** Extra insertion recipes, not executable code from the document. */
   insertions?: readonly ResearchInsertion[];
   maxSourceLength?: number;
+  /** Contextual block controls; keyboard commands remain available when hidden. */
+  blockControls?: boolean;
   className?: string;
   sx?: SxProps<Theme>;
 }
@@ -94,11 +101,13 @@ export function ResearchEditor({
   previewLabels,
   insertions = noInsertions,
   maxSourceLength = researchLimits.source,
+  blockControls = true,
   className,
   sx,
 }: ResearchEditorProps) {
   const presentation = useMemo(() => ({ widgets, labels: previewLabels }), [widgets, previewLabels]);
   const labels = useMemo(() => ({ ...defaultResearchEditorLabels, ...overrides }), [overrides]);
+  const workspace = useRef<HTMLDivElement>(null);
   const notify = useRef(onChange);
   notify.current = onChange;
   const [palette, setPalette] = useState(false),
@@ -155,6 +164,10 @@ export function ResearchEditor({
   // Changing editable must also stop the contenteditable surface; a disabled fieldset alone does not.
   useEffect(() => {
     editor?.setEditable(!readOnly, false);
+    if (readOnly) {
+      setPalette(false);
+      setDialog(undefined);
+    }
   }, [editor, readOnly]);
   const selection = useEditorState({
     editor,
@@ -201,7 +214,7 @@ export function ResearchEditor({
     );
   }
   function insert(recipe: ResearchInsertion) {
-    if (!editor) return;
+    if (!editor?.isEditable) return;
     const selected = currentBlock(editor),
       old = selected && editor.state.doc.child(selected.index);
     const blocks = hydrateSource(recipe.source, editor.schema).content ?? [];
@@ -239,48 +252,14 @@ export function ResearchEditor({
     setPalette(false);
     editor.commands.focus();
   }
-  function blockAction(action: 'up' | 'down' | 'duplicate' | 'remove') {
-    if (!editor) return;
-    const selected = currentBlock(editor);
-    if (!selected) return;
-    const { doc } = editor.state,
-      { index, pos } = selected,
-      node = doc.child(index),
-      tr = editor.state.tr;
-    if (action === 'remove') {
-      if (doc.childCount === 1) {
-        applyDocument('');
-        return;
-      }
-      tr.delete(pos, pos + node.nodeSize);
-    } else if (action === 'duplicate') {
-      tr.insert(
-        pos + node.nodeSize,
-        node.type.create({ ...node.attrs, id: newBlockId(), prefix: '\n\n' }, node.content)
-      );
-    } else {
-      const other = index + (action === 'up' ? -1 : 1);
-      if (other < 0 || other >= doc.childCount) return;
-      const previous = doc.child(other),
-        start = action === 'up' ? pos - previous.nodeSize : pos;
-      tr.replaceWith(
-        start,
-        start + node.nodeSize + previous.nodeSize,
-        action === 'up' ? [node, previous] : [previous, node]
-      );
-      tr.setSelection(TextSelection.near(tr.doc.resolve(action === 'up' ? start + 2 : start + previous.nodeSize + 2)));
-    }
-    editor.view.dispatch(tr.scrollIntoView());
-    editor.commands.focus();
-  }
-  function openSource() {
-    if (!editor) return;
-    const block = currentBlock(editor);
+  function openSource(id?: string) {
+    if (!editor?.isEditable) return;
+    const block = id ? findBlock(editor.state.doc, id) : currentBlock(editor);
     if (!block) return;
     setDialog({ kind: 'block', pos: block.pos, text: blockSource(editor.state.doc.child(block.index).toJSON()) });
   }
   function applyDialog(text: string) {
-    if (!editor || !dialog) return;
+    if (!editor?.isEditable || !dialog) return;
     try {
       if (dialog.kind === 'document') applyDocument(text);
       else if (dialog.kind === 'block') {
@@ -305,7 +284,8 @@ export function ResearchEditor({
       } else {
         if (text && !/^(https?:\/\/|mailto:)/i.test(text)) throw Error('invalid_link');
         const chain = editor.chain().focus().extendMarkRange('link');
-        text ? chain.setLink({ href: text }).run() : chain.unsetLink().run();
+        if (text) chain.setLink({ href: text }).run();
+        else chain.unsetLink().run();
       }
       setDialog(undefined);
       setInvalid('');
@@ -322,7 +302,7 @@ export function ResearchEditor({
       aria-pressed={pressed}
       disabled={readOnly || !editor || disabled}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={action}
+      onClick={() => action()}
     >
       {label}
     </button>
@@ -382,18 +362,56 @@ export function ResearchEditor({
       </div>
       <p className="prism-science__hint">{labels.hint}</p>
       {invalid && !dialog && <p role="alert">{invalid}</p>}
-      <ResearchViewContext.Provider value={presentation}>
-        <EditorContent editor={editor} className="prism-science__content" />
-      </ResearchViewContext.Provider>
+      <div
+        ref={workspace}
+        className={`prism-science__workspace${blockControls ? ' prism-science__workspace--controls' : ''}`}
+      >
+        <ResearchViewContext.Provider value={presentation}>
+          <EditorContent editor={editor} className="prism-science__content" />
+        </ResearchViewContext.Provider>
+        {editor && blockControls && (
+          <BlockControls
+            editor={editor}
+            container={workspace}
+            labels={labels}
+            readOnly={readOnly}
+            onSource={openSource}
+            onInsert={(id) => {
+              if (!editor.isEditable) return;
+              const block = findBlock(editor.state.doc, id);
+              if (block) {
+                editor.commands.setNodeSelection(block.pos);
+                setPalette(true);
+              }
+            }}
+          />
+        )}
+      </div>
       <div className="prism-science__block-tools" role="group" aria-label={labels.editBlock}>
-        <span>
+        <span aria-live="polite" aria-atomic="true">
           {blockIndex + 1} / {blockCount} {labels.blocks}
         </span>
         {button(labels.editBlock, openSource)}
-        {button(labels.up, () => blockAction('up'), blockIndex === 0)}
-        {button(labels.down, () => blockAction('down'), blockIndex === blockCount - 1)}
-        {button(labels.duplicate, () => blockAction('duplicate'))}
-        {button(labels.remove, () => blockAction('remove'))}
+        {button(
+          labels.up,
+          () => {
+            if (editor) runBlockAction(editor, 'up');
+          },
+          blockIndex === 0
+        )}
+        {button(
+          labels.down,
+          () => {
+            if (editor) runBlockAction(editor, 'down');
+          },
+          blockIndex === blockCount - 1
+        )}
+        {button(labels.duplicate, () => {
+          if (editor) runBlockAction(editor, 'duplicate');
+        })}
+        {button(labels.remove, () => {
+          if (editor) runBlockAction(editor, 'remove');
+        })}
       </div>
       <Dialog open={palette} onClose={() => setPalette(false)} fullWidth maxWidth="sm">
         <DialogTitle>{labels.insert}</DialogTitle>

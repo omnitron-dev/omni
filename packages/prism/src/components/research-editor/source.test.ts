@@ -150,3 +150,20 @@ describe('clipboard and rejected transaction integrity', () => {
     expect(onLimit).toHaveBeenCalledTimes(1);
   });
 });
+
+it('keeps YAML metadata atomic and exact when the adjacent paragraph is edited and undone', () => {
+  const metadata = '---\r\ntitle: "Ω 😀"\r\nslug: /domain/example\r\n---\r\n';
+  const source = metadata + '\r\nA claim.\r\n';
+  const editor = edit(source);
+  expect(editor.state.doc.firstChild?.firstChild?.type.name).toBe('researchSource');
+  expect(editorSource(editor.state.doc)).toBe(source);
+  let position = 0;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text === 'A claim.') position = pos;
+  });
+  editor.commands.insertContentAt(position, 'New ');
+  expect(editorSource(editor.state.doc).startsWith(metadata)).toBe(true);
+  expect(editorSource(editor.state.doc)).toContain('New A claim.');
+  editor.commands.undo();
+  expect(editorSource(editor.state.doc)).toBe(source);
+});

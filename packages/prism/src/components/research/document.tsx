@@ -1,6 +1,7 @@
 'use client';
 import { Component, useId, useMemo, type ReactNode, type ComponentType } from 'react';
 import katex from 'katex';
+import { Accordion, AccordionSummary, AccordionDetails, Box, Typography } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { TipTapRenderer, type TipTapNode } from '../tiptap-renderer/index.js';
 import { parseResearchMarkdown, researchLimits } from './parse.js';
@@ -26,6 +27,7 @@ export function defineResearchWidget<P>(
   };
 }
 export interface ResearchLabels {
+  metadata: string;
   contents: string;
   source: string;
   unavailable: string;
@@ -34,6 +36,7 @@ export interface ResearchLabels {
   diagnostics: string;
 }
 export const defaultResearchLabels: ResearchLabels = {
+  metadata: 'Source metadata',
   contents: 'On this page',
   source: 'Source',
   unavailable: 'This block is not available in this document.',
@@ -156,6 +159,34 @@ export function ResearchDocument({
   if (!parsed.data) return <p role="alert">{labels.invalid}</p>;
   return (
     <div className={`prism-research ${className ?? ''}`}>
+      {parsed.data.metadata && (
+        <Accordion
+          disableGutters
+          elevation={0}
+          sx={{ mb: 2, border: 1, borderColor: 'divider', '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary expandIcon={<span aria-hidden="true">＋</span>}>
+            <Typography variant="caption" color="text.secondary">
+              {labels.metadata} · YAML
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box
+              component="pre"
+              sx={{
+                m: 0,
+                maxHeight: 240,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                fontSize: 12,
+              }}
+            >
+              {parsed.data.metadata.raw}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+      )}
       {contents && parsed.data.headings.length > 0 && (
         <nav className="prism-research__contents" aria-label={labels.contents}>
           <p>{labels.contents}</p>

@@ -106,3 +106,22 @@ describe('Research Markdown source contract', () => {
     expect(rendered).not.toContain('href="javascript:');
   });
 });
+
+it('renders YAML metadata separately while preserving original source positions', () => {
+  const metadata = '---\r\ntitle: "Ω 😀"\r\nscript: <script>unsafe()</script>\r\n---\r\n';
+  const source = metadata + '\r\n# Body\r\n\r\nText.';
+  const parsed = parseResearchMarkdown(source, 'source');
+  expect(parsed.metadata?.raw).toBe(metadata);
+  expect(parsed.headings.map((h) => h.title)).toEqual(['Body']);
+  expect(parsed.doc.content[0]?.attrs?.source.start.offset).toBe(source.indexOf('# Body'));
+  expect(html(source)).toContain('Source metadata');
+  expect(html(source)).not.toContain('<script>');
+  expect(parseResearchMarkdown('---\nUnclosed').metadata).toBeUndefined();
+});
+
+// Empty metadata and BOM/CRLF must be recognized without changing source positions.
+it('keeps an empty YAML envelope separate from the first heading', () => {
+  const parsed = parseResearchMarkdown('\uFEFF--- \r\n---\r\n# Body\r\n');
+  expect(parsed.metadata?.raw).toBe('\uFEFF--- \r\n---\r\n');
+  expect(parsed.headings.map((h) => h.title)).toEqual(['Body']);
+});

@@ -1,6 +1,7 @@
 /** Research Markdown v1: structured documents with source locations,
  * explicit diagnostics and isolated widgets.
  * Source is data: HTML and unknown syntax are retained as text, never executed. */
+import { splitFrontmatter } from './frontmatter.js';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
@@ -18,6 +19,7 @@ export interface ResearchDiagnostic {
 }
 export interface ResearchDocumentData {
   format: 'prism-research/1';
+  metadata?: { format: 'yaml'; raw: string; start: number; end: number };
   doc: TipTapDoc;
   headings: { id: string; title: string; level: number }[];
   diagnostics: ResearchDiagnostic[];
@@ -29,7 +31,8 @@ const plain = (n: Ast): string => str(n.value) || (n.children ?? []).map(plain).
 export function parseResearchMarkdown(source: string, prefix = 'research'): ResearchDocumentData {
   if (source.length > researchLimits.source) throw new Error('document_limit');
   if (!/^[a-zA-Z][\w-]{0,100}$/.test(prefix)) throw new Error('invalid_document_prefix');
-  const tree = fromMarkdown(source, {
+  const { body, metadata } = splitFrontmatter(source);
+  const tree = fromMarkdown(body, {
     extensions: [gfm(), directive(), math()],
     mdastExtensions: [gfmFromMarkdown(), directiveFromMarkdown(), mathFromMarkdown()],
   }) as unknown as Ast;
@@ -197,5 +200,5 @@ export function parseResearchMarkdown(source: string, prefix = 'research'): Rese
         ];
     }
   };
-  return { format: 'prism-research/1', doc: { type: 'doc', content: convert(tree) }, headings, diagnostics };
+  return { format: 'prism-research/1', metadata, doc: { type: 'doc', content: convert(tree) }, headings, diagnostics };
 }

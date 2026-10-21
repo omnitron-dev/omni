@@ -52,7 +52,21 @@ export function ResearchDiagram({
           maxTextSize: researchLimits.block,
           maxEdges: 256,
           suppressErrorRendering: true,
-          theme: mode === 'dark' ? 'dark' : 'neutral',
+          look: 'classic',
+          theme: 'base',
+          fontFamily: 'system-ui, sans-serif',
+          themeVariables: {
+            darkMode: mode === 'dark',
+            primaryColor: theme.palette.background.paper,
+            primaryTextColor: theme.palette.text.primary,
+            primaryBorderColor: theme.palette.text.secondary,
+            secondaryColor: theme.palette.background.default,
+            tertiaryColor: theme.palette.background.paper,
+            lineColor: theme.palette.text.secondary,
+            textColor: theme.palette.text.primary,
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '16px',
+          },
           flowchart: { htmlLabels: false },
           secure: [
             'securityLevel',
@@ -61,6 +75,8 @@ export function ResearchDiagram({
             'maxEdges',
             'htmlLabels',
             'theme',
+            'look',
+            'fontFamily',
             'themeCSS',
             'themeVariables',
           ],
@@ -82,7 +98,7 @@ export function ResearchDiagram({
       cancelled = true;
       target?.replaceChildren();
     };
-  }, [source, engine, id, mode]);
+  }, [source, engine, id, theme]);
   return (
     <figure className="prism-research__diagram">
       {state !== 'ready' && <p role="status">{state === 'error' ? labels.invalid : labels.loading}</p>}

@@ -1,15 +1,48 @@
 @import 'katex/dist/katex.min.css';
-.prism-research { min-width:0; }
-.prism-research__formula-block { display:block; overflow-x:auto; padding-block: .5rem; }
-.prism-research__contents { border-block:1px solid currentColor; padding-block:1rem; margin-block:1rem 2rem; }
-.prism-research__contents ol { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; padding:0; list-style:none; }
-.prism-research__diagram { margin:1.5rem 0; }
-.prism-research__diagram svg { max-width:100%; height:auto; display:block; margin:auto; }
-.prism-research__diagram svg text { fill:currentColor; font-family:inherit; }
-.prism-research__diagram svg .node rect,.prism-research__diagram svg .node polygon { fill:var(--surface,#f4f4f4); stroke:currentColor; }
-.prism-research__diagram svg .flowchart-link { stroke:currentColor; fill:none; }
-.prism-research__diagram svg marker path { fill:currentColor; stroke:currentColor; }
-.prism-research__diagram details,.prism-research__diagnostics { margin-block:1rem; font-size:.8rem; }
-.prism-research pre { overflow-x:auto; max-width:100%; }
-.prism-research__failure { border-inline-start:2px solid currentColor; padding-inline-start:1rem; }
-.prism-research__failure pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.prism-research {
+  min-width: 0;
+}
+.prism-research__formula-block {
+  display: block;
+  overflow-x: auto;
+  padding-block: 0.5rem;
+}
+.prism-research__contents {
+  border-block: 1px solid currentColor;
+  padding-block: 1rem;
+  margin-block: 1rem 2rem;
+}
+.prism-research__contents ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+.prism-research__diagram {
+  margin: 1.5rem 0;
+}
+.prism-research__diagram-image {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: auto;
+}
+.prism-research__diagram details,
+.prism-research__diagnostics {
+  margin-block: 1rem;
+  font-size: 0.8rem;
+}
+.prism-research pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.prism-research__failure {
+  border-inline-start: 2px solid currentColor;
+  padding-inline-start: 1rem;
+}
+.prism-research__failure pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

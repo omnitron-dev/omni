@@ -2,7 +2,7 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { getSchema, type Editor, type JSONContent } from '@tiptap/core';
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
-import { TextSelection } from '@tiptap/pm/state';
+import { TextSelection, NodeSelection } from '@tiptap/pm/state';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -229,7 +229,12 @@ export function ResearchEditor({
       to,
       blocks.map((b) => editor.schema.nodeFromJSON(b))
     );
-    tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(from + 2, tr.doc.content.size))));
+    const first = tr.doc.nodeAt(from)?.firstChild;
+    tr.setSelection(
+      first?.isAtom && !first.isTextblock
+        ? NodeSelection.create(tr.doc, from + 1)
+        : TextSelection.near(tr.doc.resolve(Math.min(from + 2, tr.doc.content.size)))
+    );
     editor.view.dispatch(tr.scrollIntoView());
     setPalette(false);
     editor.commands.focus();
@@ -394,6 +399,9 @@ export function ResearchEditor({
         <DialogTitle>{labels.insert}</DialogTitle>
         <DialogContent>
           <Autocomplete
+            value={null}
+            openText={labels.insert}
+            closeText={labels.cancel}
             options={recipes}
             filterOptions={filterInsertions}
             getOptionLabel={(r) => r.label}

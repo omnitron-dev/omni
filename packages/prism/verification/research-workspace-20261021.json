@@ -45,6 +45,14 @@
     {
       "finding": "DOM-only test environment provided IntersectionObserver but no viewport events",
       "resolution": "Test explicitly uses the supported eager fallback, while browser checks cover viewport rendering"
+    },
+    {
+      "finding": "Text selection skipped an inserted atomic formula and selected the next paragraph",
+      "resolution": "Insert atomic scientific content with a NodeSelection, keeping block commands on the inserted block"
+    },
+    {
+      "finding": "MUI non-clearable selector type disallowed the null command-palette value",
+      "resolution": "Use the normal nullable, controlled action selector; no persisted option selection"
     }
   ],
   "limitations": [

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
@@ -78,7 +78,8 @@ function SidebarNode({
   onItemClick?: (item: DocSidebarItem) => void;
   depth: number;
 }) {
-  const hasChildren = item.children && item.children.length > 0;
+  const hasChildren = !!item.children?.length;
+  const childrenId = useId();
   const isActive = activeId === item.id;
   const [open, setOpen] = useState(true);
   const isCategory = hasChildren && !item.href;
@@ -86,8 +87,16 @@ function SidebarNode({
   return (
     <>
       <ListItemButton
+        component={item.href ? 'a' : 'button'}
+        href={item.href}
+        aria-current={isActive ? 'page' : undefined}
+        aria-expanded={hasChildren ? open : undefined}
+        aria-controls={hasChildren ? childrenId : undefined}
         selected={isActive}
-        onClick={() => {
+        onClick={(event: React.MouseEvent<HTMLElement>) => {
+          // Native links retain copy/open-in-new-tab and modified-click behaviour.
+          if (item.href && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)) return;
+          if (item.href && onItemClick) event.preventDefault();
           if (hasChildren) setOpen(!open);
           onItemClick?.(item);
         }}
@@ -100,6 +109,9 @@ function SidebarNode({
           mb: 0.25,
           minHeight: 0,
           alignItems: 'flex-start',
+          width: 'calc(100% - 8px)',
+          textAlign: 'left',
+          textDecoration: 'none',
           ...(isCategory && {
             mt: depth === 0 ? 1 : 0.5,
           }),
@@ -109,6 +121,7 @@ function SidebarNode({
           }),
         }}
       >
+        {hasChildren && <Box component="span" aria-hidden="true" sx={{ width: 16, flexShrink: 0 }}>{open ? '−' : '+'}</Box>}
         <SidebarLabel
           label={item.label}
           sx={{
@@ -119,7 +132,7 @@ function SidebarNode({
         />
       </ListItemButton>
       {hasChildren && (
-        <Collapse in={open}>
+        <Collapse in={open} id={childrenId} unmountOnExit>
           <List dense disablePadding>
             {item.children!.map((child) => (
               <SidebarNode

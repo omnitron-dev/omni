@@ -1,5 +1,5 @@
-/** Research Markdown v1. Carries forward DAOS docs-engine's structured-document
- * approach; source locations, explicit diagnostics and isolated widgets are added.
+/** Research Markdown v1: structured documents with source locations,
+ * explicit diagnostics and isolated widgets.
  * Source is data: HTML and unknown syntax are retained as text, never executed. */
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';

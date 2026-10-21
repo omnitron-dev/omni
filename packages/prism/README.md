@@ -64,3 +64,27 @@ Raw HTML and unsupported constructs remain inert with source diagnostics. Unsupp
 ## License
 
 MIT
+
+### Theme-native UI primitives
+
+`@omnitron-dev/prism/ui` is a separately built, tree-shakeable entry for MUI
+composition primitives (`Button`, `TextField`, `Tabs`, `Drawer`, `Typography`,
+`ListItemButton`, etc.). It preserves upstream props, slots and keyboard semantics;
+it does not introduce a second set of controls. Use these primitives alongside
+Prism's research editor and knowledge graph under the **same** theme.
+
+```tsx
+import { PrismThemeProvider, Button, TextField } from '@omnitron-dev/prism/ui';
+import { createPrismTheme } from '@omnitron-dev/prism/theme';
+const theme = createPrismTheme({ mode: 'light' });
+<PrismThemeProvider theme={theme}>
+  <TextField label="Title" size="small" />
+  <Button variant="contained">Save</Button>
+</PrismThemeProvider>;
+```
+
+The lightweight provider is appropriate for applications which already own their
+appearance preferences. `PrismProvider` supplies the larger settings/localization
+stack. Do not apply global `button`, `input` or `:focus-visible` appearance rules
+to either provider's controls: configure state styles through the shared theme.
+Keep a visible keyboard-focus indication when integrating legacy stylesheets.

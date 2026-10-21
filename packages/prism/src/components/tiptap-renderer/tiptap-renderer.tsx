@@ -37,10 +37,14 @@ function isSafeHref(url: unknown): url is string {
   // parse as `javascript:` in some URL parsers.
   // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
   if (/[\x00-\x1f\x7f]/.test(url)) return false;
+  if (url !== url.trim() || url.includes('\\') || url.startsWith('//')) return false;
   if (url.startsWith('#')) return true;
   if (url.startsWith('/') && !url.startsWith('//') && !url.startsWith('/\\')) return true;
   const lower = url.toLowerCase().trimStart();
-  return lower.startsWith('http://') || lower.startsWith('https://');
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return true;
+  // A path relative to the source document is useful for corpus navigation.
+  // A scheme (including unknown schemes) or network-path authority is not a relative path.
+  return !/^[a-z][a-z0-9+.-]*:/i.test(url);
 }
 
 /** Return the URL if safe to interpolate into href/src; otherwise undefined. */
@@ -57,10 +61,7 @@ function sanitizeEmbedSrc(url: unknown): string | undefined {
   if (typeof url !== 'string') return undefined;
   if (!isSafeHref(url)) return undefined;
   const lower = url.toLowerCase();
-  if (
-    lower.startsWith('https://www.youtube.com/') ||
-    lower.startsWith('https://www.youtube-nocookie.com/')
-  ) {
+  if (lower.startsWith('https://www.youtube.com/') || lower.startsWith('https://www.youtube-nocookie.com/')) {
     return url;
   }
   return undefined;
@@ -222,7 +223,7 @@ function CodeBlock({ node }: { node: TipTapNode }) {
       },
       () => {
         // Clipboard API unavailable (insecure context). Silently no-op.
-      },
+      }
     );
   }, [code]);
 
@@ -324,8 +325,9 @@ function renderNode(node: TipTapNode, index: number): ReactNode {
 }
 function ScopedNode({ node, index }: { node: TipTapNode; index: number }): ReactNode {
   const context = useContext(TipTapContext);
-  const CustomRenderer = context.nodeRenderers?.[node.type]
-    ?? (context.inheritRegisteredNodes !== false ? customNodeRegistry.get(node.type) : undefined);
+  const CustomRenderer =
+    context.nodeRenderers?.[node.type] ??
+    (context.inheritRegisteredNodes !== false ? customNodeRegistry.get(node.type) : undefined);
   if (CustomRenderer) return <CustomRenderer key={index} node={node} />;
 
   switch (node.type) {
@@ -550,7 +552,15 @@ export interface TipTapRendererProps {
   linkComponent?: ElementType<{ to: string; children?: ReactNode; className?: string }>;
 }
 
-export function TipTapRenderer({ content, className, sx, compact, linkComponent, nodeRenderers, inheritRegisteredNodes }: TipTapRendererProps) {
+export function TipTapRenderer({
+  content,
+  className,
+  sx,
+  compact,
+  linkComponent,
+  nodeRenderers,
+  inheritRegisteredNodes,
+}: TipTapRendererProps) {
   if (!content || !('content' in content) || !Array.isArray(content.content)) {
     return null;
   }

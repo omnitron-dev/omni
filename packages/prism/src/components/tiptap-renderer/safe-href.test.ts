@@ -43,3 +43,20 @@ describe('sanitizeHref', () => {
     expect(sanitizeHref(42)).toBeUndefined();
   });
 });
+
+it('preserves relative corpus paths without admitting alternate schemes or authorities', () => {
+  for (const path of ['./chapter', '../lemma.md#proof', 'lemma.md', '?page=2']) {
+    expect(sanitizeHref(path)).toBe(path);
+    expect(new URL(sanitizeHref(path)!, 'https://corpus.example/docs/').origin).toBe('https://corpus.example');
+  }
+  for (const url of [
+    ' //evil.example',
+    '\\\\evil.example',
+    './\\evil.example',
+    'file:secrets',
+    'vbscript:alert(1)',
+    'unknown:payload',
+    ' javascript:alert(1)',
+  ])
+    expect(sanitizeHref(url)).toBeUndefined();
+});

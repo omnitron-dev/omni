@@ -82,7 +82,11 @@
       "types": "./dist/components/knowledge-graph/index.d.ts",
       "import": "./dist/components/knowledge-graph/index.js"
     },
-    "./components/knowledge-graph/styles.css": "./dist/components/knowledge-graph/index.css"
+    "./components/knowledge-graph/styles.css": "./dist/components/knowledge-graph/index.css",
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js"
+    }
   },
   "bin": {
     "prism": "./bin/prism.js"

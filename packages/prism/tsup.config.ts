@@ -7,6 +7,7 @@ export default defineConfig([
       index: 'src/index.ts',
       'theme/index': 'src/theme/index.ts',
       'core/index': 'src/core/index.ts',
+      'ui/index': 'src/ui/index.ts',
       'registry/index': 'src/registry/index.ts',
       'layouts/index': 'src/layouts/index.ts',
       'blocks/index': 'src/blocks/index.ts',

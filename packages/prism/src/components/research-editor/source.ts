@@ -1,5 +1,6 @@
 /** Lossless source envelope. Only edited blocks are serialised; unknown blocks stay inert source.
  * Session block IDs are not edition IDs or persisted citation anchors. */
+import { splitFrontmatter } from '../research/frontmatter.js';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { gfm } from 'micromark-extension-gfm';
@@ -20,6 +21,7 @@ type Ast = {
 };
 const opaque = new Set([
   'html',
+  'frontmatter',
   'image',
   'imageReference',
   'linkReference',
@@ -58,10 +60,15 @@ export function sourceDocument(source: string, id: () => string = newBlockId): J
   if (source.length > researchLimits.source) throw new Error('document_limit');
   // The reader's structural limits apply before constructing an editable projection.
   parseResearchMarkdown(source);
-  const ast = fromMarkdown(source, {
+  const { body, metadata } = splitFrontmatter(source);
+  const ast = fromMarkdown(body, {
     extensions: [gfm(), math(), directive()],
     mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown(), directiveFromMarkdown()],
   }) as unknown as Ast;
+  if (metadata) {
+    const stop = metadata.end - (metadata.raw.endsWith('\r\n') ? 2 : metadata.raw.endsWith('\n') ? 1 : 0);
+    ast.children!.unshift({ type: 'frontmatter', position: { start: { offset: 0 }, end: { offset: stop } } });
+  }
   let end = 0;
   const content = (ast.children ?? []).map((n) => {
     const start = n.position!.start.offset,
@@ -194,7 +201,9 @@ export function editorSource(doc: ProseNode): string {
       blockCache.set(block, raw);
     }
     const prefix = String(block.attrs.prefix ?? '');
-    parts.push(index === 0 ? prefix : /\r?\n[ \t]*\r?\n/.test(prefix) ? prefix : '\n\n', raw);
+    // YAML is a document envelope: the body may begin on the next line, without a blank line.
+    const afterMetadata = index === 1 && doc.firstChild?.firstChild?.attrs.kind === 'frontmatter';
+    parts.push(index === 0 || afterMetadata ? prefix : /\r?\n[ \t]*\r?\n/.test(prefix) ? prefix : '\n\n', raw);
   });
   return parts.join('') + String(doc.attrs.tail ?? '');
 }

@@ -53,3 +53,5 @@ export {
 export type { ButtonProps, TextFieldProps, SxProps, Theme } from '@mui/material';
 export { ThemeProvider as PrismThemeProvider, useTheme } from '@mui/material/styles';
 export { default as useMediaQuery } from '@mui/material/useMediaQuery';
+
+export { default as Breadcrumbs } from '@mui/material/Breadcrumbs';

@@ -94,3 +94,14 @@ Keep a visible keyboard-focus indication when integrating legacy stylesheets.
 profile leaves that syntax literal. This is an inert rendering profile, not an MDX
 runtime or a Docusaurus configuration executor. Corpus routes and semantic metadata
 are supplied by the host's source adapter; Prism does not infer knowledge status.
+
+
+## Corpus navigation
+
+`@omnitron-dev/prism/components/doc-layout` exposes `DocSidebar`, `DocLayout`
+and `DocSectionNav` without the full component barrel. Sidebar items carry
+stable IDs, labels, optional native hrefs and children. Native hrefs preserve
+modified-click and new-tab navigation; `onItemClick` may route ordinary clicks
+through the host router. Categories announce expansion and remove collapsed
+children from keyboard navigation. No source-format or authorization semantics
+belong in these presentation components.

@@ -25,6 +25,7 @@ export default defineConfig([
       // the build matrix. Add entries here when a downstream file
       // uses `from '@omnitron-dev/prism/components/<name>'`.
       'components/index': 'src/components/index.ts',
+      'components/doc-layout/index': 'src/components/doc-layout/index.ts',
       'components/research/index': 'src/components/research/index.ts',
       'components/research-editor/index': 'src/components/research-editor/index.ts',
       'components/knowledge-graph/index': 'src/components/knowledge-graph/index.ts',

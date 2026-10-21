@@ -45,6 +45,8 @@ export const defaultResearchLabels: ResearchLabels = {
   diagnostics: 'Document diagnostics',
 };
 export interface ResearchDocumentProps {
+  /** Enables inert Docusaurus heading IDs and namespaced fragment links. */
+  sourceProfile?: 'research' | 'docusaurus';
   source: string;
   /** Stable namespace for deep links. A revision identifier belongs to the host's document metadata. */
   documentId?: string;
@@ -113,6 +115,7 @@ function Widget({ node, widgets, labels }: { node: TipTapNode; widgets: Research
 const emptyWidgets: ResearchWidgets = Object.freeze({});
 export function ResearchDocument({
   source,
+  sourceProfile = 'research',
   documentId,
   widgets = emptyWidgets,
   labels: overrides,
@@ -125,11 +128,11 @@ export function ResearchDocument({
   const labels = { ...defaultResearchLabels, ...overrides };
   const parsed = useMemo(() => {
     try {
-      return { data: parseResearchMarkdown(source, prefix) };
+      return { data: parseResearchMarkdown(source, prefix, sourceProfile) };
     } catch {
       return { error: true };
     }
-  }, [source, prefix]);
+  }, [source, prefix, sourceProfile]);
   const nodes = useMemo(() => {
     const failure = (raw: string) => (
       <details className="prism-research__failure" open>

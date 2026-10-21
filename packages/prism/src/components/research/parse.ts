@@ -28,7 +28,11 @@ export const researchLimits = { source: 262144, nodes: 20000, depth: 64, block: 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const plain = (n: Ast): string => str(n.value) || (n.children ?? []).map(plain).join('');
 
-export function parseResearchMarkdown(source: string, prefix = 'research'): ResearchDocumentData {
+export function parseResearchMarkdown(
+  source: string,
+  prefix = 'research',
+  sourceProfile: 'research' | 'docusaurus' = 'research'
+): ResearchDocumentData {
   if (source.length > researchLimits.source) throw new Error('document_limit');
   if (!/^[a-zA-Z][\w-]{0,100}$/.test(prefix)) throw new Error('invalid_document_prefix');
   const { body, metadata } = splitFrontmatter(source);
@@ -79,20 +83,38 @@ export function parseResearchMarkdown(source: string, prefix = 'research'): Rese
       case 'paragraph':
         return node('paragraph');
       case 'heading': {
-        const title = plain(n),
-          base = `${prefix}-${
-            title
-              .normalize('NFKC')
-              .toLowerCase()
-              .replace(/[^\p{L}\p{N}]+/gu, '-')
-              .replace(/^-|-$/g, '') || 'section'
-          }`;
+        const explicit = sourceProfile === 'docusaurus' ? /\s*\{#([^\s{}]+)\}\s*$/.exec(plain(n)) : null;
+        const title = explicit ? plain(n).slice(0, explicit.index) : plain(n);
+        const base = `${prefix}-${
+          explicit?.[1] ??
+          (title
+            .normalize('NFKC')
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, '-')
+            .replace(/^-|-$/g, '') ||
+            'section')
+        }`;
         let id = base,
           suffix = 1;
         while (ids.has(id)) id = `${base}-${++suffix}`;
+        if (explicit && id !== base)
+          diagnostics.push({ code: 'duplicate_heading_id', line: n.position?.start.line ?? 1 });
         ids.add(id);
         headings.push({ id, title, level: Number(n.depth) });
-        return node('heading', { level: n.depth, id });
+        let content = n.children ?? [];
+        if (explicit) {
+          const last = content.at(-1);
+          if (last?.type === 'text')
+            content = [
+              ...content.slice(0, -1),
+              { ...last, value: str(last.value).replace(/\s*\{#[^\s{}]+\}\s*$/, '') },
+            ];
+        }
+        return node(
+          'heading',
+          { level: n.depth, id },
+          content.flatMap((c) => convert(c, marks))
+        );
       }
       case 'linkReference':
       case 'imageReference': {
@@ -104,7 +126,20 @@ export function parseResearchMarkdown(source: string, prefix = 'research'): Rese
         );
       }
       case 'link':
-        return (n.children ?? []).flatMap((c) => convert(c, [...marks, { type: 'link', attrs: { href: str(n.url) } }]));
+        return (n.children ?? []).flatMap((c) =>
+          convert(c, [
+            ...marks,
+            {
+              type: 'link',
+              attrs: {
+                href:
+                  sourceProfile === 'docusaurus' && str(n.url).startsWith('#')
+                    ? `#${prefix}-${str(n.url).slice(1)}`
+                    : str(n.url),
+              },
+            },
+          ])
+        );
       case 'image':
         return node('image', { src: str(n.url), alt: str(n.alt), title: str(n.title) }, []);
       case 'break':

@@ -125,3 +125,17 @@ it('keeps an empty YAML envelope separate from the first heading', () => {
   expect(parsed.metadata?.raw).toBe('\uFEFF--- \r\n---\r\n');
   expect(parsed.headings.map((h) => h.title)).toEqual(['Body']);
 });
+
+it('interprets Docusaurus heading IDs only in the selected source profile', () => {
+  const source = '## A *result* {#the-result}\n\n[Jump](#the-result)';
+  expect(parseResearchMarkdown(source, 'doc').headings[0]?.title).toBe('A result {#the-result}');
+  const result = parseResearchMarkdown(source, 'doc', 'docusaurus');
+  expect(result.headings[0]).toEqual({ id: 'doc-the-result', title: 'A result', level: 2 });
+  const rendered = renderToStaticMarkup(
+    <ResearchDocument source={source} documentId="doc" sourceProfile="docusaurus" />
+  );
+  expect(rendered).toContain('id="doc-the-result"');
+  expect(rendered).toContain('href="#doc-the-result"');
+  expect(rendered).not.toContain('{#the-result}');
+  expect(result.doc.content[0]?.attrs?.source).toMatchObject({ start: { line: 1, offset: 0 } });
+});

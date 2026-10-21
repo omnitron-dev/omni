@@ -88,3 +88,9 @@ appearance preferences. `PrismProvider` supplies the larger settings/localizatio
 stack. Do not apply global `button`, `input` or `:focus-visible` appearance rules
 to either provider's controls: configure state styles through the shared theme.
 Keep a visible keyboard-focus indication when integrating legacy stylesheets.
+
+`ResearchDocument` also accepts `sourceProfile="docusaurus"` for explicit
+`{#heading-id}` anchors and namespaced local fragment links. The default research
+profile leaves that syntax literal. This is an inert rendering profile, not an MDX
+runtime or a Docusaurus configuration executor. Corpus routes and semantic metadata
+are supplied by the host's source adapter; Prism does not infer knowledge status.

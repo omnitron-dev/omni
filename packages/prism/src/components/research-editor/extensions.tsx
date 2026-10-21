@@ -1,4 +1,4 @@
-import { Node, Extension, type Editor } from '@tiptap/core';
+import { Node, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import katex from 'katex';
 import { ResearchDocument, type ResearchWidgets, type ResearchLabels } from '../research/document.js';
 import { newBlockId, snapshot } from './source.js';
+import { runBlockAction } from './block-commands.js';
 
 export const ResearchViewContext = createContext<
   { widgets: ResearchWidgets; labels?: Partial<ResearchLabels> } | undefined
@@ -19,10 +20,10 @@ function SourceView({ node, extension }: NodeViewProps) {
   const ref = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (!ref.current) return;
+    if (!ref.current) return undefined;
     if (typeof IntersectionObserver === 'undefined') {
       setVisible(true);
-      return;
+      return undefined;
     }
     const observer = new IntersectionObserver(
       (entries) => {
@@ -53,20 +54,6 @@ function SourceView({ node, extension }: NodeViewProps) {
     </NodeViewWrapper>
   );
 }
-export function currentBlock(editor: Editor): { pos: number; index: number } | undefined {
-  const { $from } = editor.state.selection;
-  if ($from.depth >= 1) return { pos: $from.before(1), index: $from.index(0) };
-  const index = $from.index(0);
-  return editor.state.doc.childCount
-    ? {
-        pos:
-          index >= editor.state.doc.childCount
-            ? editor.state.doc.content.size - editor.state.doc.lastChild!.nodeSize
-            : $from.pos,
-        index: Math.min(index, editor.state.doc.childCount - 1),
-      }
-    : undefined;
-}
 export function researchExtensions(
   widgets: ResearchWidgets = {},
   limits?: { source: number; onLimit?: () => void },
@@ -94,12 +81,14 @@ export function researchExtensions(
     renderHTML: ({ node }) => ['div', { 'data-research-block': node.attrs.id, class: 'prism-science__block' }, 0],
     addKeyboardShortcuts() {
       return {
+        'Mod-Alt-ArrowUp': () => runBlockAction(this.editor, 'up'),
+        'Mod-Alt-ArrowDown': () => runBlockAction(this.editor, 'down'),
         Enter: () => {
+          if (!this.editor.isEditable) return false;
           const { state, view } = this.editor,
             { $from, $to } = state.selection;
           if (!$from.sameParent($to) || $from.depth !== 2 || !['paragraph', 'heading'].includes($from.parent.type.name))
             return false;
-          const pos = $from.pos;
           const next =
             $from.parentOffset === $from.parent.content.size ? state.schema.nodes.paragraph : $from.parent.type;
           const types = [

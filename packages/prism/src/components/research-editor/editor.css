@@ -163,3 +163,58 @@
     padding: 0 12px;
   }
 }
+.prism-science__workspace {
+  position: relative;
+}
+.prism-science__workspace--controls .prism-science__content {
+  padding-inline-start: 64px;
+}
+.prism-science__gutter {
+  position: absolute;
+  inset-inline-start: 4px;
+  display: flex;
+  gap: 2px;
+  z-index: 2;
+}
+.prism-science__gutter button {
+  width: 28px;
+  min-height: 32px;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  background: var(--prism-editor-bg);
+  color: var(--prism-editor-muted);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.prism-science__gutter button[draggable='true'] {
+  cursor: grab;
+}
+.prism-science__gutter button[draggable='true']:active {
+  cursor: grabbing;
+}
+.prism-science__drop-line {
+  position: absolute;
+  inset-inline: 64px 24px;
+  height: 2px;
+  pointer-events: none;
+  background: var(--prism-editor-accent);
+  z-index: 3;
+}
+@media (pointer: coarse) {
+  .prism-science__gutter {
+    gap: 0;
+  }
+  .prism-science__gutter button {
+    width: 40px;
+    min-height: 44px;
+  }
+  .prism-science__workspace--controls .prism-science__content {
+    padding-inline-start: 84px;
+  }
+  .prism-science__drop-line {
+    inset-inline-start: 84px;
+  }
+}

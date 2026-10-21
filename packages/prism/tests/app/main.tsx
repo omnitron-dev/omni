@@ -22,6 +22,7 @@ import { SnackbarTestPage } from './pages/snackbar';
 import { ColorsTestPage } from './pages/colors';
 import { AnimationsTestPage } from './pages/animations';
 import { ButtonsTestPage } from './pages/buttons';
+import { ResearchTestPage } from './pages/research';
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
         <Route path="/test/colors" element={<ColorsTestPage />} />
         <Route path="/test/animations" element={<AnimationsTestPage />} />
         <Route path="/test/buttons" element={<ButtonsTestPage />} />
+        <Route path="/test/research" element={<ResearchTestPage />} />
         <Route
           path="/"
           element={

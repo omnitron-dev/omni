@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "_exportsNote": "Every subpath here is backed by a tsup entry in tsup.config.ts. The globs `./components/*` and `./blocks/*` used to be here and were not: they made every component directory resolvable to TypeScript while only three of them shipped JavaScript, so an import like `@omnitron-dev/prism/components/alert` typechecked and failed in the browser — the documentation recommended that style in 55 places. `./utils` was declared with no entry at all. Add an entry to tsup.config.ts and a line here together, or not at all.",
+  "_exportsNote": "Every subpath here is backed by a tsup entry in tsup.config.ts. The globs `./components/*` and `./blocks/*` used to be here and were not: they made every component directory resolvable to TypeScript while only three of them shipped JavaScript, so an import like `@omnitron-dev/prism/components/alert` typechecked and failed in the browser \u2014 the documentation recommended that style in 55 places. `./utils` was declared with no entry at all. Add an entry to tsup.config.ts and a line here together, or not at all.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -67,7 +67,12 @@
     "./cli": {
       "types": "./dist/cli/index.d.ts",
       "import": "./dist/cli/index.js"
-    }
+    },
+    "./components/research": {
+      "types": "./dist/components/research/index.d.ts",
+      "import": "./dist/components/research/index.js"
+    },
+    "./components/research/styles.css": "./dist/components/research/index.css"
   },
   "bin": {
     "prism": "./bin/prism.js"
@@ -122,10 +127,20 @@
     "clsx": "^2.1.1",
     "commander": "^14.0.3",
     "dayjs": "^1.11.23",
+    "dompurify": "^3.4.17",
     "framer-motion": "^13.2.0",
     "immer": "^11.1.18",
+    "katex": "^0.19.0",
     "lowlight": "^3.3.0",
     "maplibre-gl": "^6.7.0",
+    "mdast-util-directive": "^3.1.1",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "mermaid": "^12.2.0",
+    "micromark-extension-directive": "^4.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0",
     "nprogress": "^0.2.0",
     "pmtiles": "^4.5.0",
     "react-dropzone": "^20.1.1",

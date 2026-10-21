@@ -37,6 +37,7 @@ function isSafeHref(url: unknown): url is string {
   // parse as `javascript:` in some URL parsers.
   // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
   if (/[\x00-\x1f\x7f]/.test(url)) return false;
+  if (url.startsWith('#')) return true;
   if (url.startsWith('/') && !url.startsWith('//') && !url.startsWith('/\\')) return true;
   const lower = url.toLowerCase().trimStart();
   return lower.startsWith('http://') || lower.startsWith('https://');
@@ -91,7 +92,7 @@ export interface TipTapDoc {
 // Custom node registry
 // ---------------------------------------------------------------------------
 
-type CustomNodeRenderer = ComponentType<{ node: TipTapNode }>;
+export type CustomNodeRenderer = ComponentType<{ node: TipTapNode }>;
 const customNodeRegistry = new Map<string, CustomNodeRenderer>();
 
 export function registerTipTapNode(type: string, component: CustomNodeRenderer) {
@@ -107,6 +108,8 @@ export function registerTipTapNode(type: string, component: CustomNodeRenderer) 
 // ---------------------------------------------------------------------------
 
 interface TipTapRenderContext {
+  nodeRenderers?: Readonly<Record<string, CustomNodeRenderer>>;
+  inheritRegisteredNodes?: boolean;
   linkComponent?: ElementType<{ to: string; children?: ReactNode; className?: string }>;
 }
 
@@ -152,7 +155,7 @@ function renderMarks(text: string, marks: TipTapMark[] = [], ctx?: TipTapRenderC
         );
       }
       case 'internalLink': {
-        const to = String(mark.attrs?.to ?? mark.attrs?.href ?? '#');
+        const to = sanitizeHref(mark.attrs?.to ?? mark.attrs?.href) ?? '#';
         const Link = ctx?.linkComponent;
         return Link ? (
           <Link to={to} className={contentClasses.link}>
@@ -317,8 +320,12 @@ function Tabs({ node }: { node: TipTapNode }) {
 // ---------------------------------------------------------------------------
 
 function renderNode(node: TipTapNode, index: number): ReactNode {
-  // Custom registry first
-  const CustomRenderer = customNodeRegistry.get(node.type);
+  return <ScopedNode key={index} node={node} index={index} />;
+}
+function ScopedNode({ node, index }: { node: TipTapNode; index: number }): ReactNode {
+  const context = useContext(TipTapContext);
+  const CustomRenderer = context.nodeRenderers?.[node.type]
+    ?? (context.inheritRegisteredNodes !== false ? customNodeRegistry.get(node.type) : undefined);
   if (CustomRenderer) return <CustomRenderer key={index} node={node} />;
 
   switch (node.type) {
@@ -526,6 +533,8 @@ function TextNode({ node }: { node: TipTapNode }) {
 // ---------------------------------------------------------------------------
 
 export interface TipTapRendererProps {
+  nodeRenderers?: Readonly<Record<string, CustomNodeRenderer>>;
+  inheritRegisteredNodes?: boolean;
   /** TipTap JSON document */
   content: TipTapDoc | Record<string, unknown> | null;
   /** Additional CSS class */
@@ -541,12 +550,12 @@ export interface TipTapRendererProps {
   linkComponent?: ElementType<{ to: string; children?: ReactNode; className?: string }>;
 }
 
-export function TipTapRenderer({ content, className, sx, compact, linkComponent }: TipTapRendererProps) {
+export function TipTapRenderer({ content, className, sx, compact, linkComponent, nodeRenderers, inheritRegisteredNodes }: TipTapRendererProps) {
   if (!content || !('content' in content) || !Array.isArray(content.content)) {
     return null;
   }
 
-  const ctxValue: TipTapRenderContext = linkComponent ? { linkComponent } : {};
+  const ctxValue: TipTapRenderContext = { linkComponent, nodeRenderers, inheritRegisteredNodes };
 
   return (
     <TipTapContext.Provider value={ctxValue}>

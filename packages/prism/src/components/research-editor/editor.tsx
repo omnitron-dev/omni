@@ -10,7 +10,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
+import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { ResearchWidgets, ResearchLabels } from '../research/document.js';
 import { researchLimits } from '../research/parse.js';
@@ -79,6 +79,9 @@ export interface ResearchEditorProps {
   className?: string;
   sx?: SxProps<Theme>;
 }
+const filterInsertions = createFilterOptions<ResearchInsertion>({
+  stringify: (recipe) => [recipe.label, ...(recipe.keywords ?? [])].join(' '),
+});
 const noWidgets: ResearchWidgets = Object.freeze({});
 const noInsertions: readonly ResearchInsertion[] = [];
 export function ResearchEditor({
@@ -392,6 +395,7 @@ export function ResearchEditor({
         <DialogContent>
           <Autocomplete
             options={recipes}
+            filterOptions={filterInsertions}
             getOptionLabel={(r) => r.label}
             onChange={(_e, value) => {
               if (value) insert(value);

@@ -11,9 +11,7 @@ import LinkExtension from '@tiptap/extension-link';
 import PlaceholderExtension from '@tiptap/extension-placeholder';
 import TaskListExtension from '@tiptap/extension-task-list';
 import TaskItemExtension from '@tiptap/extension-task-item';
-import CodeBlockLowlightExtension, {
-  type CodeBlockLowlightOptions,
-} from '@tiptap/extension-code-block-lowlight';
+import CodeBlockLowlightExtension, { type CodeBlockLowlightOptions } from '@tiptap/extension-code-block-lowlight';
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 
 import Box from '@mui/material/Box';
@@ -73,10 +71,7 @@ export function Editor({
   const lowlight = useMemo(() => createLowlight(common), []);
 
   // Merged once per identity change so the toolbar's props stay stable.
-  const labels = useMemo(
-    () => ({ ...DEFAULT_EDITOR_LABELS, ...labelOverrides }),
-    [labelOverrides],
-  );
+  const labels = useMemo(() => ({ ...DEFAULT_EDITOR_LABELS, ...labelOverrides }), [labelOverrides]);
 
   // Parse initial content — if format is 'json' and value looks like JSON, parse it
   const parsedContent = useMemo(() => {
@@ -91,19 +86,14 @@ export function Editor({
     return initialContent;
   }, [initialContent, format]);
 
-  const debouncedOnChange = useMemo(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    return (editor: any) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (format === 'json') {
-          onChange?.(JSON.stringify(editor.getJSON()));
-        } else {
-          onChange?.(editor.getHTML());
-        }
-      }, 200);
-    };
-  }, [onChange, format]);
+  // Publication/save handlers must observe every committed editor transaction.
+  // Debounce persistence in the host, never delivery of the current value.
+  const emitChange = useCallback(
+    (editor: import('@tiptap/core').Editor) => {
+      onChange?.(format === 'json' ? JSON.stringify(editor.getJSON()) : editor.getHTML());
+    },
+    [onChange, format]
+  );
 
   const extensions = useMemo(() => {
     const has = (item: string) => resolvedToolbar.items.has(item as any);
@@ -152,9 +142,7 @@ export function Editor({
 
     if (has('codeBlock')) {
       exts.push(
-        CodeBlockLowlightExtension.extend<
-          CodeBlockLowlightOptions & { autoLanguageLabel: string }
-        >({
+        CodeBlockLowlightExtension.extend<CodeBlockLowlightOptions & { autoLanguageLabel: string }>({
           addOptions() {
             const inherited = this.parent?.() as CodeBlockLowlightOptions;
             return { ...inherited, autoLanguageLabel: DEFAULT_EDITOR_LABELS.codeLanguageAuto };
@@ -190,7 +178,7 @@ export function Editor({
     content: parsedContent,
     shouldRerenderOnTransaction: !!rerenderKey,
     onUpdate: (ctx) => {
-      debouncedOnChange(ctx.editor);
+      emitChange(ctx.editor);
     },
     extensions,
     ...other,

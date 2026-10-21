@@ -72,7 +72,17 @@
       "types": "./dist/components/research/index.d.ts",
       "import": "./dist/components/research/index.js"
     },
-    "./components/research/styles.css": "./dist/components/research/index.css"
+    "./components/research/styles.css": "./dist/components/research/index.css",
+    "./components/research-editor": {
+      "types": "./dist/components/research-editor/index.d.ts",
+      "import": "./dist/components/research-editor/index.js"
+    },
+    "./components/research-editor/styles.css": "./dist/components/research-editor/index.css",
+    "./components/knowledge-graph": {
+      "types": "./dist/components/knowledge-graph/index.d.ts",
+      "import": "./dist/components/knowledge-graph/index.js"
+    },
+    "./components/knowledge-graph/styles.css": "./dist/components/knowledge-graph/index.css"
   },
   "bin": {
     "prism": "./bin/prism.js"
@@ -115,6 +125,7 @@
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
     "@tiptap/extension-task-item": "^3.31.3",
     "@tiptap/extension-task-list": "^3.31.3",
     "@tiptap/extension-text-align": "^3.31.3",
@@ -123,6 +134,7 @@
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@types/turndown": "^5.0.6",
+    "@xyflow/react": "^12.11.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "commander": "^14.0.3",
@@ -137,6 +149,7 @@
     "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-math": "^3.0.0",
+    "mdast-util-to-markdown": "^2.2.0",
     "mermaid": "^12.2.0",
     "micromark-extension-directive": "^4.0.0",
     "micromark-extension-gfm": "^3.0.0",

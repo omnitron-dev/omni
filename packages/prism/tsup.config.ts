@@ -25,6 +25,8 @@ export default defineConfig([
       // uses `from '@omnitron-dev/prism/components/<name>'`.
       'components/index': 'src/components/index.ts',
       'components/research/index': 'src/components/research/index.ts',
+      'components/research-editor/index': 'src/components/research-editor/index.ts',
+      'components/knowledge-graph/index': 'src/components/knowledge-graph/index.ts',
       'components/editor/index': 'src/components/editor/index.ts',
       // EmojiPicker — independent subpath entry so apps can lazy-load
       // it as its own chunk (the dataset adds ~260 KiB raw / ~80 KiB

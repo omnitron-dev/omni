@@ -135,7 +135,10 @@ export function parseResearchMarkdown(source: string, prefix = 'research'): Rese
         );
       case 'inlineMath':
       case 'math':
-        return node(n.type === 'math' ? 'mathBlock' : 'mathInline', { tex: str(n.value) }, []);
+        return node(n.type === 'math' ? 'mathBlock' : 'mathInline', { tex: str(n.value) }, []).map((n) => ({
+          ...n,
+          marks,
+        }));
       case 'code': {
         const language = str(n.lang).toLowerCase(),
           body = str(n.value);

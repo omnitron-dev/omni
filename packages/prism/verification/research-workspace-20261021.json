@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-21",
+  "scope": "ResearchEditor and KnowledgeGraph portable components; synchronous legacy Editor draft delivery",
+  "tests": {
+    "suite": "Prism vitest",
+    "files": 61,
+    "passed": 820,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "standing_checks": {
+    "passed": 15,
+    "scope": "monorepo scanners"
+  },
+  "independent_contracts": [
+    "exact unchanged Markdown including Unicode/CRLF and unknown blocks",
+    "local edit preserves untouched neighbours; undo restores source",
+    "HTML clipboard preserves scientific atoms and supported marks",
+    "oversize and unrepresentable table updates reject without truncation",
+    "current transaction visible before immediate save",
+    "readOnly locks contenteditable itself",
+    "revoking host widget registry updates previews without altering draft",
+    "hypergraph incidence preserves joint and repeated ports, including cycles",
+    "bounded projection never shows partial relations or dangling endpoints"
+  ],
+  "failures_and_corrections": [
+    {
+      "finding": "Initial split test compared serialized whitespace instead of the declared text semantics",
+      "resolution": "Use independent reparsing as text preservation oracle; no implementation exception added"
+    },
+    {
+      "finding": "Generic HTML pre parser intercepted scientific source nodes",
+      "resolution": "Higher-priority specific parse rule preserves scientific source atoms"
+    },
+    {
+      "finding": "Inline formula serializer bypassed mark serialization",
+      "resolution": "Route formula atoms through common mark handling and restrict supported marks"
+    },
+    {
+      "finding": "Initial block counter used a one-block fallback until the first transaction",
+      "resolution": "Initialize from actual document or hydrated input"
+    },
+    {
+      "finding": "DOM-only test environment provided IntersectionObserver but no viewport events",
+      "resolution": "Test explicitly uses the supported eager fallback, while browser checks cover viewport rendering"
+    }
+  ],
+  "limitations": [
+    "Internal editor block IDs are session identities, not immutable publication anchors",
+    "Host owns revision persistence, authorisation and collaborative conflict protocol",
+    "Graph is a bounded presentation, not semantic verification or a global graph database",
+    "No comparative fastest-editor or browser INP claim; test-suite duration is not UI latency"
+  ]
+}

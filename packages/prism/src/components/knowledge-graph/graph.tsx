@@ -15,6 +15,7 @@ import {
   type XYPosition,
 } from '@xyflow/react';
 import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import { PanelLayout } from '../../layouts/panel-layout.js';
 import Dialog from '@mui/material/Dialog';
 import Button from '@mui/material/Button';
@@ -30,6 +31,7 @@ import {
   type KnowledgeSelection,
   type KnowledgeProjection,
   type KnowledgeRelation,
+  type KnowledgeBadge,
 } from './model.js';
 import '@xyflow/react/dist/style.css';
 import './graph.css';
@@ -68,6 +70,7 @@ type GraphNode = Node<
     kind: string;
     selection: KnowledgeSelection;
     description?: string;
+    badges?: readonly KnowledgeBadge[];
     inputs?: number;
     outputs?: number;
   },
@@ -88,6 +91,24 @@ export interface KnowledgeGraphProps {
   height?: number;
   className?: string;
   sx?: SxProps<Theme>;
+}
+function Badges({ badges }: { badges?: readonly KnowledgeBadge[] }) {
+  if (!badges?.length) return null;
+  return (
+    <Box component="span" sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 1 }}>
+      {badges.map((badge, index) => (
+        <Chip
+          component="span"
+          key={index}
+          label={badge.label}
+          size="small"
+          variant="outlined"
+          color={badge.tone ?? 'default'}
+          sx={{ height: 'auto', minHeight: 24, '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
+        />
+      ))}
+    </Box>
+  );
 }
 const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<GraphNode>) {
   return (
@@ -111,6 +132,7 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<GraphN
       )}
       <span className="prism-knowledge__kind">{data.kind}</span>
       <strong>{data.label}</strong>
+      <Badges badges={data.badges} />
       {data.selection.type === 'relation' ? (
         Array.from({ length: data.outputs ?? 0 }, (_, i) => (
           <Handle
@@ -228,7 +250,11 @@ export function KnowledgeGraph({
       [
         ...data.entities.map((e) => ({ ...e, selection: { type: 'entity' as const, id: e.id } })),
         ...data.relations.map((r) => ({ ...r, selection: { type: 'relation' as const, id: r.id } })),
-      ].filter((e) => `${e.label}\n${e.kind}\n${e.id}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
+      ].filter((e) =>
+        `${e.label}\n${e.kind}\n${e.id}\n${e.badges?.map((b) => b.label).join(' ') ?? ''}`
+          .toLocaleLowerCase()
+          .includes(query.toLocaleLowerCase())
+      ),
     [data, query]
   );
   const object =
@@ -264,6 +290,7 @@ export function KnowledgeGraph({
             >
               <span>{item.kind}</span>
               {item.label}
+              <Badges badges={item.badges} />
             </Button>
           </li>
         ))}

@@ -305,6 +305,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   // Middleware
   private globalPipeline: MiddlewarePipeline;
   private httpSecurityInstalled = false;
+  private builtinAuthenticateOrigin?: ReturnType<typeof createOriginMiddleware>;
   private middlewareAdapter?: HttpMiddlewareAdapter;
 
   // Enhanced metrics with optimized rolling average (avoids array operations)
@@ -639,6 +640,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (!this.httpSecurityInstalled && netron?.httpAuthSecurity) {
       if (this.server) throw new Error('HTTP security cannot be installed after listen');
       const security = netron.httpAuthSecurity;
+      if (security.origin) {
+        this.builtinAuthenticateOrigin = createOriginMiddleware({
+          ...security.origin,
+          alwaysEnforce: true,
+          exempt: [],
+        });
+      }
       if (security.origin) this.globalPipeline.use(
         createOriginMiddleware(security.origin),
         { name: 'http-origin', priority: 15 }, MiddlewareStage.PRE_INVOKE,
@@ -2064,6 +2072,21 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const requestId = request.headers.get('X-Request-ID') || generateRequestId();
 
     try {
+      const netron = this.netronPeer?.netron as INetronInternal | undefined;
+      if (netron?.httpAuthSecurity?.authenticateEndpoint === 'disabled') {
+        throw new TitanError({ code: ErrorCode.NOT_FOUND, message: 'Not found', requestId });
+      }
+      if (this.builtinAuthenticateOrigin) {
+        const context: NetronMiddlewareContext & { request: Request } = {
+          peer: this.netronPeer!,
+          serviceName: 'Netron',
+          methodName: 'authenticate',
+          metadata: new Map(),
+          timing: { start: performance.now(), middlewareTimes: new Map() },
+          request,
+        };
+        await this.builtinAuthenticateOrigin(context, async () => {});
+      }
       // Parse request body
       const body = await request.json();
       const credentials = body.credentials || body.params?.[0];
@@ -2081,7 +2104,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
 
       // Get authentication manager
-      const netron = this.netronPeer?.netron as INetronInternal | undefined;
       const authManager = netron?.authenticationManager;
       if (!authManager) {
         return this.createErrorResponse(
@@ -2423,6 +2445,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     try {
+      if (res.destroyed) {
+        // A route may finish after its caller disconnected; no close event is
+        // left to observe, so release its response producer immediately.
+        void response.body?.cancel().catch(() => {});
+        return;
+      }
       // Convert Web API Response to Node.js response
       res.statusCode = response.status;
       // Set-Cookie requires special handling: a single response can carry
@@ -2445,6 +2473,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (response.body) {
         // Stream the response body to avoid buffering and preserve binary data
         const reader = response.body.getReader();
+        let consumed = false;
         const cancel = () => {
           void reader.cancel().catch(() => {});
         };
@@ -2453,6 +2482,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           while (!res.destroyed) {
             const { done, value } = await reader.read();
             if (done) {
+              consumed = true;
               if (!res.destroyed) res.end();
               break;
             }
@@ -2481,6 +2511,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           }
         } finally {
           res.removeListener('close', cancel);
+          if (!consumed) cancel();
           reader.releaseLock();
         }
       } else {

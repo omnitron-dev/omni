@@ -324,6 +324,11 @@ export interface AccessValidationResult {
 
 /** HTTP cookie gates installed while attaching the peer, before the server listens. */
 export interface HttpAuthSecurity {
+  /** Disable the built-in /netron/authenticate endpoint when authentication is
+   * provided by application services. Enabled by default for compatibility.
+   * If an Origin policy is configured, the enabled endpoint always enforces it,
+   * including requests without a session cookie. */
+  authenticateEndpoint?: 'enabled' | 'disabled';
   origin?: import('./origin-middleware.js').OriginMiddlewareOptions;
   csrf?: import('./csrf-middleware.js').CsrfMiddlewareOptions;
 }

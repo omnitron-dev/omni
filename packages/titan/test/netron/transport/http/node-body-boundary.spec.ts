@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, type Server as NodeServer } from 'node:http';
 import { Netron } from '../../../../src/netron/netron.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { Service, Public } from '../../../../src/decorators/core.js';
@@ -113,5 +113,57 @@ describe('real Node HTTP request body admission', () => {
     });
     expect(invocations).toBe(before);
     await healthy();
+  });
+  it('cancels an upstream body returned after its HTTP client has already disconnected', async () => {
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let cancelled = 0;
+    const late = new HttpServer({
+      host: '127.0.0.1',
+      port: 0,
+      customRoutes: [
+        async () => {
+          enter();
+          await ready;
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                controller.enqueue(new Uint8Array([1, 2, 3]));
+              },
+              cancel() {
+                cancelled++;
+              },
+            })
+          );
+        },
+      ],
+    });
+    await late.listen();
+    // Observe the real server-side close, not a timing assumption based on the
+    // client's local socket. The handler cannot return its body until then.
+    const node = Reflect.get(late, 'server') as NodeServer;
+    const closed = new Promise<void>((resolve) => {
+      node.once('request', (_request, response) => response.once('close', () => resolve()));
+    });
+    const req = httpRequest(`http://127.0.0.1:${late.port}/late-body`);
+    req.on('error', () => {});
+    try {
+      req.end();
+      await entered;
+      req.destroy();
+      await closed;
+      release();
+      await expect.poll(() => cancelled, { timeout: 2000 }).toBe(1);
+      await healthy();
+    } finally {
+      release();
+      req.destroy();
+      await late.close();
+    }
   });
 });

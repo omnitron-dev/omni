@@ -156,3 +156,12 @@ test('inline navigation does not replace the equation or insert spurious paragra
   expect(await page.getByTestId('captured-json').textContent()).toBe(JSON.stringify('Before $23x^2$ verified after.'));
   await expect(page.locator('[data-research-block]')).toHaveCount(1);
 });
+
+test('leaving equation editing closes its document-wide virtual keyboard', async ({ page }) => {
+  await page.getByRole('button', { name: 'Equation: x^2+y^2=z^2', exact: true }).click();
+  await page.getByRole('button', { name: 'Math keyboard', exact: true }).click();
+  await expect(page.locator('.ML__keyboard')).toHaveClass(/is-visible/);
+  await page.getByRole('button', { name: 'Return to document', exact: true }).click();
+  await expect(page.locator('math-field')).toHaveCount(0);
+  await expect(page.locator('.ML__keyboard.is-visible')).toHaveCount(0);
+});

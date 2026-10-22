@@ -42,6 +42,8 @@ export interface MathInputProps {
   options?: Partial<Pick<MathfieldOptions, 'macros' | 'inlineShortcuts' | 'keybindings' | 'mathVirtualKeyboardPolicy'>>;
 }
 let runtime: Promise<typeof import('mathlive')> | undefined;
+// MathLive has one document-wide keyboard; only its current owner may close it.
+let keyboardOwner: MathfieldElement | undefined;
 function loadMathLive() {
   return (runtime ??= import('mathlive')
     .then((module) => {
@@ -97,6 +99,10 @@ export function MathInput(props: MathInputProps) {
         mf.readOnly = !!p.readOnly;
         mf.setAttribute('aria-label', p.labels?.field ?? defaultMathInputLabels.field);
         mf.setValue(p.value, { silenceNotifications: true });
+        const claimKeyboard = () => {
+          keyboardOwner = mf;
+        };
+        mf.addEventListener('focusin', claimKeyboard, true);
         const input = (event: Event) => {
           event.stopPropagation();
           const accepted = accept(mf.value);
@@ -139,6 +145,11 @@ export function MathInput(props: MathInputProps) {
         mf.addEventListener('move-out', move);
         mf.addEventListener('keydown', key, true);
         dispose = () => {
+          if (keyboardOwner === mf) {
+            window.mathVirtualKeyboard.hide({ animate: false });
+            keyboardOwner = undefined;
+          }
+          mf.removeEventListener('focusin', claimKeyboard, true);
           for (const name of ['keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy'])
             mf.removeEventListener(name, stop);
           mf.removeEventListener('input', input);
@@ -172,6 +183,7 @@ export function MathInput(props: MathInputProps) {
     const p = latest.current,
       mf = field.current;
     if (ready && mf && p.autoFocus && !p.readOnly && !editingSource.current) {
+      keyboardOwner = mf;
       mf.focus();
       mf.position = p.entry === 'start' ? 0 : -1;
     }
@@ -248,6 +260,7 @@ export function MathInput(props: MathInputProps) {
               disabled={!ready || props.readOnly}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
+                keyboardOwner = field.current;
                 field.current?.focus();
                 field.current?.executeCommand('toggleVirtualKeyboard');
               }}

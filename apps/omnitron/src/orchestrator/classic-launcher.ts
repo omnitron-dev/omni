@@ -12,6 +12,8 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import type { AppHandle } from './app-handle.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -24,6 +26,7 @@ export async function launchClassic(
   logger: ILogger,
   logHandlers: Array<(appName: string, line: string) => void> = []
 ): Promise<ChildProcess> {
+  cwd = path.resolve(cwd, entry.cwd ?? '.');
   let scriptPath = path.resolve(cwd, entry.script!);
 
   // If the script is TypeScript, compile it via esbuild instead of using tsx
@@ -64,7 +67,9 @@ export async function launchClassic(
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     detached: true,
     // No tsx execArgv — script is either pre-compiled .js or bundled via esbuild
-    ...(scriptPath.endsWith('.ts') ? { execArgv: ['--import', 'tsx/esm'] } : {}),
+    execArgv: scriptPath.endsWith('.ts')
+      ? ['--import', pathToFileURL(createRequire(import.meta.url).resolve('tsx/esm')).href]
+      : [],
   });
 
   handle.childProcess = child;

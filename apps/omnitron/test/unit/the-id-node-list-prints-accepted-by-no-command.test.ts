@@ -19,6 +19,7 @@
  * show` for the daemon port; there is no such command.
  */
 
+import { Readable } from 'node:stream';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const said: Array<{ level: string; text: string }> = [];
@@ -195,5 +196,40 @@ describe('a node command that fails', () => {
 
     expect(nodes.listNodes).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+  });
+});
+
+
+describe('updating an SSH secret', () => {
+  it.each([
+    ['key', undefined, 'sshPassphrase'],
+    ['password', undefined, 'sshPassword'],
+    ['key', 'password', 'sshPassword'],
+    ['password', 'key', 'sshPassphrase'],
+  ] as const)('uses %s with override %s', async (stored, override, field) => {
+    registry[1]!.sshAuthMethod = stored;
+    const original = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', { value: Readable.from(['test secret\n']), configurable: true });
+    try {
+      await nodeUpdateCommand(SAMPLE_TEST, { sshAuthMethod: override, secretFromStdin: true });
+      expect(nodes.updateNode).toHaveBeenCalledExactlyOnceWith({
+        id: SAMPLE_TEST, sshAuthMethod: override, [field]: 'test secret',
+      });
+      expect(text()).not.toContain('test secret');
+    } finally {
+      Object.defineProperty(process, 'stdin', original);
+    }
+  });
+
+  it('never updates the registry after secret input fails', async () => {
+    const original = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', { value: Readable.from([]), configurable: true });
+    try {
+      await nodeUpdateCommand(SAMPLE_TEST, { secretFromStdin: true });
+      expect(nodes.updateNode).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    } finally {
+      Object.defineProperty(process, 'stdin', original);
+    }
   });
 });

@@ -29,6 +29,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   planBundle,
@@ -118,7 +122,8 @@ describe('what has to travel with the bundle', () => {
   it('leaves no workspace range anywhere in the root manifest', () => {
     // One missed range is one unresolvable install.
     const root = bundleRootManifest(planned(), '1.0.0') as {
-      dependencies: Record<string, string>; overrides: Record<string, string>;
+      dependencies: Record<string, string>;
+      overrides: Record<string, string>;
     };
 
     for (const [dep, range] of Object.entries({ ...root.dependencies, ...root.overrides })) {
@@ -157,7 +162,8 @@ describe('what has to travel with the bundle', () => {
 
   it('carries optional workspace dependencies as well', () => {
     const withOptional: PackageManifest = {
-      name: '@acme/app', version: '1.0.0',
+      name: '@acme/app',
+      version: '1.0.0',
       optionalDependencies: { '@acme/util': 'workspace:*' },
     };
     const plan = planBundle('@acme/app', workspace(withOptional, util));
@@ -227,5 +233,42 @@ describe('telling a local build from a published one', () => {
     const b = localVersion('0.2.0', 'abc', new Date(Date.UTC(2026, 0, 2, 3, 5)));
 
     expect(a).not.toBe(b);
+  });
+});
+
+describe('the installed bundle remains an importable package', () => {
+  it('resolves its published entry, subpath and private imports in a real Node consumer', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omnitron-exports-'));
+    try {
+      const pkg = join(dir, 'node_modules', '@acme', 'runtime');
+      mkdirSync(join(pkg, 'dist'), { recursive: true });
+      const root: PackageManifest = {
+        name: '@acme/runtime',
+        version: '1.0.0',
+        type: 'module',
+        exports: { '.': './source.ts' },
+        publishConfig: { exports: { '.': './dist/index.js', './operations': './dist/operations.js' } },
+        imports: { '#value': './dist/value.js' },
+        bin: { runtime: './dist/index.js' },
+      };
+      const manifest = bundleRootManifest(planBundle(root.name, workspace(root)), '1.0.0');
+      writeFileSync(join(pkg, 'package.json'), JSON.stringify(manifest));
+      writeFileSync(join(pkg, 'dist/value.js'), 'export default 42;');
+      writeFileSync(join(pkg, 'dist/index.js'), "export { default } from '#value';");
+      writeFileSync(join(pkg, 'dist/operations.js'), "export { default as value } from '#value';");
+      const output = execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          "import root from '@acme/runtime'; import { value } from '@acme/runtime/operations'; console.log(root + value);",
+        ],
+        { cwd: dir, encoding: 'utf8' }
+      );
+      expect(output.trim()).toBe('84');
+      expect(manifest.bin).toEqual(root.bin);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

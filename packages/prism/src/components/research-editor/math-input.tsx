@@ -219,7 +219,7 @@ export function MathInput(props: MathInputProps) {
             '--keycap-secondary-text': theme.palette.text.primary,
             '--keycap-border': `1px solid ${theme.palette.divider}`,
             '--keycap-secondary-border': `1px solid ${theme.palette.divider}`,
-            zIndex: theme.zIndex.modal + 1,
+            '--keyboard-zindex': theme.zIndex.modal + 1,
           },
         }}
       />

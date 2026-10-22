@@ -56,6 +56,26 @@ describe('Editor transaction delivery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(ref.current!.getSnapshot().getSource()).toBe('# A\r\n\r\nOriginal.');
   });
+  it('restores equation editing after repeated asynchronous verification locks without changing source', async () => {
+    const ref = createRef<ResearchEditorHandle>();
+    const source = 'Before $x_1$.\r\n\r\n$$\ny^2\n$$';
+    const view = (readOnly: boolean) => (
+      <TestWrapper>
+        <ResearchEditor ref={ref} initialSource={source} readOnly={readOnly} />
+      </TestWrapper>
+    );
+    const { rerender } = render(view(false));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Equation: x_1' })).toBeInTheDocument());
+    for (let cycle = 0; cycle < 3; cycle++) {
+      rerender(view(true));
+      await waitFor(() => expect(screen.getAllByRole('math')).toHaveLength(2));
+      expect(screen.queryByRole('button', { name: 'Equation: x_1' })).not.toBeInTheDocument();
+      rerender(view(false));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Equation: x_1' })).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: 'Equation: y^2' })).toBeInTheDocument();
+      expect(ref.current!.getSnapshot().getSource()).toBe(source);
+    }
+  });
   it('disables the contenteditable surface itself when locked', async () => {
     const { rerender } = render(
       <TestWrapper>

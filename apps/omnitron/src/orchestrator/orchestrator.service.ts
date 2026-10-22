@@ -1865,30 +1865,25 @@ export class OrchestratorService extends EventEmitter {
 
         const existing = this.buildResults.get(entry.name);
         const existingWatch = this.buildService.isWatching?.(entry.name);
-        // Bundle on-disk presence check. A restart can race against
-        // the user (or a script) removing `.omnitron-build/` between
-        // builds — without this stat the orchestrator hands the
-        // worker a path that no longer exists and the child dies
-        // with `ERR_MODULE_NOT_FOUND` before the supervisor can
-        // recover. Cheap stat, big DX win.
-        const bundlePresent = existing
-          ? fs.existsSync(existing.bootstrapPath)
+        // A fresh bootstrap may describe a different entry graph while the old
+        // esbuild contexts still watch only the former module set.
+        const reusable = existing
+          ? this.buildService.canReuseBuild(existing, bootstrapAbsPath, definition)
           : false;
 
-        if (existing && existingWatch && bundlePresent) {
+        if (existing && existingWatch && reusable) {
           // Restart path — keep the already-built bundle and live watch.
           this.logger.debug(
             { app: entry.name, modules: existing.modulePaths.size },
             'Reusing existing esbuild bundle + watch (restart path)'
           );
         } else {
-          if (existing && existingWatch && !bundlePresent) {
-            // Bundle was deleted out from under us. Clear the watch
-            // and the cached BuildResult so the next call rebuilds
-            // from cold and re-arms the watcher cleanly.
+          if (existing && existingWatch && !reusable) {
+            // Missing artifacts or changed entry points require a new watch
+            // graph as well as new bundles; retaining it would omit new workers.
             this.logger.warn(
               { app: entry.name, bootstrapPath: existing.bootstrapPath },
-              'Cached bundle missing on disk — forcing rebuild'
+              'Cached build no longer covers the process entry graph — forcing rebuild'
             );
             try {
               await this.buildService.unwatchApp?.(entry.name);

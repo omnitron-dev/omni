@@ -32,6 +32,8 @@ export interface BuildResult {
   bootstrapPath: string;
   /** processName → bundled .js path for child processes */
   modulePaths: Map<string, string>;
+  /** Inputs that determine the process entry graph, independent of bundle bytes. */
+  sourceSignature?: string;
 }
 
 interface WatchHandle {
@@ -330,7 +332,11 @@ export class BuildService {
 
         await Promise.all(buildPromises);
 
-        return { bootstrapPath: bootstrapOutPath, modulePaths };
+        return {
+          bootstrapPath: bootstrapOutPath,
+          modulePaths,
+          sourceSignature: this.sourceSignature(bootstrapAbsPath, definition),
+        };
       });
       ok = true;
       return result;
@@ -667,6 +673,25 @@ export class BuildService {
       `Cannot resolve module source for '${moduleRef}' from ${bootstrapAbsPath}. ` +
       `Tried: ${tsPath}, ${resolved}`
     );
+  }
+
+  /** A watch recompiles existing entry points; it cannot add/remove or retarget them. */
+  canReuseBuild(result: BuildResult, bootstrapPath: string, definition: IAppDefinition): boolean {
+    return result.sourceSignature === this.sourceSignature(bootstrapPath, definition)
+      && result.modulePaths.size === definition.processes.length
+      && fs.existsSync(result.bootstrapPath)
+      && definition.processes.every((process) => {
+        const output = result.modulePaths.get(process.name);
+        return output !== undefined && fs.existsSync(output);
+      });
+  }
+
+  private sourceSignature(bootstrapPath: string, definition: IAppDefinition): string {
+    return JSON.stringify({
+      bootstrap: path.resolve(bootstrapPath),
+      root: this.resolveAppDir(bootstrapPath),
+      processes: definition.processes.map(({ name, module }) => [name, path.resolve(path.dirname(bootstrapPath), module)]),
+    });
   }
 
   /**

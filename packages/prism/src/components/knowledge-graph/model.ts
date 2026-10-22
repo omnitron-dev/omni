@@ -1,9 +1,15 @@
+/** Host-supplied observations; badges do not change graph semantics or entailment. */
+export interface KnowledgeBadge {
+  label: string;
+  tone?: 'default' | 'info' | 'success' | 'warning' | 'error';
+}
 /** Typed incidence projection. Layout never changes the graph or creates an entailment. */
 export interface KnowledgeEntity {
   id: string;
   kind: string;
   label: string;
   description?: string;
+  badges?: readonly KnowledgeBadge[];
 }
 export interface KnowledgePort {
   entity: string;
@@ -16,6 +22,7 @@ export interface KnowledgeRelation {
   inputs: readonly KnowledgePort[];
   outputs: readonly KnowledgePort[];
   description?: string;
+  badges?: readonly KnowledgeBadge[];
 }
 export interface KnowledgeGraphData {
   entities: readonly KnowledgeEntity[];
@@ -100,6 +107,7 @@ export function incidenceGraph(projection: KnowledgeProjection) {
       label: e.label,
       kind: e.kind,
       description: e.description,
+      badges: e.badges,
     })),
     ...projection.relations.map((r) => ({
       id: relationNodeId(r.id),
@@ -107,6 +115,7 @@ export function incidenceGraph(projection: KnowledgeProjection) {
       label: r.label,
       kind: r.kind,
       description: r.description,
+      badges: r.badges,
       inputs: r.inputs.length,
       outputs: r.outputs.length,
     })),

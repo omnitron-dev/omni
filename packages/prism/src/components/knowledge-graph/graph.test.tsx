@@ -30,3 +30,20 @@ describe('knowledge workspace controls', () => {
     expect(screen.getByRole('region', { name: 'Selected object' })).not.toBeNull();
   });
 });
+
+it('updates observation badges without changing selection or semantic kind', () => {
+  const data = (label: string) => ({
+    entities: [{ id: 'a', label: 'Claim', kind: 'claim', badges: [{ label, tone: 'warning' as const }] }],
+    relations: [],
+  });
+  const { rerender } = render(<KnowledgeGraph data={data('Not checked')} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Index' }));
+  fireEvent.click(screen.getByRole('button', { name: /claim Claim Not checked/ }));
+  rerender(<KnowledgeGraph data={data('Premises changed')} />);
+  const selected = screen.getByRole('button', { name: /claim Claim Premises changed/ });
+  expect(selected.getAttribute('aria-current')).toBe('true');
+  expect(screen.queryByText('Not checked')).toBeNull();
+  expect(selected.querySelector('.MuiChip-root')).not.toBeNull();
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Premises changed' } });
+  expect(screen.getByRole('button', { name: /claim Claim Premises changed/ })).toBeTruthy();
+});

@@ -12,6 +12,7 @@ export {
   relationNodeId,
   type KnowledgeGraphData,
   type KnowledgeEntity,
+  type KnowledgeBadge,
   type KnowledgeRelation,
   type KnowledgePort,
   type KnowledgeSelection,

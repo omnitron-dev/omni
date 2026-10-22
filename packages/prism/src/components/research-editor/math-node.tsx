@@ -15,7 +15,10 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
   const config = useContext(ResearchMathContext);
   const display = node.type.name === 'mathBlock',
     latex = String(node.attrs.tex);
-  const active = selected && editor.isEditable && !config.readOnly;
+  // The host lock is reactive; editor.isEditable is mutable and may still hold
+  // the previous value while the host's setEditable effect is running.
+  const editable = config.readOnly === undefined ? editor.isEditable : !config.readOnly;
+  const active = selected && editable;
   const preview = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!preview.current) return;
@@ -81,8 +84,8 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
       ) : (
         <span
           ref={preview}
-          role={editor.isEditable && !config.readOnly ? 'button' : 'math'}
-          tabIndex={editor.isEditable && !config.readOnly ? 0 : undefined}
+          role={editable ? 'button' : 'math'}
+          tabIndex={editable ? 0 : undefined}
           aria-label={`${config.labels?.field ?? 'Equation'}: ${latex}`}
           className="prism-science__math-preview"
           onClick={() => {

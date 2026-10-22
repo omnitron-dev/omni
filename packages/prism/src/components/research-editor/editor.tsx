@@ -295,7 +295,9 @@ export function ResearchEditor({
     }
   }
   const button = (label: string, action: () => void, disabled = false, pressed?: boolean) => (
-    <button
+    <Button
+      size="small"
+      variant={pressed ? 'contained' : 'text'}
       type="button"
       title={label}
       aria-label={label}
@@ -305,7 +307,7 @@ export function ResearchEditor({
       onClick={() => action()}
     >
       {label}
-    </button>
+    </Button>
   );
   return (
     <Box
@@ -316,6 +318,7 @@ export function ResearchEditor({
           '--prism-editor-bg': theme.palette.background.paper,
           '--prism-editor-muted': theme.palette.text.secondary,
           '--prism-editor-accent': theme.palette.primary.main,
+          '--prism-editor-radius': `${theme.shape.borderRadius}px`,
         }),
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}

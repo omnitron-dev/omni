@@ -15,6 +15,8 @@ import {
 } from '@xyflow/react';
 import Box from '@mui/material/Box';
 import Dialog from '@mui/material/Dialog';
+import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
 import { useTheme, type SxProps, type Theme } from '@mui/material/styles';
 import {
   entityNodeId,
@@ -241,6 +243,8 @@ export function KnowledgeGraph({
           '--prism-graph-text': theme.palette.text.primary,
           '--prism-graph-muted': theme.palette.text.secondary,
           '--prism-graph-accent': theme.palette.primary.main,
+          '--prism-graph-radius': `${theme.shape.borderRadius}px`,
+          '--prism-graph-hover': theme.palette.action.hover,
         },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
@@ -250,15 +254,25 @@ export function KnowledgeGraph({
         <span>
           {projection.entities.length + projection.relations.length} / {projection.total}
         </span>
-        <button type="button" aria-pressed={view === 'map'} onClick={() => setView('map')}>
+        <Button
+          variant={view === 'map' ? 'contained' : 'outlined'}
+          type="button"
+          aria-pressed={view === 'map'}
+          onClick={() => setView('map')}
+        >
           {labels.map}
-        </button>
-        <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>
+        </Button>
+        <Button
+          variant={view === 'list' ? 'contained' : 'outlined'}
+          type="button"
+          aria-pressed={view === 'list'}
+          onClick={() => setView('list')}
+        >
           {labels.list}
-        </button>
-        <button type="button" onClick={() => setExpanded((v) => !v)}>
+        </Button>
+        <Button type="button" onClick={() => setExpanded((v) => !v)}>
           {expanded ? labels.collapse : labels.expand}
-        </button>
+        </Button>
       </header>
       {!valid ? (
         <p role="alert">{labels.invalid}</p>
@@ -267,28 +281,34 @@ export function KnowledgeGraph({
           <p className="prism-knowledge__hint">{labels.hint}</p>
           <div className={`prism-knowledge__workspace ${view === 'list' ? 'is-list' : ''}`}>
             <aside className="prism-knowledge__index">
-              <label>
-                {labels.search}
-                <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-              </label>
+              <TextField
+                fullWidth
+                size="small"
+                type="search"
+                label={labels.search}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                sx={{ mb: 2 }}
+              />
               <ul className="prism-knowledge__results">
                 {index.slice(0, visibleBudget).map((item) => (
                   <li key={JSON.stringify(item.selection)}>
-                    <button
+                    <Button
                       type="button"
+                      variant="text"
                       aria-current={selected?.id === item.id && selected.type === item.selection.type}
                       onClick={() => choose(item.selection)}
                     >
                       <span>{item.kind}</span>
                       {item.label}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
               <small>
                 {Math.min(index.length, visibleBudget)} / {index.length}
               </small>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   setFocus(undefined);
@@ -296,7 +316,7 @@ export function KnowledgeGraph({
                 }}
               >
                 {labels.clear}
-              </button>
+              </Button>
             </aside>
             <div
               hidden={view === 'list'}

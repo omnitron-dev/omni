@@ -490,6 +490,7 @@ export interface IOmnitronFleetService {
 /** CI/CD pipeline definitions and runs. */
 export interface IOmnitronPipelinesService {
   createPipeline(data: PipelineDef): Promise<Pipeline>;
+  updatePipeline(data: { id: string; definition: PipelineDef }): Promise<Pipeline>;
   getPipeline(data: { id: string }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;

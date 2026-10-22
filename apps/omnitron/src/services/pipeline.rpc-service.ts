@@ -24,6 +24,11 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
     return this.pipelines.createPipeline(data);
   }
 
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async updatePipeline(data: { id: string; definition: PipelineDef }): Promise<Pipeline> {
+    return this.pipelines.updatePipeline(data.id, data.definition);
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getPipeline(data: { id: string }): Promise<Pipeline | null> {
     return this.pipelines.getPipeline(data.id);

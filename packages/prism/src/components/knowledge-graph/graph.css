@@ -51,7 +51,7 @@
   color: var(--prism-graph-accent);
 }
 .prism-knowledge__hint {
-  font-size: 12px;
+  font-size: var(--prism-type-caption, 0.8125rem);
   color: var(--prism-graph-muted);
   margin: 12px 16px;
 }
@@ -83,7 +83,7 @@
   overflow-wrap: anywhere;
 }
 .prism-knowledge__results span {
-  font-size: 10px;
+  font-size: var(--prism-type-caption, 0.8125rem);
   color: var(--prism-graph-muted);
 }
 .prism-knowledge__index > small {
@@ -110,13 +110,13 @@
   overflow-wrap: anywhere;
 }
 .prism-knowledge__node strong {
-  font-size: 13px;
+  font-size: var(--prism-type-ui, 0.875rem);
   line-height: 1.5;
   display: block;
 }
 .prism-knowledge__kind {
   display: block;
-  font-size: 10px;
+  font-size: var(--prism-type-caption, 0.8125rem);
   color: var(--prism-graph-muted);
   margin-bottom: 6px;
 }
@@ -149,13 +149,13 @@
 }
 .prism-knowledge__details h3 {
   margin: 0 0 12px;
-  font-size: 18px;
+  font-size: var(--prism-type-lead, 1.125rem);
 }
 .prism-knowledge__ports {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  font-size: 13px;
+  font-size: var(--prism-type-ui, 0.875rem);
 }
 @media (max-width: 700px) {
   .prism-knowledge__workspace {

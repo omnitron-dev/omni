@@ -21,7 +21,7 @@
   min-height: 36px;
 }
 .prism-science__hint {
-  font-size: 12px;
+  font-size: var(--prism-type-caption, 0.8125rem);
   color: var(--prism-editor-muted);
   padding: 0 22px;
   margin: 12px 0;
@@ -29,8 +29,8 @@
 .prism-science__content {
   padding: 8px 24px 32px;
   min-height: 260px;
-  font-size: 16px;
-  line-height: 1.7;
+  font-size: var(--prism-type-body, 1rem);
+  line-height: var(--prism-leading-body, 1.7);
   overflow-wrap: anywhere;
 }
 .prism-science .tiptap {
@@ -96,7 +96,7 @@
 .prism-science__block-tools {
   border-top: var(--prism-border-width, 1px) solid var(--prism-editor-border);
   border-bottom: 0;
-  font-size: 12px;
+  font-size: var(--prism-type-caption, 0.8125rem);
 }
 .prism-science__block-tools > span {
   margin-right: auto;

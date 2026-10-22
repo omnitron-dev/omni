@@ -1,0 +1,57 @@
+{
+  "name": "@omnitron-dev/titan-mailer",
+  "version": "0.3.0",
+  "description": "Lifecycle-managed transactional email for Titan with Nodemailer and durable notification workers",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications.d.ts",
+      "default": "./dist/notifications.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "default": "./dist/postgres.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "nodemailer": "^10.1.7",
+    "reflect-metadata": "^0.2.2",
+    "@types/nodemailer": "^8.0.2"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-notifications": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@omnitron-dev/titan-notifications": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-notifications": "workspace:*",
+    "@types/smtp-server": "^3.5.12",
+    "smtp-server": "^3.15.0",
+    "mailparser": "^3.9.0",
+    "@types/mailparser": "^3.4.6",
+    "vitest": "^5.0.3",
+    "typescript": "^7.0.2"
+  }
+}

@@ -8,9 +8,10 @@
  * @module layouts/dashboard/sidenav
  */
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
 import { styled, alpha } from '@mui/material/styles';
 import Drawer from '@mui/material/Drawer';
+import { SidebarToggle } from '../sidebar-toggle.js';
 import Box from '@mui/material/Box';
 import List from '@mui/material/List';
 import ListSubheader from '@mui/material/ListSubheader';
@@ -23,6 +24,7 @@ import Tooltip from '@mui/material/Tooltip';
 import type { SxProps, Theme, Breakpoint } from '@mui/material';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useLayoutContext, useNavActive } from '../core/context.js';
+import { dashboardLabels, type DashboardLabels } from './labels.js';
 import { ARIA_LABELS } from '../../core/accessibility/index.js';
 import { DRAWER_WIDTHS, HEADER_HEIGHTS, LAYOUT_CSS_VARS, type LayoutNavData, type SidenavVariant } from '../types.js';
 
@@ -86,25 +88,6 @@ const NavScrollArea = styled(Box)({
   },
 });
 
-const CollapseButton = styled(IconButton)(({ theme }) => ({
-  position: 'absolute',
-  top: HEADER_HEIGHTS.desktop / 2,
-  transform: 'translateY(-50%)',
-  right: -12,
-  width: 24,
-  height: 24,
-  backgroundColor: theme.palette.background.paper,
-  border: `1px solid ${theme.palette.divider}`,
-  boxShadow: theme.shadows[1],
-  '&:hover': {
-    backgroundColor: theme.palette.action.hover,
-  },
-  '& svg': {
-    width: 16,
-    height: 16,
-  },
-}));
-
 // =============================================================================
 // COMPONENTS
 // =============================================================================
@@ -124,6 +107,7 @@ export interface SidenavProps {
   layoutQuery?: Breakpoint;
   /** Accessible label for the navigation */
   'aria-label'?: string;
+  labels?: Partial<DashboardLabels>;
   /** MUI sx prop */
   sx?: SxProps<Theme>;
 }
@@ -153,8 +137,10 @@ export function Sidenav({
   showCollapseButton = true,
   layoutQuery = 'md',
   'aria-label': ariaLabel = ARIA_LABELS.mainNav,
+  labels: customLabels,
   sx,
 }: SidenavProps): ReactNode {
+  const labels = { ...dashboardLabels, ...customLabels };
   const { config, toggleSidenavCollapse } = useLayoutContext();
   const { sidenavVariant, sidenavCollapsed } = config;
 
@@ -162,6 +148,7 @@ export function Sidenav({
 
   return (
     <NavRoot
+      as="nav"
       role="navigation"
       aria-label={ariaLabel}
       variant={sidenavVariant}
@@ -242,14 +229,11 @@ export function Sidenav({
 
       {/* Collapse toggle button */}
       {showCollapseButton && sidenavVariant !== 'mini' && (
-        <CollapseButton
+        <SidebarToggle
+          collapsed={sidenavCollapsed}
           onClick={toggleSidenavCollapse}
-          size="small"
-          aria-label={sidenavCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!sidenavCollapsed}
-        >
-          <ChevronIcon direction={sidenavCollapsed ? 'right' : 'left'} />
-        </CollapseButton>
+          labels={{ expand: labels.expandSidebar, collapse: labels.collapseSidebar }}
+        />
       )}
     </NavRoot>
   );
@@ -275,15 +259,23 @@ export function MobileSidenav({
   footer,
   layoutQuery = 'md',
   'aria-label': ariaLabel = ARIA_LABELS.mainNav,
+  labels: customLabels,
   sx,
 }: MobileSidenavProps): ReactNode {
-  const { config, toggleDrawer } = useLayoutContext();
+  const labels = { ...dashboardLabels, ...customLabels };
+  const { config, setConfig } = useLayoutContext();
+  const location = useLocation();
+  const close = () => setConfig({ drawerOpen: false });
+  useEffect(() => {
+    setConfig({ drawerOpen: false });
+  }, [location.key, setConfig]);
   const { drawerOpen } = config;
 
   return (
     <Drawer
       open={drawerOpen}
-      onClose={toggleDrawer}
+      onClose={close}
+      slotProps={{ paper: { role: 'dialog', 'aria-modal': true, 'aria-label': ariaLabel } }}
       aria-label={ariaLabel}
       sx={[
         (theme) => ({
@@ -305,13 +297,16 @@ export function MobileSidenav({
           px: 2.5,
         }}
       >
-        {logo}
+        <Box sx={{ flex: 1 }}>{logo}</Box>
+        <IconButton aria-label={labels.closeMenu} onClick={close}>
+          <span aria-hidden="true">×</span>
+        </IconButton>
       </Box>
 
       <Divider />
 
       {/* Navigation */}
-      <Box component="nav" role="navigation" sx={{ flex: 1, overflow: 'auto' }}>
+      <Box component="nav" role="navigation" aria-label={ariaLabel} sx={{ flex: 1, overflow: 'auto' }}>
         {navData?.map((section) => (
           <List
             key={section.id}
@@ -359,19 +354,23 @@ interface DefaultNavItemProps {
   showText: boolean;
   depth: number;
   active?: boolean;
+  current?: 'page' | 'location';
 }
 
 /**
  * Default nav item with react-router Link and active state detection.
  * Supports collapsed (icon-only) mode with tooltip.
  */
-function DefaultNavItem({ item, showText, depth, active }: DefaultNavItemProps): ReactNode {
+function DefaultNavItem({ item, showText, depth, active, current }: DefaultNavItemProps): ReactNode {
   const button = (
     <ListItemButton
       component={item.path ? RouterLink : 'div'}
       {...(item.path ? { to: item.path } : {})}
       disabled={item.disabled}
       selected={active}
+      aria-current={current}
+      aria-label={item.title}
+      title={item.caption}
       sx={(theme) => ({
         minHeight: 44,
         borderRadius: 1,
@@ -443,33 +442,16 @@ function NavItemWithActive({ item, showText, depth }: Omit<DefaultNavItemProps, 
   const { pathname } = useLocation();
   const { isItemActive } = useNavActive(pathname);
   const active = isItemActive(item);
-  return <DefaultNavItem key={item.id} item={item} showText={showText} depth={depth} active={active} />;
-}
-
-// =============================================================================
-// CHEVRON ICON (SIMPLE SVG)
-// =============================================================================
-
-interface ChevronIconProps {
-  direction: 'left' | 'right';
-}
-
-function ChevronIcon({ direction }: ChevronIconProps): ReactNode {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-      style={{
-        transform: direction === 'right' ? 'rotate(180deg)' : undefined,
-      }}
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
+    <DefaultNavItem
+      key={item.id}
+      item={item}
+      showText={showText}
+      depth={depth}
+      active={active}
+      current={
+        active ? (pathname.replace(/\/$/, '') === item.path?.replace(/\/$/, '') ? 'page' : 'location') : undefined
+      }
+    />
   );
 }

@@ -14,8 +14,7 @@ import type {
   TransportType,
   ConnectionMetrics,
   ConnectionState,
-  RequestContext,
-  RequestHints,
+  InvocationOptions,
   ServiceDescriptor,
 } from '../types/index.js';
 // Errors are thrown from transport implementations
@@ -115,10 +114,7 @@ export class NetronClient {
     service: string,
     method: string,
     args: any[] = [],
-    options?: {
-      context?: RequestContext;
-      hints?: RequestHints;
-    }
+    options?: InvocationOptions
   ): Promise<T> {
     return await this.transport.invoke(service, method, args, options);
   }

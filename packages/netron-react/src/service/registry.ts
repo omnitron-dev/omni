@@ -117,7 +117,7 @@ export class ServiceRegistry {
             // This returns an object that can be passed to useQuery
             ({
               queryKey: [serviceName, methodName, ...args],
-              queryFn: () => invoke(serviceName, methodName, args, options),
+              queryFn: ({ signal }: { signal: AbortSignal }) => invoke(serviceName, methodName, args, options, signal),
               ...queryOptions,
             }),
           // Mutation hook factory - returns function that creates mutation config
@@ -141,8 +141,10 @@ export class ServiceRegistry {
     serviceName: string,
     method: string,
     args: unknown[],
-    options: ServiceOptions
+    options: ServiceOptions,
+    signal?: AbortSignal
   ): Promise<unknown> {
+    signal?.throwIfAborted();
     // Build middleware chain
     const middleware = [...this.globalMiddleware, ...(options.middleware ?? [])];
 
@@ -164,8 +166,10 @@ export class ServiceRegistry {
       }
 
       // End of chain - execute actual call
+      signal?.throwIfAborted();
       return this.client.invoke(serviceName, method, args, {
         timeout: options.timeout,
+        signal,
       });
     };
 

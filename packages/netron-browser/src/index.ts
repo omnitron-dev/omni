@@ -87,6 +87,7 @@ export type {
   TransportType,
   RequestContext,
   RequestHints,
+  InvocationOptions,
   HttpRequestMessage,
   HttpResponseMessage,
   Packet,

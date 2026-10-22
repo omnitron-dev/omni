@@ -7,8 +7,7 @@
 import type {
   HttpRequestMessage,
   HttpResponseMessage,
-  RequestContext,
-  RequestHints,
+  InvocationOptions,
   ConnectionMetrics,
   ConnectionState,
 } from '../types/index.js';
@@ -22,7 +21,7 @@ import {
   type MiddlewareFunction,
   type MiddlewareConfig,
 } from '../middleware/index.js';
-// Errors are handled inline in this implementation
+import { abortable, abortableDelay, invocationScope } from './request-lifecycle.js';
 
 /**
  * HTTP client options
@@ -45,7 +44,7 @@ export interface HttpClientOptions {
   headers?: Record<string, string>;
 
   /**
-   * Enable request retry
+   * Enable network-failure retries for invocations explicitly marked idempotent
    * @default false
    */
   retry?: boolean;
@@ -103,6 +102,47 @@ function refusal(answer: Answer): RefusalError {
   return error;
 }
 
+class InvalidResponseError extends Error {
+  readonly code = 'INVALID_RESPONSE';
+  constructor(message: string, readonly status?: number) { super(message); this.name = 'InvalidResponseError'; }
+}
+
+function invalidResponse(message: string, status?: number): InvalidResponseError {
+  return new InvalidResponseError(message, status);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isErrorBody(value: unknown): value is NonNullable<HttpResponseMessage['error']> {
+  return isRecord(value) && typeof value.message === 'string' &&
+    (typeof value.code === 'string' || (typeof value.code === 'number' && Number.isFinite(value.code)));
+}
+
+/** Validate the envelope, not application data: callers still own their result schema. */
+function parseAnswer(value: unknown, requestId: string, response: Response): Answer {
+  const status = response.ok ? undefined : response.status;
+  // Titan's pre-RPC transport errors have no RPC id and cannot carry a result.
+  if (!response.ok && isRecord(value) && value.error === true && isErrorBody(value)) {
+    return { id: requestId, success: false, error: value, httpStatus: status };
+  }
+  if (value === undefined && !response.ok) {
+    return { id: requestId, success: false, error: {
+      code: 'HTTP_ERROR', message: `HTTP ${response.status}: ${response.statusText}`,
+    }, httpStatus: status };
+  }
+  if (!isRecord(value) || typeof value.success !== 'boolean' || value.id !== requestId) {
+    throw invalidResponse('Invalid RPC response envelope or mismatched request id', status);
+  }
+  if (value.success) {
+    if (!response.ok) throw invalidResponse('Unsuccessful HTTP response cannot carry RPC success', status);
+    return { id: requestId, success: true, data: value.data };
+  }
+  if (!isErrorBody(value.error)) throw invalidResponse('Invalid RPC error envelope', status);
+  return { id: requestId, success: false, error: value.error, ...(status === undefined ? {} : { httpStatus: status }) };
+}
+
 /**
  * HTTP Transport Client implementation
  */
@@ -119,7 +159,7 @@ export class HttpClient {
     requestsSent: 0,
     responsesReceived: 0,
     errors: 0,
-    latencies: [] as number[],
+    avgLatency: 0,
   };
 
   constructor(options: HttpClientOptions) {
@@ -144,207 +184,122 @@ export class HttpClient {
   /**
    * Invoke a service method
    */
-  async invoke(
-    service: string,
-    method: string,
-    args: any[],
-    options?: {
-      context?: RequestContext;
-      hints?: RequestHints;
-      skipAuth?: boolean;
-    }
-  ): Promise<any> {
-    // Create middleware context
+  async invoke(service: string, method: string, args: any[], options?: InvocationOptions): Promise<any> {
+    options?.signal?.throwIfAborted();
     const ctx: ClientMiddlewareContext = {
-      service,
-      method,
-      args,
+      service, method, args,
       request: {
         headers: { ...this.headers },
-        timeout: options?.hints?.timeout || this.timeout,
-        metadata: options?.context as any,
+        timeout: options?.timeout ?? options?.hints?.timeout ?? this.timeout,
+        metadata: options?.context,
       },
-      timing: {
-        start: performance.now(),
-        middlewareTimes: new Map(),
-      },
+      timing: { start: performance.now(), middlewareTimes: new Map() },
       metadata: new Map(),
-      transport: 'http' as const,
+      transport: 'http',
     };
+    await abortable(() => this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST), options?.signal);
+    if (ctx.skipRemaining) return ctx.response?.data;
 
-    const skipAuth = options?.skipAuth ?? false;
-
-    // Execute pre-request middleware (once — not re-run on an auth retry).
-    await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
-
-    // Check if middleware wants to skip remaining
-    if (ctx.skipRemaining) {
-      return ctx.response?.data;
-    }
-
-    // NB-6: a single auth re-invoke. When an ERROR-stage middleware (the auth
-    // error handler) refreshes the token after a 401 and signals `auth:retry`,
-    // we re-send the request ONCE with the refreshed headers/cookies instead of
-    // failing — previously the request was never re-sent (the flag was set but
-    // nothing consumed it, and invoke always re-threw the original error).
-    const MAX_AUTH_REINVOKES = 1;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        // Create request message with (possibly refreshed) middleware data.
-        const message = createRequestMessage(service, method, args, {
-          context: ctx.request?.metadata as any,
-          hints: {
-            ...options?.hints,
-            timeout: ctx.request?.timeout,
-          },
-        });
-
-        // Send request — credentials threaded through so cookie-mode transport
-        // ('include') reaches the fetch layer. The AuthenticationClient's
-        // configured transport is the source of truth; middleware may override
-        // per-request via ctx.request.credentials.
-        const credentials = ctx.request?.credentials ?? this.auth?.getRequestCredentials();
-        const response = await this.sendRequest(message, 0, ctx.request?.headers, skipAuth, credentials);
-
-        if (!response.success) {
-          throw refusal(response);
-        }
-
-        // Store response in context
-        ctx.response = {
-          data: response.data,
-          headers: {},
-          metadata: {},
-        };
-
-        // Execute post-response middleware
-        await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
-
-        return ctx.response.data;
-      } catch (error: any) {
-        // Store error in context
-        ctx.error = error;
-        ctx.metadata.delete('auth:retry');
-
-        // Execute error middleware
+    const timeout = ctx.request?.timeout ?? this.timeout;
+    const timeoutError = Object.assign(new Error(`Request timeout after ${timeout}ms`), { code: 'TIMEOUT' });
+    const scope = invocationScope(timeout, timeoutError, options?.signal);
+    try {
+      // A refresh middleware can request one re-invocation after authentication
+      // was refused. Cancellation or deadline expiry never enters that path.
+      for (let attempt = 0; ; attempt++) {
         try {
-          await this.middleware.execute(ctx, MiddlewareStage.ERROR);
-        } catch {
-          // Ignore middleware errors during error handling
-        }
-
-        // NB-6: re-invoke once if a middleware refreshed auth and asked to retry.
-        if (attempt < MAX_AUTH_REINVOKES && ctx.metadata.get('auth:retry')) {
+          scope.signal.throwIfAborted();
+          const message = createRequestMessage(service, method, args, {
+            context: ctx.request?.metadata,
+            hints: { ...options?.hints, timeout },
+          });
+          const credentials = ctx.request?.credentials ?? this.auth?.getRequestCredentials();
+          const response = await this.sendRequest(message, scope.signal, options?.idempotent === true,
+            ctx.request?.headers, options?.skipAuth ?? false, credentials);
+          if (!response.success) throw refusal(response);
+          ctx.response = { data: response.data, headers: {}, metadata: {} };
+          await abortable(() => this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE), scope.signal);
+          return ctx.response.data;
+        } catch (error) {
+          scope.signal.throwIfAborted();
+          ctx.error = error as Error;
           ctx.metadata.delete('auth:retry');
-          ctx.error = undefined;
-          continue;
+          try {
+            await abortable(() => this.middleware.execute(ctx, MiddlewareStage.ERROR), scope.signal);
+          } catch {
+            // Preserve the original failure, except when the caller/deadline ended the invocation.
+          }
+          scope.signal.throwIfAborted();
+          if (attempt < 1 && ctx.metadata.get('auth:retry')) {
+            ctx.metadata.delete('auth:retry');
+            ctx.error = undefined;
+            continue;
+          }
+          throw error;
         }
-
-        throw error;
       }
+    } finally {
+      scope.dispose();
     }
   }
 
-  /**
-   * Send HTTP request
-   */
   private async sendRequest(
     message: HttpRequestMessage,
-    retryCount = 0,
+    signal: AbortSignal,
+    idempotent: boolean,
     customHeaders?: Record<string, string>,
     skipAuth = false,
     credentials?: RequestCredentials
   ): Promise<Answer> {
     const url = `${this.baseUrl}/netron/invoke`;
-    const timeout = message.hints?.timeout || this.timeout;
-    const startTime = Date.now();
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      this.metrics.requestsSent++;
-
-      // Build headers with auth if available
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...this.headers,
-        ...customHeaders, // Middleware can override headers
-      };
-
-      // Add auth headers if available (unless explicitly skipped or overridden by middleware)
-      if (this.auth && !skipAuth && !customHeaders?.['Authorization']) {
-        Object.assign(headers, this.auth.getAuthHeaders());
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(message),
-        signal: controller.signal,
-        // T#176 — credentials threaded from middleware (cookie mode sets
-        // 'include'); undefined preserves the default 'same-origin'.
-        ...(credentials !== undefined ? { credentials } : {}),
-      });
-
-      clearTimeout(timeoutId);
-
-      const latency = Date.now() - startTime;
-      this.metrics.latencies.push(latency);
-      this.metrics.responsesReceived++;
-
-      if (!response.ok) {
-        // Try to parse error response
+    const headers = new Headers({
+      'Content-Type': 'application/json', Accept: 'application/json',
+      ...this.headers, ...customHeaders,
+    });
+    // Titan uses this header for errors refused before the RPC body is parsed.
+    // Own the correlation value even when middleware supplied a different case.
+    headers.set('X-Request-ID', message.id);
+    if (this.auth && !skipAuth && !headers.has('Authorization')) {
+      for (const [name, value] of Object.entries(this.auth.getAuthHeaders())) headers.set(name, value);
+    }
+    const body = JSON.stringify(message);
+    for (let attempt = 0; ; attempt++) {
+      signal.throwIfAborted();
+      const start = performance.now();
+      try {
+        this.metrics.requestsSent++;
+        const response = await abortable(() => fetch(url, {
+          method: 'POST', headers, body, signal,
+          ...(credentials !== undefined ? { credentials } : {}),
+        }), signal);
+        let value: unknown;
         try {
-          const errorData = await response.json();
-          return { ...errorData, httpStatus: response.status };
-        } catch {
-          // Return generic error
-          this.metrics.errors++;
-          return {
-            id: message.id,
-            success: false,
-            error: {
-              code: 'HTTP_ERROR',
-              message: `HTTP ${response.status}: ${response.statusText}`,
-            },
-            httpStatus: response.status,
-          };
+          // The same deadline and caller signal remain active through body consumption.
+          value = await abortable(() => response.json(), signal);
+        } catch (error) {
+          signal.throwIfAborted();
+          if (response.ok) throw invalidResponse('Response body is not valid JSON');
+          value = undefined;
         }
+        this.metrics.responsesReceived++;
+        this.metrics.avgLatency += (performance.now() - start - this.metrics.avgLatency) / this.metrics.responsesReceived;
+        const answer = parseAnswer(value, message.id, response);
+        if (!answer.success) this.metrics.errors++;
+        return answer;
+      } catch (error) {
+        this.metrics.errors++;
+        signal.throwIfAborted();
+        if (error instanceof InvalidResponseError) throw error;
+        // A transport failure does not establish whether a POST was executed.
+        // Replay requires an explicit caller assertion; method names are never guessed.
+        if (this.retry && idempotent && attempt < this.maxRetries) {
+          await abortableDelay(Math.min(2 ** attempt * 1000, 30_000), signal);
+          continue;
+        }
+        return { id: message.id, success: false, error: {
+          code: 'NETWORK_ERROR', message: error instanceof Error ? error.message : String(error),
+        } };
       }
-
-      return await response.json();
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      this.metrics.errors++;
-
-      // Retry logic
-      if (this.retry && retryCount < this.maxRetries) {
-        const delay = Math.pow(2, retryCount) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.sendRequest(message, retryCount + 1, customHeaders, skipAuth, credentials);
-      }
-
-      if (error.name === 'AbortError') {
-        return {
-          id: message.id,
-          success: false,
-          error: {
-            code: 'TIMEOUT',
-            message: `Request timeout after ${timeout}ms`,
-          },
-        };
-      }
-
-      return {
-        id: message.id,
-        success: false,
-        error: {
-          code: 'NETWORK_ERROR',
-          message: error.message,
-        },
-      };
     }
   }
 
@@ -366,11 +321,6 @@ export class HttpClient {
    * Get connection metrics
    */
   getMetrics(): ConnectionMetrics {
-    const avgLatency =
-      this.metrics.latencies.length > 0
-        ? this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length
-        : undefined;
-
     return {
       id: 'http-client',
       url: this.baseUrl,
@@ -379,7 +329,7 @@ export class HttpClient {
       requestsSent: this.metrics.requestsSent,
       responsesReceived: this.metrics.responsesReceived,
       errors: this.metrics.errors,
-      avgLatency,
+      avgLatency: this.metrics.responsesReceived ? this.metrics.avgLatency : undefined,
     };
   }
 

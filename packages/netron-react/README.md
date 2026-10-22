@@ -129,3 +129,13 @@ const appeal = useNetronMutation({
 ## License
 
 MIT
+
+## Query cancellation
+
+`useBackendQuery`, `useBackendService(...).method.useQuery`, `useService`, and
+service-registry query configurations pass the query cache's `AbortSignal`
+through to Netron's transport. Cancelling a query stops its HTTP fetch or local
+WebSocket wait; a subsequent refetch receives a fresh signal. Custom `queryFn`
+functions must likewise forward their context's `signal` when invoking RPCs.
+Mutation invocation semantics are unchanged: unmounting a component does not
+automatically cancel a write that may already have committed.

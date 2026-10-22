@@ -71,9 +71,10 @@ export function useService<TService>(serviceName: string, options?: ServiceOptio
               // This is a hook factory pattern
               return useQuery<TData>({
                 queryKey,
-                queryFn: () =>
+                queryFn: ({ signal }) =>
                   client.invoke<TData>(serviceName, methodName, args, {
                     timeout: options?.timeout,
+                    signal,
                   }),
                 ...queryOptions,
               });

@@ -10,7 +10,7 @@
  * Definitions, and answers TYPE_TASK / TYPE_CALL the same shape the real
  * server does.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { WebSocketClient } from '../../src/client/ws-client.js';
 import {
@@ -73,7 +73,7 @@ class MockServer {
    * Decode a binary packet from the client and produce the response packet
    * (also binary), or `null` for fire-and-forget messages.
    */
-  respond(buffer: ArrayBuffer): ArrayBuffer | null {
+  respond(buffer: ArrayBufferLike): ArrayBuffer | null {
     const packet = decodePacket(new Uint8Array(buffer));
     const type = packet.getType();
 
@@ -139,6 +139,7 @@ let activeServer: MockServer | null = null;
 /** Delays the server's id frame, so a test can look at the window between
  *  "socket open" and "server knows who we are". */
 let handshakeDelayMs = 0;
+let responseDelayMs = 0;
 /** The socket the last client opened, for asserting the client's reply. */
 let lastSocket: MockWebSocket | null = null;
 
@@ -195,9 +196,9 @@ class MockWebSocket extends EventTarget {
     if (reply) {
       // Deliver asynchronously — production code never observes
       // synchronous responses and we want the same ordering guarantees.
-      queueMicrotask(() => {
-        this.dispatchEvent(new MessageEvent('message', { data: reply }));
-      });
+      const deliver = () => this.dispatchEvent(new MessageEvent('message', { data: reply }));
+      if (responseDelayMs) setTimeout(deliver, responseDelayMs);
+      else queueMicrotask(deliver);
     }
   }
 
@@ -222,7 +223,7 @@ function makeDefinition(name: string, defId: string): Definition {
   } as any);
 }
 
-function makeClient(opts: ConstructorParameters<typeof WebSocketClient>[0]): WebSocketClient {
+function makeClient(opts: Omit<ConstructorParameters<typeof WebSocketClient>[0], 'url'>): WebSocketClient {
   return new WebSocketClient({ url: 'ws://mock', reconnect: false, timeout: 200, ...opts });
 }
 
@@ -232,12 +233,14 @@ describe('WebSocketClient — transparent service discovery', () => {
   beforeEach(() => {
     activeServer = null;
     handshakeDelayMs = 0;
+    responseDelayMs = 0;
     lastSocket = null;
   });
 
   afterEach(() => {
     activeServer = null;
     handshakeDelayMs = 0;
+    responseDelayMs = 0;
   });
 
   it('connect() waits for the handshake, not merely for the socket to open', async () => {
@@ -478,4 +481,44 @@ describe('WebSocketClient — transparent service discovery', () => {
     expect(activeServer.taskCalls).toHaveLength(2);
     await client.disconnect();
   });
+  it('cancels a pending invocation and ignores its late response without disconnecting', async () => {
+    responseDelayMs = 50;
+    let received!: () => void;
+    const sent = new Promise<void>(resolve => { received = resolve; });
+    activeServer = new MockServer({ defineService: () => null, call: () => { received(); return 'late result'; } });
+    const client = makeClient({ timeout: 500 });
+    await client.connect();
+    const controller = new AbortController();
+    const reason = new Error('query superseded');
+    const call = client.invoke('svc', 'read', [], { signal: controller.signal });
+    await sent;
+    controller.abort(reason);
+    await expect(call).rejects.toBe(reason);
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(client.getMetrics().responsesReceived).toBe(0);
+    expect(client.isConnected()).toBe(true);
+    responseDelayMs = 0;
+    await expect(client.invoke('svc', 'read', [])).resolves.toBe('late result');
+    await client.disconnect();
+  });
+
+  it('cancels one discovery waiter without cancelling another or sending the cancelled call', async () => {
+    responseDelayMs = 40;
+    let received!: () => void;
+    const discovered = new Promise<void>(resolve => { received = resolve; });
+    activeServer = new MockServer({ defineService: () => { received(); return makeDefinition('svc', 'shared-id'); }, call: ({ method }) => method });
+    const client = makeClient({ timeout: 500, enableServiceDiscovery: true });
+    await client.connect();
+    const controller = new AbortController();
+    const cancelled = client.invoke('svc', 'cancelled', [], { signal: controller.signal });
+    const kept = client.invoke('svc', 'kept', []);
+    await discovered;
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(kept).resolves.toBe('kept');
+    expect(activeServer.callCalls.map(call => call.method)).toEqual(['kept']);
+    expect(activeServer.taskCalls).toHaveLength(1);
+    await client.disconnect();
+  });
+
 });

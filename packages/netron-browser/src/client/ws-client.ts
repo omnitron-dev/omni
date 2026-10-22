@@ -5,9 +5,10 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type { ConnectionMetrics, ConnectionState, RequestContext, RequestHints } from '../types/index.js';
+import type { ConnectionMetrics, ConnectionState, InvocationOptions } from '../types/index.js';
 import type { AuthenticationClient } from '../auth/client.js';
 import { calculateBackoff, httpToWsUrl } from '../utils/index.js';
+import { abortable, invocationScope } from './request-lifecycle.js';
 import { ConnectionError, TimeoutError } from '../errors/index.js';
 import {
   MiddlewarePipeline,
@@ -119,8 +120,8 @@ export type TaskHandler = (...args: any[]) => any | Promise<any>;
  */
 interface PendingRequest {
   resolve: (value: any) => void;
-  reject: (error: Error) => void;
-  timeout: number;
+  reject: (error: unknown) => void;
+  timeout?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -566,170 +567,84 @@ export class WebSocketClient extends EventEmitter {
   /**
    * Invoke a service method
    */
-  async invoke(
-    service: string,
-    method: string,
-    args: any[],
-    options?: {
-      context?: RequestContext;
-      hints?: RequestHints;
-    }
-  ): Promise<any> {
-    if (!this.isConnected()) {
-      throw new ConnectionError('WebSocket is not connected');
-    }
-
-    // Create middleware context
+  async invoke(service: string, method: string, args: any[], options?: InvocationOptions): Promise<any> {
+    options?.signal?.throwIfAborted();
+    if (!this.isConnected()) throw new ConnectionError('WebSocket is not connected');
     const ctx: ClientMiddlewareContext = {
-      service,
-      method,
-      args,
+      service, method, args,
       request: {
         headers: {},
-        timeout: options?.hints?.timeout || this.timeout,
-        metadata: options?.context as any,
+        timeout: options?.timeout ?? options?.hints?.timeout ?? this.timeout,
+        metadata: options?.context,
       },
-      timing: {
-        start: performance.now(),
-        middlewareTimes: new Map(),
-      },
-      metadata: new Map(),
-      transport: 'websocket' as const,
+      timing: { start: performance.now(), middlewareTimes: new Map() },
+      metadata: new Map(), transport: 'websocket',
     };
-
+    await abortable(() => this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST), options?.signal);
+    if (ctx.skipRemaining) return ctx.response?.data;
+    const timeout = ctx.request?.timeout ?? this.timeout;
+    const scope = invocationScope(timeout, new TimeoutError(`Request timeout after ${timeout}ms`), options?.signal);
     try {
-      // Execute pre-request middleware
-      await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
-
-      // Check if middleware wants to skip remaining
-      if (ctx.skipRemaining) {
-        return ctx.response?.data;
-      }
-
-      const packetId = Packet.nextId();
-      const timeout = ctx.request?.timeout || this.timeout;
-
-      // Build context with auth headers if available
-      const context: RequestContext = {
-        ...ctx.request?.metadata,
-      };
-
-      // Add middleware headers
-      if (ctx.request?.headers) {
-        context.headers = {
-          ...context.headers,
-          ...ctx.request.headers,
-        };
-      }
-
-      // Add auth headers if client is authenticated (unless overridden by middleware)
-      if (this.auth && this.auth.isAuthenticated() && !ctx.request?.headers?.['Authorization']) {
-        context.headers = {
-          ...context.headers,
-          ...this.auth.getAuthHeaders(),
-        };
-      }
-
-      // Resolve service name → definition id. Discovery is the default
-      // (transparent query_interface round-trip on first use, cached
-      // thereafter); explicit serviceDefinitions or
-      // disableServiceDiscovery suppress it for advanced callers.
-      let defId = await this.resolveDefinitionId(service);
-
-      const sendCallWithDefId = async (currentDefId: string): Promise<unknown> => {
-        const packet = new Packet(packetId);
-        packet.setType(TYPE_CALL);
-        packet.setImpulse(1); // Request
-        // Server expects: [defId, method, ...args]
-        packet.data = [currentDefId, method, ...args];
-
-        this.sendPacket(packet);
-        this.metrics.requestsSent++;
-
-        return new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            this.pendingRequests.delete(String(packetId));
-            this.metrics.errors++;
-            reject(new TimeoutError(`Request timeout after ${timeout}ms`));
-          }, timeout) as unknown as number;
-
-          this.pendingRequests.set(String(packetId), {
-            resolve,
-            reject,
-            timeout: timeoutId,
-          });
-        });
-      };
-
-      let data: unknown;
-      try {
-        data = await sendCallWithDefId(defId);
-      } catch (err: any) {
-        // Stale-defId recovery: if the cached id no longer maps to a
-        // definition (e.g. the server was restarted, or the service was
-        // re-exposed), evict the cache entry and retry once with a fresh
-        // discovery. We do not retry when the caller pre-populated the
-        // serviceDefinitions map — that is treated as authoritative.
-        const looksLikeStaleDef =
-          this.enableServiceDiscovery &&
-          this.discoveredDefinitions.get(service) === defId &&
-          isLikelyDefinitionNotFoundError(err) &&
-          !this.serviceDefinitions?.has(service);
-
-        if (!looksLikeStaleDef) {
-          throw err;
-        }
-        this.discoveredDefinitions.delete(service);
-        // Re-resolve and re-send under a fresh packet id.
-        defId = await this.resolveDefinitionId(service);
-        const retryId = Packet.nextId();
-        const packet = new Packet(retryId);
+      // Discovery is shared by concurrent callers. A cancelled caller stops
+      // waiting but cannot cancel another caller's lookup or send its own call.
+      let defId = await abortable(() => this.resolveDefinitionId(service), scope.signal);
+      const sendCall = (id: string) => {
+        const packet = new Packet(Packet.nextId());
         packet.setType(TYPE_CALL);
         packet.setImpulse(1);
-        packet.data = [defId, method, ...args];
-
-        data = await new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            this.pendingRequests.delete(String(retryId));
-            this.metrics.errors++;
-            reject(new TimeoutError(`Request timeout after ${timeout}ms`));
-          }, timeout) as unknown as number;
-
-          this.pendingRequests.set(String(retryId), {
-            resolve,
-            reject,
-            timeout: timeoutId,
-          });
-
-          this.sendPacket(packet);
-          this.metrics.requestsSent++;
-        });
-      }
-
-      // Store response in context
-      ctx.response = {
-        data,
-        headers: {},
-        metadata: {},
+        packet.data = [id, method, ...args];
+        return this.sendInvocation(packet, scope.signal);
       };
-
-      // Execute post-response middleware
-      await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
-
-      return ctx.response.data;
-    } catch (error: any) {
-      // Store error in context
-      ctx.error = error;
-
-      // Execute error middleware
+      let data: unknown;
       try {
-        await this.middleware.execute(ctx, MiddlewareStage.ERROR);
-      } catch {
-        // Ignore middleware errors during error handling
+        data = await sendCall(defId);
+      } catch (error) {
+        scope.signal.throwIfAborted();
+        const staleDefinition = this.enableServiceDiscovery &&
+          this.discoveredDefinitions.get(service) === defId &&
+          isLikelyDefinitionNotFoundError(error) && !this.serviceDefinitions?.has(service);
+        if (!staleDefinition) throw error;
+        this.discoveredDefinitions.delete(service);
+        defId = await abortable(() => this.resolveDefinitionId(service), scope.signal);
+        data = await sendCall(defId);
       }
-
+      ctx.response = { data, headers: {}, metadata: {} };
+      await abortable(() => this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE), scope.signal);
+      return ctx.response.data;
+    } catch (error) {
+      scope.signal.throwIfAborted();
+      ctx.error = error as Error;
+      try { await abortable(() => this.middleware.execute(ctx, MiddlewareStage.ERROR), scope.signal); } catch { /* preserve call error */ }
+      scope.signal.throwIfAborted();
       throw error;
+    } finally {
+      scope.dispose();
     }
+  }
+
+  /** Register before sending; every terminal path releases this invocation's ownership. */
+  private sendInvocation(packet: Packet, signal: AbortSignal): Promise<unknown> {
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const id = String(packet.id);
+      const cleanup = () => {
+        signal.removeEventListener('abort', onAbort);
+        this.pendingRequests.delete(id);
+      };
+      const onAbort = () => { cleanup(); this.metrics.errors++; reject(signal.reason); };
+      this.pendingRequests.set(id, {
+        resolve: value => { cleanup(); resolve(value); },
+        reject: error => { cleanup(); reject(error); },
+      });
+      signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        this.sendPacket(packet);
+        this.metrics.requestsSent++;
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
   }
 
   /**
@@ -781,7 +696,7 @@ export class WebSocketClient extends EventEmitter {
       const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(String(packetId));
         reject(new TimeoutError(`runTask('${name}') timed out after ${this.timeout}ms`));
-      }, this.timeout) as unknown as number;
+      }, this.timeout);
 
       this.pendingRequests.set(String(packetId), {
         resolve: resolve as (v: any) => void,

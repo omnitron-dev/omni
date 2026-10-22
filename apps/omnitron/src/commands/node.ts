@@ -5,7 +5,7 @@
  * Only works on master omnitron.
  */
 
-import { log, table } from '@xec-sh/kit';
+import { log, password, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
 import type { INodeStatus, INodeWithStatus } from '../shared/dto/nodes.js';
@@ -224,24 +224,34 @@ async function openDaemon(): Promise<ReturnType<typeof createDaemonClient> | nul
   return null;
 }
 
-/**
- * Read an SSH secret from stdin.
- *
- * A node can be declared `--ssh-auth password` and there was no way to give
- * it one: this command handled neither a password nor a key passphrase, so
- * the row said `password` and carried none. Measured on this console — the
- * health monitor reported the node down, `fleet upgrade` could not reach it,
- * and the registry looked correct.
- *
- * From stdin rather than a flag, because an argument is visible to every
- * process on the machine for as long as the command runs, and this one is a
- * root password.
- */
+/** A terminal completes on Enter; a pipe completes on EOF. Never echo the secret. */
 export async function readSecretFromStdin(what: string): Promise<string> {
+  const maxBytes = 64 * 1024;
+  if (process.stdin.isTTY) {
+    const value = await password({
+      message: `SSH ${what} (Enter to submit, Ctrl+C to cancel)`,
+      input: process.stdin,
+      output: process.stderr,
+      validate: (input) => {
+        if (!input) return `Enter a ${what}`;
+        if (Buffer.byteLength(input, 'utf8') > maxBytes) return 'SSH secret exceeds 64 KiB';
+        return undefined;
+      },
+    });
+    if (typeof value !== 'string') throw new Error('SSH secret input cancelled');
+    return value;
+  }
+
   const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > maxBytes) throw new Error('SSH secret exceeds 64 KiB');
+    chunks.push(buffer);
+  }
   const value = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
-  if (!value) throw new Error(`No ${what} on stdin — pipe it in, e.g. \`printf %s "$PW" | omnitron node …\``);
+  if (!value) throw new Error(`No ${what} on stdin — pipe it in or use an interactive terminal`);
   return value;
 }
 
@@ -304,12 +314,9 @@ export async function nodeUpdateCommand(id: string, options: {
     const { secretFromStdin, ...input } = options;
     const payload: Record<string, unknown> = { id: node.id, ...input };
     if (secretFromStdin) {
-      // Whichever this row now authenticates with. Switching to `password`
-      // and sending a passphrase would store a secret nothing reads.
-      const field = options.sshAuthMethod === 'key' ? 'sshPassphrase' : 'sshPassword';
-      payload[field] = await readSecretFromStdin(
-        options.sshAuthMethod === 'key' ? 'key passphrase' : 'password',
-      );
+      const method = options.sshAuthMethod ?? node.sshAuthMethod;
+      const field = method === 'password' ? 'sshPassword' : 'sshPassphrase';
+      payload[field] = await readSecretFromStdin(method === 'password' ? 'password' : 'key passphrase');
     }
     const updated = await nodes.updateNode(payload);
     log.success(`Node "${updated.name}" updated`);

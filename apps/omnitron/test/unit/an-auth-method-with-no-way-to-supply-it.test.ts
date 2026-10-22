@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable, Writable } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,6 @@ import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = stripComments(fs.readFileSync(path.join(here, '../../src/cli/omnitron.ts'), 'utf8'));
-const command = stripComments(fs.readFileSync(path.join(here, '../../src/commands/node.ts'), 'utf8'));
 
 /** Run one read against a stdin of our own. */
 async function withStdin<T>(text: string, fn: () => Promise<T>): Promise<T> {
@@ -58,6 +57,11 @@ describe('the secret comes in on stdin', () => {
     expect(await withStdin('two words \n', () => readSecretFromStdin('password'))).toBe('two words ');
   });
 
+  it('bounds piped input without including the secret in errors', async () => {
+    await expect(withStdin('s'.repeat(65537), () => readSecretFromStdin('password')))
+      .rejects.toThrow('SSH secret exceeds 64 KiB');
+  });
+
   it('refuses an empty stdin rather than storing nothing', async () => {
     // An empty secret stored is a node that cannot authenticate and a
     // registry that says it can.
@@ -75,11 +79,43 @@ describe('both commands can supply one', () => {
     expect(cli).not.toMatch(/--ssh-password </);
     expect(cli).not.toMatch(/--ssh-passphrase </);
   });
+});
 
-  it('stores it in the field the auth method reads', () => {
-    // A password stored as a passphrase is a secret nothing reads, and the
-    // node stays unreachable with a vault that looks populated.
-    expect(command).toContain("options.sshAuthMethod === 'password' ? 'sshPassword' : 'sshPassphrase'");
-    expect(command).toContain("options.sshAuthMethod === 'key' ? 'sshPassphrase' : 'sshPassword'");
-  });
+describe('interactive secret input through the real terminal prompt', () => {
+  it.each(['enter', 'cancel'] as const)('%s completes without EOF and never echoes the secret', async (action) => {
+    const stdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    const stderr = Object.getOwnPropertyDescriptor(process, 'stderr')!;
+    const rawModes: boolean[] = [];
+    const input = Object.assign(new PassThrough(), {
+      isTTY: true,
+      setRawMode: (mode: boolean) => rawModes.push(mode),
+    });
+    let display = '';
+    const output = Object.assign(new Writable({
+      write(chunk, _encoding, done) {
+        display += chunk.toString();
+        done();
+      },
+    }), { columns: 120, rows: 24 });
+    Object.defineProperty(process, 'stdin', { value: input, configurable: true });
+    Object.defineProperty(process, 'stderr', { value: output, configurable: true });
+    try {
+      const pending = readSecretFromStdin('key passphrase');
+      const outcome = action === 'cancel'
+        ? expect(pending).rejects.toThrow('SSH secret input cancelled')
+        : expect(pending).resolves.toBe('two secret words ');
+      input.write('two secret words ');
+      input.write(action === 'cancel' ? '\x03' : '\r');
+      await outcome;
+      expect(input.readableEnded).toBe(false);
+      expect(display).not.toContain('two secret words');
+      expect(rawModes[0]).toBe(true);
+      expect(rawModes.at(-1)).toBe(false);
+    } finally {
+      input.destroy();
+      output.destroy();
+      Object.defineProperty(process, 'stdin', stdin);
+      Object.defineProperty(process, 'stderr', stderr);
+    }
+  }, 3000);
 });

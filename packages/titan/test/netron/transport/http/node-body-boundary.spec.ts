@@ -79,12 +79,62 @@ describe('real Node HTTP request body admission', () => {
     expect(invocations).toBe(before);
     await healthy();
   });
+  it('delivers 413 while a multi-megabyte fetch upload is still in flight', async () => {
+    const before = invocations;
+    for (const connection of ['keep-alive', 'close', 'keep-alive', 'close']) {
+      const response = await fetch(endpoint + '/netron/invoke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', connection },
+        body: message(['x'.repeat(13 * 1024 * 1024)]),
+      });
+      expect(response.status).toBe(413);
+      expect((await response.json()).error.code).toBe('413');
+    }
+    expect(invocations).toBe(before);
+    await healthy();
+  });
   it('refuses a declared oversize before the sender uploads its body', async () => {
     const before = invocations;
     const response = await nativeRequest({ 'content-length': '1048576' }, (req) => req.flushHeaders());
     expect(response.status).toBe(413);
     expect(invocations).toBe(before);
     await healthy();
+  });
+  it('bounds rejected uploads even when the sender never completes the body', async () => {
+    const bounded = new HttpServer({ host: '127.0.0.1', port: 0, maxRequestSize: 1024, requestTimeout: 100 } as any);
+    await bounded.listen();
+    let responseReceived = false;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = httpRequest(
+          `http://127.0.0.1:${bounded.port}/netron/invoke`,
+          {
+            method: 'POST',
+            headers: { 'content-length': '1048576' },
+          },
+          (res) => {
+            responseReceived = true;
+            expect(res.statusCode).toBe(413);
+            res.resume();
+          }
+        );
+        const deadline = setTimeout(() => {
+          req.destroy();
+          reject(new Error('Rejected upload remained open'));
+        }, 2000);
+        req.on('error', reject);
+        req.on('socket', (socket) =>
+          socket.once('close', () => {
+            clearTimeout(deadline);
+            resolve();
+          })
+        );
+        req.flushHeaders();
+      });
+      expect(responseReceived).toBe(true);
+    } finally {
+      await bounded.close();
+    }
   });
   it('enforces the same bound on chunked bodies and leaves subsequent connections operational', async () => {
     const before = invocations;

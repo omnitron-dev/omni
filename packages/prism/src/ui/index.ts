@@ -42,6 +42,7 @@ export {
   RadioGroup,
   Select,
   Skeleton,
+  Slider,
   Stack,
   Switch,
   Tab,
@@ -50,7 +51,7 @@ export {
   Tooltip,
   Typography,
 } from '@mui/material';
-export type { ButtonProps, TextFieldProps, SxProps, Theme } from '@mui/material';
+export type { ButtonProps, TextFieldProps, SliderProps, SxProps, Theme } from '@mui/material';
 export { ThemeProvider as PrismThemeProvider, useTheme } from '@mui/material/styles';
 export { default as useMediaQuery } from '@mui/material/useMediaQuery';
 

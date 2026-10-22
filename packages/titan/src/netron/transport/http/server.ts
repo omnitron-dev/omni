@@ -45,6 +45,8 @@ import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult 
 import { LatencyWindow, type LatencySnapshot } from './latency-window.js';
 import { SHUTTING_DOWN, shuttingDownError } from '../../inbound-gate.js';
 import { METADATA_KEYS } from '../../../decorators/core.js';
+import { createOriginMiddleware } from '../../auth/origin-middleware.js';
+import { createCsrfMiddleware } from '../../auth/csrf-middleware.js';
 
 /** What `HttpServer.getTrafficSnapshot()` answers. */
 export interface HttpTrafficSnapshot {
@@ -301,6 +303,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
   // Middleware
   private globalPipeline: MiddlewarePipeline;
+  private httpSecurityInstalled = false;
   private middlewareAdapter?: HttpMiddlewareAdapter;
 
   // Enhanced metrics with optimized rolling average (avoids array operations)
@@ -541,6 +544,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private createHttpAuthMiddleware(): any {
     return async (ctx: any, next: () => Promise<void>) => {
+      // Authority is reconstructed only from a validated credential on this request.
+      ctx.metadata.delete('authContext');
+      ctx.metadata.delete('authenticated');
       // Snapshot request headers as a plain record so the transport
       // interface stays decoupled from the Web Fetch Headers object.
       // Reading from ctx.request gives us authoritative case-normalized
@@ -628,6 +634,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // method was effectively `allowAnonymous`. The fix is to honor the
     // Netron-level configuration as a first-class source.
     const netron = peer.netron as INetronInternal | undefined;
+    if (!this.httpSecurityInstalled && netron?.httpAuthSecurity) {
+      if (this.server) throw new Error('HTTP security cannot be installed after listen');
+      const security = netron.httpAuthSecurity;
+      if (security.origin) this.globalPipeline.use(
+        createOriginMiddleware(security.origin),
+        { name: 'http-origin', priority: 15 }, MiddlewareStage.PRE_INVOKE,
+      );
+      if (security.csrf) this.globalPipeline.use(
+        createCsrfMiddleware(security.csrf),
+        { name: 'http-csrf', priority: 18 }, MiddlewareStage.PRE_INVOKE,
+      );
+      this.httpSecurityInstalled = true;
+    }
     const optsPolicyEngine = (this.options as any).policyEngine as PolicyEngine | undefined;
     const optsAuthorizationManager = (this.options as any)
       .authorizationManager as AuthorizationManager | undefined;
@@ -1424,9 +1443,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const requestContext = message.context || {};
     const metadata = new Map<string, unknown>();
     // Use for...in loop for better performance
-    for (const key in requestContext) {
+    // Context is untrusted tracing data, never an extensible authority map.
+    // In particular, authContext and token-issuance metadata are server-owned.
+    for (const key of ['traceId', 'spanId', 'userId', 'tenantId', 'metadata'] as const) {
       if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
-        metadata.set(key, requestContext[key as keyof HttpRequestContext]);
+        metadata.set(key, requestContext[key]);
       }
     }
     metadata.set('requestId', message.id);
@@ -1797,9 +1818,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     const requestContext = req.context || fallbackContext || {};
     const metadata = new Map<string, unknown>();
-    for (const key in requestContext) {
+    // Context is untrusted tracing data, never an extensible authority map.
+    // In particular, authContext and token-issuance metadata are server-owned.
+    for (const key of ['traceId', 'spanId', 'userId', 'tenantId', 'metadata'] as const) {
       if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
-        metadata.set(key, requestContext[key as keyof HttpRequestContext]);
+        metadata.set(key, requestContext[key]);
       }
     }
     metadata.set('requestId', req.id);

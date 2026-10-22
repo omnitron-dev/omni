@@ -157,29 +157,10 @@ export class ProjectRegistry {
       throw new Error(`No ${CONFIG_FILE_NAMES.join(' / ')} found at ${absPath}`);
     }
 
-    // Derive new registry name from directory basename
-    const newName = path.basename(absPath);
-    if (newName !== name && this.projects.has(newName)) {
-      throw new Error(`Project '${newName}' already registered`);
-    }
-
-    // Rename workspace directory if it exists
-    if (newName !== name) {
-      const oldDir = this.getWorkspaceDir(name);
-      const newDir = this.getWorkspaceDir(newName);
-      if (fs.existsSync(oldDir)) {
-        fs.renameSync(oldDir, newDir);
-      } else {
-        fs.mkdirSync(newDir, { recursive: true });
-      }
-      // Rewrite under the new key — drop the old row, insert the new.
-      this.store.deleteProjectSync(name);
-      this.projects.delete(name);
-    }
-
+    // A release directory is a location, never a new project identity.
+    // Keep workspace, enabled-stack and secret namespaces under the existing name.
     const updated: ISeedProject = {
       ...project,
-      name: newName,
       path: absPath,
     };
     this.store.upsertProjectSync({
@@ -188,7 +169,7 @@ export class ProjectRegistry {
       added_at: updated.registeredAt,
       last_seen: new Date().toISOString(),
     });
-    this.projects.set(newName, updated);
+    this.projects.set(name, updated);
     return updated;
   }
 

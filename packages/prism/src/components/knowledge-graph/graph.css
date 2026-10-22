@@ -1,6 +1,6 @@
 .prism-knowledge {
-  border: 1px solid var(--prism-graph-border);
-  border-radius: 8px;
+  border: var(--prism-border-width, 1px) solid var(--prism-graph-border);
+  border-radius: var(--prism-graph-radius, 4px);
   background: var(--prism-graph-bg);
   color: var(--prism-graph-text);
   overflow: hidden;
@@ -11,7 +11,7 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--prism-graph-border);
+  border-bottom: var(--prism-border-width, 1px) solid var(--prism-graph-border);
   padding: 16px;
 }
 .prism-knowledge__header > strong {
@@ -23,24 +23,32 @@
     monospace;
   color: var(--prism-graph-muted);
 }
-.prism-knowledge button {
-  font: inherit;
-  font-size: 13px;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--prism-graph-border);
-  border-radius: 4px;
-  padding: 7px 10px;
-  cursor: pointer;
+/* Application controls inherit the MUI theme. Scope native canvas controls so
+   custom styles never replace ButtonBase, input fieldsets or focus behaviour. */
+.prism-knowledge .react-flow__controls {
+  border: var(--prism-border-width, 1px) solid var(--prism-graph-border);
+  border-radius: var(--prism-graph-radius, 4px);
+}
+.prism-knowledge .react-flow__controls-button:hover {
+  background: var(--prism-graph-hover);
+}
+.prism-knowledge .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+.prism-knowledge .react-flow__controls-button {
+  color: var(--prism-graph-text);
+  background: var(--prism-graph-bg);
+  border-bottom: var(--prism-border-width, 1px) solid var(--prism-graph-border);
+  min-width: 36px;
   min-height: 36px;
 }
-.prism-knowledge button[aria-current='true'],
-.prism-knowledge button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--prism-graph-accent) 12%, transparent);
-}
-.prism-knowledge button:focus-visible {
-  outline: 2px solid var(--prism-graph-accent);
+.prism-knowledge .react-flow__controls-button:focus-visible {
+  outline: var(--prism-focus-width, 2px) solid var(--prism-graph-accent);
   outline-offset: 2px;
+}
+.prism-knowledge__results button[aria-current='true'] {
+  background: var(--prism-graph-hover);
+  color: var(--prism-graph-accent);
 }
 .prism-knowledge__hint {
   font-size: 12px;
@@ -53,23 +61,8 @@
 }
 .prism-knowledge__index {
   padding: 14px;
-  border-right: 1px solid var(--prism-graph-border);
+  border-right: var(--prism-border-width, 1px) solid var(--prism-graph-border);
   min-width: 0;
-}
-.prism-knowledge__index label {
-  font-size: 12px;
-  color: var(--prism-graph-muted);
-}
-.prism-knowledge__index input {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  background: transparent;
-  border: 1px solid var(--prism-graph-border);
-  color: inherit;
-  padding: 9px;
-  border-radius: 4px;
-  margin: 8px 0;
 }
 .prism-knowledge__results {
   list-style: none;
@@ -86,6 +79,7 @@
   display: flex;
   flex-direction: column;
   text-align: left;
+  align-items: flex-start;
   overflow-wrap: anywhere;
 }
 .prism-knowledge__results span {
@@ -107,8 +101,8 @@
 }
 .prism-knowledge__node {
   width: 220px;
-  border: 1px solid var(--prism-graph-border);
-  border-radius: 6px;
+  border: var(--prism-border-width, 1px) solid var(--prism-graph-border);
+  border-radius: var(--prism-graph-radius, 4px);
   background: var(--prism-graph-bg);
   padding: 12px;
   color: var(--prism-graph-text);
@@ -130,9 +124,17 @@
   border-style: dashed;
 }
 .prism-knowledge__node.is-selected {
-  outline: 2px solid var(--prism-graph-accent);
+  border-color: var(--prism-graph-accent);
+  background: var(--prism-graph-hover);
+}
+.prism-knowledge .react-flow__node:focus-visible .prism-knowledge__node {
+  outline: var(--prism-focus-width, 2px) solid var(--prism-graph-accent);
+  outline-offset: 2px;
 }
 .prism-knowledge .react-flow {
+  --xy-edge-stroke-width: var(--prism-border-width, 1px);
+  --xy-controls-box-shadow: none;
+  --xy-controls-button-border-color: var(--prism-graph-border);
   --xy-node-background-color: var(--prism-graph-bg);
   --xy-edge-stroke: var(--prism-graph-muted);
   --xy-edge-stroke-selected: var(--prism-graph-accent);
@@ -142,7 +144,7 @@
   --xy-edge-label-color: var(--prism-graph-text);
 }
 .prism-knowledge__details {
-  border-top: 1px solid var(--prism-graph-border);
+  border-top: var(--prism-border-width, 1px) solid var(--prism-graph-border);
   padding: 20px;
 }
 .prism-knowledge__details h3 {
@@ -161,7 +163,7 @@
   }
   .prism-knowledge__index {
     border-right: 0;
-    border-bottom: 1px solid var(--prism-graph-border);
+    border-bottom: var(--prism-border-width, 1px) solid var(--prism-graph-border);
   }
   .prism-knowledge__results {
     max-height: 150px;

@@ -161,7 +161,10 @@ export function ResearchDocument({
   }, [widgets, labels.invalid, labels.unavailable, labels.loading, labels.source]);
   if (!parsed.data) return <p role="alert">{labels.invalid}</p>;
   return (
-    <div className={`prism-research ${className ?? ''}`}>
+    <Box
+      className={`prism-research ${className ?? ''}`}
+      sx={(theme) => ({ '--prism-research-border': theme.palette.divider })}
+    >
       {parsed.data.metadata && (
         <Accordion
           disableGutters
@@ -217,6 +220,6 @@ export function ResearchDocument({
           </ul>
         </details>
       )}
-    </div>
+    </Box>
   );
 }

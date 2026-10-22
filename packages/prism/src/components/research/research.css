@@ -8,7 +8,7 @@
   padding-block: 0.5rem;
 }
 .prism-research__contents {
-  border-block: 1px solid currentColor;
+  border-block: var(--prism-border-width, 1px) solid var(--prism-research-border, currentColor);
   padding-block: 1rem;
   margin-block: 1rem 2rem;
 }
@@ -39,7 +39,7 @@
   max-width: 100%;
 }
 .prism-research__failure {
-  border-inline-start: 2px solid currentColor;
+  border-inline-start: var(--prism-border-width, 1px) solid var(--prism-research-border, currentColor);
   padding-inline-start: 1rem;
 }
 .prism-research__failure pre {

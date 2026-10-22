@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
 import Menu from '@mui/material/Menu';
+import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import {
   dispatchBlockTransaction,
@@ -154,7 +155,7 @@ export function BlockControls({
   return (
     <>
       <div className="prism-science__gutter" style={{ top: anchor.top }} role="group" aria-label={labels.blockMenu}>
-        <button
+        <IconButton
           type="button"
           title={labels.insert}
           aria-label={labels.insert}
@@ -162,8 +163,8 @@ export function BlockControls({
           onClick={() => onInsert(anchor.id)}
         >
           +
-        </button>
-        <button
+        </IconButton>
+        <IconButton
           type="button"
           title={labels.dragBlock}
           aria-label={labels.blockMenu}
@@ -187,7 +188,7 @@ export function BlockControls({
               [5, 10, 15].map((y) => <circle key={`${x}:${y}`} cx={x} cy={y} r="1.2" fill="currentColor" />)
             )}
           </svg>
-        </button>
+        </IconButton>
       </div>
       {dropTop !== undefined && (
         <div className="prism-science__drop-line" style={{ top: dropTop }} aria-hidden="true" />

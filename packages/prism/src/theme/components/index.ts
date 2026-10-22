@@ -86,7 +86,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: ({ theme }) => ({
           borderRadius,
           '&:hover': {
-            backgroundColor: paletteVar(theme, "action.hover"),
+            backgroundColor: paletteVar(theme, 'action.hover'),
           },
         }),
       },
@@ -250,7 +250,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           backgroundImage: 'none',
-          borderBottom: `1px solid ${paletteVar(theme, "divider")}`,
+          borderBottom: `1px solid ${paletteVar(theme, 'divider')}`,
         }),
       },
     },
@@ -276,7 +276,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       },
       styleOverrides: {
         root: ({ theme }) => ({
-          border: `1px solid ${paletteVar(theme, "divider")}`,
+          border: `1px solid ${paletteVar(theme, 'divider')}`,
           borderRadius,
           '&::before': {
             display: 'none',
@@ -299,11 +299,6 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           '&:not(:last-child)': {
             borderBottom: 0,
           },
-          [`&.${accordionClasses.expanded}`]: {
-            margin: 0,
-            '&:first-child': { marginTop: 0 },
-            '&:last-child': { marginBottom: 0 },
-          },
           [`&.${accordionClasses.disabled}`]: {
             backgroundColor: 'transparent',
           },
@@ -313,6 +308,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiAccordionSummary: {
       styleOverrides: {
         root: ({ theme }) => ({
+          ...theme.typography.body2,
           minHeight: 48 * dm,
           padding: `0 ${16 * dm}px`,
           fontWeight: 500,
@@ -324,13 +320,18 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           },
         }),
         content: {
+          alignItems: 'center',
+          gap: 8 * dm,
+          minWidth: 0,
           margin: `${12 * dm}px 0`,
           [`&.${accordionSummaryClasses.expanded}`]: {
             margin: `${12 * dm}px 0`,
           },
         },
         expandIconWrapper: ({ theme }) => ({
-          color: paletteVar(theme, "text.secondary"),
+          color: paletteVar(theme, 'text.secondary'),
+          flexShrink: 0,
+          marginInlineStart: 8 * dm,
         }),
       },
     },
@@ -338,7 +339,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           padding: `${8 * dm}px ${16 * dm}px ${16 * dm}px`,
-          borderTop: `1px solid ${paletteVar(theme, "divider")}`,
+          borderTop: `1px solid ${paletteVar(theme, 'divider')}`,
         }),
       },
     },
@@ -360,11 +361,11 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           fontWeight: 500,
           [`&.${stepLabelClasses.active}`]: {
             fontWeight: 600,
-            color: paletteVar(theme, "text.primary"),
+            color: paletteVar(theme, 'text.primary'),
           },
           [`&.${stepLabelClasses.completed}`]: {
             fontWeight: 500,
-            color: paletteVar(theme, "text.primary"),
+            color: paletteVar(theme, 'text.primary'),
           },
         }),
         iconContainer: {
@@ -375,7 +376,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiStepConnector: {
       styleOverrides: {
         line: ({ theme }) => ({
-          borderColor: paletteVar(theme, "divider"),
+          borderColor: paletteVar(theme, 'divider'),
           borderTopWidth: 2,
         }),
       },
@@ -383,12 +384,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiStepIcon: {
       styleOverrides: {
         root: ({ theme }) => ({
-          color: paletteVar(theme, "grey.300"),
+          color: paletteVar(theme, 'grey.300'),
           [`&.${stepIconClasses.active}`]: {
-            color: paletteVar(theme, "primary.main"),
+            color: paletteVar(theme, 'primary.main'),
           },
           [`&.${stepIconClasses.completed}`]: {
-            color: paletteVar(theme, "primary.main"),
+            color: paletteVar(theme, 'primary.main'),
           },
         }),
         text: {
@@ -400,7 +401,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiStepContent: {
       styleOverrides: {
         root: ({ theme }) => ({
-          borderLeft: `2px solid ${paletteVar(theme, "divider")}`,
+          borderLeft: `2px solid ${paletteVar(theme, 'divider')}`,
           marginLeft: 11,
           paddingLeft: 20,
           paddingRight: 8,
@@ -427,25 +428,25 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           },
         }),
         outlined: ({ theme }) => ({
-          borderColor: paletteVar(theme, "divider"),
+          borderColor: paletteVar(theme, 'divider'),
           [`&.${paginationItemClasses.selected}`]: {
             backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.08)`,
-            borderColor: paletteVar(theme, "primary.main"),
+            borderColor: paletteVar(theme, 'primary.main'),
           },
         }),
         text: ({ theme }) => ({
           [`&.${paginationItemClasses.selected}`]: {
-            backgroundColor: paletteVar(theme, "primary.main"),
-            color: paletteVar(theme, "primary.contrastText"),
+            backgroundColor: paletteVar(theme, 'primary.main'),
+            color: paletteVar(theme, 'primary.contrastText'),
             '&:hover': {
-              backgroundColor: paletteVar(theme, "primary.dark"),
+              backgroundColor: paletteVar(theme, 'primary.dark'),
             },
           },
         }),
         previousNext: ({ theme }) => ({
           borderRadius: borderRadius - 2,
           '&:hover': {
-            backgroundColor: paletteVar(theme, "action.hover"),
+            backgroundColor: paletteVar(theme, 'action.hover'),
           },
         }),
         firstLast: ({ theme }) => ({
@@ -482,10 +483,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           borderRadius: borderRadius - 2,
           fontSize: theme.typography.pxToRem(12),
           padding: '6px 12px',
-          backgroundColor: paletteVar(theme, "grey.800"),
+          backgroundColor: paletteVar(theme, 'grey.800'),
         }),
         arrow: ({ theme }) => ({
-          color: paletteVar(theme, "grey.800"),
+          color: paletteVar(theme, 'grey.800'),
         }),
       },
     },
@@ -506,7 +507,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           [`& .${tableCellClasses.head}`]: {
             fontWeight: 600,
             backgroundColor: theme.vars?.palette.background.neutral || theme.palette.grey[50],
-            color: paletteVar(theme, "text.secondary"),
+            color: paletteVar(theme, 'text.secondary'),
           },
         }),
       },
@@ -551,7 +552,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       },
       styleOverrides: {
         root: ({ theme }) => ({
-          borderTop: `1px solid ${paletteVar(theme, "divider")}`,
+          borderTop: `1px solid ${paletteVar(theme, 'divider')}`,
         }),
         toolbar: {
           minHeight: 44 * dm,
@@ -590,16 +591,13 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           borderRadius,
-          variants: (['success', 'error', 'warning', 'info'] as const).map(
-            (severity) => ({
-              props: { severity, variant: 'standard' },
-              style: {
-                backgroundColor: `rgba(${getColorChannel(theme, severity)} / 0.08)`,
-                color:
-                  theme.vars?.palette[severity].dark || theme.palette[severity].dark,
-              },
-            }),
-          ),
+          variants: (['success', 'error', 'warning', 'info'] as const).map((severity) => ({
+            props: { severity, variant: 'standard' },
+            style: {
+              backgroundColor: `rgba(${getColorChannel(theme, severity)} / 0.08)`,
+              color: theme.vars?.palette[severity].dark || theme.palette[severity].dark,
+            },
+          })),
         }),
       },
     },
@@ -654,12 +652,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           '&.Mui-disabled': {
-            color: paletteVar(theme, "action.disabled"),
+            color: paletteVar(theme, 'action.disabled'),
           },
         }),
         rail: ({ theme }) => ({
           opacity: 0.32,
-          backgroundColor: paletteVar(theme, "grey.500"),
+          backgroundColor: paletteVar(theme, 'grey.500'),
         }),
         track: {
           border: 'none',
@@ -667,7 +665,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         thumb: ({ theme }) => ({
           width: density === 'compact' ? 16 : 20,
           height: density === 'compact' ? 16 : 20,
-          backgroundColor: paletteVar(theme, "common.white"),
+          backgroundColor: paletteVar(theme, 'common.white'),
           border: '2px solid currentColor',
           boxShadow: `0 1px 3px 0 rgba(${getGreyChannel(theme, '900')} / 0.2)`,
           '&::before': {
@@ -682,7 +680,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         }),
         valueLabel: ({ theme }) => ({
           borderRadius: borderRadius - 2,
-          backgroundColor: paletteVar(theme, "grey.800"),
+          backgroundColor: paletteVar(theme, 'grey.800'),
           '&::before': {
             display: 'none',
           },
@@ -691,10 +689,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           width: 4,
           height: 4,
           borderRadius: '50%',
-          backgroundColor: paletteVar(theme, "grey.400"),
+          backgroundColor: paletteVar(theme, 'grey.400'),
         }),
         markActive: ({ theme }) => ({
-          backgroundColor: paletteVar(theme, "common.white"),
+          backgroundColor: paletteVar(theme, 'common.white'),
         }),
       },
     },
@@ -717,13 +715,13 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           fontSize: 'inherit',
         },
         iconEmpty: ({ theme }) => ({
-          color: paletteVar(theme, "grey.300"),
+          color: paletteVar(theme, 'grey.300'),
         }),
         iconFilled: ({ theme }) => ({
-          color: paletteVar(theme, "warning.main"),
+          color: paletteVar(theme, 'warning.main'),
         }),
         iconHover: ({ theme }) => ({
-          color: paletteVar(theme, "warning.dark"),
+          color: paletteVar(theme, 'warning.dark'),
         }),
         sizeSmall: {
           fontSize: '1.125rem',
@@ -774,7 +772,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
             fontWeight: 500,
           },
           '&:hover': {
-            backgroundColor: paletteVar(theme, "action.hover"),
+            backgroundColor: paletteVar(theme, 'action.hover'),
           },
         }),
       },
@@ -804,7 +802,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         secondary: ({ theme }) => ({
           fontSize: theme.typography.pxToRem(density === 'compact' ? 12 : 13),
           lineHeight: 1.5,
-          color: paletteVar(theme, "text.secondary"),
+          color: paletteVar(theme, 'text.secondary'),
         }),
       },
     },
@@ -841,9 +839,9 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           },
           '&.Mui-selected': {
             fontWeight: 500,
-            backgroundColor: paletteVar(theme, "action.selected"),
+            backgroundColor: paletteVar(theme, 'action.selected'),
             '&:hover': {
-              backgroundColor: paletteVar(theme, "action.hover"),
+              backgroundColor: paletteVar(theme, 'action.hover'),
             },
           },
         }),
@@ -892,7 +890,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       },
       styleOverrides: {
         root: ({ theme }) => ({
-          color: paletteVar(theme, "primary.main"),
+          color: paletteVar(theme, 'primary.main'),
           textDecorationColor: 'transparent',
           transition: 'color 150ms, text-decoration-color 150ms',
           '&:hover': {
@@ -911,7 +909,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           borderRadius,
           fontWeight: 500,
           textTransform: 'none' as const,
-          border: `1px solid ${paletteVar(theme, "divider")}`,
+          border: `1px solid ${paletteVar(theme, 'divider')}`,
           [`&.${toggleButtonClasses.selected}`]: {
             backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.08)`,
             // `currentColor` makes the border track the foreground
@@ -926,13 +924,13 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
             // where prism forced primary on left+top while the
             // consumer's sx painted right+bottom in OPT_COLOR.
             borderColor: 'currentColor',
-            color: paletteVar(theme, "primary.main"),
+            color: paletteVar(theme, 'primary.main'),
             '&:hover': {
               backgroundColor: `rgba(${getColorChannel(theme, 'primary')} / 0.16)`,
             },
           },
           [`&.${toggleButtonClasses.disabled}`]: {
-            borderColor: paletteVar(theme, "action.disabledBackground"),
+            borderColor: paletteVar(theme, 'action.disabledBackground'),
           },
         }),
         sizeSmall: {
@@ -994,8 +992,8 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           // canonical inline-flex layout (it sits exactly under
           // prev's right border) and restores the missing edge in
           // grid/custom layouts. One rule, both cases.
-          borderLeftColor: paletteVar(theme, "divider"),
-          borderTopColor: paletteVar(theme, "divider"),
+          borderLeftColor: paletteVar(theme, 'divider'),
+          borderTopColor: paletteVar(theme, 'divider'),
           [`&.${toggleButtonClasses.selected}`]: {
             // Lift above neighbours so the selected outline paints
             // OVER the prev sibling's seam border. Without z-index
@@ -1043,7 +1041,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           padding: 3,
         }),
         outlined: ({ theme }: { theme: Theme }) => ({
-          borderColor: paletteVar(theme, "divider"),
+          borderColor: paletteVar(theme, 'divider'),
           backgroundColor: 'transparent',
         }),
       },
@@ -1051,7 +1049,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiTimelineConnector: {
       styleOverrides: {
         root: ({ theme }: { theme: Theme }) => ({
-          backgroundColor: paletteVar(theme, "divider"),
+          backgroundColor: paletteVar(theme, 'divider'),
           width: 2,
         }),
       },
@@ -1096,7 +1094,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
             },
           },
           '&:hover': {
-            backgroundColor: paletteVar(theme, "action.hover"),
+            backgroundColor: paletteVar(theme, 'action.hover'),
           },
         }),
         label: ({ theme }: { theme: Theme }) => ({

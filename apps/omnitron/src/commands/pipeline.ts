@@ -68,7 +68,13 @@ export async function pipelineListCommand(): Promise<void> {
 
 export async function pipelineRunCommand(id: string): Promise<void> {
   try {
-    const run = await withPipelines((svc) => svc.executePipeline({ id }));
+    const run = await withPipelines(async (svc) => {
+      const pipelines = await svc.listPipelines();
+      const byId = pipelines.find((pipeline) => pipeline.id === id);
+      const matches = byId ? [byId] : pipelines.filter((pipeline) => pipeline.name === id);
+      if (matches.length !== 1) throw new Error(matches.length ? `Pipeline name '${id}' is ambiguous; use its id` : `No pipeline '${id}'`);
+      return svc.executePipeline({ id: matches[0]!.id });
+    });
     log.success(`Pipeline run started: ${run.id} (status: ${run.status})`);
   } catch (err) {
     log.error(`Failed: ${(err as Error).message}`);

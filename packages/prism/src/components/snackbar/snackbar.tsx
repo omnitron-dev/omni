@@ -204,7 +204,7 @@ export function SnackbarProvider({
   }, []);
 
   const handleClose = useCallback(
-    (_event?: React.SyntheticEvent | Event, reason?: string) => {
+    (_event?: React.SyntheticEvent | Event | null, reason?: string) => {
       if (reason === 'clickaway') return;
       close();
     },
@@ -300,7 +300,7 @@ export function SimpleSnackbar({
   position = { vertical: 'bottom', horizontal: 'left' },
   sx,
 }: SimpleSnackbarProps): ReactNode {
-  const handleClose = (_event?: React.SyntheticEvent | Event, reason?: string) => {
+  const handleClose = (_event?: React.SyntheticEvent | Event | null, reason?: string) => {
     if (reason === 'clickaway') return;
     onClose();
   };

@@ -61,7 +61,7 @@ vi.mock('../../src/daemon/daemon-client.js', async (importOriginal) => {
   return { ...real, createDaemonClient: () => real.createDaemonClient(stand.socketPath) };
 });
 
-const { pipelineListCommand } = await import('../../src/commands/pipeline.js');
+const { pipelineListCommand, pipelineRunCommand } = await import('../../src/commands/pipeline.js');
 const { k8sPodsCommand, k8sDeployScaleCommand } = await import('../../src/commands/k8s.js');
 const { clusterStatusCommand, clusterStepDownCommand } = await import('../../src/commands/cluster.js');
 
@@ -198,6 +198,40 @@ describe('omnitron pipeline list', () => {
 
     expect(logged.some((l) => l.level === 'error')).toBe(true);
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('omnitron pipeline run', () => {
+  it.each(['release', 'pipeline-id'])('resolves %s to the registered pipeline over Netron', async (name) => {
+    const execute = vi.fn(async () => ({ id: 'run-id', status: 'running' }));
+    await daemonWith(new PipelineRpcService({
+      listPipelines: async () => [{ id: 'pipeline-id', name: 'release' }],
+      executePipeline: execute,
+    } as never));
+    await pipelineRunCommand(name);
+    expect(execute).toHaveBeenCalledExactlyOnceWith('pipeline-id', undefined);
+    expect(process.exitCode).toBeUndefined();
+    expect(said()).toContain('run-id');
+  });
+  it.each([
+    { name: 'absent', rows: [], error: 'No pipeline' },
+    { name: 'release', rows: [{ id: 'p1', name: 'release' }, { id: 'p2', name: 'release' }], error: 'ambiguous' },
+  ])('refuses $name when the target is not unique', async ({ name, rows, error }) => {
+    const execute = vi.fn();
+    await daemonWith(new PipelineRpcService({ listPipelines: async () => rows, executePipeline: execute } as never));
+    await pipelineRunCommand(name);
+    expect(execute).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(said()).toContain(error);
+  });
+  it('gives an exact id priority over another pipeline with that name', async () => {
+    const execute = vi.fn(async () => ({ id: 'run-id', status: 'running' }));
+    await daemonWith(new PipelineRpcService({
+      listPipelines: async () => [{ id: 'p1', name: 'release' }, { id: 'p2', name: 'p1' }],
+      executePipeline: execute,
+    } as never));
+    await pipelineRunCommand('p1');
+    expect(execute).toHaveBeenCalledExactlyOnceWith('p1', undefined);
   });
 });
 

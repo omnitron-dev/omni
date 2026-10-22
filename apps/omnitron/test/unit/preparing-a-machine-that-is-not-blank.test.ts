@@ -136,6 +136,15 @@ describe('deciding what to do about it', () => {
     expect(plan.steps.map((s) => s.command).join('\n')).toContain('node-v22.14.0-darwin-arm64.tar.gz');
   });
 
+  it('can prepare the runtime without installing the registry CLI when a verified bundle follows', () => {
+    const plan = planProvisioning(blankUbuntu, { nodeVersion: '24.10.0', installOmnitron: false });
+    expect(plan.refusal).toBeUndefined();
+    const commands = plan.steps.map(step => step.command).join('\n');
+    expect(commands).toContain('node-v24.10.0-linux-x64');
+    expect(commands).not.toContain('npm install -g');
+    expect(plan.steps.some(step => step.what.includes('CLI'))).toBe(false);
+  });
+
   it('makes the CLI runnable by name, whoever installed the runtime', () => {
     // The condition that was wrong twice. A re-run against a host we
     // prepared earlier sees a runtime that is ours and looks like the host's

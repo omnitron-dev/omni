@@ -46,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The packages whose tests this repository runs, in the order asked. */
-const RUNNERS = ['packages/testing', 'packages/titan', 'apps/omnitron'];
+const RUNNERS = ['packages/testing', 'packages/titan', 'apps/omnitron', 'packages/prism'];
 
 /** How long one run may take before the check gives up on asking. */
 const RUN_MS = 60_000;
@@ -144,7 +144,7 @@ function writeTest(project, mode) {
 }
 
 async function main() {
-  const vitest = RUNNERS.map(vitestOf).find(Boolean);
+  const vitest = (process.argv[2] ? [process.argv[2]] : RUNNERS).map(vitestOf).find(Boolean);
   if (!vitest) {
     console.error(`could not ask: no vitest resolves from ${RUNNERS.join(', ')} — install first`);
     return 2;
@@ -165,7 +165,7 @@ async function main() {
       writeFileSync(join(project, 'two.mjs'), 'export const two = () => 2;\n');
       writeFileSync(
         join(project, 'vitest.config.mjs'),
-        "export default { test: { include: ['sample.test.mjs'], globals: true, pool: 'forks', watch: false } };\n",
+        "export default { test: { include: ['sample.test.mjs'], globals: true, pool: 'forks', fsModuleCache: false, watch: false } };\n",
       );
       return { tmp, project };
     };

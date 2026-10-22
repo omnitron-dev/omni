@@ -16,7 +16,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
+import {
+  AuthenticationManager,
+  AuthenticationUnavailableError,
+} from '../../../src/netron/auth/authentication-manager.js';
 import { AuditLogger, MemoryAuditAdapter } from '../../../src/netron/auth/audit-logger.js';
 import type { AuthCredentials, AuthContext } from '../../../src/netron/auth/types.js';
 import type { ILogger, LogLevel } from '../../../src/types/logger.js';
@@ -312,6 +315,23 @@ describe('AuthenticationManager Integration Tests', () => {
   afterEach(() => {
     authHandler.clear();
     mockLogger.clearLogs();
+  });
+
+  it('preserves explicit provider unavailability through both adapters and never caches failure', async () => {
+    let unavailable = true;
+    const provider = () => {
+      if (unavailable) throw new AuthenticationUnavailableError(new Error('private DB failure'));
+      return { userId: 'restored', roles: ['member'] };
+    };
+    authManager.configure({ authenticate: provider, validateToken: provider });
+    await expect(authManager.authenticate({ token: 'opaque' })).rejects.toMatchObject({
+      code: 503,
+      details: { errorCode: 'authentication_unavailable' },
+    });
+    await expect(authManager.validateToken('opaque')).rejects.toBeInstanceOf(AuthenticationUnavailableError);
+    expect(authManager.getCacheStats().size).toBe(0);
+    unavailable = false;
+    expect(await authManager.validateToken('opaque')).toMatchObject({ success: true, context: { userId: 'restored' } });
   });
 
   // ==========================================================================
@@ -704,10 +724,11 @@ describe('AuthenticationManager Integration Tests', () => {
       // Fast-forward time
       vi.advanceTimersByTime(1000);
 
-      const result = await resultPromise;
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('timed out');
+      await expect(resultPromise).rejects.toMatchObject({
+        code: 503,
+        details: { errorCode: 'authentication_unavailable' },
+        cause: { message: 'Authentication timed out after 1000ms' },
+      });
     });
 
     it('should complete before timeout if handler is fast', async () => {
@@ -752,10 +773,11 @@ describe('AuthenticationManager Integration Tests', () => {
       const validatePromise = authManager.validateToken(token);
       vi.advanceTimersByTime(1000);
 
-      const result = await validatePromise;
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('timed out');
+      await expect(validatePromise).rejects.toMatchObject({
+        code: 503,
+        details: { errorCode: 'authentication_unavailable' },
+        cause: { message: 'Token validation timed out after 1000ms' },
+      });
     });
 
     it('should reject invalid timeout values', () => {

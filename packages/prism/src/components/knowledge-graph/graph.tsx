@@ -3,6 +3,10 @@ import { DocSidebar } from '../doc-layout/doc-sidebar.js';
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  type EdgeProps,
   Background,
   Controls,
   Handle,
@@ -150,6 +154,47 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<GraphN
     </div>
   );
 });
+// Portal labels above the complete SVG edge layer. Otherwise a later path can
+// cross through an earlier SVG label when a node grows after a status update.
+function KnowledgeEdge(props: EdgeProps) {
+  const [path, x, y] = getSmoothStepPath(props);
+  return (
+    <>
+      <BaseEdge
+        id={props.id}
+        path={path}
+        markerEnd={props.markerEnd}
+        markerStart={props.markerStart}
+        style={props.style}
+        interactionWidth={props.interactionWidth}
+      />
+      {props.label != null && (
+        <EdgeLabelRenderer>
+          <Box
+            component="span"
+            aria-hidden="true"
+            className="nodrag nopan"
+            sx={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
+              bgcolor: 'background.paper',
+              color: 'text.primary',
+              borderRadius: 0.5,
+              px: 0.5,
+              py: 0.25,
+              fontSize: 12,
+              lineHeight: 1.4,
+              pointerEvents: 'none',
+            }}
+          >
+            {props.label}
+          </Box>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+const edgeTypes = { knowledge: KnowledgeEdge };
 const nodeTypes = { knowledge: EntityNode };
 /** Deterministic initial grid, deliberately not a causal/topological ordering. Hosts may supply a layout algorithm. */
 function defaultLayout(p: KnowledgeProjection): Record<string, XYPosition> {
@@ -221,7 +266,7 @@ export function KnowledgeGraph({
     () =>
       graph.edges.map((e) => ({
         ...e,
-        type: 'smoothstep',
+        type: 'knowledge',
         markerEnd: { type: MarkerType.ArrowClosed },
         focusable: true,
         ariaLabel: e.label,
@@ -396,6 +441,7 @@ export function KnowledgeGraph({
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     onNodesChange={onNodesChange}
                     onNodeClick={(_e, n) => choose(n.data.selection)}
                     onNodeDragStop={(_e, node) =>

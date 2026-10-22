@@ -49,6 +49,51 @@ const calc = client.service<Calculator>('calculator');
 const sum = await calc.add(2, 3);
 ```
 
+## Invocation lifetime and response validation
+
+`NetronClient`, `HttpClient`, `WebSocketClient`, `BackendClient` and
+`MultiBackendClient` accept local invocation controls:
+
+```typescript
+const controller = new AbortController();
+const result = client.invoke('knowledge', 'read', ['object-id'], {
+  signal: controller.signal,
+  timeout: 15_000,
+});
+controller.abort();
+```
+
+`signal` is never serialized. Cancellation rejects with `signal.reason` and
+aborts the HTTP fetch, including body consumption. WebSocket cancellation
+releases the local pending call and ignores its late response. It cannot undo
+server work already admitted; it does not disconnect other callers or cancel
+their shared service discovery. Queries should pass their cache's signal.
+Mutations are not automatically cancelled on component unmount.
+
+The timeout covers transport attempts, retry backoff, complete response body
+consumption and response middleware. Pre-request middleware receives caller
+cancellation; the transport deadline starts after it selects the request timeout.
+A deadline produces `TIMEOUT`; caller cancellation does not become a timeout,
+trigger authentication refresh, or replay a request. HTTP latency summaries use
+constant storage and include response body consumption.
+
+HTTP envelopes must contain a boolean `success` and match the request ID.
+`X-Request-ID` carries the same ID for Titan's pre-admission refusals. Titan's
+transport-level `{ error: true, code, message }` errors are accepted only under
+non-2xx HTTP statuses and cannot provide successful data. Invalid envelopes
+reject with `INVALID_RESPONSE`; RPC refusals retain their original code, details
+and non-2xx HTTP status. Generic result types do not validate application payloads;
+services and callers still need their own response schemas.
+
+HTTP network retries require **both** client `http.retry: true` (or `HttpClient`
+`retry: true`) and invocation `idempotent: true`. The latter is the caller's
+assertion that an ambiguous request can safely be replayed, not a deduplication
+or exactly-once guarantee. Existing retry-enabled clients must opt each safe
+operation in explicitly. Neither method names nor HTTP POST alone establish
+idempotence. Protocol errors and ordinary server refusals are not automatically
+retried. Authentication middleware may request one re-invocation after a refusal,
+within the same deadline.
+
 ## Related
 
 - `@omnitron-dev/netron-react` — React hooks and providers

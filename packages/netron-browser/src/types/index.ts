@@ -142,6 +142,26 @@ export interface RequestHints {
   batchable?: boolean;
 }
 
+/** Local invocation controls. These fields are never serialized into RPC hints. */
+export interface InvocationOptions {
+  context?: RequestContext;
+  hints?: RequestHints;
+  /** Overrides hints.timeout, in milliseconds. */
+  timeout?: number;
+  skipAuth?: boolean;
+  /**
+   * Cancels local waiting and the HTTP fetch. Cancellation cannot undo work
+   * already accepted by the server; WebSocket cancellation is local only.
+   */
+  signal?: AbortSignal;
+  /**
+   * Caller assertion that replay after an ambiguous network failure is safe.
+   * HTTP retries require this AND the client's retry option. Defaults to false.
+   * This is not a server-side deduplication or exactly-once guarantee.
+   */
+  idempotent?: boolean;
+}
+
 /**
  * HTTP request message
  */
@@ -203,7 +223,7 @@ export interface HttpResponseMessage {
     /**
      * Error code
      */
-    code: string;
+    code: string | number;
 
     /**
      * Error message

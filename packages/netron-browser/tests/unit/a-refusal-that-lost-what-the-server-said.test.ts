@@ -22,10 +22,10 @@ type Refused = Error & { code?: unknown; details?: Record<string, unknown>; stat
 function answer(status: number, body: unknown): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
+    vi.fn(async (_url: string, init: RequestInit) =>
       typeof body === 'string'
         ? new Response(body, { status, statusText: 'Bad Gateway', headers: { 'content-type': 'text/html' } })
-        : new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+        : new Response(JSON.stringify({ ...(body as object), id: JSON.parse(String(init.body)).id }), { status, headers: { 'content-type': 'application/json' } })
     )
   );
 }

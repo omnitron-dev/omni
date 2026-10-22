@@ -15,7 +15,7 @@ import {
   type IMiddlewareManager,
   MiddlewareStage,
 } from '../middleware/types.js';
-import type { ConnectionMetrics, RequestContext, RequestHints } from './index.js';
+import type { ConnectionMetrics, InvocationOptions } from './index.js';
 
 /**
  * Transport type for backend connections
@@ -55,7 +55,7 @@ export interface WebSocketBackendOptions {
  */
 export interface HttpBackendOptions {
   /**
-   * Enable retry mechanism
+   * Enable HTTP network retries for invocations explicitly marked idempotent
    * @default false
    */
   retry?: boolean;
@@ -285,29 +285,7 @@ export interface MultiBackendClientOptions<T extends BackendSchema = BackendSche
 /**
  * Options for invoking a service method
  */
-export interface InvokeOptions {
-  /**
-   * Request context (user ID, session, etc.)
-   */
-  context?: RequestContext;
-
-  /**
-   * Request hints (timeout, caching, etc.)
-   */
-  hints?: RequestHints;
-
-  /**
-   * Override timeout for this request
-   */
-  timeout?: number;
-
-  /**
-   * Skip automatic auth header attachment for this request.
-   * Useful for unauthenticated endpoints like session refresh,
-   * where the current token may be expired.
-   */
-  skipAuth?: boolean;
-}
+export interface InvokeOptions extends InvocationOptions {}
 
 /**
  * Aggregated metrics across all backends

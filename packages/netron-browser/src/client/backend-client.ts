@@ -16,9 +16,10 @@ import type {
   TypedServiceProxy,
   BackendConfig,
 } from '../types/multi-backend.js';
-import { ConnectionState, type ConnectionMetrics, type RequestContext, type RequestHints } from '../types/index.js';
+import { ConnectionState, type ConnectionMetrics } from '../types/index.js';
 import type { AuthenticationClient } from '../auth/client.js';
 import type { IMiddlewareManager } from '../middleware/types.js';
+import { abortable } from './request-lifecycle.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 /**
@@ -239,32 +240,10 @@ export class BackendClient implements IBackendClient {
    * @returns Promise resolving to method result
    */
   async invoke<R = any>(service: string, method: string, args: any[] = [], options?: InvokeOptions): Promise<R> {
-    // Ensure client is initialized
-    const client = await this.initializeClient();
-
-    // Build request options
-    const requestOptions: {
-      context?: RequestContext;
-      hints?: RequestHints;
-      skipAuth?: boolean;
-    } = {};
-
-    if (options?.context) {
-      requestOptions.context = options.context;
-    }
-
-    if (options?.hints || options?.timeout) {
-      requestOptions.hints = {
-        ...options?.hints,
-        timeout: options?.timeout || options?.hints?.timeout,
-      };
-    }
-
-    if (options?.skipAuth) {
-      requestOptions.skipAuth = true;
-    }
-
-    return await client.invoke(service, method, args, requestOptions);
+    options?.signal?.throwIfAborted();
+    const client = await abortable(() => this.initializeClient(), options?.signal);
+    options?.signal?.throwIfAborted();
+    return await client.invoke(service, method, args, options);
   }
 
   /**

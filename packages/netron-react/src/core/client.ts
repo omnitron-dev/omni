@@ -241,11 +241,12 @@ export class NetronReactClient {
     service: string,
     method: string,
     args: unknown[],
-    options?: { timeout?: number }
+    options?: { timeout?: number; signal?: AbortSignal }
   ): Promise<T> {
     const client = this.getActiveClient();
     return client.invoke(service, method, args, {
       hints: { timeout: options?.timeout },
+      signal: options?.signal,
     }) as Promise<T>;
   }
 

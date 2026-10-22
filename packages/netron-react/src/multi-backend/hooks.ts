@@ -197,9 +197,10 @@ export function useBackendService<TService>(
 
               return useQuery<TData>({
                 queryKey,
-                queryFn: () =>
+                queryFn: ({ signal }) =>
                   backendClient.invoke<TData>(serviceName, methodName, args, {
                     timeout: options?.timeout,
+                    signal,
                   }),
                 ...queryOptions,
               });
@@ -285,9 +286,10 @@ export function useBackendQuery<TData = unknown, TError = NetronError>(
   return useQuery<TData, TError>({
     ...queryOptions,
     queryKey,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       backendClient.invoke<TData>(service, method, args, {
         timeout,
+        signal,
       }),
   });
 }

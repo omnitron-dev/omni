@@ -256,6 +256,7 @@ export function HeaderSection({
 
   return (
     <StyledAppBar
+      color="transparent"
       position={disableSticky ? 'static' : 'sticky'}
       isOffset={isOffset}
       disableOffset={disableOffset}

@@ -30,20 +30,28 @@ export const getTagSimple = (value: any) => {
   return rawTag.substring(8, rawTag.length - 1).toLowerCase();
 };
 
+// Platform flags describe an exposed runtime platform, not a browser's host OS.
+// Browser/worker imports must not require a Node process polyfill or infer an OS
+// from navigator.userAgent. A partial process shim has no platform information.
+const platform =
+  typeof process === 'object' && process !== null && typeof process.platform === 'string'
+    ? process.platform
+    : undefined;
+
 // Check if the platform is Windows
-export const isWindows = process.platform === 'win32';
+export const isWindows = platform === 'win32';
 // Check if the platform is Linux
-export const linux = process.platform === 'linux';
+export const linux = platform === 'linux';
 // Check if the platform is FreeBSD
-export const freebsd = process.platform === 'freebsd';
+export const freebsd = platform === 'freebsd';
 // Check if the platform is OpenBSD
-export const openbsd = process.platform === 'openbsd';
+export const openbsd = platform === 'openbsd';
 // Check if the platform is macOS
-export const darwin = process.platform === 'darwin';
+export const darwin = platform === 'darwin';
 // Check if the platform is SunOS
-export const sunos = process.platform === 'sunos';
+export const sunos = platform === 'sunos';
 // Check if the platform is AIX
-export const aix = process.platform === 'aix';
+export const aix = platform === 'aix';
 
 // Check if the environment is Node.js
 export const isNodejs =

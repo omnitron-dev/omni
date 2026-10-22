@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Netron } from '../../../src/netron/netron.js';
 import { HttpServer } from '../../../src/netron/transport/http/server.js';
 import { Service, Public } from '../../../src/decorators/core.js';
-import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
+import {
+  AuthenticationManager,
+  AuthenticationUnavailableError,
+} from '../../../src/netron/auth/authentication-manager.js';
 import { CookieTokenTransport } from '../../../src/netron/auth/token-transports/cookie.js';
 import { CsrfManager } from '../../../src/netron/auth/csrf.js';
 import { withAuthRLSContext, getCurrentRLSAuthContext } from '../../../src/netron/auth/rls-bridge.js';
@@ -11,6 +14,8 @@ import { createNullLogger } from '../../../src/types/logger.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 
 let calls = 0;
+let currentCalls = 0;
+let observedMetadata: Map<string, unknown>;
 @Service({ name: 'NativeAuthority' })
 class NativeAuthority {
   @Public({ auth: { permissions: ['knowledge:write'] } })
@@ -20,6 +25,7 @@ class NativeAuthority {
   }
   @Public({ auth: { allowAnonymous: true } })
   current() {
+    currentCalls++;
     return getCurrentRLSAuthContext()?.userId || null;
   }
   @Public({ auth: { allowAnonymous: true } })
@@ -44,6 +50,7 @@ beforeAll(async () => {
   const logger = createNullLogger();
   netron = new Netron(logger);
   const validate = (token: string): AuthContext => {
+    if (token === 'unavailable') throw new AuthenticationUnavailableError(new Error('secret-db-address'));
     if (token !== 'valid') throw new Error('invalid');
     return { userId: 'researcher', roles: ['member'], permissions: ['knowledge:write'] };
   };
@@ -72,11 +79,13 @@ beforeAll(async () => {
     host: '127.0.0.1',
     port: 0,
     cors: false,
-    invocationWrapper: (metadata, fn) =>
-      withAuthRLSContext(
+    invocationWrapper: (metadata, fn) => {
+      observedMetadata = metadata;
+      return withAuthRLSContext(
         (metadata.get('authContext') as AuthContext) ?? { userId: '', roles: [], permissions: [] },
         fn
-      ),
+      );
+    },
   });
   server.setPeer(netron.peer);
   await server.listen();
@@ -126,6 +135,24 @@ describe('native HTTP authority before listen and across untrusted envelopes', (
     expect(result.body.data).toBe('researcher');
     expect(result.response.headers.get('set-cookie')).toBeNull();
   });
+  it('keeps client identity and tenant hints explicitly outside the authority metadata', async () => {
+    const result = await invoke(
+      'write',
+      { context: { userId: 'attacker', tenantId: 'other-tenant', traceId: 'trace', metadata: { roles: ['admin'] } } },
+      sessionHeaders
+    );
+    expect(result.body.data).toBe('researcher');
+    expect(observedMetadata.has('userId')).toBe(false);
+    expect(observedMetadata.has('tenantId')).toBe(false);
+    expect(observedMetadata.has('metadata')).toBe(false);
+    expect(observedMetadata.get('traceId')).toBe('trace');
+    expect(observedMetadata.get('requestContext')).toEqual({
+      userId: 'attacker',
+      tenantId: 'other-tenant',
+      traceId: 'trace',
+      metadata: { roles: ['admin'] },
+    });
+  });
   it('protects batch entries and shared batch context by the same gate', async () => {
     for (const shared of [false, true]) {
       const response = await fetch(url + '/netron/batch', {
@@ -153,6 +180,53 @@ describe('native HTTP authority before listen and across untrusted envelopes', (
       expect(body.responses[1].data).toBeNull();
       expect(response.headers.get('set-cookie')).toBeNull();
     }
+  });
+  it('reports authority outages as retryable failures, never anonymous success in single or batch requests', async () => {
+    const headers = { ...sessionHeaders, cookie: `science_session=unavailable; science_csrf=${csrfToken}` };
+    const counts = { calls, currentCalls };
+    for (const method of ['current', 'write', 'signin']) {
+      const result = await invoke(method, { context: untrusted }, headers);
+      expect(result.response.status).toBe(503);
+      expect(result.body.success).toBe(false);
+      expect(result.body.error).toMatchObject({
+        code: 'authentication_unavailable',
+        details: { errorCode: 'authentication_unavailable' },
+      });
+      expect(result.body.data).toBeUndefined();
+      expect(JSON.stringify(result.body)).not.toContain('secret-db-address');
+      expect(result.response.headers.get('set-cookie')).toBeNull();
+    }
+    for (const parallel of [true, false]) {
+      const batch = await fetch(url + '/netron/batch', {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({
+          id: 'outage',
+          options: { parallel },
+          context: untrusted,
+          requests: ['current', 'write'].map((method) => ({
+            id: method,
+            service: 'NativeAuthority',
+            method,
+            input: [],
+          })),
+        }),
+      });
+      const body = await batch.json();
+      expect(body.responses).toHaveLength(2);
+      for (const response of body.responses) {
+        expect(response.success).toBe(false);
+        expect(response.error).toMatchObject({
+          code: 'authentication_unavailable',
+          details: { errorCode: 'authentication_unavailable' },
+        });
+        expect(response.data).toBeUndefined();
+      }
+      expect(batch.headers.get('set-cookie')).toBeNull();
+    }
+    expect({ calls, currentCalls }).toEqual(counts);
+    const restored = await invoke('current', {}, sessionHeaders);
+    expect(restored.body.data).toBe('researcher');
   });
   it('still permits native token issuance and strips HttpOnly credentials from JSON', async () => {
     const result = await invoke('signin');

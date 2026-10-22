@@ -38,6 +38,7 @@ import { generateUuidV7 } from '../../../utils/id.js';
 import { AuthorizationManager } from '../../auth/authorization-manager.js';
 import type { PolicyEngine } from '../../auth/policy-engine.js';
 import { extractBearerToken } from '../../auth/utils.js';
+import { AuthenticationUnavailableError } from '../../auth/authentication-manager.js';
 import { TOKEN_ISSUANCE_METADATA_KEYS, runWithTokenIssuanceContext } from '../../auth/token-issuance.js';
 import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transport.js';
 import { isAsyncGenerator } from '@omnitron-dev/common';
@@ -584,7 +585,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
               ctx.metadata.set('authContext', result.context);
               ctx.metadata.set('authenticated', true);
             }
-          } catch (_error) {
+          } catch (error) {
+            if (error instanceof AuthenticationUnavailableError) throw error;
             ctx.metadata.set('authenticated', false);
           }
         } else {
@@ -1444,12 +1446,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const metadata = new Map<string, unknown>();
     // Use for...in loop for better performance
     // Context is untrusted tracing data, never an extensible authority map.
-    // In particular, authContext and token-issuance metadata are server-owned.
+    // Identity/tenant hints stay under requestContext; only credential validation
+    // can create the native authContext consumed by authorization and RLS.
+    const untrustedContext: HttpRequestContext = {};
     for (const key of ['traceId', 'spanId', 'userId', 'tenantId', 'metadata'] as const) {
       if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
-        metadata.set(key, requestContext[key]);
+        Object.assign(untrustedContext, { [key]: requestContext[key] });
+        if (key === 'traceId' || key === 'spanId') metadata.set(key, requestContext[key]);
       }
     }
+    metadata.set('requestContext', untrustedContext);
     metadata.set('requestId', message.id);
     metadata.set('serviceName', message.service);
     metadata.set('methodName', message.method);
@@ -1819,12 +1825,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const requestContext = req.context || fallbackContext || {};
     const metadata = new Map<string, unknown>();
     // Context is untrusted tracing data, never an extensible authority map.
-    // In particular, authContext and token-issuance metadata are server-owned.
+    // Identity/tenant hints stay under requestContext; only credential validation
+    // can create the native authContext consumed by authorization and RLS.
+    const untrustedContext: HttpRequestContext = {};
     for (const key of ['traceId', 'spanId', 'userId', 'tenantId', 'metadata'] as const) {
       if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
-        metadata.set(key, requestContext[key]);
+        Object.assign(untrustedContext, { [key]: requestContext[key] });
+        if (key === 'traceId' || key === 'spanId') metadata.set(key, requestContext[key]);
       }
     }
+    metadata.set('requestContext', untrustedContext);
     metadata.set('requestId', req.id);
     metadata.set('serviceName', req.service);
     metadata.set('methodName', req.method);
@@ -1962,9 +1972,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             data: result,
           };
         } catch (error) {
-          const titanError = error instanceof TitanError ? error : null;
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          const code = String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR);
+          const titanError = error instanceof TitanError ? error : toTitanError(error);
+          const errorMessage = titanError.message;
+          const code = titanError.details?.errorCode ?? String(mapToHttp(titanError).status);
 
           // T#70: unconditional 5xx logging (parallel batch branch).
           // A batched 500 was previously silently returned — same
@@ -1987,7 +1997,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           return {
             id: req.id,
             success: false,
-            error: { code, message: errorMessage },
+            error: { code, message: errorMessage, details: titanError.details },
           };
         }
       });
@@ -2007,9 +2017,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             data: result,
           });
         } catch (error) {
-          const titanError = error instanceof TitanError ? error : null;
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          const code = String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR);
+          const titanError = error instanceof TitanError ? error : toTitanError(error);
+          const errorMessage = titanError.message;
+          const code = titanError.details?.errorCode ?? String(mapToHttp(titanError).status);
 
           // T#70: unconditional 5xx logging (sequential batch branch).
           if (this.netronPeer?.logger && this.isServerError(code, titanError)) {
@@ -2030,7 +2040,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           batchResponse.responses.push({
             id: req.id,
             success: false,
-            error: { code, message: errorMessage },
+            error: { code, message: errorMessage, details: titanError.details },
           });
 
           if (stopOnError) {

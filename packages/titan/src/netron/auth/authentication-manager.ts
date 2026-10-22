@@ -5,11 +5,30 @@
  */
 
 import { createHash } from 'node:crypto';
+import { TitanError, ErrorCode } from '../../errors/index.js';
 import { TimedMap } from '@omnitron-dev/common';
 import { Injectable, Optional } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthCredentials, AuthContext, AuthResult, NetronAuthConfig, TokenCacheConfig } from './types.js';
 import type { AuditLogger } from './audit-logger.js';
+
+/**
+ * The authority provider could not establish a credential's validity.
+ * Throw this from adapters for database/network failures or invalid provider
+ * responses. A rejected/expired credential remains an ordinary failed AuthResult;
+ * unavailability must never authorize an anonymous fallback or clear a session.
+ * The public message and portable errorCode deliberately exclude provider details.
+ */
+export class AuthenticationUnavailableError extends TitanError {
+  constructor(cause?: Error) {
+    super({
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      message: 'Authentication service is temporarily unavailable',
+      details: { errorCode: 'authentication_unavailable' },
+      cause,
+    });
+  }
+}
 
 /**
  * Default timeout for authentication operations (10 seconds)
@@ -174,12 +193,9 @@ export class AuthenticationManager {
     if (!this.tokenCache || !userId || typeof userId !== 'string') return 0;
     // Collect keys first; mutating during forEach iteration is fragile.
     const victims: string[] = [];
-    this.tokenCache.forEach(
-      (value, key) => {
-        if (value?.context?.userId === userId) victims.push(key);
-      },
-      undefined,
-    );
+    this.tokenCache.forEach((value, key) => {
+      if (value?.context?.userId === userId) victims.push(key);
+    }, undefined);
     for (const k of victims) this.tokenCache.delete(k);
     if (victims.length > 0) {
       this.logger.debug({ userId, count: victims.length }, 'User tokens invalidated from cache');
@@ -278,7 +294,7 @@ export class AuthenticationManager {
     let timer: NodeJS.Timeout;
     const timeoutPromise = new Promise<T>((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+        reject(new AuthenticationUnavailableError(new Error(`${operation} timed out after ${timeoutMs}ms`)));
       }, timeoutMs);
     });
     try {
@@ -380,6 +396,7 @@ export class AuthenticationManager {
         context,
       };
     } catch (error: unknown) {
+      if (error instanceof AuthenticationUnavailableError) throw error;
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       this.logger.error(
         {
@@ -540,6 +557,7 @@ export class AuthenticationManager {
 
       return result;
     } catch (error: unknown) {
+      if (error instanceof AuthenticationUnavailableError) throw error;
       const errorMessage = error instanceof Error ? error.message : 'Token validation failed';
       this.logger.debug(
         {
